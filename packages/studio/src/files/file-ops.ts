@@ -51,6 +51,7 @@ import {
 import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /**
  * Parse a format-class source string into document + frontmatter + mode per the format's
@@ -182,18 +183,25 @@ export async function openFile() {
  * save on its own, and the file an author is most likely to save is the one they are reviewing. A
  * direct import would put `panels/git-panel.ts` into this module's graph, which is a load error for
  * every suite that mocks the canvas host out from under it.
+ *
+ * The listener is handed the document as well as the path, for the second listener: the live chrome
+ * lane (`services/live-surfaces.ts`) re-mounts a saved surface from the document the tab just wrote
+ * rather than reading the file back, which is what keeps the shipped app from ever reading its
+ * chrome from disk.
  */
-let _onDocumentSaved: (path: string | null) => void = () => {};
+let _onDocumentSaved: (path: string | null, doc: JxMutableNode) => void = () => {};
 
 /** Register the save listener. Called once, from the bootstrap. */
-export function setDocumentSavedListener(listener: (path: string | null) => void): void {
+export function setDocumentSavedListener(
+  listener: (path: string | null, doc: JxMutableNode) => void,
+): void {
   _onDocumentSaved = listener;
 }
 
 function reportSaved(tab: Tab) {
   noteDocumentSaved(tab.documentPath);
-  _onDocumentSaved(tab.documentPath);
   const doc = tab.doc.document;
+  _onDocumentSaved(tab.documentPath, doc);
   const warning =
     typeof doc.tagName === "string" && doc.tagName.includes("-")
       ? validateComponentSlots(doc)

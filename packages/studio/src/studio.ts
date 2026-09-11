@@ -94,6 +94,7 @@ import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { mountJumpBar } from "./panels/jump-bar";
 import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
+import { createLiveSurfaceSaver } from "./services/live-surfaces";
 import { beginActivity } from "./panels/activity-panel";
 import {
   exportFile,
@@ -253,7 +254,7 @@ import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
-import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type { JxDocument, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountShellTree } from "./shell/tree";
 
@@ -1486,8 +1487,13 @@ registerCanvasViewCommands(commandRegistry, {
 /* A save moves the working tree under any comparison of that file, and nothing about a
    comparison notices on its own — see `noteFileSaved`. Injected rather than imported: `file-ops`
    must not pull the Source Control panel into its graph. */
-setDocumentSavedListener((path) => {
+/* The second listener is the live chrome lane: a saved surface document or kit component re-mounts
+   the roots it draws in THIS shell (studio-ui-guidelines.md §9.3). Inert for every project but the
+   two the chrome comes from, by the saved path alone. */
+const liveChrome = createLiveSurfaceSaver({ notify, workspace });
+setDocumentSavedListener((path, doc) => {
   void noteFileSaved(path);
+  void liveChrome(path, doc as unknown as JxDocument);
 });
 /* Walking a comparison. No deps: the stepper reads the pane-keyed diff store directly and the
    toolbar redraws itself, so there is nothing for the bootstrap to inject. */

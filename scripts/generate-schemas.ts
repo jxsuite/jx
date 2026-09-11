@@ -28,6 +28,11 @@ function projectRootsIn(parent: string): string[] {
 
 const roots = [
   resolve(REPO_ROOT, "examples"),
+  /* The two projects Studio's own chrome is authored in (studio-ui-guidelines.md §9.3): the kit,
+     whose components and stylebook pages are documents, and Studio itself, whose surfaces are.
+     Both are opened in Studio, so both carry the entry schemas every other project root does. */
+  resolve(REPO_ROOT, "packages/ui"),
+  resolve(REPO_ROOT, "packages/studio"),
   ...projectRootsIn("sites"),
   ...projectRootsIn("packages/starters/sites"),
   ...projectRootsIn("scripts/screenshots/fixtures"),
