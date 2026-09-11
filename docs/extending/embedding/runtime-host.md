@@ -107,6 +107,14 @@ preloadModule("jx-ui:/behaviors/menu.ts", behaviors);
 
 A document that lists `{ "$ref": "jx-ui:/components/jx-button.json" }` in `$elements`, or `"$src": "jx-ui:/behaviors/menu.ts"` on a function, now resolves from those registrations.
 
+A sidecar you would rather not load until something needs it takes a function instead of a namespace. The loader runs once, the first time a document names the specifier, and the bundler splits the import into its own chunk:
+
+```ts
+preloadModule("jx-ui:/behaviors/menu.ts", () => import("./behaviors/menu.ts"));
+```
+
+The kit ships this table ready-made as `KIT_LOADERS` from `@jxsuite/ui/loaders`, the same specifiers as `KIT_MODULES` with every entry a thunk.
+
 ## Configure each mount
 
 Options that used to be page-wide settings are read per mount:

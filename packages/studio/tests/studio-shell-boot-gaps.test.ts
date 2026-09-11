@@ -147,6 +147,7 @@ void mock.module("../src/panels/pane-context.ts", () => ({
 void mock.module("../src/canvas/canvas-render.ts", () => ({
   handOverCanvasStage: mock(() => {}),
   initCanvasRender: mock(() => {}),
+  redefineElementOnCanvases: mock(() => 0),
   registerSelectionSetCommand: mock(() => {}),
   renderCanvas: mock(() => {}),
   renderOverlays: mock(() => {}),

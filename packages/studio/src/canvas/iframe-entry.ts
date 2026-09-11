@@ -49,11 +49,13 @@ import type { JxPath } from "../state";
 // Would never re-run when a dev-proxy data source settles.
 import {
   observeScope,
+  preloadModule,
   reapplyStyle,
   redefineElement,
   resetDocumentStyles,
   setResolveToken,
 } from "@jxsuite/runtime";
+import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { IframeChannel } from "./iframe-channel";
 import type {
   CanvasMode,
@@ -70,6 +72,21 @@ import { setBundleBase } from "../services/bundle-base";
 /* Anchor shipped-asset URLs to this ENTRY's directory — see src/studio.ts for why only an
    entry may, and tests/entry-anchors.test.ts for the guard. */
 setBundleBase(import.meta.url);
+
+/*
+ * The kit's behaviours, as LOADERS. A project on the canvas may use a kit element — the kit's own
+ * stylebook pages do, and any site that imports one will — and the element's document names its
+ * sidecar by `jx-ui:` specifier, which is a scheme nothing serves. The shell answers it by
+ * importing every behaviour at boot (`registerUi()`); this frame answers it lazily, one chunk per
+ * behaviour on first use, so a page that draws no kit element loads none of them and a page that
+ * draws one loads only its own. Registered before anything renders, because the first document
+ * may be the one that needs it. The ELEMENTS are not registered here on purpose: the frame draws
+ * a project's definitions from the project's files, which is what makes an edit to a kit
+ * component show on the canvas rather than the bundled copy (embedding.md §6, ui.md §10).
+ */
+for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
+  preloadModule(specifier, load);
+}
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →

@@ -11,6 +11,7 @@ import type { JxDocument } from "@jxsuite/schema/types";
 
 import {
   applyLiveSave,
+  canvasBaseFor,
   createLiveSurfaceSaver,
   liveSaveNotice,
   liveSurfaceTarget,
@@ -22,6 +23,10 @@ const tick = () =>
   new Promise((r) => {
     setTimeout(r, 0);
   });
+
+/* A real origin, so the canvas base the lane hands a frame is a URL and not `null/…`. */
+const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+happyDOM.setURL("http://localhost:3000/packages/studio/index.html");
 
 /** A surface over one probe element, with a host record it projects. */
 const surfaceV1: JxDocument = {
@@ -41,14 +46,14 @@ const surfaceV2: JxDocument = {
 const probeV1: JxDocument = {
   tagName: "jx-live-probe",
   observedAttributes: ["word"],
-  state: { word: { $prototype: "Signal", value: "" } },
+  state: { word: "" },
   children: [{ tagName: "b", attributes: { part: "word" }, textContent: "[${state.word}]" }],
 };
 
 const probeV2: JxDocument = {
   tagName: "jx-live-probe",
   observedAttributes: ["word"],
-  state: { word: { $prototype: "Signal", value: "" } },
+  state: { word: "" },
   children: [{ tagName: "i", attributes: { part: "word" }, textContent: "(${state.word})" }],
 };
 
@@ -206,7 +211,17 @@ describe("liveSaveNotice", () => {
       message: "jx-tree saved and re-mounted in 1 place.",
     });
     expect(liveSaveNotice({ remounted: 0, target: element }).message).toBe(
-      "jx-tree saved; nothing on screen is drawn from it.",
+      "jx-tree saved; nothing in the shell is drawn from it.",
+    );
+    /* An element says how far it reached: the canvases too, when any frame was live. */
+    expect(liveSaveNotice({ canvases: 1, remounted: 2, target: element }).message).toBe(
+      "jx-tree saved and re-mounted in 2 places and on the canvas.",
+    );
+    expect(liveSaveNotice({ canvases: 2, remounted: 0, target: element }).message).toBe(
+      "jx-tree saved; nothing in the shell is drawn from it, redefined and on 2 canvases.",
+    );
+    expect(liveSaveNotice({ canvases: 0, remounted: 1, target: element }).message).toBe(
+      "jx-tree saved and re-mounted in 1 place.",
     );
     expect(liveSaveNotice({ refused: "why", remounted: 0, target: surface })).toEqual({
       key: "live-chrome:surface menu",
@@ -216,14 +231,32 @@ describe("liveSaveNotice", () => {
   });
 });
 
+describe("canvasBaseFor", () => {
+  test("is the file's own URL under the project, as the frame fetches it", () => {
+    /* No platform is registered here, so the base is the canvas origin plus the root — which is
+       how the dev server and the desktop loopback both serve a project: by its path. */
+    expect(canvasBaseFor("/w/jx/packages/ui", "components/jx-tree.json")).toBe(
+      "http://localhost:3000//w/jx/packages/ui/components/jx-tree.json",
+    );
+    expect(canvasBaseFor("packages/ui", "./components/jx-tree.json")).toBe(
+      "http://localhost:3000/packages/ui/components/jx-tree.json",
+    );
+  });
+});
+
 describe("createLiveSurfaceSaver", () => {
   test("applies a chrome save under the open project and says so; ignores every other save", async () => {
     const said: string[] = [];
+    const told: string[] = [];
     const workspace: { projectRoot: string | null } = { projectRoot: "/w/jx/packages/studio" };
     const save = createLiveSurfaceSaver({
       notify: {
         info: (message, options) => said.push(`info ${options.key}: ${message}`),
         warn: (message, options) => said.push(`${options.tier} ${options.key}: ${message}`),
+      },
+      redefineOnCanvases: (doc, base) => {
+        told.push(`${String(doc.tagName)} @ ${base}`);
+        return 1;
       },
       workspace,
     });
@@ -249,10 +282,26 @@ describe("createLiveSurfaceSaver", () => {
     expect(said[1]).toBe(
       'problem live-chrome:surface nobody: Not applied to the running shell: no surface is registered as "nobody".',
     );
+    /* A surface never reaches a canvas: the frames draw project documents, not the shell's. */
+    expect(told).toEqual([]);
+
+    /* A component reaches every canvas, at the file's URL under the project, and says so. */
+    workspace.projectRoot = "/w/jx/packages/ui";
+    const element = await save("components/jx-live-probe.json", probeV2);
+    expect(element?.canvases).toBe(1);
+    expect(told).toEqual([
+      "jx-live-probe @ http://localhost:3000//w/jx/packages/ui/components/jx-live-probe.json",
+    ]);
+    expect(said[2]).toBe(
+      "info live-chrome:jx-live-probe: jx-live-probe saved; nothing in the shell is drawn from it, redefined and on the canvas.",
+    );
+    /* A refused component reaches no canvas either. */
+    await save("components/jx-live-probe.json", { ...probeV2, tagName: "jx-other" });
+    expect(told.length).toBe(1);
 
     /* No project open: the same path is nobody's, read live off the record. */
     workspace.projectRoot = null;
     expect(await save("src/surfaces/live-probe.json", surfaceV1)).toBeNull();
-    expect(said.length).toBe(2);
+    expect(said.length).toBe(4);
   });
 });

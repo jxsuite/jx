@@ -428,6 +428,7 @@ describe("the bootstrap's saveDocument hook", () => {
     void mock.module("../src/canvas/canvas-render.ts", () => ({
       handOverCanvasStage: mock(() => {}),
       initCanvasRender: mock(() => {}),
+      redefineElementOnCanvases: mock(() => 0),
       registerSelectionSetCommand: mock(() => {}),
       renderCanvas: mock(() => {}),
       renderOverlays: mock(() => {}),

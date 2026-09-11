@@ -181,6 +181,7 @@ export async function bootStudio(opts: {
     initCanvasRender: (ctx: unknown) => {
       captured.canvasRenderCtx = ctx;
     },
+    redefineElementOnCanvases: mock(() => 0),
     registerSelectionSetCommand: mock(() => {}),
     renderCanvas: mock(() => {}),
     renderOverlays: mock(() => {}),

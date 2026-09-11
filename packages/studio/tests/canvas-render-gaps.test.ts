@@ -146,6 +146,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   // Error, not a missing stub at call time.
   postOpenSlash: () => {},
   postApplyFormat: () => {},
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
   /* The non-lazy way out of `liveHosts`: `panels/pane-grid.ts` calls it as a cell is
