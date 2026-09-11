@@ -684,6 +684,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.33-draft** (2026-09-11) — The three dock edges are jx-split; only the Edit column's snapping handle remains pointer-only (§5.5).
 - **0.1.32-draft** (2026-09-10) — jx-tree keeps the keyboard across a handed-off caret move: it focuses the revealed row once the roving tabindex is on it, and abandons the request if the reader has moved on.
 - **0.1.31-draft** (2026-09-10) — jx-split: a window splitter with role=separator, a tab stop, aria-valuenow, the arrows of its own axis and a collapse toggle on Enter or a double click; Studio's pane grid and rail no longer hand-roll a separator.
 - **0.1.30-draft** (2026-09-10) — jx-toolbar ships: one tab stop over a row of mixed controls, a text field that keeps the arrows until its caret runs out, and overflow left with the host that already answers it (5.1, 5.5, 7).

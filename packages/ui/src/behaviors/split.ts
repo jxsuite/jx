@@ -287,7 +287,15 @@ export function onSplitPointerDown(state: SplitState, event: PointerEvent): void
   if (typeof host.setPointerCapture === "function") {
     /* Capture on the HOST, which is also the element the listener is on: a drag that runs off the
        end of the splitter keeps arriving here instead of stopping at whatever it crossed. */
-    host.setPointerCapture(event.pointerId);
+    try {
+      host.setPointerCapture(event.pointerId);
+    } catch {
+      /* A SYNTHETIC pointer — a test, a screenshot lane, a driver — has no active pointer for the
+         browser to capture, and Chrome throws NotFoundError rather than ignoring it. The gesture
+         still works without capture as long as the pointer stays over the element, which is what
+         a synthetic drag does; the guard keeps an automation tool's press from becoming an
+         uncaught error in the console it is reading. */
+    }
   }
   state.dragging = true;
 }

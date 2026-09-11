@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioShell",
-  "$description": "The application frame: the one definition of what Studio's shell IS. Every cell here is a HOST another surface mounts into, and each is addressed by id because TypeScript adopts it (`store.ts`'s initShellRefs, `ui/panel-resize.ts`'s handles) — so the ids are a contract rather than styling, which is also why this document carries no style of its own: the frame must be laid out by the first paint, so its rules are the generated `styles/shell-frame.css` (specs/studio-ui-guidelines.md §1.1).",
+  "$description": "The application frame: the one definition of what Studio's shell IS. Every cell here is a HOST another surface mounts into, and each is addressed by id because TypeScript adopts it (`store.ts`'s initShellRefs, `ui/panel-resize.ts`'s handles) \u2014 so the ids are a contract rather than styling, which is also why this document carries no style of its own: the frame must be laid out by the first paint, so its rules are the generated `styles/shell-frame.css` (specs/studio-ui-guidelines.md \u00a71.1).",
   "tagName": "div",
   "attributes": {
     "id": "app"
@@ -16,7 +16,7 @@
     },
     {
       "tagName": "div",
-      "$description": "The PANE GRID (studio.md §18.1). One cell per pane, each holding that pane's own strip, jump bar, chrome layer and stage — the four surfaces that used to be flat siblings of THIS grid, which is to say application rows that only ever described one pane. There is nothing to see here in markup: panels/pane-grid.ts reconciles the cells against workspace.panes, because how many there are is a fact about the workspace and a single div can only ever be one of them.",
+      "$description": "The PANE GRID (studio.md \u00a718.1). One cell per pane, each holding that pane's own strip, jump bar, chrome layer and stage \u2014 the four surfaces that used to be flat siblings of THIS grid, which is to say application rows that only ever described one pane. There is nothing to see here in markup: panels/pane-grid.ts reconciles the cells against workspace.panes, because how many there are is a fact about the workspace and a single div can only ever be one of them.",
       "attributes": {
         "id": "pane-grid"
       }
@@ -36,18 +36,27 @@
       }
     },
     {
-      "tagName": "div",
+      "tagName": "jx-split",
       "attributes": {
         "id": "resize-left",
         "class": "resize-handle"
+      },
+      "$description": "`jx-split` (ui.md \u00a75.5): role=\"separator\", a tab stop, aria-valuenow and its own arrow keys, Home/End and Enter \u2014 the door this handle owed a keyboard user, which a bare div driven by pointer events could not give (SC 2.1.1). Its share of the app box, its bounds and its reset point are all written by `ui/panel-resize.ts`, because the frame carries no scope: a dock is sized in PIXELS and persisted that way, so the px\u2194share arithmetic \u2014 and the window-resize listener that keeps it honest \u2014 is that adapter's, in one place for all three.",
+      "$props": {
+        "orientation": "vertical",
+        "label": "Resize the Navigator"
       }
     },
     {
-      "tagName": "div",
-      "$description": "The Bottom dock (⌘J). It sits in the PANE's column, under the stage and above the status bar, so opening it never narrows the Navigator or the Inspector (studio.md §12 region ⑪). Its handle resizes on the other axis; panels/bottom-dock.ts stamps dock.bottom on this host while it is open, and nothing while it is closed.",
+      "tagName": "jx-split",
+      "$description": "The Bottom dock (\u2318J). It sits in the PANE's column, under the stage and above the status bar, so opening it never narrows the Navigator or the Inspector (studio.md \u00a712 region \u246a). Its handle resizes on the other axis; panels/bottom-dock.ts stamps dock.bottom on this host while it is open, and nothing while it is closed. `jx-split` (ui.md \u00a75.5): role=\"separator\", a tab stop, aria-valuenow and its own arrow keys, Home/End and Enter \u2014 the door this handle owed a keyboard user, which a bare div driven by pointer events could not give (SC 2.1.1). Its share of the app box, its bounds and its reset point are all written by `ui/panel-resize.ts`, because the frame carries no scope: a dock is sized in PIXELS and persisted that way, so the px\u2194share arithmetic \u2014 and the window-resize listener that keeps it honest \u2014 is that adapter's, in one place for all three.",
       "attributes": {
         "id": "resize-bottom",
         "class": "resize-handle resize-handle-row"
+      },
+      "$props": {
+        "orientation": "horizontal",
+        "label": "Resize the Bottom dock"
       }
     },
     {
@@ -57,15 +66,20 @@
       }
     },
     {
-      "tagName": "div",
+      "tagName": "jx-split",
       "attributes": {
         "id": "resize-right",
         "class": "resize-handle"
+      },
+      "$description": "`jx-split` (ui.md \u00a75.5): role=\"separator\", a tab stop, aria-valuenow and its own arrow keys, Home/End and Enter \u2014 the door this handle owed a keyboard user, which a bare div driven by pointer events could not give (SC 2.1.1). Its share of the app box, its bounds and its reset point are all written by `ui/panel-resize.ts`, because the frame carries no scope: a dock is sized in PIXELS and persisted that way, so the px\u2194share arithmetic \u2014 and the window-resize listener that keeps it honest \u2014 is that adapter's, in one place for all three.",
+      "$props": {
+        "orientation": "vertical",
+        "label": "Resize the Inspector"
       }
     },
     {
       "tagName": "div",
-      "$description": "The Inspector dock. Four tabs — Content · Style · Logic · Assistant (studio.md §12 region ⑨) — all inside this one host.",
+      "$description": "The Inspector dock. Four tabs \u2014 Content \u00b7 Style \u00b7 Logic \u00b7 Assistant (studio.md \u00a712 region \u2468) \u2014 all inside this one host.",
       "attributes": {
         "id": "right-panel",
         "data-jx-region": "inspector"
@@ -73,7 +87,7 @@
     },
     {
       "tagName": "div",
-      "$description": "The app's only status channel: announce what lands in it (studio.md §12 region ⑫).",
+      "$description": "The app's only status channel: announce what lands in it (studio.md \u00a712 region \u246b).",
       "attributes": {
         "id": "statusbar",
         "role": "status",

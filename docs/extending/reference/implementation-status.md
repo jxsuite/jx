@@ -31,7 +31,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.8.2-draft  | Partial     | 2026-09-10 |
 | `studio.md`               | 0.11.1-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.32-draft | Partial     | 2026-09-10 |
+| `ui.md`                   | 0.1.33-draft | Partial     | 2026-09-11 |
 
 ## Sections not yet implemented
 

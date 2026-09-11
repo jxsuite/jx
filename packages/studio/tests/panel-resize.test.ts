@@ -1,8 +1,28 @@
-import "./harness";
+/**
+ * `ui/panel-resize.ts` — the three dock handles, as `jx-split` elements driven from a pixel model.
+ *
+ * What this file asserts is the TRANSLATION, because the gesture is no longer Studio's to test:
+ * pointer capture, the arrow keys, Home/End, Enter and the double click are `jx-split`'s, and
+ * `packages/ui/tests/split.test.ts` drives every one of them through real events. What is Studio's
+ * is that a dock stored in pixels reaches the element as the right SHARE of the app box, that a
+ * share the element reports comes back as the right pixels, that the pixel floor and the viewport
+ * ceiling survive the round trip, and that a window resize re-derives all of it — the one listener
+ * the element's own `gap` was designed to spare a host, owed here because a dock is not a
+ * proportion.
+ *
+ * Happy-dom performs no layout, so the app box is stubbed to a known size and every expected share
+ * is arithmetic over that number. That is the honest scope: the numbers, not the pixels on screen.
+ */
+import { stubRect } from "./harness";
 import { describe, expect, test } from "bun:test";
+import type { ResizeTarget, SplitElement } from "../src/ui/panel-resize";
 
 const STORAGE_KEY = "jx-studio-panel-widths";
 const root = document.documentElement;
+
+/** The app box every share below is a fraction of. Stubbed, since nothing here is laid out. */
+const APP_W = 1200;
+const APP_H = 800;
 
 // Both modules read storage at import time — `shell` builds its dock record, `panel-resize` binds
 // The handles — so the fixture must exist before the dynamic imports below.
@@ -16,31 +36,36 @@ localStorage.setItem(
   }),
 );
 document.body.innerHTML = `
-  <div id="app"></div>
-  <div id="resize-left"></div>
-  <div id="resize-right"></div>
+  <div id="app">
+    <jx-split id="resize-left" orientation="vertical"></jx-split>
+    <jx-split id="resize-bottom" orientation="horizontal"></jx-split>
+    <jx-split id="resize-right" orientation="vertical"></jx-split>
+  </div>
 `;
+stubRect(document.querySelector("#app")!, { height: APP_H, width: APP_W });
 
-const { mountShell, shell } = await import("../src/shell");
-const { setupHandle } = await import("../src/ui/panel-resize");
+const { DOCK_DEFAULT_SIZES, mountShell, setDockSize, shell, unmountShell } =
+  await import("../src/shell");
+const { DOCK_LEAD, bindSplit, setupHandle, syncSplits } = await import("../src/ui/panel-resize");
 // The grid is projected by the shell's own effect, not by the resize module.
 mountShell();
 
-const leftHandle = document.querySelector("#resize-left") as HTMLElement;
-const rightHandle = document.querySelector("#resize-right") as HTMLElement;
+const left = document.querySelector("#resize-left") as SplitElement;
+const right = document.querySelector("#resize-right") as SplitElement;
+const bottom = document.querySelector("#resize-bottom") as SplitElement;
 
-function drag(handle: HTMLElement, type: string, clientX: number) {
-  handle.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX }));
+/** The element reporting a gesture: `input` on every move, `change` on the commit. */
+function report(handle: SplitElement, value: number, type: "input" | "change" = "input"): void {
+  handle.value = value;
+  handle.dispatchEvent(new Event(type, { bubbles: true }));
 }
 
 function widthOf(cssVar: string): string {
   return root.style.getPropertyValue(cssVar);
 }
 
-/** The size a drag will start from, read where the handler reads it. */
-function startWidth(dock: "left" | "right"): number {
-  return shell.docks[dock].size;
-}
+/** Shares, to the precision a float round trip through pixels keeps. */
+const near = (n: number) => expect.closeTo(n, 6);
 
 describe("import-time restore", () => {
   test("saved widths are applied to the root custom properties", () => {
@@ -57,175 +82,277 @@ describe("import-time restore", () => {
   });
 });
 
-describe("left handle drag", () => {
-  test("pointermove without an active drag is a no-op", () => {
-    const before = widthOf("--panel-w-left");
-    drag(leftHandle, "pointermove", 500);
-    expect(widthOf("--panel-w-left")).toBe(before);
+describe("the share the element is handed", () => {
+  /* The Navigator is the LEADING side of its handle, behind the rail's 56px column: its share is
+     (56 + size) / width. The Inspector is the TRAILING side: 1 - size / width. The Bottom dock is
+     trailing on the other axis, above the 24px status bar: 1 - (24 + size) / height. */
+  test("a dock's pixels become the leading side's share of the app box, offset by the fixed tracks", () => {
+    expect(left.value).toEqual(near((DOCK_LEAD.left + 300) / APP_W));
+    expect(right.value).toEqual(near(1 - (DOCK_LEAD.right + 320) / APP_W));
+    expect(bottom.value).toEqual(near(1 - (DOCK_LEAD.bottom + shell.docks.bottom.size) / APP_H));
   });
 
-  test("pointerdown marks the handle and disables text selection", () => {
-    drag(leftHandle, "pointerdown", 100);
-    expect(leftHandle.classList.contains("dragging")).toBe(true);
-    expect(document.body.style.userSelect).toBe("none");
-    drag(leftHandle, "pointerup", 100);
+  test("the pixel floor and the viewport ceiling become the element's bounds, in share", () => {
+    // Navigator: 160px floor, half-the-viewport ceiling, both behind the rail.
+    expect(left.min).toEqual(near((DOCK_LEAD.left + 160) / APP_W));
+    expect(left.max).toEqual(near((DOCK_LEAD.left + window.innerWidth * 0.5) / APP_W));
+    // Inspector: the same floor and ceiling, but a TRAILING side, so the bounds swap ends.
+    expect(right.min).toEqual(near(1 - (window.innerWidth * 0.5) / APP_W));
+    expect(right.max).toEqual(near(1 - 160 / APP_W));
   });
 
-  test("dragging right grows the left panel by the pointer delta", () => {
-    const start = startWidth("left");
-    drag(leftHandle, "pointerdown", 100);
-    drag(leftHandle, "pointermove", 150);
-    expect(widthOf("--panel-w-left")).toBe(`${start + 50}px`);
-    drag(leftHandle, "pointerup", 150);
+  test("the collapse point is the dock's default size, so Enter and a double click are the reset", () => {
+    expect(left.collapse).toEqual(near((DOCK_LEAD.left + DOCK_DEFAULT_SIZES.left) / APP_W));
+    expect(right.collapse).toEqual(near(1 - DOCK_DEFAULT_SIZES.right / APP_W));
+  });
+});
+
+describe("a gesture the element reports", () => {
+  test("an input on the Navigator's handle writes the share back as pixels", () => {
+    report(left, (DOCK_LEAD.left + 400) / APP_W);
+    expect(shell.docks.left.size).toBe(400);
+    expect(widthOf("--panel-w-left")).toBe("400px");
   });
 
-  test("width clamps to the 160px minimum and 50% viewport maximum", () => {
-    drag(leftHandle, "pointerdown", 100);
-    drag(leftHandle, "pointermove", -100_000);
-    expect(widthOf("--panel-w-left")).toBe("160px");
-    drag(leftHandle, "pointermove", 100_000);
-    expect(widthOf("--panel-w-left")).toBe(`${Math.round(window.innerWidth * 0.5)}px`);
-    drag(leftHandle, "pointerup", 100_000);
+  test("an input on the Inspector's handle inverts, because the dock is the trailing side", () => {
+    report(right, 1 - 280 / APP_W);
+    expect(shell.docks.right.size).toBe(280);
   });
 
-  test("pointerup ends the drag, restores selection, and persists widths", () => {
+  test("an input on the Bottom dock's handle reads the other axis", () => {
+    report(bottom, 1 - (DOCK_LEAD.bottom + 240) / APP_H);
+    expect(shell.docks.bottom.size).toBe(240);
+  });
+
+  /* The element clamps to `min`/`max` itself, but the pixel bounds are the truth and the adapter
+     re-clamps: a share that somehow lands outside them (a stale `max` between a resize and its
+     sync) must not write pixels the shell would refuse. And the corrected share goes BACK to the
+     element, or its announced value and the drawn track disagree until the next gesture. */
+  test("a share past the pixel bounds is clamped, and the element is told the corrected share", () => {
+    report(left, (DOCK_LEAD.left + 40) / APP_W);
+    expect(shell.docks.left.size).toBe(160);
+    expect(left.value).toEqual(near((DOCK_LEAD.left + 160) / APP_W));
+  });
+
+  test("a change persists once; an input does not", () => {
     localStorage.removeItem(STORAGE_KEY);
-    drag(leftHandle, "pointerdown", 100);
-    drag(leftHandle, "pointermove", 120);
-    drag(leftHandle, "pointerup", 120);
-    expect(leftHandle.classList.contains("dragging")).toBe(false);
-    expect(document.body.style.userSelect).toBe("");
-
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    expect(typeof saved.left).toBe("number");
-    expect(typeof saved.right).toBe("number");
-
-    // Subsequent moves after pointerup must not resize.
-    const after = widthOf("--panel-w-left");
-    drag(leftHandle, "pointermove", 400);
-    expect(widthOf("--panel-w-left")).toBe(after);
-    // A second pointerup with no active drag is also a no-op.
-    drag(leftHandle, "pointerup", 400);
-    expect(document.body.style.userSelect).toBe("");
-  });
-
-  test("double-click resets the left panel to its default width", () => {
-    localStorage.removeItem(STORAGE_KEY);
-    leftHandle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-    expect(widthOf("--panel-w-left")).toBe("240px");
-    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    report(left, (DOCK_LEAD.left + 350) / APP_W);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    report(left, (DOCK_LEAD.left + 350) / APP_W, "change");
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as { left?: number };
+    expect(saved.left).toBe(350);
   });
 });
 
-describe("right handle drag", () => {
-  test("dragging left grows the right panel (inverted delta)", () => {
-    const start = startWidth("right");
-    drag(rightHandle, "pointerdown", 500);
-    drag(rightHandle, "pointermove", 460);
-    expect(widthOf("--panel-w-right")).toBe(`${start + 40}px`);
-    drag(rightHandle, "pointerup", 460);
-  });
-
-  test("double-click resets the right panel to its default width", () => {
-    rightHandle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-    expect(widthOf("--panel-w-right")).toBe("280px");
+describe("the shell moving a dock without a gesture", () => {
+  test("re-derives the element's share, so the announced value follows a command", () => {
+    setDockSize("left", 260);
+    expect(left.value).toEqual(near((DOCK_LEAD.left + 260) / APP_W));
   });
 });
 
-describe("the assistant has no handle", () => {
-  test("only two handles are wired, and #resize-chat is not one of them", () => {
-    // The assistant is an Inspector tab: it is resized by resizing the Inspector, so there is no
-    // Third handle and no `--panel-w-chat` for one to drive.
-    expect(document.querySelector("#resize-chat")).toBeNull();
-    expect(widthOf("--panel-w-chat")).toBe("");
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") as Record<string, unknown>;
-    expect(Object.keys(saved)).not.toContain("chat");
+describe("a window resize", () => {
+  /* The pixels are the stored truth and must NOT move; the share must, because the box did. This
+     is the listener `jx-split`'s `gap` spares a host whose bounds are shares — and does not spare
+     one whose floor is 160px and whose ceiling is half a viewport. */
+  test("re-derives every share from the unchanged pixels against the new box", () => {
+    setDockSize("left", 300);
+    stubRect(document.querySelector("#app")!, { height: APP_H, width: 1600 });
+    globalThis.dispatchEvent(new Event("resize"));
+    expect(shell.docks.left.size).toBe(300);
+    expect(left.value).toEqual(near((DOCK_LEAD.left + 300) / 1600));
+    expect(left.min).toEqual(near((DOCK_LEAD.left + 160) / 1600));
+    stubRect(document.querySelector("#app")!, { height: APP_H, width: APP_W });
+    globalThis.dispatchEvent(new Event("resize"));
   });
 });
 
-// ─── The optional `snap` hook ─────────────────────────────────────────────────
+describe("bindSplit on its own", () => {
+  function target(over: Partial<ResizeTarget> = {}): ResizeTarget & { written: number[] } {
+    const t = {
+      axis: "x" as const,
+      max: () => 500,
+      min: () => 100,
+      read: () => 200,
+      reset: () => 250,
+      scale: () => 1 as const,
+      settle: () => {},
+      write: (v: number) => {
+        t.written.push(v);
+      },
+      written: [] as number[],
+      ...over,
+    };
+    return t;
+  }
 
-describe("ResizeTarget.snap", () => {
-  /** A standalone handle over a plain number, so the assertions are about `setupHandle` alone. */
-  function harness(snap?: (v: number, m: { altKey: boolean; shiftKey: boolean }) => number) {
+  function fresh(): SplitElement {
+    const box = document.createElement("div");
+    stubRect(box, { height: 400, width: 1000 });
+    const el = document.createElement("jx-split") as SplitElement;
+    box.append(el);
+    document.body.append(box);
+    return el;
+  }
+
+  test("with no lead and the dock leading, the share is simply size over track", () => {
+    const el = fresh();
+    const unbind = bindSplit(el, target());
+    expect(el.value).toEqual(near(0.2));
+    expect(el.min).toEqual(near(0.1));
+    expect(el.max).toEqual(near(0.5));
+    expect(el.collapse).toEqual(near(0.25));
+    unbind();
+  });
+
+  test("a snap is applied to the pixels the element asked for, and the snapped share goes back", () => {
+    const el = fresh();
+    const t = target({ snap: (v) => Math.round(v / 50) * 50 });
+    const unbind = bindSplit(el, t);
+    report(el, 0.312);
+    expect(t.written).toEqual([300]);
+    expect(el.value).toEqual(near(0.3));
+    unbind();
+  });
+
+  test("a track that cannot be measured writes nothing, rather than a share of zero", () => {
+    const el = document.createElement("jx-split") as SplitElement;
+    const orphan = document.createElement("div");
+    orphan.append(el);
+    // Not in the document: every ancestor measures 0×0, exactly as an unlaid-out one would.
+    const t = target();
+    const unbind = bindSplit(el, t);
+    expect(el.value).toBeUndefined();
+    report(el, 0.4);
+    expect(t.written).toEqual([]);
+    unbind();
+  });
+
+  test("unbinding stops every listener, including the resize one", () => {
+    const el = fresh();
+    const t = target();
+    const unbind = bindSplit(el, t);
+    unbind();
+    report(el, 0.4);
+    expect(t.written).toEqual([]);
+    const before = el.value;
+    stubRect(el.parentElement!, { height: 400, width: 2000 });
+    globalThis.dispatchEvent(new Event("resize"));
+    expect(el.value).toBe(before);
+  });
+
+  test("syncSplits reaches only what is still bound", () => {
+    const el = fresh();
+    const t = target({ read: () => 300 });
+    const unbind = bindSplit(el, t);
+    (t as { read: () => number }).read = () => 400;
+    syncSplits();
+    expect(el.value).toEqual(near(0.4));
+    unbind();
+    (t as { read: () => number }).read = () => 100;
+    syncSplits();
+    expect(el.value).toEqual(near(0.4));
+  });
+});
+
+describe("setupHandle — the pointer-only path the Edit column still uses", () => {
+  /* Kept for exactly one caller (`canvas/edit-width-drag.ts`), whose handle SNAPS to breakpoints
+     with Alt as the bypass — a hook `jx-split` does not have. Until it does, this is live code with
+     a real reader behind it, and it keeps the assertions it had when it drove the docks. */
+  function harness() {
     const handle = document.createElement("div");
     document.body.append(handle);
-    const state = { value: 100 };
-    setupHandle(handle, {
+    let size = 200;
+    const written: number[] = [];
+    let settled = 0;
+    const t: ResizeTarget = {
       axis: "x",
-      max: () => 200,
-      min: () => 50,
-      read: () => state.value,
-      reset: () => 100,
+      max: () => 500,
+      min: () => 100,
+      read: () => size,
+      reset: () => 250,
       scale: () => 1,
-      settle: () => {},
-      // Spread rather than `snap,` — `exactOptionalPropertyTypes` distinguishes an absent optional
-      // Property from one explicitly set to undefined, and the docks pass the former.
-      ...(snap ? { snap } : {}),
-      write: (v) => {
-        state.value = v;
+      settle: () => {
+        settled += 1;
       },
-    });
-    return { handle, state };
+      write: (v) => {
+        size = v;
+        written.push(v);
+      },
+    };
+    setupHandle(handle, t);
+    const at = (type: string, clientX: number) =>
+      handle.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX }));
+    return {
+      at,
+      handle,
+      get settled() {
+        return settled;
+      },
+      get size() {
+        return size;
+      },
+      written,
+    };
   }
 
-  function move(handle: HTMLElement, from: number, to: number, init: MouseEventInit = {}) {
-    handle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: from }));
-    handle.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: to, ...init }));
-    handle.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: to }));
-  }
-
-  test("an absent snap is the identity — the three docks are unaffected", () => {
-    const { handle, state } = harness();
-    move(handle, 0, 23);
-    expect(state.value).toBe(123);
+  test("pointermove without an active drag is a no-op", () => {
+    const h = harness();
+    h.at("pointermove", 300);
+    expect(h.written).toEqual([]);
   });
 
-  test("snap adjusts the value that is written", () => {
-    const { handle, state } = harness((v) => Math.round(v / 10) * 10);
-    move(handle, 0, 23);
-    expect(state.value).toBe(120);
+  test("a drag writes the delta, and release settles once and clears the drag state", () => {
+    const h = harness();
+    h.at("pointerdown", 100);
+    expect(h.handle.classList.contains("dragging")).toBe(true);
+    expect(document.body.style.userSelect).toBe("none");
+    h.at("pointermove", 160);
+    expect(h.size).toBe(260);
+    h.at("pointerup", 160);
+    expect(h.handle.classList.contains("dragging")).toBe(false);
+    expect(document.body.style.userSelect).toBe("");
+    expect(h.settled).toBe(1);
+    // A second release with no drag live is ignored rather than settling again.
+    h.at("pointerup", 160);
+    expect(h.settled).toBe(1);
   });
 
-  test("snap runs AFTER the clamp, so it sees a bounded value", () => {
-    /* The pointer asks for 400, which the max clamps to 200. A snap running BEFORE the clamp would
-       be handed 400 and could round it somewhere the bounds already excluded. */
-    const seen: number[] = [];
-    const { handle } = harness((v) => {
-      seen.push(v);
-      return v;
-    });
-    move(handle, 0, 300);
-    expect(seen).toEqual([200]);
+  test("double-click writes the reset value and settles", () => {
+    const h = harness();
+    h.at("dblclick", 0);
+    expect(h.size).toBe(250);
+    expect(h.settled).toBe(1);
   });
+});
 
-  test("a snap CANNOT push the value back out of bounds — setupHandle re-clamps after it", () => {
-    /* The Edit canvas's snap list is the project's declared breakpoints, which owe nothing to the
-       pane's width: a breakpoint 4px past the wall would otherwise be reachable, and the stored
-       width, the readout and the rendered column would then all disagree. */
-    const { handle, state } = harness(() => 5000);
-    move(handle, 0, 10);
-    expect(state.value).toBe(200);
-    const low = harness(() => -5000);
-    move(low.handle, 0, 10);
-    expect(low.state.value).toBe(50);
+describe("the fixed tracks the docks sit behind", () => {
+  /* The offsets are constants here because they are constants in the generated frame sheet, and
+     the two must agree or every share is off by a column. Read from the source of the sheet rather
+     than the sheet, since the JSON is what a person edits. */
+  test("agree with styles/shell-frame.json", async () => {
+    const frame = JSON.parse(
+      await Bun.file(new URL("../styles/shell-frame.json", import.meta.url)).text(),
+    ) as Record<string, unknown>;
+    const text = JSON.stringify(frame);
+    expect(text).toContain(`[rail] ${DOCK_LEAD.left}px`);
+    expect(text).toContain(`${DOCK_LEAD.bottom}px"`);
+    expect(DOCK_LEAD.right).toBe(0);
   });
+});
 
-  test("the modifier state reaches the snap, which is how Alt bypasses it", () => {
-    const { handle, state } = harness((v, m) => (m.altKey ? v : 150));
-    move(handle, 0, 23);
-    expect(state.value).toBe(150);
-    move(handle, 0, 11, { altKey: true });
-    expect(state.value).toBe(161);
-  });
-
-  test("shift reaches it too", () => {
-    const seen: { altKey: boolean; shiftKey: boolean }[] = [];
-    const { handle } = harness((v, m) => {
-      seen.push(m);
-      return v;
-    });
-    move(handle, 0, 10, { shiftKey: true });
-    expect(seen).toEqual([{ altKey: false, shiftKey: true }]);
+describe("the shell taking the handles down", () => {
+  /* Runs LAST: it unbinds the three docks' handles through the shell's own lifecycle, which is how
+     a remount avoids binding twice. After it, a share the element reports reaches nothing, and a
+     dock the shell moves reaches no element. */
+  test("unmount unbinds every handle and stops following the shell", () => {
+    unmountShell();
+    const before = shell.docks.left.size;
+    report(left, (DOCK_LEAD.left + 420) / APP_W);
+    expect(shell.docks.left.size).toBe(before);
+    const shown = left.value;
+    setDockSize("left", 199);
+    expect(left.value).toBe(shown);
+    mountShell();
   });
 });

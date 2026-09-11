@@ -215,12 +215,22 @@
   width: 5px;
   margin-left: -3px;
   margin-right: -2px;
-  cursor: col-resize;
   z-index: 10;
   position: relative;
 }
-.resize-handle:hover,
-.resize-handle.dragging {
+/* The docks' handles at REST: invisible, as they have always been — the panel's own 1px border is
+   the line a reader sees, and the element's 5px `--jx-border` bar beside it read as a second,
+   thicker one. The id is not decoration: the element's own rule is `jx-split[data-jx]` (0,1,1), so
+   a bare class (0,1,0) lost to it at rest and this override needs (1,1,0) to hold. */
+#app > .resize-handle {
+  background: transparent;
+}
+/* And LIT on hover and through a drag, at the same weight as the rest rule — because an
+   id-prefixed rest rule also outranks the element's own `:hover`/`[data-dragging]` (0,2,1), so the
+   look has to be restated here or the handle would never light. `[data-dragging]` rather than
+   `.dragging`: the element mirrors its own gesture as an attribute and writes no class. */
+#app > .resize-handle:hover,
+#app > .resize-handle[data-dragging] {
   background: var(--accent, #3b82f6);
   opacity: 0.5;
 }
