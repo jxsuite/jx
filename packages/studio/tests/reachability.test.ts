@@ -99,27 +99,13 @@ const TEST_OBS = "observability accessor — only its own tests read the private
  * Four reasons are shared, because they are genuinely one decision made many times. The rest say
  * their own piece, and several of them name a defect somebody still has to choose about.
  */
-/**
- * The surface façade, landed one PR ahead of its first caller.
- *
- * `mountSurface` is how every migrated surface mounts (studio-ui-guidelines.md §9.3); the first one
- * — the context and settings menus — is the next change, and every one of these lines goes with it.
- * It landed first so the contract is reviewed and tested on its own, and so the kit registers at
- * boot before any surface exists to need it.
- */
-const SURFACE_REGISTRY_READERS =
-  "the surface registry's readers: the live-authoring lane that remounts a surface when its " +
-  "document is saved (studio-ui-guidelines.md §9.3) is the next change, and reads these";
-
 const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "account-status.ts": { resetAccountStatus: TEST_RESET },
+  /* The surface registry's readers were on this ledger from the day the façade landed until the
+     live chrome lane (`services/live-surfaces.ts`) read them; the ledger ratcheted down as designed. */
   "services/surface-registry.ts": {
-    mountsOf: SURFACE_REGISTRY_READERS,
-    mountsUsing: SURFACE_REGISTRY_READERS,
     resetSurfaceRegistry: TEST_RESET,
-    surfaceMounts: SURFACE_REGISTRY_READERS,
   },
-  "ui/surface.ts": { surfaceDocument: SURFACE_REGISTRY_READERS },
   "browse/library-layouts.ts": {
     cellTextOf:
       "row-shaped access for a caller holding grid cells rather than the typed record. The " +
