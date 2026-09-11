@@ -183,6 +183,18 @@ describe("jx-combobox", () => {
     const enter = press(el, "Enter");
     expect(enter.defaultPrevented).toBe(false);
     expect(el.value).toBe("gpt");
+    /* But the list is closed by it: the reader has committed, and a list left standing over the
+       fields below was what a browser pass found. */
+    await tick();
+    expect(el.open).toBe(false);
+    /* And the commit itself closes the list, however it arrived. */
+    type(el, "gpt-4");
+    await tick();
+    expect(el.open).toBe(true);
+    commit(el);
+    await tick();
+    expect(el.open).toBe(false);
+    expect(el.committed).toBe("gpt-4");
   });
 
   test("Enter on a highlighted row takes it, once", async () => {
@@ -415,6 +427,32 @@ describe("jx-combobox", () => {
     commit(closed);
     await tick();
     expect(closed.value).toBe("");
+  });
+
+  test("a change with no input before it commits the CONTROL's text, not the scope's", async () => {
+    /* Every keystroke and every paste says `input` first, so the scope and the control agree by
+       the time `change` arrives. A `change` on its own — an engine or a host that set the control
+       and reported only the commit — is still the reader's text, and the element must not commit
+       the value it last heard instead. */
+    const free = await combobox({ allowsCustomValue: true });
+    const heard = listen(free);
+    inputOf(free).value = "full-width";
+    commit(free);
+    await tick();
+    expect(free.value).toBe("full-width");
+    expect(free.committed).toBe("full-width");
+    expect(heard).toEqual(["change:control:full-width"]);
+
+    /* And a closed list still refuses it, reading the same text. */
+    const closed = await combobox();
+    inputOf(closed).value = "GPT-4O";
+    commit(closed);
+    await tick();
+    expect(closed.value).toBe("gpt-4o");
+    inputOf(closed).value = "made-up";
+    commit(closed);
+    await tick();
+    expect(closed.value).toBe("gpt-4o");
   });
 
   test("a disabled or read-only field never opens", async () => {

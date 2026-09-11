@@ -110,6 +110,7 @@ import {
 } from "./style-utils";
 import { UNIT_RE } from "../ui/unit-selector";
 import { colorTokens } from "../ui/color-selector";
+import { toTokenRef, tokenRefName } from "../style/token-ref";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
@@ -124,6 +125,7 @@ import type { FieldProvenance, ProvenanceState } from "./provenance";
 import type { TargetScope, TargetSegment } from "../surfaces/target-line";
 import type {
   StyleButtonView,
+  StyleOptionView,
   StylePanelActions,
   StylePanelSurface,
   StylePanelView,
@@ -817,13 +819,19 @@ function buttonGroup(
   return { buttons, extra };
 }
 
-/** The keyword list a select or combobox row offers, in the words the menu prints. */
+/** How a keyword reads in a list: `Inline block` for `inline-block`, `Flex` for `flex`. */
+function keywordLabel(value: string): string {
+  return value.includes("-") ? kebabToLabel(value) : value.replace(/^./, (c) => c.toUpperCase());
+}
+
+/** The keyword list a button row's overflow menu offers, in the words the menu prints. */
 function keywordChoices(options: string[], value: string): StyleChoice[] {
-  return options.map((v) => ({
-    checked: v === value,
-    label: v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase()),
-    value: v,
-  }));
+  return options.map((v) => ({ checked: v === value, label: keywordLabel(v), value: v }));
+}
+
+/** The keyword list a `keywords` row suggests under its field. */
+function keywordOptions(options: string[]): StyleOptionView[] {
+  return options.map((v) => ({ label: keywordLabel(v), value: v }));
 }
 
 /**
@@ -836,8 +844,7 @@ function fontChoices(entry: CssPropertyEntry, value: string): StyleChoice[] {
   const presets = Array.isArray(entry.presets)
     ? (entry.presets as { title: string; value: string }[])
     : [];
-  const varMatch = /^var\((--[^)]+)\)$/.exec(value);
-  const current = varMatch ? varMatch[1] : value;
+  const current = tokenRefName(value) ?? value;
   const choices: StyleChoice[] = fontVars.map((fv) => ({
     checked: fv.name === current,
     label: varDisplayName(fv.name, "--font-"),
@@ -879,10 +886,10 @@ function applyFontChoice(
     if (!activeTab.value?.doc.document?.style?.[varName]) {
       transactDoc(activeTab.value, (t) => mutateUpdateStyle(t, [], varName, preset.value));
     }
-    onCommit(`var(${varName})`);
+    onCommit(toTokenRef(varName));
     return;
   }
-  onCommit(chosen.startsWith("--") ? `var(${chosen})` : chosen);
+  onCommit(chosen.startsWith("--") ? toTokenRef(chosen) : chosen);
 }
 
 /** A blank row, so every `$switch` case reads a path that exists whatever the row draws. */
@@ -911,6 +918,7 @@ function blankRow(key: string, prop: string, kind: StyleRowView["kind"]): StyleR
     mono: false,
     name: "",
     openTitle: "",
+    options: [],
     overflowSelected: false,
     placeholder: "",
     prop,
@@ -1126,29 +1134,34 @@ function fieldRow(
     }
     case "select":
     case "combobox": {
-      // The one composite this document builds: a field the reader may type anything into, beside
-      // The values worth offering. `jx-combobox` (ui.md §5.3) is the element that replaces it.
-      const isFont = prop === "fontFamily";
       const options = Array.isArray(entry.enum)
         ? (entry.enum as string[])
         : Array.isArray(entry.examples)
           ? (entry.examples as string[])
           : [];
-      row.widget = "group";
-      row.choicesLabel = "";
-      row.choicesHint = `Values for ${row.label.toLowerCase()}`;
-      if (isFont) {
+      if (prop === "fontFamily") {
+        // The font row is the `group` composite rather than a combobox, and the reason is what a
+        // Pick DOES: a preset in its list is minted into a `--font-*` token before the property is
+        // Pointed at it, and a token is chosen by name. A combobox commits a row's VALUE into the
+        // Field, which is right for a keyword and wrong for an action, so the list stays the kit
+        // Menu, which runs a verb per row (ui.md §5.5, jx-token-field).
         const choices = fontChoices(entry, value);
+        row.widget = "group";
+        row.choicesLabel = "";
+        row.choicesHint = `Values for ${row.label.toLowerCase()}`;
         // A token shows as its own name rather than as the `var()` around it: the field edits which
         // Token this is, and `var(--font-body)` is punctuation the reader did not type.
-        row.value = /^var\((--[^)]+)\)$/.exec(value)?.[1] ?? value;
+        row.value = tokenRefName(value) ?? value;
         row.hasChoices = choices.length > 0;
         actions.choices = choices;
         actions.choose = (chosen) => applyFontChoice(entry, chosen, commitLiteral);
       } else {
-        row.hasChoices = options.length > 0;
-        actions.choices = keywordChoices(options, value);
-        actions.choose = commitLiteral;
+        // A keyword row is the combobox contract exactly: the field IS the value, and the rows
+        // Under it are the values worth offering. `allows-custom-value` is what makes an enum a
+        // List of suggestions rather than a whitelist — `full-width` is a text-transform whether or
+        // Not the catalogue names it.
+        row.widget = "keywords";
+        row.options = keywordOptions(options);
       }
       actions.edit = commitLiteral;
       actions.commit = commitLiteral;

@@ -979,16 +979,39 @@ describe("the number control", () => {
 
 // ─── Keyword and font lists ──────────────────────────────────────────────────
 
+/*
+ * A keyword row is one `jx-combobox` with `allows-custom-value` (ui.md §5.3): the field is the
+ * value and the rows under it are the values worth offering. The unit row and the font row stay
+ * the `group` composite — a field beside a kit MENU — because their lists run verbs rather than
+ * commit values, which the font test below still exercises through the menu.
+ */
 describe("keyword and font lists", () => {
-  test("an enum row offers its values, and taking one commits it", async () => {
+  /** The keyword rows a combobox row lists, by value, once its chevron has opened them. */
+  async function keywordRows(scope: HTMLElement | null): Promise<string[]> {
+    const field = scope?.querySelector<HTMLElement>('jx-combobox[part="text"]');
+    expect(field).toBeTruthy();
+    click(field!.querySelector('[part="toggle"]'));
+    await flush(2);
+    return [...field!.querySelectorAll<HTMLElement>("jx-option")].map(
+      (el) => el.getAttribute("value") ?? "",
+    );
+  }
+
+  test("an enum row is a combobox over its values, and taking one commits it", async () => {
     const tab = setupTab({ textTransform: "uppercase" });
     tab.session.ui.styleSections = { typography: true };
     const c = await renderPanel();
-    const values = await openList(chooser(row(c, "textTransform")));
-    expect(values.map((el) => el.dataset.commandId)).toContain("lowercase");
-    click(listRow(values, "lowercase"));
+    const scope = row(c, "textTransform");
+    /* Not the group composite: there is no chooser button and no menu to open. */
+    expect(chooser(scope)).toBeNull();
+    const values = await keywordRows(scope);
+    expect(values).toContain("lowercase");
+    const option = scope!.querySelector<HTMLElement>('jx-option[value="lowercase"]');
+    expect(option?.getAttribute("label")).toBe("Lowercase");
+    option!.click();
     await settle();
     expect(selectedNode().style?.textTransform).toBe("lowercase");
+    expect(input(scope)!.value).toBe("lowercase");
   });
 
   test("the field stays free text — an enum is a list of suggestions, not a whitelist", async () => {

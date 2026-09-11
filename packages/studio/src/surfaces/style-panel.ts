@@ -36,6 +36,7 @@ registerSurface("style-panel", stylePanelDoc as unknown as JxDocument);
 export type StyleWidgetKind =
   | "text"
   | "number"
+  | "keywords"
   | "group"
   | "buttons"
   | "color"
@@ -67,6 +68,18 @@ export type StyleChipControl = "none" | "button" | "text";
 export interface StyleTokenView extends Record<string, unknown> {
   value: string;
   color: string;
+  label: string;
+}
+
+/**
+ * One keyword a `keywords` row lists under its field.
+ *
+ * `value` is what the row commits and `label` is how it reads — `Inline block` over `inline-block`
+ * — and the two stay separate because the field holds the value: a combobox row's label is a
+ * courtesy, never a second spelling the reader could end up with.
+ */
+export interface StyleOptionView extends Record<string, unknown> {
+  value: string;
   label: string;
 }
 
@@ -124,7 +137,12 @@ export interface StyleRowView extends Record<string, unknown> {
   min: string;
   max: string;
   step: string;
-  /** Whether the row offers a list beside its field — units, keywords, or a button overflow. */
+  /**
+   * The keywords a `keywords` row suggests. The field is free text over them: an enum is the values
+   * worth offering, not a whitelist, so the list never refuses what the reader typed.
+   */
+  options: StyleOptionView[];
+  /** Whether the row offers a list beside its field — units, fonts, or a button overflow. */
   hasChoices: boolean;
   /** The chooser's own label: the current unit, a chevron, or the overflow glyph's name. */
   choicesLabel: string;
