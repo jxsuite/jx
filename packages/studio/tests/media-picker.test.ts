@@ -364,6 +364,12 @@ describe("the media browser", () => {
     expect(panel()?.getAttribute("popover")).toBe("auto");
     // The invoker is the control that opened it, so a second press toggles rather than reopens.
     expect(browseButton(host)).not.toBeNull();
+    /* The region rides on the panel as well as the slot, and the panel is the last carrier: the
+       slot around a fixed-position popover measures empty, and the camera takes the last match. */
+    const carriers = [
+      ...layerHost("popover").querySelectorAll('[data-jx-region="overlay.menu:media-picker"]'),
+    ];
+    expect(carriers.at(-1)?.localName).toBe("jx-popover");
     closeFromPlatform();
     await flush();
     // The slot goes with the panel: nothing is left in the layer to shadow the next one.

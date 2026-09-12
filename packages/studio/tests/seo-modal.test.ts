@@ -190,8 +190,11 @@ describe("the surface itself", () => {
     expect(document.querySelector("#layer-dialog sp-underlay")).toBeNull();
     expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
     expect(d('[part="cancel-label"]')?.textContent).toBe("Close");
-    // The region the screenshot pipeline photographs rides on the element with a box.
-    expect(host().dataset.jxRegion).toBe("overlay.dialog:seo");
+    // The region the screenshot pipeline photographs rides on the element with a box: the
+    // Platform's own <dialog>. The jx-dialog around it is `display: contents` and measures empty,
+    // Which is what the screenshots lane found when the id sat there.
+    expect(host().dataset.jxRegion).toBeUndefined();
+    expect(d('dialog[part="dialog"]')?.dataset.jxRegion).toBe("overlay.dialog:seo");
   });
 
   test("opening it twice is one dialog, re-pointed at the current document", async () => {

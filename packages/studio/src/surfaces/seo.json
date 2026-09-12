@@ -11,8 +11,7 @@
     "size": "lg"
   },
   "attributes": {
-    "part": "seo",
-    "data-jx-region": "overlay.dialog:seo"
+    "part": "seo"
   },
   "oncancel": {
     "$prototype": "Function",

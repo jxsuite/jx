@@ -90,7 +90,11 @@ describe("Slash Menu", () => {
     test("the panel is one addressable region, not a selector the camera has to know", async () => {
       showSlashMenu(anchor, "", { onSelect: () => {} });
       await flush(3);
-      expect(document.querySelector('[data-jx-region="overlay.menu:slash-menu"]')).not.toBeNull();
+      const carriers = [...document.querySelectorAll('[data-jx-region="overlay.menu:slash-menu"]')];
+      expect(carriers.length).toBeGreaterThan(0);
+      /* The LAST carrier is the panel itself, because that is the node with a box: the slot
+         around a fixed-position popover measures empty, and the camera takes the last match. */
+      expect(carriers.at(-1)?.localName).toBe("jx-popover");
     });
   });
 

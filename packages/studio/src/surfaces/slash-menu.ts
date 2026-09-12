@@ -39,6 +39,7 @@
 import { reactive } from "../reactivity";
 import { clearLayerSlot, getLayerSlot } from "../ui/layers";
 import { mountSurface, registerSurface } from "../ui/surface";
+import { overlayRegion, REGION_ATTR } from "../ui/regions";
 import slashMenuDoc from "./slash-menu.json";
 import type { JxDocument } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
@@ -216,6 +217,11 @@ export function openSlashMenuSurface(
     }
     mounted = surface;
     panel = surface.root as PopoverElement;
+    /* The region rides on the PANEL as well as on the slot `getLayerSlot` stamped: a popover is
+       `position: fixed` in the top layer, so the slot around it has a zero-height box and the
+       screenshots lane refuses it ("has an empty box"). Both carry the id, and the measurement
+       takes the last match in document order, which is the panel. */
+    panel.setAttribute(REGION_ATTR, overlayRegion("popover", SLOT));
     panel.addEventListener("toggle", (event) => {
       if ((event as { newState?: string }).newState === "closed") {
         finish(true);

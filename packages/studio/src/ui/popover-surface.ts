@@ -113,6 +113,10 @@ export function openPopoverSurface(options: OpenPopoverSurfaceOptions): PopoverS
     }
     mounted = surface;
     panel = surface.root as PanelElement;
+    /* On the PANEL as well as the slot: a popover is `position: fixed` in the top layer, so the
+       slot around it has a zero-height box and the screenshots lane refuses it ("has an empty
+       box"). Both carry the id; the measurement takes the last match, which is the panel. */
+    panel.setAttribute(REGION_ATTR, overlayRegion("popover", slotId));
     panel.addEventListener("toggle", (event) => {
       if ((event as { newState?: string }).newState === "closed") {
         finish(true);
