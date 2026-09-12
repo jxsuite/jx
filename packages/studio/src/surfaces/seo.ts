@@ -19,18 +19,20 @@
  * no `<dialog>` to open — the body is all there, correctly styled, and never shows. `whenReady` is
  * shared with `surfaces/dialog.ts` and `surfaces/add-repo.ts` rather than reimplemented.
  *
- * **The region is stamped in the DOCUMENT, not on the slot, and that is the one place this adapter
- * differs from its siblings.** A modal `<dialog>` is in the top layer and `position: fixed`, so the
- * layer slot around it has a zero-size box — and `overlay.dialog:seo` is a region the screenshot
- * pipeline photographs (`scripts/screenshots/manifest.json`, shot `seo-modal`), which measures
- * `getBoundingClientRect()` and gives up on an empty one. The id therefore rides on the `jx-dialog`
- * element, whose `display: contents` box is the union of the dialog it draws.
+ * **The region rides on the platform's own `<dialog>`, as `surfaces/new-project.ts` learned
+ * first.** A modal `<dialog>` is in the top layer and `position: fixed`, so the layer slot around
+ * it has a zero-size box; and the `jx-dialog` element is `display: contents`, whose
+ * `getBoundingClientRect()` is EMPTY rather than the union of what it draws — which is what the
+ * screenshots lane found: `overlay.dialog:seo` (`scripts/screenshots/manifest.json`, shot
+ * `seo-modal`) "has an empty box". The one element here with a box is the dialog part, and the kit
+ * treats that node as a seam already: its own behaviour sidecar finds it by exactly this selector.
  *
  * @docs studio/editing/frontmatter
  */
 
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
+import { overlayRegion, REGION_ATTR } from "../ui/regions";
 import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import seoDoc from "./seo.json";
@@ -300,6 +302,8 @@ export function openSeoSurface(options: SeoSurfaceOptions): SeoSurfaceHandle {
     if (closed) {
       return element;
     }
+    const box = element.querySelector<HTMLElement>('dialog[part="dialog"]') ?? element;
+    box.setAttribute(REGION_ATTR, overlayRegion("dialog", "seo"));
     showModal(element);
     return element;
   });
