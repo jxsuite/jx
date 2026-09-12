@@ -53,6 +53,40 @@ describe("interactive-unnamed", () => {
     ).toEqual([]);
   });
 
+  test("a child named through aria-label or aria-labelledby names the control", () => {
+    /*
+     * The control itself has no label, so `hasContentName` walks its children — and a child that
+     * carries `aria-label` or `aria-labelledby` IS content with a name, exactly as accname computes
+     * it. An icon-only button whose `<svg aria-label="Close">` is its whole content is the common
+     * shape, and reporting it would send the author to duplicate a name the platform already reads.
+     */
+    expect(
+      rules(
+        doc([
+          {
+            children: [{ attributes: { "aria-label": "Close" }, tagName: "svg" }],
+            tagName: "button",
+          },
+          { attributes: { id: "lbl" }, tagName: "span", textContent: "Delete" },
+          {
+            attributes: { role: "button" },
+            children: [{ attributes: { "aria-labelledby": "lbl" }, tagName: "span" }],
+            tagName: "div",
+          },
+          {
+            $switch: "#/state/icon",
+            cases: { x: { attributes: { "aria-labelledby": "lbl" }, tagName: "span" } },
+            tagName: "button",
+          },
+        ] as unknown[]),
+      ),
+    ).toEqual([]);
+    // A child with no label of its own is still no name, so the silence is earned, not blanket.
+    expect(rules(doc([{ children: [{ tagName: "svg" }], tagName: "button" }]))).toEqual([
+      "interactive-unnamed",
+    ]);
+  });
+
   test("every shape `textContent` and `children` can take names a control", () => {
     /* The conservative branches of `hasContentName`, each of which is a SILENCE the lint owes an
        author: it may not accuse what it cannot read. They were reachable and unmeasured, so the
@@ -339,6 +373,49 @@ describe("aria-target-missing", () => {
       ),
     ).toEqual([]);
   });
+
+  test("a bound reference is not judged even when the document declares ids to check against", () => {
+    /*
+     * The mirror of the bound-id silence above: here every id is literal, so the rule is awake and
+     * a literal miss beside the bound one is still reported. Only the value the document decides at
+     * run time is passed over — a `$ref` and a template alike.
+     */
+    expect(
+      rules(
+        doc([
+          { attributes: { id: "panel" }, tagName: "section" },
+          {
+            attributes: { "aria-controls": { $ref: "#/state/panel" }, "aria-label": "Open" },
+            tagName: "button",
+          },
+          {
+            attributes: {
+              "aria-activedescendant": "${state.active}",
+              "aria-label": "Choices",
+              role: "listbox",
+            },
+            tabIndex: 0,
+            tagName: "ul",
+          },
+        ] as unknown[]),
+      ),
+    ).toEqual([]);
+    expect(
+      rules(
+        doc([
+          { attributes: { id: "panel" }, tagName: "section" },
+          {
+            attributes: { "aria-controls": "${state.panel} nowhere", "aria-label": "Open" },
+            tagName: "button",
+          },
+          {
+            attributes: { "aria-controls": "nowhere", "aria-label": "Open" },
+            tagName: "button",
+          },
+        ]),
+      ),
+    ).toEqual(["aria-target-missing"]);
+  });
 });
 
 describe("roles outside their containers", () => {
@@ -484,6 +561,48 @@ describe("roles outside their containers", () => {
         ]),
       ),
     ).toEqual([]);
+  });
+
+  test("a bound id is owned by a container that literally owns something, and by nothing that owns nothing", () => {
+    /*
+     * `<button id="tab-${state.i}" role="tab">` beside `<div role="tablist" aria-owns="t1 t2">`:
+     * the id is the sentinel, so whether it is among the owned ids is not decidable, and the tablist
+     * that names SOMETHING may be naming it. A tablist that owns nothing literally cannot be, so the
+     * tab is still loose — this is a silence with a condition on it, not a hole a bound id opens.
+     */
+    expect(
+      rules(
+        doc([
+          { attributes: { "aria-owns": "t1 t2", role: "tablist" }, tagName: "div" },
+          {
+            attributes: { id: "tab-${state.i}", role: "tab" },
+            tagName: "button",
+            textContent: "A",
+          },
+          {
+            attributes: { "aria-label": "Actions", "aria-owns": "m1", role: "menu" },
+            tagName: "div",
+          },
+          {
+            attributes: { id: { $ref: "#/state/itemId" }, role: "menuitem" },
+            tagName: "div",
+            textContent: "C",
+          },
+        ] as unknown[]),
+      ),
+    ).toEqual([]);
+    expect(
+      rules(
+        doc([
+          { attributes: { role: "tablist" }, tagName: "div" },
+          {
+            attributes: { id: "tab-${state.i}", role: "tab" },
+            tagName: "button",
+            textContent: "A",
+          },
+        ]),
+      ),
+    ).toEqual(["tab-outside-tablist"]);
   });
 });
 

@@ -81,6 +81,31 @@ describe("call binds the receiver the pointer's parent names", () => {
     expect(seen).toBeUndefined();
   });
 
+  test("a pointer in a scheme the owner rule does not know binds no receiver", () => {
+    /*
+     * `event#/` resolves through the event rather than the scope, and calleeOwner has no rule for
+     * it. The callee still resolved, so the call must go ahead — with no `this` at all, rather than
+     * the scope, the event, or a throw.
+     */
+    const seen: unknown[] = [];
+    const event = new CustomEvent("go", {
+      detail: {
+        fn(this: unknown, ...args: unknown[]) {
+          seen.push(this, ...args);
+          return "ran";
+        },
+      },
+    });
+    expect(
+      evaluateExpression(
+        { operator: "call", target: ref("event#/detail/fn"), value: [1] },
+        reactive({}),
+        event,
+      ),
+    ).toBe("ran");
+    expect(seen).toEqual([undefined, 1]);
+  });
+
   test("a parent-scope prop's method is owned by the prop", () => {
     const state = reactive({
       user: {

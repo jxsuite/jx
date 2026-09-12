@@ -285,6 +285,68 @@ describe("Custom Elements", () => {
     el.remove();
   });
 
+  test("a $map among an instance's slotted children is a live list of rows, each on its own path", async () => {
+    // A mapped array is not a node: under an ordinary element its rows render in place, ahead of
+    // Their anchor, and a `jx-menu` given a `$map` of rows must get the same — a list of rows, not
+    // One `<div>` standing where the list should be. Rendered canvas-style, because the path each
+    // Row is reported on is what the studio stamps and later addresses: through the instance's
+    // `children` slot, then `map`.
+    const tag = uniqueTag();
+    await defineElement({
+      children: [{ tagName: "slot" }],
+      state: { label: "" },
+      tagName: tag,
+    });
+
+    const paths: string[] = [];
+    const scope = await buildScope({ state: { rows: ["a", "b"] } });
+    const el = renderNode(
+      {
+        $props: { label: "menu" },
+        children: [
+          { tagName: "b", textContent: "head" },
+          {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: { tagName: "i", textContent: "${$map.item}" },
+          },
+        ],
+        tagName: tag,
+      } as never,
+      scope,
+      {
+        _path: ["children", 0],
+        onNodeCreated: (n: HTMLElement | Text, path: unknown) => {
+          if (n instanceof HTMLElement) {
+            paths.push(`${n.tagName.toLowerCase()}@${JSON.stringify(path)}`);
+          }
+        },
+      } as never,
+    );
+    const shape = () => [...el.children].map((c) => `${c.tagName.toLowerCase()}:${c.textContent}`);
+    expect(shape()).toEqual(["b:head", "i:a", "i:b"]);
+    expect(paths).toEqual([
+      `${tag}@["children",0]`,
+      'b@["children",0,"children",0]',
+      'i@["children",0,"children",1,"map",0]',
+      'i@["children",0,"children",1,"map",1]',
+    ]);
+
+    // Live: a row added later renders into the same place and reports the next index.
+    document.body.append(el);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(shape()).toEqual(["b:head", "i:a", "i:b"]);
+    (scope.rows as string[]).push("c");
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(shape()).toEqual(["b:head", "i:a", "i:b", "i:c"]);
+    expect(paths.at(-1)).toBe('i@["children",0,"children",1,"map",2]');
+    el.remove();
+  });
+
   test("observed attributes sync to state", async () => {
     const tag = uniqueTag();
     await defineElement({
