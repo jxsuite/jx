@@ -1246,8 +1246,12 @@ describe("the button group", () => {
  */
 
 /** The colour field of a row, and the palette slotted into its picker. */
+/**
+ * The colour field of a row, with the two props the tab reads back: its value and what it resolved
+ * to.
+ */
 function colourField(container: HTMLElement, prop = "color") {
-  return row(container, prop)?.querySelector<HTMLElement & { value: string }>(
+  return row(container, prop)?.querySelector<HTMLElement & { value: string; resolved: string }>(
     'jx-color-field[part="color-field"]',
   );
 }
