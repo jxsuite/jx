@@ -65,6 +65,11 @@ interface Row {
   description?: string;
   disabled?: boolean;
   face?: string;
+  weight?: string;
+  slant?: string;
+  variant?: string;
+  transform?: string;
+  decoration?: string;
   swatch?: string;
   line?: string;
 }
@@ -512,10 +517,19 @@ describe("jx-select", () => {
             value: "g",
           },
           { label: "Plain", value: "p" },
+          {
+            decoration: "underline wavy",
+            label: "Loud",
+            slant: "italic",
+            transform: "uppercase",
+            value: "l",
+            variant: "small-caps",
+            weight: "700",
+          },
         ],
       },
     );
-    const [first, second] = [...control(el).options];
+    const [first, second, third] = [...control(el).options];
     /* The style goes on a CHILD span, never on the option: `<selectedcontent>` mirrors the option's
        CHILDREN and their styles into the closed trigger, and the option's own style is not mirrored.
        Measured in Chrome, in the picker AND in the trigger: swatch 16x16 `rgb(192, 57, 43)`, rule
@@ -535,8 +549,24 @@ describe("jx-select", () => {
     expect(second!.querySelector('[part="swatch"]')!.hasAttribute("hidden")).toBe(true);
     expect(second!.querySelector('[part="line"]')!.hasAttribute("hidden")).toBe(true);
 
+    /* The five typographic axes are channels of the same kind, on the same span, so a weight row
+       reads as its weight in the picker and — mirrored through `<selectedcontent>` — in the closed
+       trigger too. */
+    expect(third!.querySelector('[part="text"]')!.getAttribute("style")).toBe(
+      "--jx-row-weight: 700; --jx-row-slant: italic; --jx-row-variant: small-caps; --jx-row-transform: uppercase; --jx-row-decoration: underline wavy;",
+    );
+
     // The channels are declared ONCE, by the element, and read the property the row set.
     expect(ruleFor(el, '[part="text"]')).toContain("font-family: var(--jx-row-face, inherit)");
+    expect(ruleFor(el, '[part="text"]')).toContain("font-weight: var(--jx-row-weight, inherit)");
+    expect(ruleFor(el, '[part="text"]')).toContain("font-style: var(--jx-row-slant, inherit)");
+    expect(ruleFor(el, '[part="text"]')).toContain("font-variant: var(--jx-row-variant, inherit)");
+    expect(ruleFor(el, '[part="text"]')).toContain(
+      "text-transform: var(--jx-row-transform, inherit)",
+    );
+    expect(ruleFor(el, '[part="text"]')).toContain(
+      "text-decoration: var(--jx-row-decoration, inherit)",
+    );
     expect(ruleFor(el, '[part="swatch"]')).toContain(
       "background: var(--jx-row-swatch, transparent)",
     );

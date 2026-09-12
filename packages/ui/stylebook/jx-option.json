@@ -179,7 +179,7 @@
     },
     {
       "tagName": "p",
-      "textContent": "face, swatch and line are the same three drawing channels a jx-select row carries, under the same token names: each reaches its own span as a custom property set inline, so seventy rows intern the rules two rows do."
+      "textContent": "face, swatch, line, weight, slant, variant, transform and decoration are the same drawing channels a jx-select row carries, under the same token names: each reaches its own span as a custom property set inline, so seventy rows intern the rules two rows do. The five typographic ones change how the label is drawn and never its words, which is what lets a list of weights read as its weights."
     },
     {
       "tagName": "jx-listbox",
@@ -236,6 +236,47 @@
             "value": "double",
             "label": "Double",
             "line": "double"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "700",
+            "label": "Bold",
+            "weight": "700",
+            "face": "Georgia, serif"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "italic",
+            "label": "Italic",
+            "slant": "italic"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "small-caps",
+            "label": "Small caps",
+            "variant": "small-caps"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "uppercase",
+            "label": "Uppercase",
+            "transform": "uppercase"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "underline wavy",
+            "label": "Underline wavy",
+            "decoration": "underline wavy"
           }
         }
       ]

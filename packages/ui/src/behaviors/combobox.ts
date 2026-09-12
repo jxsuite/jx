@@ -66,6 +66,11 @@ export interface ComboboxRow {
   swatch?: string;
   /** A border-style rule before the label. */
   line?: string;
+  weight?: string;
+  slant?: string;
+  variant?: string;
+  transform?: string;
+  decoration?: string;
 }
 
 /** The reactive scope a `jx-combobox` document hands its handlers. */

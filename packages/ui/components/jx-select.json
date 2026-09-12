@@ -25,7 +25,7 @@
     "options": {
       "type": "array",
       "default": [],
-      "description": "Ungrouped rows, drawn above every group. A row is { value, label, description?, disabled?, face?, swatch?, line? }: value and label are what the control is made of, and the last three are the drawing channels — a font face, a colour and a border style, each arriving as a custom property on its own span so seventy rows still cost zero rules."
+      "description": "Ungrouped rows, drawn above every group. A row is { value, label, description?, disabled?, face?, swatch?, line?, weight?, slant?, variant?, transform?, decoration? }: value and label are what the control is made of, and the rest are the drawing channels — a font face, a colour, a border style, and the five typographic axes the label can draw itself in (font weight, font style, font variant, text transform, text decoration), each arriving as a custom property on its own span so seventy rows still cost zero rules."
     },
     "groups": {
       "type": "array",
@@ -302,6 +302,11 @@
     },
     "& [part=\"text\"]": {
       "fontFamily": "var(--jx-row-face, inherit)",
+      "fontWeight": "var(--jx-row-weight, inherit)",
+      "fontStyle": "var(--jx-row-slant, inherit)",
+      "fontVariant": "var(--jx-row-variant, inherit)",
+      "textTransform": "var(--jx-row-transform, inherit)",
+      "textDecoration": "var(--jx-row-decoration, inherit)",
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
@@ -460,6 +465,21 @@
                 "style": {
                   "--jx-row-face": {
                     "$ref": "$map/item/face"
+                  },
+                  "--jx-row-weight": {
+                    "$ref": "$map/item/weight"
+                  },
+                  "--jx-row-slant": {
+                    "$ref": "$map/item/slant"
+                  },
+                  "--jx-row-variant": {
+                    "$ref": "$map/item/variant"
+                  },
+                  "--jx-row-transform": {
+                    "$ref": "$map/item/transform"
+                  },
+                  "--jx-row-decoration": {
+                    "$ref": "$map/item/decoration"
                   }
                 },
                 "textContent": "${$map.item.label}"
@@ -545,6 +565,21 @@
                       "style": {
                         "--jx-row-face": {
                           "$ref": "$map/item/face"
+                        },
+                        "--jx-row-weight": {
+                          "$ref": "$map/item/weight"
+                        },
+                        "--jx-row-slant": {
+                          "$ref": "$map/item/slant"
+                        },
+                        "--jx-row-variant": {
+                          "$ref": "$map/item/variant"
+                        },
+                        "--jx-row-transform": {
+                          "$ref": "$map/item/transform"
+                        },
+                        "--jx-row-decoration": {
+                          "$ref": "$map/item/decoration"
                         }
                       },
                       "textContent": "${$map.item.label}"

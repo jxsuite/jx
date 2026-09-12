@@ -4,6 +4,7 @@
   "tagName": "jx-color-field",
   "observedAttributes": [
     "value",
+    "resolved",
     "format",
     "alpha",
     "label",
@@ -39,6 +40,12 @@
       "default": "",
       "attribute": "value",
       "description": "The colour, spelled as format says. This is what the element HOLDS; the four channels behind the picker are a working copy of it, and the sidecar rewrites that copy only when the two genuinely disagree. The empty string means no colour has been chosen and draws the slashed chip rather than black."
+    },
+    "resolved": {
+      "type": "string",
+      "default": "",
+      "attribute": "resolved",
+      "description": "The colour behind value, for a value the page cannot resolve: a var() naming a token whose definition lives in the document being EDITED rather than in the one drawing this field, which is what Studio's palette commits. Empty, the chip draws value itself, which is right whenever the browser can resolve it. Set, it is what the chip draws and what the picker opens on, so the first drag starts from the token's own colour rather than from wherever the sliders last were; value is untouched, and the text field still shows the reference. A host that sets it is answering for the value it also set, so it clears it when the value stops being a reference."
     },
     "format": {
       "type": "string",
@@ -151,7 +158,7 @@
       "description": "Whether the screen picker is both offered here and present in the engine. A capability question, asked by the document rather than assumed by it. It takes the opt-in as an argument because a Function entry with no declared parameters is an event handler rather than a callable, and calling one from a template throws mid-render and takes the element's whole child tree with it."
     },
     "hasDropper": "${state.dropperAvailable(state.eyedropper)}",
-    "preview": "${state.value || 'transparent'}",
+    "preview": "${state.resolved || state.value || 'transparent'}",
     "pickerId": "${state.uid ? state.uid + '-picker' : ''}",
     "onInput": {
       "$prototype": "Function",
@@ -223,6 +230,7 @@
   },
   "attributes": {
     "data-value": "${state.value}",
+    "data-resolved": "${state.resolved}",
     "data-size": "${state.size}",
     "data-expanded": "${state.expanded ? '' : null}",
     "data-disabled": "${state.disabled ? '' : null}"

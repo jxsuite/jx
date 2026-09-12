@@ -1247,6 +1247,9 @@
                                             "value": {
                                               "$ref": "$map/item/value"
                                             },
+                                            "resolved": {
+                                              "$ref": "$map/item/resolved"
+                                            },
                                             "alpha": true
                                           },
                                           "children": [

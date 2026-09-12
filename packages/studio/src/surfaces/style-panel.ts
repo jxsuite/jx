@@ -81,6 +81,19 @@ export interface StyleTokenView extends Record<string, unknown> {
 export interface StyleOptionView extends Record<string, unknown> {
   value: string;
   label: string;
+  /** A muted note at the end of the row — a font token's own name beside its display name. */
+  description?: string;
+  /**
+   * The `jx-option` drawing channels (ui.md §5.3), for a row that is its own preview: the font
+   * family the words are set in, and the typographic axis the row's value would move. A weight row
+   * carries `weight: "700"` and the element's own `face`, so its `700` reads as 700 in that face.
+   */
+  face?: string;
+  weight?: string;
+  slant?: string;
+  variant?: string;
+  transform?: string;
+  decoration?: string;
 }
 
 /** One value of a button-group row. */
@@ -132,6 +145,11 @@ export interface StyleRowView extends Record<string, unknown> {
   sourceHint: string;
   /** The control's value, always as a string. */
   value: string;
+  /**
+   * A colour row whose value is a token reference: the literal behind it, so the field's chip can
+   * draw a colour this page cannot resolve. Empty on every other row and for a literal value.
+   */
+  resolved: string;
   placeholder: string;
   mono: boolean;
   min: string;

@@ -106,7 +106,7 @@ import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
-import { colorTokens } from "../ui/color-selector";
+import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { mountExpressionEditor } from "../ui/expression-editor";
 import {
   loadUsages,
@@ -599,6 +599,7 @@ function blankRow(key: string, prop: string, label: string): ContentRowView {
     placeholder: "",
     prop,
     removeLabel: "",
+    resolved: "",
     shape: "field",
     source: "fixed",
     sourceLabel: "",
@@ -1541,6 +1542,7 @@ function componentPropRows(
       row.tokens = colorTokens();
       row.hasTokens = row.tokens.length > 0;
       row.value = getFieldValue(propDraft, staticVal);
+      row.resolved = resolvedColor(row.value);
       plan.commit = (raw) => onChange(raw);
       plan.draft = propDraft;
     } else if (prop.format === "date") {

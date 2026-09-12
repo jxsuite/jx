@@ -27,6 +27,7 @@
 
 import { activeTab } from "../workspace/workspace";
 import { getEffectiveStyle } from "../site-context";
+import { resolveTokenValue, tokenRefName } from "../style/token-ref";
 import { kebabToLabel } from "../utils/studio-utils";
 
 /**
@@ -80,4 +81,29 @@ export function colorTokens(): ColorTokenView[] {
     }
   }
   return tokens;
+}
+
+/**
+ * The literal behind a colour value that is a token reference, for a chip to draw.
+ *
+ * `var(--color-accent)` is a perfectly good value for the document being edited and nothing at all
+ * for the page drawing the Inspector: the token lives in the project's style, which the canvas
+ * iframe loads and Studio's own chrome never sees, so a `jx-color-field` handed the reference alone
+ * drew the no-colour checkerboard the moment a palette swatch was picked. This is the answer both
+ * tabs hand the field's `resolved` prop (ui.md §5.6): the chain followed through the effective
+ * style to the colour at its end.
+ *
+ * Empty for a literal, which draws itself, and for a reference the style cannot resolve — a token a
+ * stylesheet defines, or an alias loop — where the field's own fallback is the right one.
+ *
+ * @param {string} value The row's value as the field holds it.
+ * @returns {string} The colour to draw, or the empty string.
+ */
+export function resolvedColor(value: string): string {
+  if (tokenRefName(value) === null) {
+    return "";
+  }
+  const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
+  const resolved = resolveTokenValue(style, value);
+  return resolved === undefined ? "" : String(resolved);
 }

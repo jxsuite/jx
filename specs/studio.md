@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.11.2-draft\
+**Version:** 0.11.3-draft\
 **Status:** Partial\
-**Updated:** 2026-09-11\
+**Updated:** 2026-09-12\
 **License:** MIT
 
 ---
@@ -571,43 +571,47 @@ Inline color editing through the kit's `jx-color-field` (`ui.md` §5.6), drawn b
 - All three controls stay in sync — area, slider, and text field update each other in real time
 - Hex values always `#`-prefixed for valid CSS
 - The project's NAMED colours are offered beside the free picker, and choosing one commits the reference (`var(--color-accent)`) rather than the literal behind it: committing the literal would resolve the token at the moment of the click and quietly opt that declaration out of the palette for ever. `src/ui/color-selector.ts` is that projection and nothing else — the control it used to be was the last Spectrum surface in Studio
+- The swatch still shows the colour a token stands for. The reference resolves in the canvas and nowhere in Studio's own page, so the field is also handed `resolved` (`ui.md` §5.6): the literal at the end of the token's chain, followed through the effective style by `resolvedColor()` in the same module. Without it a pick from the palette drew the no-colour chip. A literal value hands the field nothing, and draws itself
 
 #### Font Family (Combobox with Modern Font Stacks)
 
-The `fontFamily` property uses the `jx-styled-combobox` component — a dual-mode control that automatically switches between text input (combobox) and predefined selection (picker) modes based on whether the current value matches a known option.
+The `fontFamily` row is one `jx-combobox` with `allows-custom-value` (`ui.md` §5.3) over `jx-option` rows, each drawn in its own typeface through the row's `face` channel — the same element the keyword rows are, over a different list, with a different commit.
 
-**Modern Font Stacks:** Preset font stacks from `css-meta.json` (e.g. "Geometric Humanist", "Classical Humanist") are listed as dropdown options. These are not literal font names — they are aliases for multi-font fallback stacks.
+**Modern Font Stacks:** Preset font stacks from `css-meta.json` (e.g. "Geometric Humanist", "Classical Humanist") are listed as rows. These are not literal font names — they are aliases for multi-font fallback stacks.
 
-**Styled font options:** Every font option renders in its own typeface via inline `font-family` styles on each menu item. This gives users a live preview of each font before selecting. In picker mode, the picker element itself displays the current font style.
+**Every row is its own specimen.** A token row is set in the stack its token resolves to (an alias such as `--font-display: var(--font-ui)` is followed to the end of the chain), and a preset row in the stack it would mint. This is the reason the row is a combobox rather than the kit menu the unit row uses: a menu row is an action and carries no typeface channel (`ui.md` §5.1), and a font is the one value a reader chooses by looking.
 
-**Option grouping:**
+**The list, in order:**
 
-1. **Local project font variables** — `--font-*` custom properties already defined in the document root style appear first
-2. **Divider** — separates local from global
-3. **Global presets** — Unadded modern font stack presets from `css-meta.json`. Presets already instantiated as local variables are excluded from this section.
+1. **Project font tokens** — every `--font-*` custom property of the effective style, the site's `project.json` block under the document's own, because a project declares its fonts once and a list that read only the document offered a component none of them. A token row is labelled by its display name ("Body") with the token's own name (`--font-body`) as its description, so what a pick will write is in the list.
+2. **Unminted presets** — the Modern Font Stacks not yet instantiated as a token, labelled by their title and carrying no description. The list draws no divider; the description a token row has and a preset row lacks is what tells the two groups apart.
+
+**A row's value is a token name**, minted or not: `--font-body` for a token, `--font-geometric-humanist` for the preset that would mint it. That is what the field holds after a pick, and it is what the commit turns into a reference.
 
 **Selection flow:**
 
-1. User selects a preset (e.g. "Geometric Humanist") from the dropdown
-2. The system creates a CSS custom property on the document root style (e.g. `--font-geometric-humanist: "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif"`)
-3. The selected element's `fontFamily` is set to `var(--font-geometric-humanist)`
-4. If the variable already exists in the document root, step 2 is skipped
-
-**Existing font variables:** Variables already defined in the document root (`--font-*`) appear at the top of the dropdown. Selecting one assigns `var(--name)` without creating a new variable.
-
-**Free-text entry:** Typing a plain font family string (e.g. "serif", "Arial, sans-serif") sets the value directly — no `var()` wrapping.
+1. User picks a row, or types a value and leaves the field
+2. A value that is not a token name — `Georgia, serif` — is the value itself, with no `var()` wrapping
+3. A token name is committed as `var(--name)`. If the name is a preset's and no such token exists in the effective style, the token is minted into the document root style first (e.g. `--font-geometric-humanist: "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif"`), so it exists before anything references it; a token that exists is left exactly as it is
+4. Minting happens on the COMMIT only — the pick, Enter, or leaving the field. The debounced edit that follows each keystroke writes the reference and mints nothing, because a reader halfway through typing `--font-slab-serif` has not asked for a token, and one minted early would be left behind when they finished typing something else
 
 **A token reads as its name:** when the current value is a `--font-*` reference, the field shows the token's name rather than the `var()` around it, because the field edits WHICH token this is and the punctuation is not something the reader typed. Emptying the field clears the value.
 
+#### Typography rows preview their values
+
+The keyword rows of the Typography section — `fontWeight`, `fontStyle`, `fontVariant`, `textTransform` and `textDecoration` — draw each value AS that value: `700` is set at 700, `Italic` leans, `Small Caps` is in small caps, `Uppercase` is capitalised, `Underline wavy` is underlined. Each reaches its row through the `jx-option` channel of the same axis (`weight`, `slant`, `variant`, `transform`, `decoration`; `ui.md` §5.3), and `TYPO_PREVIEW_CHANNELS` in `panels/style-utils.ts` is the one map from property to channel. The words are never changed, so a reader hears the row's name and sees what choosing it would do.
+
+Every such row is also set in the element's own `face`: its `fontFamily`, else the base context's when a breakpoint is being edited, followed through the effective style to the stack at the end of the chain — so a weight previews in the typeface the element actually uses rather than in the panel's. An element with no typeface of its own previews in the panel's, and a row that is not about type carries no channel at all.
+
 #### The dual-mode row
 
-A row that must accept both a fixed option and arbitrary text is a **composition**, not an element: a `jx-textfield` beside a button that opens a `jx-menu` of the styled options, drawn by the surface that wants it.
+A row that must accept both a fixed option and arbitrary text is a **composition**, not an element: a `jx-textfield` beside a button that opens a `jx-menu` of the options, drawn by the surface that wants it.
 
 It was a custom `LitElement` — `jx-styled-combobox`, and `jx-value-selector` behind it — introduced because `sp-combobox` stripped the inline styling each option needs to preview its own typeface. Both classes are deleted. The reason is worth keeping rather than the code: a control whose two modes differ in what they COMMIT, not in what they look like, is two widgets a surface already has, and wrapping them in a third element only moved the width-matching, the overlay placement and the mode switch somewhere a test could not reach. The kit's menu places and clamps itself, so the width-matching hack that replicated `sp-picker`'s internal `containerStyles` went with the class.
 
-The composition is for a row whose list runs a VERB: the unit row, where a choice re-attaches a unit to the number the field holds, and the font row, where a preset is minted into a token before the property is pointed at it. A row whose list commits a VALUE is not this composition but one `jx-combobox` with `allows-custom-value` (ui.md §5.3): the Style tab's keyword rows — fontWeight, fontStyle, fontVariant, textTransform, textDecoration and every other enum — are that element, the field being the value and the rows under it the values worth offering.
+The composition is for a row whose list runs a VERB: the unit row, where a choice re-attaches a unit to the number the field holds. A row whose list commits a VALUE is not this composition but one `jx-combobox` with `allows-custom-value` (ui.md §5.3): the Style tab's keyword rows — fontWeight, fontStyle, fontVariant, textTransform, textDecoration and every other enum — are that element, the field being the value and the rows under it the values worth offering. The font row was on the menu side of that line, on the argument that a preset is minted into a token before the property is pointed at it, and moved to the combobox: the styling the class above existed for is what a menu row cannot carry and a `jx-option` row can, and the minting is the adapter's commit rather than the row's verb (see **Font Family** above).
 
-**Used by:** the Style tab's unit rows and its fontFamily row, each drawing the pair in `style-panel.json` rather than through a shared class.
+**Used by:** the Style tab's unit rows, drawing the pair in `style-panel.json` rather than through a shared class.
 
 #### Conditional Display (`$show`)
 
@@ -1833,6 +1837,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.3-draft** (2026-09-12) — The Style tab's font row is a jx-combobox whose rows are their own specimens over the project's font tokens (site and document) and the unminted presets, minting on the commit only; the typography keyword rows draw each value as itself in the element's own face; the colour chip is handed the literal behind a token.
 - **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
 - **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
 - **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
@@ -1964,4 +1969,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.11.2-draft_
+_`@jxsuite/studio` Specification v0.11.3-draft_

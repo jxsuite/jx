@@ -242,6 +242,26 @@ describe("getFontVars", () => {
       { name: "--font-weight-ish", value: "700" },
     ]);
   });
+
+  test("the site's fonts are offered under the document's, and the document's spelling wins", () => {
+    /* A project declares its fonts once, in `project.json`; a list that read only the document
+       offered a component none of its project's fonts. The effective style is site then document,
+       so a token both declare is the document's. */
+    resetStudioState({
+      projectConfig: {
+        style: { "--font-body": "Georgia, serif", "--font-ui": "Inter, sans-serif" },
+      },
+    });
+    resetWorkspaceWithTab({
+      children: [],
+      style: { "--font-body": "Charter, serif" },
+      tagName: "div",
+    } as unknown as JxMutableNode);
+    expect(getFontVars()).toEqual([
+      { name: "--font-body", value: "Charter, serif" },
+      { name: "--font-ui", value: "Inter, sans-serif" },
+    ]);
+  });
 });
 
 // ─── Re-exports ──────────────────────────────────────────────────────────────

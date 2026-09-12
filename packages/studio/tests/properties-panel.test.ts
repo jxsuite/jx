@@ -651,6 +651,13 @@ describe("component props section", () => {
     /* The reference, not the literal: the field declines a token it cannot parse, which is what
        leaves the group's own answer standing. */
     expect((docNow().children as JxMutableNode[])[0]!.$props!.tint).toBe("var(--color-brand)");
+    /* And the field is told what the reference stands for, because `var(--color-brand)` resolves
+       in the canvas and nowhere in this page: without it the chip drew the no-colour checkerboard. */
+    const field = row(c, "tint").querySelector<HTMLElement & { resolved: string }>(
+      'jx-color-field[part="color-field"]',
+    )!;
+    expect(field.resolved).toBe("#0000ff");
+    expect(field.style.getPropertyValue("--jx-color-field-preview")).toBe("#0000ff");
   });
 
   test("text prop commits into $props on change; clear dot removes it", async () => {

@@ -89,6 +89,11 @@ export interface ContentRowView {
   kind: ContentFieldKind;
   /** The value as the control reads it — a string for every kind but `checkbox`. */
   value: string;
+  /**
+   * A `color` row whose value is a token reference: the literal behind it, so the field's chip can
+   * draw a colour this page cannot resolve. Empty on every other row and for a literal value.
+   */
+  resolved: string;
   checked: boolean;
   placeholder: string;
   /** Draw the text control monospaced — a template, a pointer, a code-ish value. */
