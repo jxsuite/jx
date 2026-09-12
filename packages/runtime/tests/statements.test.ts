@@ -220,6 +220,12 @@ describe("compileStatements — source shapes and equivalence", () => {
     expect(source).toBe('this?.dispatchEvent(new CustomEvent("done"));');
   });
 
+  test("composed lowers as a CustomEventInit member, like bubbles", () => {
+    expect(compileStatements([{ composed: true, dispatchEvent: "done" }])).toBe(
+      '(event && event.currentTarget)?.dispatchEvent(new CustomEvent("done", { composed: true }));',
+    );
+  });
+
   test("compiled === interpreted for a branching, mutating body", async () => {
     const body: JxStatement[] = [
       { operator: "push", target: ref("#/state/cart"), value: ref("$args/item") },
@@ -277,5 +283,32 @@ describe("runStatements — stopPropagation / preventDefault", () => {
     expect(compileStatements([{ preventDefault: true }], { eventParam: "e" })).toBe(
       "e?.preventDefault();",
     );
+  });
+});
+
+describe("statements — an unrecognised shape", () => {
+  /*
+   * `statementKind` has no "unknown" answer: a statement carrying none of the five discriminating
+   * keys is classified as a dispatch, so the `default:` arm of each switch is unreachable and the
+   * dispatch path is what a malformed body actually gets. What a caller can observe is that the body
+   * neither throws on it nor halts at it, and that the emitter agrees with the interpreter.
+   */
+  const unknown = { frobnicate: true } as unknown as JxStatement;
+  const body: JxStatement[] = [unknown, { operator: "=", target: ref("#/state/n"), value: 1 }];
+
+  test("the interpreter treats it as a no-op and runs the rest of the body", async () => {
+    const state: JxScope = { n: 0 };
+    await runStatements(body, state, null);
+    expect(state.n).toBe(1);
+  });
+
+  test("the emitter lowers it to the guarded dispatch form, so compiled === interpreted", () => {
+    const source = compileStatements(body, { eventParam: "e" });
+    // One line per statement; the optional chain is what makes it a no-op without an event.
+    expect(source.split("\n")).toHaveLength(2);
+    expect(source).toContain("?.dispatchEvent(new CustomEvent(");
+    const state: JxScope = { n: 0 };
+    new Function("state", "e", source)(state, null);
+    expect(state.n).toBe(1);
   });
 });

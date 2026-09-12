@@ -96,6 +96,46 @@ describe("validateProjectTree", () => {
     }
   });
 
+  it("files dialog and invoker-command defects under the dialog source", async () => {
+    /* The three lints share one finding shape, and `source` is the only field that says which one
+       spoke — it is what the CLI line cites and what a reader greps for. A dialog defect filed
+       under `popover` would be a true finding with a false citation, so the whole finding is
+       pinned, not just the rule. The dialog is named so accessibility stays silent, and the button
+       names a target that is not there, which is the dialog module's own `command-target-missing`. */
+    writeFile("pages/dialog-page.json", {
+      children: [
+        {
+          attributes: { command: "show-modal", commandfor: "nope" },
+          tagName: "button",
+          textContent: "Open settings",
+        },
+        {
+          attributes: { "aria-label": "Settings" },
+          children: [{ tagName: "p", textContent: "Body" }],
+          id: "settings",
+          tagName: "dialog",
+        },
+      ],
+      tagName: "div",
+    });
+    try {
+      const result = await validateProjectTree(TMP);
+      expect(result.valid).toBe(true);
+      const onPage = result.lint.filter((f) => f.file === "pages/dialog-page.json");
+      expect(onPage.map((f) => [f.source, f.rule, f.severity, f.path])).toEqual([
+        ["dialog", "command-target-missing", "error", ["children", 0]],
+        ["dialog", "dialog-no-invoker", "warn", ["children", 1]],
+      ]);
+      expect(onPage[0]!.message).toBe('commandfor="nope" names nothing in this document.');
+      // No WCAG criterion on a dialog finding, so the citation is the bare source/rule pair.
+      expect(formatProjectTreeLint(result)).toContain(
+        'pages/dialog-page.json: error: commandfor="nope" names nothing in this document. [dialog/command-target-missing]',
+      );
+    } finally {
+      rmSync(resolve(TMP, "pages/dialog-page.json"), { force: true });
+    }
+  });
+
   it("a clean tree carries no lint, and a document with a schema error is not linted", async () => {
     const result = await validateProjectTree(TMP, { strict: true });
     expect(result.lint).toEqual([]);
@@ -125,6 +165,24 @@ describe("validateProjectTree", () => {
     } finally {
       rmSync(resolve(TMP, "components/broken.json"), { force: true });
       rmSync(resolve(TMP, "classes/Bad.class.json"), { force: true });
+    }
+  });
+
+  it("skips a malformed class definition when building the overlay scope", async () => {
+    /* The scope is read before the document walk so custom elements are judged as what they
+       render. A definition that is not JSON must not abort that read: the walk it feeds is the one
+       that lints every page, and the class-schema pass is the walk that owns the file. Two
+       malformed files prove the order from outside — the document walk only runs once the scope
+       is built, so the error that surfaces must be the document's, named by its own identifier,
+       and never the class file's `Unexpected EOF`. */
+    writeFile("classes/Broken.class.json", "[");
+    writeFile("pages/broken.json", "document_walk_reached");
+    try {
+      // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+      await expect(validateProjectTree(TMP)).rejects.toThrow("document_walk_reached");
+    } finally {
+      rmSync(resolve(TMP, "classes/Broken.class.json"), { force: true });
+      rmSync(resolve(TMP, "pages/broken.json"), { force: true });
     }
   });
 

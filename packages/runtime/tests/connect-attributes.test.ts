@@ -93,6 +93,34 @@ describe("observed attributes present at connection", () => {
     el.remove();
   });
 
+  test("removing one whose declared value is a plain object restores THAT object", async () => {
+    // A state entry written as a plain object — no `default`, no computed marker — is its own
+    // Default, the same shorthand as a bare string, and `buildScope` reads it that way. The defaults
+    // Walk must fall through to record it rather than treat every object without a `default` as
+    // Produced: a removal would otherwise erase the object to "" and every `${state.meta.kind}`
+    // Under it would print "undefined".
+    const tag = "ca-object-default";
+    await defineElement({
+      tagName: tag,
+      observedAttributes: ["meta"],
+      state: { meta: { kind: "none" } },
+      textContent: "${JSON.stringify(state.meta)}",
+    });
+    const el = document.createElement(tag);
+    document.body.append(el);
+    await tick();
+    expect(el.textContent).toBe('{"kind":"none"}');
+
+    el.setAttribute("meta", "custom");
+    await tick();
+    expect(el.textContent).toBe('"custom"');
+
+    el.removeAttribute("meta");
+    await tick();
+    expect(el.textContent).toBe('{"kind":"none"}');
+    el.remove();
+  });
+
   test("a property a parent set before connection still wins over the attribute", async () => {
     const tag = "ca-prop-wins";
     await defineElement({

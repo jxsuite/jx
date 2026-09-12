@@ -383,6 +383,64 @@ describe("mounting", () => {
     expect(libraryPaneMounted("primary", tab)).toBe(false);
   });
 
+  test("a settle pass that outlives its pane runs against nothing, least of all its successor", async () => {
+    const reads: string[] = [];
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      readFile: (path: string) => {
+        reads.push(path);
+        return Promise.resolve('{"tagName":"div","children":[]}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    await mount();
+    await flush();
+    // The settle pass is the ONE timer a synchronous state change arms once the mount and the scan
+    // Have both landed: `scheduleSettle` coalesces, and the scan's own timer went with the scan.
+    // Hold its callback rather than letting it run, because the pass is written for the task AFTER
+    // The repaint — and by then the pane can be somebody else's.
+    const held: (() => void)[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+      held.push(fn);
+      return realSetTimeout(() => {}, ms);
+    }) as typeof setTimeout;
+    try {
+      setLibraryCategory("pages");
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+    expect(held.length).toBe(1);
+    // A tab switch: another tab's Library takes the pane, on a fresh stage.
+    const stale = host;
+    const successor = openTab({
+      capabilities: { modes: ["manage"] },
+      document: { children: [], tagName: "div" },
+      documentPath: null,
+      id: "grid://library-successor",
+    });
+    host = document.createElement("div");
+    document.body.append(host);
+    renderLibraryMode(surfaceOf(host), successor);
+    await flush();
+    await flush();
+    const before = reads.length;
+    // The pass the first pane scheduled now runs. Teardown emptied that pane's record and the stage
+    // Is the successor's, so there is nothing for it to tend: it must neither throw, read a document
+    // For a card that is gone, nor touch the successor's islands.
+    const { revision } = libraryView;
+    expect(() => held[0]!()).not.toThrow();
+    await flush();
+    expect(reads.length).toBe(before);
+    expect(libraryView.revision).toBe(revision);
+    expect(libraryPaneMounted("primary", successor)).toBe(true);
+    const slot = host.querySelector<HTMLElement>(
+      '[part="doc-preview"][data-path="pages/index.json"]',
+    );
+    expect(slot?.childElementCount).toBe(1);
+    stale.remove();
+  });
+
   test("a repaint while previews are still loading does not ask for them twice", async () => {
     const reads: string[] = [];
     installMockPlatform({

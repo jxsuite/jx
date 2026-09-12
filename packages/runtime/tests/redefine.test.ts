@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { defineElement, elementDefinition, redefineElement } from "../src/runtime";
+import { defineElement, elementDefinition, preloadDocument, redefineElement } from "../src/runtime";
 
 import type { JxDocument } from "@jxsuite/schema/types";
 
@@ -77,6 +77,35 @@ describe("redefineElement", () => {
     document.body.append(el);
     await tick();
     expect(el.textContent).toBe("fresher");
+  });
+
+  test("a redefinition's $elements are registered, so a fresh instance renders its new dependency", async () => {
+    // The replacement may lean on an element the first definition never named. `defineElement`
+    // Registers a document's `$elements` on the way in; a redefinition reaches the registry without
+    // It, so the dependency must be defined here, against the redefinition's own base, or the fresh
+    // Instance renders `<rd-dep>` as an unknown element with nothing inside.
+    await defineElement({ tagName: "rd-host", textContent: "v1" } as JxDocument);
+    preloadDocument("jx-test:/deps/rd-dep.json", {
+      tagName: "rd-dep",
+      textContent: "dep",
+    } as JxDocument);
+    expect(customElements.get("rd-dep")).toBeUndefined();
+
+    await redefineElement(
+      {
+        tagName: "rd-host",
+        $elements: [{ $ref: "rd-dep.json" }],
+        children: [{ tagName: "rd-dep" }],
+      } as JxDocument,
+      "jx-test:/deps/",
+    );
+    expect(customElements.get("rd-dep")).toBeDefined();
+
+    const el = document.createElement("rd-host");
+    document.body.append(el);
+    await tick();
+    await tick();
+    expect(el.querySelector("rd-dep")?.textContent).toBe("dep");
   });
 
   test("a changed observedAttributes list is reported, because the platform freezes it", async () => {

@@ -766,6 +766,26 @@ describe("report", () => {
     expect(logs.join("\n")).toContain("stale FOCUS_RING_ALLOWANCES");
   });
 
+  test("fails on a @keyframes name defined twice, naming every site and counting names once", () => {
+    /* Every definition of a duplicated name arrives as its own finding, so the headline has to
+       count NAMES (a set), not findings — "4 animation name(s)" for two names would send the reader
+       hunting for the other two. Each site is listed as file:line so both definitions can be found. */
+    const duplicateAnimations = [
+      { file: "styles/anim.css", line: 3, text: "pulse" },
+      { file: "styles/modals.css", line: 12, text: "pulse" },
+      { file: "styles/toast.css", line: 7, text: "toast-in" },
+      { file: "styles/toast.css", line: 30, text: "toast-in" },
+    ];
+    expect(report({ ...empty, duplicateAnimations })).toBe(1);
+    const out = logs.join("\n");
+    expect(out).toContain("2 animation name(s) defined more than once");
+    expect(out).toContain("keeps the LAST definition");
+    expect(out).toContain("styles/anim.css:3  pulse");
+    expect(out).toContain("styles/modals.css:12  pulse");
+    expect(out).toContain("styles/toast.css:7  toast-in");
+    expect(out).toContain("styles/toast.css:30  toast-in");
+  });
+
   test("says how many suppressions are still paired when everything is clean", () => {
     expect(report(empty)).toBe(0);
     expect(logs.join("\n")).toContain("focus-ring suppression(s) each paired");

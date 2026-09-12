@@ -519,6 +519,79 @@ describe("preloadModule with a loader", () => {
     await mount(doc("jx-test:/both.ts"), host);
     expect(ran).toBe(false);
   });
+
+  test("a $implementation class behind a .class.json is served by its loader", async () => {
+    /* The schema's $implementation is resolved against the schema URL, so the loader is keyed by
+       that href — the only thing the host can know about the module before it is asked for. A
+       proxy fallback would be a POST, and this fetch refuses one, so the value can only come from
+       the loader. */
+    const classDef = { $implementation: "./lazy-box.ts", title: "Box" };
+    const fetchMock = mock((url: string, init?: { method?: string }) =>
+      init?.method === undefined && url === "http://jx-test.invalid/lazy-box.class.json"
+        ? Promise.resolve({ ok: true, json: () => Promise.resolve(classDef) })
+        : Promise.reject(new Error("no network")),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    let loads = 0;
+    preloadModule("http://jx-test.invalid/lazy-box.ts", async () => {
+      loads += 1;
+      await tick();
+      return {
+        Box: class {
+          value: string;
+          constructor(config: { initial: string }) {
+            this.value = `boxed:${config.initial}`;
+          }
+        },
+      };
+    });
+    const m = await mount(
+      {
+        tagName: "div",
+        state: {
+          box: {
+            $prototype: "Box",
+            $src: "http://jx-test.invalid/lazy-box.class.json",
+            initial: "hello",
+          },
+        },
+      },
+      host,
+    );
+    expect(loads).toBe(1);
+    expect(m.scope.box).toBe("boxed:hello");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a timing: "server" function is served by its loader', async () => {
+    /* A server function whose module cannot import falls back to the dev proxy, which would be a
+       POST this fetch refuses — so a summed value proves the loader's namespace was awaited. */
+    const fetchMock = noNetwork();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    let loads = 0;
+    preloadModule("jx-test:/server.ts", async () => {
+      loads += 1;
+      await tick();
+      return { sum: async ({ a, b }: { a: number; b: number }) => a + b };
+    });
+    const m = await mount(
+      {
+        tagName: "div",
+        state: {
+          total: {
+            timing: "server",
+            $src: "jx-test:/server.ts",
+            $export: "sum",
+            arguments: { a: 2, b: 3 },
+          },
+        },
+      },
+      host,
+    );
+    expect(loads).toBe(1);
+    expect(m.scope.total).toBe(5);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("bindings skip an equal write", () => {
