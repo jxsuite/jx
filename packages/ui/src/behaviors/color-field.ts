@@ -52,6 +52,11 @@ const HOST = "jx-color-field";
 export interface ColorFieldState {
   /** The colour, spelled as `format` says. */
   value: string;
+  /**
+   * The colour behind `value` when `value` is a reference this page cannot resolve; empty when the
+   * value stands for itself. Drawn by the chip and opened on by the picker, never written.
+   */
+  resolved: string;
   /** `hex` or `oklch`: which spelling {@link compose} writes. */
   format: string;
   /** Whether the alpha channel is offered at all. */
@@ -173,29 +178,35 @@ function compose(state: ColorFieldState): void {
  * @param state The element's reactive scope.
  */
 export function syncFromValue(state: ColorFieldState): void {
-  const parsed = parseColor(String(state.value ?? ""));
+  /*
+   * A VALUE THE ELEMENT CANNOT DECOMPOSE IS NOT A REFUSAL.
+   *
+   * `invalid` means "what you typed is not a colour", and this path is not the reader typing: it
+   * is the value the host holds. `var(--brand-accent)`, a named colour, a `color-mix()` — each is
+   * a perfectly good value that only the browser can resolve, and each is what a project's own
+   * palette actually puts in a style. The element keeps it verbatim, the text field shows it, and
+   * the preview chip still DRAWS it, because the chip's background is that string handed to CSS
+   * rather than anything computed here.
+   *
+   * Unless the host has said what the reference stands for. `resolved` is the colour behind a
+   * token the page cannot see — Studio edits a document whose `--color-*` live in ANOTHER page,
+   * so `var(--color-accent)` handed to this page's CSS is nothing — and when it parses, the
+   * channels are seeded from it: the chip draws it through `preview`, and the picker opens on the
+   * token's own colour, so the first drag starts from there rather than from wherever the
+   * sliders last were. The text field still shows the reference, because that is the value.
+   *
+   * With neither, only the picker's channels are stale, and the first thing the reader moves
+   * replaces the token with a literal, which is what moving a picker means. Either way the
+   * refusal is cleared, because a host write is an answer to whatever the reader last got wrong,
+   * and the text field is moved onto the value: it is the truth even when it is a truth this
+   * module cannot read.
+   */
+  const parsed = parseColor(String(state.value ?? "")) ?? parseColor(String(state.resolved ?? ""));
+  state.invalid = false;
+  state.text = String(state.value ?? "");
   if (!parsed) {
-    /*
-     * A VALUE THE ELEMENT CANNOT DECOMPOSE IS NOT A REFUSAL.
-     *
-     * `invalid` means "what you typed is not a colour", and this path is not the reader typing:
-     * it is the value the host holds. `var(--brand-accent)`, a named colour, a `color-mix()` —
-     * each is a perfectly good value that only the browser can resolve, and each is what a
-     * project's own palette actually puts in a style. The element keeps it verbatim, the text
-     * field shows it, and the preview chip still DRAWS it, because the chip's background is that
-     * string handed to CSS rather than anything computed here. Only the picker's channels are
-     * stale, and the first thing the reader moves replaces the token with a literal, which is
-     * what moving a picker means.
-     *
-     * The refusal is cleared, because a host write is an answer to whatever the reader last got
-     * wrong, and the text field is moved onto it: the value is the truth even when it is a truth
-     * this module cannot read.
-     */
-    state.invalid = false;
-    state.text = String(state.value ?? "");
     return;
   }
-  state.invalid = false;
   /* The drawing is refreshed even when the channels are already right, because this is also the
      first thing that ever runs: a field mounted with a value has no `solid` and no `ink` yet, and
      an early return before this left the alpha track fading from nothing. */
@@ -210,7 +221,6 @@ export function syncFromValue(state: ColorFieldState): void {
   if (hsv.s > 0 && hsv.v > 0) {
     state.hue = Number(hsv.h.toFixed(2));
   }
-  state.text = String(state.value ?? "");
 }
 
 /**
@@ -424,11 +434,11 @@ export function onEyeDropper(state: ColorFieldState, event: Event): Promise<void
  * Learn the element, mint its id stem, and keep the working channels in step with `value` for as
  * long as it lives.
  *
- * The observer watches `data-value` — the attribute the document binds to `state.value` — because a
- * HOST write of `el.value` mutates nothing else the element could hear. It is the same seam
- * `jx-select`'s sidecar uses, and for the same reason: the alternative is a reactive effect, which
- * would make the kit depend on the runtime's reactivity library to learn something the document can
- * simply say out loud.
+ * The observer watches `data-value` and `data-resolved` — the attributes the document binds to
+ * `state.value` and `state.resolved` — because a HOST write of `el.value` mutates nothing else the
+ * element could hear. It is the same seam `jx-select`'s sidecar uses, and for the same reason: the
+ * alternative is a reactive effect, which would make the kit depend on the runtime's reactivity
+ * library to learn something the document can simply say out loud.
  *
  * @param state The element's reactive scope.
  * @param event The element's own `jx-ready`.
@@ -445,7 +455,7 @@ export function onFieldMount(state: ColorFieldState, event: Event): void {
   const observer = new MutationObserver(() => {
     syncFromValue(state);
   });
-  observer.observe(host, { attributeFilter: ["data-value"], attributes: true });
+  observer.observe(host, { attributeFilter: ["data-resolved", "data-value"], attributes: true });
   const panel = panelOf(host);
   if (panel) {
     panel.addEventListener("toggle", (toggle: Event) => {

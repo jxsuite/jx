@@ -50,7 +50,7 @@ Contexts are declared in one place, **Settings › Contexts**, described in **[B
 
 Tokens surface right inside the [Style inspector](/docs/studio/design/style-inspector)'s controls:
 
-- The **color picker** lists your color tokens under its sliders, each by the name you gave it. Pick one and the field holds the reference, `var(--color-primary-blue)`, with that swatch marked as the chosen one.
+- The **color picker** lists your color tokens under its sliders, each by the name you gave it. Pick one and the field holds the reference, `var(--color-primary-blue)`, with that swatch marked as the chosen one and the swatch beside the value showing the token's color.
 - The **font family** box lists your font tokens first, each previewed in its own face. Picking one of the ready-made presets creates a matching font token automatically, so even your first font choice becomes reusable.
 - Any field accepts a token typed directly as `var(--color-primary-blue)`, useful for the occasional property without a picker.
 

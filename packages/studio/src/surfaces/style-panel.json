@@ -198,7 +198,7 @@
       "color": "var(--jx-accent)"
     },
     "& [part=\"group\"]": {
-      "$description": "The composite the kit draws as two elements on purpose: a field the reader may type anything into, beside a button that opens the kit MENU. It is the unit row and the font row, and neither is a combobox, because their lists run VERBS rather than commit values — a unit re-attaches to the number the field holds, and a font preset is minted into a token before the property is pointed at it (ui.md §5.5, jx-dimension-field and jx-token-field). The keyword rows, whose list IS the value, are `jx-combobox` (the `keywords` case).",
+      "$description": "The composite the kit draws as two elements on purpose: a field the reader may type anything into, beside a button that opens the kit MENU. It is the unit row, and it is not a combobox, because its list runs a VERB rather than committing a value — a unit re-attaches to the number the field holds (ui.md §5.5, jx-dimension-field). The keyword rows and the font row, whose list IS the value, are `jx-combobox` (the `keywords` case).",
       "display": "flex",
       "flex": "1",
       "alignItems": "stretch",
@@ -820,7 +820,7 @@
                                       }
                                     },
                                     "keywords": {
-                                      "$description": "A keyword row: one `jx-combobox` with `allows-custom-value` over the values worth offering (ui.md §5.3). The field IS the value and the rows under it are suggestions, which is the whole of what an enum means on a style property — `text-transform: full-width` is a value whether or not the catalogue lists it, so the list never refuses. Both handlers read the ELEMENT's value, because a pick announces from the element while typing lets the control's own event bubble, and `currentTarget` is the one node both name.",
+                                      "$description": "A keyword row, and the font row: one `jx-combobox` with `allows-custom-value` over the values worth offering (ui.md §5.3). The field IS the value and the rows under it are suggestions, which is the whole of what an enum means on a style property — `text-transform: full-width` is a value whether or not the catalogue lists it, so the list never refuses. A typography row's options carry the kit's drawing channels, so `700` is set in 700 and `Italic` leans, each in the element's own face; the font row's carry `face`, so every font is its own specimen, which is what a menu row could never be (ui.md §5.1: a picker you choose by LOOKING is not a menu). Both handlers read the ELEMENT's value, because a pick announces from the element while typing lets the control's own event bubble, and `currentTarget` is the one node both name. What a font pick WRITES is the adapter's, not the row's: the field holds a token's name, and the commit points the property at it, minting the token first when the name is a preset's.",
                                       "tagName": "jx-combobox",
                                       "attributes": {
                                         "part": "text"
@@ -881,7 +881,7 @@
                                       }
                                     },
                                     "group": {
-                                      "$description": "The dual-mode control: a number beside its unit, or a font beside the fonts worth offering. One shape for both because they are one gesture — type what you mean, or take one from the list — and the list is the kit MENU rather than a second popup of this document's own (§12.5), because every row of it is a verb: a unit re-attaches, a preset mints a token. A keyword row, whose list commits a value, is the `keywords` case instead.",
+                                      "$description": "The dual-mode control: a number beside its unit. Type what you mean, or take a unit from the list — and the list is the kit MENU rather than a second popup of this document's own (§12.5), because every row of it is a verb: a unit re-attaches to the number the field holds. A keyword row, whose list commits a value, is the `keywords` case instead — and so is the font row now, because a font is chosen by looking and a menu row cannot draw itself in its own face.",
                                       "tagName": "div",
                                       "attributes": {
                                         "part": "group"
@@ -1192,6 +1192,9 @@
                                             },
                                             "value": {
                                               "$ref": "$map/item/value"
+                                            },
+                                            "resolved": {
+                                              "$ref": "$map/item/resolved"
                                             },
                                             "alpha": true
                                           },

@@ -562,6 +562,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.11.3-draft** (2026-09-12) — The Style tab's font row is a jx-combobox whose rows are their own specimens over the project's font tokens (site and document) and the unminted presets, minting on the commit only; the typography keyword rows draw each value as itself in the element's own face; the colour chip is handed the literal behind a token.
 - **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
 - **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
 - **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
@@ -693,6 +694,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.45-draft** (2026-09-12) — jx-option and jx-select rows carry five typographic channels (weight, slant, variant, transform, decoration) beside face, swatch and line; jx-color-field takes resolved, the colour behind a reference the page cannot resolve, for its chip and its picker; the Style tab's font row is a jx-combobox of specimen rows and the unit row is the last menu composite.
 - **0.1.44-draft** (2026-09-11) — §11: WCAG 2.2 is a Subset with a test per criterion, and SC 2.4.7 is a gate (every focusable control has the kit's focus ring); CSS Scoping is a Subset now that the light-DOM decision is held by the conformance test, and gap:ui-scoping is retired (§11).
 - **0.1.43-draft** (2026-09-11) — jx-tooltip is anchor-positioned against the control it was shown from, flipped through a named @position-try option so the arrow's gap moves with it; every overlay that hangs from something is the platform's to place, and §11 retires gap:ui-anchor (§5.2, §6, §11).
 - **0.1.42-draft** (2026-09-11) — jx-menu is anchor-positioned under placement, and a submenu anchors beside its row on its own; jx-tooltip is what is left (§5.1, §5.2, §6, §11).

@@ -485,12 +485,31 @@ describe("jx-combobox", () => {
 
   test("the rows carry the preview channels and their own ids", async () => {
     const el = await combobox({
-      options: [{ face: "Georgia, serif", label: "Georgia", swatch: "red", value: "georgia" }],
+      options: [
+        {
+          decoration: "underline",
+          face: "Georgia, serif",
+          label: "Georgia",
+          slant: "italic",
+          swatch: "red",
+          transform: "uppercase",
+          value: "georgia",
+          variant: "small-caps",
+          weight: "700",
+        },
+      ],
     });
     const [row] = rowsOf(el);
     expect(row!.id).toMatch(/^jx-combobox-\d+-o0$/);
     expect(row!.getAttribute("face")).toBe("Georgia, serif");
     expect(row!.getAttribute("swatch")).toBe("red");
+    /* The five typographic channels pass through as they are: the combobox draws the row it was
+       handed and decides nothing about it. */
+    expect(row!.getAttribute("weight")).toBe("700");
+    expect(row!.getAttribute("slant")).toBe("italic");
+    expect(row!.getAttribute("variant")).toBe("small-caps");
+    expect(row!.getAttribute("transform")).toBe("uppercase");
+    expect(row!.getAttribute("decoration")).toBe("underline");
     expect(row!.querySelector('[part="label"]')?.textContent).toBe("Georgia");
     /* A row with no label of its own draws its value, which is what a suggestion list is. */
     el.options = [{ value: "bare" }];

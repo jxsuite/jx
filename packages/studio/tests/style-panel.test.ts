@@ -983,7 +983,8 @@ describe("the number control", () => {
  * A keyword row is one `jx-combobox` with `allows-custom-value` (ui.md §5.3): the field is the
  * value and the rows under it are the values worth offering. The unit row and the font row stay
  * the `group` composite — a field beside a kit MENU — because their lists run verbs rather than
- * commit values, which the font test below still exercises through the menu.
+ * commit values; the font row is a combobox too, because a menu row cannot draw itself in its own
+ * face and a font is chosen by looking, and what its commit WRITES is the adapter's.
  */
 describe("keyword and font lists", () => {
   /** The keyword rows a combobox row lists, by value, once its chevron has opened them. */
@@ -1023,22 +1024,49 @@ describe("keyword and font lists", () => {
     expect(selectedNode().style?.textTransform).toBe("full-width");
   });
 
-  test("a font token shows unwrapped, and choosing another points at it", async () => {
-    resetStudioState();
+  test("a font token shows unwrapped, and the list is every project font as its own specimen", async () => {
+    /* The site's fonts and the document's together, because a project declares its fonts once, in
+       `project.json`, and a list that read only the document offered a component none of them. */
+    resetStudioState({
+      projectConfig: { style: { "--font-ui": "Inter, sans-serif" } },
+    });
     const doc = {
       children: [{ style: { fontFamily: "var(--font-body)" }, tagName: "section" }],
-      style: { "--font-body": "Georgia, serif", "--font-display": "Futura, sans-serif" },
+      style: {
+        "--font-body": "Georgia, serif",
+        "--font-display": "var(--font-ui)",
+        "--font-nested": { not: "a font" },
+      },
       tagName: "div",
     } as unknown as JxMutableNode;
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
     const c = await renderPanel();
-    expect(input(row(c, "fontFamily"))!.value).toBe("--font-body");
-    const fonts = await openList(chooser(row(c, "fontFamily")));
-    click(listRow(fonts, "--font-display"));
+    const scope = row(c, "fontFamily");
+    expect(input(scope)!.value).toBe("--font-body");
+    /* A combobox over jx-option rows, not the group composite with a menu: a menu row is an action
+       and cannot draw itself in a typeface, and a font is chosen by looking. */
+    expect(chooser(scope)).toBeNull();
+    const values = await keywordRows(scope);
+    expect(values.slice(0, 3)).toEqual(["--font-ui", "--font-body", "--font-display"]);
+    const option = (value: string) =>
+      scope!.querySelector<HTMLElement>(`jx-option[value="${value}"]`)!;
+    expect(option("--font-body").getAttribute("label")).toBe("Body");
+    expect(option("--font-body").getAttribute("description")).toBe("--font-body");
+    expect(option("--font-body").getAttribute("face")).toBe("Georgia, serif");
+    /* An alias is followed to the stack at the end of the chain, so the row is set in a real face. */
+    expect(option("--font-display").getAttribute("face")).toBe("Inter, sans-serif");
+    /* The presets follow, each in its own face, named by the token a pick would mint. */
+    const preset = option("--font-geometric-humanist");
+    expect(preset.getAttribute("label")).toBe("Geometric Humanist");
+    expect(preset.getAttribute("face")).toContain("Avenir");
+    expect(preset.getAttribute("description")).toBe("");
+
+    option("--font-display").click();
     await settle();
     expect(selectedNode().style?.fontFamily).toBe("var(--font-display)");
+    expect(input(row(c, "fontFamily"))!.value).toBe("--font-display");
   });
 
   test("choosing a preset mints the token first, and never overwrites one that exists", async () => {
@@ -1051,19 +1079,121 @@ describe("keyword and font lists", () => {
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
     const c = await renderPanel();
-    const fonts = await openList(chooser(row(c, "fontFamily")));
-    const preset = fonts.find((el) => el.dataset.commandId?.startsWith("__preset__:"))!;
-    const title = preset.dataset.commandId!.slice("__preset__:".length);
-    click(preset);
+    const values = await keywordRows(row(c, "fontFamily"));
+    const varName = "--font-geometric-humanist";
+    expect(values).toContain(varName);
+    row(c, "fontFamily")!.querySelector<HTMLElement>(`jx-option[value="${varName}"]`)!.click();
     await settle();
-    const varName = `--font-${title.toLowerCase().replaceAll(/[^\da-z]+/g, "-")}`;
     const minted = activeTab.value!.doc.document.style?.[varName];
     expect(typeof minted).toBe("string");
+    expect(minted).toContain("Avenir");
     expect(selectedNode().style?.fontFamily).toBe(`var(${varName})`);
 
-    // Choosing it again finds the token already there and leaves its value alone.
-    await pickFrom(chooser(row(c, "fontFamily")), varName);
+    // Committing it again finds the token already there and leaves its value alone.
+    fire(input(row(c, "fontFamily")), "change", varName);
+    await settle();
     expect(activeTab.value!.doc.document.style?.[varName]).toBe(minted);
+    /* And, minted, it is a token row now: named for what it is, with its name beside it. */
+    await keywordRows(row(c, "fontFamily"));
+    const minted_row = row(c, "fontFamily")!.querySelector(`jx-option[value="${varName}"]`)!;
+    expect(minted_row.getAttribute("description")).toBe(varName);
+  });
+
+  test("a typed stack is the value itself, a typed token name is a reference, and typing mints nothing", async () => {
+    setupTab({ fontFamily: "var(--font-body)" });
+    activeTab.value!.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    fire(input(row(c, "fontFamily")), "change", "Georgia, serif");
+    await settle();
+    expect(selectedNode().style?.fontFamily).toBe("Georgia, serif");
+
+    /* A token name that is no preset's is pointed at as it is: the reader knows a token the
+       editor cannot see, and inventing a value for it would be worse than trusting them. */
+    fire(input(row(c, "fontFamily")), "change", "--font-ui");
+    await settle();
+    expect(selectedNode().style?.fontFamily).toBe("var(--font-ui)");
+    expect(activeTab.value!.doc.document.style).toBeUndefined();
+
+    /* The debounced edit that follows a keystroke commits the reference and mints nothing: a
+       reader halfway through a preset's name has not asked for a token. */
+    fire(input(row(c, "fontFamily")), "input", "--font-geometric-humanist");
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 450);
+    });
+    await settle();
+    expect(selectedNode().style?.fontFamily).toBe("var(--font-geometric-humanist)");
+    expect(activeTab.value!.doc.document.style).toBeUndefined();
+
+    fire(input(row(c, "fontFamily")), "change", "");
+    await settle();
+    expect(selectedNode().style?.fontFamily).toBeUndefined();
+  });
+
+  test("a typography row draws each value as itself, in the element's own face", async () => {
+    resetStudioState();
+    const doc = {
+      children: [
+        {
+          style: {
+            fontFamily: "var(--font-body)",
+            fontStyle: "normal",
+            fontVariant: "normal",
+            fontWeight: "400",
+            textDecoration: "none",
+            textTransform: "none",
+            whiteSpace: "normal",
+          },
+          tagName: "section",
+        },
+      ],
+      style: { "--font-body": "Georgia, serif" },
+      tagName: "div",
+    } as unknown as JxMutableNode;
+    const tab = resetWorkspaceWithTab(doc);
+    tab.session.selection = [["children", 0]];
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    const option = (prop: string, value: string) =>
+      row(c, prop)!.querySelector<HTMLElement>(`jx-option[value="${value}"]`)!;
+    /* Each axis reaches its row through the jx-option channel that draws it — a weight at that
+       weight, an italic leaning, a transform applied to the words without changing them — and
+       every one of them in the typeface the element is actually set in, followed through the
+       token, so `700` reads as 700 in Georgia rather than in the panel's own face. */
+    expect(option("fontWeight", "700").getAttribute("weight")).toBe("700");
+    expect(option("fontWeight", "700").getAttribute("face")).toBe("Georgia, serif");
+    expect(option("fontWeight", "700").getAttribute("label")).toBe("700");
+    expect(option("fontStyle", "italic").getAttribute("slant")).toBe("italic");
+    expect(option("fontVariant", "small-caps").getAttribute("variant")).toBe("small-caps");
+    expect(option("textTransform", "uppercase").getAttribute("transform")).toBe("uppercase");
+    expect(option("textTransform", "uppercase").getAttribute("label")).toBe("Uppercase");
+    expect(option("textDecoration", "underline wavy").getAttribute("decoration")).toBe(
+      "underline wavy",
+    );
+    /* A keyword row that is not about type carries no channel at all. */
+    expect(option("whiteSpace", "nowrap").getAttribute("weight")).toBe("");
+    expect(option("whiteSpace", "nowrap").getAttribute("face")).toBe("");
+  });
+
+  test("the preview face is the base context's when the breakpoint sets none, and none when nothing does", async () => {
+    /* `inheritedStyle` is the cascade WITHIN the coordinate — the base block under a breakpoint's —
+       so a weight edited at `sm` previews in the face the base block set. */
+    const tab = setupTab(
+      { "@sm": { fontWeight: "400" }, fontFamily: "Georgia, serif" },
+      { media: true },
+    );
+    tab.session.ui.activeMedia = "sm";
+    tab.session.ui.styleSections = { typography: true };
+    let c = await renderPanel();
+    expect(
+      row(c, "fontWeight")!.querySelector('jx-option[value="700"]')!.getAttribute("face"),
+    ).toBe("Georgia, serif");
+
+    setupTab({ fontWeight: "400" });
+    activeTab.value!.session.ui.styleSections = { typography: true };
+    c = await renderPanel();
+    expect(
+      row(c, "fontWeight")!.querySelector('jx-option[value="700"]')!.getAttribute("face"),
+    ).toBe("");
   });
 });
 
@@ -1148,6 +1278,39 @@ describe("the colour row", () => {
        the browser can resolve, and the field shows it rather than replacing it with black. */
     expect(colourField(c)!.value).toBe("var(--color-accent)");
     expect(input(row(c, "color"), "text")!.value).toBe("var(--color-accent)");
+    /* A token the effective style does not define resolves to nothing, and the field is told so. */
+    expect(colourField(c)!.resolved).toBe("");
+  });
+
+  test("a token value hands the field the literal behind it, so the chip can draw it", async () => {
+    /* `var(--color-accent)` resolves in the canvas and nowhere in Studio's own page, so the chip
+       drew the no-colour checkerboard the moment a swatch was picked. The row follows the token
+       through the effective style — the site's block under the document's — to the colour. */
+    resetStudioState({ projectConfig: { style: { "--color-accent": "#0d9488" } } });
+    const doc = {
+      children: [{ style: { color: "var(--color-ink)" }, tagName: "section" }],
+      style: { "--color-ink": "var(--color-accent)" },
+      tagName: "div",
+    } as unknown as JxMutableNode;
+    const tab = resetWorkspaceWithTab(doc);
+    tab.session.selection = [["children", 0]];
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    const field = colourField(c)!;
+    expect(field.value).toBe("var(--color-ink)");
+    expect(field.resolved).toBe("#0d9488");
+    expect(field.dataset["resolved"]).toBe("#0d9488");
+    expect(field.style.getPropertyValue("--jx-color-field-preview")).toBe("#0d9488");
+
+    /* Picking the other token re-answers, and a literal draws itself with nothing resolved. */
+    click(swatches(c)[0]!.querySelector('[part="control"]'));
+    await settle();
+    expect(selectedNode().style?.color).toBe("var(--color-accent)");
+    expect(colourField(c)!.resolved).toBe("#0d9488");
+    fire(input(row(c, "color"), "text"), "change", "#ff0000");
+    await settle();
+    expect(colourField(c)!.resolved).toBe("");
+    expect(colourField(c)!.style.getPropertyValue("--jx-color-field-preview")).toBe("#ff0000");
   });
 
   test("typing a colour into the field commits it; a word that is not one commits nothing", async () => {

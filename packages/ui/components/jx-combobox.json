@@ -43,7 +43,7 @@
     "options": {
       "type": "array",
       "default": [],
-      "description": "The rows to draw, as { value, label?, description?, disabled?, face?, swatch?, line? }. THE ELEMENT FILTERS NOTHING: this is the list that will be shown, not a corpus to match against. Every consumer already owns its own matching — a fuzzy ranker that knows about modes and recents, a catalogue fetched from a provider — so a second opinion here would be one more thing for each of them to defeat. A host re-answers it on input. It carries no attribute key, because a list cannot be one. Empty, there is nothing to open: the chevron is not drawn (data-empty) and neither typing nor an arrow shows the panel, so a field whose catalogue has not arrived is a text field until it does."
+      "description": "The rows to draw, as { value, label?, description?, disabled?, face?, swatch?, line?, weight?, slant?, variant?, transform?, decoration? } — the last eight being jx-option's drawing channels, passed through as they are. THE ELEMENT FILTERS NOTHING: this is the list that will be shown, not a corpus to match against. Every consumer already owns its own matching — a fuzzy ranker that knows about modes and recents, a catalogue fetched from a provider — so a second opinion here would be one more thing for each of them to defeat. A host re-answers it on input. It carries no attribute key, because a list cannot be one. Empty, there is nothing to open: the chevron is not drawn (data-empty) and neither typing nor an arrow shows the panel, so a field whose catalogue has not arrived is a text field until it does."
     },
     "allowsCustomValue": {
       "type": "boolean",
@@ -497,6 +497,11 @@
                   "face": "${$map.item.face || ''}",
                   "swatch": "${$map.item.swatch || ''}",
                   "line": "${$map.item.line || ''}",
+                  "weight": "${$map.item.weight || ''}",
+                  "slant": "${$map.item.slant || ''}",
+                  "variant": "${$map.item.variant || ''}",
+                  "transform": "${$map.item.transform || ''}",
+                  "decoration": "${$map.item.decoration || ''}",
                   "disabled": "${!!$map.item.disabled}"
                 }
               }

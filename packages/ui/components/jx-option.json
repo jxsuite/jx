@@ -10,7 +10,12 @@
     "disabled",
     "face",
     "swatch",
-    "line"
+    "line",
+    "weight",
+    "slant",
+    "variant",
+    "transform",
+    "decoration"
   ],
   "state": {
     "value": {
@@ -60,6 +65,36 @@
       "default": "",
       "attribute": "line",
       "description": "A border-style keyword drawn as a short rule before the label: solid, dashed, dotted, double. Absent by default."
+    },
+    "weight": {
+      "type": "string",
+      "default": "",
+      "attribute": "weight",
+      "description": "The font weight the label draws in, for a row that IS its own preview: 700, bold, lighter. It reaches the label the way face does, as a custom property set inline on that span, so a list of nine weights interns one rule. Absent draws the row's own weight."
+    },
+    "slant": {
+      "type": "string",
+      "default": "",
+      "attribute": "slant",
+      "description": "The font style the label draws in: italic or oblique. Named slant rather than style because style is the attribute every element already has. Absent draws upright."
+    },
+    "variant": {
+      "type": "string",
+      "default": "",
+      "attribute": "variant",
+      "description": "The font variant the label draws in: small-caps. Absent draws the row's own."
+    },
+    "transform": {
+      "type": "string",
+      "default": "",
+      "attribute": "transform",
+      "description": "The text transform the label draws with: uppercase, lowercase, capitalize. The label's WORDS are unchanged, so a reader hears the row's name and sees what choosing it would do. Absent draws the words as written."
+    },
+    "decoration": {
+      "type": "string",
+      "default": "",
+      "attribute": "decoration",
+      "description": "The text decoration the label draws with, as any text-decoration value: underline, line-through, underline wavy. Absent draws none."
     },
     "noSwatch": {
       "$expression": {
@@ -189,7 +224,12 @@
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
-      "fontFamily": "var(--jx-row-face, inherit)"
+      "fontFamily": "var(--jx-row-face, inherit)",
+      "fontWeight": "var(--jx-row-weight, inherit)",
+      "fontStyle": "var(--jx-row-slant, inherit)",
+      "fontVariant": "var(--jx-row-variant, inherit)",
+      "textTransform": "var(--jx-row-transform, inherit)",
+      "textDecoration": "var(--jx-row-decoration, inherit)"
     },
     "& [part=\"description\"]": {
       "display": "block",
@@ -273,7 +313,12 @@
         "part": "label"
       },
       "style": {
-        "--jx-row-face": "${state.face || 'inherit'}"
+        "--jx-row-face": "${state.face || 'inherit'}",
+        "--jx-row-weight": "${state.weight || 'inherit'}",
+        "--jx-row-slant": "${state.slant || 'inherit'}",
+        "--jx-row-variant": "${state.variant || 'inherit'}",
+        "--jx-row-transform": "${state.transform || 'inherit'}",
+        "--jx-row-decoration": "${state.decoration || 'inherit'}"
       },
       "textContent": "${state.label}"
     },

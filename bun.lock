@@ -132,6 +132,10 @@
         "@happy-dom/global-registrator": "^20.12.2",
       },
     },
+    "packages/catalog": {
+      "name": "@jxsuite/catalog",
+      "version": "0.1.0",
+    },
     "packages/collab": {
       "name": "@jxsuite/collab",
       "version": "0.8.5",
@@ -201,10 +205,6 @@
         "electrobun": "2.0.1",
         "rcedit": "^5.0.2",
       },
-    },
-    "packages/catalog": {
-      "name": "@jxsuite/catalog",
-      "version": "0.1.0",
     },
     "packages/formulas": {
       "name": "@jxsuite/formulas",
@@ -292,10 +292,10 @@
       "name": "@jxsuite/server",
       "version": "4.1.0",
       "dependencies": {
+        "@jxsuite/catalog": "workspace:^",
         "@jxsuite/collab": "workspace:^",
         "@jxsuite/compiler": "workspace:^",
         "@jxsuite/create": "workspace:^",
-        "@jxsuite/catalog": "workspace:^",
         "@jxsuite/import": "workspace:^",
         "@jxsuite/protocol": "workspace:^",
         "@jxsuite/runtime": "workspace:^",
@@ -819,6 +819,8 @@
 
     "@jxsuite/auth": ["@jxsuite/auth@workspace:extensions/auth"],
 
+    "@jxsuite/catalog": ["@jxsuite/catalog@workspace:packages/catalog"],
+
     "@jxsuite/collab": ["@jxsuite/collab@workspace:packages/collab"],
 
     "@jxsuite/compiler": ["@jxsuite/compiler@workspace:packages/compiler"],
@@ -830,8 +832,6 @@
     "@jxsuite/desktop": ["@jxsuite/desktop@workspace:packages/desktop"],
 
     "@jxsuite/examples": ["@jxsuite/examples@workspace:examples"],
-
-    "@jxsuite/catalog": ["@jxsuite/catalog@workspace:packages/catalog"],
 
     "@jxsuite/feed": ["@jxsuite/feed@workspace:extensions/feed"],
 

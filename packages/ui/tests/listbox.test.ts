@@ -41,6 +41,11 @@ type OptionEl = HTMLElement & {
   face: string;
   swatch: string;
   line: string;
+  weight: string;
+  slant: string;
+  variant: string;
+  transform: string;
+  decoration: string;
 };
 type ListboxEl = HTMLElement & { label: string; labelledby: string; active: string };
 
@@ -52,6 +57,11 @@ interface RowSpec {
   face?: string;
   swatch?: string;
   line?: string;
+  weight?: string;
+  slant?: string;
+  variant?: string;
+  transform?: string;
+  decoration?: string;
 }
 
 beforeAll(async () => {
@@ -228,6 +238,39 @@ describe("jx-option", () => {
     expect(face!.querySelector('[part="swatch"]')?.hasAttribute("hidden")).toBe(true);
     expect(face!.querySelector('[part="description"]')?.hasAttribute("hidden")).toBe(true);
     expect(ruleFor(face!, '[part="swatch"][hidden]')).toContain("display: none");
+  });
+
+  test("the five typographic channels set the label in the value the row offers", async () => {
+    /* A weight row's `700` is set in 700 and an italic row's `Italic` leans: the row IS its own
+       preview, which is what the Style tab's typography rows are made of. Each channel reaches the
+       LABEL span as a custom property, as `face` does, so nine weights intern one rule — and the
+       words are unchanged, so a reader hears the row's name and sees what choosing it would do. */
+    const list = await listbox([
+      { label: "Bold", value: "700", weight: "700" },
+      { label: "Italic", slant: "italic", value: "italic" },
+      { label: "Small caps", value: "small-caps", variant: "small-caps" },
+      { label: "Uppercase", transform: "uppercase", value: "uppercase" },
+      { decoration: "underline wavy", label: "Wavy", value: "underline wavy" },
+      { label: "Plain", value: "plain" },
+    ]);
+    const [bold, italic, caps, upper, wavy, plain] = rowsOf(list);
+    const styleOf = (row: HTMLElement | undefined) =>
+      row!.querySelector('[part="label"]')?.getAttribute("style") ?? "";
+    expect(styleOf(bold)).toContain("--jx-row-weight: 700");
+    expect(styleOf(italic)).toContain("--jx-row-slant: italic");
+    expect(styleOf(caps)).toContain("--jx-row-variant: small-caps");
+    expect(styleOf(upper)).toContain("--jx-row-transform: uppercase");
+    expect(styleOf(wavy)).toContain("--jx-row-decoration: underline wavy");
+    /* A channel the row was not given falls back to the row's own, never to a value of its own. */
+    expect(styleOf(plain)).toContain("--jx-row-weight: inherit");
+    expect(styleOf(plain)).toContain("--jx-row-decoration: inherit");
+    expect(upper!.querySelector('[part="label"]')?.textContent).toBe("Uppercase");
+    const rule = ruleFor(bold!, '[part="label"]');
+    expect(rule).toContain("font-weight: var(--jx-row-weight, inherit)");
+    expect(rule).toContain("font-style: var(--jx-row-slant, inherit)");
+    expect(rule).toContain("font-variant: var(--jx-row-variant, inherit)");
+    expect(rule).toContain("text-transform: var(--jx-row-transform, inherit)");
+    expect(rule).toContain("text-decoration: var(--jx-row-decoration, inherit)");
   });
 
   test("a click picks the row and a disabled row picks nothing", async () => {

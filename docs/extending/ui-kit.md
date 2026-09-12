@@ -242,7 +242,7 @@ A number input throws away what it cannot parse, so a half-typed `1e` and a clea
 }
 ```
 
-A row is a `value` and a `label`, plus any of `description`, `disabled`, `face`, `swatch` and `line`. `face` sets that row's font, `swatch` fills a small block of colour beside it, and `line` draws a sample of a border style such as `dashed`. Give `options` instead of `groups` for a flat list, or give both: the ungrouped rows are drawn first.
+A row is a `value` and a `label`, plus any of `description`, `disabled`, `face`, `swatch`, `line`, `weight`, `slant`, `variant`, `transform` and `decoration`. `face` sets that row's font, `swatch` fills a small block of colour beside it, and `line` draws a sample of a border style such as `dashed`. The last five set the row's words in a font weight, a font style (`slant`, since `style` is already an attribute), a font variant, a text transform and a text decoration, so a list of weights reads as its weights. They change how the words are drawn and never the words themselves. Give `options` instead of `groups` for a flat list, or give both: the ungrouped rows are drawn first.
 
 `value` is a string, and the empty string is one of its values rather than the absence of one, so a blank row can mean "inherit". Set `value` to something no row holds and the element adds a row for it instead of quietly selecting the first one.
 
@@ -275,7 +275,7 @@ The drawing needs a browser with customizable select: Chrome or Edge 135 and lat
 }
 ```
 
-A row is a `value` plus any of `label`, `description`, `disabled`, `face`, `swatch` and `line`, the same drawing channels a `jx-select` row carries. `value` is the text in the field, so a row's label is normally the same string it commits: a picker whose rows carry a hidden key is a `jx-select`.
+A row is a `value` plus any of `label`, `description`, `disabled`, `face`, `swatch`, `line`, `weight`, `slant`, `variant`, `transform` and `decoration`, the same drawing channels a `jx-select` row carries. `value` is the text in the field, so a row's label is normally the same string it commits: a picker whose rows carry a hidden key is a `jx-select`.
 
 **The element does not filter.** `options` is the list it will draw, not a corpus it searches. You already know how to rank your own rows, so re-answer `options` when you hear the `input` event and the list redraws.
 
@@ -315,7 +315,7 @@ The arrows open the list and move through it, wrapping and stepping over disable
 
 That one id is the whole contract. Write it into the listbox's `active` and into your field's `aria-activedescendant`, and the listbox marks the row, clears the one before it, and scrolls the new one back into view. It keeps doing so when the rows themselves change, so a filter that rebuilds the list does not lose the highlight.
 
-A row's words are its `label`, and `description` is a muted note at the end of it. `slot="icon"` takes a glyph and `slot="end"` takes one mark or chord. Each channel you leave out draws nothing. `jx-option` sends a bubbling `select` event whose detail is its `value`, so one listener on the panel hears every row. There is no default slot, on purpose: an option names itself from its contents, so a badge beside the words would join the row's name, and `label` is the only thing that does. The empty string is a legal `value`, a row meaning inherit or none, and never absence. A `disabled` row stays in the list and announced and dispatches nothing when clicked. `face`, `swatch` and `line` draw the row as its own preview, as on a `jx-select` row. A press on a row keeps the caret where it was, so a click never blurs the field that owns the keyboard. Its parts are `swatch`, `line`, `icon`, `label`, `description` and `end`; `jx-listbox` has none, because it is only the box the rows stand in.
+A row's words are its `label`, and `description` is a muted note at the end of it. `slot="icon"` takes a glyph and `slot="end"` takes one mark or chord. Each channel you leave out draws nothing. `jx-option` sends a bubbling `select` event whose detail is its `value`, so one listener on the panel hears every row. There is no default slot, on purpose: an option names itself from its contents, so a badge beside the words would join the row's name, and `label` is the only thing that does. The empty string is a legal `value`, a row meaning inherit or none, and never absence. A `disabled` row stays in the list and announced and dispatches nothing when clicked. `face`, `swatch`, `line`, `weight`, `slant`, `variant`, `transform` and `decoration` draw the row as its own preview, as on a `jx-select` row. A press on a row keeps the caret where it was, so a click never blurs the field that owns the keyboard. Its parts are `swatch`, `line`, `icon`, `label`, `description` and `end`; `jx-listbox` has none, because it is only the box the rows stand in.
 
 Two parts are yours to write and the listbox draws them: a node carrying `part="group-heading"` above a run of rows, and a node carrying `part="empty"` for the sentence you show when nothing matched. What that sentence says is yours, because only you know what the reader was looking for.
 
@@ -741,6 +741,8 @@ Every `input` and `change` carries the modifier keys that step was made with as 
 The element writes hex by default. Set `format` to `"oklch"` and it writes `oklch()` instead. That decides what it writes, never what it reads: a reader may type hex, `rgb()` or `oklch()` into the text box either way, and a half-typed value is only refused once they commit it.
 
 A value the field cannot take apart is kept rather than refused. Hand it `var(--brand-accent)` or a named colour and it holds the string, shows it in the text box, and still draws it in the swatch, because the browser resolves it. Only the picker's sliders are stale, and the first thing the reader moves replaces the token with a literal.
+
+When the browser cannot resolve it either, because the token is defined in a page other than the one drawing the field, set `resolved` to the colour the reference stands for. The swatch draws that, the picker opens on it, and the value stays the reference. Clear it when the value stops being a reference; empty, the swatch draws the value itself.
 
 `alpha` adds the opacity track to the picker and the alpha channel to the value. Leave it off and every value the field writes is opaque, so a field feeding a property with no alpha cannot be handed one by accident.
 

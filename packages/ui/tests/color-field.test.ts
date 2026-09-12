@@ -23,6 +23,7 @@ type JxColorField = HTMLElement & {
   solid: string;
   disabled: boolean;
   tabindex: string;
+  resolved: string;
 };
 
 interface Dropper {
@@ -433,6 +434,38 @@ describe("jx-color-field", () => {
     expect(el.text).toBe("var(--jx-accent-solid)");
     /* The chip still draws it, because its background is that string handed to CSS. */
     expect(el.style.getPropertyValue("--jx-color-field-preview")).toBe("var(--jx-accent-solid)");
+  });
+
+  test("a resolved colour is what the chip draws and the picker opens on, while the value stays a reference", async () => {
+    /* Studio edits a document whose `--color-*` live in the canvas, so `var(--color-accent)` is
+       nothing to this page's CSS: without help the chip drew the no-colour checkerboard the moment
+       a palette swatch was picked. `resolved` is the host saying what the reference stands for. */
+    const el = await field({ resolved: "#0d9488", value: "var(--color-accent)" });
+    expect(el.value).toBe("var(--color-accent)");
+    expect(el.text).toBe("var(--color-accent)");
+    expect(el.invalid).toBe(false);
+    expect(el.style.getPropertyValue("--jx-color-field-preview")).toBe("#0d9488");
+    /* The channels are seeded from it, so a drag starts from the token's own colour. */
+    expect(el.solid).toBe("#0d9488");
+    expect(Math.round(el.hue)).toBe(175);
+    /* And the chip's boundary is drawn in an ink chosen for THAT colour, not for nothing. */
+    expect(["black", "white"]).toContain(el.ink);
+
+    /* The host re-answers as the value moves: a literal draws itself once `resolved` is cleared. */
+    el.value = "#ff0000";
+    el.resolved = "";
+    await tick();
+    expect(el.style.getPropertyValue("--jx-color-field-preview")).toBe("#ff0000");
+    expect(el.solid).toBe("#ff0000");
+
+    /* And a token whose definition changed under the same reference re-seeds from the new answer:
+       `data-resolved` is watched exactly as `data-value` is. */
+    el.value = "var(--color-accent)";
+    el.resolved = "#0000ff";
+    await tick();
+    expect(el.text).toBe("var(--color-accent)");
+    expect(el.style.getPropertyValue("--jx-color-field-preview")).toBe("#0000ff");
+    expect(el.solid).toBe("#0000ff");
   });
 
   test("a host write clears a refusal the reader earned", async () => {

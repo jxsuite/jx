@@ -106,11 +106,12 @@ import {
   expandShorthand,
   getCssInitialMap,
   getFontVars,
+  TYPO_PREVIEW_CHANNELS,
   getLonghands,
 } from "./style-utils";
 import { UNIT_RE } from "../ui/unit-selector";
-import { colorTokens } from "../ui/color-selector";
-import { toTokenRef, tokenRefName } from "../style/token-ref";
+import { colorTokens, resolvedColor } from "../ui/color-selector";
+import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
@@ -828,67 +829,104 @@ function keywordChoices(options: string[], value: string): StyleChoice[] {
   return options.map((v) => ({ checked: v === value, label: keywordLabel(v), value: v }));
 }
 
-/** The keyword list a `keywords` row suggests under its field. */
-function keywordOptions(options: string[]): StyleOptionView[] {
-  return options.map((v) => ({ label: keywordLabel(v), value: v }));
+/**
+ * The keyword list a `keywords` row suggests under its field.
+ *
+ * A typography row's options are their own preview: the axis the row moves is set on each option as
+ * the value it offers, through the `jx-option` channel `TYPO_PREVIEW_CHANNELS` names, and every
+ * such option is set in the element's own `face` — so a weight row shows `700` at 700 in the
+ * typeface the element actually uses, rather than in the panel's. Any other row's options are the
+ * words alone.
+ */
+function keywordOptions(options: string[], prop: string, face: string): StyleOptionView[] {
+  const channel = TYPO_PREVIEW_CHANNELS[prop];
+  return options.map((v) => {
+    const option: StyleOptionView = { label: keywordLabel(v), value: v };
+    if (channel) {
+      option[channel] = v;
+      option.face = face;
+    }
+    return option;
+  });
 }
 
 /**
- * The font list: the document's own `--font-*` tokens first, then the presets it has not minted
- * yet. Picking a preset MINTS the token and points the property at it, which is what makes a second
- * element reusing the same font one decision rather than two copies of a stack.
+ * The typeface the edited element is set in, for the typography rows to preview their values in:
+ * its own `fontFamily`, else the base context's when a breakpoint is being edited (which is what
+ * `inheritedStyle` holds — the cascade within the coordinate, not the ancestors'), followed through
+ * the effective style to the stack at the end of the chain. Empty when the element has no typeface
+ * of its own or the reference cannot be followed, in which case the rows are set in the panel's.
  */
-function fontChoices(entry: CssPropertyEntry, value: string): StyleChoice[] {
+function previewFace(ctx: EditorCtx): string {
+  const raw = ctx.activeStyle.fontFamily ?? ctx.inheritedStyle.fontFamily;
+  if (typeof raw !== "string" && typeof raw !== "number") {
+    return "";
+  }
+  const resolved = resolveTokenValue(getEffectiveStyle(ctx.tab.doc.document?.style), raw);
+  return resolved === undefined ? "" : String(resolved);
+}
+
+/** The Modern Font Stacks a `fontFamily` entry offers, as css-meta.json states them. */
+function fontPresets(entry: CssPropertyEntry): { title: string; value: string }[] {
+  return Array.isArray(entry.presets) ? (entry.presets as { title: string; value: string }[]) : [];
+}
+
+/**
+ * The font list: the project's `--font-*` tokens first — the site's and the document's together,
+ * which is where a project declares its fonts once — then the presets it has not minted yet. Every
+ * row is its own specimen through `face`, which is the reason this is a combobox over `jx-option`
+ * rows rather than the kit menu it used to be: a menu row is an action and cannot draw itself in a
+ * typeface (ui.md §5.1), and a font is the one thing a reader chooses by looking.
+ *
+ * A row's VALUE is a token's name, minted or not, because that is what the field holds after a pick
+ * and what the commit turns into `var(--name)`. A token row says its name beside its title, so what
+ * the pick will write is in the list; a preset row is bare, which is what tells the two groups
+ * apart in a list that draws no divider.
+ */
+function fontOptions(entry: CssPropertyEntry): StyleOptionView[] {
   const fontVars = getFontVars();
-  const presets = Array.isArray(entry.presets)
-    ? (entry.presets as { title: string; value: string }[])
-    : [];
-  const current = tokenRefName(value) ?? value;
-  const choices: StyleChoice[] = fontVars.map((fv) => ({
-    checked: fv.name === current,
+  const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
+  const options: StyleOptionView[] = fontVars.map((fv) => ({
+    description: fv.name,
+    face: String(resolveTokenValue(style, fv.value) ?? fv.value),
     label: varDisplayName(fv.name, "--font-"),
     value: fv.name,
   }));
-  const unadded = presets.filter(
-    (p) => !fontVars.some((fv) => fv.name === friendlyNameToVar(p.title, "--font-")),
-  );
-  for (const [index, p] of unadded.entries()) {
-    choices.push({
-      checked: false,
-      label: p.title,
-      value: `__preset__:${p.title}`,
-      ...(index === 0 && choices.length > 0 ? { divider: true } : {}),
-    });
+  for (const preset of fontPresets(entry)) {
+    const name = friendlyNameToVar(preset.title, "--font-");
+    if (!fontVars.some((fv) => fv.name === name)) {
+      options.push({ face: preset.value, label: preset.title, value: name });
+    }
   }
-  return choices;
+  return options;
 }
 
 /**
- * Take a font choice: an existing token points the property at it; a preset is minted into the
- * document's own style first, so the token exists before anything references it.
+ * What the font field WRITES. A token name becomes the reference that points at it; free text —
+ * `Georgia, serif` — is the value itself; and the empty string clears. A name that is a preset's
+ * and no token yet is minted into the document's own style first, so the token exists before
+ * anything references it — but only on a COMMIT, never on the debounced edit that follows each
+ * keystroke: a reader halfway through typing `--font-slab-serif` has not asked for a token, and one
+ * minted early would be left behind when they finished typing something else.
  */
-function applyFontChoice(
+function commitFont(
   entry: CssPropertyEntry,
-  chosen: string,
+  raw: string,
+  mint: boolean,
   onCommit: (value: string) => void,
 ): void {
-  if (chosen.startsWith("__preset__:")) {
-    const title = chosen.slice("__preset__:".length);
-    const presets = Array.isArray(entry.presets)
-      ? (entry.presets as { title: string; value: string }[])
-      : [];
-    const preset = presets.find((p) => p.title === title);
-    if (!preset) {
-      return;
-    }
-    const varName = friendlyNameToVar(preset.title, "--font-");
-    if (!activeTab.value?.doc.document?.style?.[varName]) {
-      transactDoc(activeTab.value, (t) => mutateUpdateStyle(t, [], varName, preset.value));
-    }
-    onCommit(toTokenRef(varName));
+  const name = raw.trim();
+  if (!name.startsWith("--")) {
+    onCommit(raw);
     return;
   }
-  onCommit(chosen.startsWith("--") ? toTokenRef(chosen) : chosen);
+  if (mint && getEffectiveStyle(activeTab.value?.doc.document?.style)[name] === undefined) {
+    const preset = fontPresets(entry).find((p) => friendlyNameToVar(p.title, "--font-") === name);
+    if (preset) {
+      transactDoc(activeTab.value, (t) => mutateUpdateStyle(t, [], name, preset.value));
+    }
+  }
+  onCommit(toTokenRef(name));
 }
 
 /** A blank row, so every `$switch` case reads a path that exists whatever the row draws. */
@@ -922,6 +960,7 @@ function blankRow(key: string, prop: string, kind: StyleRowView["kind"]): StyleR
     placeholder: "",
     prop,
     removeLabel: "",
+    resolved: "",
     sourceHint: "",
     sourceLabel: "",
     sourceState: "literal",
@@ -1057,6 +1096,9 @@ function fieldRow(
       row.widget = "color";
       row.tokens = colorTokens();
       row.hasTokens = row.tokens.length > 0;
+      /* The literal behind a token, for the chip: `var(--color-accent)` resolves in the canvas and
+         nowhere in this page, so without it a pick from the palette drew the no-colour chip. */
+      row.resolved = resolvedColor(value);
       /* Both verbs, as a text row has: the field says `input` on every frame of a drag and
          `change` when the reader lets go, so the drag is debounced into one write per pause and
          the release lands immediately. */
@@ -1138,32 +1180,24 @@ function fieldRow(
         : Array.isArray(entry.examples)
           ? (entry.examples as string[])
           : [];
+      // A keyword row is the combobox contract exactly: the field IS the value, and the rows
+      // Under it are the values worth offering. `allows-custom-value` is what makes an enum a
+      // List of suggestions rather than a whitelist — `full-width` is a text-transform whether or
+      // Not the catalogue names it. The font row is the same element over a different list, with
+      // A token showing as its own name rather than as the `var()` around it: the field edits
+      // Which token this is, and `var(--font-body)` is punctuation the reader did not type. What
+      // Differs is what a commit WRITES, and that is `commitFont`'s.
+      row.widget = "keywords";
       if (prop === "fontFamily") {
-        // The font row is the `group` composite rather than a combobox, and the reason is what a
-        // Pick DOES: a preset in its list is minted into a `--font-*` token before the property is
-        // Pointed at it, and a token is chosen by name. A combobox commits a row's VALUE into the
-        // Field, which is right for a keyword and wrong for an action, so the list stays the kit
-        // Menu, which runs a verb per row (ui.md §5.5, jx-token-field).
-        const choices = fontChoices(entry, value);
-        row.widget = "group";
-        row.choicesLabel = "";
-        row.choicesHint = `Values for ${row.label.toLowerCase()}`;
-        // A token shows as its own name rather than as the `var()` around it: the field edits which
-        // Token this is, and `var(--font-body)` is punctuation the reader did not type.
         row.value = tokenRefName(value) ?? value;
-        row.hasChoices = choices.length > 0;
-        actions.choices = choices;
-        actions.choose = (chosen) => applyFontChoice(entry, chosen, commitLiteral);
+        row.options = fontOptions(entry);
+        actions.edit = (v) => commitFont(entry, v, false, commitLiteral);
+        actions.commit = (v) => commitFont(entry, v, true, commitLiteral);
       } else {
-        // A keyword row is the combobox contract exactly: the field IS the value, and the rows
-        // Under it are the values worth offering. `allows-custom-value` is what makes an enum a
-        // List of suggestions rather than a whitelist — `full-width` is a text-transform whether or
-        // Not the catalogue names it.
-        row.widget = "keywords";
-        row.options = keywordOptions(options);
+        row.options = keywordOptions(options, prop, previewFace(ctx));
+        actions.edit = commitLiteral;
+        actions.commit = commitLiteral;
       }
-      actions.edit = commitLiteral;
-      actions.commit = commitLiteral;
       actions.debounceId = `kw:${key}`;
       break;
     }
