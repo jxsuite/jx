@@ -36,12 +36,14 @@ describe("a declaration at-rule may hold several blocks", () => {
     return result.valid;
   };
 
-  test("every declaration at-rule, and one block under the key is still fine", async () => {
-    for (const key of ["@font-face", "@property --a", "@position-try --p", "@counter-style c"]) {
+  /* One test per at-rule rather than one loop: a validation against the document schema costs
+     over half a second on a CI runner, and eight of them in one test crossed the 5s timeout. */
+  for (const key of ["@font-face", "@property --a", "@position-try --p", "@counter-style c"]) {
+    test(`${key} takes several blocks, and one block under the key is still fine`, async () => {
       expect(await accepts({ [key]: [{ syntax: "a" }] }), key).toBe(true);
       expect(await accepts({ [key]: { syntax: "a" } }), key).toBe(true);
-    }
-  });
+    });
+  }
 
   test("a selector key refuses an array, because the builder drops one", async () => {
     expect(await accepts({ ":hover": [{ color: "red" }] })).toBe(false);
