@@ -18729,6 +18729,19 @@
             }
           ]
         },
+        "max-size": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
         "max-width": {
           "oneOf": [
             {
@@ -18782,6 +18795,19 @@
           ]
         },
         "maxLines": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
+        "maxSize": {
           "oneOf": [
             {
               "type": "string"
@@ -18859,6 +18885,19 @@
             }
           ]
         },
+        "min-size": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
         "min-width": {
           "oneOf": [
             {
@@ -18912,6 +18951,19 @@
           ]
         },
         "minIntrinsicSizing": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
+        "minSize": {
           "oneOf": [
             {
               "type": "string"
@@ -23085,6 +23137,19 @@
           ]
         },
         "shapeRendering": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
+        "size": {
           "oneOf": [
             {
               "type": "string"
