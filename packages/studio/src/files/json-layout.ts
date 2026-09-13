@@ -87,12 +87,12 @@ export function deriveJsonLayout(text: string): JsonLayout {
   /** Skip whitespace; report how many line breaks were among it. */
   const space = (): number => {
     let newlines = 0;
-    while (i < text.length) {
-      const c = text[i];
-      if (c === "\n") {
+    while (
+      i < text.length &&
+      (text[i] === " " || text[i] === "\t" || text[i] === "\r" || text[i] === "\n")
+    ) {
+      if (text[i] === "\n") {
         newlines += 1;
-      } else if (c !== " " && c !== "\t" && c !== "\r") {
-        break;
       }
       i += 1;
     }
