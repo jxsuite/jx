@@ -3,9 +3,11 @@
  * Contributed settings section — the generic renderer behind `$studio.settings`
  * (specs/extensions.md §9.1). An extension's `project` class declares a settings section and this
  * module renders it over `projectConfig[key]`: layout "form" is one schema form over the whole
- * section value; layout "map" is master-detail (key list left, entry form right) for `type: object`
- * + `additionalProperties` sections. Persistence mirrors the content-types editor: mutate
- * projectState.projectConfig and rewrite project.json through the platform.
+ * section value; layout "map" is master-detail (key list left, entry form right) for `type:
+ * object`
+ *
+ * - `additionalProperties` sections. Persistence mirrors the content-types editor: mutate
+ *   projectState.projectConfig and rewrite project.json through the platform.
  *
  * **The markup left.** The section is the `settings-contributed` surface
  * (`surfaces/settings-contributed.json`), mounted by `surfaces/settings-contributed.ts`; what is
