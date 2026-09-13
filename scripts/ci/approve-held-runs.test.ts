@@ -321,7 +321,7 @@ describe("the CLI", () => {
       expect(stdout).toContain("1 run(s) on 3e6b589: 0 approved, 1 refused, 1 still held");
       expect(await Bun.file(noteFile).text()).toContain("actions/runs/7/approve");
     } finally {
-      server.stop(true);
+      await server.stop(true);
     }
   });
 
