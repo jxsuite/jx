@@ -641,8 +641,7 @@ export function dismissOverflowMenu() {
 
 /**
  * List the off-screen tabs. Falls back to every tab when nothing measures as hidden, because an
- * empty menu is a dead control and happy-dom (plus any zero-height layout) measures everything at
- * 0.
+ * empty menu is a dead control and happy-dom (plus any zero-height layout) measures everything at 0.
  *
  * **The kit menu, not a popover of this strip's own** (guidelines §8.4). `surfaces/menu.ts` owns
  * the panel, the roving caret, the typeahead, Escape and the light dismissal, and it clamps the

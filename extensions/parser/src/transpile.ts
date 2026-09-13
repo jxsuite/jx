@@ -759,10 +759,11 @@ export function transpileJxMarkdown(source: string) {
  * search deep links (specs/parser.md).
  *
  * **NFC first, and that is the whole point of the change** (UAX #15). "Café" typed on macOS is `e`
- * + U+0301; the same word typed on Windows, or pasted from a web page, is U+00E9. They look
- * identical, they compare unequal, and they produced two different anchors — so a link written
- * against one heading silently stopped working when someone re-typed the heading. Normalizing puts
- * both spellings in one form before anything else looks at them.
+ *
+ * - U+0301; the same word typed on Windows, or pasted from a web page, is U+00E9. They look
+ *   identical, they compare unequal, and they produced two different anchors — so a link written
+ *   against one heading silently stopped working when someone re-typed the heading. Normalizing
+ *   puts both spellings in one form before anything else looks at them.
  *
  * **`toLowerCase`, never `toLocaleLowerCase`.** Locale-sensitive casing would make the same heading
  * produce different anchors in different projects — Turkish maps `I` to `ı`, not `i` — and an
