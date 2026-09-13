@@ -145,6 +145,16 @@ describe("deriveJsonLayout", () => {
     expect(layout.escaped.size).toBe(0);
   });
 
+  test("text that ends inside a container is scanned to its end and not beyond", () => {
+    /*
+     * The scanner is only ever handed text `JSON.parse` accepted, so an unterminated container is
+     * not a shape it meets in Studio; the loops still stop at the end of the text rather than read
+     * past it, and what was recorded before the text ran out is kept. This is the guard, exercised.
+     */
+    expect(deriveJsonLayout('{"a": {"b": 1}').inline.get("/a")).toBe(true);
+    expect(deriveJsonLayout("[1, [2, 3]").inline.size).toBe(0);
+  });
+
   test("parseJsonDocument hands back the document with its layout", () => {
     const { document, layout } = parseJsonDocument(
       '{ "tagName": "div", "attributes": { "part": "x" } }',
