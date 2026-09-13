@@ -3,8 +3,10 @@
  * In-iframe render core — turns a fully-resolved document into live DOM via @jxsuite/runtime,
  * stamping `data-jx-path` so the editor can map nodes back to document paths across the frame
  * boundary. The parent does the heavy resolution (layout distribution, site-context, `$head`,
- * components, edit-mode transforms) and posts the result; this core stays dependency-light (runtime
- * + reactivity + the pure path-mapping helpers) so the iframe bundle is small.
+ * components, edit-mode transforms) and posts the result; this core stays dependency-light
+ * (runtime
+ *
+ * - Reactivity + the pure path-mapping helpers) so the iframe bundle is small.
  *
  * Because the iframe is served from the real project origin, the runtime's verbatim
  * `el.setAttribute("src", "/images/foo.jpg")` resolves natively — the fix that motivated the whole
@@ -839,7 +841,8 @@ export function injectHead(doc: JxDocument, assets: AssetContext | null = null):
 
 /**
  * Build the `onNodeCreated` hook that stamps `data-jx-path` (page content) or `data-jx-layout-path`
- * + `data-jx-layout-file` (layout-originated nodes) on rendered nodes.
+ *
+ * - `data-jx-layout-file` (layout-originated nodes) on rendered nodes.
  */
 export function makeStamper(ctx: PathMapCtx) {
   /*
