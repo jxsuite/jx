@@ -408,6 +408,42 @@ describe("the fallback path", () => {
     fire(button, "focusin");
     expect(shown(tip)).toBe(false);
   });
+
+  test("a tip REBOUND before the unmount tick settles keeps the new binding, not the stale disposal", async () => {
+    /*
+     * The disposal waits a microtask so a move can be told from a removal. A re-mount in that
+     * window — the host dispatching `jx-ready` again on the same element — replaces the binding
+     * entry, and the pending disposal must recognise that the entry it holds is no longer the live
+     * one and leave it alone; otherwise the re-bound control would be stripped by a stale tick.
+     */
+    const { button, tip } = await scene({ delay: 0, for: "trigger" });
+    tip.remove();
+    document.body.append(tip);
+    tip.dispatchEvent(new Event("jx-ready"));
+    await after(0);
+    fire(button, "focusin");
+    expect(shown(tip)).toBe(true);
+    fire(button, "focusout");
+    expect(shown(tip)).toBe(false);
+  });
+
+  test("a focusin whose target is not an element is keyboard focus: nothing can say otherwise", async () => {
+    /*
+     * `:focus-visible` is a question for an Element. A focus event that reaches the control from a
+     * non-element target — a text node inside it, on an engine that lets one — has no element to
+     * ask, and the behaviour answers keyboard rather than pointer, because refusing a tip to a
+     * reader who tabbed in costs more than showing one to a click.
+     */
+    const { button, tip } = await scene({ delay: 0, for: "trigger" });
+    const text = document.createTextNode("Save");
+    button.append(text);
+    button.focus();
+    expect(shown(tip)).toBe(true);
+    fire(button, "focusout");
+    expect(shown(tip)).toBe(false);
+    text.dispatchEvent(new Event("focusin", { bubbles: true }));
+    expect(shown(tip)).toBe(true);
+  });
 });
 
 describe("SC 1.4.13 persistent", () => {
