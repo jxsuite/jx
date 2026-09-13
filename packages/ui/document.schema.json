@@ -18786,6 +18786,19 @@
                 }
               ]
             },
+            "max-size": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
             "max-width": {
               "oneOf": [
                 {
@@ -18839,6 +18852,19 @@
               ]
             },
             "maxLines": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
+            "maxSize": {
               "oneOf": [
                 {
                   "type": "string"
@@ -18916,6 +18942,19 @@
                 }
               ]
             },
+            "min-size": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
             "min-width": {
               "oneOf": [
                 {
@@ -18969,6 +19008,19 @@
               ]
             },
             "minIntrinsicSizing": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
+            "minSize": {
               "oneOf": [
                 {
                   "type": "string"
@@ -23142,6 +23194,19 @@
               ]
             },
             "shapeRendering": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
+            "size": {
               "oneOf": [
                 {
                   "type": "string"
