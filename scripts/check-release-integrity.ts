@@ -95,16 +95,29 @@ export function tagFor(path: string, version: string, config: Config): string {
   return `${prefix}${includeV ? "v" : ""}${version}`;
 }
 
+/**
+ * The version release-please reads as "no release yet". A new component enters the manifest at
+ * `0.0.0`, and release-please's own backfill (`manifest.js`, "backfill latest release tags from
+ * manifest") skips exactly that string, so the first release pull request starts the component at
+ * its `initial-version` rather than bumping from it. Such an entry CLAIMS nothing, and a gate that
+ * demanded `ui-v0.0.0` of it would be red from the day a package is added until the day it is first
+ * released — which is a red X that names no defect, the failure mode this script's header argues
+ * against.
+ */
+export const UNRELEASED = "0.0.0";
+
 /** What every manifest entry claims to have shipped. */
 export async function readTargets(root = "."): Promise<ReleaseTarget[]> {
   const config = (await Bun.file(`${root}/${CONFIG}`).json()) as Config;
   const manifest = (await Bun.file(`${root}/${MANIFEST}`).json()) as Record<string, string>;
 
-  return Object.entries(manifest).map(([path, version]) => ({
-    path,
-    tag: tagFor(path, version, config),
-    version,
-  }));
+  return Object.entries(manifest)
+    .filter(([, version]) => version !== UNRELEASED)
+    .map(([path, version]) => ({
+      path,
+      tag: tagFor(path, version, config),
+      version,
+    }));
 }
 
 /**

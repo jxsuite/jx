@@ -111,6 +111,8 @@ The checkout is sparse, keeping only the five directories the SDK's entry points
 
 Versions are release-please's job. Every publishable workspace is a component in `release-please-config.json` with a matching `.release-please-manifest.json` entry, and both lists are **derived-checked** by `scripts/release-config.test.ts`. A package that is publishable but unlisted is never versioned, tagged or published, and nothing else in the pipeline can notice. Two extensions sat in exactly that state before the check existed.
 
+A new package enters the manifest at `0.0.0`, which release-please reads as "no release yet", and names its first version with `initial-version` in its config entry (`0.1.0` for a pre-1.0 package; release-please's default is `1.0.0`). The integrity gate (`bun run release:integrity`) skips a `0.0.0` entry for the same reason: it claims nothing until the first release pull request lands. Seeding the manifest with a version that was never released is the other way round, and it is how `packages/catalog` came to claim a `0.1.0` no release ever shipped.
+
 Two branches:
 
 - **`main`** is the trunk. Every PR targets it, and it is the tip of development.
