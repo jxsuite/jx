@@ -365,6 +365,40 @@ describe("document.checkAccessibility", () => {
     await registry.run("document.checkAccessibility");
     expect(toasts.at(-1)?.message).toBe("No accessibility problems found in this document.");
   });
+
+  test("the assistant's report is the Problems list, as data, minus the coverage rows", async () => {
+    /* `check_accessibility` is this record (a declaration makes a tool), and what the model reads
+       afterwards is the panel's own read: the filed Problems of this source, with the unchecked-
+       coverage rows counted in the sentence rather than listed as defects. */
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ document: { open: true } }),
+    });
+    const [command] = a11yCommands();
+    registry.register(command!);
+    setupDocTab([{ attributes: { src: "/a.png" }, tagName: "img" }]);
+    resetNotifications();
+    await registry.run("document.checkAccessibility");
+
+    const facts = { after: emptyContext(), args: undefined as never, before: emptyContext() };
+    const report = command!.aiTool!.report(facts);
+    expect(typeof report).toBe("object");
+    const { data, summary } = report as {
+      data: { message: string; key?: string }[];
+      summary: string;
+    };
+    expect(summary).toStartWith("Filed 1 accessibility problem in Problems.");
+    expect(summary).toContain("could not run");
+    expect(data).toHaveLength(1);
+    expect(data[0]!.message).toContain("alt text");
+    expect(data[0]!.key).toStartWith("a11y.");
+    expect(data.some((finding) => finding.key?.startsWith("a11y.unavailable."))).toBe(false);
+
+    setupDocTab([{ tagName: "p", textContent: "Hello" }]);
+    await registry.run("document.checkAccessibility");
+    const clean = command!.aiTool!.report(facts) as { data: unknown[]; summary: string };
+    expect(clean.summary).toStartWith("No accessibility problems found in this document.");
+    expect(clean.data).toEqual([]);
+  });
 });
 
 describe("accessible names", () => {

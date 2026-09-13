@@ -71,7 +71,7 @@ Imported rows are **staged, not written**. They arrive as pending rows in the ta
 - a line that couldn't be read is listed with its line number.
 
 :::doc-tip
-The [AI assistant](/docs/studio/ai/chat) can drive all three of these: open the table, import a pasted `_redirects` file, or check the rules and report what it found.
+The [AI assistant](/docs/studio/ai/chat) can run the check for you: **Validate Redirects** is one of its tools, and the findings come back to it as data as well as being filed under **Redirects** in the Problems tab. Opening the table and importing a paste stay yours: both are surfaces for a person, so the assistant is not offered them.
 :::
 
 ## Next

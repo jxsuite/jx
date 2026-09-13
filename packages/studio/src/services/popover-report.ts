@@ -22,7 +22,7 @@
  */
 
 import { activeTab } from "../workspace/workspace";
-import { clearProblems, notify } from "./notify";
+import { clearProblems, notify, problemFindings } from "./notify";
 import {
   findPopoverDefects,
   popoverDisplayRepair,
@@ -181,8 +181,21 @@ export function popoverCommands(): AnyCommand[] {
           "Check the open document for popover defects an author can fix — a base-rule `display` " +
           "that defeats the browser's own hiding of a closed popover, `popovertarget` on an " +
           "element that cannot invoke, a target naming no popover, a cut exit animation — and " +
-          "file each as a Problem.",
+          "file each as a Problem. The findings come back as data.",
         name: "check_popovers",
+        /* Same shape and reason as `check_accessibility`: the Problems store filtered by this
+           source is the panel's own read, and each finding carries the repair command it offers. */
+        report: () => {
+          const findings = problemFindings(POPOVER_PROBLEM_SOURCE);
+          const n = findings.length;
+          return {
+            data: findings,
+            summary:
+              n === 0
+                ? "No popover problems found in this document."
+                : `Filed ${n} popover problem${n === 1 ? "" : "s"} in Problems.`,
+          };
+        },
       },
     },
     {

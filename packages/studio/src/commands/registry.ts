@@ -8,13 +8,17 @@
  * becomes a RENDERING of these records. A surface may choose whether to show a command; it may
  * never decide what it is called, when it is available, or what it does (plan §2, principle 1).
  *
- * Three things fail loudly at registration rather than degrading into a surface disagreement:
+ * Four things fail loudly at registration rather than degrading into a surface disagreement:
  *
  * - A duplicate id — the second definition site the whole design exists to prevent;
  * - A chord already claimed in the same `keyScope` (see `keymap.ts`) — this is exactly how ⌘W came to
  *   disagree with the tab strip's × button;
  * - A `menus` placement the level × placement matrix does not admit (see `levels.ts`), so a
- *   selection-level verb cannot appear in the Command Bar even in a hand-written test app.
+ *   selection-level verb cannot appear in the Command Bar even in a hand-written test app;
+ * - An `aiTool` projection that cannot be completed (see {@link AiToolProjection}): a name that is
+ *   not snake_case or is already another record's, a projection with no `report`, an
+ *   application-level record, a selection-level record that declares the `paths` the bridge
+ *   supplies, or a gated record with no `requires` sentence for the model to act on.
  *
  * `when` / `enablement` are `(ctx) => boolean` closures, modelled on the shipped
  * `services/gated-registry.ts` `ToolAvailability`, and `requires` is ONE string with three
@@ -75,11 +79,75 @@ export interface Command<A = void> {
   menus?: readonly Placement[];
   /** Menu ordering key: "1_clipboard", "3_structure", "9_danger". */
   group?: string;
+  /**
+   * How the effect is undone. Also the LEDGER SCOPE of a bridged write:
+   * `services/ai-command-tools.ts` records one "Changed N files" entry per path a projected run
+   * touched, and it reads this field to know whether there was a write at all and whether ⌘Z can
+   * reach it. A record that writes and forgets `undo` is invisible to the ledger.
+   */
   undo?: UndoScope;
   destructive?: boolean;
-  /** Opt-in projection to the assistant. The human's gate and the agent's gate stay one predicate. */
-  aiTool?: { name: string; description: string };
+  /**
+   * Opt-in projection to the assistant. DECLARING IT MAKES A TOOL — see {@link AiToolProjection}.
+   * The human's gate and the agent's gate stay one predicate because the tool IS `run`.
+   */
+  aiTool?: AiToolProjection<A>;
   run: (ctx: CommandContext, args: A) => void | Promise<void>;
+}
+
+/** What a projected command tells the model after `run` resolved. A string is a summary alone. */
+export interface AiToolReport {
+  /** ONE sentence describing the state the person now sees. Never "it worked". */
+  summary: string;
+  /** Structured facts the model can act on (a findings list). Reaches it as `ToolResult.data`. */
+  data?: unknown;
+  /**
+   * Files this run changed, for the "Changed N files" ledger. Defaults from {@link Command.undo}:
+   * `"document"` is the active document's path, `"project"` is `project.json`. A record with `undo:
+   * "none"` MUST return it: a disk write with no path is exactly what the ledger exists to name,
+   * and `tests/ai-command-tools.test.ts` holds every kept `undo: "none"` projection to it. An
+   * idempotent verb whose run found the state it was asked for and wrote nothing returns `[]`, and
+   * the ledger files nothing: the default is "what this record writes", not "what this run wrote",
+   * and only the record can tell the two apart.
+   */
+  wrote?: readonly string[];
+}
+
+/**
+ * Opt-in projection to the assistant. Declaring it MAKES a tool: `services/ai-command-tools.ts`
+ * lists one per record that carries it, `execute` is `registry.run(id)`, `parameters` is the
+ * record's own `args` object, and the tool is advertised exactly while `isEnabled(id)` holds (a
+ * selection-level record composes through `selection.setPaths`, so its tool takes `paths` and is
+ * advertised while a canvas document is open). Nothing else about the tool is written anywhere, so
+ * nothing can forget to write it — issue 273 was forty-seven declarations that reached the
+ * assistant from none of them, because each waited on a hand-registered tool nobody wrote.
+ *
+ * A projection without a `report` does not compile. `run` returns void, and a tool that can only
+ * say "done" is one the model builds its next three edits on blind.
+ *
+ * @template A The argument record `run` receives — `report` reads the same one.
+ */
+export interface AiToolProjection<A = void> {
+  /** Snake_case; unique across records AND the hand-registered tools (both asserted). */
+  name: string;
+  /**
+   * The one description. The prompt blurb is derived from it (`name(params) — description`), and
+   * the bridge appends the undo scope and the destructive flag, so say neither here.
+   */
+  description: string;
+  /**
+   * Called after `run` resolved. `before` is the context the verb ran against (for a selection
+   * verb: after the selector step), `after` is the context now. May close over module state, as
+   * `enablement` closures already do; never over injected deps, because the view reads the LIVE
+   * record and `appCommandSet()`'s no-op instances are what the tests read. Refusals are `run`'s
+   * job (throw); `report` only describes. One that throws anyway is answered as a failure that says
+   * the run happened, with the ledger filed from `undo`'s defaults — never as a refusal.
+   */
+  report: (facts: {
+    before: CommandContext;
+    after: CommandContext;
+    args: A;
+  }) => string | AiToolReport;
 }
 
 /**
@@ -92,6 +160,13 @@ export type AnyCommand = Command<never>;
 
 /** `<namespace>.<verb>`, lowercase namespace, at least two dot-separated segments. */
 const ID_PATTERN = /^[a-z][a-z\d]*(\.[a-zA-Z\d]+)+$/;
+
+/**
+ * `snake_case`, the wire shape every function-calling API accepts unquoted. A tool name is what the
+ * model TYPES, so a projection named `deleteNode` or `delete-node` is refused here rather than
+ * discovered as a model that keeps misspelling it.
+ */
+const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 /** Thrown when a command is invoked while its own predicate refuses it. */
 export class CommandUnavailableError extends Error {
@@ -155,6 +230,60 @@ export interface CommandRegistryOptions {
 }
 
 /**
+ * Refuse an `aiTool` declaration that cannot be completed into a tool.
+ *
+ * Each is a thrown `Error` naming the record, in the idiom of the id/title/placement checks above
+ * it, because the alternative is the failure issue 273 catalogued: a declaration that reaches the
+ * model as a tool it cannot use, or does not reach it at all. `report` is required by the TYPE as
+ * well; the runtime check is for the JS caller `tsc` cannot stop.
+ */
+function checkProjection(command: AnyCommand, toolNames: ReadonlyMap<string, string>): void {
+  const tool = command.aiTool;
+  if (!tool) {
+    return;
+  }
+  if (!TOOL_NAME_PATTERN.test(tool.name)) {
+    throw new Error(`command "${command.id}" aiTool name "${tool.name}" is not snake_case`);
+  }
+  const claimant = toolNames.get(tool.name);
+  if (claimant !== undefined) {
+    throw new Error(
+      `command "${command.id}" aiTool name "${tool.name}" is already projected by "${claimant}"`,
+    );
+  }
+  if (typeof tool.report !== "function") {
+    throw new TypeError(
+      `command "${command.id}" declares aiTool without a report: a tool that can only say ` +
+        `"done" is refused`,
+    );
+  }
+  if (command.level === "application") {
+    throw new Error(
+      `command "${command.id}" is application-level and cannot project to the assistant: an ` +
+        `application verb acts on the editor, which the model cannot see`,
+    );
+  }
+  /* The bridge composes a selection-level verb through `selection.setPaths` and merges the
+     selector's `paths` property in FRONT of the record's own `args`, so a record that declares its
+     own `paths` would have two definitions of one argument — the model would read the record's
+     description and the bridge would hand the value to the selector. */
+  const properties = (command.args as { properties?: Record<string, unknown> } | undefined)
+    ?.properties;
+  if (command.level === "selection" && properties && Object.hasOwn(properties, "paths")) {
+    throw new Error(
+      `command "${command.id}" is selection-level and may not declare "paths": the assistant ` +
+        `supplies it`,
+    );
+  }
+  if ((command.when || command.enablement) && !command.requires) {
+    throw new Error(
+      `command "${command.id}" projects to the assistant but has no requires sentence; ` +
+        `"${GENERIC_REQUIREMENT}" is not a refusal a model can act on`,
+    );
+  }
+}
+
+/**
  * Build an empty registry.
  *
  * There is deliberately no module-level singleton here: the app creates one in its bootstrap and
@@ -163,6 +292,8 @@ export interface CommandRegistryOptions {
 export function createCommandRegistry(options: CommandRegistryOptions): CommandRegistry {
   const commands = new Map<string, AnyCommand>();
   const keymap = createKeymap(options.mac === undefined ? {} : { mac: options.mac });
+  /** Projected tool name → the id that claimed it. A second claimant is refused by name. */
+  const toolNames = new Map<string, string>();
 
   function mustGet(id: string): AnyCommand {
     const command = commands.get(id);
@@ -207,10 +338,14 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
       if (violations.length > 0) {
         throw new Error(`command "${command.id}" ${violations[0]!.message}`);
       }
+      checkProjection(command as AnyCommand, toolNames);
       // Chord conflicts throw from the keymap; do this LAST so a rejected record leaves the
-      // Registry untouched in every failure mode.
+      // Registry untouched in every failure mode — the tool name is claimed only after it.
       keymap.add(command);
       commands.set(command.id, command as AnyCommand);
+      if (command.aiTool) {
+        toolNames.set(command.aiTool.name, command.id);
+      }
     },
     registerAll(list) {
       for (const command of list) {

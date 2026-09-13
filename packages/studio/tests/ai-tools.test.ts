@@ -344,13 +344,10 @@ describe("ai-tools — read & inspect", () => {
     expect(await execErr(registry, "set_text", { path: [], value: "x" })).toContain(
       "No document is open",
     );
-    expect(await execErr(registry, "remove_node", { path: ["children", 0] })).toContain(
-      "No document is open",
-    );
   });
 });
 
-describe("ai-tools — set_property / set_text / remove_node", () => {
+describe("ai-tools — set_property / set_text", () => {
   test("set_property sets and removes a property", async () => {
     const { tab, registry } = harness({ id: "old", tagName: "div", children: [] });
     const set = await registry.execute("set_property", { key: "id", path: [], value: "new" });
@@ -386,22 +383,15 @@ describe("ai-tools — set_property / set_text / remove_node", () => {
     disposeTab(tab);
   });
 
-  test("remove_node deletes a child, refuses the root, and rejects bad paths", async () => {
-    const { tab, registry } = harness({
-      children: [{ tagName: "p" }, { tagName: "span" }],
-      tagName: "div",
-    });
-    const res = await registry.execute("remove_node", { path: ["children", 0] });
-    expect(res.success).toBe(true);
-    expect((tab.doc.document.children as JxMutableNode[])[0]!.tagName).toBe("span");
-
-    expect(await execErr(registry, "remove_node", { path: [] })).toContain(
-      "Cannot remove the document root",
-    );
-    expect(await execErr(registry, "remove_node", { path: ["children", 9] })).toContain(
-      "No node exists",
-    );
-    disposeTab(tab);
+  test("there is no remove_node: deletion is delete_node, the projection of selection.delete", () => {
+    /* The hand tool guarded only the document root (`path.length < 2`), a weaker test than the
+       person's `structurallyEditable`, so a repeater template was removable by the agent and not
+       by the person — the divergence issue 273 is about. `delete_node(paths)` runs the record, under
+       the record's gate, through `services/ai-command-tools.ts`; this registry holds no deletion. */
+    const registry = createToolRegistry();
+    registerAiTools(registry, { getTab: () => null, validate: async () => [] });
+    expect(registry.getDefinition("remove_node")).toBeUndefined();
+    expect(registry.list().map((t) => t.name)).not.toContain("delete_node");
   });
 });
 

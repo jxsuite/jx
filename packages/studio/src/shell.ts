@@ -1309,14 +1309,8 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       group: "4_docks",
       requires: "an open project",
       when: projectOpen,
-      aiTool: {
-        description:
-          "Show one of the Navigator panels (Files, Search, Source Control, Languages, Outline, " +
-          "Page, Data, Packages, Insert) and open the Navigator dock if it is closed. Languages is " +
-          "the translation-parity grid, and it exists only in a project that declares two or more " +
-          "locales. Problems is a Bottom dock tab — use show_bottom_tab for it.",
-        name: "show_navigator_panel",
-      },
+      /* No `aiTool`: application-level, which `register()` refuses to project — an application verb
+         acts on the editor, which the model cannot see (§12.4, chrome). */
       run: (_ctx, args) => {
         const tab = enumArg("view.setActivity", args, "tab", NAVIGATOR_PANEL_IDS);
         // The record's own `when`, asked here because `enablement` cannot see an argument — the
@@ -1420,12 +1414,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       level: "application",
       menus: ["palette"],
       group: "4_docks",
-      aiTool: {
-        description:
-          "Show one of the Bottom dock's tabs (Problems, Diff, Logic, Activity) and open the " +
-          "Bottom dock if it is closed.",
-        name: "show_bottom_tab",
-      },
+      /* No `aiTool`: application-level chrome, refused at registration (§12.4). */
       run: (_ctx, args) => {
         const tab = enumArg("view.setBottomTab", args, "tab", BOTTOM_TAB_IDS);
         // The record's own `when`, asked here because `enablement` cannot see an argument — the
@@ -1488,12 +1477,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       group: "4_layouts",
       requires: "an open project",
       when: projectOpen,
-      aiTool: {
-        description:
-          "Adopt one of the project's named layouts (Write, Design, Build, Ship, or one the user " +
-          "saved): its Navigator panel, its dock widths and visibility, and its Inspector tab.",
-        name: "set_layout",
-      },
+      /* No `aiTool`: application-level chrome, refused at registration (§12.4). */
       run: (_ctx, args) => {
         applyLayout(stringArg("view.setLayout", args, "layout"), deps);
       },

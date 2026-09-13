@@ -712,7 +712,7 @@ describe("showContextMenu", () => {
     expect(isDisabled("edit.cut")).toBe(true);
     expect(isDisabled("selection.delete")).toBe(true);
     expect(reasonOf("selection.delete")).toBe(
-      "Needs an element selection that is not the document root",
+      "Needs an element selected on the canvas that has a sibling position: not the document root, a repeater's template or a switch case",
     );
     expect(reasonOf("selection.wrap")).toContain("sibling position");
   });
@@ -782,7 +782,7 @@ describe("showContextMenu", () => {
     // Not a hand-written warning toast beside a mutator that would have spliced at NaN.
     itemById("selection.duplicate").click();
     expect(() => contextMenuRegistry().run("selection.duplicate")).toThrow(
-      "an element that has a sibling position",
+      "a repeater's template or a switch case",
     );
     expect((doc().children as JxMutableNode[])[0]!.map).toEqual({
       tagName: "li",

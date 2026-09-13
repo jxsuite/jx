@@ -398,12 +398,15 @@ describe("block action bar", () => {
     // Disables it here instead of offering a button whose only effect is nothing.
     const dup = cmdButton("selection.duplicate");
     expect(isDisabled(dup)).toBe(true);
-    expect(titleOf(dup)).toBe("Duplicate — requires an element that has a sibling position");
-    // Delete arrives from the registry with the one sentence that refuses the document root.
+    expect(titleOf(dup)).toBe(
+      "Duplicate — requires an element selected on the canvas that has a sibling position: not the document root, a repeater's template or a switch case",
+    );
+    // Delete arrives from the registry with the one sentence that names its whole gate — the root,
+    // A repeater's template and a switch case are all refused by `structurallyEditable`.
     const del = cmdButton("selection.delete");
     expect(isDisabled(del)).toBe(true);
     expect(titleOf(del)).toBe(
-      "Delete — requires an element selection that is not the document root",
+      "Delete — requires an element selected on the canvas that has a sibling position: not the document root, a repeater's template or a switch case",
     );
     // The name stays the bare name.
     expect(control(del)!.getAttribute("aria-label")).toBe("Delete");

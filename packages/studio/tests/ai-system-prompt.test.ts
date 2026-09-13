@@ -234,23 +234,34 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
     expect(prompt).not.toContain("Extensions enabled:");
   });
 
-  test("AI_TOOL_TIERS names exactly match the registered tools", async () => {
+  /*
+   * Parity, in BOTH directions, with counts. The assistant's tools are two kinds: the hand-registered
+   * ones (`AI_TOOL_TIERS` is their table) and the projections of every command record that declares
+   * `aiTool` (`services/ai-command-tools.ts` is their view). The hand names must be exactly the
+   * tier table; the projected names must be exactly the declarations; the two sets must be
+   * disjoint; and the composite must hold their sum — the count matters because
+   * `ToolRegistry.register` only `console.warn`s on a duplicate name, so a hand tool that shadowed
+   * a projection would otherwise vanish quietly.
+   */
+  test("hand tools are the tier table, projected tools are the declarations, and the two are disjoint", async () => {
     const { AI_TOOL_TIERS } = await import("../src/services/ai-system-prompt");
     const { createToolRegistry } = await import("@jxsuite/ai");
     const { registerAiTools } = await import("../src/services/ai-tools");
     const { registerProjectTools } = await import("../src/services/ai-project-tools");
     const { registerAskTool } = await import("../src/services/ai-ask");
     const { registerImportTools } = await import("../src/services/ai-import-tools");
-    const { registerExtensionTools } = await import("../src/services/ai-extension-tools");
+    const { composeToolRegistries, createCommandToolRegistry } =
+      await import("../src/services/ai-command-tools");
+    const { appCommandSet } = await import("../src/commands/app-commands");
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { makeContext } = await import("../src/commands/context");
+    const { setActiveRegistry } = await import("../src/commands/active-registry");
 
-    const registry = createToolRegistry();
-    registerAskTool(registry);
-    // Takes no context: both verbs run the human's command records rather than reimplementing the
-    // Writes, so there is nothing to inject.
-    registerExtensionTools(registry);
-    registerImportTools(registry, { getTab: () => null });
-    registerAiTools(registry, { getTab: () => null, validate: async () => [] });
-    registerProjectTools(registry, {
+    const hand = createToolRegistry();
+    registerAskTool(hand);
+    registerImportTools(hand, { getTab: () => null });
+    registerAiTools(hand, { getTab: () => null, validate: async () => [] });
+    registerProjectTools(hand, {
       adoptProject: async () => {},
       findOpenTab: () => null,
       getTab: () => null,
@@ -258,9 +269,55 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
       validate: async () => [],
     });
 
-    const registered = new Set(registry.list().map((t) => t.name));
-    const tiered = new Set(AI_TOOL_TIERS.map((t) => t.name));
-    expect([...registered].toSorted()).toEqual([...tiered].toSorted());
+    /* A permissive context — everything open, a spliceable selection on the canvas — so every
+       projected record's gate holds and the view lists them all. */
+    const registry = createCommandRegistry({
+      getContext: () =>
+        makeContext({
+          document: { open: true },
+          editor: { kind: "canvas" },
+          project: { isMultilingual: true, isRepo: true, isSite: true, open: true },
+          selection: { count: 1, paths: [["children", 0]] },
+        }),
+    });
+    registry.registerAll(appCommandSet());
+    setActiveRegistry(registry);
+    try {
+      const commands = createCommandToolRegistry({ getTab: () => null, validate: async () => [] });
+      const composite = composeToolRegistries(hand, commands);
+
+      const handNames = new Set(hand.list().map((t) => t.name));
+      const tiered = new Set(AI_TOOL_TIERS.map((t) => t.name));
+      expect([...handNames].toSorted()).toEqual([...tiered].toSorted());
+
+      const projectedNames = new Set(commands.list().map((t) => t.name));
+      const declared = new Set(appCommandSet().flatMap((c) => (c.aiTool ? [c.aiTool.name] : [])));
+      expect([...projectedNames].toSorted()).toEqual([...declared].toSorted());
+
+      expect([...handNames].filter((name) => projectedNames.has(name))).toEqual([]);
+      expect(composite.list()).toHaveLength(handNames.size + projectedNames.size);
+      // The counts the design was measured against: 19 hand rows, 9 projected records.
+      expect(handNames.size).toBe(19);
+      expect(projectedNames.size).toBe(9);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("the command-projected blurbs render under every workflow heading, and only when passed", () => {
+    const line = "delete_node(paths) — Delete elements from the document as one undoable step.";
+    const document = { children: [], tagName: "x-a" } as unknown as JxMutableNode;
+    const states = [
+      buildSystemPrompt({ commandTools: [line], hasProject: false }),
+      buildSystemPrompt({ commandTools: [line], hasProject: true }),
+      buildSystemPrompt({ commandTools: [line], document, hasProject: true }),
+    ];
+    for (const prompt of states) {
+      expect(prompt).toContain(`- ${line}`);
+      // After the hand tools, under the same heading — one list, not a second one.
+      expect(prompt.indexOf("- ask_user(")).toBeLessThan(prompt.indexOf(`- ${line}`));
+    }
+    expect(buildSystemPrompt({ document, hasProject: true })).not.toContain("delete_node(");
   });
 });
 
@@ -274,14 +331,15 @@ describe("the agent's gate is the human's gate", () => {
    * agent was advertised `remove_node` and `move_node` and executed them against the file that
    * defines the project, while the person's `delete_node` was refused.
    *
-   * `remove_node` self-refuses only the document ROOT (`path.length < 2`), which is a weaker test
+   * `remove_node` self-refused only the document ROOT (`path.length < 2`), which is a weaker test
    * than `structurallyEditable`, so a repeater template or a `$switch` case was removable by the
-   * agent and not by the person.
+   * agent and not by the person. It is gone: deletion is `delete_node`, the projection of
+   * `selection.delete` itself, so there is no second predicate left to drift. The seven hand
+   * writers below remain, because each addresses a node by PATH with no command twin.
    */
   const TREE_WRITERS = [
     "add_child",
     "move_node",
-    "remove_node",
     "set_property",
     "set_style",
     "set_text",
@@ -297,6 +355,20 @@ describe("the agent's gate is the human's gate", () => {
     }
     // Reading a document you cannot restructure is still perfectly sensible.
     expect(tierOf.get("read_document")).toBe("document");
+    // And the structural pair is not in this table at all: they are selection-level RECORDS.
+    expect(tierOf.has("remove_node")).toBe(false);
+    expect(tierOf.has("delete_node")).toBe(false);
+  });
+
+  test("delete_node and duplicate_node are projections of selection-level records", async () => {
+    const { appCommandSet } = await import("../src/commands/app-commands");
+    const byTool = new Map(
+      appCommandSet().flatMap((c) => (c.aiTool ? [[c.aiTool.name, c] as const] : [])),
+    );
+    expect(byTool.get("delete_node")?.id).toBe("selection.delete");
+    expect(byTool.get("delete_node")?.level).toBe("selection");
+    expect(byTool.get("duplicate_node")?.id).toBe("selection.duplicate");
+    expect(byTool.get("duplicate_node")?.level).toBe("selection");
   });
 
   test("with a document open but no tree to edit, the writers are inactive and the read is not", async () => {

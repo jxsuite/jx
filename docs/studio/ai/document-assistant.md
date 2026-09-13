@@ -27,7 +27,7 @@ With a document active, the assistant edits the page the way you would, one chan
 - add new elements, move them, and remove them,
 - add or update the page's state entries (the same ones the **[Data panel](/docs/studio/logic/data)** shows).
 
-These abilities follow the canvas. Project Settings and the grid editors are documents too, but they aren't element trees to restructure. With one of those in front of you the assistant can still read and answer, and the editing tools step back, exactly as **Delete** and **Duplicate** do for you in the Outline. It is one rule, not two: the assistant is held to the same condition you are.
+These abilities follow the canvas. Project Settings and the grid editors are documents too, but they aren't element trees to restructure. With one of those in front of you the assistant can still read and answer, and the editing tools step back, exactly as **Delete** and **Duplicate** do for you in the Outline. It is one rule, not two: the assistant is held to the same condition you are. Its **Delete** and **Duplicate** are, in fact, those same commands: removing several elements at once is one undo step, the copies it makes become the selection, and a refusal you would see in the Outline (the document root, a repeater's template, a switch case) is the refusal it reads.
 
 Every change lands on the canvas the moment it's made, so the page updates in front of you while the reply streams. To aim the assistant at one specific element, select it on the canvas and attach it with the composer's paperclip menu. See **[Attach context](/docs/studio/ai/chat#attach-context)**.
 
