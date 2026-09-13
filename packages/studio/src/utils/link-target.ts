@@ -33,8 +33,8 @@ const ABSOLUTE_SCHEME = /^([a-z][a-z\d+.-]*:)?\/\//i;
  * Classify a raw `href` string into a {@link LinkTarget}.
  *
  * Rules (checked in order): 1. `mailto:…` → `{ kind: "mailto", value: address }` 2. `tel:…` → `{
- * kind: "tel", value: number }` 3. `#…` → `{ kind: "anchor", value: rest }` (leading `#` stripped)
- * 4. absolute (`http(s)://…`) or protocol-relative (`//…`) → `{ kind: "external", value: href }` 5.
+ * kind: "tel", value: number }` 3. `#…` → `{ kind: "anchor", value: rest }` (leading `#` stripped) 4.
+ * absolute (`http(s)://…`) or protocol-relative (`//…`) → `{ kind: "external", value: href }` 5.
  * `/…` → `{ kind: "internal", value: path }` 6. anything else → `{ kind: "external", value: href
  * }`
  *
