@@ -1,5 +1,43 @@
 # Changelog
 
+## [4.0.0](https://github.com/jxsuite/jx/compare/compiler-v3.1.0...compiler-v4.0.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler,site,studio:** `@jxsuite/runtime` no longer writes authored declarations to `el.style`, so code reading them back off an element after `applyStyle` sees nothing. The `elementStyleTags` export is replaced by `releaseElementStyles` and `resetDocumentStyles`, which refcount a shared rule set rather than handing out an element to remove by hand; `documentStyleText` reads back what was written.
+
+### Features
+
+* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
+
+
+### Bug Fixes
+
+* **compiler:** a selector list in a component's own style loses every member but the first ([628e1ab](https://github.com/jxsuite/jx/commit/628e1ab8875b05c3ab5f40890add118bc7d4007d))
+* **compiler:** every boolean-attribute writer defers to booleanAttrValue ([596d2d6](https://github.com/jxsuite/jx/commit/596d2d6b8fc29283d312a95aacf02f0c09e3c5ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.10
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+    * @jxsuite/site bumped to 2.0.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.6.0
+    * @jxsuite/parser bumped to 1.8.0
+
 ## [3.1.0](https://github.com/jxsuite/jx/compare/compiler-v3.0.0...compiler-v3.1.0) (2026-08-30)
 
 

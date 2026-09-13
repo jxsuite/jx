@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.0.0](https://github.com/jxsuite/jx/compare/site-v1.1.0...site-v2.0.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler,site,studio:** `@jxsuite/runtime` no longer writes authored declarations to `el.style`, so code reading them back off an element after `applyStyle` sees nothing. The `elementStyleTags` export is replaced by `releaseElementStyles` and `resetDocumentStyles`, which refcount a shared rule set rather than handing out an element to remove by hand; `documentStyleText` reads back what was written.
+
+### Features
+
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
+* **runtime,site:** [@keyframes](https://github.com/keyframes) is a third at-rule body shape ([6bd5245](https://github.com/jxsuite/jx/commit/6bd52455575c6a4db3eb87a1bedd4aeb2ad1f743))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+
+
+### Bug Fixes
+
+* **ui,site:** the theme is one reading of one block ([9d732a7](https://github.com/jxsuite/jx/commit/9d732a709fe84931d9c4affd0cdc1de81127d6f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+
 ## [1.1.0](https://github.com/jxsuite/jx/compare/site-v1.0.0...site-v1.1.0) (2026-08-30)
 
 
