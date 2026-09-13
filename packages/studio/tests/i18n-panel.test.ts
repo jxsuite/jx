@@ -27,6 +27,8 @@ import { getPanel, resetPanels } from "../src/panels/panel-registry";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
+import { argsSchema, stringProperty } from "../src/commands/command-args";
+import { i18nCommands } from "../src/i18n/i18n-commands";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import { registerPlatform } from "../src/platform";
 import { setProjectState } from "../src/store";
@@ -249,8 +251,18 @@ describe("parityRows", () => {
 /** Every command run through the registry this window publishes, in order. */
 const ran: { id: string; args: unknown }[] = [];
 
-/** A record as bare as the registry allows — the panel must not care what it does. */
+/**
+ * A record as bare as the registry allows — the panel must not care what it does — carrying the
+ * REAL record's `args` schema when there is one.
+ *
+ * The schema is the one thing a stub may not leave out: `registry.run` coerces what the panel hands
+ * it against the record's schema before `run`, so a stub with no schema would admit any argument
+ * and the click tests would pass against a contract the shipped records refuse. That is how `{
+ * locale, path }` was green here while every real cell click threw — `path` was a key the records
+ * did not declare.
+ */
 function stub(id: string, over: Partial<AnyCommand> = {}): AnyCommand {
+  const real = i18nCommands().find((command) => command.id === id);
   return {
     category: "Project",
     id,
@@ -259,6 +271,7 @@ function stub(id: string, over: Partial<AnyCommand> = {}): AnyCommand {
       ran.push({ args, id });
     },
     title: id,
+    ...(real?.args === undefined ? {} : { args: real.args }),
     ...over,
   } as AnyCommand;
 }
@@ -516,6 +529,22 @@ describe("a cell is a command, run by id", () => {
     const button = cell(host, "pages/about.json", 1);
     expect(button.hasAttribute("disabled")).toBe(true);
     expect(button.getAttribute("title")).toContain("requires an open document");
+  });
+
+  test("a command that refuses the arguments is reported, not thrown out of the click", async () => {
+    /* The registry refuses BEFORE `run`, synchronously: a schema that does not declare `path`
+       makes `{ locale, path }` an undeclared key. That is the shape every real record had until
+       `path` was declared, and a `.catch` alone never saw it. */
+    const localeOnly = argsSchema({ locale: stringProperty("The language.") });
+    publish([stub("i18n.openTranslation", { args: localeOnly }), stub("i18n.createTranslation")]);
+    const host = await paintSettled();
+    const button = cell(host, "pages/about.json", 1);
+    expect(() => button.click()).not.toThrow();
+    await flush();
+    expect(ran).toEqual([]);
+    expect([...problems, ...toasts].map((record) => record.message)).toContain(
+      'command "i18n.openTranslation" argument "path": not declared — declared: locale',
+    );
   });
 
   test("a command that rejects is reported, not dropped", async () => {

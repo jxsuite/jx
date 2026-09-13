@@ -340,6 +340,41 @@ describe("the commands", () => {
     expect(diffStepOf(workspace.activePaneId)).toBe(0);
   });
 
+  test("F7 reaches the stepper through the registry with no args — pane is not required", async () => {
+    /* The chord path is `handleKeyEvent` → `registry.run(id)` with `{}`, and `registry.run` now
+       coerces against the record's schema first. These two records took `argsSchema`'s default and
+       declared `pane` REQUIRED while `paneOfArgs` fell back to the focused pane, so a chord would
+       have been refused before `run` with "expected a non-empty string, got missing". The schema
+       says what the implementation does now, and this drives the whole path to prove it. */
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { makeContext } = await import("../src/commands/context");
+    const { diffCommands } = await import("../src/canvas/diff-toolbar");
+    const { workspace } = await import("../src/workspace/workspace");
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ document: { open: true }, editor: { kind: "diff" } }),
+      mac: true,
+    });
+    registry.registerAll(diffCommands());
+    setDiffChangeMap(workspace.activePaneId, mapOf([modified(0), modified(1)]));
+    measureQueue = [null, null, null, null];
+    const press = (key: string, shift = false) => ({
+      key,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: shift,
+    });
+    expect(registry.handleKeyEvent(press("F7"), ["global"])).toBe("diff.nextChange");
+    await flush();
+    expect(diffStepOf(workspace.activePaneId)).toBe(0);
+    expect(registry.handleKeyEvent(press("F7"), ["global"])).toBe("diff.nextChange");
+    await flush();
+    expect(diffStepOf(workspace.activePaneId)).toBe(1);
+    expect(registry.handleKeyEvent(press("F7", true), ["global"])).toBe("diff.previousChange");
+    await flush();
+    expect(diffStepOf(workspace.activePaneId)).toBe(0);
+  });
+
   test("diff.setView is an idempotent setter, never a toggle", async () => {
     // The screenshot contract refuses a `toggle*` id: a verb whose result depends on the state it
     // Is called in cannot be driven, or photographed, honestly.
