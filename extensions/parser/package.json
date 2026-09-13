@@ -63,10 +63,10 @@
     "shiki": "^4.4.3",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.12.2",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@jxsuite/runtime": "workspace:^",
     "@types/mdast": "^4.0.4",
     "ajv": "^8.20.0"
