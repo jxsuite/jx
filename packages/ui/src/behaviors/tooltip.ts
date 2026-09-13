@@ -70,6 +70,16 @@ const MARGIN = 4;
 const disposers = new WeakMap<object, () => void>();
 
 /**
+ * The re-measure each ANCHORED, SHOWING tip is running, keyed by its own reactive scope.
+ *
+ * Separate from {@link disposers} because the two have different lifetimes: a binding lives from
+ * mount to unmount, and a watch lives from one toggle to the next. {@link onTooltipToggle} starts it
+ * on an anchored open and stops it on close; {@link onTooltipUnmount} stops it for a tip removed
+ * while it was showing, which is the one close the platform never announces.
+ */
+const watchers = new WeakMap<object, () => void>();
+
+/**
  * Whether this engine implements interest invokers.
  *
  * Probed on `HTMLButtonElement.prototype` rather than by `CSS.supports`, because the CSS delay
@@ -317,14 +327,38 @@ export function placeTooltip(state: TooltipState, tip: HTMLElement): void {
 }
 
 /**
- * Which side of its control an ANCHORED tip landed on, measured a frame after the platform placed
- * it, so the arrow can follow a flip the element did not make. `flipped` is the platform's answer
- * read back — a tip whose box sits above its control's — and nothing here moves the tip.
+ * Which side of its control an ANCHORED tip is on, kept current for as long as it is showing, so
+ * the arrow can follow a flip the element did not make — including one the platform makes LATER.
+ *
+ * `flipped` is the platform's answer read back — a tip whose box sits above its control's — and
+ * nothing here moves the tip. It is measured a frame after the tip shows, because an unlaid-out tip
+ * is zero high and has no side yet, and then again on every event that can move an anchored box
+ * while it is open: the platform re-places the tip against its control through scroll and resize
+ * and re-runs the try options when room runs out, and the arrow pinned in CSS cannot hear any of
+ * that. One measurement was right for the frame the tip appeared in and wrong for every flip after
+ * it (#310).
+ *
+ * **The causes, and why each is listened to where it is.** `scroll` is taken at the window in the
+ * CAPTURE phase because scroll events do not bubble, and the tip's control may sit in a nested
+ * scroller — an inspector panel, a menu — whose scrolling the window would otherwise never hear.
+ * `resize` is the window's own. A `ResizeObserver` on the tip and its control covers the rest — the
+ * tip's text arriving late, or the control growing — and is cheap at two elements, so it is taken
+ * where the engine has one and simply not taken elsewhere. Every cause SCHEDULES rather than
+ * measures: a scroll fires per pixel and a measurement forces layout, so they are coalesced to one
+ * `getBoundingClientRect` pair per animation frame.
+ *
+ * The watch is torn down on close, and the disposer is returned as well as kept, so a host that
+ * called this itself can stop it. Calling it again for the same state replaces the watch rather
+ * than doubling it. A tip with no control has no side to be on and is not watched; an engine with
+ * no animation frames (a DOM with no layout) measures once, synchronously, and watches nothing: it
+ * has no frames to coalesce to and nothing that scrolls.
  *
  * @param state The tip's reactive state, whose `flipped` this writes.
  * @param tip The `jx-tooltip` element.
+ * @returns A disposer that stops the watch and cancels a measurement it had scheduled.
  */
-export function measureAnchoredFlip(state: TooltipState, tip: HTMLElement): void {
+export function measureAnchoredFlip(state: TooltipState, tip: HTMLElement): () => void {
+  watchers.get(state)?.();
   const anchor = anchorOf(state, tip);
   const measure = (): void => {
     if (!anchor || state.anchored !== true) {
@@ -337,11 +371,49 @@ export function measureAnchoredFlip(state: TooltipState, tip: HTMLElement): void
     }
     state.flipped = own.bottom <= box.top;
   };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(measure);
-  } else {
+  if (!anchor || typeof requestAnimationFrame !== "function") {
+    /* No control to be on a side of, or no frames to coalesce to: one synchronous reading, which
+       is nothing at all in the first case, and no watch. */
     measure();
+    return () => {
+      /* Measured once and watched nothing, so there is nothing to stop. */
+    };
   }
+  let frame: number | null = null;
+  const run = (): void => {
+    frame = null;
+    measure();
+  };
+  /** Ask for one measurement in the next frame, however many causes ask before it arrives. */
+  const schedule = (): void => {
+    if (frame === null) {
+      frame = requestAnimationFrame(run);
+    }
+  };
+  /* Passive, because nothing here ever prevents a scroll, so the engine need not wait for the
+     listener before it scrolls. Removal keys on `capture` alone, which is why it is spelled twice. */
+  window.addEventListener("scroll", schedule, { capture: true, passive: true });
+  window.addEventListener("resize", schedule);
+  const observer = typeof ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+  if (observer) {
+    observer.observe(tip);
+    observer.observe(anchor);
+  }
+  const stop = (): void => {
+    if (frame !== null) {
+      cancelAnimationFrame(frame);
+      frame = null;
+    }
+    window.removeEventListener("scroll", schedule, { capture: true });
+    window.removeEventListener("resize", schedule);
+    observer?.disconnect();
+    if (watchers.get(state) === stop) {
+      watchers.delete(state);
+    }
+  };
+  watchers.set(state, stop);
+  schedule();
+  return stop;
 }
 
 /**
@@ -374,7 +446,8 @@ export function onTooltipBeforeToggle(state: TooltipState, event: Event): void {
  * Placing on toggle rather than on the gesture is what makes the declarative path work at all — an
  * `interestfor` trigger shows the tip without telling the element anything, and this is the first
  * moment the element hears about it. An anchored tip on an engine that positions by anchor is not
- * placed here at all: the platform has it, and the element only reads back which side it chose.
+ * placed here at all: the platform has it, and the element only reads back which side it chose, for
+ * as long as it is showing. The closing toggle is where that reading stops.
  *
  * @param state The tip's reactive state.
  * @param event The platform's ToggleEvent.
@@ -387,6 +460,8 @@ export function onTooltipToggle(state: TooltipState, event: Event): void {
   const opening = (event as { newState?: string }).newState === "open";
   state.open = opening;
   if (!opening) {
+    // A closed tip has no side, and the watch that was following it has nothing left to follow.
+    watchers.get(state)?.();
     return;
   }
   if (state.anchored === true && supportsAnchorPositioning()) {
@@ -435,4 +510,7 @@ export function onTooltipReady(state: TooltipState, event: Event): void {
 export function onTooltipUnmount(state: TooltipState): void {
   disposers.get(state)?.();
   disposers.delete(state);
+  /* A tip removed while showing gets no toggle from the platform, so its watch is stopped here or
+     not at all — and a watch is a window listener, which would hold the removed tip forever. */
+  watchers.get(state)?.();
 }
