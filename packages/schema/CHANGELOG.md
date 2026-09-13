@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.2.0](https://github.com/jxsuite/jx/compare/schema-v2.1.0...schema-v2.2.0) (2026-09-13)
+
+
+### Features
+
+* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
+* **runtime,schema,ui:** the seam schema-contained styling needs ([6efce33](https://github.com/jxsuite/jx/commit/6efce3320960037c5be88922b03466bbc5d10c00))
+* **runtime,schema:** a declaration at-rule may be written more than once ([07aa856](https://github.com/jxsuite/jx/commit/07aa856cf149eb6098a890e4896670a08ebf5c0c))
+* **runtime,studio:** a style block may document itself, and forced-colors.css is generated from one ([8f714b8](https://github.com/jxsuite/jx/commit/8f714b89200d3d5f37e263501e61b06fc7d7f114))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* **schema,runtime:** keyed $map with per-row scopes, and a $switch that owns its case ([99e7a6c](https://github.com/jxsuite/jx/commit/99e7a6cfd33087d1e2e18192de8e3c0bb9b5837d))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
+* **schema:** dialog and invoker-command rules, beside the popover ones (spec §8.7) ([b7b391e](https://github.com/jxsuite/jx/commit/b7b391eb827622738a398fd6c6f6f105fe828f27))
+* **schema:** popover correctness rules, shared by every surface that judges a document ([6eb394e](https://github.com/jxsuite/jx/commit/6eb394e2ff14c1059561bfbce085d0e2667e510c))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
+* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([173cf17](https://github.com/jxsuite/jx/commit/173cf175d455565a36d837097a40bbe2aa40fe4c))
+* **ui,studio:** jx-tree and jx-combobox, and the five surfaces that hand-rolled them ([9bca549](https://github.com/jxsuite/jx/commit/9bca5493ed58fc62a83ce31f46d6be7bc7904702))
+
+
+### Bug Fixes
+
+* **ci:** split a schema test under the runner's clock, and raise the search index's ceiling ([3b1812c](https://github.com/jxsuite/jx/commit/3b1812c2a4a41ed58ead994e932faef9dad1884e))
+* **schema,runtime,studio:** the overlay tools could not see a custom element ([af93456](https://github.com/jxsuite/jx/commit/af934567e242aca87d7890dff534fc69ad07e855))
+* **schema:** the accessibility name rule reported two correct documents ([4ec2c94](https://github.com/jxsuite/jx/commit/4ec2c94a65df6a90f315e913a340963de2d6d36b))
+* **studio,ui,runtime,schema:** thirteen findings from the branch review ([8c21b6c](https://github.com/jxsuite/jx/commit/8c21b6cde4a90e21bc655abe10a6f3f1955e638c))
+* **ui,studio,schema:** the five defects a browser found that no unit test could ([024f725](https://github.com/jxsuite/jx/commit/024f725d331236777791b1011ae8045bd33ca065))
+
 ## [2.1.0](https://github.com/jxsuite/jx/compare/schema-v2.0.0...schema-v2.1.0) (2026-08-30)
 
 

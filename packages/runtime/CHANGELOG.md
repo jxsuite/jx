@@ -1,5 +1,48 @@
 # Changelog
 
+## [4.0.0](https://github.com/jxsuite/jx/compare/runtime-v3.1.0...runtime-v4.0.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler,site,studio:** `@jxsuite/runtime` no longer writes authored declarations to `el.style`, so code reading them back off an element after `applyStyle` sees nothing. The `elementStyleTags` export is replaced by `releaseElementStyles` and `resetDocumentStyles`, which refcount a shared rule set rather than handing out an element to remove by hand; `documentStyleText` reads back what was written.
+
+### Features
+
+* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
+* **runtime,schema,ui:** the seam schema-contained styling needs ([6efce33](https://github.com/jxsuite/jx/commit/6efce3320960037c5be88922b03466bbc5d10c00))
+* **runtime,schema:** a declaration at-rule may be written more than once ([07aa856](https://github.com/jxsuite/jx/commit/07aa856cf149eb6098a890e4896670a08ebf5c0c))
+* **runtime,site:** [@keyframes](https://github.com/keyframes) is a third at-rule body shape ([6bd5245](https://github.com/jxsuite/jx/commit/6bd52455575c6a4db3eb87a1bedd4aeb2ad1f743))
+* **runtime,studio:** a style block may document itself, and forced-colors.css is generated from one ([8f714b8](https://github.com/jxsuite/jx/commit/8f714b89200d3d5f37e263501e61b06fc7d7f114))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
+* **runtime,ui,studio:** the canvas loads kit behaviours lazily, and a kit save reaches every frame ([e91b660](https://github.com/jxsuite/jx/commit/e91b66089adb3eb18ce3d227900b5d0ff133196a))
+* **runtime:** declaration-body at-rules, and the canvas hooks a popover needs ([a701ee1](https://github.com/jxsuite/jx/commit/a701ee1f2434e1153cddfa1b536c97ba8c849eda))
+* **runtime:** mount() with dispose, per-mount context, host scope and call contract ([e673eb3](https://github.com/jxsuite/jx/commit/e673eb3e360b71c4f940492c55b69b4f775f98d1))
+* **runtime:** redefineElement, and a definition read through the registry at connection ([e86a588](https://github.com/jxsuite/jx/commit/e86a5884512e869180b7dce66281351d7913e11e))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* **schema,runtime:** keyed $map with per-row scopes, and a $switch that owns its case ([99e7a6c](https://github.com/jxsuite/jx/commit/99e7a6cfd33087d1e2e18192de8e3c0bb9b5837d))
+* **studio,ui,runtime:** the Command Bar as a Jx document, closing the C2 surfaces ([da1fc54](https://github.com/jxsuite/jx/commit/da1fc54640b55bbd50873abae03d0b70c62a0413))
+* **studio,ui:** the settings menu on the menu surface, with a submenu level and live rows ([ab4b755](https://github.com/jxsuite/jx/commit/ab4b755a1640248d15151e3130632799783ce086))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
+* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([173cf17](https://github.com/jxsuite/jx/commit/173cf175d455565a36d837097a40bbe2aa40fe4c))
+* **ui:** the @jxsuite/ui workspace, with the theme, jx-icon over Phosphor, and specs/ui.md ([d297bc9](https://github.com/jxsuite/jx/commit/d297bc97c537e8eda726465470f683c3dbf53c37))
+
+
+### Bug Fixes
+
+* **runtime:** removing an observed attribute restores the declared default ([06c71c8](https://github.com/jxsuite/jx/commit/06c71c82950e9063f683e13361980e47d9cf78b6))
+* **schema,runtime,studio:** the overlay tools could not see a custom element ([af93456](https://github.com/jxsuite/jx/commit/af934567e242aca87d7890dff534fc69ad07e855))
+* **studio,ui,runtime,schema:** thirteen findings from the branch review ([8c21b6c](https://github.com/jxsuite/jx/commit/8c21b6cde4a90e21bc655abe10a6f3f1955e638c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.2.0
+
 ## [3.1.0](https://github.com/jxsuite/jx/compare/runtime-v3.0.0...runtime-v3.1.0) (2026-08-30)
 
 

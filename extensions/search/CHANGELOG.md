@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/jxsuite/jx/compare/search-v0.2.6...search-v0.3.0) (2026-09-13)
+
+
+### Features
+
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.2.0
+
 ## [0.2.6](https://github.com/jxsuite/jx/compare/search-v0.2.5...search-v0.2.6) (2026-08-30)
 
 
