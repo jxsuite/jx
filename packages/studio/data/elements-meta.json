@@ -41,41 +41,35 @@
         {
           "tag": "strong",
           "label": "Bold",
-          "icon": "sp-icon-text-bold",
           "command": "bold"
         },
         {
           "tag": "em",
           "label": "Italic",
-          "icon": "sp-icon-text-italic",
           "command": "italic"
         },
         {
           "tag": "u",
           "label": "Underline",
-          "icon": "sp-icon-text-underline",
           "command": "underline"
         },
         {
           "tag": "del",
           "label": "Strikethrough",
-          "icon": "sp-icon-text-strikethrough",
           "command": "strikethrough"
         },
         {
           "tag": "sup",
           "label": "Superscript",
-          "icon": "sp-icon-text-superscript",
           "command": "superscript"
         },
         {
           "tag": "sub",
           "label": "Subscript",
-          "icon": "sp-icon-text-subscript",
           "command": "subscript"
         },
-        { "tag": "code", "label": "Code", "icon": "sp-icon-code", "command": "code" },
-        { "tag": "a", "label": "Link", "icon": "sp-icon-link", "command": "link" }
+        { "tag": "code", "label": "Code", "command": "code" },
+        { "tag": "a", "label": "Link", "command": "link" }
       ]
     },
     "h1": {
@@ -85,17 +79,15 @@
         {
           "tag": "strong",
           "label": "Bold",
-          "icon": "sp-icon-text-bold",
           "command": "bold"
         },
         {
           "tag": "em",
           "label": "Italic",
-          "icon": "sp-icon-text-italic",
           "command": "italic"
         },
-        { "tag": "code", "label": "Code", "icon": "sp-icon-code", "command": "code" },
-        { "tag": "a", "label": "Link", "icon": "sp-icon-link", "command": "link" }
+        { "tag": "code", "label": "Code", "command": "code" },
+        { "tag": "a", "label": "Link", "command": "link" }
       ]
     },
     "h2": {
@@ -318,16 +310,14 @@
         {
           "tag": "strong",
           "label": "Bold",
-          "icon": "sp-icon-text-bold",
           "command": "bold"
         },
         {
           "tag": "em",
           "label": "Italic",
-          "icon": "sp-icon-text-italic",
           "command": "italic"
         },
-        { "tag": "code", "label": "Code", "icon": "sp-icon-code", "command": "code" }
+        { "tag": "code", "label": "Code", "command": "code" }
       ]
     },
     "span": {

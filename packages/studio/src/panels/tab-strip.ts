@@ -7,6 +7,20 @@
  * addressed by REGION id — `pane.primary/tabs`, `pane.secondary/tabs` — rather than by element id,
  * so the shell can move or rename the divs without touching this file.
  *
+ * **This file is the FLOW; the markup is a document.** `surfaces/tab-strip.json` owns the strip's
+ * structure, its ARIA, its keyboard and every value in its style, and `surfaces/tab-strip.ts`
+ * mounts one per host (studio-ui-guidelines.md §6, §9.3). What stays here is the part that is a
+ * decision: which pane a host is drawing, what each tab is called, what its tooltip says, whether
+ * closing it would lose work, and what the two menus offer.
+ *
+ * **The chip is a `jx-tab` now, and three of the things it used to draw by hand are the kit's**:
+ * the selected state (`aria-selected` on a real `tab` inside a real `tablist`, where an `.active`
+ * class used to be), the close button, and the dirty dot. The three that are Studio's own live in
+ * `jx-tab`'s slots — the drill-in marker in `icon`, the draft pill in `status`, the pin toggle in
+ * `actions` — which is the gap that kept this strip out of the tab pattern (`ui.md` §5.4). With it
+ * closed the strip is one stop in the tab order, the arrows walk it, Home and End reach its ends,
+ * and Delete closes a tab: a keyboard contract the × has never had.
+ *
  * Six things the strip owes the author:
  *
  * - **A label that identifies the document.** A realistic Jx session has four tabs whose basename is
@@ -27,11 +41,9 @@
  *   — reached none of them. See {@link placedTabItems}.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { classMap } from "lit-html/directives/class-map.js";
-import { repeat } from "lit-html/directives/repeat.js";
 import { effect, effectScope } from "../reactivity";
 import {
+  PRIMARY_PANE,
   activateTab,
   closeTab,
   focusPane,
@@ -52,9 +64,18 @@ import { PRESET_LABELS } from "../workspace/pane-derive";
 import { localeLabel } from "@jxsuite/schema/locale";
 import { tabOfPane } from "../canvas/canvas-surface";
 import { mediaDisplayName } from "./shared";
+import { mountTabStripSurface } from "../surfaces/tab-strip";
 import type { Pane, PaneDerivation } from "../workspace/workspace";
 import type { Tab } from "../tabs/tab";
-import { renderPopover, showConfirmDialog, showSaveDiscardDialog } from "../ui/layers";
+import type {
+  TabChipView,
+  TabStripActions,
+  TabStripSurface,
+  TabStripValues,
+} from "../surfaces/tab-strip";
+import { showConfirmDialog, showSaveDiscardDialog } from "../ui/layers";
+import { openMenu } from "../surfaces/menu";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import { saveFile } from "../files/file-ops";
 import { collabReadOnly } from "../collab/collab-session";
 import { collabState } from "../collab/collab-state";
@@ -62,7 +83,6 @@ import { rectOf } from "../utils/geometry";
 import { resolveRegion } from "../ui/regions";
 import { commitTabBuffers, tabBufferUnsaved } from "../services/monaco-buffer";
 import type { EffectScope } from "@vue/reactivity";
-import type { TemplateResult } from "lit-html";
 
 /**
  * The primary pane's host, as handed over by the shell's bootstrap.
@@ -80,10 +100,23 @@ const _lastActive = new Map<string, string | null>();
 /** The host each pane last drew into, so a strip can be blanked when the pane stops owning it. */
 const _hosts = new Map<string, HTMLElement>();
 
+/**
+ * The mounted document in each host. One mount per HOST, not per pane.
+ *
+ * Two panes can resolve to the same host while the shell has a single strip, and the focused one
+ * wins the tie ({@link render}). Keying the mount by pane would then mount twice into one div;
+ * keying it by the host makes the hand-over an assignment instead — the same document keeps
+ * standing and starts saying the other pane's tabs.
+ */
+const _strips = new Map<HTMLElement, TabStripSurface>();
+
+/** What each host is drawing right now: the pane, and which of the two shapes it is in. */
+const _drawing = new Map<HTMLElement, { paneId: string; mode: TabStripValues["mode"] }>();
+
 /** Whether each pane's strip overflows — decides its chevron. Measured after each render. */
 const _overflowing = new Map<string, boolean>();
 
-let _overflowHandle: { dismiss: () => void } | null = null;
+let _overflowHandle: MenuHandle | null = null;
 
 /** The tab id currently being dragged, or null. */
 let _dragging: string | null = null;
@@ -117,10 +150,8 @@ function hostFor(pane: Pane): HTMLElement | null {
  * @param {HTMLElement} host
  */
 export function mount(host: HTMLElement) {
+  unmount();
   _primaryHost = host;
-  _lastActive.clear();
-  _overflowing.clear();
-  _hosts.clear();
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
@@ -131,9 +162,9 @@ export function mount(host: HTMLElement) {
         void pane.activeTabId;
         /* NO DERIVATION READS HERE, and the three that were here are the clearest example in the
            package of a tracked input that tracks nothing. `render()` is called from inside this
-           effect, synchronously, so every value its templates read IS a dependency —
-           `derivationChipTpl` reads `derived.kind`, `derived.preset` and `derived.media` to build
-           the chip's label, and `renderPane` reads `pane.derived` to choose the branch. Three
+           effect, synchronously, so every value its projections read IS a dependency —
+           `derivationValues` reads `derived.kind`, `derived.preset` and `derived.media` to build
+           the chip's label, and `project` reads `pane.derived` to choose the branch. Three
            `void` lines restating them could each be inverted with no test in the suite able to
            tell, because the behaviour they claimed to buy was already bought one function down.
            The loop reads below are a different case and stay: `render()` draws ONE pane per host,
@@ -163,6 +194,11 @@ export function unmount() {
   dismissTabContextMenu();
   _scope?.stop();
   _scope = null;
+  for (const strip of _strips.values()) {
+    strip.dispose();
+  }
+  _strips.clear();
+  _drawing.clear();
   _primaryHost = null;
   _dragging = null;
   _lastActive.clear();
@@ -184,13 +220,13 @@ function render() {
   }
   const drawn = new Set<string>();
   for (const [host, pane] of claims) {
-    renderPane(pane, host);
+    paint(pane, host);
     _hosts.set(pane.id, host);
     drawn.add(pane.id);
   }
   // A pane that has gone away — or that has lost the shared host to the pane now focused — leaves
-  // Its last host behind. Blank it, unless someone else has just drawn there, so no strip outlives
-  // The pane it belongs to.
+  // Its last host behind. Take the document down, unless someone else has just drawn there, so no
+  // Strip outlives the pane it belongs to.
   // Deleting the entry the loop is standing on is defined behaviour for a Map iterator.
   for (const [paneId, host] of _hosts) {
     if (drawn.has(paneId)) {
@@ -200,9 +236,108 @@ function render() {
     _lastActive.delete(paneId);
     _overflowing.delete(paneId);
     if (!claims.has(host)) {
-      litRender(nothing, host);
+      _strips.get(host)?.dispose();
+      _strips.delete(host);
+      _drawing.delete(host);
     }
   }
+}
+
+/**
+ * Put one pane's projection into one host — mounting the document the first time, assigning every
+ * time after that.
+ *
+ * The assignment is the whole reason a strip survives a repaint: a keyed `$map` over `tabs` keeps
+ * the node of every chip whose id survived, so the tab the reader is aiming at does not move under
+ * them and the strip's scroll offset stays where they left it.
+ */
+function paint(pane: Pane, host: HTMLElement): void {
+  const values = project(pane);
+  _drawing.set(host, { mode: values.mode, paneId: pane.id });
+  const standing = _strips.get(host);
+  if (standing) {
+    standing.update(values);
+  } else {
+    _strips.set(host, mountTabStripSurface(host, values, actionsFor(host)));
+  }
+
+  /* The strip is HELD — `surfaces/tab-strip.ts` takes it as the element is created — so this is an
+     imperative USE of a node this module owns rather than a re-find of one it renders
+     (studio-ui-guidelines.md §9.4). The chip is asked for by the state the KIT puts on it, which is
+     the accessibility tree's own answer to "which tab is current".
+
+     THE REVEAL IS RECORDED ONLY WHEN THERE WAS A STRIP TO REVEAL IT IN. A mount is asynchronous,
+     so the first paint into a fresh host has no document yet — and moving `_lastActive` there
+     anyway would consume the transition and leave the chip off-screen with nothing left to notice.
+     That is exactly the case a derived pane produces: its strip is created the moment its one tab
+     comes back. */
+  const strip = _strips.get(host)?.strip();
+  if (strip && pane.activeTabId !== _lastActive.get(pane.id)) {
+    _lastActive.set(pane.id, pane.activeTabId);
+    /* Found by the id the DOCUMENT stamped, not by `aria-selected`. The kit is the single writer
+       of a tab's selected state and it writes it on a MutationObserver when the tab SET moved — a
+       microtask later — so a strip whose one tab has just come back has no tab marked current at
+       the instant this runs. The flow already knows which chip it wants; asking the tree instead
+       is asking a question we have the answer to, and getting it one tick early. */
+    ([...strip.children] as HTMLElement[])
+      .find((chip) => chip.dataset.tab === pane.activeTabId)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  syncOverflow(pane, host);
+}
+
+/** The pane a host is drawing, or null when it is drawing none. */
+function drawnPane(host: HTMLElement): Pane | null {
+  const paneId = _drawing.get(host)?.paneId;
+  return workspace.panes.find((pane) => pane.id === paneId) ?? null;
+}
+
+/**
+ * What a gesture on one host's strip asks of the flow.
+ *
+ * Read ONCE, when that host's document is mounted, so every one of these closes over the host
+ * rather than over a pane: the pane a host draws changes, and an action bound to the pane it was
+ * mounted for would act on the wrong strip the first time the side pane took the stage.
+ */
+function actionsFor(host: HTMLElement): TabStripActions {
+  return {
+    activate: (id) => {
+      activateTab(id);
+    },
+    closeTab: (id) => {
+      void requestClose(id);
+    },
+    context: (id, x, y) => {
+      const tab = workspace.tabs.get(id);
+      if (tab) {
+        openTabContextMenu(tab, x, y);
+      }
+    },
+    dragEnd: onDragEnd,
+    dragStart: onDragStart,
+    drop: (index, transfer) => {
+      onDrop(host, index, transfer);
+    },
+    focusPane: () => {
+      focusPane(drawnPane(host)?.id ?? PRIMARY_PANE);
+    },
+    openTrailing: (anchor) => {
+      openTrailing(host, anchor);
+    },
+    promote: (id) => {
+      promoteTab(id);
+    },
+    togglePin: (id) => {
+      const tab = workspace.tabs.get(id);
+      if (tab) {
+        setTabPinned(id, !tab.pinned);
+      }
+    },
+    wheel: (_state, event) => {
+      onWheel(event);
+    },
+  };
 }
 
 /**
@@ -212,7 +347,7 @@ function render() {
  * runs `pane.unsplit` — the lens's only exit, because Pin is refused for a projection of a document
  * that already has a tab beside it (§14.1).
  */
-function derivationChipTpl(pane: Pane, derived: PaneDerivation): TemplateResult {
+function derivationValues(pane: Pane, derived: PaneDerivation): TabStripValues {
   const registry = activeRegistry();
   /* For a LENS the first read already hops to the source pane. For an unresolved COMPANION it
      answers null — the pane owns no tab yet — and the chip would say "no document" about a
@@ -227,31 +362,54 @@ function derivationChipTpl(pane: Pane, derived: PaneDerivation): TemplateResult 
       : derived.kind === "companion" && derived.preset === "locale"
         ? `${PRESET_LABELS.locale} ${derived.locale ? localeLabel(derived.locale) : "—"}`
         : PRESET_LABELS[derived.preset];
-  return html`
-    <div
-      class=${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}
-      @mousedown=${() => focusPane(pane.id)}
-    >
-      <div class="tab-strip">
-        <div class="tab-derivation" title=${`${label} · ${of?.documentPath ?? "no document"}`}>
-          <span class="tab-derivation-preset">${label}</span>
-          <span class="tab-derivation-of">${of ? tabLabel(of) : "no document"}</span>
-        </div>
-      </div>
-      <button
-        class="tab-strip-overflow"
-        title=${registry?.get("pane.unsplit")?.title ?? "Close Side Pane"}
-        @click=${() => {
-          void registry?.run("pane.unsplit");
-        }}
-      >
-        <span aria-hidden="true">✕</span>
-      </button>
-    </div>
-  `;
+  // A chip whose source pane shows nothing SAYS SO: a sentence with its subject missing, in the
+  // One row that says what the pane is, is worse than the sentence it replaces.
+  const subject = of ? tabLabel(of) : "no document";
+  return {
+    active: "",
+    chipTitle: `${label} · ${of?.documentPath ?? "no document"}`,
+    focused: isPaneFocused(pane.id),
+    mode: "derivation",
+    preset: label,
+    stripLabel: stripLabel(pane),
+    subject,
+    tabs: [],
+    trailing: true,
+    trailingGlyph: "✕",
+    trailingTitle: registry?.get("pane.unsplit")?.title ?? "Close Side Pane",
+  };
 }
 
-function renderPane(pane: Pane, host: HTMLElement) {
+/**
+ * The tablist's accessible name.
+ *
+ * A `tablist` takes no name from its tabs and no lint can say so, because a bound role switches the
+ * naming rules off (`ui.md` §5.4). With two panes on screen there are two tablists, so the name
+ * says which — "Open documents" alone would announce the same words over both.
+ */
+function stripLabel(pane: Pane): string {
+  return pane.id === PRIMARY_PANE ? "Open documents" : "Open documents in the side pane";
+}
+
+/** A strip with nothing to say: the row is hidden outright rather than left as an empty band. */
+function blankValues(pane: Pane): TabStripValues {
+  return {
+    active: "",
+    chipTitle: "",
+    focused: isPaneFocused(pane.id),
+    mode: "empty",
+    preset: "",
+    stripLabel: stripLabel(pane),
+    subject: "",
+    tabs: [],
+    trailing: false,
+    trailingGlyph: "",
+    trailingTitle: "",
+  };
+}
+
+/** Everything one host's document draws, decided here so the document decides nothing. */
+function project(pane: Pane): TabStripValues {
   /* A LENS pane has no tabs and must not have an empty strip: its `tabOrder` is `[]` BY DESIGN, so
      the branch below would blank the one row that says what the pane is. It draws a derivation chip
      instead — the preset, what it is a projection of, and the two exits. A COMPANION owns real tabs
@@ -266,7 +424,7 @@ function renderPane(pane: Pane, host: HTMLElement) {
   if (derived && pane.tabOrder.length === 0) {
     /* A COMPANION whose rule has not resolved reaches this too, and it has to. Its `tabOrder` is
        empty for a different reason than a lens's — the document it wants is not open YET, or the
-       selection has nothing under it — and the branch below drew `nothing`: a pane with no chip,
+       selection has nothing under it — and the branch below drew nothing: a pane with no chip,
        no ✕ and no way out, which `paneIsEmpty` will not collapse because the derivation counts as
        a subject. The chip is the pane's name and its exit.
        NO `_lastActive` / `_overflowing` RESET HERE, and both were, until each was shown to be a
@@ -277,142 +435,88 @@ function renderPane(pane: Pane, host: HTMLElement) {
        two reactive writes and therefore two renders, and the first of them lands here with
        `tabOrder` full and `activeTabId` still `null` — which resets the field anyway. Both were
        written as bookkeeping and both were unfalsifiable; the branch below owns the answer. */
-    litRender(derivationChipTpl(pane, derived), host);
-    return;
+    return derivationValues(pane, derived);
   }
   if (pane.tabOrder.length === 0) {
     _lastActive.set(pane.id, null);
     _overflowing.set(pane.id, false);
-    litRender(nothing, host);
-    return;
+    return blankValues(pane);
   }
 
   const labels = tabLabels(pane);
-  const focused = isPaneFocused(pane.id);
-
-  litRender(
-    html`
-      <div
-        class=${classMap({ focused, "tab-strip-row": true })}
-        @mousedown=${() => focusPane(pane.id)}
-      >
-        <div class="tab-strip" @wheel=${onWheel}>
-          ${repeat(
-            pane.tabOrder,
-            (id) => id,
-            (id, index) => tabChip(pane, id, index, labels),
-          )}
-        </div>
-        ${
-          _overflowing.get(pane.id) === true
-            ? // ONE accessible name (§10): the glyph is hidden, so `title` is both the tooltip and
-              // The name — `title` + a matching `aria-label` would announce it twice.
-              html`<button
-                class="tab-strip-overflow"
-                title="Show hidden tabs"
-                @click=${(e: MouseEvent) => openOverflowMenu(e, pane, labels)}
-              >
-                <span aria-hidden="true">⌄</span>
-              </button>`
-            : nothing
-        }
-      </div>
-    `,
-    host,
-  );
-
-  if (pane.activeTabId !== _lastActive.get(pane.id)) {
-    _lastActive.set(pane.id, pane.activeTabId);
-    host.querySelector(".tab-strip-tab.active")?.scrollIntoView({
-      block: "nearest",
-      inline: "nearest",
-    });
-  }
-
-  syncOverflow(pane, host);
+  return {
+    active: pane.activeTabId ?? "",
+    chipTitle: "",
+    focused: isPaneFocused(pane.id),
+    mode: "tabs",
+    preset: "",
+    stripLabel: stripLabel(pane),
+    subject: "",
+    tabs: pane.tabOrder.flatMap((id, index) => chipView(pane, id, index, labels)),
+    trailing: _overflowing.get(pane.id) === true,
+    trailingGlyph: "⌄",
+    // ONE accessible name (§10): the glyph is hidden, so `title` is both the tooltip and the name
+    // — `title` + a matching `aria-label` would announce it twice.
+    trailingTitle: "Show hidden tabs",
+  };
 }
 
 /**
- * One chip.
+ * One chip, as a value.
+ *
+ * Every field is already decided: the document asks no question about a tab, and there is no branch
+ * in it a projection has not already taken. A tab that has gone between the pane's order and this
+ * call contributes no chip at all, which is what the empty array is for.
  *
  * @param {Pane} pane
  * @param {string} id
  * @param {number} index — the chip's slot in the pane's order, which is the drop target index
  * @param {Map<string, string>} labels
  */
-function tabChip(pane: Pane, id: string, index: number, labels: Map<string, string>) {
+function chipView(
+  pane: Pane,
+  id: string,
+  index: number,
+  labels: Map<string, string>,
+): TabChipView[] {
   const tab = workspace.tabs.get(id);
   if (!tab) {
-    return nothing;
+    return [];
   }
-  const isActive = id === pane.activeTabId;
-  const label = labels.get(id) ?? "Untitled";
-  const origin = tab.session.openedFrom;
-  return html`
-    <div
-      class=${classMap({
-        active: isActive,
-        dragging: _dragging === id,
-        pinned: tab.pinned,
-        preview: tab.preview,
-        "tab-strip-tab": true,
-      })}
-      draggable="true"
-      @click=${() => activateTab(id)}
-      @dblclick=${() => promoteTab(id)}
-      @dragstart=${(e: DragEvent) => onDragStart(e, id)}
-      @dragend=${() => onDragEnd()}
-      @dragover=${(e: DragEvent) => e.preventDefault()}
-      @drop=${(e: DragEvent) => onDrop(e, pane, index)}
-      @auxclick=${(e: MouseEvent) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          void requestClose(id);
-        }
-      }}
-      @contextmenu=${(e: MouseEvent) => openTabContextMenu(e, tab)}
-      title=${tabTooltip(tab)}
-    >
-      ${origin ? html`<span class="tab-strip-origin" aria-hidden="true">↳</span>` : nothing}
-      <span class="tab-strip-label">${label}</span>
-      ${
-        /* The draft pill (§7.6). On the CHIP, not only inside the entry editor: the mistake this
-           prevents — publishing something you believed was private — is made while glancing at a
-           row of tabs, and it is made about a document that may not even be the active one. */
-        entryDraftPill(tab)
-      }
-      ${tab.doc.dirty ? html`<span class="tab-strip-dirty">●</span>` : nothing}
-      <button
-        class="tab-strip-pin"
-        title=${tab.pinned ? "Unpin" : "Pin"}
-        @click=${(e: Event) => {
-          e.stopPropagation();
-          setTabPinned(id, !tab.pinned);
-        }}
-      >
-        <span aria-hidden="true">${tab.pinned ? "◉" : "◎"}</span>
-      </button>
-      <button
-        class="tab-strip-close"
-        title="Close"
-        @click=${(e: Event) => {
-          e.stopPropagation();
-          void requestClose(id);
-        }}
-      >
-        ×
-      </button>
-    </div>
-  `;
+  /* The draft pill (§7.6). On the CHIP, not only inside the entry editor: the mistake this
+     prevents — publishing something you believed was private — is made while glancing at a row of
+     tabs, and it is made about a document that may not even be the active one. */
+  const pill = entryDraftPill(tab);
+  return [
+    {
+      dirty: tab.doc.dirty,
+      draft: pill?.draft ?? false,
+      dragging: _dragging === id,
+      index,
+      key: id,
+      label: labels.get(id) ?? "Untitled",
+      origin: Boolean(tab.session.openedFrom),
+      pill: pill?.text ?? "",
+      pillTitle: pill?.title ?? "",
+      pinGlyph: tab.pinned ? "◉" : "◎",
+      pinTitle: tab.pinned ? "Unpin" : "Pin",
+      pinned: tab.pinned,
+      preview: tab.preview,
+      // A control inside a tab is in the tab order only while its tab is the current one, which is
+      // What keeps a strip of fifteen documents ONE stop rather than fifteen (`ui.md` §5.4).
+      tabindex: id === pane.activeTabId ? "0" : "-1",
+      title: tabTooltip(tab),
+    },
+  ];
 }
 
 // ─── Drag reorder ─────────────────────────────────────────────────────────────
 
-function onDragStart(e: DragEvent, id: string) {
+function onDragStart(id: string, transfer: DataTransfer | null) {
   _dragging = id;
-  e.dataTransfer?.setData("text/plain", id);
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = "move";
+  transfer?.setData("text/plain", id);
+  if (transfer) {
+    transfer.effectAllowed = "move";
   }
   // The ghost is chrome state, not model state, so no effect fires for it.
   render();
@@ -427,33 +531,55 @@ function onDragEnd() {
  * Drop onto the chip at `index`. The model clamps the destination into the region the dragged tab's
  * pinned state allows, so this only has to say where the pointer was.
  */
-function onDrop(e: DragEvent, pane: Pane, index: number) {
-  e.preventDefault();
-  const id = _dragging ?? e.dataTransfer?.getData("text/plain") ?? null;
+function onDrop(host: HTMLElement, index: number, transfer: DataTransfer | null) {
+  const pane = drawnPane(host);
+  const id = _dragging ?? transfer?.getData("text/plain") ?? null;
   _dragging = null;
-  if (!id || !pane.tabOrder.includes(id)) {
+  if (!pane || !id || !pane.tabOrder.includes(id)) {
     return;
   }
   moveTab(id, index);
 }
 
 /**
- * Re-measure a pane's strip and re-render once if the chevron's presence changed.
+ * Re-measure a pane's strip and re-project once if the chevron's presence changed.
  *
- * Measurement can only happen after lit has written the DOM, so this runs at the tail of
- * `renderPane()` and guards its own re-entry on the boolean actually flipping — the chevron cannot
- * oscillate.
+ * Measurement can only happen after the document has written the DOM, so this runs at the tail of
+ * {@link paint} and guards its own re-entry on the boolean actually flipping — the chevron cannot
+ * oscillate. Before the mount resolves there is no strip to measure and nothing to correct: the
+ * next repaint measures it, and a strip that overflows on its first frame has no hidden tab a
+ * reader could be looking for yet.
  */
 function syncOverflow(pane: Pane, host: HTMLElement) {
-  const strip = host.querySelector(".tab-strip") as HTMLElement | null;
-  if (!strip) {
+  const surface = _strips.get(host);
+  const strip = surface?.strip();
+  if (!surface || !strip) {
     return;
   }
   const overflowing = strip.scrollWidth > strip.clientWidth;
   if (overflowing !== (_overflowing.get(pane.id) === true)) {
     _overflowing.set(pane.id, overflowing);
-    renderPane(pane, host);
+    surface.update(project(pane));
   }
+}
+
+/**
+ * The trailing button: the overflow chevron, or a derived pane's ✕.
+ *
+ * One control in one place, so which of the two it is comes from what the host is DRAWING rather
+ * than from a second condition re-derived here.
+ */
+function openTrailing(host: HTMLElement, anchor: HTMLElement | null) {
+  const pane = drawnPane(host);
+  if (!pane) {
+    return;
+  }
+  if (_drawing.get(host)?.mode === "derivation") {
+    const registry = activeRegistry();
+    void registry?.run("pane.unsplit");
+    return;
+  }
+  openOverflowMenu(pane, tabLabels(pane), anchor);
 }
 
 /**
@@ -491,14 +617,14 @@ export function hiddenTabIds(paneId: string = workspace.activePaneId): string[] 
   // The host the pane actually DREW into, not the one it would resolve: a pane with no strip on
   // Screen has no chips out of view, and measuring another pane's strip would invent some.
   const host = _hosts.get(paneId);
-  const strip = host?.querySelector(".tab-strip") as HTMLElement | null;
+  const strip = host ? (_strips.get(host)?.strip() ?? null) : null;
   if (!pane || !strip) {
     return [];
   }
   const left = strip.scrollLeft;
   const right = left + strip.clientWidth;
   const hidden: string[] = [];
-  const chips = [...strip.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
+  const chips = [...strip.querySelectorAll('[part="tab"]')] as HTMLElement[];
   for (const [index, chip] of chips.entries()) {
     const id = pane.tabOrder[index];
     if (id && (chip.offsetLeft < left || chip.offsetLeft + chip.offsetWidth > right)) {
@@ -509,7 +635,7 @@ export function hiddenTabIds(paneId: string = workspace.activePaneId): string[] 
 }
 
 export function dismissOverflowMenu() {
-  _overflowHandle?.dismiss();
+  _overflowHandle?.close();
   _overflowHandle = null;
 }
 
@@ -518,67 +644,66 @@ export function dismissOverflowMenu() {
  * empty menu is a dead control and happy-dom (plus any zero-height layout) measures everything at
  * 0.
  *
- * @param {MouseEvent} e
+ * **The kit menu, not a popover of this strip's own** (guidelines §8.4). `surfaces/menu.ts` owns
+ * the panel, the roving caret, the typeahead, Escape and the light dismissal, and it clamps the
+ * panel into the viewport once it has been laid out — so the `right:`/`top:` arithmetic that used
+ * to sit in a style attribute here is one `place` callback, measured against the panel's real box
+ * instead of guessed from the chevron's.
+ *
+ * A row states whether it is the tab the pane is already showing. The strip's own chips carry that
+ * as `aria-selected`, and a menu row cannot: `checked` on every row is the shape this shell already
+ * settled on for one-of-N (`panels/pane-context.ts`'s scheme, media and locale menus), and it is
+ * what makes the current tab announce itself rather than merely look different.
+ *
  * @param {Pane} pane
  * @param {Map<string, string>} labels
+ * @param {HTMLElement | null} anchorEl — the chevron that was pressed, as the document hands it
+ *   over
  */
-function openOverflowMenu(e: MouseEvent, pane: Pane, labels: Map<string, string>) {
-  e.stopPropagation();
+function openOverflowMenu(pane: Pane, labels: Map<string, string>, anchorEl: HTMLElement | null) {
   dismissOverflowMenu();
   const hidden = hiddenTabIds(pane.id);
   const ids = hidden.length > 0 ? hidden : [...pane.tabOrder];
-  const anchor = rectOf(e.currentTarget as HTMLElement);
-  _overflowHandle = renderPopover(
-    html`<sp-popover
-      open
-      style="position:fixed;z-index:10000;right:${Math.max(
-        4,
-        window.innerWidth - anchor.right,
-      )}px;top:${anchor.bottom}px"
-    >
-      <sp-menu>
-        ${ids.map(
-          (id) => html`<sp-menu-item
-            ?selected=${id === pane.activeTabId}
-            @click=${() => {
-              dismissOverflowMenu();
-              activateTab(id);
-            }}
-            >${labels.get(id) ?? "Untitled"}</sp-menu-item
-          >`,
-        )}
-      </sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      onDismiss: () => {
+  const anchor = rectOf(anchorEl ?? document.body);
+  _overflowHandle = openMenu({
+    /* The trigger says "Show hidden tabs" and this is the panel it opens, so it takes the same
+       words: a control and the panel it opens announcing two different things is a menu the
+       reader has to re-identify after opening it. */
+    label: "Hidden tabs",
+    onClosed: (handle) => {
+      if (_overflowHandle === handle) {
         _overflowHandle = null;
-      },
+      }
     },
-  );
+    opener: anchorEl,
+    /* Right-aligned under the chevron, which is a function of the panel's own WIDTH — so it is a
+       `place` callback rather than an `origin`, run once the popover has been laid out. That is
+       the fallback; where the platform positions by anchor, `placement` says the same thing. */
+    place: (box) => ({ x: Math.max(4, anchor.right - box.width), y: anchor.bottom }),
+    placement: "block-end span-inline-start",
+    region: "tab-overflow",
+    rows: ids.map((id) => ({
+      checked: (id === pane.activeTabId ? "true" : "false") as "true" | "false",
+      destructive: false,
+      disabled: false,
+      dividerAbove: false,
+      id,
+      run: () => {
+        activateTab(id);
+      },
+      title: labels.get(id) ?? "Untitled",
+    })),
+  });
 }
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-let _tabCtxHandle: { dismiss: () => void } | null = null;
+let _tabCtxHandle: MenuHandle | null = null;
 
 /** Dismiss the tab context menu if open. */
 export function dismissTabContextMenu() {
-  _tabCtxHandle?.dismiss();
+  _tabCtxHandle?.close();
   _tabCtxHandle = null;
-}
-
-/** One row of the tab menu. Every field on it was read off a command record. */
-interface TabMenuItem {
-  label: string;
-  action?: () => void;
-  disabled?: boolean;
-  /** The `requires` sentence, printed under a disabled row. */
-  reason?: string;
-  /** What is true NOW, for a row whose command names a state — see {@link statedState}. */
-  state?: string | undefined;
-  /** A group boundary in `forPlacement`'s ordering. */
-  dividerAbove?: boolean;
 }
 
 /**
@@ -597,7 +722,7 @@ interface TabMenuItem {
  *
  * The VALUE is the state the row would reach, not the state the tab is in: a setter is named for
  * where it lands (`content/draft-state.ts` says why), so the row offers the flip of what is true
- * now and {@link statedState} reads the current state back out of it for the checkmark.
+ * now and {@link statedChecked} reads the current state back out of it for the checkmark.
  */
 function tabRowFacts(tab: Tab): Record<string, unknown> {
   const facts: Record<string, unknown> = {};
@@ -608,8 +733,8 @@ function tabRowFacts(tab: Tab): Record<string, unknown> {
 }
 
 /**
- * The state a row is IN, derived from the state it would reach — or `undefined` when the record
- * says nothing about state.
+ * The state a row is IN, derived from the state it would reach — `"true"`, `"false"`, or
+ * `undefined` when the record says nothing about state.
  *
  * A menu is the one surface that is READ before it is used, so it is the one surface that can show
  * a boolean instead of asking the author to remember it. That is an argument for the SETTER over
@@ -620,18 +745,23 @@ function tabRowFacts(tab: Tab): Record<string, unknown> {
  * as a plain row here. Its idempotent sibling `document.setPinned {pinned}` would state its own
  * value, with no edit to this file, on the day its record declares `context/tab`; that declaration
  * lives in `workspace/workspace.ts`, which is the only place it can be made.
+ *
+ * **It is a real checkbox row now, which it could not be under Spectrum.** `sp-menu` reassigned
+ * every item's role one frame after connect whenever the menu declared no `selects`, so
+ * `role="menuitemcheckbox"` did not survive and the state had to be printed as a sentence ("Draft:
+ * no") in the description line instead. `jx-menu-item` derives `role` and `aria-checked` from
+ * `checked` and nothing rewrites them, so the row states the boolean the way a screen reader
+ * already knows how to announce — and the five rows that carry no state stay plain `menuitem`s,
+ * which `selects` on the old menu would have made impossible.
  */
-function statedState(args: Record<string, unknown>): string | undefined {
+function statedChecked(args: Record<string, unknown>): "true" | "false" | undefined {
   const entries = Object.entries(args);
   const only = entries.length === 1 ? entries[0] : undefined;
   if (!only || typeof only[1] !== "boolean") {
     return undefined;
   }
-  // The fact is the state the row would REACH, so the state it is in now is the negation. Phrased
-  // As `Key: yes|no` because the key is whatever the record's schema calls it — "Draft: no" reads,
-  // Where a sentence built around an arbitrary property name does not.
-  const key = only[0].charAt(0).toUpperCase() + only[0].slice(1);
-  return `${key}: ${only[1] ? "no" : "yes"}`;
+  // The fact is the state the row would REACH, so the state it is in now is the negation.
+  return only[1] ? "false" : "true";
 }
 
 /**
@@ -643,13 +773,13 @@ function statedState(args: Record<string, unknown>): string | undefined {
  * edit to this file — and with no registry published there are no rows at all, because every row
  * there has ever been came from one.
  */
-function placedTabItems(tab: Tab): TabMenuItem[] {
+function placedTabItems(tab: Tab): MenuRowProjection[] {
   const registry = activeRegistry();
   if (!registry) {
     return [];
   }
   const facts = tabRowFacts(tab);
-  const items: TabMenuItem[] = [];
+  const items: MenuRowProjection[] = [];
   let group: string | undefined;
   for (const command of registry.forPlacement("context/tab")) {
     const schema = command.args as
@@ -667,17 +797,21 @@ function placedTabItems(tab: Tab): TabMenuItem[] {
     const dividerAbove = items.length > 0 && command.group !== group;
     ({ group } = command);
     const reason = registry.disabledReason(command.id);
+    const checked = statedChecked(args);
     items.push({
-      state: statedState(args),
+      destructive: command.destructive === true,
       dividerAbove,
-      label: command.title,
+      id: command.id,
+      title: command.title,
+      ...(checked === undefined ? {} : { checked }),
       ...(reason === undefined
         ? {
-            action: () => {
+            disabled: false,
+            run: () => {
               void registry.run(command.id, args);
             },
           }
-        : { disabled: true, reason }),
+        : { disabled: true, requires: reason }),
     });
   }
   return items;
@@ -695,74 +829,39 @@ function placedTabItems(tab: Tab): TabMenuItem[] {
  *
  * With nothing declared, no menu opens: an empty popover is a dead control, the same judgement the
  * overflow chevron makes one section up.
+ *
+ * The `preventDefault` and the `stopPropagation` a right-click needs are the DOCUMENT's, written
+ * beside the gesture that needs them (`surfaces/tab-strip.json`), so what arrives here is the tab
+ * and the point — which is everything a menu is a function of.
+ *
+ * **The rows go to the kit menu** (`surfaces/menu.ts`, guidelines §12.5), which is why there is no
+ * row template in this file any more. Three things that were written here went with it: the clamp
+ * that kept a right-click near the screen edge readable — `onMenuToggle` clamps every panel once it
+ * has been laid out, against the panel's real box rather than a guessed one — the `Needs …` line a
+ * disabled row prints, and the refusal to dismiss when a disabled row is clicked, which is
+ * `jx-menu-item`'s own `onClick` guard.
  */
-function openTabContextMenu(e: MouseEvent, tab: Tab) {
-  e.preventDefault();
-  e.stopPropagation();
+function openTabContextMenu(tab: Tab, clientX: number, clientY: number) {
   dismissTabContextMenu();
   dismissOverflowMenu();
   activateTab(tab.id);
 
-  const items = placedTabItems(tab);
-  if (items.length === 0) {
+  const rows = placedTabItems(tab);
+  if (rows.length === 0) {
     return;
   }
 
-  // Clamp to the viewport: a right-click near an edge would otherwise open a menu partly off
-  // Screen, and a menu you cannot read is a menu you cannot use.
-  const x = Math.min(e.clientX, window.innerWidth - 4);
-  const y = Math.min(e.clientY, window.innerHeight - 4);
-
-  _tabCtxHandle = renderPopover(
-    html`<sp-popover open style="position:fixed;z-index:10000;left:${x}px;top:${y}px">
-      <sp-menu>${items.map((item) => tabMenuItemTemplate(item))}</sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      onDismiss: () => {
+  _tabCtxHandle = openMenu({
+    label: "Tab actions",
+    onClosed: (handle) => {
+      if (_tabCtxHandle === handle) {
         _tabCtxHandle = null;
-      },
+      }
     },
-  );
-}
-
-/**
- * The line under a row: why it is disabled, or what is true now.
- *
- * A disabled row prints the record's own `requires` sentence — the same words the palette and the
- * assistant print, never re-worded here. An enabled row whose command names a state prints that
- * state, because a setter is named for where it LANDS and its title alone cannot say where you are
- * now.
- *
- * A description rather than a checkbox, for a mechanical reason: Spectrum's `Menu` reassigns every
- * item's role one frame after connect whenever the menu declares no `selects`, so
- * `role="menuitemcheckbox"` does not survive — verified in a real browser, because happy-dom never
- * runs that reassignment and no test here can see it either way. Declaring `selects` would make all
- * six rows checkboxes, including the five that carry no state.
- *
- * @param {TabMenuItem} item
- */
-function descriptionTemplate(item: TabMenuItem) {
-  const line = item.reason === undefined ? item.state : `Needs ${item.reason}`;
-  return line === undefined ? nothing : html`<span slot="description">${line}</span>`;
-}
-
-/** One rendered row. A disabled row stays on screen when clicked — it is there to be read. */
-function tabMenuItemTemplate(item: TabMenuItem) {
-  return html`${
-      item.dividerAbove ? html`<sp-menu-divider role="separator"></sp-menu-divider>` : nothing
-    }<sp-menu-item
-      ?disabled=${item.disabled === true}
-      aria-disabled=${item.disabled === true ? "true" : "false"}
-      @click=${() => {
-        if (item.disabled === true) {
-          return;
-        }
-        dismissTabContextMenu();
-        void item.action?.();
-      }}
-      >${item.label}${descriptionTemplate(item)}</sp-menu-item
-    >`;
+    origin: { x: clientX, y: clientY },
+    region: "tab",
+    rows,
+  });
 }
 
 // ─── Labels ───────────────────────────────────────────────────────────────────

@@ -426,6 +426,10 @@
               "label": "Popovers and overlays"
             },
             {
+              "path": "framework/concepts/accessibility",
+              "label": "Accessibility"
+            },
+            {
               "path": "framework/concepts/lists",
               "label": "Lists and iteration"
             },
@@ -650,6 +654,19 @@
             {
               "path": "extending/embedding/dev-server",
               "label": "Dev server internals"
+            },
+            {
+              "path": "extending/embedding/runtime-host",
+              "label": "Embedding the runtime in your app"
+            }
+          ]
+        },
+        {
+          "label": "UI kit",
+          "pages": [
+            {
+              "path": "extending/ui-kit",
+              "label": "The Jx UI kit"
             }
           ]
         },

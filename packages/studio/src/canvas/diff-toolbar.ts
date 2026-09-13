@@ -2,19 +2,25 @@
 /**
  * The diff stage's own chrome: how many changes there are, and how to walk them.
  *
+ * **This is the flow; `surfaces/diff-toolbar.json` is the markup.** What the count means for the
+ * half that is showing, which step is reachable, whether a comparison has a visual half at all and
+ * what a step does to both artboards are decided here; the bar's structure, ARIA, keyboard and
+ * style live in the document beside it.
+ *
  * **It owns its own reactivity from here**, the way `renderGridMode` does. A step must not go
  * through `renderCanvas(paneId)`: that rebuilds the stage and remounts both artboard iframes, so
  * pressing "next change" would tear down and reload the very documents it is trying to move you
- * through. The toolbar keeps a host element per pane and re-renders only itself.
+ * through. The toolbar keeps a host element per pane, mounts ONE document into it, and a redraw
+ * writes that document's scope.
  *
- * **It is an absolutely-positioned SIBLING of `.panzoom-wrap`, never a child and never in flow.** A
- * child would be scaled and panned along with the artboards; a flow sibling would shift the origin
- * `applyTransform` and `centerCanvas` compute against, so entering the mode would centre the boards
- * somewhere other than where the pan maths says they are.
+ * **It is an absolutely-positioned SIBLING of the stage's pan/zoom wrap, never a child and never in
+ * flow.** A child would be scaled and panned along with the artboards; a flow sibling would shift
+ * the origin `applyTransform` and `centerCanvas` compute against, so entering the mode would centre
+ * the boards somewhere other than where the pan maths says they are. That placement belongs to the
+ * stage — `surfaces/canvas-stage.json` draws the host — because where a floating bar sits over a
+ * pan/zoom surface is a fact about the stage rather than about the bar.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
 import { argsSchema, enumArg, enumProperty, stringProperty } from "../commands/command-args";
 import type { CommandArgValues } from "../commands/command-args";
 import type { AnyCommand } from "../commands/registry";
@@ -32,16 +38,28 @@ import { panToParentRect } from "./canvas-utils";
 import { surfaceForPane } from "./canvas-surface";
 import { announce } from "../services/announce";
 import { workspace } from "../workspace/workspace";
+import { mountDiffToolbarSurface } from "../surfaces/diff-toolbar";
+import type { DiffToolbarSurfaceHandle, DiffToolbarView } from "../surfaces/diff-toolbar";
 
-/** Where each pane's toolbar draws. Module-local and pane-keyed, like the rest of the diff state. */
-const _hosts = new Map<string, HTMLElement>();
+/**
+ * Where each pane's toolbar draws, and the document standing in it.
+ *
+ * Pane-keyed and module-local, like the rest of the diff state — and the MOUNT is kept beside the
+ * host rather than rebuilt per redraw. A step redraws the bar several times a second; remounting a
+ * document each time would be the same defect the stage-rebuild note above describes, one level
+ * down. A new host means a new stage, so that one is a genuine remount.
+ */
+const _bars = new Map<string, { host: HTMLElement; surface: DiffToolbarSurfaceHandle | null }>();
 
 /** Record (or forget) the element a pane's toolbar renders into. */
 export function setDiffToolbarHost(paneId: string, host: HTMLElement | null): void {
-  if (host) {
-    _hosts.set(paneId, host);
-  } else {
-    _hosts.delete(paneId);
+  const standing = _bars.get(paneId);
+  if (standing && standing.host !== host) {
+    standing.surface?.dispose();
+    _bars.delete(paneId);
+  }
+  if (host && !_bars.has(paneId)) {
+    _bars.set(paneId, { host, surface: null });
   }
 }
 
@@ -76,10 +94,35 @@ function repaintDiffStage(paneId: string): void {
 
 /** Redraw one pane's toolbar in place, without touching its artboards. */
 export function renderDiffToolbar(paneId: string): void {
-  const host = _hosts.get(paneId);
-  if (host) {
-    litRender(diffToolbarTpl(paneId), host);
+  const bar = _bars.get(paneId);
+  if (!bar) {
+    return;
   }
+  const view = diffToolbarView(paneId);
+  if (bar.surface) {
+    bar.surface.update(view);
+    return;
+  }
+  bar.surface = mountDiffToolbarSurface(bar.host, view, {
+    next: () => onStepClick(paneId, 1),
+    previous: () => onStepClick(paneId, -1),
+    showCode: () => selectDiffView(paneId, "code"),
+    showVisual: () => selectDiffView(paneId, "visual"),
+  });
+}
+
+/**
+ * Choose which half of a comparison is showing.
+ *
+ * Idempotent, and for the same reason `diff.setView` is: re-selecting the half already on screen
+ * must rebuild nothing, because the rebuild remounts both artboard iframes.
+ */
+function selectDiffView(paneId: string, view: DiffView): void {
+  if (diffViewOf(paneId) === view) {
+    return;
+  }
+  setDiffView(paneId, view);
+  repaintDiffStage(paneId);
 }
 
 /** How a change reads aloud, for the step announcement. */
@@ -157,47 +200,17 @@ export async function stepDiffAndReveal(paneId: string, delta: 1 | -1): Promise<
   announce(sentence);
 }
 
-/** The Visual/Code radio pair, or a static label when this comparison has no visual half. */
-function viewTpl(paneId: string, hasVisual: boolean): TemplateResult {
-  if (!hasVisual) {
-    // A control that cannot move is not drawn as a control — the rule `editorKindTpl` states for a
-    // Document with one editor kind. The Visual button is never drawn disabled.
-    return html`<span class="diff-view-static">Code</span>`;
-  }
-  const view = diffViewOf(paneId);
-  const button = (value: DiffView, label: string, title: string) => html`
-    <sp-action-button
-      size="s"
-      role="radio"
-      title=${title}
-      aria-checked=${view === value ? "true" : "false"}
-      ?selected=${view === value}
-      @click=${() => {
-        if (diffViewOf(paneId) === value) {
-          return;
-        }
-        setDiffView(paneId, value);
-        repaintDiffStage(paneId);
-      }}
-      >${label}</sp-action-button
-    >
-  `;
-  return html`
-    <sp-action-group compact size="s" class="diff-view" role="radiogroup" aria-label="Diff view">
-      ${button("visual", "Visual", "Show the change on the page")}
-      ${button("code", "Code", "Show the change in the file's text")}
-    </sp-action-group>
-  `;
-}
-
 /**
- * The toolbar: what changed, and the stepper.
+ * What the toolbar says, as one value.
  *
- * The counter is a static span rather than a button because it has no verb — `.pc-zoom-label` is a
- * button only because clicking it resets the zoom. Before the first step it reads "12 changes"
- * rather than "0 of 12", because the author is not on a change yet.
+ * The counter is text rather than a button because it has no verb — `.pc-zoom-label` is a button
+ * only because clicking it resets the zoom. Before the first step it reads "12 changes" rather than
+ * "0 of 12", because the author is not on a change yet.
+ *
+ * @param {string} paneId
+ * @returns {DiffToolbarView}
  */
-export function diffToolbarTpl(paneId: string): TemplateResult {
+export function diffToolbarView(paneId: string): DiffToolbarView {
   const map = diffChangeMapOf(paneId);
   /* THE COUNT BELONGS TO THE VIEW THAT IS SHOWING, and the two views count different things. The
      change map counts NODES, which is the right answer for the artboards and the wrong one for a
@@ -209,57 +222,27 @@ export function diffToolbarTpl(paneId: string): TemplateResult {
   const code = diffViewOf(paneId) === "code" || map === null;
   const total = code ? 0 : diffChangeCount(paneId);
   const index = code ? -1 : diffStepOf(paneId);
-  const label = code
+  const countLabel = code
     ? "Changed lines are marked"
     : total === 0
       ? "No changes"
       : index < 0
         ? `${total} ${total === 1 ? "change" : "changes"}`
         : `${index + 1} of ${total}`;
-  const stepper =
-    total === 0
-      ? nothing
-      : html`
-          <sp-action-button
-            size="s"
-            quiet
-            title="Previous change"
-            ?disabled=${index <= 0}
-            @click=${() => onStepClick(paneId, -1)}
-          >
-            <sp-icon-chevron-up slot="icon" size="s"></sp-icon-chevron-up>
-          </sp-action-button>
-          <span class="diff-step-count">${label}</span>
-          <sp-action-button
-            size="s"
-            quiet
-            title="Next change"
-            ?disabled=${index >= total - 1}
-            @click=${() => onStepClick(paneId, 1)}
-          >
-            <sp-icon-chevron-down slot="icon" size="s"></sp-icon-chevron-down>
-          </sp-action-button>
-        `;
-  return html`
-    <div class="diff-toolbar-inner" role="group" aria-label="Changes against HEAD">
-      ${viewTpl(paneId, map !== null)}
-      ${total === 0 ? html`<span class="diff-step-count">${label}</span>` : stepper}
-      ${
-        !code && map?.degraded
-          ? html`<span class="diff-note" title="A group of siblings was too large to pair up"
-              >some shown as add/remove</span
-            >`
-          : nothing
-      }
-      ${
-        !code && map?.rootKeys.length
-          ? html`<span class="diff-note" title=${`Changed: ${map.rootKeys.join(", ")}`}
-              >document settings changed</span
-            >`
-          : nothing
-      }
-    </div>
-  `;
+  const showing = diffViewOf(paneId);
+  return {
+    codeChecked: showing === "code" ? "true" : "false",
+    countLabel,
+    degraded: !code && map?.degraded ? "shown" : "hidden",
+    nextDisabled: index >= total - 1,
+    prevDisabled: index <= 0,
+    rootKeys: !code && map?.rootKeys.length ? "shown" : "hidden",
+    rootKeysTitle: `Changed: ${map?.rootKeys.join(", ") ?? ""}`,
+    stepper: total === 0 ? "hidden" : "shown",
+    // A file the canvas cannot render arrives with a null map: there is no visual half to offer.
+    viewMode: map === null ? "static" : "choice",
+    visualChecked: showing === "visual" ? "true" : "false",
+  };
 }
 
 /** The pane a diff verb addresses: named, or the focused one. */

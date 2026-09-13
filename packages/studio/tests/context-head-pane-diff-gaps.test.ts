@@ -16,13 +16,7 @@
  *   cells) exactly where it is, and a `reconcile()` after `unmount()` writing neither a cell nor a
  *   track into the element the module has let go of.
  */
-import {
-  flush,
-  installMockPlatform,
-  renderInto,
-  resetStudioState,
-  resetWorkspaceWithTab,
-} from "./harness";
+import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { AnyCommand } from "../src/commands/registry";
@@ -65,11 +59,11 @@ const {
   invalidateLayoutHeadCache,
   invalidateLayoutPickerCache,
   layoutHeadEntries,
-  renderHeadTemplate,
 } = await import("../src/panels/head-panel");
 const paneContext = await import("../src/panels/pane-context");
 const paneGrid = await import("../src/panels/pane-grid");
-const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
+const { PANE_SELECTOR } = await import("../src/surfaces/pane-grid");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext, makeContext } = await import("../src/commands/context");
 const { componentRegistry } = await import("../src/files/components");
@@ -263,8 +257,8 @@ function recordDocumentListeners(log: Registration[]): () => void {
   };
 }
 
-describe("the element menu's document keydown listener", () => {
-  /** The capture-phase `keydown` bindings the menu took, in order. */
+describe("the element menu binds nothing on the document", () => {
+  /** Capture-phase keydown registrations on the document. */
   function keyBindings(log: Registration[], op: "add" | "remove"): Registration[] {
     return log.filter(
       (entry) => entry.op === op && entry.type === "keydown" && entry.capture === true,
@@ -273,8 +267,8 @@ describe("the element menu's document keydown listener", () => {
 
   /** The rows of the element menu, addressed by the menu's own accessible name. */
   function menuRows(): HTMLElement[] {
-    const menu = document.querySelector('sp-menu[aria-label="Element actions"]');
-    return menu ? [...menu.querySelectorAll<HTMLElement>("sp-menu-item[data-command-id]")] : [];
+    const menu = document.querySelector('jx-menu[aria-label="Element actions"]');
+    return menu ? [...menu.querySelectorAll<HTMLElement>("jx-menu-item[data-command-id]")] : [];
   }
 
   function openMenu(): void {
@@ -289,14 +283,14 @@ describe("the element menu's document keydown listener", () => {
     );
   }
 
-  /** Press ↓ the way the document-level capture listener would see it. */
+  /** Press ↓ where a keyboard would: at the focused row, else on the document. */
   function arrowDown(): KeyboardEvent {
     const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" });
-    document.dispatchEvent(e);
+    const active = document.activeElement;
+    (active?.closest("jx-menu") ? active : document).dispatchEvent(e);
     return e;
   }
 
-  /** Let the popover's outside-click listener register — it waits a frame on purpose. */
   async function frame(): Promise<void> {
     await new Promise((resolve) => {
       requestAnimationFrame(() => resolve(null));
@@ -316,7 +310,7 @@ describe("the element menu's document keydown listener", () => {
     closeAllTabs();
   });
 
-  test("the programmatic dismiss unbinds it — it is not left on the document, disarmed", async () => {
+  test("the keyboard contract lives on the menu itself, so a dismiss leaves nothing behind", async () => {
     const log: Registration[] = [];
     const stop = recordDocumentListeners(log);
     try {
@@ -324,19 +318,15 @@ describe("the element menu's document keydown listener", () => {
       await flush();
       expect(menuRows().length).toBeGreaterThan(0);
 
-      const bound = keyBindings(log, "add");
-      expect(bound).toHaveLength(1);
-      // While the menu is up it owns ↓, so the canvas's own nudge does not also fire.
+      // The menu used to own ↓ through a document-level capture listener it had to remember to
+      // Unbind. It is a `jx-menu` now: the key is handled where it lands, and the document was
+      // Never touched.
+      expect(keyBindings(log, "add")).toHaveLength(0);
+      // While the menu holds the caret it owns ↓, so the canvas's own nudge does not also fire.
       expect(arrowDown().defaultPrevented).toBe(true);
 
       dismissContextMenu();
 
-      // The SAME function, with the same capture flag: the menu handed the key back to the app
-      // Rather than staying on the document behind its own null check.
-      const released = keyBindings(log, "remove").filter(
-        (entry) => entry.handler === bound[0]!.handler,
-      );
-      expect(released).toHaveLength(1);
       expect(menuRows()).toHaveLength(0);
       expect(arrowDown().defaultPrevented).toBe(false);
     } finally {
@@ -344,27 +334,17 @@ describe("the element menu's document keydown listener", () => {
     }
   });
 
-  test("…and so does the outside click, which tears down through the popover's own hook", async () => {
-    const log: Registration[] = [];
-    const stop = recordDocumentListeners(log);
-    try {
-      openMenu();
-      await flush();
-      await frame();
-      const bound = keyBindings(log, "add");
-      expect(bound).toHaveLength(1);
-      expect(keyBindings(log, "remove")).toHaveLength(0);
+  test("…and an outside click tears down through the popover's own toggle", async () => {
+    openMenu();
+    await flush();
+    await frame();
+    expect(menuRows().length).toBeGreaterThan(0);
 
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush();
 
-      expect(menuRows()).toHaveLength(0);
-      expect(
-        keyBindings(log, "remove").filter((entry) => entry.handler === bound[0]!.handler),
-      ).toHaveLength(1);
-      expect(arrowDown().defaultPrevented).toBe(false);
-    } finally {
-      stop();
-    }
+    expect(menuRows()).toHaveLength(0);
+    expect(arrowDown().defaultPrevented).toBe(false);
   });
 });
 
@@ -410,51 +390,6 @@ describe("the layout `$head` read", () => {
     expect(reads).toHaveLength(1);
     // The one read did land, so the guard dropped a duplicate rather than the answer.
     expect(layoutHeadEntries(tab).entries).toHaveLength(1);
-  });
-});
-
-describe("the Page panel's door to Search appearance", () => {
-  beforeEach(() => {
-    installMockPlatform();
-    resetStudioState();
-    closeAllTabs();
-    invalidateLayoutPickerCache();
-    setActiveRegistry(null);
-  });
-
-  afterEach(() => {
-    setActiveRegistry(null);
-    closeAllTabs();
-  });
-
-  test("the button runs the shared command rather than opening the modal itself", async () => {
-    const ran: string[] = [];
-    const registry = createCommandRegistry({ getContext: emptyContext });
-    registry.register({
-      category: "Document",
-      id: "document.openSeo",
-      level: "document",
-      run: () => {
-        ran.push("document.openSeo");
-      },
-      title: "Search Appearance",
-      undo: "none",
-    });
-    setActiveRegistry(registry);
-
-    const container = await renderInto(
-      renderHeadTemplate({
-        applyMutation: () => {},
-        document: { tagName: "html" } as JxMutableNode,
-        renderLeftPanel: () => {},
-      }),
-    );
-    const button = container.querySelector(".head-seo-btn") as HTMLElement;
-    expect(button.textContent?.trim()).toBe("Search appearance…");
-
-    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(ran).toEqual(["document.openSeo"]);
-    expect(activeRegistry()).toBe(registry);
   });
 });
 
@@ -514,13 +449,27 @@ describe("applyContentMutation", () => {
 
 // ─── panels/pane-context.ts · the preset menu, and a late param load ─────────
 
-describe("the preset menu's outside-click dismissal", () => {
+describe("the preset menu", () => {
   let host: HTMLElement;
 
-  /** The rows of the popover the ⟲ trigger opened, addressed by its own aria-label. */
+  /**
+   * The rows of the menu the ⟲ trigger opened, addressed by its own accessible name.
+   *
+   * It is the KIT menu now (`surfaces/menu.ts`) rather than a hand-built `sp-popover`, so light
+   * dismissal, Escape, roving focus and the disabled row's `requires` sentence all belong to the
+   * platform and to that surface — which is why the outside-`mousedown` case this block used to
+   * carry is gone rather than rewritten: it asserted a document listener this module no longer
+   * owns, and `tests/surfaces-menu.test.ts` is where that contract lives. What is still this
+   * module's, and is asserted below, is that there is exactly ONE menu at a time and that
+   * `dismissPresetMenu()` takes it down.
+   */
   function menuItems(): HTMLElement[] {
     const menu = document.querySelector('[aria-label="Show beside this pane"]');
-    return menu ? [...menu.querySelectorAll<HTMLElement>("sp-menu-item")] : [];
+    return menu ? [...menu.querySelectorAll<HTMLElement>("jx-menu-item")] : [];
+  }
+
+  function menus(): NodeListOf<Element> {
+    return document.querySelectorAll('[aria-label="Show beside this pane"]');
   }
 
   beforeEach(() => {
@@ -547,42 +496,49 @@ describe("the preset menu's outside-click dismissal", () => {
     closeAllTabs();
   });
 
-  async function openMenu(): Promise<void> {
+  async function openPresetMenu(): Promise<void> {
     resetWorkspaceWithTab(
       { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" },
       { documentPath: "pages/index.json", id: "pages/index.json" },
     );
     paneContext.mount(host, makeCtx());
-    await flush();
-    const trigger = host.querySelector(".pc-derive-trigger") as HTMLElement;
+    await flush(8);
+    const trigger = host.querySelector('[part="preset"]') as HTMLElement;
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    // A frame later the popover has taken its outside-click listener.
-    await flush();
+    // The menu mounts a document of its own and then shows it.
+    await flush(8);
   }
 
-  test("a mousedown inside keeps it; one outside takes it down", async () => {
-    await openMenu();
+  test("every row is a COMMAND, projected — never a second list of actions", async () => {
+    await openPresetMenu();
     const opened = menuItems();
     expect(opened.length).toBeGreaterThan(0);
-
-    // Pressing INSIDE the menu is how a row is activated — it must not dismiss first.
-    opened[0]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(menuItems().length).toBe(opened.length);
-
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(menuItems()).toHaveLength(0);
+    // Each row's identity begins with the id it runs; §12.5 forbids a second list beside them.
+    for (const row of opened) {
+      expect(row.dataset["commandId"]).toMatch(/^pane\.(derive|pin|unsplit)/);
+    }
+    expect(opened.map((row) => row.dataset["commandId"])).toContain("pane.unsplit");
   });
 
-  test("…and the trigger opens a fresh one afterwards, exactly one at a time", async () => {
-    await openMenu();
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(menuItems()).toHaveLength(0);
+  test("exactly one at a time — a second press replaces the first rather than stacking", async () => {
+    await openPresetMenu();
+    expect(menus()).toHaveLength(1);
 
-    const trigger = host.querySelector(".pc-derive-trigger") as HTMLElement;
+    const trigger = host.querySelector('[part="preset"]') as HTMLElement;
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    await flush(8);
+    expect(menus()).toHaveLength(1);
     expect(menuItems().length).toBeGreaterThan(0);
-    expect(document.querySelectorAll('[aria-label="Show beside this pane"]')).toHaveLength(1);
+  });
+
+  test("dismissPresetMenu takes it down, and says nothing the second time", async () => {
+    await openPresetMenu();
+    expect(menuItems().length).toBeGreaterThan(0);
+    paneContext.dismissPresetMenu();
+    expect(menuItems()).toHaveLength(0);
+    expect(() => {
+      paneContext.dismissPresetMenu();
+    }).not.toThrow();
   });
 });
 
@@ -676,11 +632,12 @@ describe("mounting the pane grid twice", () => {
     closeAllTabs();
   });
 
-  test("the second mount is inert — the live grid keeps its cells", () => {
+  test("the second mount is inert — the live grid keeps its cells", async () => {
     paneGrid.mount();
+    await paneGrid.paneGridReady();
     const cell = paneGrid.cellForPane(PRIMARY_PANE);
     expect(cell).not.toBeNull();
-    expect(gridA.querySelectorAll(".pane")).toHaveLength(1);
+    expect(gridA.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
 
     /* A second `#pane-grid` appears and `mount()` is called again — a project switch that forgot to
        unmount. Re-rendering the cells into it would re-parent every stage, and an `<iframe>` that
@@ -691,16 +648,21 @@ describe("mounting the pane grid twice", () => {
     document.body.append(gridB);
 
     paneGrid.mount();
+    await paneGrid.paneGridReady();
 
     expect(gridB.childElementCount).toBe(0);
-    expect(gridA.querySelectorAll(".pane")).toHaveLength(1);
-    expect(cell!.root.parentElement).toBe(gridA);
+    expect(gridA.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
+    /* CONTAINS rather than `parentElement`: the cell is drawn inside a `display: contents` row of
+       the grid's document, so its parent is that row and the claim was always which GRID it is
+       still in. */
+    expect(gridA.contains(cell!.root)).toBe(true);
     expect(cell!.stage.isConnected).toBe(true);
   });
 
-  test("a reconcile after unmount lays neither a cell nor a track into the grid it let go of", () => {
+  test("a reconcile after unmount lays neither a cell nor a track into the grid it let go of", async () => {
     paneGrid.mount();
-    expect(gridA.querySelectorAll(".pane")).toHaveLength(1);
+    await paneGrid.paneGridReady();
+    expect(gridA.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
     expect(gridA.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
 
     paneGrid.unmount();

@@ -13,10 +13,13 @@ code:
   - packages/studio/src/browse/library-model.ts
   - packages/studio/src/browse/library-pane.ts
   - packages/studio/src/ui/media-picker.ts
+  - packages/studio/src/surfaces/media-field.ts
+  - packages/studio/src/surfaces/media-browser.ts
   - packages/studio/src/editor/file-drop-action.ts
   - packages/studio/src/canvas/asset-refs.ts
   - packages/studio/src/canvas/asset-resolve.ts
   - packages/studio/src/media/media-pane.ts
+  - packages/studio/src/surfaces/media-pane.ts
   - packages/studio/src/media/media-open.ts
 ---
 

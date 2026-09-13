@@ -14,10 +14,12 @@ import {
   buildStyleRules,
   enumeratedAttrNames,
   isDeclarationAtRule,
+  isKeyframesAtRule,
   isNestedSelectorKey,
   camelToKebab,
   isSingleExpression,
   pureSchemeOf,
+  splitSelectorList,
 } from "@jxsuite/runtime";
 import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
@@ -1063,9 +1065,45 @@ function pushStyleRules(
   selector: string | null,
   mediaQueries: Record<string, string>,
 ) {
-  for (const rule of buildStyleRules(style, { mediaQueries, scope: selector })) {
+  for (const rule of buildStyleRules(style, {
+    mediaQueries,
+    /* Records what a STATIC build drops, and returns `null` so it drops exactly as before — the
+       emitted bytes are unchanged. A reactive declaration is a runtime declaration: it resolves
+       against a live scope, which a compiled page has only where the runtime is present, so a
+       static emitter has always dropped it. Silently, which is the defect: a document is correct
+       in Studio and simply unstyled in the built page, with nothing said. */
+    resolveValue: (property, value) => {
+      const source = typeof value === "string" ? value : (value as { $ref: string }).$ref;
+      _droppedReactive.push({ property, selector, source });
+      return null;
+    },
+    scope: selector,
+  })) {
     rules.push(rule.text);
   }
+}
+
+/** One entry per reactive declaration a static build dropped, since the last drain. */
+const _droppedReactive: { property: string; selector: string | null; source: string }[] = [];
+
+/**
+ * Take the reactive declarations dropped since the last call, as warning lines, and clear them.
+ *
+ * A build drains this once and reports what it finds. Draining is what keeps two builds in one
+ * process from inheriting each other's, and what keeps the list from growing without bound.
+ *
+ * @returns {string[]} One line per dropped declaration, naming the property and where it was.
+ */
+export function takeDroppedReactiveStyles(): string[] {
+  const lines = _droppedReactive.map(
+    ({ property, selector, source }) =>
+      `A static build drops the reactive style declaration \`${property}: ${source}\`` +
+      `${selector ? ` on \`${selector}\`` : ""}. It resolves against a live scope, which a ` +
+      "built page has only where the runtime is present, so the declaration is absent from the " +
+      "page. Give it a static value, or move it to an element the runtime renders.",
+  );
+  _droppedReactive.length = 0;
+  return lines;
 }
 
 /**
@@ -1165,9 +1203,12 @@ export function compileStyles(
     }
 
     for (const [key, val] of conditionalBlocks) {
-      /* A declaration-body at-rule has no selector to split across, and its name is global —
-         `@font-face` at project level is one block, not one per target. */
-      if (isDeclarationAtRule(key)) {
+      /* An unscoped at-rule has no selector to split across, and its name is global —
+         `@font-face` at project level is one block, not one per target. `@keyframes` is here for
+         a stronger reason than tidiness: splitting it would emit one same-named block per stop,
+         and the last definition of a name replaces every earlier one, so the animation would keep
+         only its final stop. */
+      if (isDeclarationAtRule(key) || isKeyframesAtRule(key)) {
         pushStyleRules(rules, { [key]: val }, null, mediaQueries);
         continue;
       }
@@ -1700,8 +1741,21 @@ const SHADOW_STANDALONE = /^(?:::slotted\(|::part\()/;
  * @returns {string}
  */
 function resolveSelector(prop: string, scope: string): string {
+  /* Member by member, for the reason css.ts's `resolveNestedSelector` does it: a key may be a
+     SELECTOR LIST, and splicing one as a single string spliced only its first `&`. `"& .a, & .b"`
+     came out as `sty-card .a, & .b`, and a raw `&` in a built stylesheet is not a nesting selector
+     at all — the browser discards the list and the component silently loses those rules. This is
+     the one selector path that does not go through the shared builder, because `:host` has to be
+     translated before the scope is applied, so it needed the same fix separately. */
+  return splitSelectorList(prop)
+    .map((member) => resolveSelectorMember(member, scope))
+    .join(", ");
+}
+
+/** One member of {@link resolveSelector}'s list against the scope. */
+function resolveSelectorMember(prop: string, scope: string): string {
   if (prop.startsWith("&")) {
-    return prop.replace("&", scope);
+    return prop.replaceAll("&", scope);
   }
   if (prop.startsWith(":host")) {
     const inner = /^:host\((.*)\)$/.exec(prop)?.[1];
@@ -1743,7 +1797,13 @@ export function buildComponentCSS(
     const own: JxStyle = {};
     const blocks: [string, JxStyle][] = [];
     for (const [prop, value] of Object.entries(styleDef)) {
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      /* `isRef` first, and it is the whole point: an object carrying `$ref` is a reactive VALUE,
+         not a nested block (spec.md §9.1). Sorted into `blocks` it matched neither branch below —
+         not an at-rule, not a nested selector — and was dropped without reaching the builder at
+         all, so the one emitter that could have reported it never saw it. */
+      if (isRef(value)) {
+        own[prop] = value as never;
+      } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         blocks.push([prop, value]);
       } else if (!prop.startsWith("@") && !isNestedSelectorKey(prop)) {
         own[prop] = value;

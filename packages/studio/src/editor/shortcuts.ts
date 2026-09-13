@@ -33,13 +33,13 @@
 import { childIndex, childList, getNodeAtPath, parentElementPath, projectState } from "../store";
 import { activeTab, workspace } from "../workspace/workspace";
 import {
-  STAGE_CLASS,
   allCanvasSurfaces,
   canvasModeOfPane,
   surfaceForPane,
   tabOfPane,
 } from "../canvas/canvas-surface";
 import type { CanvasSurface } from "../canvas/canvas-surface";
+import { STAGE_SELECTOR } from "../surfaces/pane-grid";
 import { primarySelection } from "../tabs/selection";
 import {
   mutateDuplicateNodes,
@@ -58,7 +58,8 @@ import {
 import { openQuickSearch } from "../panels/quick-search";
 import { inspectorTab } from "../panels/right-panel";
 import { requestClose } from "../panels/tab-strip";
-import { showDialog } from "../ui/layers";
+import { layerHost } from "../ui/layers";
+import { openDialogSurface } from "../surfaces/dialog";
 import { rectOf } from "../utils/geometry";
 import {
   DOCK_IDS,
@@ -77,7 +78,6 @@ import { hasElementSelection, hasSelection, inCanvas, keyScopeStack } from "../c
 import { defaultCommands } from "../commands/defaults";
 import { setActiveRegistry } from "../commands/active-registry";
 import { CommandUnavailableError } from "../commands/registry";
-import { html } from "lit-html";
 import type { CommandContext } from "../commands/context";
 import type { DockId as CommandDockId } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -464,9 +464,19 @@ export function nextRegion(
   return null;
 }
 
-/** The first element inside a region that can take the caret. */
+/**
+ * The first element inside a region that can take the caret.
+ *
+ * It also listed `sp-action-button`, `sp-tab`, `sp-textfield` and `sp-picker`, and those four were
+ * load-bearing while Spectrum drew the chrome: a Spectrum control keeps its real control in a
+ * SHADOW ROOT, so `querySelector` inside a region host reached the custom element and nothing else.
+ * The kit has no shadow root anywhere (`ui.md` §3.2 — no element declares `$shadow`), so each of
+ * its controls puts a native `<button>`, `<input>` or `<select>` in the region's own tree, and the
+ * native entries already in this list find them. Naming the kit tags beside them would match the
+ * WRAPPER, one node earlier in document order than the thing that takes focus.
+ */
 const REGION_FOCUSABLE =
-  'a[href], button, input, textarea, select, sp-action-button, sp-tab, sp-textfield, sp-picker, [tabindex]:not([tabindex="-1"])';
+  'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])';
 
 /**
  * Move focus into a region and record that it moved.
@@ -570,6 +580,51 @@ const OPEN_PROJECT_REPORT: Record<Exclude<ProjectOpenOutcome, "cancelled">, stri
 };
 
 /**
+ * The three-way question itself: New Window, This Window, or neither.
+ *
+ * It was a hand-written `sp-dialog-wrapper` passed to `showDialog`, and it was never bespoke — a
+ * headline, a sentence and confirm / secondary / cancel is exactly what `surfaces/dialog.json`
+ * draws for Save-or-Discard, so the wrapper was a second answer to a settled question
+ * (studio-ui-guidelines.md §12.5). What is genuinely this flow's is only WHAT the three answers
+ * mean, which is the mapping below; the modality, the focus restoration, Escape and the backdrop
+ * are the platform's `<dialog>`, through the kit.
+ *
+ * `onClosed` resolves `cancel` the way the wrapper's `@close` did, and the settle guard is what
+ * makes the pair safe: pressing Cancel fires both the answer and, as the dialog closes,
+ * `onClosed`.
+ *
+ * @param {string} openName The project already open in this window, named in the sentence.
+ * @returns {Promise<ProjectOpenTarget | "cancel">}
+ */
+function askWhereToOpen(openName: string): Promise<ProjectOpenTarget | "cancel"> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: ProjectOpenTarget | "cancel") => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve(value);
+    };
+    const handle = openDialogSurface({
+      cancelLabel: "Cancel",
+      confirmLabel: "New Window",
+      headline: "Open Project",
+      layer: layerHost("dialog"),
+      message: `${openName} is open in this window. Where should the project you pick open?`,
+      onCancel: () => done("cancel"),
+      onClosed: () => done("cancel"),
+      onConfirm: () => done("newWindow"),
+      onSecondary: () => done("thisWindow"),
+      region: "project/open-target",
+      secondaryLabel: "This Window",
+      size: "sm",
+    });
+  });
+}
+
+/**
  * Ask where the project should open, then say what happened.
  *
  * With no project open, or on a platform with one window, there is no choice to make and none is
@@ -592,25 +647,7 @@ export async function openProjectFlow(hooks: StudioCommandHooks): Promise<void> 
     return;
   }
   const openName = projectState.name;
-  const choice = await showDialog<ProjectOpenTarget | "cancel">(
-    (done) => html`
-      <sp-dialog-wrapper
-        open
-        underlay
-        headline="Open Project"
-        confirm-label="New Window"
-        secondary-label="This Window"
-        cancel-label="Cancel"
-        size="s"
-        @confirm=${() => done("newWindow")}
-        @secondary=${() => done("thisWindow")}
-        @cancel=${() => done("cancel")}
-        @close=${() => done("cancel")}
-      >
-        <p>${openName} is open in this window. Where should the project you pick open?</p>
-      </sp-dialog-wrapper>
-    `,
-  );
+  const choice = await askWhereToOpen(openName);
   if (choice === "cancel") {
     return;
   }
@@ -928,7 +965,7 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
   document.addEventListener(
     "wheel",
     (e: WheelEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !(e.target as Element | null)?.closest(`.${STAGE_CLASS}`)) {
+      if ((e.ctrlKey || e.metaKey) && !(e.target as Element | null)?.closest(STAGE_SELECTOR)) {
         e.preventDefault();
       }
     },
@@ -1005,7 +1042,9 @@ export function installStageGestures(surface: CanvasSurface): () => void {
           requestEditZoom(editZoom * (1 + -e.deltaY * 0.005), surface);
           return;
         }
-        const sc = canvasWrap.querySelector<HTMLElement>(".content-edit-canvas");
+        /* The stage's own scroller, by the `part` the stage document draws it with — the same
+           attribute every other consumer of the canvas's chrome now addresses it by. */
+        const sc = canvasWrap.querySelector<HTMLElement>('[part="edit-canvas"]');
         if (sc) {
           e.preventDefault();
           sc.scrollTop += e.deltaY;

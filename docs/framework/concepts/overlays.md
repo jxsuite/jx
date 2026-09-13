@@ -3,9 +3,11 @@ title: "Popovers and overlays"
 description: "Build a mobile menu, a dropdown or a search palette with the HTML Popover API, and the one rule that decides whether it works."
 spec:
   - spec.md#8.3
+  - spec.md#8.7
   - spec.md#9.2
 code:
   - packages/schema/src/overlays.ts
+  - packages/schema/src/dialogs.ts
   - packages/runtime/src/runtime.ts
   - packages/runtime/src/css.ts
 ---
@@ -171,9 +173,80 @@ Always give an anchored panel a fallback. If `anchor()` does not resolve, every 
 
 An empty string means the same thing to the browser, but Studio's Content tab shows an empty value as _unset_, so `"auto"` is the spelling that reads correctly everywhere. Do not write it as `true`: a boolean is not one of the three keywords, and a value the browser does not recognise falls back to `manual`, which silently gives up Escape and click-outside.
 
+## Dialogs
+
+A modal conversation, one that must be answered before anything else, is a `<dialog>` rather than a popover. Open it with `showModal()`, or declaratively with an invoker command, and the browser makes everything outside it inert, traps focus inside, and closes it on Escape.
+
+```json
+{
+  "tagName": "dialog",
+  "id": "confirm-delete",
+  "attributes": { "aria-labelledby": "confirm-title", "closedby": "closerequest" },
+  "style": { "&[open]": { "display": "grid", "gap": "1rem" } },
+  "children": [
+    { "tagName": "h2", "id": "confirm-title", "textContent": "Delete this page?" },
+    {
+      "tagName": "button",
+      "attributes": { "command": "close", "commandfor": "confirm-delete" },
+      "textContent": "Cancel"
+    }
+  ]
+}
+```
+
+`closedby` decides what closes it: `any` (Escape and a click outside), `closerequest` (Escape only, the default for a modal) or `none`. A modal with `closedby="none"` needs a close button inside it, or nobody can leave.
+
+The `display` rule is the same rule as for popovers, for the same reason: a closed dialog is hidden by the browser's own `dialog:not([open]) { display: none }`, which any author `display` beats. So `display` goes in `&[open]`, never in the base rule.
+
+## Invoker commands
+
+A `<button>` can open and close either kind of overlay with no script at all. `commandfor` names the target's `id`, and `command` says what to do:
+
+| Command                                          | Acts on                              |
+| ------------------------------------------------ | ------------------------------------ |
+| `toggle-popover`, `show-popover`, `hide-popover` | a popover                            |
+| `show-modal`, `close`, `request-close`           | a dialog                             |
+| `--anything` (a custom command)                  | whatever handles it with `oncommand` |
+
+```json
+{
+  "tagName": "button",
+  "attributes": { "command": "show-modal", "commandfor": "confirm-delete" },
+  "textContent": "Delete…"
+}
+```
+
+Three things to know. Only a `<button>` carries these attributes: not an `<input>`, which `popovertarget` allows, and not a link. A command aimed at the wrong kind of target is ignored, so `show-modal` at a popover does nothing. And a custom command is a `CommandEvent` the target has to answer: give the target an `oncommand` handler that switches on `event#/command`.
+
+Studio reports every one of these mistakes in Problems, beside the popover ones, and `jx validate` names them too.
+
+## Custom elements that are overlays
+
+A component can be a popover, and a component can be the button that opens one. Both work, and both need the tools to know it.
+
+A component is a popover when its own definition carries `popover`, the way `jx-menu` does. Where you use it you write only the id:
+
+```json
+{ "tagName": "jx-menu", "attributes": { "id": "actions" } }
+```
+
+The `popover` attribute is nowhere in your page, so a checker reading your page alone sees an ordinary unknown tag. Studio and `jx validate` are told which of the components in scope are popovers, so a command aimed at one resolves, Problems stays quiet, and selecting it on the canvas opens it. A component of your own gets the same treatment once the project registers it.
+
+A component is an invoker when it forwards `popovertarget` or `command` and `commandfor` to a native button inside itself, which is what `jx-button` does. Write the attributes on the component and they reach the button that acts on them:
+
+```json
+{
+  "tagName": "jx-button",
+  "attributes": { "command": "show-modal", "commandfor": "confirm-delete" },
+  "children": [{ "tagName": "span", "textContent": "Delete…" }]
+}
+```
+
+A component that forwards nothing is still refused, and so are a `<div>` and a link, because on those the attributes parse and do nothing.
+
 ## In Studio
 
-Selecting a popover opens it on the canvas and grows the artboard to fit, whether you select the panel itself or anything inside it, from the canvas or the [Outline](/docs/studio/design/layers). Clicking its trigger opens it too. See **[The canvas](/docs/studio/interface/canvas)** for what the editor does and does not simulate.
+Selecting a popover opens it on the canvas and grows the artboard to fit, whether you select the panel itself or anything inside it, from the canvas or the [Outline](/docs/studio/design/layers). Clicking its trigger opens it too. A dialog behaves the same way, shown in place rather than modally, and a `command` button that targets either one works on the canvas without locking the page. See **[The canvas](/docs/studio/interface/canvas)** for what the editor does and does not simulate.
 
 ## Next
 

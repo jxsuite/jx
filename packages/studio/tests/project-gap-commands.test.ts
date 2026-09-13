@@ -311,10 +311,9 @@ describe("the Library's state setters", () => {
 describe("project.new", () => {
   test("opens the wizard with no argument", async () => {
     void registry.run("project.new");
-    await flush();
-    expect(
-      document.querySelector(".new-project-modal, .np-modal, sp-dialog-wrapper"),
-    ).not.toBeNull();
+    // The wizard is a mounted document in the dialog layer (`src/surfaces/new-project.json`).
+    await flush(3);
+    expect(document.querySelector('#layer-dialog jx-dialog[part="new-project"]')).not.toBeNull();
   });
 
   test("accepts a declared source tab", () => {

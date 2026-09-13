@@ -1,0 +1,175 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSwatchGroup",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-swatch.json"
+    },
+    {
+      "$ref": "../components/jx-swatch-group.json"
+    }
+  ],
+  "state": {
+    "chosen": "#3b82f6",
+    "palette": [
+      { "value": "#ef4444", "label": "Red" },
+      { "value": "#f97316", "label": "Orange" },
+      { "value": "#f5d90a", "label": "Lemon" },
+      { "value": "#22c55e", "label": "Green" },
+      { "value": "#3b82f6", "label": "Blue" },
+      { "value": "#8b5cf6", "label": "Violet" },
+      { "value": "#8b8b8b", "label": "Slate" },
+      { "value": "#000000", "label": "Black" }
+    ]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [part=\"readout\"]": {
+      "display": "block",
+      "margin": "var(--jx-space-3) 0 var(--jx-space-5)",
+      "color": "var(--jx-fg-muted)",
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& jx-swatch-group": {
+      "maxWidth": "320px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-swatch-group"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A radio group of swatches. The group is the one writer of each swatch's chosen state and of the roving caret, so a host owns the group's value and nothing else. Either arrow pair moves between swatches with wrap, Home and End go to the ends, and the swatch the caret lands on is chosen, which is what a radio group does."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A palette, bound both ways"
+    },
+    {
+      "tagName": "jx-swatch-group",
+      "$props": {
+        "label": "Brand palette",
+        "value": {
+          "$ref": "#/state/chosen"
+        }
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "=",
+            "target": {
+              "$ref": "#/state/chosen"
+            },
+            "value": {
+              "$ref": "event#/target/value"
+            }
+          }
+        ]
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/palette"
+          },
+          "key": {
+            "$ref": "$map/item/value"
+          },
+          "map": {
+            "tagName": "jx-swatch",
+            "$props": {
+              "color": "${$map.item.value}",
+              "value": "${$map.item.value}",
+              "label": "${$map.item.label}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "readout"
+      },
+      "textContent": "${state.chosen}"
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A fixed grid, and a member that cannot be chosen"
+    },
+    {
+      "tagName": "jx-swatch-group",
+      "$props": {
+        "label": "Theme colours",
+        "columns": 4,
+        "value": "#22c55e"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch",
+          "$props": { "color": "#ef4444", "label": "Red" }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": { "color": "#22c55e", "label": "Green" }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": { "color": "#3b82f6", "label": "Blue", "disabled": true }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": { "label": "No colour", "value": "none" }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Captioned, in one column"
+    },
+    {
+      "tagName": "jx-swatch-group",
+      "$props": {
+        "label": "Named tokens",
+        "columns": 1,
+        "value": "brand.cool"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch",
+          "$props": { "color": "#f97316", "value": "brand.warm", "label": "Warm" },
+          "children": [{ "tagName": "span", "textContent": "Warm" }]
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": { "color": "#0ea5e9", "value": "brand.cool", "label": "Cool" },
+          "children": [{ "tagName": "span", "textContent": "Cool" }]
+        }
+      ]
+    }
+  ]
+}

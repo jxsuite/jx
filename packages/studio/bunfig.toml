@@ -20,5 +20,21 @@ coveragePathIgnorePatterns = [
   "../schema/**",
   "../server/**",
   "../site/**",
+  # The kit's files reach this run through `registerKit()`; they are gated under packages/ui's
+  # own run (0.95), and a build-only module such as `icons-build.ts` is 0% here by construction.
+  "../ui/**",
 ]
-coverageThreshold = { lines = 0.95, functions = 0.94 }
+# Ratcheted to just under the workspace's worst file, per CLAUDE.md: `canvas-dnd-bridge.ts` is the
+# floor for lines (95.29) and `formula-catalog.ts` for functions (94.12). The margin is thin on
+# purpose — that is what a ratchet is — so a PR that drops either file below its current figure is
+# meant to go red rather than quietly spend the headroom.
+#
+# The lines floor CHANGED HANDS at exactly the same number, which is worth recording because the
+# figure staying put makes it look as though nothing happened. It was `check-surface-purity.ts`,
+# also at 95.29; removing that gate's Spectrum rule made the module smaller without making its
+# `import.meta.main` block any smaller, and a coverage floor is a ratio — so it fell to 94.37 and
+# the run went red over a file that had lost no test at all. The fix was to give the entry point
+# the shape the other gates already have (a `runCli()` that RETURNS the code, which a test can run
+# where a `process.exit` cannot), taking it to 98.57. Neither number below moved, so neither is
+# raised.
+coverageThreshold = { lines = 0.952, functions = 0.941 }

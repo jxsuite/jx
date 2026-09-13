@@ -292,16 +292,26 @@ jobs:
       # Neither is expressible in the type system — `ViewState` has an index signature and a
       # module-level `let active` is well-typed — so the guard is a ratcheting allow-list.
       - run: bun --cwd packages/studio scripts/check-pane-singletons.ts
-      # The template layer's two rules: a Spectrum control binds the state it moves ITSELF as a
-      # live property (an attribute binding is dirty-checked away exactly when it mattered), and a
+      # The template layer's two rules: a control that moves its own state binds it as a live
+      # property (an attribute binding is dirty-checked away exactly when it mattered), and a
       # module holds its own rendered nodes with ref() rather than re-finding them by selector.
       # Both carry a ratcheting backlog; source-only, about a second.
       - run: bun --cwd packages/studio scripts/check-lit-conventions.ts
+      - run: bun --cwd packages/studio scripts/check-surface-purity.ts
       # What the package promises about itself: the stylesheet list IS the stylesheets (a sheet the
       # list omits is one no document links — the 2.1.0 dead-links outage), `files` covers every
       # manifest path and every import that escapes src/, the abstraction declares no backend
       # package, and node: stays confined to the stager. Source-only, about a second.
       - run: bun --cwd packages/studio scripts/check-studio-package.ts
+      # The styling gate over the LIVE tree, which nothing here ran until now: raw hexes, orphan
+      # classes, the contrast pairs, the guidelines token table, the banned identifiers and the
+      # silent-catch budget were all enforced only by a human typing `bun run lint:styles`. Its unit
+      # tests ran in the matrix and its rules did not, so a gate could be extended — and was, for the
+      # surface documents — while never once judging the repository.
+      - run: bun --cwd packages/studio run lint:styles
+      # styles/tokens.css and styles/forced-colors.css are GENERATED from their .json sources. Same shape as `schema:verify`: the
+      # generator owns the bytes, a reviewer reads the meaning, and a hand-edit is a red X here.
+      - run: bun --cwd packages/studio run styles:check
       # The hosting contract, compiled under a CONSUMER's flags rather than this repo's.
       # jx-platform sets exactOptionalPropertyTypes, verbatimModuleSyntax and isolatedModules, none
       # of which the root tsconfig sets — and two type errors in the contract were found by

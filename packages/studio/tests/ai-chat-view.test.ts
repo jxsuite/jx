@@ -1,23 +1,32 @@
 /**
- * Tests for src/panels/ai-chat/chat-view.ts — the chat header and message-list templates: row
- * anatomy per role (user bubbles + context chips, assistant markdown + tool chips, failed-tool
- * surfacing, streaming tail, error row) and the moved helper functions.
+ * Tests for src/panels/ai-chat/chat-view.ts — the transcript's PROJECTION: row anatomy per role
+ * (user bodies + context chips, assistant markdown + tool chips, failed-tool surfacing, streaming
+ * tail), the tool-chip outcomes, the changed-files summary, the question card, the import log, and
+ * the moved helper functions.
  *
- * The three buttons this file draws are COMMANDS now (§11.1). So the header and the error row are
- * tested the way `tests/statusbar.test.ts` tests the bar: against a registry of bare stubs, because
- * the contract is "renders the record the registry holds, and nothing when it holds none" — what
- * the ids DO is `tests/ai-panel.test.ts`'s subject. The last test in the file closes the loop the
- * same way the status bar's does: every id named here is one the real app declares.
+ * The markup is `surfaces/ai-chat.json` now, so these assertions read the DATA the surface is
+ * handed; that the document draws it, and that a click on it does what it says, is
+ * `tests/ai-panel.test.ts`'s subject, against the mounted document.
+ *
+ * The three buttons this file used to draw are COMMANDS (§11.1), and {@link projectCommand} is what
+ * is left of them. They are tested the way `tests/statusbar.test.ts` tests the bar: against a
+ * registry of bare stubs, because the contract is "projects the record the registry holds, and
+ * nothing when it holds none". The last test in the file closes the loop the same way the status
+ * bar's does: every id named in the panel is one the real app declares.
  */
-import { pointer, renderInto } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import "./with-dom.js";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
   formatErrorAdvice,
   formatToolLabel,
-  renderChatHeader,
-  renderMessageList,
   parseAsk,
+  projectChip,
+  projectCommand,
+  projectCommands,
+  projectRows,
+  tokenHint,
+  tokenLabel,
   toolOutcome,
   toolOutcomeText,
   tryParseToolResult,
@@ -30,6 +39,7 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import type { CommandContext } from "../src/commands/context";
 import type { AnyCommand } from "../src/commands/registry";
+import type { ChatRowView } from "../src/surfaces/ai-chat";
 import type { Message } from "@jxsuite/ai/chat-state";
 
 let idCounter = 0;
@@ -38,20 +48,17 @@ function msg(role: Message["role"], content: string, extra: Partial<Message> = {
   return { content, id: `t_${idCounter}`, role, timestamp: idCounter, ...extra };
 }
 
-// ─── The registry the buttons render from ────────────────────────────────────
+// ─── The registry the buttons project from ───────────────────────────────────
 
 let ctx: CommandContext = makeContext();
-const ran: string[] = [];
 
-/** One record, as bare as the registry allows: the view must not care what it does. */
+/** One record, as bare as the registry allows: the projection must not care what it does. */
 function stub(id: string, title: string, extra: Partial<AnyCommand> = {}): AnyCommand {
   return {
     category: "Assistant",
     id,
     level: "application",
-    run: () => {
-      ran.push(id);
-    },
+    run: () => {},
     title,
     ...extra,
   } as AnyCommand;
@@ -74,7 +81,6 @@ function buildRegistry(ids?: readonly string[]) {
 
 beforeEach(() => {
   ctx = makeContext({ ai: { configured: true } });
-  ran.length = 0;
   setActiveRegistry(buildRegistry());
 });
 
@@ -82,33 +88,15 @@ afterEach(() => {
   setActiveRegistry(null);
 });
 
-function header(opts: Partial<Parameters<typeof renderChatHeader>[0]> = {}) {
-  return renderChatHeader({
-    overBudget: false,
-    streaming: false,
-    title: null,
-    tokens: 0,
-    ...opts,
-  });
-}
-
-function list(
+/** The transcript, as rows. */
+function rows(
   messages: Message[],
-  opts: {
-    status?: string;
-    error?: string | null;
-    onRestore?: (id: string) => void;
-    ask?: AskHandlers;
-  } = {},
-) {
-  return renderMessageList({
-    error: opts.error ?? null,
-    listRef: () => {},
+  opts: { status?: string; ask?: AskHandlers } = {},
+): ChatRowView[] {
+  return projectRows({
     messages,
-    onScroll: () => {},
     status: opts.status ?? "idle",
     ...(opts.ask ? { ask: opts.ask } : {}),
-    ...(opts.onRestore ? { onRestore: opts.onRestore } : {}),
   });
 }
 
@@ -170,7 +158,7 @@ describe("helpers", () => {
   });
 });
 
-describe("renderChatHeader", () => {
+describe("the context budget", () => {
   /*
    * `services/context-manager.ts` has computed the token count and the warning flag on every turn
    * since it was written, and `chat-state.ts` has stored them, and NOTHING read either. Plan §11.6:
@@ -178,169 +166,124 @@ describe("renderChatHeader", () => {
    * silently trimmed, the assistant forgot what you told it ten turns ago, and the two numbers that
    * would have explained why sat in the store.
    */
-  test("the context budget is shown, compactly, and warns when it is past half", async () => {
-    const quiet = await renderInto(header({ tokens: 18_400 }));
-    const badge = quiet.querySelector(".ai-tokens")!;
-    expect(badge.textContent).toBe("18.4k");
-    expect(badge.classList.contains("ai-tokens--warn")).toBe(false);
-    expect(badge.getAttribute("title")).toContain("18,400 tokens");
-
-    const loud = await renderInto(header({ overBudget: true, tokens: 96_000 }));
-    const warned = loud.querySelector(".ai-tokens")!;
-    expect(warned.classList.contains("ai-tokens--warn")).toBe(true);
-    // The badge has to say what happens next, not just that a number is large.
-    expect(warned.getAttribute("title")).toContain("oldest turns are dropped");
+  test("the count is compact — a four-digit number in a 28px header is noise", () => {
+    expect(tokenLabel(18_400)).toBe("18.4k");
+    expect(tokenLabel(940)).toBe("940");
   });
 
-  test("a fresh chat shows no budget at all — zero is not a fact worth a badge", async () => {
-    const el = await renderInto(header());
-    expect(el.querySelector(".ai-tokens")).toBeNull();
-  });
-
-  test("shows the session title, or New chat for unsaved chats", async () => {
-    const withTitle = await renderInto(header({ title: "Landing page" }));
-    expect(withTitle.querySelector(".ai-chat-title")!.textContent).toBe("Landing page");
-    expect(withTitle.querySelector("sp-progress-circle")).toBeNull();
-
-    const fresh = await renderInto(header({ streaming: true }));
-    expect(fresh.querySelector(".ai-chat-title")!.textContent).toBe("New chat");
-    expect(fresh.querySelector("sp-progress-circle")).not.toBeNull();
-  });
-
-  test("history and New Chat RUN their records, and wear the record's name and chord", async () => {
-    // The two capabilities were closures this file invoked, so they existed only as buttons: the
-    // `Assistant` category held no records and neither was in the palette or bindable.
-    const el = await renderInto(header());
-    const history = el.querySelector("sp-action-button[title^='Chat History']")!;
-    expect(history.getAttribute("title")).toBe("Chat History (⌘⇧H)");
-    pointer(history, "click");
-    pointer(el.querySelector("sp-action-button[title='New Chat']")!, "click");
-    expect(ran).toEqual(["assistant.history", "assistant.newChat"]);
-  });
-
-  test("a command the registry does not hold draws nothing — not a dead button", async () => {
-    setActiveRegistry(buildRegistry(["assistant.history"]));
-    const el = await renderInto(header());
-    expect(el.querySelector("sp-action-button[title^='Chat History']")).not.toBeNull();
-    expect(el.querySelector("sp-action-button[title='New Chat']")).toBeNull();
-
-    // And with no registry at all — the frame the app paints before its bootstrap composes one —
-    // The chat is still a readable chat.
-    setActiveRegistry(null);
-    const bare = await renderInto(header({ title: "Landing page" }));
-    expect(bare.querySelector(".ai-chat-title")!.textContent).toBe("Landing page");
-    expect(bare.querySelectorAll("sp-action-button")).toHaveLength(0);
+  test("the tooltip says what happens next, not just that a number is large", () => {
+    expect(tokenHint(18_400, false)).toContain("18,400 tokens");
+    expect(tokenHint(96_000, true)).toContain("oldest turns are dropped");
   });
 });
 
-describe("renderMessageList", () => {
-  test("empty chat shows the getting-started hint", async () => {
-    const el = await renderInto(list([]));
-    expect(el.querySelector(".ai-chat-empty")).not.toBeNull();
+describe("projectCommand", () => {
+  test("a record projects to a button wearing its own name and chord", () => {
+    const history = projectCommand("assistant.history", { icon: "clock-counter-clockwise" })!;
+    expect(history.id).toBe("assistant.history");
+    expect(history.key).toBe("assistant.history");
+    expect(history.label).toBe("Chat History");
+    expect(history.hint).toBe("Chat History (⌘⇧H)");
+    expect(history.icon).toBe("clock-counter-clockwise");
+    expect(history.disabled).toBe(false);
   });
 
-  test("user messages render as bubbles; attached context becomes chips", async () => {
+  test("a refused record projects disabled, with the sentence it requires", () => {
+    ctx = makeContext({ ai: { configured: false } });
+    const retry = projectCommand("assistant.retry", { text: "Retry" })!;
+    expect(retry.disabled).toBe(true);
+    expect(retry.hint).toBe("Retry Last Message — requires a connected AI provider");
+    expect(retry.text).toBe("Retry");
+  });
+
+  test("a command the registry does not hold projects nothing — not a dead button", () => {
+    setActiveRegistry(buildRegistry(["assistant.history"]));
+    expect(projectCommand("assistant.history")).not.toBeNull();
+    expect(projectCommand("assistant.newChat")).toBeNull();
+
+    // And with no registry at all — the frame the app paints before its bootstrap composes one.
+    setActiveRegistry(null);
+    expect(projectCommand("assistant.history")).toBeNull();
+    expect(projectCommands([projectCommand("assistant.newChat")])).toEqual([]);
+  });
+});
+
+describe("projectRows", () => {
+  test("an empty chat projects no rows — the surface draws its own hint", () => {
+    expect(rows([])).toEqual([]);
+  });
+
+  test("user messages carry their body; attached context becomes chips", () => {
     const plain = msg("user", "hello there");
     const withContext = msg(
       "user",
       `restyle this\n\n${ATTACHED_CONTEXT_DELIMITER}\nPage: pages/index.json\nSelected element at ["children",0]: <h1> "Hi"`,
     );
-    const el = await renderInto(list([plain, withContext]));
-    const bubbles = el.querySelectorAll(".ai-msg-user");
-    expect(bubbles).toHaveLength(2);
-    expect(bubbles[0]!.querySelector(".ai-msg-user-body")!.textContent).toBe("hello there");
-    expect(bubbles[1]!.querySelector(".ai-msg-user-body")!.textContent).toBe("restyle this");
-    const chips = bubbles[1]!.querySelectorAll(".ai-context-chip");
-    expect(chips).toHaveLength(2);
-    expect(chips[0]!.textContent).toContain("Page: pages/index.json");
+    const projected = rows([plain, withContext]);
+    expect(projected.map((r) => r.kind)).toEqual(["user", "user"]);
+    expect(projected[0]!.body).toBe("hello there");
+    expect(projected[0]!.hasContextChips).toBe(false);
+    expect(projected[1]!.body).toBe("restyle this");
+    expect(projected[1]!.contextChips.map((c) => c.label)).toEqual([
+      "Page: pages/index.json",
+      'Selected element at ["children",0]: <h1> "Hi"',
+    ]);
   });
 
-  test("assistant messages render markdown and tool chips; empty ones are skipped", async () => {
+  test("assistant messages carry markdown and tool chips; empty ones are skipped", () => {
     const withText = msg("assistant", "Use **bold** text");
     const withTool = msg("assistant", "", {
       toolCalls: [{ arguments: '{"path":["children",1]}', id: "c1", name: "set_prop" }],
     });
     const empty = msg("assistant", "");
-    const el = await renderInto(list([withText, withTool, empty]));
-    const rows = el.querySelectorAll(".ai-msg-assistant");
-    expect(rows).toHaveLength(2);
-    expect(rows[0]!.querySelector(".ai-msg-md strong")!.textContent).toBe("bold");
-    expect(rows[1]!.querySelector(".ai-tool-chip")!.textContent).toContain(
-      'set_prop: ["children",1]',
-    );
+    const projected = rows([withText, withTool, empty]);
+    expect(projected).toHaveLength(2);
+    expect(projected[0]!.markdown).toContain("<strong>bold</strong>");
+    expect(projected[1]!.chips[0]!.label).toBe('set_prop: ["children",1]');
+    expect(projected[1]!.hasChips).toBe(true);
   });
 
-  test("tool messages surface failures only", async () => {
+  test("tool messages surface failures only", () => {
     const ok = msg("tool", '{"success":true}', { toolCallId: "c1" });
-    const failed = msg("tool", '{"success":false,"error":"path not found"}', {
-      toolCallId: "c2",
-    });
-    const el = await renderInto(list([ok, failed]));
-    const errors = el.querySelectorAll(".ai-msg-tool-error");
-    expect(errors).toHaveLength(1);
-    expect(errors[0]!.textContent).toContain("path not found");
+    const failed = msg("tool", '{"success":false,"error":"path not found"}', { toolCallId: "c2" });
+    const projected = rows([ok, failed]);
+    expect(projected).toHaveLength(1);
+    expect(projected[0]!.kind).toBe("tool-error");
+    expect(projected[0]!.body).toContain("path not found");
   });
 
-  test("streaming tail renders plain text (no markdown) with earlier messages finalized", async () => {
+  test("the streaming tail is plain text; earlier messages are finalized markdown", () => {
     const finalized = msg("assistant", "**done**");
     const tail = msg("assistant", "**partial");
-    const el = await renderInto(list([finalized, tail], { status: "streaming" }));
-    // The finalized message parsed markdown; the tail stayed literal.
-    expect(el.querySelector(".ai-msg-md strong")!.textContent).toBe("done");
-    expect(el.querySelector(".ai-msg-streaming")!.textContent).toBe("**partial");
+    const projected = rows([finalized, tail], { status: "streaming" });
+    expect(projected[0]!.kind).toBe("assistant");
+    expect(projected[0]!.markdown).toContain("<strong>done</strong>");
+    // The tail stayed literal: markdown parses once, on finalize.
+    expect(projected[1]!.kind).toBe("streaming");
+    expect(projected[1]!.body).toBe("**partial");
+    expect(projected[1]!.markdown).toBe("");
   });
 
-  test("an empty streaming tail shows the typing indicator", async () => {
-    const el = await renderInto(
-      list([msg("user", "hi"), msg("assistant", "")], {
-        status: "streaming",
-      }),
-    );
-    expect(el.querySelector(".ai-msg-typing")).not.toBeNull();
-    // And the empty-assistant row is not rendered as a message.
-    expect(el.querySelector(".ai-msg-assistant")).toBeNull();
+  test("an empty streaming tail is the typing indicator, not an empty assistant row", () => {
+    const projected = rows([msg("user", "hi"), msg("assistant", "")], { status: "streaming" });
+    expect(projected.map((r) => r.kind)).toEqual(["user", "typing"]);
   });
 
-  test("errors render with advice once the stream has settled", async () => {
-    const el = await renderInto(list([msg("user", "hi")], { error: "429 rate limit" }));
-    const row = el.querySelector(".ai-msg-error")!;
-    expect(row.textContent).toContain("429 rate limit");
-    expect(row.querySelector(".ai-msg-error-advice")!.textContent).toContain("rate limit");
-
-    // While streaming, the error row stays hidden.
-    const streaming = await renderInto(
-      list([msg("user", "hi"), msg("assistant", "x")], {
-        error: "stale",
-        status: "streaming",
-      }),
-    );
-    expect(streaming.querySelector(".ai-msg-error")).toBeNull();
-  });
-
-  test("wires the scroll handler and list ref", async () => {
-    const onScroll = mock(() => {});
-    let referenced: Element | undefined;
-    const el = await renderInto(
-      renderMessageList({
-        error: null,
-        listRef: (node) => {
-          referenced = node;
-        },
-        messages: [],
-        onScroll,
-        status: "idle",
-      }),
-    );
-    const scroller = el.querySelector(".ai-chat-messages")!;
-    expect(referenced).toBe(scroller);
-    scroller.dispatchEvent(new Event("scroll"));
-    expect(onScroll).toHaveBeenCalledTimes(1);
+  test("the key is the message id, so a token appended never re-keys the list", () => {
+    const user = msg("user", "hi");
+    const tail = msg("assistant", "one");
+    const first = rows([user, tail], { status: "streaming" }).map((r) => r.key);
+    tail.content = "one two";
+    const second = rows([user, tail], { status: "streaming" }).map((r) => r.key);
+    expect(second).toEqual(first);
+    // And the same key survives the stream finishing, though the row changes shape.
+    expect(rows([user, tail]).map((r) => r.key)).toEqual(first);
   });
 });
 
 // ─── §7.4: the three things the renderer would not say ───────────────────────
 
-describe("tool chips render outcomes", () => {
+describe("tool chips carry outcomes", () => {
   test("toolOutcome/toolOutcomeText read the result the loop has always populated", () => {
     expect(toolOutcome({ arguments: "{}", id: "1", name: "x" })).toBe("pending");
     expect(toolOutcomeText({ arguments: "{}", id: "1", name: "x" })).toBe("");
@@ -352,250 +295,175 @@ describe("tool chips render outcomes", () => {
     expect(toolOutcomeText(bad)).toBe("Nope.");
   });
 
-  test("a chip says what became of the call, not only what was called", async () => {
+  test("a chip says what became of the call, not only what was called", () => {
     resetAiWrites();
-    const el = await renderInto(
-      list([
-        msg("assistant", "", {
-          toolCalls: [
-            {
-              arguments: "{}",
-              id: "a",
-              name: "update_style",
-              result: { success: true, summary: "Set padding." },
-            },
-            {
-              arguments: "{}",
-              id: "b",
-              name: "remove_node",
-              result: { error: "No such path.", success: false },
-            },
-            { arguments: "{}", id: "c", name: "read_file" },
-          ],
-        }),
-      ]),
-    );
-    const chips = [...el.querySelectorAll(".ai-tool-chip")];
-    expect(chips.map((c) => (c as HTMLElement).dataset.outcome)).toEqual([
-      "ok",
-      "failed",
-      "pending",
+    const projected = rows([
+      msg("assistant", "", {
+        toolCalls: [
+          {
+            arguments: "{}",
+            id: "a",
+            name: "update_style",
+            result: { success: true, summary: "Set padding." },
+          },
+          {
+            arguments: "{}",
+            id: "b",
+            name: "remove_node",
+            result: { error: "No such path.", success: false },
+          },
+          { arguments: "{}", id: "c", name: "read_file" },
+        ],
+      }),
     ]);
-    expect(chips[0]!.textContent).toContain("Set padding.");
-    expect(chips[1]!.textContent).toContain("No such path.");
+    const { chips } = projected[0]!;
+    expect(chips.map((c) => c.outcome)).toEqual(["ok", "failed", "pending"]);
+    expect(chips[0]!.outcomeText).toBe("Set padding.");
+    expect(chips[0]!.mark).toBe("✓");
+    expect(chips[1]!.outcomeText).toBe("No such path.");
+    expect(chips[1]!.mark).toBe("✗");
     // A call still in flight claims nothing.
-    expect(chips[2]!.querySelector(".ai-tool-chip-outcome")).toBeNull();
+    expect(chips[2]!.outcomeState).toBe("hidden");
+    // The reconcile key is the tool-call id, so a settling call keeps its own node.
+    expect(chips.map((c) => c.key)).toEqual(["a", "b", "c"]);
   });
 });
 
 describe("changed-files summary", () => {
-  test('a turn that changed nothing renders no summary — never "Changed 0 files"', async () => {
+  test('a turn that changed nothing projects no summary — never "Changed 0 files"', () => {
     resetAiWrites();
-    const m = msg("assistant", "I looked at the page.");
-    const el = await renderInto(list([m]));
-    expect(el.querySelector(".ai-msg-changes")).toBeNull();
+    expect(rows([msg("assistant", "I looked at the page.")])[0]!.changesState).toBe("none");
   });
 
-  test("the summary counts distinct files and names the disk writes undo cannot reach", async () => {
+  test("the summary counts distinct files and names the disk writes undo cannot reach", () => {
     resetAiWrites();
     const m = msg("assistant", "Done.");
     ledger(m.id, [
       { disk: false, ok: true, path: "pages/index.json" },
       { disk: true, ok: true, path: "layouts/base.json" },
     ]);
-    const el = await renderInto(list([m]));
-    const summary = el.querySelector(".ai-msg-changes > summary")!;
-    expect(summary.textContent).toContain("Changed 2 files");
-    expect(summary.textContent).toContain("undo cannot reach it");
-    const diskRow = el.querySelector('.ai-msg-changes-list li[data-disk="true"]')!;
-    expect(diskRow.textContent).toContain("layouts/base.json");
-    expect(diskRow.querySelector("em")?.textContent).toContain("undo cannot reach it");
+    const row = rows([m])[0]!;
+    expect(row.changesState).toBe("list");
+    expect(row.changesSummary).toContain("Changed 2 files");
+    expect(row.changesSummary).toContain("undo cannot reach it");
+    const disk = row.changes.find((c) => c.disk)!;
+    expect(disk.path).toBe("layouts/base.json");
   });
 
-  test("Restore to here is offered only when every change was transactional", async () => {
+  test("Restore to here is offered only when every change was transactional", () => {
     resetAiWrites();
     const transactional = msg("assistant", "A.");
     ledger(transactional.id, [{ disk: false, ok: true, path: "pages/index.json" }]);
     const withDisk = msg("assistant", "B.");
     ledger(withDisk.id, [{ disk: true, ok: true, path: "pages/other.json" }]);
-
-    const restored: string[] = [];
-    const el = await renderInto(
-      list([transactional, withDisk], { onRestore: (id) => restored.push(id) }),
-    );
-    const buttons = [...el.querySelectorAll(".ai-msg-changes sp-action-button")];
-    expect(buttons).toHaveLength(1);
-    pointer(buttons[0]!, "click");
-    expect(restored).toEqual([transactional.id]);
+    const projected = rows([transactional, withDisk]);
+    expect(projected[0]!.canRestore).toBe(true);
+    expect(projected[1]!.canRestore).toBe(false);
+    // Both still say what they changed; only the button is withheld.
+    expect(projected[1]!.changesState).toBe("list");
   });
 
-  test("no onRestore handler means no button, and the summary still renders", async () => {
-    resetAiWrites();
-    const m = msg("assistant", "A.");
-    ledger(m.id, [{ disk: false, ok: true, path: "pages/index.json" }]);
-    const el = await renderInto(list([m]));
-    expect(el.querySelector(".ai-msg-changes")).not.toBeNull();
-    expect(el.querySelector(".ai-msg-changes sp-action-button")).toBeNull();
-  });
-
-  test("a turn where every write failed says so instead of claiming files", async () => {
+  test("a turn where every write failed says so instead of claiming files", () => {
     resetAiWrites();
     const m = msg("assistant", "A.");
     ledger(m.id, [{ disk: true, ok: false, path: "pages/index.json" }]);
-    const el = await renderInto(list([m]));
-    expect(el.querySelector(".ai-msg-changes > summary")!.textContent).toContain("1 change failed");
+    const row = rows([m])[0]!;
+    expect(row.changesSummary).toContain("1 change failed");
+    expect(row.changes[0]!.ok).toBe(false);
+    expect(row.changes[0]!.note).toContain("failed");
   });
 });
 
-describe("the error row offers Retry", () => {
-  test("chatState.retryLast finally gets its button, and it is `assistant.retry`", async () => {
-    const el = await renderInto(list([], { error: "429 rate limit" }));
-    const button = el.querySelector(".ai-msg-retry")!;
-    expect(button).not.toBeNull();
-    pointer(button, "click");
-    expect(ran).toEqual(["assistant.retry"]);
-    // The existing advice is still there — Retry supplements it, it does not replace it.
-    expect(el.querySelector(".ai-msg-error-advice")?.textContent).toContain("rate limit");
-  });
-
-  test("with no provider connected the button is disabled, and says why", async () => {
-    // The one error Retry cannot recover from is the one whose advice line already says to add a
-    // Key. Offering a send that fails identically would be the panel lying about what it can do.
-    ctx = makeContext({ ai: { configured: false } });
-    const el = await renderInto(list([], { error: "HTTP 401 unauthorized" }));
-    const button = el.querySelector(".ai-msg-retry")!;
-    expect(button.hasAttribute("disabled")).toBe(true);
-    expect(button.getAttribute("title")).toBe(
-      "Retry Last Message — requires a connected AI provider",
-    );
-    pointer(button, "click");
-    expect(ran).toEqual([]);
-  });
-
-  test("no record means no button", async () => {
-    setActiveRegistry(buildRegistry([]));
-    const el = await renderInto(list([], { error: "boom" }));
-    expect(el.querySelector(".ai-msg-retry")).toBeNull();
-  });
-});
-
-describe("every id this file names is one the real app declares", () => {
-  /* The status bar's bargain (`tests/statusbar.test.ts`), for the assistant: `commandButton`
-     renders NOTHING for an id the registry does not hold, so a rename on the other side would leave
-     these three buttons permanently blank with no test failing — which is exactly how
+describe("every id the assistant names is one the real app declares", () => {
+  /* The status bar's bargain (`tests/statusbar.test.ts`), for the assistant: `projectCommand`
+     projects NOTHING for an id the registry does not hold, so a rename on the other side would
+     leave these three buttons permanently absent with no test failing — which is exactly how
      `collab.showStatus` sat unrendered behind a comment claiming it was fine. */
   test("the header's and the error row's command ids resolve", async () => {
     const { appCommandSet } = await import("../src/commands/app-commands");
     const declared = new Set(appCommandSet().map((c) => c.id));
-    const source = readFileSync(
-      new URL("../src/panels/ai-chat/chat-view.ts", import.meta.url),
-      "utf8",
-    );
-    const named = [...source.matchAll(/commandButton\("([\w.]+)"/g)].map((m) => m[1] as string);
-    expect(named).toEqual(["assistant.history", "assistant.newChat", "assistant.retry"]);
+    const source = readFileSync(new URL("../src/panels/ai-panel.ts", import.meta.url), "utf8");
+    const named = [...source.matchAll(/projectCommand\("([\w.]+)"/g)].map((m) => m[1] as string);
+    expect(named).toEqual(["assistant.newChat", "assistant.history", "assistant.retry"]);
     expect(named.filter((id) => !declared.has(id))).toEqual([]);
   });
 });
 
 describe("the question card", () => {
-  test("renders the question, its context and its options", async () => {
-    const el = await renderInto(
-      list(
-        [asking("q1", { context: "3 look alike", options: ["Merge", "Keep"], question: "Which?" })],
-        {
-          ask: { pendingId: "q1" },
-        },
-      ),
-    );
-    expect(el.querySelector(".ai-ask-question")?.textContent?.trim()).toBe("Which?");
-    expect(el.querySelector(".ai-ask-context")?.textContent?.trim()).toBe("3 look alike");
-    const buttons = [...el.querySelectorAll(".ai-ask-options sp-button")];
-    expect(buttons.map((b) => b.textContent?.trim())).toEqual(["Merge", "Keep"]);
+  test("carries the question, its context and its options", () => {
+    const row = rows(
+      [asking("q1", { context: "3 look alike", options: ["Merge", "Keep"], question: "Which?" })],
+      { ask: { pendingId: "q1" } },
+    )[0]!;
+    const chip = row.chips[0]!;
     // A gears chip would be the wrong shape for the one row that will not proceed without a reader.
-    expect(el.querySelector(".ai-tool-chip")).toBeNull();
+    expect(chip.kind).toBe("ask");
+    expect(chip.question).toBe("Which?");
+    expect(chip.context).toBe("3 look alike");
+    expect(chip.hasContext).toBe(true);
+    expect(chip.askState).toBe("pending");
+    expect(chip.options.map((o) => o.label)).toEqual(["Merge", "Keep"]);
   });
 
-  test("an option button answers with its own text", async () => {
-    const onAnswer = mock((_t: string) => {});
-    const el = await renderInto(
-      list([asking("q1", { options: ["Merge", "Keep"], question: "Which?" })], {
-        ask: { onAnswer, pendingId: "q1" },
-      }),
-    );
-    pointer(el.querySelectorAll(".ai-ask-options sp-button")[1] as HTMLElement, "click");
-    expect(onAnswer).toHaveBeenCalledWith("Keep");
+  test("You decide is always offered, even with no options — the card draws it unconditionally", () => {
+    const chip = rows([asking("q1", { question: "Which?" })], { ask: { pendingId: "q1" } })[0]!
+      .chips[0]!;
+    expect(chip.askState).toBe("pending");
+    expect(chip.options).toEqual([]);
   });
 
-  test("You decide is always offered, even with no options", async () => {
-    const onSkip = mock(() => {});
-    const el = await renderInto(
-      list([asking("q1", { question: "Which?" })], { ask: { onSkip, pendingId: "q1" } }),
-    );
-    expect(el.querySelectorAll(".ai-ask-options sp-button")).toHaveLength(0);
-    pointer(el.querySelector(".ai-ask-skip") as HTMLElement, "click");
-    expect(onSkip).toHaveBeenCalled();
+  test("an answered question shows the answer and offers no buttons", () => {
+    const chip = rows([
+      asking(
+        "q1",
+        { options: ["Merge"], question: "Which?" },
+        { data: { answer: "Neither", skipped: false }, success: true },
+      ),
+    ])[0]!.chips[0]!;
+    expect(chip.askState).toBe("answered");
+    expect(chip.answer).toBe("Neither");
   });
 
-  test("an answered question shows the answer and offers no buttons", async () => {
-    const el = await renderInto(
-      list([
-        asking(
-          "q1",
-          { options: ["Merge"], question: "Which?" },
-          { data: { answer: "Neither", skipped: false }, success: true },
-        ),
-      ]),
-    );
-    expect(el.querySelector(".ai-ask-answer")?.textContent?.trim()).toBe("Neither");
-    expect(el.querySelector(".ai-ask-options")).toBeNull();
+  test("a skipped question says so rather than showing an empty answer", () => {
+    const chip = rows([
+      asking(
+        "q1",
+        { question: "Which?" },
+        { data: { answer: null, skipped: true }, success: true },
+      ),
+    ])[0]!.chips[0]!;
+    expect(chip.answer).toBe("You decide");
   });
 
-  test("a skipped question says so rather than showing an empty answer", async () => {
-    const el = await renderInto(
-      list([
-        asking(
-          "q1",
-          { question: "Which?" },
-          { data: { answer: null, skipped: true }, success: true },
-        ),
-      ]),
-    );
-    expect(el.querySelector(".ai-ask-answer")?.textContent?.trim()).toBe("You decide");
+  test("a failed question carries its reason", () => {
+    const chip = rows([
+      asking("q1", { question: "Which?" }, { error: "the turn was stopped", success: false }),
+    ])[0]!.chips[0]!;
+    expect(chip.askState).toBe("failed");
+    expect(chip.outcomeText).toContain("the turn was stopped");
   });
 
-  test("a failed question renders its reason", async () => {
-    const el = await renderInto(
-      list([
-        asking("q1", { question: "Which?" }, { error: "the turn was stopped", success: false }),
-      ]),
-    );
-    expect(el.querySelector(".ai-ask-outcome")?.textContent).toContain("the turn was stopped");
-  });
-
-  test("a question left open by a reload is inert, and says why", async () => {
+  test("a question left open by a reload is inert, and says why", () => {
     /* The promise lives in memory and the transcript does not. Without this the restored card is
        indistinguishable from a live one and waits on a loop that is gone. */
-    const el = await renderInto(
-      list([asking("q1", { options: ["Merge"], question: "Which?" })], {
-        ask: { pendingId: null },
-      }),
-    );
-    expect((el.querySelector(".ai-ask") as HTMLElement | null)?.dataset.outcome).toBe("unanswered");
-    expect(el.querySelector(".ai-ask-options")).toBeNull();
-    expect(el.querySelector(".ai-ask-outcome")?.textContent).toContain("reloaded");
+    const chip = rows([asking("q1", { options: ["Merge"], question: "Which?" })], {
+      ask: { pendingId: null },
+    })[0]!.chips[0]!;
+    expect(chip.outcome).toBe("unanswered");
+    expect(chip.askState).toBe("unanswered");
   });
 
-  test("a half-streamed question falls back to an ordinary chip", async () => {
+  test("a half-streamed question falls back to an ordinary chip", () => {
     // Arguments arrive as fragments, so a chip can be asked to draw a call whose JSON is unfinished.
     const half = msg("assistant", "Let me check", {
       toolCalls: [{ arguments: '{"question":"Whi', id: "q1", name: "ask_user" }],
     });
-    const el = await renderInto(list([half], { status: "streaming" }));
-    expect(el.querySelector(".ai-ask")).toBeNull();
-    expect(el.querySelector(".ai-tool-chip")).not.toBeNull();
+    const chip = rows([half], { status: "streaming" })[0]!.chips[0]!;
+    expect(chip.kind).toBe("chip");
+    expect(chip.askState).toBe("none");
   });
 
-  test("the streaming tail draws a completed question too", async () => {
+  test("the streaming tail carries a question too", () => {
     /* In the real loop `finishStream` runs BEFORE tools execute, so a live question is drawn by the
        settled-message path. The tail still has to handle one: the model may write text, emit the
        call, and have the round end while this row is the tail. */
@@ -604,8 +472,9 @@ describe("the question card", () => {
         { arguments: JSON.stringify({ question: "Which?" }), id: "q1", name: "ask_user" },
       ],
     });
-    const el = await renderInto(list([tail], { ask: { pendingId: "q1" }, status: "streaming" }));
-    expect(el.querySelector(".ai-ask-question")?.textContent?.trim()).toBe("Which?");
+    const row = rows([tail], { ask: { pendingId: "q1" }, status: "streaming" })[0]!;
+    expect(row.kind).toBe("streaming");
+    expect(row.chips[0]!.question).toBe("Which?");
   });
 });
 
@@ -674,94 +543,87 @@ describe("a running import, under the chip that started it", () => {
     warnings: [],
   };
 
-  test("draws the phase, the latest line and a tail of log", async () => {
+  test("carries the phase, the latest line and the log", () => {
     /* An import reports for minutes. It used to report into the New Project modal, which meant a
        successful run destroyed its own account of what it did at the moment it handed off. */
-    const el = await renderInto(
-      list([importing()], { ask: { importRun: () => RECORD, pendingId: null } }),
-    );
-    expect(el.querySelector(".ai-import-message")?.textContent?.trim()).toBe("Crawled 3 pages");
-    expect(el.querySelectorAll(".ai-import-log-line")).toHaveLength(2);
-    expect(el.querySelector("sp-progress-circle")?.hasAttribute("indeterminate")).toBe(true);
+    const chip = rows([importing()], { ask: { importRun: () => RECORD, pendingId: null } })[0]!
+      .chips[0]!;
+    expect(chip.importState).toBe("run");
+    expect(chip.importMessage).toBe("Crawled 3 pages");
+    expect(chip.importPhase).toBe("crawl");
+    expect(chip.hasPhase).toBe(true);
+    expect(chip.importLog).toHaveLength(2);
+    expect(chip.importSpinner).toBe("busy");
     // A running import is open; the reader should not have to ask for the thing they are waiting on.
-    expect(el.querySelector(".ai-import-progress")?.hasAttribute("open")).toBe(true);
+    expect(chip.importOpen).toBe(true);
   });
 
-  test("a phase that counts draws a determinate bar", async () => {
-    const el = await renderInto(
-      list([importing()], {
-        ask: { importRun: () => ({ ...RECORD, current: 5, total: 20 }), pendingId: null },
-      }),
-    );
-    const circle = el.querySelector("sp-progress-circle")!;
-    expect(circle.hasAttribute("indeterminate")).toBe(false);
-    expect(circle.getAttribute("progress")).toBe("25");
+  test("a phase that counts draws a determinate bar", () => {
+    const chip = rows([importing()], {
+      ask: { importRun: () => ({ ...RECORD, current: 5, total: 20 }), pendingId: null },
+    })[0]!.chips[0]!;
+    expect(chip.importSpinner).toBe("progress");
+    expect(chip.importProgress).toBe("25");
   });
 
-  test("renders the whole retained log, not a fixed tail of it", async () => {
+  test("carries the whole retained log, not a fixed tail of it", () => {
     /* The log was sliced to the last six lines, so a run that reported forty steps showed six and
        silently dropped the rest — including every warning above the cut. It is a scroller now, and
        what it scrolls is everything the store still holds. */
-    const log = Array.from({ length: 40 }, (_, i) => ({
-      message: `step ${i}`,
-      phase: "crawl",
-    }));
-    const el = await renderInto(
-      list([importing()], { ask: { importRun: () => ({ ...RECORD, log }), pendingId: null } }),
-    );
-    expect(el.querySelectorAll(".ai-import-log-line")).toHaveLength(40);
-    expect(el.querySelector(".ai-import-count")?.textContent?.trim()).toBe("40");
+    const log = Array.from({ length: 40 }, (_, i) => ({ message: `step ${i}`, phase: "crawl" }));
+    const chip = rows([importing()], {
+      ask: { importRun: () => ({ ...RECORD, log }), pendingId: null },
+    })[0]!.chips[0]!;
+    expect(chip.importLog).toHaveLength(40);
+    expect(chip.importCount).toBe("40");
+    // Keyed by index AND phase, so a line arriving never re-keys the ones above it.
+    expect(chip.importLog[0]!.key).toBe("0:crawl");
   });
 
-  test("a settled import KEEPS its log, collapsed, and says how it ended", async () => {
+  test("a settled import KEEPS its log, collapsed, and says how it ended", () => {
     /* The record used to be fetched only while the call was pending, so a successful import
        destroyed its own account of itself at the moment it succeeded — the same failure the
        hand-off from the wizard to the assistant was made to fix, one layer in. */
-    const el = await renderInto(
-      list([importing({ success: true, summary: "Imported example.com" })], {
-        ask: { importRun: () => ({ ...RECORD, status: "done" as const }) },
-      }),
-    );
-    const panel = el.querySelector(".ai-import-progress")!;
-    expect(panel).not.toBeNull();
-    expect(panel.hasAttribute("open")).toBe(false);
-    expect(el.querySelectorAll(".ai-import-log-line")).toHaveLength(2);
-    expect(el.querySelector(".ai-import-message")?.textContent).toContain("https://example.com/");
+    const chip = rows([importing({ success: true, summary: "Imported example.com" })], {
+      ask: { importRun: () => ({ ...RECORD, status: "done" as const }) },
+    })[0]!.chips[0]!;
+    expect(chip.importState).toBe("run");
+    expect(chip.importOpen).toBe(false);
+    expect(chip.importLog).toHaveLength(2);
+    expect(chip.importMessage).toContain("https://example.com/");
     // No spinner on a run that is over.
-    expect(el.querySelector("sp-progress-circle")).toBeNull();
-    expect(el.querySelector(".ai-tool-chip-outcome")?.textContent).toContain("Imported");
+    expect(chip.importSpinner).toBe("none");
+    expect(chip.outcomeText).toContain("Imported");
   });
 
-  test("a failed run says why, where the outcome would have been", async () => {
-    const el = await renderInto(
-      list([importing({ success: false, summary: "boom" })], {
-        ask: {
-          importRun: () => ({
-            ...RECORD,
-            error: "Chrome would not launch",
-            status: "failed" as const,
-          }),
-        },
-      }),
-    );
-    expect(el.querySelector(".ai-import-message")?.textContent).toContain(
-      "Chrome would not launch",
-    );
+  test("a failed run says why, where the outcome would have been", () => {
+    const chip = rows([importing({ success: false, summary: "boom" })], {
+      ask: {
+        importRun: () => ({
+          ...RECORD,
+          error: "Chrome would not launch",
+          status: "failed" as const,
+        }),
+      },
+    })[0]!.chips[0]!;
+    expect(chip.importMessage).toContain("Chrome would not launch");
   });
 
-  test("a stopped run says so rather than looking like a failure", async () => {
-    const el = await renderInto(
-      list([importing({ success: false, summary: "stopped" })], {
-        ask: { importRun: () => ({ ...RECORD, status: "stopped" as const }) },
-      }),
-    );
-    expect(el.querySelector(".ai-import-message")?.textContent?.trim()).toBe("Import stopped");
+  test("a stopped run says so rather than looking like a failure", () => {
+    const chip = rows([importing({ success: false, summary: "stopped" })], {
+      ask: { importRun: () => ({ ...RECORD, status: "stopped" as const }) },
+    })[0]!.chips[0]!;
+    expect(chip.importMessage).toBe("Import stopped");
   });
 
-  test("a host with no run record simply draws the chip", async () => {
-    // The evals runner and the screenshot seeder render transcripts with no import store at all.
-    const el = await renderInto(list([importing()]));
-    expect(el.querySelector(".ai-import-progress")).toBeNull();
-    expect(el.querySelector(".ai-tool-chip")).not.toBeNull();
+  test("a host with no run record simply draws the chip", () => {
+    // The evals runner and the screenshot seeder project transcripts with no import store at all.
+    const chip = projectChip({
+      arguments: "{}",
+      id: "run1",
+      name: "import_site",
+    });
+    expect(chip.importState).toBe("none");
+    expect(chip.kind).toBe("chip");
   });
 });

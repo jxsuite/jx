@@ -1,0 +1,188 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPaneGrid",
+  "$description": "The pane grid (studio.md §18.1): one cell per pane, with a splitter before every cell but the first. Every box here is EMPTY by design — the four inside a cell are hosts other modules fill (`panels/tab-strip.ts` the strip, `panels/jump-bar.ts` the jump bar, `panels/pane-context.ts` the chrome layer, `canvas/canvas-render.ts` the stage), and the stage is an ISLAND in the §9.4 sense: the canvas host mounts a cross-origin `<iframe>` into it, so nothing this document draws may ever go inside it. What the document owns is the STRUCTURE and the STYLE — the cell's own two-row grid, the three row-2 children that share its lower cell, and the splitter — which is `styles/shell.css`'s `.pane*` block and `styles/canvas.css`'s `.pane-stage` rule, carried here and keyed on `part`. Two things are load-bearing and easy to undo. (1) **A row that moves reloads an iframe**, so the keyed `$map` is not an optimisation: `workspace.panes[0]` is always the primary and `MAX_PANES` is 2, the key is the pane id, and the runtime's forward-cursor pass therefore never moves a kept row — gaining or losing the side pane leaves the primary's node, and the frame inside it, untouched. (2) **The splitter must sit BETWEEN two cells and inside neither**, so each row is a `display: contents` wrapper holding its own leading splitter and its cell: the wrapper generates no box, so the splitter and the two cells are the grid items of `#pane-grid` in DOM order, and a pointer landing on the splitter is in no cell at all. Every selector below is a `>` chain from the root, because a pane's stage hosts other surface documents and a bare `[part=\"row\"]` descendant rule would reach into them.",
+  "tagName": "div",
+  "attributes": {
+    "part": "grid",
+    "role": "none"
+  },
+  "style": {
+    "$description": "The pane's own layout, and the splitter's. The tracks of `#pane-grid` ITSELF are not here and must not be: the track count depends on `workspace.panes.length` and the split on `shell.paneSplit`, which is written on every `pointermove` of a drag — `panels/pane-grid.ts` writes them as one inline `grid-template-columns` on the host, so a drag moves a track edge and never a node. The splitter's own paint is not here either: `jx-split` owns the hairline, the cursors and the drag state it mirrors as `data-dragging`, so this block says only where the element is placed.",
+    "display": "contents",
+    "& > [part=\"row\"]": {
+      "$description": "One pane's row: its leading splitter and its cell, generating no box of their own so both are grid items of `#pane-grid`.",
+      "display": "contents"
+    },
+    "& > [part=\"row\"] > [part=\"splitter-slot\"]": {
+      "display": "contents"
+    },
+    "& > [part=\"row\"] > [part=\"splitter-slot\"] > jx-split": {
+      "$description": "WHERE the splitter sits, and nothing about what it looks like: the hairline, the two cursors, the hover and drag colours and the focus ring are `jx-split`'s own, and the `.dragging` class this block used to name is gone with the module that wrote it — the element mirrors its own gesture as `data-dragging` and paints itself. BOTH grid axes are `auto`: a definite row position — the `2 / 4` a column handle inherits on the APP grid, or the `1 / -1` this rule used to carry — moves the item into an earlier step of CSS Grid's auto-placement, so the splitter claimed column 1 and the two cells flowed around it into the 5px track and the second half. DOM order was already right; the placement algorithm was not reading it. `width: auto` with `justify-self: stretch` is what hands the thickness back to the TRACK `panels/pane-grid.ts` writes, so the element's own 5px default cannot disagree with the column it is placed in.",
+      "gridRow": "auto",
+      "gridColumn": "auto",
+      "justifySelf": "stretch",
+      "margin": "0",
+      "width": "auto",
+      "zIndex": "10"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"]": {
+      "$description": "ONE PANE, and one COLUMN, declared. Three children name `grid-row: 2` in order to share the lower cell, and auto-placement answers that by inventing an implicit column each: the jump bar, the chrome layer and the stage lined up side by side, the stage taking a third of the pane and pinning the document to the right edge. `grid-template-columns` is what makes \"share the cell\" mean it, and every row-2 child restates `grid-column: 1` so a future fourth one cannot re-open the same hole. No unit test can see this — happy-dom does no layout, so every rect is zero — which is why the screenshot lane is what caught it.",
+      "display": "grid",
+      "gridTemplateColumns": "minmax(0, 1fr)",
+      "gridTemplateRows": "auto minmax(0, 1fr)",
+      "minWidth": "0",
+      "minHeight": "0"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"strip\"]": {
+      "gridRow": "1",
+      "gridColumn": "1",
+      "minHeight": "0",
+      "minWidth": "0"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"strip\"]:empty": {
+      "$description": "A pane with nothing to say costs no band. The strip host is empty until `panels/tab-strip.ts` mounts a document into it, and empty again the moment it disposes.",
+      "display": "none"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"jump\"]": {
+      "$description": "Region ⑥. Like the chrome layer below it this shares the pane's lower cell rather than owning a row, so the two bars stack OVER the stage instead of pushing it down. `align-self: start` is what keeps it the height of its own content instead of the height of the cell, so the bar never covers the stage it sits above.",
+      "gridRow": "2",
+      "gridColumn": "1",
+      "alignSelf": "start",
+      "position": "relative",
+      "zIndex": "3",
+      "minWidth": "0",
+      "maxWidth": "100%"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"chrome\"]": {
+      "$description": "Regions ⑦ and ⑩. The layer itself is inert and only its children take the pointer; `surfaces/pane-context.json` owns what they look like. Offset by `--jump-bar-h` for the same reason the stage is: the jump bar is stacked over this same cell, and one projection per bar is what keeps \"no tab open\" costing no dead band.",
+      "gridRow": "2",
+      "gridColumn": "1",
+      "marginTop": "var(--jump-bar-h, 0px)",
+      "position": "relative",
+      "zIndex": "2",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "justifyContent": "space-between",
+      "pointerEvents": "none"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"chrome\"] > *": {
+      "pointerEvents": "auto"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"pane-stage\"]": {
+      "$description": "The stage: the pane's own axis (`styles/canvas.css`) over its placement in the cell (`styles/shell.css`). Offset by the SUM of the two bars stacked over this cell — `--jump-bar-h` (written by `panels/jump-bar.ts`) and `--pane-context-h` (by `panels/pane-context.ts`), both onto the CELL, which is why this reads them by cascade — so neither ever covers the document, and by zero when no tab is open, so the welcome screen does not sit under a band nothing explains. Two variables rather than one total: each bar owns its own answer, and a bar that renders nothing writes 0 without knowing the other exists.",
+      "gridRow": "2",
+      "gridColumn": "1",
+      "marginTop": "calc(var(--jump-bar-h, 0px) + var(--pane-context-h, 0px))",
+      "position": "relative",
+      "overflow": "auto",
+      "background": "var(--bg-panel)",
+      "minWidth": "0",
+      "display": "flex",
+      "gap": "var(--jx-space-6)",
+      "alignItems": "flex-start"
+    }
+  },
+  "children": [
+    {
+      "$description": "Keyed on the PANE ID, and that is the whole of §18.1 rule 1's structural half: the key is what makes the runtime MOVE a kept row rather than rebuild it, and re-parenting is not a move for an `<iframe>` — it reloads, dropping its `iframe-channel` connection, its shadow document and every `ready` panel with it. A row renders complete (its cell, its four hosts and its splitter) inside the row's own effect scope before it is inserted, so there is no frame in which a cell exists with no stage inside it.",
+      "$prototype": "Array",
+      "items": { "$ref": "#/state/rows" },
+      "key": { "$ref": "$map/item/id" },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "row",
+          "role": "none"
+        },
+        "children": [
+          {
+            "$description": "Present on every cell but the first. It is a child of the ROW rather than of either cell, so a splitter drag never reaches the cell's pane-focus listener — and it is created and destroyed with the second pane, so nothing re-inserts it while a pointer capture is live.",
+            "tagName": "div",
+            "attributes": {
+              "part": "splitter-slot",
+              "role": "none"
+            },
+            "$switch": { "$ref": "$map/item/split" },
+            "cases": {
+              "shown": {
+                "$description": "`jx-split` (ui.md §5.5), which is where `role=\"separator\"`, the tab stop, `aria-valuenow` and the whole keyboard now live. This document used to write the role on a bare div and hand the div to `ui/panel-resize.ts`, which made the pane split the one dock-sized thing in Studio a reader could not move without a mouse — an SC 2.1.1 failure with a drag handle drawn on it, and an SC 2.5.7 one besides. Every prop below is a CONSTANT except `value`: `min` and `max` are the shell's own supported range, and `gap` is the pixel floor the element converts against the track it measures itself, which is why nothing here has to be recomputed when the window resizes. `collapse` is the even split rather than the floor, because both sides of this splitter are real panes: the first Enter or double click is the 50/50 reset this gesture has always been, and the second one is the return trip it never had.",
+                "tagName": "jx-split",
+                "attributes": {
+                  "part": "splitter"
+                },
+                "$props": {
+                  "label": "Pane split",
+                  "value": { "$ref": "#/state/paneSplit" },
+                  "min": { "$ref": "#/state/splitMin" },
+                  "max": { "$ref": "#/state/splitMax" },
+                  "gap": { "$ref": "#/state/splitGap" },
+                  "collapse": { "$ref": "#/state/splitDefault" }
+                },
+                "oninput": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/move" },
+                      "value": [{ "$ref": "event#/target/value" }]
+                    }
+                  ]
+                },
+                "onchange": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/settle" },
+                      "value": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "$description": "One pane's cell. `pane.<id>` goes on the STAGE and `pane.<id>/tabs` on the strip, never on this element: nine shots crop `pane.primary` meaning \"the canvas\", and moving the id up one level would silently widen all nine to include the strip and the two bars, which no gate can tell from an intended crop.",
+            "tagName": "div",
+            "attributes": {
+              "part": "pane",
+              "data-pane-id": "${$map.item.id}"
+            },
+            "children": [
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "strip",
+                  "data-jx-region": "${$map.item.stripRegion}"
+                }
+              },
+              {
+                "$description": "The jump bar and the context bar are HANDED this box rather than resolving a region into it. They cannot resolve one the way the strip does: nothing inside the strip re-stamps `pane.<id>/tabs`, while both bars stamp `pane.<id>/jump` and `pane.<id>/context` on markup they render INSIDE these two divs — so a region on the wrapper as well would put the same id on two nested elements, and `resolveRegion` takes the LAST match. Sixty shots crop `pane.primary/context`; a second, larger element carrying it is a silently widened crop.",
+                "tagName": "div",
+                "attributes": {
+                  "part": "jump"
+                }
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "chrome"
+                }
+              },
+              {
+                "$description": "Drawn EMPTY and left empty. `canvas/canvas-render.ts` is this element's render root and `canvas/iframe-host.ts` mounts the artboards' iframes into it; a node cannot have two owners of its child list.",
+                "tagName": "div",
+                "attributes": {
+                  "part": "pane-stage",
+                  "data-jx-region": "${$map.item.region}"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioForcedColors",
+  "$description": "Studio's forced-colours block. `styles/forced-colors.css` is GENERATED from this by `scripts/build-tokens.ts`; edit this file and run `bun run styles:sync`. It is emitted UNSCOPED, so each selector reaches the same elements it always did, and it is linked LAST so it still wins a specificity tie without reaching for `!important`.",
+  "tagName": "html",
+  "style": {
+    "@(forced-colors: active)": {
+      ".notification-row--problem": {
+        "$description": "The Problems and dirty row markers, drawn with the same inset shadow and lost the same way. `.problem-row` left this list when the Problems panel became a document: its marker is the document's own `[part=\"row\"][data-severity]` rule, which draws a border rather than a shadow and so survives the mode without help.",
+        "border-left": "2px solid Highlight"
+      },
+      ".pane-tab[aria-selected=\"true\"], .tab--active": {
+        "$description": "The pane tab's underline. `box-shadow: inset …` is gone in this mode, so the same 2px is drawn as a border on the same edge — which forced colours keep.",
+        "border-bottom": "2px solid Highlight"
+      },
+      ".drop-target, .is-drop-target": {
+        "$description": "The drop target. A 3px translucent ring is invisible here twice over — shadow and alpha.",
+        "outline": "3px solid Highlight",
+        "outline-offset": "-3px"
+      },
+      ":focus-visible": {
+        "$description": "Keyboard focus must survive whatever a component drew it with. `Highlight` is the palette's own focus colour, and the offset puts the ring outside the control rather than over its label.",
+        "outline": "2px solid Highlight",
+        "outline-offset": "2px"
+      },
+      ".artboard, .canvas-frame, iframe.canvas-iframe": {
+        "$description": "The canvas renders the USER'S OWN DOCUMENT, and forcing colours over it would misrepresent what they are building: an author in high-contrast mode would see their site's palette replaced by the system's and have no way to tell what visitors see. `forced-color-adjust: none` opts the artboard — and only the artboard — back out. Every affordance the editor draws ON TOP of it (selection outlines, hover rules, the grid) lives outside this element and keeps the mode.",
+        "forced-color-adjust": "none"
+      },
+      ".status-dot, .severity-dot, .provenance-chip": {
+        "$description": "A dot or a bar whose whole meaning is its fill loses that meaning when every fill becomes the same system colour. A border restores the shape distinction the fill was carrying.",
+        "border": "1px solid CanvasText"
+      },
+      "[disabled], [aria-disabled=\"true\"]": {
+        "$description": "Disabled controls: forced colours map them to `GrayText`, which the browser will apply — but only if the app has not painted over it with an opacity trick. Opacity is not a colour, so it survives the mode and stacks with GrayText into something unreadable.",
+        "opacity": "1",
+        "color": "GrayText"
+      }
+    }
+  }
+}

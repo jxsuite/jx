@@ -1,0 +1,263 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioAbout",
+  "$description": "The About dialog: the app's version and build metadata, its external links, and the resolved `@jxsuite/*` package versions. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop — which is what retired the `sp-underlay` this surface used to render itself, and with it the fixed-position box and scrolling body it drew by hand.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": {
+      "$ref": "#/state/headline"
+    },
+    "confirmLabel": "",
+    "cancelLabel": "Close",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "about"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/close"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "The About dialog's own look. `.about-modal` and `.about-modal-body` are gone rather than moved: they positioned a fixed box, drew its panel and scrolled its body, and `jx-dialog` is all three — so converting this surface deleted two rules instead of transcribing them.",
+    "& [part=\"meta\"]": {
+      "margin": "0 0 16px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "6px"
+    },
+    "& [part=\"meta-row\"]": {
+      "display": "flex",
+      "gap": "12px",
+      "fontSize": "13px"
+    },
+    "& [part=\"meta-label\"]": {
+      "$description": "A fixed label column, so the values line up down the list rather than with each row's own text.",
+      "width": "96px",
+      "minWidth": "96px",
+      "margin": "0",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"meta-value\"]": {
+      "margin": "0",
+      "color": "var(--fg)",
+      "wordBreak": "break-word"
+    },
+    "& [part=\"links\"]": {
+      "display": "flex",
+      "gap": "16px",
+      "padding": "12px 0",
+      "marginBottom": "12px",
+      "borderTop": "1px solid var(--border)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"links\"] a": {
+      "$description": "The accent, from the studio token layer. It read `--spectrum-accent-color-1000` with a hex fallback, which resolved only inside `<sp-theme>`; a document is mounted in the dialog layer, where that name is not in scope and every link would have fallen to the hex.",
+      "color": "var(--accent)",
+      "textDecoration": "none",
+      ":hover": {
+        "textDecoration": "underline"
+      }
+    },
+    "& [part=\"section-title\"]": {
+      "margin": "0 0 8px",
+      "fontSize": "13px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"muted\"]": {
+      "margin": "0",
+      "fontSize": "13px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"packages\"]": {
+      "listStyle": "none",
+      "margin": "0",
+      "padding": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px"
+    },
+    "& [part=\"package-row\"]": {
+      "display": "flex",
+      "justifyContent": "space-between",
+      "gap": "12px",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"package-name\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"package-version\"]": {
+      "$description": "Tabular figures, so a column of versions does not jitter as it loads.",
+      "color": "var(--fg)",
+      "fontVariantNumeric": "tabular-nums"
+    }
+  },
+  "children": [
+    {
+      "tagName": "dl",
+      "attributes": {
+        "part": "meta"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/rows"
+          },
+          "key": {
+            "$ref": "$map/item/label"
+          },
+          "map": {
+            "tagName": "div",
+            "attributes": {
+              "part": "meta-row"
+            },
+            "children": [
+              {
+                "tagName": "dt",
+                "attributes": {
+                  "part": "meta-label"
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "tagName": "dd",
+                "attributes": {
+                  "part": "meta-value"
+                },
+                "textContent": "${$map.item.value}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "links"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/links"
+          },
+          "key": {
+            "$ref": "$map/item/href"
+          },
+          "map": {
+            "tagName": "a",
+            "attributes": {
+              "href": "${$map.item.href}",
+              "target": "_blank",
+              "rel": "noreferrer noopener"
+            },
+            "textContent": "${$map.item.label}"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "section",
+      "attributes": {
+        "part": "section"
+      },
+      "children": [
+        {
+          "tagName": "h3",
+          "attributes": {
+            "part": "section-title"
+          },
+          "textContent": "Packages"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "packages-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/packagesState"
+          },
+          "cases": {
+            "loading": {
+              "tagName": "p",
+              "attributes": {
+                "part": "muted"
+              },
+              "textContent": "Loading packages…"
+            },
+            "empty": {
+              "tagName": "p",
+              "attributes": {
+                "part": "muted"
+              },
+              "textContent": "No packages reported."
+            },
+            "listed": {
+              "tagName": "ul",
+              "attributes": {
+                "part": "packages"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/packages"
+                  },
+                  "key": {
+                    "$ref": "$map/item/name"
+                  },
+                  "map": {
+                    "tagName": "li",
+                    "attributes": {
+                      "part": "package-row"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "package-name"
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "package-version"
+                        },
+                        "textContent": "${$map.item.version}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

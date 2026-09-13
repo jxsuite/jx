@@ -262,9 +262,9 @@ describe("the shell's own regions", () => {
      template now (src/shell/tree.ts), so the id sits on the element it names and there is one
      definition. What this suite still owes is that those ids are well-formed and resolvable, which
      the map used to guarantee by construction. */
-  test("every id the frame stamps parses and resolves to exactly one element", () => {
+  test("every id the frame stamps parses and resolves to exactly one element", async () => {
     const host = document.createElement("div");
-    mountShellTree(host);
+    await mountShellTree(host);
     const stamped = [...host.querySelectorAll(`[${REGION_ATTR}]`)].map((el) =>
       el.getAttribute(REGION_ATTR)!,
     );

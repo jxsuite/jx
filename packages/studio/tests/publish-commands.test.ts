@@ -158,15 +158,13 @@ describe("the records", () => {
   test("Set Up opens the panel, and does not import it until it is run", async () => {
     // The lazy import is load-bearing: `commands/app-commands.ts` is read by three CI checks in a
     // Bare Bun process, and a module that opens a modal at import time would break all three.
-    const { openModal } = await import("../src/ui/layers");
-    expect(typeof openModal).toBe("function");
     resetStudioState({ projectConfig: { name: "My Site" } });
     mountOverlayLayers(document.body);
     const { initLayers } = await import("../src/ui/layers");
     initLayers();
     await command("publish.setUp").run(emptyContext(), undefined as never);
     await flush();
-    expect(document.querySelector("#layer-modal .publish-modal")).toBeTruthy();
+    expect(document.querySelector('#layer-modal jx-dialog[part="publish"]')).toBeTruthy();
   });
 
   test("Deploy's run wrapper drives the same activity the direct call does", async () => {

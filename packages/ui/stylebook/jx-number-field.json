@@ -1,0 +1,203 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookNumberField",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-field.json"
+    },
+    {
+      "$ref": "../components/jx-number-field.json"
+    }
+  ],
+  "state": {
+    "opacity": "0.5"
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "80px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-number-field"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A native number input. The platform supplies the spinbutton role, the announced value, the Arrow keys and the range; the element adds a ten-step Shift+Arrow, the two stepping buttons, and the difference between an empty value and a half-typed one."
+    },
+    {
+      "tagName": "p",
+      "textContent": "The events are the platform's own two names and nothing else. On the reader's own paths the native input and change bubble out of the control untouched, so a host reads event.target.valueAsNumber (NaN when the field is empty), event.target.validity and event.target.form; on the paths the element writes the value itself, the stepper buttons and Shift+Arrow, the same two names come from the element. Whether an empty value is a clear or a half-typed number is read off the element, as its badInput prop or the data-bad-input attribute it mirrors."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound value"
+      },
+      "children": [
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Opacity",
+            "min": "0",
+            "max": "1",
+            "step": "0.1",
+            "stepper": true,
+            "value": {
+              "$ref": "#/state/opacity"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/opacity"
+                },
+                "value": {
+                  "$ref": "event#/target/value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.opacity}"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Small",
+            "size": "sm",
+            "stepper": true,
+            "value": "1"
+          }
+        },
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Medium",
+            "stepper": true,
+            "value": "2"
+          }
+        },
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Large",
+            "size": "lg",
+            "stepper": true,
+            "value": "3"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Range and states"
+      },
+      "children": [
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Unbounded",
+            "placeholder": "auto"
+          }
+        },
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Off the step grid",
+            "min": "0",
+            "step": "0.3",
+            "value": "0.5"
+          }
+        },
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "label": "Disabled",
+            "disabled": true,
+            "stepper": true,
+            "value": "12"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "In a field row"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The row is jx-field. It mints the ids its label and its help sentence carry, and hands them to the field as labelledby and describedby, so nothing on this page writes an id."
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Columns",
+        "description": "Between 1 and 12. Hold Shift with an Arrow key to move ten at a time."
+      },
+      "attributes": {
+        "data-prop": "columns"
+      },
+      "children": [
+        {
+          "tagName": "jx-number-field",
+          "$props": {
+            "min": "1",
+            "max": "12",
+            "step": "1",
+            "stepper": true,
+            "value": "3"
+          }
+        }
+      ]
+    }
+  ]
+}

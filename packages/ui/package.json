@@ -1,0 +1,68 @@
+{
+  "name": "@jxsuite/ui",
+  "version": "0.0.0",
+  "description": "The Jx UI kit: interface elements authored as Jx documents, with their theme and icons",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git",
+    "directory": "packages/ui"
+  },
+  "files": [
+    "src/",
+    "components/",
+    "theme/",
+    "icons/",
+    "stylebook/",
+    "project.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme": "./src/theme.ts",
+    "./icons": "./src/icons.ts",
+    "./documents": "./src/documents.ts",
+    "./loaders": "./src/loaders.ts",
+    "./color": "./src/color.ts",
+    "./behaviors/color-area": "./src/behaviors/color-area.ts",
+    "./behaviors/color-field": "./src/behaviors/color-field.ts",
+    "./behaviors/color-slider": "./src/behaviors/color-slider.ts",
+    "./behaviors/combobox": "./src/behaviors/combobox.ts",
+    "./behaviors/listbox": "./src/behaviors/listbox.ts",
+    "./behaviors/menu": "./src/behaviors/menu.ts",
+    "./behaviors/tabs": "./src/behaviors/tabs.ts",
+    "./behaviors/toolbar": "./src/behaviors/toolbar.ts",
+    "./behaviors/tree": "./src/behaviors/tree.ts",
+    "./behaviors/action-group": "./src/behaviors/action-group.ts",
+    "./behaviors/popover": "./src/behaviors/popover.ts",
+    "./behaviors/select": "./src/behaviors/select.ts",
+    "./behaviors/split": "./src/behaviors/split.ts",
+    "./behaviors/swatch-group": "./src/behaviors/swatch-group.ts",
+    "./behaviors/tooltip": "./src/behaviors/tooltip.ts",
+    "./behaviors/dialog": "./src/behaviors/dialog.ts",
+    "./behaviors/textfield": "./src/behaviors/textfield.ts",
+    "./behaviors/number-field": "./src/behaviors/number-field.ts",
+    "./behaviors/toast": "./src/behaviors/toast.ts",
+    "./behaviors/toast-host": "./src/behaviors/toast-host.ts",
+    "./testing/anchor-support": "./src/testing/anchor-support.ts",
+    "./testing/popover-shim": "./src/testing/popover-shim.ts",
+    "./icons/manifest.json": "./icons/manifest.json"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "scripts": {
+    "build:icons": "bun run scripts/build-icons.ts",
+    "test": "bun test --isolate",
+    "test:coverage": "bun test --isolate --coverage",
+    "upgrade": "bun update --latest && bun install"
+  },
+  "dependencies": {
+    "@jxsuite/runtime": "workspace:^",
+    "@jxsuite/schema": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.12.0",
+    "@phosphor-icons/core": "^2.1.1"
+  }
+}

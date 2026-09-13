@@ -58,6 +58,7 @@ import type { CanvasSurface } from "./canvas/canvas-surface";
 import {
   initCanvasRender,
   registerSelectionSetCommand,
+  redefineElementOnCanvases,
   renderCanvas,
   renderOverlays,
   scheduleCanvasRender,
@@ -90,10 +91,11 @@ import {
 import { runInsertZoneAction } from "./editor/insert-zone-action";
 import { canvasSlashHandler } from "./editor/canvas-slash-bridge";
 import { makeCanvasContextMenuHandler } from "./editor/canvas-context-menu";
-import { mountStatusbar, renderStatusbar } from "./panels/statusbar";
+import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { mountJumpBar } from "./panels/jump-bar";
-import { cellForPane } from "./panels/pane-grid";
+import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
+import { createLiveSurfaceSaver } from "./services/live-surfaces";
 import { beginActivity } from "./panels/activity-panel";
 import {
   exportFile,
@@ -111,7 +113,7 @@ import {
 import {
   loadProject as _loadProject,
   openProject as _openProject,
-  renderFilesTemplate as _renderFilesTemplate,
+  renderFilesTemplate,
   findHomePage,
   loadDirectory,
   openFileInPane,
@@ -152,15 +154,13 @@ import { mountResizeEdges } from "./resize-edges";
 import {
   defBadgeLabel,
   defCategory,
+  mountSignalsPanel,
   registerSignalsCommands,
-  renderSignalsTemplate,
 } from "./panels/signals-panel";
 import { loadComponentRegistry } from "./files/components";
 import { ensureDependenciesInstalled } from "./packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
 import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
-
-import { html, render as litRender } from "lit-html";
 
 import webdata from "../data/webdata.json";
 import { registerDataExplorerCommands } from "./panels/data-explorer";
@@ -173,10 +173,7 @@ import {
   noteFileSaved,
 } from "./panels/git-panel";
 
-// ─── Spectrum Web Components ──────────────────────────────────────────────────
-// Explicit class imports + registration — bare side-effect imports are tree-shaken
-// By Bun's bundler despite sideEffects declarations in Spectrum's package.json.
-import { components as _swc } from "./ui/spectrum";
+import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
 // Built-in schema-form controls (schema-builder, secret) register on import
 import "./ui/form-controls.js";
@@ -188,8 +185,8 @@ import { chordsInScopes } from "./commands/keymap";
 import { FRAME_KEY_SCOPES } from "./canvas/iframe-keys";
 import { createLiveContext } from "./commands/live-context";
 import { hasAiCredentials } from "./services/ai-models";
-import { mount as mountActivityBar } from "./panels/activity-bar";
-import * as toolbarPanel from "./panels/toolbar";
+import { mount as mountActivityBar } from "./surfaces/rail";
+import * as toolbarPanel from "./surfaces/commandbar";
 import * as overlaysPanel from "./panels/overlays";
 import * as frontmatterPanelMod from "./panels/frontmatter-panel";
 import * as rightPanelMod from "./panels/right-panel";
@@ -227,7 +224,7 @@ import {
   settingsSettled,
   watchRemoteSettings,
 } from "./services/settings/kernel";
-import { initWelcome } from "./panels/welcome-screen";
+import { initWelcome } from "./surfaces/welcome";
 import {
   openAddRepoModal,
   openProjectPickerModal,
@@ -238,6 +235,7 @@ import { invalidatePageRouteCache, registerInspectorCommands } from "./panels/pr
 import { liveElementCommands, setContextMenuNavigate } from "./editor/context-menu";
 import { registerSeoCommands, renderSeoModal } from "./panels/seo-modal";
 import { ensurePopoverRevealWatch, setOpenPopover } from "./canvas/popover-state";
+import { setOpenDialog } from "./canvas/dialog-state";
 import { registerA11yCommands } from "./services/a11y-report";
 import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
@@ -257,7 +255,7 @@ import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
-import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type { JxDocument, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountShellTree } from "./shell/tree";
 
@@ -276,8 +274,6 @@ import { mountShellTree } from "./shell/tree";
  * `MonacoEnvironment.getWorker`.
  */
 setBundleBase(import.meta.url);
-
-void _swc;
 
 /**
  * What the derivation's commands and follows need from the rest of Studio: an opener, and a reader
@@ -416,35 +412,21 @@ async function navigateToComponent(componentPath: string) {
 // A drilled-in component is a real tab now, and `panels/tab-strip.ts` owns the prompt for closing
 // One. That prompt is two-way where this was three-way — see `showSaveDiscardDialog`'s ledger entry.
 
-// ─── Webdata: datalists for autocomplete ──────────────────────────────────────
+// ─── Webdata ──────────────────────────────────────────────────────────────────
 
-const datalistHost = document.createElement("div");
-datalistHost.style.display = "contents";
-document.body.append(datalistHost);
-litRender(
-  html`
-    <datalist id="tag-names">
-      ${webdata.allTags.map((tag: string) => html`<option value=${tag}></option>`)}
-    </datalist>
-    <datalist id="css-props"></datalist>
-  `,
-  datalistHost,
-);
-
-requestIdleCallback(() => {
-  const dl = document.querySelector("#css-props");
-  if (!dl) {
-    return;
-  }
-  const frag = document.createDocumentFragment();
-  for (const [name] of webdata.cssProps) {
-    const opt = document.createElement("option");
-    opt.value = name!;
-    frag.append(opt);
-  }
-  dl.append(frag);
-});
-
+/*
+ * The two `<datalist>`s that used to be built here — `#tag-names` from `webdata.allTags`, and
+ * `#css-props` filled with ~600 options in a `requestIdleCallback` — are GONE, and they were dead
+ * rather than convertible. A datalist is reached only through a `list="<id>"` on a control, and
+ * nothing in this package has carried one since the Inspector's inputs became documents: `grep -rn
+ * "tag-names" packages sites` found this file and the test that asserted this file. So the boot was
+ * appending a hidden host to `<body>`, painting six hundred elements into it a frame later, and
+ * reaching back for them with `document.querySelector` — for nothing to read.
+ *
+ * Converting them would have written a surface whose consumer does not exist. What survives is the
+ * half that had one: `initCssData` fills the CSS initial-value map the Style tab reads to decide
+ * whether a property is set or merely defaulted, and it takes `webdata` directly.
+ */
 initCssData(webdata);
 
 // ─── Module-level UI state (must be before render() call) ─────────────────────
@@ -460,11 +442,20 @@ if (!hasPlatform()) {
 
 mountResizeEdges();
 
+// The UI kit: every jx-* element defined from bundled JSON, and its theme adopted, before any
+// Surface can mount. Registration touches no network, so nothing here waits on it.
+void registerKit();
+
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
 /* The application frame, before anything adopts a host out of it. index.html carries an empty body
-   and this is the only definition — see src/shell/tree.ts for what that fixed. */
-mountShellTree();
+   and this is the only definition — see src/shell/tree.ts for what that fixed.
+
+   AWAITED, and it has to be: the frame is a Jx document now, so it renders one microtask after
+   insertion and only once the kit's elements are defined. `initShellRefs()` on the next line reads
+   five of its cells with `querySelector`, and every module that holds one of those would otherwise
+   hold a null — silently, because a null host is only noticed by whatever renders into it later. */
+await mountShellTree();
 
 initShellRefs();
 // One effect projects the dock record onto the shell grid — collapse classes and column widths.
@@ -486,9 +477,12 @@ initLayers();
 initQuickSearch({ openRecentProject: (root: string) => openRecentProject(root) });
 
 /* The pane's four surfaces come from its CELL, not from `document.querySelector`.
-   `panels/pane-grid.ts` mounted through `mountShell()` above, so the primary's cell exists by now;
-   each of these three modules still holds one host, which is exactly right while the grid draws one
-   cell and is what `mountForPane` replaces when it draws two. */
+   AWAITED, for the reason `mountShellTree()` gives one line up: the grid is a Jx document now, and
+   the runtime waits for the kit to be defined before it renders — so `mountShell()` STARTING the
+   grid is not the same event as the grid existing, and the three mounts below read the primary
+   cell's boxes on the line after it. Each of those modules still holds one host, which is exactly
+   right while the grid draws one cell and is what `mountForPane` replaces when it draws two. */
+await paneGridReady();
 const primaryCell = cellForPane(PRIMARY_PANE);
 
 tabStrip.mount(primaryCell?.strip ?? document.createElement("div"));
@@ -527,7 +521,7 @@ setMediaChangedHandler(async (dir) => {
   await loadDirectory(dir);
   renderLeftPanel();
 });
-// The in-iframe "/" trigger drives the parent-realm Spectrum slash menu across the bridge.
+// The in-iframe "/" trigger drives the parent-realm slash menu across the bridge.
 setCanvasSlashHandler(canvasSlashHandler);
 // Canvas right-clicks show the parent-realm Jx element context menu across the bridge.
 setCanvasContextMenuHandler(makeCanvasContextMenuHandler());
@@ -862,7 +856,7 @@ leftPanelMod.mount({
   renderGitPanel,
   renderHeadTemplate,
   renderImportsTemplate,
-  renderSignalsTemplate,
+  mountSignalsPanel,
   setCanvasMode,
   setGitDiffState: (state: GitDiffState | null) => {
     shell.git.diffState = state;
@@ -1389,13 +1383,6 @@ async function openRecentProject(root: string) {
     activity.fail(`Could not open the project at ${root}.`, { path: root });
   }
 }
-function renderFilesTemplate() {
-  return _renderFilesTemplate({
-    openFileFromTree,
-    openProject,
-    renderLeftPanel,
-  });
-}
 function openFileFromTree(path: string) {
   return openFileInTab(path);
 }
@@ -1495,13 +1482,23 @@ registerCanvasViewCommands(commandRegistry, {
   renderPane: renderCanvas,
   setCanvasMode,
   setOpenPopover,
+  setOpenDialog,
   setResolvingOpen: paneContext.setResolvingOpen,
 });
 /* A save moves the working tree under any comparison of that file, and nothing about a
    comparison notices on its own — see `noteFileSaved`. Injected rather than imported: `file-ops`
    must not pull the Source Control panel into its graph. */
-setDocumentSavedListener((path) => {
+/* The second listener is the live chrome lane: a saved surface document or kit component re-mounts
+   the roots it draws in THIS shell (studio-ui-guidelines.md §9.3). Inert for every project but the
+   two the chrome comes from, by the saved path alone. */
+const liveChrome = createLiveSurfaceSaver({
+  notify,
+  redefineOnCanvases: redefineElementOnCanvases,
+  workspace,
+});
+setDocumentSavedListener((path, doc) => {
   void noteFileSaved(path);
+  void liveChrome(path, doc as unknown as JxDocument);
 });
 /* Walking a comparison. No deps: the stepper reads the pane-keyed diff store directly and the
    toolbar redraws itself, so there is nothing for the bootstrap to inject. */

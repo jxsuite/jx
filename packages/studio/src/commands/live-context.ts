@@ -39,16 +39,22 @@ import type { CommandContext, FocusRegion } from "./context";
 import type { StudioPlatform } from "../types";
 
 /** Elements that own the keyboard while focused. Matches the old listener's target test exactly. */
-const TEXT_ENTRY =
-  "input, textarea, select, sp-textfield, sp-search, sp-number-field, sp-picker, [contenteditable=true]";
+const TEXT_ENTRY = "input, textarea, select, [contenteditable=true]";
 
 /**
  * Whether a parent-realm text control has focus.
  *
  * The old listener asked this of `e.target`; asking it of `document.activeElement` is the same
- * answer — a keydown's target IS the focused element, and shadow-DOM retargeting maps the inner
- * `<input>` of an `sp-textfield` onto the host in both cases — but it makes the fact part of the
- * CONTEXT instead of part of the event, so a `when` predicate can read it too.
+ * answer — a keydown's target IS the focused element — but it makes the fact part of the CONTEXT
+ * instead of part of the event, so a `when` predicate can read it too.
+ *
+ * The selector also named `sp-textfield`, `sp-search`, `sp-number-field` and `sp-picker`, and it
+ * had to: a Spectrum control's real `<input>` lives in a SHADOW ROOT, so both the event's target
+ * and `document.activeElement` retarget onto the custom element, and the native entries never saw
+ * it. The kit declares no shadow root anywhere (`ui.md` §3.2), so `jx-textfield`, `jx-select` and
+ * `jx-number-field` each put their native control in the caller's own tree and `activeElement` IS
+ * that control. Nothing was substituted for the four, because the answer comes one node deeper and
+ * `input, textarea, select` was always the entry that would give it.
  */
 export function isTextEntryFocused(doc: Document = document): boolean {
   const el = doc.activeElement;

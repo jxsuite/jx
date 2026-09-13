@@ -1,0 +1,446 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGridViews",
+  "$description": "The grid's View panel: the saved views, and the four facets one of them is made of — columns, sort, grouping, and the filter the toolbar box holds. ONE control rather than four, because the chrome budget caps what may stand in a toolbar (§12.2) and these four are only ever adjusted together. There is no Apply button: every edit writes the working layout and applies immediately, so the panel is never showing something the grid is not already doing.",
+  "tagName": "jx-popover",
+  "attributes": {
+    "part": "views-panel"
+  },
+  "$props": {
+    "label": "Grid view",
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "var(--jx-space-2)",
+        "padding": "var(--jx-space-3)",
+        "minWidth": "280px",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)",
+        "color": "var(--fg)",
+        "maxHeight": "60vh",
+        "overflowY": "auto",
+        "& [part=\"title\"]": {
+          "fontWeight": "600",
+          "fontSize": "var(--jx-text-sm)",
+          "margin": "0"
+        },
+        "& [part=\"empty\"]": {
+          "margin": "0",
+          "color": "var(--fg-dim)",
+          "fontSize": "var(--jx-text-xs)"
+        },
+        "& [part=\"views\"]": {
+          "display": "flex",
+          "flexDirection": "column",
+          "gap": "2px"
+        },
+        "& [part=\"view-row\"]": {
+          "display": "flex",
+          "alignItems": "center",
+          "gap": "var(--jx-space-1)"
+        },
+        "& [part=\"view-name\"]": {
+          "flex": "1",
+          "textAlign": "left",
+          "background": "none",
+          "border": "none",
+          "color": "var(--fg)",
+          "font": "inherit",
+          "padding": "3px 6px",
+          "borderRadius": "var(--jx-radius-sm)",
+          "cursor": "pointer"
+        },
+        "& [part=\"view-name\"]:hover": {
+          "background": "var(--bg-hover)"
+        },
+        "& [part=\"view-name\"][data-active=\"true\"]": {
+          "fontWeight": "600",
+          "background": "var(--bg-selected)"
+        },
+        "& [part=\"view-name\"]:focus-visible": {
+          "outline": "var(--jx-focus-ring)",
+          "outlineOffset": "-2px"
+        },
+        "& [part=\"actions\"]": {
+          "display": "flex",
+          "gap": "var(--jx-space-2)"
+        },
+        "& [part=\"columns\"]": {
+          "display": "flex",
+          "flexDirection": "column",
+          "gap": "var(--jx-space-1)"
+        }
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "title"
+          },
+          "textContent": "Saved views"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "views-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/viewsState"
+          },
+          "cases": {
+            "empty": {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty"
+              },
+              "textContent": "No saved views yet. Arrange the grid, then save it under a name."
+            },
+            "listed": {
+              "tagName": "div",
+              "attributes": {
+                "part": "views"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/views"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "$description": "One saved view: its name applies it, and the cross beside it asks before forgetting it. `$map/item` is the view, so the row hands its own name back rather than an index.",
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "view-row",
+                      "data-view": "${$map.item.name}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "button",
+                        "attributes": {
+                          "part": "view-name",
+                          "type": "button",
+                          "data-active": "${$map.item.active}",
+                          "aria-current": "${$map.item.current}"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/applyView"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/name"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "jx-action-button",
+                        "attributes": {
+                          "part": "view-delete"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "quiet": true,
+                          "icon": "x",
+                          "label": "${$map.item.deleteLabel}",
+                          "hint": "Delete this view"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/deleteView"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/name"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "actions"
+          },
+          "children": [
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "save-view"
+              },
+              "$props": {
+                "variant": "accent",
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/saveView"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.saveLabel}"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "reset"
+              },
+              "$props": {
+                "variant": "secondary",
+                "size": "sm",
+                "label": "Forget this grid's saved columns, sort, grouping and filter. Named views are kept."
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/reset"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Reset"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "title",
+            "data-title": "columns"
+          },
+          "textContent": "Columns"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "columns"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/columns"
+              },
+              "key": {
+                "$ref": "$map/item/field"
+              },
+              "map": {
+                "$description": "One column's visibility. The title is SLOTTED rather than passed as `label`: an empty `label` removes the aria-label, so the wrapping label's own text names the box instead of naming it twice — and the reader can see which column the box is for.",
+                "tagName": "jx-checkbox",
+                "attributes": {
+                  "part": "column",
+                  "data-field": "${$map.item.field}"
+                },
+                "$props": {
+                  "size": "sm",
+                  "checked": {
+                    "$ref": "$map/item/visible"
+                  }
+                },
+                "onchange": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/toggleColumn"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/field"
+                        },
+                        {
+                          "$ref": "event#/target/checked"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.title}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "title",
+            "data-title": "sort"
+          },
+          "textContent": "Sort"
+        },
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "sort-field"
+          },
+          "$props": {
+            "label": "Sort by",
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/fieldOptions"
+            },
+            "value": {
+              "$ref": "#/state/sortField"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setSortField"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "sort-dir"
+          },
+          "$props": {
+            "label": "Sort direction",
+            "size": "sm",
+            "disabled": {
+              "$ref": "#/state/sortDirDisabled"
+            },
+            "options": {
+              "$ref": "#/state/dirOptions"
+            },
+            "value": {
+              "$ref": "#/state/sortDir"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setSortDir"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "title",
+            "data-title": "group"
+          },
+          "textContent": "Group by"
+        },
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "group-field"
+          },
+          "$props": {
+            "label": "Group by",
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/groupOptions"
+            },
+            "value": {
+              "$ref": "#/state/groupField"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setGroup"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

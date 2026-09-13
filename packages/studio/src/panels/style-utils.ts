@@ -2,9 +2,8 @@
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
-import { getNodeAtPath } from "../store";
 import { activeTab } from "../workspace/workspace";
-import { primarySelection } from "../tabs/selection";
+import { getEffectiveStyle } from "../site-context";
 import cssMeta from "../../data/css-meta.json";
 
 let cssInitialMap = new Map<string, string>();
@@ -48,7 +47,19 @@ export function allConditionsPass(
 
 // ─── Auto-open sections ─────────────────────────────────────────────────────
 
-/** @param {JxMutableNode} node @param {Record<string, boolean>} currentSections */
+/**
+ * Open every section that has a value in it — and leave alone every section somebody has DECIDED
+ * about.
+ *
+ * The distinction is `undefined` versus `false`, and it is what makes the Style tab's accordion
+ * obey a click. It used to test `!result[section]`, which cannot tell "never opened" from "the
+ * reader just closed it": with the tab drawn once per interaction that was invisible, because the
+ * close and the re-open happened on either side of a render nobody looked between. The tab is a
+ * document now and re-projects the moment the section record moves, so closing an auto-opened
+ * section re-opened it in the same frame.
+ *
+ * @param {JxMutableNode} node @param {Record<string, boolean>} currentSections
+ */
 export function autoOpenSections(node: JxMutableNode, currentSections: Record<string, boolean>) {
   const style = node.style || {};
   const result = { ...currentSections };
@@ -58,7 +69,7 @@ export function autoOpenSections(node: JxMutableNode, currentSections: Record<st
     }
     const entry = (cssMeta.$defs as Record<string, Record<string, unknown>>)[prop];
     const section = (entry?.$section as string) ?? "other";
-    if (!result[section]) {
+    if (result[section] === undefined) {
       result[section] = true;
     }
   }
@@ -213,10 +224,12 @@ export function compressBorderSide(vals: string[]) {
 
 /** Extract --font-* CSS custom properties from the document root style. */
 export function getFontVars() {
-  const style = activeTab.value?.doc.document?.style;
-  if (!style) {
-    return [];
-  }
+  /* The EFFECTIVE style — the site's `project.json` block under the document's own — for the same
+     reason `colorTokens()` reads it: a project's fonts are declared once, in the site, and a list
+     that read only the document offered a component none of its project's fonts. The value is what
+     the token's OWN declaration says; a token that aliases another (`--font-ui: var(--font-body)`)
+     is followed by whoever draws it. Only scalars are taken: an object is a nested rule. */
+  const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
   const vars = [];
   for (const [k, v] of Object.entries(style)) {
     if (k.startsWith("--font") && (typeof v === "string" || typeof v === "number")) {
@@ -226,29 +239,20 @@ export function getFontVars() {
   return vars;
 }
 
-/** Typography CSS properties that should preview their values in-menu */
-export const TYPO_PREVIEW_PROPS = new Set([
-  "fontStyle",
-  "fontVariant",
-  "textTransform",
-  "textDecoration",
-]);
-
-/** Resolve the current font family for typography preview (handles var() references) */
-export function currentFontFamily() {
-  const tab = activeTab.value;
-  const selected = primarySelection(tab?.session.selection);
-  const node = selected ? getNodeAtPath(tab!.doc.document, selected) : null;
-  const raw = node?.style?.fontFamily;
-  if (!raw) {
-    return "";
-  }
-  const m = typeof raw === "string" && raw.match(/^var\((--[^)]+)\)$/);
-  if (m) {
-    return tab?.doc.document?.style?.[m[1]!] || "";
-  }
-  return raw;
-}
+/**
+ * The typography properties whose keyword rows draw each value AS that value, and the `jx-option`
+ * channel each one reaches the row through (ui.md §5.3): a weight row's `700` is set in 700, an
+ * italic row's `Italic` leans, a transform row's `Uppercase` is capitalised without changing the
+ * word a reader hears. `fontFamily` is not here because its rows are their own preview through
+ * `face`, which is the channel every one of these rows ALSO carries, so a weight is shown in the
+ * element's own typeface rather than in the panel's.
+ */
+export const TYPO_PREVIEW_CHANNELS: Readonly<Record<string, string>> = {
+  fontStyle: "slant",
+  fontVariant: "variant",
+  fontWeight: "weight",
+  textDecoration: "decoration",
+  textTransform: "transform",
+};
 
 export { default as cssMeta } from "../../data/css-meta.json";
-export { camelToKebab } from "../utils/studio-utils";

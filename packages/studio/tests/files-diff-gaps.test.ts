@@ -6,7 +6,7 @@
  * refuses to open, the "Loading…" placeholder sitting in the keyboard's path, a grid tab's save
  * verdict, and a component that can be named neither by package nor by path being un-imported.
  */
-import { flush, installMockPlatform, renderInto } from "./harness";
+import { flush, installMockPlatform } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { requireProjectState, setProjectState } from "../src/store";
 import {
@@ -56,7 +56,7 @@ void mock.module("../src/grid/grid-controller", () => ({
   getGridController: (tab: object | null) => (tab === null ? null : (gridTabs.get(tab) ?? null)),
 }));
 
-const { openFileInTab, openLastSessionOrHome, renderFilesTemplate } =
+const { mountFilesPanel, openFileInTab, openLastSessionOrHome, unmountFilesPanel } =
   await import("../src/files/files");
 const { saveFile } = await import("../src/files/file-ops");
 const { serializeDocument } = await import("../src/files/serialize-document");
@@ -260,8 +260,8 @@ describe("an empty file", () => {
 describe("the ↓ walk and the Loading… placeholder", () => {
   test("steps over a directory still being listed onto the next real row", async () => {
     // An expanded directory nobody has listed yet contributes a placeholder row, and a placeholder
-    // Is not a destination: it has no `data-path` of its own — it carries its DIRECTORY's — so
-    // Stopping on it would hand the keyboard straight back to the row ↓ was pressed on.
+    // Is not a destination: it is not a `jx-tree-item` at all, so the element's own walk cannot see
+    // It and the model step past it lands on the next real row.
     const { platform } = installFsPlatform();
     platform.listDirectory = async (dir: string) => {
       if (dir === "assets") {
@@ -290,22 +290,20 @@ describe("the ↓ walk and the Loading… placeholder", () => {
 
     const host = document.createElement("div");
     document.body.append(host);
-    await renderInto(
-      renderFilesTemplate({
-        openFileFromTree: () => {},
-        openProject: () => {},
-        renderLeftPanel: () => {},
-      }),
-      host,
-    );
-    await flush();
+    // A mounted document needs more than one turn: the surface waits for the kit, then renders.
+    mountFilesPanel(host, () => {});
+    await flush(3);
 
-    const tree = host.querySelector(".file-tree") as HTMLElement;
+    const tree = host.querySelector('[part="tree"]') as HTMLElement;
     // Model: assets · Loading… · one.json · two.json
     expect(
-      [...tree.querySelectorAll(".file-tree-item")].map((el) => el.textContent?.trim()),
+      [...tree.querySelectorAll('[part="row"], [part="loading-row"]')].map((el) =>
+        el.textContent?.trim(),
+      ),
     ).toContain("Loading…");
-    const assets = tree.querySelector('.file-tree-item[data-path="assets"]') as HTMLElement;
+    // The placeholder is not a `treeitem`, so the keyboard cannot land on it at all.
+    expect(tree.querySelector('[part="loading-row"]')?.getAttribute("role")).toBe("none");
+    const assets = tree.querySelector('[part="row"][data-value="assets"]') as HTMLElement;
     assets.focus();
 
     assets.dispatchEvent(
@@ -313,7 +311,8 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     );
     await flush();
 
-    expect((document.activeElement as HTMLElement).dataset.path).toBe("one.json");
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("one.json");
+    unmountFilesPanel();
     host.remove();
   });
 });

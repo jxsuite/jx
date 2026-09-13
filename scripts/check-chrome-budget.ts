@@ -4,8 +4,8 @@
 //   * At most four tabs per dock.
 //
 // Chrome is earned by frequency, and a cap is the only version of that rule that survives contact
-// With a deadline. Studio's current toolbar is the counter-example: its own CSS strips every
-// `.tb-label` below 1140px rather than concede there are too many controls, so the fix for "one
+// With a deadline. Studio's toolbar is the counter-example: its own document strips every primary
+// Label below 1140px rather than concede there are too many controls, so the fix for "one
 // More button" has been "make them all anonymous". Under this check the fix is to retire a control
 // To `commandbar/overflow`, where it keeps its name, its chord and its palette row.
 //

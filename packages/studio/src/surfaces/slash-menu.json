@@ -1,0 +1,180 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSlashMenu",
+  "$description": "The slash menu: the element-insertion list that hangs under the caret. It is a LISTBOX rather than a `jx-menu`, and that is the one thing about this surface worth knowing — the panel must not take the keyboard, because the caret it is filtering for is in the canvas (often in the iframe realm), and every character the author types after the `/` has to keep landing there. A menu owns DOM focus by contract; this panel marks its active row and leaves the caret where it was. The rows are the kit's `jx-listbox` and `jx-option`, which is what makes that expressible rather than hand-rolled: a `jx-listbox` has no tab stop and never calls `focus()`, and the highlight is ONE string — the listbox's `active`, the id its owning field points `aria-activedescendant` at — instead of a per-row comparison the field and the rows could each answer differently. When the menu is opened BY NAME rather than by a slash there is no caret to protect, so it grows a filter field of its own and that field is what carries `aria-activedescendant`.",
+  "tagName": "jx-popover",
+  "$props": {
+    "label": "Insert element",
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "minWidth": "220px",
+        "maxHeight": "320px",
+        "minHeight": "0",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)",
+        "& [part=\"filter\"]": {
+          "$description": "Borderless inside a panel that already draws a frame: a second box around the field would only be a box inside a box. The keyboard ring is given back explicitly, because a reader who arrives here by Tab has nothing else to go on.",
+          "display": "block",
+          "width": "100%",
+          "boxSizing": "border-box",
+          "flex": "0 0 auto",
+          "padding": "var(--jx-space-2) var(--jx-space-3)",
+          "border": "none",
+          "borderBottom": "1px solid var(--jx-border)",
+          "outline": "none",
+          "background": "transparent",
+          "color": "inherit",
+          "font": "inherit",
+          "::placeholder": {
+            "color": "var(--jx-fg-muted)"
+          },
+          ":focus-visible": {
+            "outline": "var(--jx-focus-ring)",
+            "outlineOffset": "-2px"
+          }
+        },
+        "& [part=\"list\"]": {
+          "$description": "One declaration, because the list is a `jx-listbox` now and the element already draws itself: the scroll, the `min-block-size: 0` that lets it, the row rules, the highlight, the group headings and the empty sentence all live in its own definition. What is left is the one thing only this panel knows — that the list is the part of the body that gives.",
+          "flex": "1"
+        }
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "filter-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/showFilter"
+          },
+          "cases": {
+            "true": {
+              "tagName": "input",
+              "attributes": {
+                "part": "filter",
+                "type": "text",
+                "role": "combobox",
+                "autocomplete": "off",
+                "aria-controls": "slash-menu-listbox",
+                "aria-expanded": "${state.expanded ? 'true' : 'false'}",
+                "aria-activedescendant": "${state.activeId || null}",
+                "aria-autocomplete": "list",
+                "aria-label": "Filter elements",
+                "placeholder": "Filter…"
+              },
+              "value": {
+                "$ref": "#/state/filter"
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/input"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "tagName": "jx-listbox",
+          "attributes": {
+            "part": "list",
+            "id": "slash-menu-listbox"
+          },
+          "$props": {
+            "label": "Elements",
+            "active": {
+              "$ref": "#/state/activeId"
+            }
+          },
+          "onselect": {
+            "$ref": "#/state/pick"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/isEmpty"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "No matches"
+                }
+              }
+            },
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/rows"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "jx-option",
+                "attributes": {
+                  "part": "option",
+                  "id": "slash-menu-option-${$map.index}",
+                  "value": "${$map.item.key}",
+                  "label": "${$map.item.label}",
+                  "description": "${$map.item.description}"
+                },
+                "onmouseenter": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/hover"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/index"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

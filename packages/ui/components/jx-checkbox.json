@@ -1,0 +1,215 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxCheckbox",
+  "tagName": "jx-checkbox",
+  "observedAttributes": [
+    "checked",
+    "indeterminate",
+    "disabled",
+    "label",
+    "labelledby",
+    "describedby",
+    "name",
+    "size"
+  ],
+  "state": {
+    "checked": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "checked",
+      "description": "Whether the box is ticked. Bound to the control BOTH ways, and each binding answers a different question. The PROPERTY is the live state: once the reader clicks, the checkedness dirty flag is set and the content attribute stops controlling the box, so a property binding is the only one that keeps tracking a host write after the first click. The content ATTRIBUTE is the control's DEFAULT checkedness, and it is mirrored because this element is not form-associated (specs/ui.md 3.2): it never hears form.reset(), so without the mirror a reset would move the CONTROL to the authored default and leave the element's state where it was, and the two would disagree silently. With it, a reset is a visible no-op, which is a missing feature rather than a lie."
+    },
+    "indeterminate": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "indeterminate",
+      "description": "The mixed state: neither ticked nor clear, for a box standing over a set that is partly on. HTML gives it no content attribute at all — it exists only as a property — which is the reason this element exists: written into attributes it would parse, validate and silently do nothing. So there is nothing to mirror and no default for a form reset to return to, and a click clears it in the platform."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be ticked or focused. Disabled, never absent."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the control as aria-label. Leave it empty when the slotted text is on screen: the empty value REMOVES the attribute so the wrapping label's text names the box, rather than naming it twice."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby, for a visible label the box does not wrap."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby, for a help or error sentence the row owns."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The form field name, forwarded to the control."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The row height is the kit's, so a column of controls lines up."
+    },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the input inside, not the host and not the label that wraps it, so a jx-toolbar moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/checked"
+          },
+          "value": {
+            "$ref": "event#/target/checked"
+          }
+        },
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/indeterminate"
+          },
+          "value": {
+            "$ref": "event#/target/indeterminate"
+          }
+        }
+      ],
+      "description": "Mirrors both halves of the control's state back. A click on a mixed box clears indeterminate and toggles checked in the platform; reading only checked would let the next flush re-assert mixed over the reader's own tick. The native change and input events bubble from the control as they always do."
+    }
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-checked": "${state.checked ? '' : null}",
+    "data-indeterminate": "${state.indeterminate ? '' : null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "minWidth": "0",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"control\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "var(--jx-control-h)",
+      "minWidth": "0",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer"
+    },
+    "& [part=\"input\"]": {
+      "accentColor": "var(--jx-accent-solid)",
+      "flex": "none",
+      "width": "var(--jx-icon-size)",
+      "height": "var(--jx-icon-size)",
+      "margin": "0",
+      "cursor": "inherit",
+      "outline": "none",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px",
+        "borderRadius": "var(--jx-radius-xs)"
+      }
+    },
+    "& [part=\"label\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"label\"]:empty": {
+      "display": "none"
+    },
+    "&[data-disabled] > [part=\"control\"]": {
+      "opacity": "0.5",
+      "cursor": "default",
+      "color": "var(--jx-fg-dim)"
+    },
+    "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)"
+    },
+    "&[data-size=\"sm\"] [part=\"input\"]": {
+      "width": "calc(var(--jx-icon-size) - 2px)",
+      "height": "calc(var(--jx-icon-size) - 2px)"
+    },
+    "&[data-size=\"lg\"] > [part=\"control\"]": {
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "fontSize": "var(--jx-text-lg)",
+      "lineHeight": "var(--jx-leading-lg)"
+    },
+    "&[data-size=\"lg\"] [part=\"input\"]": {
+      "width": "calc(var(--jx-icon-size) + 2px)",
+      "height": "calc(var(--jx-icon-size) + 2px)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "label",
+      "attributes": {
+        "part": "control"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "input",
+            "type": "checkbox",
+            "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-describedby": "${state.describedby || null}",
+            "tabindex": "${state.tabindex || null}",
+            "name": "${state.name || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "checked": {
+              "$ref": "#/state/checked"
+            }
+          },
+          "checked": {
+            "$ref": "#/state/checked"
+          },
+          "indeterminate": {
+            "$ref": "#/state/indeterminate"
+          },
+          "onchange": {
+            "$ref": "#/state/onChange"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

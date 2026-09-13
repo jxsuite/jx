@@ -1,15 +1,19 @@
 /**
- * Gap coverage for src/panels/git-panel.ts — interactive behavior: refreshGitStatus,
- * cloneRepository dialog flow, gitAction error handling, branch switching, commit /
- * commit-and-sync, split menu, file diff clicks, stage/unstage/discard, history tab, poll timer,
- * and cleanup.
+ * Gap coverage for `src/panels/git-panel.ts` — the FLOW, now that the markup is a document:
+ * refreshGitStatus, the clone dialog, gitAction error handling, branch switching, commit and
+ * commit-and-sync, the commit menu, file rows, stage/unstage/discard, the History tab, the poll
+ * timer and cleanup.
  *
- * Complements tests/git-panel-states.test.ts which only asserts static template output.
+ * Complements `tests/git-panel-states.test.ts`, which asserts what the four moods DRAW.
+ *
+ * Every control is addressed by `part` and by the row's own `data-path`, never by a class: the
+ * panel is `src/surfaces/git-panel.json` mounted into the Navigator's `.panel-content`. And every
+ * draw is awaited — `mountSurface` is asynchronous, and each kit element settles its own template
+ * one `connectedCallback` after that.
  */
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
-import { render as litRender } from "lit-html";
 
 // ─── Controllable module state (captured by mock.module factories) ───────────
 
@@ -20,9 +24,9 @@ let statusMessages: string[] = [];
 let confirmCalls: string[] = [];
 let confirmResult = true;
 let publishCalls: unknown[] = [];
-let dialogHosts: HTMLElement[] = [];
 let promptCalls: { headline: string; opts: Record<string, any> }[] = [];
 let promptResult: string | null = null;
+let menuCalls: Record<string, any>[] = [];
 
 void mock.module("../src/platform.js", () => ({
   getPlatform: () => mockPlatform,
@@ -43,8 +47,6 @@ void mock.module("../src/workspace/workspace.js", () => ({
   // `store.ts` registers the primary pane's canvas stage at `initShellRefs`, and
   // `canvas/canvas-surface.ts` resolves a pane through `paneById` — both reached transitively
   // From this panel's imports, neither called by it.
-  // `shell.ts` persists the session (§4.4) through `workspace/session.ts`, which reads the pane
-  // Grid and moves the focus on restore. Reached transitively; never called by this panel.
   focusPane: () => {},
   paneById: () => {},
   PRIMARY_PANE: "primary",
@@ -71,35 +73,35 @@ void mock.module("../src/panels/git-diff-open.js", () => ({
 }));
 
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
+  clearLayerSlot: () => {},
   // Reached transitively (progress-modal, quick-search); the panel never calls them.
   getLayerSlot: (_kind: string, id: string) => {
     const el = document.createElement("div");
     el.id = id;
     return el;
   },
-  openModal: () => Promise.resolve(null),
   showConfirmDialog: async (headline: string) => {
     confirmCalls.push(headline);
     return confirmResult;
   },
-  showDialog: (templateFn: any) =>
-    new Promise((resolve) => {
-      const host = document.createElement("div");
-      document.body.append(host);
-      dialogHosts.push(host);
-      litRender(
-        templateFn((value: any) => {
-          host.remove();
-          resolve(value);
-        }),
-        host,
-      );
-    }),
+  showDialog: () => Promise.resolve(null),
   // The prompt dialog's own rendering/validation is covered in tests/ui-layers-gaps.test.ts; here
   // Only the options the panel passes and how it handles the resolved value matter.
   showPromptDialog: async (headline: string, opts: Record<string, any> = {}) => {
     promptCalls.push({ headline, opts });
     return promptResult;
+  },
+}));
+
+/* The kit menu is the split button's dropdown now, so what this file tests is the ROW the panel
+   hands it — the menu's own popover, focus and dismissal belong to `tests/surfaces-menu.test.ts`. */
+void mock.module("../src/surfaces/menu.js", () => ({
+  openMenu: (options: Record<string, any>) => {
+    menuCalls.push(options);
+    return { close: () => {}, host: document.createElement("div"), ready: Promise.resolve() };
   },
 }));
 
@@ -133,9 +135,9 @@ const {
   cleanupGitPanel,
   cloneRepository,
   loadDiffForLens,
+  mountGitPanel,
   noteFileSaved,
   refreshGitStatus,
-  renderGitPanel,
 } = await import("../src/panels/git-panel.js");
 
 // Source control is project state now; `shell.git` is where the panel reads and writes it.
@@ -204,10 +206,22 @@ function seedRepoUi(overrides: Record<string, unknown> = {}) {
   Object.assign(git, overrides);
 }
 
-function renderPanel(ctx: any = {}) {
-  const div = document.createElement("div");
-  litRender(renderGitPanel(ctx), div);
-  return div;
+/**
+ * Mount the panel into a fresh Navigator host and let the document settle.
+ *
+ * The host mirrors what `left-panel.ts` paints — a `.panel-body` whose `.panel-content` is the node
+ * the document goes into — because that is the one line of the seam this panel owns.
+ */
+async function draw(deps: Record<string, unknown> = {}): Promise<HTMLElement> {
+  const body = document.createElement("div");
+  body.className = "panel-body";
+  const content = document.createElement("div");
+  content.className = "panel-content";
+  body.append(content);
+  document.body.append(body);
+  mountGitPanel(body, deps);
+  await flush(6);
+  return content;
 }
 
 function click(el: Element | null | undefined) {
@@ -219,17 +233,58 @@ function callNames() {
   return calls.map((c) => c[0]);
 }
 
-function findButton(div: HTMLElement, text: string) {
-  return [...div.querySelectorAll("sp-action-button")].find((b) => b.textContent!.includes(text));
+/** One of the panel's own controls, by the `part` the document gives it. */
+/**
+ * The GIT PANEL's own part, never a kit element's internals.
+ *
+ * A `part` name belongs to the definition that owns the box, and in light DOM those names share one
+ * tree: this panel's two sub-tabs are `jx-tab`s, and a `jx-tab` ships a `[part="status"]` of its
+ * own — the wrapper its `status` slot distributes into — which stands EARLIER in the document than
+ * the panel's own status line. An unscoped `querySelector` therefore answered with an empty span
+ * and the loading indicator read as missing. Every kit element's parts are addressed through the
+ * element (`ui.md` §3.2), so the way to ask for one of this document's own is to step over them.
+ */
+function part(panel: HTMLElement, name: string): HTMLElement | null {
+  return (
+    [...panel.querySelectorAll<HTMLElement>(`[part="${name}"]`)].find(
+      (el) => el.parentElement?.closest("jx-tab") == null,
+    ) ?? null
+  );
 }
 
-function fileRowAction(div: HTMLElement, path: string, title: string) {
-  const name = div.querySelector(`.git-file-name[title="${path}"]`);
-  expect(name).toBeTruthy();
-  return name!.closest(".git-file-row")!.querySelector(`[title="${title}"]`);
+/**
+ * The panel's own error banner.
+ *
+ * By its ROLE as well as its part: `part` is scoped to the element that declares it, and both
+ * `jx-textfield` and `jx-select` carry an `error` part of their own — each earlier in the panel
+ * than this one, so a bare `[part="error"]` finds the commit field's empty sentence.
+ */
+function errorBanner(panel: HTMLElement): HTMLElement | null {
+  return panel.querySelector<HTMLElement>('[part="error"][role="alert"]');
+}
+
+/** One changed file's row, and the verb on it. */
+function rowAction(panel: HTMLElement, path: string, action: string) {
+  const row = panel.querySelector(`[part="file-row"][data-path="${path}"]`);
+  expect(row).toBeTruthy();
+  return row!.querySelector(`[part="${action}"]`);
+}
+
+/** The commit field's own control — a textarea, because the field is multiline. */
+function commitInput(panel: HTMLElement): HTMLTextAreaElement {
+  return panel.querySelector('[part="commit-input"] [part="input"]') as HTMLTextAreaElement;
+}
+
+/** The branch picker's own `<select>`, which is what the reader touches. */
+function branchControl(panel: HTMLElement): HTMLSelectElement {
+  return panel.querySelector('[part="branch-picker"] [part="control"]') as HTMLSelectElement;
 }
 
 beforeEach(() => {
+  cleanupGitPanel();
+  for (const stale of document.querySelectorAll("body > .panel-body")) {
+    stale.remove();
+  }
   resetProjectShell();
   activeTabRef.value = { session: { ui: {} } };
   calls = [];
@@ -239,16 +294,13 @@ beforeEach(() => {
   publishCalls = [];
   promptCalls = [];
   promptResult = null;
-  for (const host of dialogHosts) {
-    host.remove();
-  }
-  dialogHosts = [];
+  menuCalls = [];
+  openedComparisons.length = 0;
   shell.leftTab = "git";
   mockPlatform = freshPlatform();
   pullSyncCalls = 0;
   pullSyncImpl = async () => {};
   setProjectState({ name: "proj" });
-  cleanupGitPanel();
 });
 
 afterEach(() => {
@@ -322,7 +374,7 @@ describe("cloneRepository", () => {
     expect(promptCalls).toEqual([]);
   });
 
-  test("asks for the URL through the Spectrum prompt dialog", async () => {
+  test("asks for the URL through the prompt dialog", async () => {
     mockPlatform.gitClone = log("gitClone", async () => ({ ok: true, root: "/x" }));
     await cloneRepository(noopCtx);
     expect(promptCalls).toHaveLength(1);
@@ -383,26 +435,40 @@ describe("cloneRepository", () => {
 
 describe("panel bootstrap", () => {
   test("no status and not loading triggers a background refresh", async () => {
-    const div = renderPanel();
-    expect(div.textContent).toContain("Loading...");
+    const panel = await draw();
     await flush();
     expect(callNames()).toContain("gitStatus");
     expect(git.status.isRepo).toBe(true);
+    // And the finished read reaches the document with no repaint from anywhere else.
+    expect(part(panel, "sync-label")).toBeTruthy();
   });
 
   test("a failed refresh does not re-arm the background fetch", async () => {
     // Otherwise the render triggered by the failure is the next render's reason to fetch again.
     git.error = "status boom";
-    const div = renderPanel();
+    const panel = await draw();
     await flush();
     expect(callNames()).not.toContain("gitStatus");
-    expect(div.textContent).toContain("status boom");
+    expect(errorBanner(panel)?.textContent).toContain("status boom");
   });
 
-  test("initialize repository button runs gitInit and refreshes", async () => {
+  test("the clone action in the no-project state is the one the bootstrap injected", async () => {
+    setProjectState(null);
+    mockPlatform.gitClone = log("gitClone", async () => ({ ok: true, root: "/x" }));
+    let cloned = 0;
+    const panel = await draw({
+      cloneRepository: () => {
+        cloned += 1;
+      },
+    });
+    click(part(panel, "clone"));
+    expect(cloned).toBe(1);
+  });
+
+  test("initialize repository runs gitInit and refreshes", async () => {
     git.status = { ahead: 0, behind: 0, branch: "", files: [], isRepo: false, remotes: [] };
-    const div = renderPanel();
-    click(findButton(div, "Initialize Repository"));
+    const panel = await draw();
+    click(part(panel, "init"));
     await flush();
     expect(callNames()).toContain("gitInit");
     expect(callNames()).toContain("gitStatus");
@@ -410,66 +476,66 @@ describe("panel bootstrap", () => {
     expect(statusMessages).toContain("Repository initialized.");
   });
 
-  test("publish button in non-repo state calls createGithubRepository with project name", async () => {
+  test("publish in the non-repo state calls createGithubRepository with the project name", async () => {
     git.status = { ahead: 0, behind: 0, branch: "", files: [], isRepo: false, remotes: [] };
-    const div = renderPanel();
-    click(findButton(div, "Create GitHub repository"));
+    const panel = await draw();
+    click(part(panel, "create-repository"));
     await flush();
     expect(publishCalls).toEqual([{ projectName: "proj" }]);
   });
 
-  test("no-remote sync bar publish falls back to default project name", async () => {
+  test("the no-remote sync bar's publish falls back to a default project name", async () => {
     setProjectState({});
     seedRepoUi();
     git.status.remotes = [];
-    const div = renderPanel();
-    click(findButton(div, "Create GitHub repository"));
+    const panel = await draw();
+    click(part(panel, "create-repository"));
     await flush();
     expect(publishCalls).toEqual([{ projectName: "my-project" }]);
   });
 
-  test("sync bar shows last-updated time after a successful refresh", async () => {
+  test("the sync bar shows a last-updated time after a successful refresh", async () => {
     await refreshGitStatus();
     seedRepoUi();
-    const div = renderPanel();
-    expect(div.textContent).toContain("Last updated");
+    const panel = await draw();
+    expect(part(panel, "sync-time")?.textContent).toContain("Last updated");
   });
 
-  test("an empty file list teaches what lands in the changes tab", () => {
+  test("an empty file list teaches what lands in the changes tab", async () => {
     seedRepoUi();
     git.status.files = [];
-    const div = renderPanel();
-    expect(div.textContent).toContain("Nothing to commit.");
-    expect(div.querySelector('[title="Stage all"]')).toBeNull();
+    const panel = await draw();
+    expect(panel.textContent).toContain("Nothing to commit.");
+    expect(part(panel, "stage-all")).toBeNull();
   });
 
-  test("error and loading indicators render from ui state", () => {
+  test("error and loading indicators render from project state", async () => {
     seedRepoUi({ error: "broken pipe", loading: true });
-    const div = renderPanel();
-    expect(div.querySelector(".git-error")!.textContent).toContain("broken pipe");
-    expect(div.textContent).toContain("Loading...");
+    const panel = await draw();
+    expect(errorBanner(panel)!.textContent).toContain("broken pipe");
+    expect(part(panel, "status")!.textContent).toContain("Loading");
   });
 });
 
 // ─── Sync bar actions + gitAction ────────────────────────────────────────────
 
 describe("sync bar actions", () => {
-  test("refresh button re-fetches status", async () => {
+  test("refresh re-fetches status", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(div.querySelector('[title="Refresh"]'));
+    const panel = await draw();
+    click(part(panel, "refresh"));
     await flush();
     expect(callNames()).toContain("gitStatus");
   });
 
-  test("fetch, pull, and push buttons dispatch git actions then refresh", async () => {
+  test("fetch, pull, and push dispatch git actions then refresh", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(div.querySelector('[title="Fetch"]'));
+    const panel = await draw();
+    click(part(panel, "fetch"));
     await flush();
-    click(div.querySelector('[title^="Pull"]'));
+    click(part(panel, "pull"));
     await flush();
-    click(div.querySelector('[title^="Push"]'));
+    click(part(panel, "push"));
     await flush();
     const names = callNames();
     expect(names).toContain("gitFetch");
@@ -480,26 +546,26 @@ describe("sync bar actions", () => {
     expect(names.filter((n) => n === "gitStatus").length).toBe(3);
   });
 
-  test("failing pull records error and stops loading", async () => {
+  test("a failing pull records the error and stops loading", async () => {
     seedRepoUi();
     pullSyncImpl = async () => {
       throw new Error("pull broke");
     };
-    const div = renderPanel();
-    click(div.querySelector('[title^="Pull"]'));
+    const panel = await draw();
+    click(part(panel, "pull"));
     await flush();
     expect(pullSyncCalls).toBe(1);
     expect(String(git.error)).toContain("pull broke");
     expect(git.loading).toBe(false);
   });
 
-  test("failing git action records error and stops loading", async () => {
+  test("a failing git action records the error and stops loading", async () => {
     seedRepoUi();
     mockPlatform.gitFetch = log("gitFetch", async () => {
       throw new Error("net down");
     });
-    const div = renderPanel();
-    click(div.querySelector('[title="Fetch"]'));
+    const panel = await draw();
+    click(part(panel, "fetch"));
     await flush();
     expect(String(git.error)).toContain("net down");
     expect(git.loading).toBe(false);
@@ -509,37 +575,36 @@ describe("sync bar actions", () => {
 // ─── Branch selector ─────────────────────────────────────────────────────────
 
 describe("branch selector", () => {
-  function changeBranch(div: HTMLElement, value: string) {
-    const picker = div.querySelector("sp-picker") as any;
-    picker.value = value;
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    return picker;
+  function chooseBranch(panel: HTMLElement, value: string) {
+    const control = branchControl(panel);
+    control.value = value;
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    return control;
   }
 
   test("selecting another branch checks it out", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    changeBranch(div, "dev");
+    const panel = await draw();
+    chooseBranch(panel, "dev");
     await flush();
     expect(calls).toContainEqual(["gitCheckout", "dev"]);
   });
 
   test("selecting the current branch is a no-op", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    changeBranch(div, "main");
+    const panel = await draw();
+    chooseBranch(panel, "main");
     await flush();
     expect(callNames()).not.toContain("gitCheckout");
   });
 
-  test("new-branch option opens the prompt dialog and creates the branch", async () => {
+  test("the new-branch row opens the prompt and creates the branch", async () => {
     seedRepoUi();
-    const div = renderPanel();
+    const panel = await draw();
     promptResult = "feat-x";
-    const picker = changeBranch(div, "__new__");
-    await flush();
+    chooseBranch(panel, "__new__");
+    await flush(4);
 
-    expect(picker.value).toBe("main");
     expect(promptCalls).toHaveLength(1);
     const { headline, opts } = promptCalls[0]!;
     expect(headline).toBe("New Branch");
@@ -550,40 +615,47 @@ describe("branch selector", () => {
     expect(calls).toContainEqual(["gitCreateBranch", "feat-x"]);
   });
 
-  test("a dismissed new-branch dialog creates nothing", async () => {
+  /* A `<select>` always holds one of its options, so putting the control back on the checked-out
+     branch is a WRITE the document has to be able to see. The panel announces what the reader
+     chose first, which is what makes putting it back a change rather than a no-op (§9.3). */
+  test("the picker goes back to the checked-out branch when the dialog is dismissed", async () => {
     seedRepoUi();
-    const div = renderPanel();
+    const panel = await draw();
     promptResult = null;
-    changeBranch(div, "__new__");
-    await flush();
+    chooseBranch(panel, "__new__");
+    await flush(4);
     expect(callNames()).not.toContain("gitCreateBranch");
+    expect(branchControl(panel).value).toBe("main");
   });
 });
 
 // ─── Commit form ─────────────────────────────────────────────────────────────
 
 describe("commit form", () => {
-  test("typing in the message field updates ui state", () => {
-    seedRepoUi();
-    const div = renderPanel();
-    const input = div.querySelector(".git-commit-input") as any;
-    input.value = "hello commit";
+  function typeMessage(panel: HTMLElement, value: string) {
+    const input = commitInput(panel);
+    input.value = value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
+    return input;
+  }
+
+  function chord(input: Element, init: KeyboardEventInit) {
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", ...init }),
+    );
+  }
+
+  test("typing in the message field updates project state", async () => {
+    seedRepoUi();
+    const panel = await draw();
+    typeMessage(panel, "hello commit");
     expect(git.commitMessage).toBe("hello commit");
   });
 
   test("Ctrl+Enter commits and clears the message", async () => {
     seedRepoUi({ commitMessage: "  quick fix  " });
-    const div = renderPanel();
-    const input = div.querySelector(".git-commit-input")!;
-    input.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: true,
-        key: "Enter",
-      }),
-    );
+    const panel = await draw();
+    chord(commitInput(panel), { ctrlKey: true });
     await flush();
     expect(calls).toContainEqual(["gitCommit", "quick fix"]);
     expect(git.commitMessage).toBe("");
@@ -592,39 +664,32 @@ describe("commit form", () => {
 
   test("Cmd+Enter commits on macOS", async () => {
     seedRepoUi({ commitMessage: "mac commit" });
-    const div = renderPanel();
-    const input = div.querySelector(".git-commit-input")!;
-    input.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key: "Enter",
-        metaKey: true,
-      }),
-    );
+    const panel = await draw();
+    chord(commitInput(panel), { metaKey: true });
     await flush();
     expect(calls).toContainEqual(["gitCommit", "mac commit"]);
   });
 
+  test("a bare Enter is a newline, not a commit", async () => {
+    seedRepoUi({ commitMessage: "not yet" });
+    const panel = await draw();
+    chord(commitInput(panel), {});
+    await flush();
+    expect(callNames()).not.toContain("gitCommit");
+  });
+
   test("Ctrl+Enter without a message does nothing", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    div.querySelector(".git-commit-input")!.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: true,
-        key: "Enter",
-      }),
-    );
+    const panel = await draw();
+    chord(commitInput(panel), { ctrlKey: true });
     await flush();
     expect(callNames()).not.toContain("gitCommit");
   });
 
   test("commit and sync commits, pushes, then refreshes", async () => {
     seedRepoUi({ commitMessage: "sync msg" });
-    const div = renderPanel();
-    click(div.querySelector(".git-commit-btn"));
+    const panel = await draw();
+    click(part(panel, "commit-button"));
     await flush();
     expect(calls).toContainEqual(["gitCommit", "sync msg"]);
     expect(callNames()).toContain("gitPush");
@@ -634,42 +699,47 @@ describe("commit form", () => {
 
   test("commit and sync without a message does nothing", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(div.querySelector(".git-commit-btn"));
+    const panel = await draw();
+    click(part(panel, "commit-button"));
     await flush();
     expect(callNames()).not.toContain("gitCommit");
     expect(callNames()).not.toContain("gitPush");
   });
 
-  test("commit and sync records error when push fails", async () => {
+  test("commit and sync records the error when the push fails", async () => {
     seedRepoUi({ commitMessage: "doomed" });
     mockPlatform.gitPush = log("gitPush", async () => {
       throw new Error("push boom");
     });
-    const div = renderPanel();
-    click(div.querySelector(".git-commit-btn"));
+    const panel = await draw();
+    click(part(panel, "commit-button"));
     await flush();
     expect(String(git.error)).toContain("push boom");
     expect(git.loading).toBe(false);
   });
 
-  /* The menu's visibility is module STATE now, projected by `?hidden`, rather than an attribute the
-     click handler set on a node it found by selector. The two were fighting: the template declared
-     the menu `hidden` unconditionally, so lit had committed that attribute and every repaint — the
-     30-second git poll among them — left whatever the handler last did to it standing, with no way
-     for the template to take it back. So the assertions repaint: the click changes the state, and
-     the next render is what shows it. In the app that render is `renderOnly("leftPanel")`, which
-     the handler calls; here the panel is rendered standalone. */
-  test("split menu toggles and commit-only item commits without pushing", async () => {
+  /* The split button's dropdown is the KIT MENU. It was a hand-built `<div>` toggled by a
+     module-level flag, and the flag existed only because the template declared the menu `hidden`
+     unconditionally and the two were fighting — every repaint, the 30-second poll among them, left
+     whatever the handler had last done standing. What is left to test is the row the panel hands
+     `openMenu`, and that its `run` commits without pushing. */
+  test("the commit menu offers one row, and it commits without syncing", async () => {
     seedRepoUi({ commitMessage: "menu msg" });
-    expect(renderPanel().querySelector(".git-split-menu")!.hasAttribute("hidden")).toBe(true);
-
-    click(renderPanel().querySelector(".git-split-trigger"));
-    expect(renderPanel().querySelector(".git-split-menu")!.hasAttribute("hidden")).toBe(false);
-
-    click(renderPanel().querySelector(".git-split-menu-item"));
+    const panel = await draw();
+    click(part(panel, "commit-menu"));
+    // The menu surface is reached through a lazy import, so the open lands a turn later.
     await flush();
-    expect(renderPanel().querySelector(".git-split-menu")!.hasAttribute("hidden")).toBe(true);
+    expect(menuCalls).toHaveLength(1);
+    const options = menuCalls[0]!;
+    expect(options.region).toBe("git-commit");
+    expect(options.rows.map((row: any) => row.title)).toEqual(["Commit (don't sync)"]);
+    // The button that opened it is the popover's invoker, so a mousedown on it is not a dismissal.
+    expect(options.opener).toBe(part(panel, "commit-menu"));
+    expect(typeof options.place).toBe("function");
+    expect(options.place(new DOMRect(0, 0, 120, 40))).toEqual(expect.any(Object));
+
+    options.rows[0].run();
+    await flush();
     expect(calls).toContainEqual(["gitCommit", "menu msg"]);
     expect(callNames()).not.toContain("gitPush");
   });
@@ -678,18 +748,22 @@ describe("commit form", () => {
 // ─── File rows: diff click, stage, unstage, discard ──────────────────────────
 
 describe("file rows", () => {
+  function openFile(panel: HTMLElement, path: string) {
+    click(rowAction(panel, path, "file-open"));
+  }
+
   test("clicking a modified .json file loads a diff and switches canvas mode", async () => {
     seedRepoUi();
     const modes: string[] = [];
     const diffs: any[] = [];
-    const div = renderPanel({
+    const panel = await draw({
       // The mode is written on the tab the COMPARISON is in, which is the tab keyed by the clicked
       // File's path. It used to be `activeTab.value` — so clicking one file flipped whatever
       // Document happened to be focused into git-diff and drew the other file's comparison on it.
       setCanvasMode: (_tab: unknown, m: string) => modes.push(m),
       setGitDiffState: (s: any) => diffs.push(s),
     });
-    click(div.querySelector('.git-file-name[title="src/page.json"]'));
+    openFile(panel, "src/page.json");
     await flush();
     expect(calls).toContainEqual(["gitShow", { path: "src/page.json", ref: "HEAD" }]);
     expect(calls).toContainEqual(["readFile", "src/page.json"]);
@@ -707,8 +781,8 @@ describe("file rows", () => {
 
   test("clicking an added file uses an empty original without gitShow", async () => {
     seedRepoUi();
-    const div = renderPanel({ setCanvasMode: () => {} });
-    click(div.querySelector('.git-file-name[title="src/new.json"]'));
+    const panel = await draw({ setCanvasMode: () => {} });
+    openFile(panel, "src/new.json");
     await flush();
     expect(callNames()).not.toContain("gitShow");
     expect(git.diffState.originalContent).toBe("");
@@ -717,8 +791,8 @@ describe("file rows", () => {
 
   test("diff state is stored even without canvas-mode context", async () => {
     seedRepoUi();
-    const div = renderPanel({});
-    click(div.querySelector('.git-file-name[title="src/page.json"]'));
+    const panel = await draw({});
+    openFile(panel, "src/page.json");
     await flush();
     expect(git.diffState.filePath).toBe("src/page.json");
   });
@@ -727,8 +801,8 @@ describe("file rows", () => {
     /* It used to be ignored on click, justified by "no pair of texts to put side by side". One side
        is the empty string, which is exactly what an ADDED file had always done. */
     seedRepoUi();
-    const div = renderPanel({});
-    click(div.querySelector('.git-file-name[title="src/gone.json"]'));
+    const panel = await draw({});
+    openFile(panel, "src/gone.json");
     await flush();
     expect(calls).toContainEqual(["gitShow", { path: "src/gone.json", ref: "HEAD" }]);
     // Never `readFile` on a path that is gone — it would throw.
@@ -741,8 +815,8 @@ describe("file rows", () => {
     // The boundary said out loud: a comparison of an image is not text, and handing Monaco bytes
     // Would render mojibake. The row responds; it just responds by explaining.
     seedRepoUi();
-    const div = renderPanel({});
-    click(div.querySelector('.git-file-name[title="assets/logo.png"]'));
+    const panel = await draw({});
+    openFile(panel, "assets/logo.png");
     await flush();
     expect(callNames()).not.toContain("gitShow");
     expect(callNames()).not.toContain("readFile");
@@ -750,13 +824,27 @@ describe("file rows", () => {
     expect(openedComparisons).not.toContain("assets/logo.png");
   });
 
+  test("a row for a file the last status read no longer holds does nothing", async () => {
+    /* The row is captured BEFORE the status moves, because the document is reactive now: emptying
+       the file list takes the row off screen on the same tick. What is under test is the flow's own
+       guard — a click that arrives against a status that no longer knows the path. */
+    seedRepoUi();
+    const panel = await draw({});
+    const open = rowAction(panel, "src/page.json", "file-open");
+    git.status = baseStatus([]);
+    click(open);
+    await flush();
+    expect(callNames()).not.toContain("gitShow");
+    expect(git.diffState).toBeNull();
+  });
+
   test("diff load failure records a friendly error", async () => {
     seedRepoUi();
     mockPlatform.readFile = log("readFile", async () => {
       throw new Error("read fail");
     });
-    const div = renderPanel({});
-    click(div.querySelector('.git-file-name[title="src/page.json"]'));
+    const panel = await draw({});
+    openFile(panel, "src/page.json");
     await flush();
     expect(String(git.error)).toContain("Failed to load diff");
     expect(String(git.error)).toContain("read fail");
@@ -801,37 +889,39 @@ describe("file rows", () => {
 
   test("discard asks for confirmation then discards", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(fileRowAction(div, "src/page.json", "Discard changes"));
+    const panel = await draw();
+    click(rowAction(panel, "src/page.json", "discard"));
     await flush();
     expect(confirmCalls).toContain("Discard Changes");
     expect(calls).toContainEqual(["gitDiscard", ["src/page.json"]]);
   });
 
-  test("declined confirmation leaves the file alone", async () => {
+  test("a declined confirmation leaves the file alone", async () => {
     seedRepoUi();
     confirmResult = false;
-    const div = renderPanel();
-    click(fileRowAction(div, "src/page.json", "Discard changes"));
+    const panel = await draw();
+    click(rowAction(panel, "src/page.json", "discard"));
     await flush();
     expect(callNames()).not.toContain("gitDiscard");
   });
 
-  test("untracked files cannot be discarded", async () => {
+  test("an untracked file cannot be discarded, and its button says so", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(fileRowAction(div, "untracked.txt", "Discard changes"));
+    const panel = await draw();
+    const discard = rowAction(panel, "untracked.txt", "discard")!;
+    expect(discard.querySelector('[part="control"]')?.hasAttribute("disabled")).toBe(true);
+    click(discard);
     await flush();
     expect(confirmCalls).toEqual([]);
     expect(callNames()).not.toContain("gitDiscard");
   });
 
-  test("stage and unstage buttons act on single files", async () => {
+  test("stage and unstage act on single files", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(fileRowAction(div, "src/page.json", "Stage"));
+    const panel = await draw();
+    click(rowAction(panel, "src/page.json", "stage"));
     await flush();
-    click(fileRowAction(div, "staged.json", "Unstage"));
+    click(part(panel, "unstage"));
     await flush();
     expect(calls).toContainEqual(["gitStage", ["src/page.json"]]);
     expect(calls).toContainEqual(["gitUnstage", ["staged.json"]]);
@@ -839,10 +929,10 @@ describe("file rows", () => {
 
   test("stage all and unstage all act on the full lists", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    click(div.querySelector('[title="Stage all"]'));
+    const panel = await draw();
+    click(part(panel, "stage-all"));
     await flush();
-    click(div.querySelector('[title="Unstage all"]'));
+    click(part(panel, "unstage-all"));
     await flush();
     expect(calls).toContainEqual([
       "gitStage",
@@ -851,10 +941,10 @@ describe("file rows", () => {
     expect(calls).toContainEqual(["gitUnstage", ["staged.json"]]);
   });
 
-  test("files group by component directory with non-json under Other", () => {
+  test("files group by component directory with non-json under Other", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    const groups = [...div.querySelectorAll(".git-component-name")].map((el) => el.textContent);
+    const panel = await draw();
+    const groups = [...panel.querySelectorAll('[part="group-name"]')].map((el) => el.textContent);
     expect(groups).toContain("/src");
     expect(groups).toContain("Other");
     expect(groups).toContain("/staged.json");
@@ -864,8 +954,8 @@ describe("file rows", () => {
 // ─── History tab ─────────────────────────────────────────────────────────────
 
 describe("history tab", () => {
-  function tabButtons(div: HTMLElement) {
-    return div.querySelectorAll(".git-tab");
+  function tab(panel: HTMLElement, name: string) {
+    return panel.querySelector(`[part="tab"][data-tab="${name}"]`);
   }
 
   test("switching to history fetches the log and renders relative dates", async () => {
@@ -899,59 +989,55 @@ describe("history tab", () => {
       },
     ];
     mockPlatform.gitLog = log("gitLog", async () => entries);
-    let div = renderPanel();
-    click(tabButtons(div)[1]);
-    await flush();
+    const panel = await draw();
+    click(tab(panel, "history"));
+    await flush(4);
     expect(calls).toContainEqual(["gitLog", 30]);
     expect(git.logEntries).toEqual(entries);
 
-    div = renderPanel();
-    const text = div.textContent!;
+    const text = panel.textContent!;
     expect(text).toContain("just now");
     expect(text).toContain("5m ago");
     expect(text).toContain("3h ago");
     expect(text).toContain("2d ago");
     expect(text).toContain("2020");
     expect(text).toContain("aaaaaaa");
-    expect(div.querySelectorAll(".git-history-entry").length).toBe(5);
-
-    click(tabButtons(div)[0]); // Restore module sub-tab state
+    expect(panel.querySelectorAll('[part="history-entry"]').length).toBe(5);
+    // The commit form is not drawn beside the log: one tab body at a time.
+    expect(part(panel, "commit")).toBeNull();
   });
 
-  test("history with cached empty entries teaches what a commit is, without refetch", async () => {
+  test("history with cached empty entries teaches what a commit is, without refetching", async () => {
     seedRepoUi({ logEntries: [] });
-    let div = renderPanel();
-    click(tabButtons(div)[1]);
-    await flush();
+    const panel = await draw();
+    click(tab(panel, "history"));
+    await flush(4);
     expect(callNames()).not.toContain("gitLog");
-    div = renderPanel();
-    expect(div.textContent).toContain("No commits yet.");
-    click(tabButtons(div)[0]);
+    expect(panel.textContent).toContain("No commits yet.");
   });
 
-  test("log fetch failure records the error", async () => {
+  test("a log fetch failure records the error", async () => {
     seedRepoUi();
     mockPlatform.gitLog = log("gitLog", async () => {
       throw new Error("log boom");
     });
-    const div = renderPanel();
-    click(tabButtons(div)[1]);
-    await flush();
+    const panel = await draw();
+    click(tab(panel, "history"));
+    await flush(4);
     expect(String(git.error)).toContain("log boom");
-    click(renderPanel().querySelectorAll(".git-tab")[0]);
   });
 
-  test("tab label includes the change count", () => {
+  test("the changes tab carries the count in its own name", async () => {
     seedRepoUi();
-    const div = renderPanel();
-    expect(tabButtons(div)[0]!.textContent).toContain("Local Changes (6)");
+    const panel = await draw();
+    expect(tab(panel, "changes")?.getAttribute("label")).toBe("Local Changes (6)");
   });
 });
 
 // ─── Poll timer + cleanup ────────────────────────────────────────────────────
 
 describe("poll timer", () => {
-  test("interval refreshes only when the git tab is visible and idle", async () => {
+  test("the interval refreshes only when the git tab is visible and idle", async () => {
     cleanupGitPanel();
     const realSetInterval = globalThis.setInterval;
     let pollCb: (() => void) | null = null;
@@ -963,7 +1049,7 @@ describe("poll timer", () => {
     };
     try {
       seedRepoUi();
-      renderPanel();
+      await draw();
     } finally {
       globalThis.setInterval = realSetInterval;
     }
@@ -992,11 +1078,29 @@ describe("poll timer", () => {
     cleanupGitPanel();
   });
 
-  test("cleanupGitPanel is idempotent", () => {
+  test("cleanupGitPanel is idempotent, and takes the document down with the timer", async () => {
     seedRepoUi();
-    renderPanel(); // Arms the timer
+    const panel = await draw(); // Arms the timer and mounts the surface
     cleanupGitPanel();
-    cleanupGitPanel(); // Second call hits the no-timer branch
+    cleanupGitPanel(); // Second call hits the no-timer, no-surface branch
+    expect(panel.querySelector('[part="git-panel"]')).toBeNull();
+  });
+
+  test("a repaint into the same host keeps the standing document", async () => {
+    seedRepoUi();
+    const panel = await draw();
+    const root = panel.querySelector('[part="git-panel"]');
+    mountGitPanel(panel.closest(".panel-body") as HTMLElement, {});
+    await flush(4);
+    expect(panel.querySelector('[part="git-panel"]')).toBe(root!);
+  });
+
+  test("a mount into a different host replaces the standing document", async () => {
+    seedRepoUi();
+    const first = await draw();
+    const second = await draw();
+    expect(first.querySelector('[part="git-panel"]')).toBeNull();
+    expect(second.querySelector('[part="git-panel"]')).toBeTruthy();
   });
 });
 
@@ -1097,54 +1201,26 @@ describe("keeping an open comparison fresh", () => {
 });
 
 describe("the changed-file row is a real control", () => {
-  test("carries a button role, a tab stop, and a label naming the file and its status", () => {
+  test("is a button, with a name that carries the file and its status in words", async () => {
     // It was a bare span with a cursor and a title: the panel's primary verb was mouse-only, and
-    // The status was a single letter and a colour with nothing to read aloud.
+    // The status was a single letter and a colour with nothing to read aloud. A `<button>` needs
+    // No role, no tabindex and no key handler of its own.
     seedRepoUi();
-    const div = renderPanel({});
-    const row = div
-      .querySelector('.git-file-name[title="src/page.json"]')
-      ?.closest(".git-file-info");
-    expect(row?.getAttribute("role")).toBe("button");
-    expect(row?.getAttribute("tabindex")).toBe("0");
-    expect(row?.getAttribute("aria-label")).toBe("src/page.json, modified");
-  });
-
-  test("names a deleted file's status in words too", () => {
-    seedRepoUi();
-    const div = renderPanel({});
-    const row = div
-      .querySelector('.git-file-name[title="src/gone.json"]')
-      ?.closest(".git-file-info");
-    expect(row?.getAttribute("aria-label")).toBe("src/gone.json, deleted");
-  });
-
-  test("opens on Enter and on Space, not only on a click", async () => {
-    seedRepoUi();
-    const div = renderPanel({});
-    const row = div
-      .querySelector('.git-file-name[title="src/page.json"]')
-      ?.closest(".git-file-info");
-    row!.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }),
+    const panel = await draw({});
+    const open = rowAction(panel, "src/page.json", "file-open")!;
+    expect(open.tagName).toBe("BUTTON");
+    expect(open.getAttribute("aria-label")).toBe("src/page.json, modified");
+    expect(rowAction(panel, "src/gone.json", "file-open")!.getAttribute("aria-label")).toBe(
+      "src/gone.json, deleted",
     );
-    await flush();
-    expect(git.diffState.filePath).toBe("src/page.json");
-
-    git.diffState = null;
-    row!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " " }));
-    await flush();
-    expect(git.diffState.filePath).toBe("src/page.json");
   });
 
-  test("other keys pass through", async () => {
+  test("a status with no word of its own still says the file changed", async () => {
     seedRepoUi();
-    const div = renderPanel({});
-    const row = div
-      .querySelector('.git-file-name[title="src/page.json"]')
-      ?.closest(".git-file-info");
-    row!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "a" }));
-    await flush();
-    expect(git.diffState).toBeNull();
+    git.status = baseStatus([{ path: "odd.json", staged: false, status: "X" }]);
+    const panel = await draw({});
+    expect(rowAction(panel, "odd.json", "file-open")!.getAttribute("aria-label")).toBe(
+      "odd.json, changed",
+    );
   });
 });

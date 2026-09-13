@@ -1,0 +1,1822 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelGit",
+  "$description": "The Navigator's Source Control panel: what git says about this project, and every verb that answers. It has four moods and the adapter names which one — no project, a first read still in flight, a project git is not tracking yet, and a repository — so nothing here asks whether `status` is null or what `isRepo` means. Under the fourth mood it draws the sync bar (with or without a remote), the branch row, the two sub-tabs, and then either the commit form over the changed files or the log. `panels/git-panel.ts` keeps every decision: what a comparison is, which files group under which component, what a status letter reads aloud, what a commit does before it runs, and which of the four verbs a row's buttons are. Rows arrive as strings and booleans, keyed by path.",
+  "tagName": "div",
+  "attributes": {
+    "part": "git-panel"
+  },
+  "style": {
+    "$description": "The sixty-odd `.git-*` rules in `styles/overlays.css`, keyed on `part` and carried here. Four token repairs travel with them, all of the shape `surfaces/panel-imports.json` describes: `--spectrum-font-size-75` and `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document is mounted outside it, so every rule that read one would silently have taken its px fallback — they are `--jx-text-md` (12px) and `--jx-text-sm` (11px) here, at the same values, and the bare `10px` literals are `--jx-text-xs`. The one deliberate move is the two headline values, the sync label and the branch name: they were 13px, which is not a step on the scale, and they take `--jx-text-lg` (14px). Three rules are DELETED rather than moved, because the kit already draws them: the sub-tab strip's own fill, hover and selected underline are `jx-tabs`/`jx-tab`, the branch picker's box is `jx-select`, and `.git-split-btn`'s hand-built dropdown is the kit menu (see `openCommitMenu`). And one is repaired: a row's action buttons were `opacity: 0` until the ROW was hovered, so tabbing to Stage moved the keyboard onto an invisible control — the reveal is `:focus-within` as well as `:hover`.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"empty\"]": {
+      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (§11): one sentence saying what the region is for, then the action that fills it.",
+      "display": "flex",
+      "flex": "1",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-5)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-actions\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"sync-bar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-4)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"sync-bar\"][data-remote=\"none\"]": {
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"sync-text\"]": {
+      "display": "flex",
+      "flex": "1",
+      "flexDirection": "column",
+      "gap": "1px",
+      "minWidth": "0"
+    },
+    "& [part=\"sync-label\"]": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"sync-time\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"sync-actions\"]": {
+      "display": "flex",
+      "flex": "none",
+      "marginLeft": "auto"
+    },
+    "& [part=\"branch-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "padding": "10px var(--jx-space-4)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"branch-icon\"]": {
+      "$description": "The hand-drawn 18px branch SVG this panel carried is the kit's `git-branch` glyph — the same key `PanelRecord.icon` already names for this panel's rail button, so the two drawings cannot drift.",
+      "flex": "none",
+      "--jx-icon-size": "18px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"branch-text\"]": {
+      "display": "flex",
+      "flex": "1",
+      "flexDirection": "column",
+      "gap": "1px",
+      "minWidth": "0"
+    },
+    "& [part=\"branch-label\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"branch-name\"]": {
+      "overflow": "hidden",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "color": "var(--fg)",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"branch-picker\"]": {
+      "flex": "none",
+      "maxWidth": "40%"
+    },
+    "& [part=\"commit\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-4)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"commit-label\"]": {
+      "fontWeight": "500",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"commit-actions\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"commit-button\"]": {
+      "flex": "1"
+    },
+    "& [part=\"section\"]": {
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"section-header\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3) var(--jx-space-4) 6px",
+      "fontWeight": "700",
+      "color": "var(--fg)"
+    },
+    "& [part=\"count\"]": {
+      "$description": "The pill beside a section title. `margin-inline-end: auto` is what pushes the section's own button to the right edge — it was a second rule (`.git-section-header .git-count`) over the same element, and there is only one place a count is drawn.",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minWidth": "18px",
+      "height": "18px",
+      "marginInlineEnd": "auto",
+      "padding": "0 5px",
+      "borderRadius": "9px",
+      "background": "var(--accent-15)",
+      "color": "var(--accent)",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "600"
+    },
+    "& [part=\"group\"]": {
+      "marginBottom": "var(--jx-space-1)"
+    },
+    "& [part=\"group-header\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "padding": "var(--jx-space-2) var(--jx-space-3)"
+    },
+    "& [part=\"group-name\"]": {
+      "fontWeight": "500",
+      "color": "var(--fg)"
+    },
+    "& [part=\"file-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-1) var(--jx-space-3) var(--jx-space-1) var(--jx-space-5)"
+    },
+    "& [part=\"file-row\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"file-open\"]": {
+      "$description": "A REAL button, because it does something. It was a bare span with a cursor and a `title`: not focusable, no role, and Enter did nothing — so the panel's primary verb was mouse-only. A `<button>` needs no role, no tabindex and no key handler of its own, which is three lines of the old row that simply go.",
+      "display": "flex",
+      "flex": "1",
+      "alignItems": "baseline",
+      "gap": "6px",
+      "minWidth": "0",
+      "margin": "0",
+      "padding": "0",
+      "overflow": "hidden",
+      "border": "none",
+      "borderRadius": "var(--radius)",
+      "background": "none",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "left",
+      "cursor": "pointer",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"file-name\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"file-dir\"]": {
+      "overflow": "hidden",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-xs)",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"file-actions\"]": {
+      "$description": "Revealed on `:focus-within` as well as on the row's hover. Opacity alone hid a control the keyboard could still reach: tabbing through a changed file landed on an invisible Stage button.",
+      "display": "flex",
+      "flex": "none",
+      "opacity": "0"
+    },
+    "& [part=\"file-row\"]:hover [part=\"file-actions\"], & [part=\"file-actions\"]:focus-within": {
+      "opacity": "1"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "One letter and a colour, which is why every row's open button carries the status in words as well.",
+      "flex": "none",
+      "width": "16px",
+      "color": "var(--signal)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "700",
+      "textAlign": "center"
+    },
+    "& [part=\"badge\"][data-status=\"A\"], & [part=\"badge\"][data-status=\"U\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"badge\"][data-status=\"D\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"badge\"][data-status=\"R\"], & [part=\"badge\"][data-status=\"C\"]": {
+      "color": "var(--tag)"
+    },
+    "& [part=\"history\"]": {
+      "flex": "1",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-2) 0"
+    },
+    "& [part=\"history-list\"]": {
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"history-entry\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "padding": "6px var(--jx-space-4)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"history-entry\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"history-hash\"]": {
+      "color": "var(--accent)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"history-message\"]": {
+      "color": "var(--fg)"
+    },
+    "& [part=\"history-meta\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"status\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-3)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "textAlign": "center"
+    },
+    "& [part=\"error\"]": {
+      "margin": "0",
+      "padding": "6px var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)",
+      "background": "color-mix(in srgb, var(--danger) 8%, transparent)",
+      "color": "var(--danger)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "@(forced-colors: active)": {
+      "& [part=\"error\"]": {
+        "$description": "The wash behind the banner collapses into the page when every author colour is replaced, so the border is what is left to mark it.",
+        "border": "1px solid CanvasText",
+        "color": "CanvasText"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "view-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/view"
+      },
+      "cases": {
+        "no-project": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty",
+            "data-view": "no-project"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Source control keeps every version of a project, so any change can be undone. Open a project to see its history."
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "clone-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/canClone"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty-actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-button",
+                      "attributes": {
+                        "part": "clone",
+                        "data-action": "clone"
+                      },
+                      "$props": {
+                        "size": "sm"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/clone"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-icon",
+                          "$props": {
+                            "name": "download-simple"
+                          }
+                        },
+                        {
+                          "tagName": "span",
+                          "textContent": "Clone Git Repository"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "loading": {
+          "tagName": "p",
+          "attributes": {
+            "part": "status",
+            "data-view": "loading"
+          },
+          "textContent": "Loading…"
+        },
+        "no-repo": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty",
+            "data-view": "no-repo"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "This project is not tracked by git yet. Start tracking it to keep a history of every change and to publish it anywhere."
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-actions"
+              },
+              "children": [
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "init",
+                    "data-action": "init"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "accent",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/initRepository"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "$props": {
+                        "name": "plus"
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "textContent": "Initialize Repository"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "create-repository",
+                    "data-action": "create-repository"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/createRepository"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "$props": {
+                        "name": "share-network"
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "textContent": "Create GitHub repository"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "repo": {
+          "tagName": "div",
+          "attributes": {
+            "part": "repo",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "remote-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/remoteState"
+              },
+              "cases": {
+                "remote": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "sync-bar",
+                    "data-remote": "yes"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "refresh",
+                        "data-action": "refresh"
+                      },
+                      "$props": {
+                        "icon": "arrows-clockwise",
+                        "size": "sm",
+                        "quiet": true,
+                        "label": "Refresh",
+                        "hint": "Refresh",
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/refresh"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "sync-text"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "sync-label"
+                          },
+                          "textContent": "${state.syncLabel}"
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "updated-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasLastUpdated"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "sync-time"
+                              },
+                              "textContent": "${state.lastUpdated}"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "sync-actions"
+                      },
+                      "$props": {
+                        "label": "Remote actions",
+                        "compact": true
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "fetch",
+                            "data-action": "fetch"
+                          },
+                          "$props": {
+                            "icon": "download-simple",
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Fetch",
+                            "hint": "Fetch",
+                            "disabled": {
+                              "$ref": "#/state/busy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/fetch"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "pull",
+                            "data-action": "pull"
+                          },
+                          "$props": {
+                            "icon": "arrow-down",
+                            "size": "sm",
+                            "quiet": true,
+                            "label": {
+                              "$ref": "#/state/pullLabel"
+                            },
+                            "hint": {
+                              "$ref": "#/state/pullLabel"
+                            },
+                            "disabled": {
+                              "$ref": "#/state/busy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/pull"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "push",
+                            "data-action": "push"
+                          },
+                          "$props": {
+                            "icon": "arrow-up",
+                            "size": "sm",
+                            "quiet": true,
+                            "label": {
+                              "$ref": "#/state/pushLabel"
+                            },
+                            "hint": {
+                              "$ref": "#/state/pushLabel"
+                            },
+                            "disabled": {
+                              "$ref": "#/state/busy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/push"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "local": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "sync-bar",
+                    "data-remote": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "refresh",
+                        "data-action": "refresh"
+                      },
+                      "$props": {
+                        "icon": "arrows-clockwise",
+                        "size": "sm",
+                        "quiet": true,
+                        "label": "Refresh",
+                        "hint": "Refresh",
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/refresh"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "sync-text"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "sync-label"
+                          },
+                          "textContent": "Local only (no remote)"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "attributes": {
+                        "part": "create-repository",
+                        "data-action": "create-repository"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/createRepository"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-icon",
+                          "$props": {
+                            "name": "share-network"
+                          }
+                        },
+                        {
+                          "tagName": "span",
+                          "textContent": "Create GitHub repository"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "branch-row"
+              },
+              "children": [
+                {
+                  "tagName": "jx-icon",
+                  "attributes": {
+                    "part": "branch-icon"
+                  },
+                  "$props": {
+                    "name": "git-branch"
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "branch-text"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "branch-label"
+                      },
+                      "textContent": "Active branch"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "branch-name"
+                      },
+                      "textContent": "${state.branchName}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "branch-picker"
+                  },
+                  "$props": {
+                    "label": "Switch branch",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/branchOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/branchValue"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/chooseBranch"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tabs",
+              "attributes": {
+                "part": "tabs",
+                "selected": "${state.subTab}"
+              },
+              "$props": {
+                "label": "Source control views"
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/selectTab"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "jx-tab",
+                  "attributes": {
+                    "part": "tab",
+                    "data-tab": "changes",
+                    "value": "changes",
+                    "label": "${state.changesLabel}",
+                    "panel": "git-panel-body"
+                  }
+                },
+                {
+                  "tagName": "jx-tab",
+                  "attributes": {
+                    "part": "tab",
+                    "data-tab": "history",
+                    "value": "history",
+                    "label": "History",
+                    "panel": "git-panel-body"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "body",
+                "id": "git-panel-body",
+                "role": "tabpanel",
+                "data-tab": "${state.subTab}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/subTab"
+              },
+              "cases": {
+                "changes": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "changes",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "commit",
+                        "data-jx-region": "navigator/panel:git/commit"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "commit-label",
+                            "id": "git-commit-label"
+                          },
+                          "textContent": "Please write a commit message"
+                        },
+                        {
+                          "tagName": "jx-textfield",
+                          "attributes": {
+                            "part": "commit-input",
+                            "data-field": "commit-message"
+                          },
+                          "$props": {
+                            "labelledby": "git-commit-label",
+                            "multiline": true,
+                            "size": "sm",
+                            "placeholder": "Describe your changes",
+                            "value": {
+                              "$ref": "#/state/commitMessage"
+                            }
+                          },
+                          "oninput": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/editMessage"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "onkeydown": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "$switch": {
+                                  "$ref": "event#/key"
+                                },
+                                "cases": {
+                                  "Enter": [
+                                    {
+                                      "if": {
+                                        "operator": "||",
+                                        "target": {
+                                          "$ref": "event#/ctrlKey"
+                                        },
+                                        "value": {
+                                          "$ref": "event#/metaKey"
+                                        }
+                                      },
+                                      "then": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/commit"
+                                          },
+                                          "value": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "commit-actions"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-button",
+                              "attributes": {
+                                "part": "commit-button",
+                                "data-action": "commit-and-sync"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "variant": "accent",
+                                "disabled": {
+                                  "$ref": "#/state/busy"
+                                }
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/commitAndSync"
+                                    },
+                                    "value": []
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Commit and sync"
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "commit-menu",
+                                "data-action": "commit-menu"
+                              },
+                              "$props": {
+                                "icon": "caret-down",
+                                "size": "sm",
+                                "label": "More commit options",
+                                "hint": "More commit options",
+                                "haspopup": "menu"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/openCommitMenu"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/currentTarget"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "staged-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasStaged"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "section",
+                          "attributes": {
+                            "part": "section",
+                            "data-section": "staged",
+                            "aria-label": "Staged Changes"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "section-header"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "section-title"
+                                  },
+                                  "textContent": "Staged Changes"
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "count"
+                                  },
+                                  "textContent": "${state.stagedCount}"
+                                },
+                                {
+                                  "tagName": "jx-action-button",
+                                  "attributes": {
+                                    "part": "unstage-all",
+                                    "data-action": "unstage-all"
+                                  },
+                                  "$props": {
+                                    "icon": "minus",
+                                    "size": "sm",
+                                    "quiet": true,
+                                    "label": "Unstage all",
+                                    "hint": "Unstage all"
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/unstageAll"
+                                        },
+                                        "value": []
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/stagedFiles"
+                              },
+                              "key": {
+                                "$ref": "$map/item/key"
+                              },
+                              "map": {
+                                "$description": "One changed file. Every row opens the file it names — renderability decides which VIEW opens, not whether the row responds — and carries the two or three verbs its staged state allows. `$map/item` inside a nested map is the FILE, which is why the row hands its own path back to every action rather than an index.",
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "file-row",
+                                  "data-path": "${$map.item.path}",
+                                  "data-status": "${$map.item.status}"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "button",
+                                    "attributes": {
+                                      "part": "file-open",
+                                      "type": "button",
+                                      "aria-label": "${$map.item.label}",
+                                      "title": "Open this file's comparison"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openFile"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/path"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "file-name"
+                                        },
+                                        "textContent": "${$map.item.name}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "dir-slot",
+                                          "role": "none"
+                                        },
+                                        "style": {
+                                          "display": "contents"
+                                        },
+                                        "$switch": {
+                                          "$ref": "$map/item/hasDir"
+                                        },
+                                        "cases": {
+                                          "true": {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "file-dir"
+                                            },
+                                            "textContent": "${$map.item.dir}"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "file-actions"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/staged"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "jx-action-button",
+                                        "attributes": {
+                                          "part": "unstage",
+                                          "data-action": "unstage"
+                                        },
+                                        "$props": {
+                                          "icon": "minus",
+                                          "size": "sm",
+                                          "quiet": true,
+                                          "label": "Unstage ${$map.item.path}",
+                                          "hint": "Unstage"
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/unstage"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/path"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "false": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "unstaged-actions",
+                                          "role": "none"
+                                        },
+                                        "style": {
+                                          "display": "contents"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "jx-action-button",
+                                            "attributes": {
+                                              "part": "discard",
+                                              "data-action": "discard"
+                                            },
+                                            "$props": {
+                                              "icon": "arrow-u-up-left",
+                                              "size": "sm",
+                                              "quiet": true,
+                                              "label": "Discard changes to ${$map.item.path}",
+                                              "hint": "Discard changes",
+                                              "disabled": {
+                                                "$ref": "$map/item/cannotDiscard"
+                                              }
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/discard"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/path"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          {
+                                            "tagName": "jx-action-button",
+                                            "attributes": {
+                                              "part": "stage",
+                                              "data-action": "stage"
+                                            },
+                                            "$props": {
+                                              "icon": "plus",
+                                              "size": "sm",
+                                              "quiet": true,
+                                              "label": "Stage ${$map.item.path}",
+                                              "hint": "Stage"
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/stage"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/path"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "badge",
+                                      "data-status": "${$map.item.status}"
+                                    },
+                                    "textContent": "${$map.item.status}"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "section",
+                      "attributes": {
+                        "part": "section",
+                        "data-section": "changed",
+                        "aria-label": "Changed Components"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "section-header"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "section-title"
+                              },
+                              "textContent": "Changed Components"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "count"
+                              },
+                              "textContent": "${state.changedCount}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "stage-all-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/hasUnstaged"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "jx-action-button",
+                                  "attributes": {
+                                    "part": "stage-all",
+                                    "data-action": "stage-all"
+                                  },
+                                  "$props": {
+                                    "icon": "plus",
+                                    "size": "sm",
+                                    "quiet": true,
+                                    "label": "Stage all",
+                                    "hint": "Stage all"
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/stageAll"
+                                        },
+                                        "value": []
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "groups-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/filesState"
+                          },
+                          "cases": {
+                            "listed": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "groups"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/groups"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "group",
+                                      "data-group": "${$map.item.key}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "group-header"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "group-name"
+                                            },
+                                            "textContent": "${$map.item.name}"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "$prototype": "Array",
+                                        "items": {
+                                          "$ref": "$map/item/files"
+                                        },
+                                        "key": {
+                                          "$ref": "$map/item/key"
+                                        },
+                                        "map": {
+                                          "tagName": "div",
+                                          "attributes": {
+                                            "part": "file-row",
+                                            "data-path": "${$map.item.path}",
+                                            "data-status": "${$map.item.status}"
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "button",
+                                              "attributes": {
+                                                "part": "file-open",
+                                                "type": "button",
+                                                "aria-label": "${$map.item.label}",
+                                                "title": "Open this file's comparison"
+                                              },
+                                              "onclick": {
+                                                "$prototype": "Function",
+                                                "body": [
+                                                  {
+                                                    "operator": "call",
+                                                    "target": {
+                                                      "$ref": "#/state/openFile"
+                                                    },
+                                                    "value": [
+                                                      {
+                                                        "$ref": "$map/item/path"
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              },
+                                              "children": [
+                                                {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "file-name"
+                                                  },
+                                                  "textContent": "${$map.item.name}"
+                                                },
+                                                {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "dir-slot",
+                                                    "role": "none"
+                                                  },
+                                                  "style": {
+                                                    "display": "contents"
+                                                  },
+                                                  "$switch": {
+                                                    "$ref": "$map/item/hasDir"
+                                                  },
+                                                  "cases": {
+                                                    "true": {
+                                                      "tagName": "span",
+                                                      "attributes": {
+                                                        "part": "file-dir"
+                                                      },
+                                                      "textContent": "${$map.item.dir}"
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "file-actions"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/staged"
+                                              },
+                                              "cases": {
+                                                "true": {
+                                                  "tagName": "jx-action-button",
+                                                  "attributes": {
+                                                    "part": "unstage",
+                                                    "data-action": "unstage"
+                                                  },
+                                                  "$props": {
+                                                    "icon": "minus",
+                                                    "size": "sm",
+                                                    "quiet": true,
+                                                    "label": "Unstage ${$map.item.path}",
+                                                    "hint": "Unstage"
+                                                  },
+                                                  "onclick": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/unstage"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/path"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                "false": {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "unstaged-actions",
+                                                    "role": "none"
+                                                  },
+                                                  "style": {
+                                                    "display": "contents"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "tagName": "jx-action-button",
+                                                      "attributes": {
+                                                        "part": "discard",
+                                                        "data-action": "discard"
+                                                      },
+                                                      "$props": {
+                                                        "icon": "arrow-u-up-left",
+                                                        "size": "sm",
+                                                        "quiet": true,
+                                                        "label": "Discard changes to ${$map.item.path}",
+                                                        "hint": "Discard changes",
+                                                        "disabled": {
+                                                          "$ref": "$map/item/cannotDiscard"
+                                                        }
+                                                      },
+                                                      "onclick": {
+                                                        "$prototype": "Function",
+                                                        "body": [
+                                                          {
+                                                            "operator": "call",
+                                                            "target": {
+                                                              "$ref": "#/state/discard"
+                                                            },
+                                                            "value": [
+                                                              {
+                                                                "$ref": "$map/item/path"
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    },
+                                                    {
+                                                      "tagName": "jx-action-button",
+                                                      "attributes": {
+                                                        "part": "stage",
+                                                        "data-action": "stage"
+                                                      },
+                                                      "$props": {
+                                                        "icon": "plus",
+                                                        "size": "sm",
+                                                        "quiet": true,
+                                                        "label": "Stage ${$map.item.path}",
+                                                        "hint": "Stage"
+                                                      },
+                                                      "onclick": {
+                                                        "$prototype": "Function",
+                                                        "body": [
+                                                          {
+                                                            "operator": "call",
+                                                            "target": {
+                                                              "$ref": "#/state/stage"
+                                                            },
+                                                            "value": [
+                                                              {
+                                                                "$ref": "$map/item/path"
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "badge",
+                                                "data-status": "${$map.item.status}"
+                                              },
+                                              "textContent": "${$map.item.status}"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            "empty": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "empty-message",
+                                "data-empty": "changes"
+                              },
+                              "textContent": "Nothing to commit. Files you edit and save show up here."
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "history": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "history"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "history-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/historyState"
+                      },
+                      "cases": {
+                        "listed": {
+                          "tagName": "ul",
+                          "attributes": {
+                            "part": "history-list"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/commits"
+                              },
+                              "key": {
+                                "$ref": "$map/item/key"
+                              },
+                              "map": {
+                                "tagName": "li",
+                                "attributes": {
+                                  "part": "history-entry",
+                                  "data-hash": "${$map.item.hash}"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "history-hash"
+                                    },
+                                    "textContent": "${$map.item.hash}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "history-message"
+                                    },
+                                    "textContent": "${$map.item.message}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "history-meta"
+                                    },
+                                    "textContent": "${$map.item.meta}"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "empty": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "empty-message",
+                            "data-empty": "history"
+                          },
+                          "textContent": "No commits yet. Each commit you make is a version you can come back to."
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "busy-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/busy"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "status",
+                    "data-status": "busy"
+                  },
+                  "textContent": "Loading…"
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "error-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasError"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "error",
+                    "role": "alert"
+                  },
+                  "textContent": "${state.error}"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

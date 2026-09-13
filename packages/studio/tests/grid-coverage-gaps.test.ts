@@ -8,27 +8,32 @@
  * - Cell-editors: checkbox Enter/blur commits and select Escape cancel.
  * - Edit-buffer: multi-field row errors, error clearing, drop-insert/delete redo, unbalanced
  *   endGroup, and group-op history pruning.
- * - Grid-panel: the Prev pager and the Replace popover's no-match/cancel paths.
+ *
+ * The grid PANEL's two gaps — the Prev pager and find-and-replace's no-match/cancel paths — moved
+ * to `grid-panel.test.ts` when the frame became a document: they are the same claims, addressed by
+ * `part` against the surface that now draws them, beside the rest of that surface's coverage rather
+ * than in a second file that had to re-derive its fixtures.
  */
-import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
+import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { FakeTabulator, tabulatorMockModule } from "./tabulator-mock";
 import { render } from "lit-html";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
-import type { GridColumn, GridSource } from "../src/grid/grid-source";
+import type { GridColumn } from "../src/grid/grid-source";
 import type { CellLike } from "../src/grid/cell-editors";
 import type { StudioPlatform } from "../src/types";
 
 void mock.module("tabulator-tables", () => tabulatorMockModule);
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},
-  openModal: () => ({ close: () => {}, update: () => {} }),
   // The media picker asks which layer its anchor sits in; these fields are in a panel.
-  popoverLayerFor: () => "popover",
   renderPopover: (template: unknown) => {
     const host = document.createElement("div");
     host.className = "test-popover-host";
@@ -61,8 +66,7 @@ const { setFormats } = await import("../src/format/format-host");
 const { loadGridLayout, saveGridLayout } = await import("../src/grid/grid-layout");
 const { editorForColumn } = await import("../src/grid/cell-editors");
 const { createEditBuffer } = await import("../src/grid/edit-buffer");
-const { createGridController } = await import("../src/grid/grid-controller");
-const { detachGridPanel, renderGridMode } = await import("../src/grid/grid-panel");
+const { detachGridPanel } = await import("../src/grid/grid-panel");
 
 const LONG_TEXT = "long descriptive paragraph ".repeat(10).trim(); // > 200 chars
 
@@ -433,101 +437,5 @@ describe("edit-buffer gaps", () => {
       inserts: [],
     });
     expect(buffer.canUndo()).toBeFalse();
-  });
-});
-
-// ─── Grid panel ──────────────────────────────────────────────────────────────
-
-describe("grid-panel gaps", () => {
-  function stubSource(id: string): GridSource {
-    return {
-      capabilities: { delete: true, insert: true, remotePaging: false, remoteSort: false },
-      columns: async () => [{ editable: true, field: "title", kind: "string", title: "Title" }],
-      commit: async (batch) => ({
-        cells: batch.cells.map((c) => ({ field: c.field, ok: true, rowKey: c.rowKey })),
-        deletes: batch.deletes.map((d) => ({ ok: true, rowKey: d.rowKey })),
-        inserts: batch.inserts.map((i) => ({ ok: true, tempKey: i.tempKey })),
-      }),
-      id,
-      label: "posts",
-      rows: async () => ({ rows: [{ cells: { title: "One" }, key: "a" }], total: 1 }),
-    };
-  }
-
-  function gridTab(id: string) {
-    return openTab({
-      capabilities: { modes: ["grid"] },
-      document: { tagName: "div" },
-      documentPath: null,
-      id,
-    });
-  }
-
-  beforeEach(() => {
-    resetStudioState();
-    installMockPlatform();
-  });
-
-  test("the Prev pager steps back and clamps at the first page", async () => {
-    const wrap = document.createElement("div");
-    document.body.append(wrap);
-    const tab = gridTab("grid://data/main/users");
-    const queries: unknown[] = [];
-    const source = stubSource("grid://data/main/users");
-    source.capabilities = { delete: true, insert: true, remotePaging: true, remoteSort: true };
-    source.rows = async (q) => {
-      queries.push({ ...q });
-      return { rows: [{ cells: { title: "Row" }, key: `r${q?.offset ?? 0}` }], total: 120 };
-    };
-    const controller = createGridController(tab, source);
-    await controller.load();
-    renderGridMode(surfaceOf(wrap), tab);
-    await flush();
-
-    const buttonByTitle = (title: string) =>
-      [...wrap.querySelectorAll("sp-action-button")].find(
-        (b) => b.getAttribute("title") === title,
-      ) as HTMLElement;
-
-    buttonByTitle("Next page").click();
-    await flush();
-    expect(wrap.textContent).toContain("51–100");
-
-    buttonByTitle("Previous page").click();
-    await flush();
-    expect(queries.at(-1)).toEqual({ limit: 50, offset: 0 });
-    expect(wrap.textContent).toContain("1–50");
-    expect(buttonByTitle("Previous page").hasAttribute("disabled")).toBeTrue();
-  });
-
-  test("Replace with no matches keeps the popover open; Cancel dismisses it", async () => {
-    const wrap = document.createElement("div");
-    document.body.append(wrap);
-    const tab = gridTab("grid://collection/posts");
-    const controller = createGridController(tab, stubSource("grid://collection/posts"));
-    await controller.load();
-    renderGridMode(surfaceOf(wrap), tab);
-    await flush();
-
-    const replaceButton = [...wrap.querySelectorAll("sp-action-button")].find((b) =>
-      b.textContent?.includes("Replace"),
-    ) as HTMLElement;
-    replaceButton.click();
-    await flush();
-
-    const popover = document.querySelector(".jx-grid-replace-popover")!;
-    const [findInput] = [...popover.querySelectorAll("input")];
-    findInput!.value = "zzz-not-present";
-    findInput!.dispatchEvent(new Event("input", { bubbles: true }));
-    const [replaceAll, cancel] = [...popover.querySelectorAll("sp-button")];
-    (replaceAll as HTMLElement).click();
-    await flush();
-    // No matches → nothing buffered, popover stays up.
-    expect(controller.buffer.isDirty()).toBeFalse();
-    expect(document.querySelector(".jx-grid-replace-popover")).not.toBeNull();
-
-    (cancel as HTMLElement).click();
-    await flush();
-    expect(document.querySelector(".jx-grid-replace-popover")).toBeNull();
   });
 });

@@ -101,6 +101,11 @@ const TEST_OBS = "observability accessor — only its own tests read the private
  */
 const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "account-status.ts": { resetAccountStatus: TEST_RESET },
+  /* The surface registry's readers were on this ledger from the day the façade landed until the
+     live chrome lane (`services/live-surfaces.ts`) read them; the ledger ratcheted down as designed. */
+  "services/surface-registry.ts": {
+    resetSurfaceRegistry: TEST_RESET,
+  },
   "browse/library-layouts.ts": {
     cellTextOf:
       "row-shaped access for a caller holding grid cells rather than the typed record. The " +
@@ -209,13 +214,13 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "reads back the inline validation message from the last `collectDestination`. The dialog " +
       "renders the message from the value that call returned, so it never re-reads it",
   },
-  "panels/activity-bar.ts": { unmount: PANEL_TEARDOWN },
+  "surfaces/rail.ts": { unmount: PANEL_TEARDOWN },
   "panels/activity-panel.ts": { resetActivities: TEST_RESET },
+  /* `isLinkPopoverOpen` has ratcheted OFF this ledger. It used to be an accessor nothing read —
+     the scroll handler consulted a module-private boolean beside it — and the bar's conversion to a
+     document left the surface as the single owner of that state, so the accessor is now the only
+     way to ask and `onCanvasScroll` asks it. */
   "panels/block-action-bar.ts": {
-    isLinkPopoverOpen:
-      "guards a toolbar refresh from re-rendering the open link popover out from under the caret. " +
-      "The refresh path consults the edit snapshot instead — worth re-checking the day a refresh " +
-      "is seen closing that popover",
     useCommandRegistry:
       "injects the app-wide registry into the selection surfaces in place of their own. The " +
       "bootstrap lets them keep their own, so the injection point is unused; its contract " +
@@ -229,15 +234,6 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
     resetDataGridState: TEST_RESET,
   },
   "panels/frontmatter-panel.ts": { unmount: PANEL_TEARDOWN },
-  "panels/layers-panel.ts": {
-    outlineRowPath:
-      "reads a row's unambiguous `JxPath` back off `data-jx-path`. Its docstring names five " +
-      "readers that need exactly this — shift-range select, drag-reorder, canvas-to-Outline sync, " +
-      "a collaborator's cursor, a Problems jump — and every one of them uses the LOSSY `data-path` " +
-      'key beside it, which collides `["children", 0]` with `["children", "0"]` and cannot ' +
-      "represent a segment containing a slash. The correct reader is written and waiting; " +
-      "migrating five call sites onto it is a real change with real risk",
-  },
   "panels/left-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/navigator-panels.ts": { resetNavigatorPanels: TEST_RESET },
   "panels/overlays.ts": { unmount: PANEL_TEARDOWN },
@@ -265,18 +261,21 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "(`services/live-preview.ts`), which cannot disagree with the render; this is the " +
       "parent-side fallback nothing falls back to",
   },
-  "panels/statusbar.ts": { forgetSavedTimes: TEST_RESET },
+  "surfaces/statusbar.ts": { forgetSavedTimes: TEST_RESET },
   "panels/style-panel.ts": {
     resetAffectedDisclosure:
       "test reset, with a caveat worth keeping: `_showAffected` is deliberately module-global " +
       "rather than per-tab, so it also survives a PROJECT switch — and the warning band it folds " +
       "open belongs to a project. `resetProjectShell()` is where that would be answered, and " +
       "`shell.ts` may not import a panel",
-    resetSelectorMenu: "test reset; delegates to `target-line.ts`'s `resetSelectorTrigger`",
+    resetSelectorMenu: "test reset; delegates to `surfaces/target-line.ts`'s `resetTargetLine`",
   },
-  "panels/tab-strip.ts": { unmount: PANEL_TEARDOWN },
-  "panels/target-line.ts": { resetSelectorTrigger: TEST_RESET },
-  "panels/toolbar.ts": { setMacPlatformForTests: TEST_SEAM, unmount: PANEL_TEARDOWN },
+  /* `panels/tab-strip.ts:unmount` was here, as a panel teardown nothing calls. It is reachable
+     now: the strip is a mounted document, so `mount()` starts by tearing the standing one down —
+     the runtime that owns that DOM is about to be unreachable, and a second mount into the same
+     host would leave two strips whose chips both answer clicks. The ledger only ratchets down. */
+  "surfaces/target-line.ts": { resetTargetLine: TEST_RESET },
+  "surfaces/commandbar.ts": { setMacPlatformForTests: TEST_SEAM },
   "project-list.ts": { resetProjectList: TEST_RESET },
   "publish/deploy-checklist.ts": {
     forgetDeployment: "test reset, and the project-close half of the memory below",
@@ -337,9 +336,10 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   },
   "settings/contexts-section.ts": {
     contextsError:
-      "reads back the per-container failure message. The section renders the message at the point " +
-      "it is set, so the WeakMap is written and never read — which also means a re-render drops " +
-      "the message it was keyed to survive",
+      "reads back the per-container failure message. The section projects the message out of the " +
+      "same WeakMap on every render, so the accessor tells the app nothing it is not already " +
+      "drawing; its readers are the two suites that assert a refusal was parked rather than shown " +
+      "and forgotten",
   },
   "settings/contributed-section.ts": {
     resetContributedDiagnostics: TEST_RESET,
@@ -418,20 +418,8 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "surgical edit that surface does not make",
   },
   "ui/dynamic-slot.ts": { resetSlotModeMemory: TEST_RESET },
-  "ui/field-input.ts": {
-    clearDraft:
-      "discards a field's in-flight draft and cancels its debounced commit. Nothing discards — " +
-      "drafts resolve by committing. The caller would be Escape-in-a-field, which today commits " +
-      "like any other blur",
-    hasDraft: "the predicate beside `clearDraft`, unread for the same reason",
-  },
+  "ui/schema-form.ts": { resetSchemaForms: TEST_RESET },
   "ui/form-controls.ts": { resetFormControlUiState: TEST_RESET },
-  "ui/layers.ts": {
-    clearLayerSlot:
-      "removes a named layer slot from the DOM and the map. Slots are reused rather than cleared " +
-      "— the same popover id is re-rendered — so nothing removes one, and a slot for a surface " +
-      "that is gone for good leaves an empty div behind",
-  },
   "ui/value-source.ts": { resetCapsCache: TEST_RESET },
   "utils/geometry.ts": {
     elementsAtPoint:
@@ -469,6 +457,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
  * `git-diff` editor kind, a text diff) and `canvas/nested-site-style.ts` (a nested-style-object CSS
  * builder with no producer of nested style objects) were the two, and both are gone.
  */
+/** Modules nothing imports yet, each with its reason in {@link KNOWN_UNREACHABLE}. */
 const KNOWN_UNREACHABLE_MODULES = new Set<string>();
 
 const LEDGER = new Map<string, string>(

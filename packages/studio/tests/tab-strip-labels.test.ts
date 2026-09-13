@@ -26,7 +26,7 @@ function open(id: string, documentPath: string | null = `pages/${id}.md`) {
 }
 
 function labels(): string[] {
-  return [...host.querySelectorAll(".tab-strip-label")].map((el) => el.textContent ?? "");
+  return [...host.querySelectorAll('[part="label"]')].map((el) => el.textContent ?? "");
 }
 
 /** Happy-dom performs no layout; stub the two metrics the overflow check reads. */
@@ -36,7 +36,7 @@ function stubMetrics(el: HTMLElement, scrollWidth: number, clientWidth: number) 
 }
 
 function strip(): HTMLElement {
-  return host.querySelector(".tab-strip") as HTMLElement;
+  return host.querySelector('[part="tabs"]') as HTMLElement;
 }
 
 beforeEach(() => {
@@ -179,9 +179,21 @@ describe("drill-in relationship", () => {
     });
     expect(child.session.openedFrom).not.toBeNull();
     await flush();
-    const chips = [...host.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
-    expect(chips[0]!.querySelector(".tab-strip-origin")).toBeNull();
-    expect(chips[1]!.querySelector(".tab-strip-origin")!.textContent).toBe("↳");
+    const chips = [...host.querySelectorAll('[part="tab"]')] as HTMLElement[];
+    /* The marker is a slotted child of `jx-tab`'s icon slot, drawn BEFORE the label, and it is
+       always in the tree: a bound `hidden` is what takes it off screen, so "absent" is asked as
+       `:not([hidden])` rather than as a missing node. It is `aria-hidden` because the tab already
+       names itself — a `↳` announced beside a file name says nothing, and the tooltip is where a
+       reader is told what it was opened from. */
+    expect(chips[0]!.querySelector('[part="origin"]:not([hidden])')).toBeNull();
+    const marker = chips[1]!.querySelector('[part="origin"]:not([hidden])')!;
+    expect(marker.textContent).toBe("↳");
+    expect(marker.getAttribute("aria-hidden")).toBe("true");
+    expect(marker.getAttribute("slot")).toBe("icon");
+    // Before the label, which is the whole reason it is the `icon` slot and not the `status` one.
+    expect(marker.compareDocumentPosition(chips[1]!.querySelector('[part="label"]')!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(chips[1]!.getAttribute("title")).toBe(
       "components/card.json\nOpened from pages/index.md",
     );
@@ -190,7 +202,7 @@ describe("drill-in relationship", () => {
   test("an ordinary tab's tooltip is just its path", async () => {
     open("a", "components/card.json");
     await flush();
-    const chip = host.querySelector(".tab-strip-tab") as HTMLElement;
+    const chip = host.querySelector('[part="tab"]') as HTMLElement;
     expect(chip.getAttribute("title")).toBe("components/card.json");
   });
 });
@@ -200,7 +212,7 @@ describe("overflow chevron", () => {
     open("a");
     await flush();
     stubMetrics(strip(), 100, 100);
-    expect(host.querySelector(".tab-strip-overflow")).toBeNull();
+    expect(host.querySelector('[part="overflow"]:not([hidden])')).toBeNull();
   });
 
   test("appears once the strip overflows, and lists the hidden tabs", async () => {
@@ -211,7 +223,7 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    const chevron = host.querySelector(".tab-strip-overflow") as HTMLElement;
+    const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     expect(chevron).not.toBeNull();
     // ONE accessible name: `title` alone, with the glyph aria-hidden (guidelines §10).
     expect(chevron.getAttribute("title")).toBe("Show hidden tabs");
@@ -219,9 +231,38 @@ describe("overflow chevron", () => {
     expect(chevron.querySelector("[aria-hidden]")!.textContent!.trim()).toBe("⌄");
 
     chevron.click();
-    await flush();
-    const items = [...document.querySelectorAll("#layer-popover sp-menu-item")];
+    await flush(3);
+    /* The panel takes the trigger's own words, and it is addressable: the slot carries
+       `overlay.menu:tab-overflow`, so a shot could name it without a selector. */
+    const menu = document.querySelector("#layer-popover jx-menu")!;
+    expect(menu.getAttribute("aria-label")).toBe("Hidden tabs");
+    expect(menu.parentElement!.dataset["jxRegion"]).toBe("overlay.menu:tab-overflow");
+    const items = [...document.querySelectorAll("#layer-popover jx-menu-item")];
     expect(items.map((el) => el.textContent?.trim())).toEqual(["/a", "/b", "/c"]);
+    // A row is addressed by the tab it activates, which is what the kit menu carries.
+    expect(items.map((el) => (el as HTMLElement).dataset.commandId)).toEqual(["a", "b", "c"]);
+  });
+
+  /**
+   * The strip's own chips say which tab is showing with `aria-selected`; a row in a list of tabs
+   * could not, under the popover this menu replaced — `?selected` on an `sp-menu-item` drew a
+   * highlight and announced nothing. `checked` on every row is the shape this shell already settled
+   * on for one-of-N (`panels/pane-context.ts`), so the current tab now states itself.
+   */
+  test("the row for the tab already showing states that it is the current one", async () => {
+    open("a");
+    open("b");
+    await flush();
+    stubMetrics(strip(), 500, 100);
+    open("c");
+    await flush();
+    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
+    await flush(3);
+
+    const rows = [...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item")];
+    expect(rows.map((el) => el.getAttribute("aria-checked"))).toEqual(["false", "false", "true"]);
+    // A checkbox row is a checkbox row: the role follows the state it carries.
+    expect(rows.every((el) => el.getAttribute("role") === "menuitemcheckbox")).toBeTrue();
   });
 
   test("choosing a hidden tab activates it and closes the menu", async () => {
@@ -231,13 +272,13 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    (host.querySelector(".tab-strip-overflow") as HTMLElement).click();
-    await flush();
-    const first = document.querySelector("#layer-popover sp-menu-item") as HTMLElement;
+    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
+    await flush(3);
+    const first = document.querySelector("#layer-popover jx-menu-item") as HTMLElement;
     first.click();
     await flush();
     expect(workspace.activeTabId).toBe("a");
-    expect(document.querySelector("#layer-popover sp-menu-item")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu-item")).toBeNull();
   });
 
   test("re-opening the menu replaces the previous one", async () => {
@@ -247,12 +288,12 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    const chevron = host.querySelector(".tab-strip-overflow") as HTMLElement;
+    const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     chevron.click();
-    await flush();
+    await flush(3);
     chevron.click();
-    await flush();
-    expect(document.querySelectorAll("#layer-popover sp-menu").length).toBe(1);
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu").length).toBe(1);
   });
 
   test("hiddenTabIds reports the chips outside the scroll viewport", async () => {
@@ -263,7 +304,7 @@ describe("overflow chevron", () => {
     const el = strip();
     stubMetrics(el, 500, 100);
     el.scrollLeft = 0;
-    const chips = [...el.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
+    const chips = [...el.querySelectorAll('[part="tab"]')] as HTMLElement[];
     const place = (chip: HTMLElement, left: number, width: number) => {
       Object.defineProperty(chip, "offsetLeft", { configurable: true, value: left });
       Object.defineProperty(chip, "offsetWidth", { configurable: true, value: width });

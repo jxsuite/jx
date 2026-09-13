@@ -1,0 +1,335 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookActionGroup",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-spinner.json"
+    },
+    {
+      "$ref": "../components/jx-action-button.json"
+    },
+    {
+      "$ref": "../components/jx-action-group.json"
+    }
+  ],
+  "state": {
+    "align": "left",
+    "isLeft": {
+      "$expression": {
+        "operator": "===",
+        "target": {
+          "$ref": "#/state/align"
+        },
+        "value": "left"
+      }
+    },
+    "isCenter": {
+      "$expression": {
+        "operator": "===",
+        "target": {
+          "$ref": "#/state/align"
+        },
+        "value": "center"
+      }
+    },
+    "isRight": {
+      "$expression": {
+        "operator": "===",
+        "target": {
+          "$ref": "#/state/align"
+        },
+        "value": "right"
+      }
+    },
+    "choose": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/align"
+          },
+          "value": {
+            "$ref": "event#/currentTarget/dataset/value"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-5) 0 var(--jx-space-2)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > div": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-4)",
+      "margin": "0 0 var(--jx-space-4)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-action-group"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A row of action buttons with ONE tab stop, and one attribute choosing the whole ARIA pattern: selects=\"none\" is a toolbar, \"single\" a radiogroup, \"multiple\" a group. It owns the roving caret and the segmented seam; it does not own the selection. Horizontal alignment is ${state.align}."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "selects=\"single\" \u2014 a radiogroup whose selection the host owns"
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "Horizontal alignment",
+            "selects": "single"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Align left",
+                "hint": "Align left",
+                "icon": "align-left",
+                "checked": "${state.align === 'left' ? 'true' : 'false'}",
+                "selected": {
+                  "$ref": "#/state/isLeft"
+                }
+              },
+              "onclick": {
+                "$ref": "#/state/choose"
+              },
+              "attributes": {
+                "data-value": "left"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Align centre",
+                "hint": "Align centre",
+                "icon": "align-center-horizontal",
+                "checked": "${state.align === 'center' ? 'true' : 'false'}",
+                "selected": {
+                  "$ref": "#/state/isCenter"
+                }
+              },
+              "onclick": {
+                "$ref": "#/state/choose"
+              },
+              "attributes": {
+                "data-value": "center"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Align right",
+                "hint": "Align right",
+                "icon": "align-right",
+                "checked": "${state.align === 'right' ? 'true' : 'false'}",
+                "selected": {
+                  "$ref": "#/state/isRight"
+                }
+              },
+              "onclick": {
+                "$ref": "#/state/choose"
+              },
+              "attributes": {
+                "data-value": "right"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "selects=\"none\" \u2014 a toolbar, and the same row uncompacted"
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "Text style"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Bold",
+                "hint": "Bold",
+                "icon": "text-b",
+                "quiet": false,
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Italic",
+                "hint": "Italic",
+                "icon": "text-italic",
+                "quiet": false,
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Underline",
+                "hint": "Underline",
+                "icon": "text-a-underline",
+                "quiet": false,
+                "disabled": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Strikethrough",
+                "hint": "Strikethrough",
+                "icon": "text-strikethrough",
+                "quiet": false,
+                "toggles": true
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "Text style, separated",
+            "compact": false
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Bold",
+                "hint": "Bold",
+                "icon": "text-b",
+                "quiet": false,
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Italic",
+                "hint": "Italic",
+                "icon": "text-italic",
+                "quiet": false,
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Strikethrough",
+                "hint": "Strikethrough",
+                "icon": "text-strikethrough",
+                "quiet": false,
+                "toggles": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "selects=\"multiple\" \u2014 a group of independent toggles, drawn vertically"
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "Visible panels",
+            "selects": "multiple",
+            "orientation": "vertical"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Problems",
+                "icon": "warning-circle",
+                "quiet": false,
+                "toggles": true,
+                "selected": true
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Problems"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Logic",
+                "icon": "lightning",
+                "quiet": false,
+                "toggles": true
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Logic"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Activity",
+                "icon": "clock-counter-clockwise",
+                "quiet": false,
+                "toggles": true
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Activity"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

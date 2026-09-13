@@ -2,7 +2,7 @@
  * One `mock.module` factory for `services/notify.ts`, for the tests that want to assert on the
  * SENTENCE a module reports rather than on the store it lands in.
  *
- * It spreads the real module and overrides only `notify`, which matters: `panels/statusbar.ts`
+ * It spreads the real module and overrides only `notify`, which matters: `surfaces/statusbar.ts`
  * imports `problems` and `problemCount` from the same module, so a factory that returned four
  * functions and nothing else would break every importer in the graph — the failure mode that made
  * this helper worth writing down once.

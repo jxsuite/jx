@@ -149,6 +149,26 @@ sty-card .inner {
 This cuts both ways. Your page CSS **can** reach into a component and restyle it, which is handy when you want it and the reason a stray global rule can change a component you didn't touch. There is no encapsulation boundary to stop either one.
 :::
 
+**Handlers written at the root listen on the element itself.** An `onclick`, `onkeydown` or `ontoggle` beside `tagName` attaches to the host, with the component's own `state` and the host as `event.currentTarget`. That is where a component's contract belongs: a row's activation or a panel's keyboard handling arrives at the element, not at a wrapper it had to render to hear it.
+
+```json
+{
+  "tagName": "menu-row",
+  "state": {
+    "value": "",
+    "activate": {
+      "$prototype": "Function",
+      "body": [
+        { "stopPropagation": true },
+        { "dispatchEvent": "select", "detail": { "$ref": "#/state/value" }, "bubbles": true }
+      ]
+    }
+  },
+  "onclick": { "$ref": "#/state/activate" },
+  "children": [{ "tagName": "slot" }]
+}
+```
+
 ## Opting into a shadow root
 
 If you want that boundary, ask for it per component:

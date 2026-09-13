@@ -6,6 +6,7 @@ code:
   - packages/studio/src/canvas/edit-width-drag.ts
   - packages/studio/src/settings/contexts-section.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/utils/canvas-media.ts
   - packages/studio/src/utils/inherited-style.ts
   - packages/import/src/breakpoint-plan.ts
@@ -32,10 +33,12 @@ Pick **Base** to edit the styles that apply everywhere; pick a breakpoint to edi
 
 Edit's column has a handle on each side. Drag either one and the page resizes from its centre, to any width you like. That includes the widths _between_ two breakpoints, which is where a responsive layout usually breaks and which the Size buttons can't reach on their own.
 
+The handles are controls, not just grips. Press :kbd[Tab] to reach one and the arrow keys resize the page a step at a time; :kbd[Shift] with an arrow takes a bigger step, and :kbd[Home] and :kbd[End] go to the narrowest and the widest the pane can show.
+
 **The width picks the breakpoint.** Drag past 768px in a project whose Md is `max-width: 768px` and the pane switches to **Md** on its own: the Context control, the [Style tab](/docs/studio/design/style-inspector)'s Target Line, and the block your next style edit lands in all follow the width you're looking at. It is the same single setting either way: choose a size and get a width, or choose a width and get a size.
 
 :::doc-tip
-The drag snaps as it passes a breakpoint's own width, so landing exactly on **Md** takes no precision. Hold :kbd[Alt] while dragging to slide straight past the snaps. Double-click a handle to go back to the width the Size group names.
+The drag snaps as it passes a breakpoint's own width, so landing exactly on **Md** takes no precision, and an arrow step that comes close snaps the same way. Hold :kbd[Alt], while dragging or with an arrow, to slide straight past the snaps. Double-click a handle, or press :kbd[Enter] on it, to go back to the width the Size group names; a second one returns you to where you were.
 :::
 
 A few things worth knowing:

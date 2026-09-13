@@ -147,19 +147,30 @@ function installRegistry() {
 }
 
 function overlay(): HTMLElement | null {
-  return document.querySelector(".quick-search-overlay");
+  return document.querySelector('[part="overlay"]');
 }
 
 function input(): HTMLInputElement {
-  return document.querySelector(".quick-search-input") as HTMLInputElement;
+  return document.querySelector('[part="input"]') as HTMLInputElement;
 }
 
 function items(): HTMLElement[] {
-  return [...document.querySelectorAll(".quick-search-item")] as HTMLElement[];
+  return [...document.querySelectorAll('[part="option"]')] as HTMLElement[];
 }
 
 function names(): (string | undefined)[] {
-  return items().map((el) => el.querySelector(".quick-search-name")?.textContent ?? undefined);
+  return items().map((el) => el.querySelector('[part="label"]')?.textContent ?? undefined);
+}
+
+/**
+ * The row the caret is on, as the kit's listbox sidecar marks it.
+ *
+ * The flag is written a microtask after the id moves — the listbox observes its own `data-active`
+ * and is the single writer of every row's `selected` — so every assertion about the highlight
+ * follows a {@link flush}, while `Enter` and a click still read the index synchronously.
+ */
+function selected(): HTMLElement | null {
+  return document.querySelector('[part="option"][aria-selected="true"]');
 }
 
 function keydown(keyName: string) {
@@ -172,6 +183,14 @@ function keydown(keyName: string) {
 async function type(query: string) {
   const el = input();
   el.value = query;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  await flush();
+}
+
+/** One keystroke: append to what the field already holds, the way a keyboard does. */
+async function press(ch: string) {
+  const el = input();
+  el.value += ch;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   await flush();
 }
@@ -324,7 +343,7 @@ describe("open and close", () => {
   test("a bare open is the files mode — the gesture an empty state's Open a page… offers", async () => {
     openQuickSearch();
     await flush();
-    expect(document.querySelector(".palette-chip")?.textContent?.trim()).toContain("Files");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Files");
   });
 
   test("⌘K opens the mode picker, which enumerates the namespace", async () => {
@@ -339,12 +358,12 @@ describe("open and close", () => {
     await open();
     items()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    expect(document.querySelector(".palette-chip")?.textContent?.trim()).toContain("Commands");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
   });
 
   test("the backdrop closes; a click inside the panel does not", async () => {
     await open();
-    const panel = document.querySelector(".quick-search-panel") as HTMLElement;
+    const panel = document.querySelector('[part="panel"]') as HTMLElement;
     panel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(overlay()).toBeTruthy();
     overlay()!.dispatchEvent(new MouseEvent("click", { bubbles: false }));
@@ -362,7 +381,7 @@ describe("open and close", () => {
 
   test("the footer teaches the palette's own prefixes", async () => {
     await open();
-    expect(document.querySelector(".palette-hint")?.textContent).toContain("modes");
+    expect(document.querySelector('[part="hint"]')?.textContent).toContain("modes");
   });
 });
 
@@ -377,7 +396,7 @@ describe("files mode", () => {
     expect(searches).toEqual([["searchFiles", "", [".md"]]]);
     // A basename substring backend could never have answered "pgblog".
     expect(names()).toEqual(["index.md"]);
-    expect(items()[0]!.querySelector(".quick-search-path")?.textContent).toBe(
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe(
       "/project/pages/blog",
     );
   });
@@ -397,11 +416,9 @@ describe("files mode", () => {
     trackRecentFile({ name: "old.md", path: "/project/posts/old.md", root: PROJECT_ROOT });
     trackRecentFile({ name: "fresh.json", path: "/project/pages/fresh.json", root: PROJECT_ROOT });
     await open("files");
-    expect(document.querySelector(".quick-search-section-label")?.textContent).toBe(
-      "Recently opened",
-    );
+    expect(document.querySelector('[part="group-heading"]')?.textContent).toBe("Recently opened");
     expect(names()).toEqual(["fresh.json", "old.md"]);
-    expect(items()[0]!.querySelector(".quick-search-badge")?.textContent).toBe("recent");
+    expect(items()[0]!.querySelector('[part="badge"]')?.textContent).toBe("recent");
     items()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(openFileInTab).toHaveBeenCalledWith("/project/pages/fresh.json");
   });
@@ -409,17 +426,23 @@ describe("files mode", () => {
   test("file icons follow the extension", async () => {
     await open("files");
     await type("doc-a");
-    expect(items()[0]!.querySelector("sp-icon-file-code")).not.toBeNull();
+    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
+      "file-code",
+    );
     await type("hello");
-    expect(items()[0]!.querySelector("sp-icon-file-txt")).not.toBeNull();
+    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
+      "file-text",
+    );
     await type("blob");
-    expect(items()[0]!.querySelector("sp-icon-document")).not.toBeNull();
+    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
+      "file",
+    );
   });
 
   test("a file at the search root has an empty directory subtitle", async () => {
     await open("files");
     await type("rootfile");
-    expect(items()[0]!.querySelector(".quick-search-path")?.textContent).toBe("");
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe("");
   });
 
   test("a failing backend leaves the mode usable and says No results", async () => {
@@ -431,28 +454,31 @@ describe("files mode", () => {
     await open("files");
     await type("doc");
     expect(items()).toHaveLength(0);
-    expect(document.querySelector(".quick-search-empty")?.textContent).toBe("No results");
+    expect(document.querySelector('[part="empty"]')?.textContent).toBe("No results");
   });
 
   test("mouseenter moves the selection", async () => {
     await open("files");
     await type("doc");
     items()[1]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
-    expect(items()[1]!.classList.contains("selected")).toBe(true);
+    await flush();
+    expect(selected()).toBe(items()[1]!);
   });
 
   test("arrow keys clamp at both ends", async () => {
     await open("files");
     await type("doc");
-    expect(items()[0]!.classList.contains("selected")).toBe(true);
+    expect(selected()).toBe(items()[0]!);
     for (let i = 0; i < 6; i++) {
       keydown("ArrowDown");
     }
-    expect(items().at(-1)!.classList.contains("selected")).toBe(true);
+    await flush();
+    expect(selected()).toBe(items().at(-1)!);
     for (let i = 0; i < 6; i++) {
       keydown("ArrowUp");
     }
-    expect(items()[0]!.classList.contains("selected")).toBe(true);
+    await flush();
+    expect(selected()).toBe(items()[0]!);
   });
 
   test("Enter with no rows is a no-op", async () => {
@@ -472,7 +498,7 @@ describe("command mode", () => {
     await open("commands");
     await type("save");
     expect(names()[0]).toBe("File: Save");
-    expect(items()[0]!.querySelector(".palette-chord")?.textContent).toBe("⌘S");
+    expect(items()[0]!.querySelector('[part="chord"]')?.textContent).toBe("⌘S");
   });
 
   test("an unavailable command is GREYED with its requires sentence, not hidden", async () => {
@@ -480,12 +506,17 @@ describe("command mode", () => {
     await open("commands");
     await type("undo");
     const row = items()[0]!;
-    expect(row.classList.contains("disabled")).toBe(true);
     expect(row.getAttribute("aria-disabled")).toBe("true");
-    expect(row.querySelector(".quick-search-path")?.textContent).toBe("a change to undo");
+    expect(row.querySelector('[part="description"]')?.textContent).toBe("a change to undo");
 
     // Enter on a greyed row does nothing AND leaves the palette open with its reason on screen.
     keydown("Enter");
+    expect(overlay()).toBeTruthy();
+    expect(ran).toEqual([]);
+
+    // Nor does a click: a disabled `jx-option` dispatches no `select` at all, so the refusal is the
+    // Kit's now rather than a second guard on this side of the event.
+    row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(overlay()).toBeTruthy();
     expect(ran).toEqual([]);
   });
@@ -507,11 +538,9 @@ describe("command mode", () => {
 
     // Recents pin above the rest on the next empty-query open.
     await open("commands");
-    expect(document.querySelector(".quick-search-section-label")?.textContent).toBe(
-      "Recently used",
-    );
+    expect(document.querySelector('[part="group-heading"]')?.textContent).toBe("Recently used");
     expect(names()[0]).toBe("View: Zen Mode");
-    expect(items()[0]!.querySelector(".palette-chord")?.textContent).toBe("⌘.");
+    expect(items()[0]!.querySelector('[part="chord"]')?.textContent).toBe("⌘.");
   });
 
   test("a command the palette cannot prompt for is not offered", async () => {
@@ -532,9 +561,9 @@ describe("command mode", () => {
     await type("Palette Theme");
     keydown("Enter");
     await flush();
-    expect(document.querySelector(".palette-chip")?.textContent).toContain("Set Palette Theme");
+    expect(document.querySelector('[part="chip"]')?.textContent).toContain("Set Palette Theme");
     expect(names()).toEqual(["light", "dark"]);
-    expect(items()[0]!.querySelector(".quick-search-path")?.textContent).toBe(
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe(
       "Set Palette Theme → color",
     );
 
@@ -565,7 +594,7 @@ describe("command mode", () => {
     await type("");
     keydown("Backspace");
     await flush();
-    expect(document.querySelector(".palette-chip")).toBeNull();
+    expect(document.querySelector('[part="chip"]')).toBeNull();
     expect(ran).toEqual([]);
   });
 
@@ -589,7 +618,7 @@ describe("command mode", () => {
     setActiveRegistry(null);
     await open("commands");
     expect(items()).toHaveLength(0);
-    expect(document.querySelector(".quick-search-empty")?.textContent).toBe(
+    expect(document.querySelector('[part="empty"]')?.textContent).toBe(
       "Type to find any command in Studio",
     );
     installRegistry();
@@ -604,8 +633,8 @@ describe("command mode", () => {
 
     await open("commands");
     expect(names()[0]).toBe("Project: Open Recent…");
-    expect(items()[0]!.querySelector(".palette-chord")).toBeNull();
-    expect(items()[0]!.querySelector(".quick-search-badge")?.textContent).toBe("recent");
+    expect(items()[0]!.querySelector('[part="chord"]')).toBeNull();
+    expect(items()[0]!.querySelector('[part="badge"]')?.textContent).toBe("recent");
   });
 
   test("an argument step whose registry vanished mid-prompt is inert", async () => {
@@ -635,16 +664,16 @@ describe("the mode chip", () => {
   test("typing a prefix moves it out of the query and into the chip", async () => {
     await open();
     await type(">zen");
-    expect(document.querySelector(".palette-chip")?.textContent?.trim()).toContain("Commands");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
     expect(input().value).toBe("zen");
   });
 
   test("the chip's × drops the mode and returns to the picker", async () => {
     await open("commands");
-    expect(document.querySelector(".palette-chip")).not.toBeNull();
-    (document.querySelector(".palette-chip-remove") as HTMLElement).click();
+    expect(document.querySelector('[part="chip"]')).not.toBeNull();
+    (document.querySelector('[part="chip-remove"] [part="control"]') as HTMLElement).click();
     await flush();
-    expect(document.querySelector(".palette-chip")).toBeNull();
+    expect(document.querySelector('[part="chip"]')).toBeNull();
     expect(names()).toEqual(["Files", "Commands", "Symbols", "Recent Projects"]);
   });
 
@@ -652,7 +681,7 @@ describe("the mode chip", () => {
     await open("nodes");
     keydown("Backspace");
     await flush();
-    expect(document.querySelector(".palette-chip")).toBeNull();
+    expect(document.querySelector('[part="chip"]')).toBeNull();
   });
 
   test("Backspace with text typed deletes text, not the chip", async () => {
@@ -660,12 +689,30 @@ describe("the mode chip", () => {
     await type("ze");
     keydown("Backspace");
     await flush();
-    expect(document.querySelector(".palette-chip")).not.toBeNull();
+    expect(document.querySelector('[part="chip"]')).not.toBeNull();
   });
 
   test("the picker shows no chip", async () => {
     await open();
-    expect(document.querySelector(".palette-chip")).toBeNull();
+    expect(document.querySelector('[part="chip"]')).toBeNull();
+  });
+
+  test("a bare prefix leaves the field empty, not holding the character the chip took", async () => {
+    await open();
+    await press(">");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
+    expect(input().value).toBe("");
+  });
+
+  test("Backspace out of a mode leaves no prefix behind to re-enter it", async () => {
+    await open();
+    await press(">");
+    keydown("Backspace");
+    await flush();
+    expect(document.querySelector('[part="chip"]')).toBeNull();
+    await press("z");
+    expect(input().value).toBe("z");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).not.toContain("Commands");
   });
 });
 
@@ -686,7 +733,9 @@ describe("node mode", () => {
     expect(names()).toContain("h1");
     await type("h1");
     expect(names()[0]).toBe("h1");
-    expect(items()[0]!.querySelector("sp-icon-layers")).not.toBeNull();
+    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
+      "stack",
+    );
 
     keydown("Enter");
     expect(overlay()).toBeNull();
@@ -709,7 +758,7 @@ describe("node mode", () => {
     closeAllTabs();
     await open("nodes");
     expect(items()).toHaveLength(0);
-    expect(document.querySelector(".quick-search-empty")?.textContent).toBe(
+    expect(document.querySelector('[part="empty"]')?.textContent).toBe(
       "Open a document to jump to its elements",
     );
   });
@@ -733,10 +782,12 @@ describe("projects mode", () => {
     const openRecentProject = mock((_root: string) => {});
     initQuickSearch({ openRecentProject });
     await open("projects");
-    expect(document.querySelector(".palette-chip")?.textContent).toContain("Recent Projects");
+    expect(document.querySelector('[part="chip"]')?.textContent).toContain("Recent Projects");
     expect(names()).toEqual(["Alpha", "Beta"]);
-    expect(items()[0]!.querySelector(".quick-search-path")?.textContent?.trim()).toBe("~/alpha");
-    expect(items()[0]!.querySelector("sp-icon-folder-open")).not.toBeNull();
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent?.trim()).toBe("~/alpha");
+    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
+      "folder-open",
+    );
 
     keydown("Enter");
     expect(openRecentProject).toHaveBeenCalledWith("/home/u/alpha");
@@ -751,7 +802,7 @@ describe("projects mode", () => {
     const { state } = installMockPlatform({}, SEED_FILES);
     await open("files");
     await type("beta");
-    expect(document.querySelector(".palette-chip")?.textContent).toContain("Recent Projects");
+    expect(document.querySelector('[part="chip"]')?.textContent).toContain("Recent Projects");
     expect(names()).toEqual(["Beta"]);
     // No backend round trip: there is no project to list files from.
     expect(state.calls.some(([name]) => name === "searchFiles")).toBe(false);
@@ -761,9 +812,7 @@ describe("projects mode", () => {
     setProjectState(null);
     initQuickSearch({ openRecentProject: mock((_root: string) => {}) });
     await open("files");
-    expect(document.querySelector(".quick-search-empty")?.textContent).toContain(
-      "No recent projects",
-    );
+    expect(document.querySelector('[part="empty"]')?.textContent).toContain("No recent projects");
   });
 
   test("selecting a project with no init context is inert rather than a crash", async () => {
@@ -788,7 +837,7 @@ describe("quick search announces its results", () => {
     await type("a");
     expect(items().length).toBeGreaterThan(0);
     const el = input();
-    const list = document.querySelector(".quick-search-results")!;
+    const list = document.querySelector('[part="results"]')!;
 
     expect(el.getAttribute("aria-controls")).toBe(list.id);
     expect(list.id).not.toBe("");
@@ -797,6 +846,73 @@ describe("quick search announces its results", () => {
     const active = el.getAttribute("aria-activedescendant");
     expect(active).not.toBeNull();
     expect(document.querySelector(`#${active}`)?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("the highlight is ONE id: the field, the list and the row all name it", async () => {
+    /*
+     * The duplication this closed. Every row used to carry
+     * `aria-selected="${$map.index === state.selectedIndex ? 'true' : 'false'}"` AND a
+     * `data-selected` beside it, in three palettes, with nothing keeping the pair in agreement.
+     * Now the surface writes one string: `active` reaches the kit's listbox, the same string
+     * reaches the field as `aria-activedescendant`, and the listbox's sidecar is the only thing
+     * that writes a row's flag.
+     */
+    await open("commands");
+    await type("a");
+    keydown("ArrowDown");
+    await flush();
+
+    const list = document.querySelector('[part="results"]') as HTMLElement;
+    const active = input().getAttribute("aria-activedescendant");
+
+    expect(active).toBe("quick-search-option-1");
+    expect(list.dataset.active).toBe(active!);
+    expect(list.getAttribute("aria-label")).toBe("Results");
+    expect(selected()!.id).toBe(active!);
+    expect(document.querySelectorAll("[data-selected]")).toHaveLength(0);
+  });
+
+  test("a key moves the caret without re-ranking the rows", async () => {
+    /*
+     * The property `rows` and `activeId` are separate fields FOR, and the one thing about this
+     * surface a kit element could have taken away. `commandRows` asks the registry for its visible
+     * records once per projection, so counting that counts projections — and an arrow key must
+     * cost none. Typing does, which is what proves the counter is wired to anything.
+     */
+    const registry = installRegistry();
+    let projections = 0;
+    const visible = registry.visible.bind(registry);
+    registry.visible = () => {
+      projections += 1;
+      return visible();
+    };
+
+    await open("commands");
+    const projected = projections;
+    expect(projected).toBeGreaterThan(0);
+
+    keydown("ArrowDown");
+    keydown("ArrowDown");
+    await flush();
+    expect(projections).toBe(projected);
+    expect(selected()!.id).toBe("quick-search-option-2");
+
+    await type("save");
+    expect(projections).toBeGreaterThan(projected);
+  });
+
+  test("with nothing to show, the field points at no row at all", async () => {
+    await open("commands");
+    await type("zzzzz-no-such-command-zzzzz");
+    expect(input().hasAttribute("aria-activedescendant")).toBe(false);
+    expect((document.querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
+
+    // And an arrow key over nothing moves nothing: clamping an empty list lands on index 0, which
+    // Would name a row that is not there now that the id IS the highlight.
+    keydown("ArrowDown");
+    await flush();
+    expect(input().hasAttribute("aria-activedescendant")).toBe(false);
+    expect((document.querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
   });
 
   test("aria-expanded is honest about whether a popup is showing", async () => {

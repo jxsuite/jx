@@ -30,21 +30,21 @@
  * find-replace in those two call sites.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { classMap } from "lit-html/directives/class-map.js";
-import { live } from "lit-html/directives/live.js";
-import { ref } from "lit-html/directives/ref.js";
 import { getPlatform } from "../platform";
 import { flattenTree, nodeLabel, projectState } from "../store";
 import { documentExtensions, formatByExtension, loadFormats } from "../format/format-host";
 import { openFileInTab } from "../files/files";
 import { getRecentFiles, getRecentProjects, trackRecentFile } from "../recent-projects";
 import { getLayerSlot } from "../ui/layers";
+import { mountSurface, registerSurface } from "../ui/surface";
+import { reactive } from "../reactivity";
+import paletteDoc from "../surfaces/palette.json";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
 import type { PaletteMode } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
+import type { SurfaceHandle } from "../ui/surface";
 import type { JxPath } from "../state";
 
 export type { PaletteMode } from "../commands/defaults";
@@ -283,9 +283,15 @@ export function paletteArgs(command: AnyCommand): PaletteArgs {
  * the literal string `"true"`, which claims a popup is showing even when the query matched
  * nothing.
  */
-const QUICK_SEARCH_LISTBOX_ID = "quick-search-listbox";
 
-/** A stable per-row id, so `aria-activedescendant` has something to point at. */
+/**
+ * A stable per-row id — the ONE string the highlight is, written once.
+ *
+ * The field points `aria-activedescendant` at it and the `jx-listbox` is handed the same string as
+ * `active`; the listbox's sidecar is what turns it into the row's `selected`. The document spells
+ * the same id on each row, which is what makes the reference resolve without either side reading
+ * the other.
+ */
 function optionId(index: number): string {
   return `quick-search-option-${index}`;
 }
@@ -409,6 +415,7 @@ export function openQuickSearch(mode: PaletteMode = "files") {
   _pending = null;
   _files = null;
   renderOverlay();
+  focusInput();
   void ensureFiles();
 }
 
@@ -617,8 +624,7 @@ function currentRows(): { rows: PaletteRow[]; showingRecent: boolean } {
 
 // ─── Interaction ──────────────────────────────────────────────────────────────
 
-function onInput(e: Event) {
-  const raw = (e.target as HTMLInputElement).value;
+function onInput(raw: string) {
   const prefixed = PREFIXED_MODES.find((spec) => raw.startsWith(spec.prefix));
   if (prefixed) {
     // The prefix moves OUT of the input and into the chip, so the query the user reads back is the
@@ -629,6 +635,15 @@ function onInput(e: Event) {
     _query = raw;
   }
   _selectedIndex = 0;
+  if (raw !== _query) {
+    // The field and the query have PARTED: the prefix moved to the chip, and `_query` may be
+    // Exactly what it already was — typing `>` into an empty field leaves both "". A binding only
+    // Re-runs when what it reads CHANGES, so nothing would rewrite the field, it would keep the
+    // `>` the state discarded, and the next keystroke would be parsed as a prefixed one all over
+    // Again. Announcing the raw text first makes the projection below a change the binding can
+    // See; the runtime skips a write equal to the live element, so the field still lands in one.
+    scope().query = raw;
+  }
   renderOverlay();
   void ensureFiles();
 }
@@ -639,48 +654,6 @@ function clearMode() {
   _pending = null;
   _selectedIndex = 0;
   renderOverlay();
-}
-
-function onKeydown(e: KeyboardEvent) {
-  const { rows } = currentRows();
-  switch (e.key) {
-    case "ArrowDown": {
-      e.preventDefault();
-      _selectedIndex = Math.min(_selectedIndex + 1, rows.length - 1);
-      renderOverlay();
-      break;
-    }
-    case "ArrowUp": {
-      e.preventDefault();
-      _selectedIndex = Math.max(_selectedIndex - 1, 0);
-      renderOverlay();
-      break;
-    }
-    case "Enter": {
-      e.preventDefault();
-      if (rows[_selectedIndex]) {
-        selectRow(rows[_selectedIndex]!);
-      }
-      break;
-    }
-    case "Backspace": {
-      // At position zero the chip is the thing to the left of the caret, so this is the same
-      // Gesture as deleting a character — and it is why the chip is removable at all.
-      if (_query === "" && (_pending || _requested !== "picker")) {
-        e.preventDefault();
-        clearMode();
-      }
-      break;
-    }
-    case "Escape": {
-      e.preventDefault();
-      closeQuickSearch();
-      break;
-    }
-    default: {
-      break;
-    }
-  }
 }
 
 function enterMode(mode: PaletteMode) {
@@ -765,74 +738,73 @@ function selectCommandRow(row: CommandRow) {
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
-function fileIcon(name: string) {
+/** The kit glyph a file row draws, by extension. */
+function fileIcon(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
   if (ext === "json") {
-    return html`<sp-icon-file-code size="s"></sp-icon-file-code>`;
+    return "file-code";
   }
   if (ext && formatByExtension(ext)) {
-    return html`<sp-icon-file-txt size="s"></sp-icon-file-txt>`;
+    return "file-text";
   }
-  return html`<sp-icon-document size="s"></sp-icon-document>`;
+  return "file";
 }
 
-function rowIcon(row: PaletteRow) {
+function rowIcon(row: PaletteRow): string {
   switch (row.kind) {
     case "project": {
-      return html`<sp-icon-folder-open size="s"></sp-icon-folder-open>`;
+      return "folder-open";
     }
     case "file": {
       return fileIcon(row.name);
     }
     case "command": {
-      return html`<sp-icon-play size="s"></sp-icon-play>`;
+      return "play";
     }
     case "node": {
-      return html`<sp-icon-layers size="s"></sp-icon-layers>`;
+      return "stack";
     }
     default: {
-      return html`<sp-icon-chevron-right size="s"></sp-icon-chevron-right>`;
+      return "caret-right";
     }
   }
 }
 
-/** The right-aligned cell: a chord, a prefix, or the recent badge. */
-function rowTrailing(row: PaletteRow, showingRecent: boolean) {
-  if (row.kind === "command" && row.chord) {
-    return html`<kbd class="palette-chord">${row.chord}</kbd>`;
-  }
-  if (row.kind === "mode" && row.chord) {
-    return html`<kbd class="palette-chord">${row.chord}</kbd>`;
+/** What a row prints at its right edge: its chord, a recent badge, or nothing. */
+function rowTrailing(row: PaletteRow, showingRecent: boolean): "chord" | "recent" | "none" {
+  if ((row.kind === "command" || row.kind === "mode") && row.chord) {
+    return "chord";
   }
   if (row.kind === "command" && row.recent) {
-    return html`<span class="quick-search-badge">recent</span>`;
+    return "recent";
   }
-  return showingRecent ? html`<span class="quick-search-badge">recent</span>` : nothing;
+  return showingRecent ? "recent" : "none";
 }
 
-/** The chip echoing the active mode (or the command awaiting an argument), with its remove button. */
-function chipTemplate(mode: PaletteMode) {
-  const label = _pending ? _pending.command.title : modeSpec(mode).chip;
-  if (!_pending && mode === "picker") {
-    return nothing;
+/** A row's identity across renders, so the keyed list keeps its nodes while the ranking moves. */
+function rowKey(row: PaletteRow): string {
+  switch (row.kind) {
+    case "project": {
+      return `project:${row.root}`;
+    }
+    case "file": {
+      return `file:${row.path}`;
+    }
+    case "command": {
+      return `command:${row.id}`;
+    }
+    case "node": {
+      return `node:${row.path.join("/")}`;
+    }
+    case "mode": {
+      return `mode:${row.mode}`;
+    }
+    default: {
+      return `arg:${row.value}`;
+    }
   }
-  return html`
-    <span class="palette-chip">
-      ${label}
-      <button
-        class="palette-chip-remove"
-        type="button"
-        title="Clear mode (Backspace)"
-        aria-label="Clear mode"
-        @click=${clearMode}
-      >
-        ×
-      </button>
-    </span>
-  `;
 }
 
-/** The sentence an empty result set shows. Never a noun phrase (§2 principle 6). */
 function emptyHint(mode: PaletteMode, query: string): string {
   if (_loading) {
     return "Reading the project's files…";
@@ -856,94 +828,167 @@ function emptyHint(mode: PaletteMode, query: string): string {
   }
 }
 
+/** One row, as `surfaces/palette.json` draws it. */
+export interface PaletteRowProjection {
+  key: string;
+  kind: PaletteRow["kind"];
+  name: string;
+  detail: string;
+  icon: string;
+  disabled: boolean;
+  trailing: "chord" | "recent" | "none";
+  chord: string;
+}
+
+interface PaletteScope extends Record<string, unknown> {
+  open: boolean;
+  hasChip: boolean;
+  chipLabel: string;
+  placeholder: string;
+  query: string;
+  expanded: boolean;
+  /**
+   * The highlighted row's element id — the field's `aria-activedescendant` AND the listbox's
+   * `active`, which is the one string this surface writes to move the caret. `""` when there is no
+   * row to put it on.
+   */
+  activeId: string;
+  rows: PaletteRowProjection[];
+  isEmpty: boolean;
+  emptyHint: string;
+  showSection: boolean;
+  sectionLabel: string;
+  canClearMode: boolean;
+  close: () => void;
+  input: (value: string) => void;
+  move: (delta: number) => void;
+  activate: () => void;
+  clearMode: () => void;
+  hover: (index: number) => void;
+  activateRow: (value: unknown) => void;
+}
+
+registerSurface("palette", paletteDoc as unknown as JxDocument);
+
+let _scope: PaletteScope | null = null;
+let _mount: Promise<SurfaceHandle> | null = null;
+/** The rows as last projected, so a key or a click addresses the row the reader sees. */
+let _rows: PaletteRow[] = [];
+
+/** The document's scope: what it draws, and the six things a gesture can ask for. */
+function scope(): PaletteScope {
+  _scope ??= reactive<PaletteScope>({
+    activate: () => {
+      const row = _rows[_selectedIndex];
+      if (row) {
+        selectRow(row);
+      }
+    },
+    activateRow: (value) => {
+      /* The row's own `select` carries its `value`, which is the index the document spelled — a
+         string, because an attribute is what a row's value is. */
+      const row = _rows[Number(value)];
+      if (row) {
+        selectRow(row);
+      }
+    },
+    activeId: "",
+    canClearMode: false,
+    chipLabel: "",
+    clearMode,
+    close: closeQuickSearch,
+    emptyHint: "",
+    expanded: false,
+    hasChip: false,
+    hover: (index) => {
+      _selectedIndex = index;
+      scope().activeId = optionId(index);
+    },
+    input: onInput,
+    isEmpty: true,
+    move: (delta) => {
+      /* ONE field, and the rows are not among the things it touches: the listbox is handed the id
+         and its sidecar moves every row's `selected`. Arrow keys CLAMP rather than wrap — the kit's
+         combobox wraps, and this list is a ranking whose first row is the answer, so falling off
+         the bottom onto it would undo the search. */
+      if (_rows.length === 0) {
+        /* Nothing to move through, nothing to name. Clamping an empty list lands on index 0, and
+           now that the id IS the highlight that would point the field at a row which is not
+           there. */
+        return;
+      }
+      _selectedIndex = Math.max(0, Math.min(_selectedIndex + delta, _rows.length - 1));
+      scope().activeId = optionId(_selectedIndex);
+    },
+    open: false,
+    placeholder: "",
+    query: "",
+    rows: [],
+    sectionLabel: "",
+    showSection: false,
+  }) as PaletteScope;
+  return _scope;
+}
+
+/** Focus the field once the document has drawn it: a turn later than the open, never sooner. */
+function focusInput(): void {
+  setTimeout(() => {
+    if (_open) {
+      getContainer().querySelector<HTMLInputElement>('[part="input"]')?.focus();
+    }
+  }, 0);
+}
+
+/**
+ * Project the palette's state onto the document's scope.
+ *
+ * The rows and the highlight are separate fields on purpose: a key moves `activeId` and nothing
+ * else, while `rows` changes only when the query or the mode does and the keyed list reconciles.
+ * The kit's `jx-listbox` is handed that one id as `active` and its sidecar is the single writer of
+ * every `jx-option`'s `selected` — so the highlight costs one attribute write on the list rather
+ * than a per-row comparison, and the row a reader hears is the row the field named.
+ */
 function renderOverlay() {
-  const container = getContainer();
+  const state = scope();
+  if (!_mount) {
+    _mount = mountSurface("palette", state, getContainer());
+  }
+  state.open = _open;
   if (!_open) {
-    litRender(nothing, container);
+    _rows = [];
     return;
   }
-
   const { mode, query } = current();
   const { rows, showingRecent } = currentRows();
   const spec = modeSpec(mode);
-  const placeholder = _pending ? `Choose a ${_pending.name}…` : spec.placeholder;
-  const sectionLabel = _pending
+  _rows = rows;
+  state.placeholder = _pending ? `Choose a ${_pending.name}…` : spec.placeholder;
+  state.hasChip = _pending !== null || mode !== "picker";
+  state.chipLabel = _pending ? _pending.command.title : spec.chip;
+  state.query = _query;
+  state.canClearMode = _query === "" && (_pending !== null || _requested !== "picker");
+  state.rows = rows.map((row) => ({
+    chord: (row.kind === "command" || row.kind === "mode") && row.chord ? row.chord : "",
+    detail: row.detail,
+    disabled: row.kind === "command" && !row.enabled,
+    icon: rowIcon(row),
+    key: rowKey(row),
+    kind: row.kind,
+    name: row.name,
+    trailing: rowTrailing(row, showingRecent),
+  }));
+  state.expanded = rows.length > 0;
+  /* No rows, no active descendant: an id pointing at a row that is not there is a field claiming a
+     highlight a reader would never find. */
+  state.activeId = rows.length > 0 ? optionId(_selectedIndex) : "";
+  state.isEmpty = rows.length === 0;
+  state.emptyHint = emptyHint(mode, query);
+  state.showSection = showingRecent && rows.length > 0;
+  state.sectionLabel = _pending
     ? `${_pending.command.title} — ${_pending.name}`
     : mode === "projects"
       ? "Recent projects"
       : mode === "commands"
         ? "Recently used"
         : "Recently opened";
-
-  const tpl = html`
-    <div class="quick-search-overlay" @click=${closeQuickSearch}>
-      <div class="quick-search-panel" @click=${(e: Event) => e.stopPropagation()}>
-        <div class="palette-input-row">
-          ${chipTemplate(mode)}
-          <input
-            class="quick-search-input"
-            type="text"
-            role="combobox"
-            aria-controls=${QUICK_SEARCH_LISTBOX_ID}
-            aria-expanded=${rows.length > 0}
-            aria-activedescendant=${rows.length > 0 ? optionId(_selectedIndex) : nothing}
-            aria-autocomplete="list"
-            aria-label=${placeholder}
-            placeholder=${placeholder}
-            .value=${live(_query)}
-            @input=${onInput}
-            @keydown=${onKeydown}
-            ${ref((el) => {
-              if (el) {
-                requestAnimationFrame(() => (el as HTMLInputElement).focus());
-              }
-            })}
-          />
-        </div>
-        <div class="quick-search-results" role="listbox" id=${QUICK_SEARCH_LISTBOX_ID}>
-          ${
-            rows.length === 0
-              ? html`<div class="quick-search-empty">${emptyHint(mode, query)}</div>`
-              : nothing
-          }
-          ${
-            showingRecent && rows.length > 0
-              ? html`<div class="quick-search-section-label">${sectionLabel}</div>`
-              : nothing
-          }
-          ${rows.map(
-            (row, i) => html`
-              <div
-                class=${classMap({
-                  "quick-search-item": true,
-                  disabled: row.kind === "command" && !row.enabled,
-                  selected: i === _selectedIndex,
-                })}
-                role="option"
-                id=${optionId(i)}
-                aria-selected=${i === _selectedIndex}
-                aria-disabled=${row.kind === "command" && !row.enabled}
-                @click=${() => selectRow(row)}
-                @mouseenter=${() => {
-                  _selectedIndex = i;
-                  renderOverlay();
-                }}
-              >
-                <span class="quick-search-icon">${rowIcon(row)}</span>
-                <span class="quick-search-name">${row.name}</span>
-                <span class="quick-search-path">${row.detail}</span>
-                ${rowTrailing(row, showingRecent)}
-              </div>
-            `,
-          )}
-        </div>
-        <div class="palette-hint">
-          <kbd>↑↓</kbd> move · <kbd>↵</kbd> run · <kbd>?</kbd> modes · <kbd>&gt;</kbd> commands ·
-          <kbd>@</kbd> elements
-        </div>
-      </div>
-    </div>
-  `;
-
-  litRender(tpl, container);
 }

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookButton",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-spinner.json"
+    },
+    {
+      "$ref": "../components/jx-button.json"
+    }
+  ],
+  "state": {
+    "variants": ["accent", "primary", "secondary", "negative"],
+    "clicks": 0,
+    "count": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "+=",
+          "target": {
+            "$ref": "#/state/clicks"
+          },
+          "value": 1
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "80px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-button"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Every variant in every state. The accent is spent once per surface; secondary is the default. Clicked ${state.clicks} times."
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/variants"
+      },
+      "key": {
+        "$ref": "$map/item"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "role": "group",
+          "aria-label": "${$map.item} buttons"
+        },
+        "children": [
+          {
+            "tagName": "span",
+            "textContent": "${$map.item}"
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              }
+            },
+            "onclick": {
+              "$ref": "#/state/count"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "Label"
+              }
+            ]
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              }
+            },
+            "children": [
+              {
+                "tagName": "jx-icon",
+                "attributes": {
+                  "slot": "icon"
+                },
+                "$props": {
+                  "name": "plus"
+                }
+              },
+              {
+                "tagName": "span",
+                "textContent": "With icon"
+              }
+            ]
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              },
+              "quiet": true
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "Quiet"
+              }
+            ]
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              },
+              "disabled": true
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "Disabled"
+              }
+            ]
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              },
+              "loading": true
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "Loading"
+              }
+            ]
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              },
+              "size": "sm"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "Small"
+              }
+            ]
+          },
+          {
+            "tagName": "jx-button",
+            "$props": {
+              "variant": {
+                "$ref": "$map/item"
+              },
+              "size": "lg"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "Large"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

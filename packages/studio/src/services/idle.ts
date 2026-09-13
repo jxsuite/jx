@@ -12,22 +12,29 @@
  * in-flight (gitStatus)"]` — so the slow subsystem identifies itself.
  *
  * Nothing here polls a subsystem it does not own. Each source is a function the owning module
- * already had to write for its own reasons:
+ * already had to write for its own reasons.
+ *
+ * There WAS a seventh, `panel-scheduler.pendingSchedulers()`, and it went with the scheduler. It
+ * reported a panel with an animation frame queued or a render withheld while a field had focus —
+ * both facts about a lit dock repainting itself. The Navigator and the Inspector are documents now
+ * (`surfaces/navigator-dock.json`, `surfaces/inspector-dock.json`): a projection is written
+ * synchronously and a binding whose value did not move writes nothing, so there is no queued frame
+ * to be outstanding and no withheld render to wait for. The panel bodies that ARE still lit are
+ * painted synchronously from the same call.
  *
  * 1. `store.rendersInFlight()` — renderers mid-paint.
- * 2. `panel-scheduler.pendingSchedulers()` — panels with a frame queued or a render withheld.
- * 3. `iframe-host.canvasIdleBlockers()` — per host: unacked generations and patches, plus the frame's
+ * 2. `iframe-host.canvasIdleBlockers()` — per host: unacked generations and patches, plus the frame's
  *    own cross-realm report of fonts, running animations and pending image retries.
- * 4. `platform.platformInFlight()` — unsettled PAL calls, counted at the one seam every adapter and
+ * 3. `platform.platformInFlight()` — unsettled PAL calls, counted at the one seam every adapter and
  *    all thirty-odd `git*`/fs/fetch methods pass through.
- * 5. `layers.overlayIdleBlockers()` — overlays still in transition. Only the SETTLING window counts: a
+ * 4. `layers.overlayIdleBlockers()` — overlays still in transition. Only the SETTLING window counts: a
  *    resting toast is not a blocker, which is what lets `toastsAreHeld()` hold one open for a
  *    capture without `probeIdle()` waiting forever alongside it (plan §13.7's named exception).
- * 6. `activity-panel.activityIdleBlockers()` — operations still RUNNING in the Activity tab. Not a
+ * 5. `activity-panel.activityIdleBlockers()` — operations still RUNNING in the Activity tab. Not a
  *    duplicate of `platform`: an activity spans a whole operation (an install, a deploy, a clone)
  *    across many PAL calls, so the gaps between them look quiet at the seam while the operation is
  *    plainly mid-flight. A finished entry never blocks — the list stays on screen forever.
- * 7. `grid-idle.gridIdleBlockers()` — tables still building, or built but not yet showing the
+ * 6. `grid-idle.gridIdleBlockers()` — tables still building, or built but not yet showing the
  *    selection range `selectableRange: 1` gives them. Nothing else covered Tabulator: a grid
  *    command resolves when the panel mounts, which is several frames before the table is drawn.
  *
@@ -37,7 +44,6 @@
 
 import { rendersInFlight } from "../store";
 import { activityIdleBlockers } from "../panels/activity-panel";
-import { pendingSchedulers } from "../panels/panel-scheduler";
 import { canvasIdleBlockers } from "../canvas/iframe-host";
 import { platformInFlight } from "../platform";
 import { overlayIdleBlockers } from "../ui/layers";
@@ -45,7 +51,7 @@ import { gridIdleBlockers } from "../grid/grid-idle";
 
 /** One subsystem that can be outstanding, and its account of why. */
 export interface IdleSource {
-  /** Stable name — `render`, `panels`, `canvas`, `platform`, `overlay`. */
+  /** Stable name — `render`, `canvas`, `platform`, `overlay`. */
   readonly name: string;
   /** Empty when quiet; otherwise one human-readable line per outstanding item. */
   blockers: () => readonly string[];
@@ -73,7 +79,7 @@ export class NotIdleError extends Error {
 }
 
 /**
- * The seven live sources.
+ * The six live sources.
  *
  * Built per call rather than held in a module constant so a test can substitute one without
  * unpicking the others, and so a second window's hosts are never read through the first window's
@@ -87,10 +93,6 @@ export function defaultIdleSources(): IdleSource[] {
         return count > 0 ? [`render: ${count} renderer(s) mid-paint`] : [];
       },
       name: "render",
-    },
-    {
-      blockers: () => pendingSchedulers().map((panel) => `panels: ${panel}`),
-      name: "panels",
     },
     { blockers: canvasIdleBlockers, name: "canvas" },
     {

@@ -16,13 +16,13 @@ import {
   mountOverlayLayers,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { html, nothing, render } from "lit-html";
+import { nothing } from "lit-html";
 import { notifyModule } from "./notify-mock";
 import { createMockCollabHub, settleCollab, waitForCollab } from "./collab-mock";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { keyScopeStack, makeContext } from "../src/commands/context";
 import { persistedSession } from "../src/shell";
-import { renderForm } from "../src/ui/schema-form";
+import { mountSchemaForm, resetSchemaForms } from "../src/ui/schema-form";
 import { invalidateReferenceEntries } from "../src/ui/form-controls";
 import { seedPublishConnected } from "../src/publish/publish-panel";
 import { initLayers } from "../src/ui/layers";
@@ -96,27 +96,37 @@ const AUTHOR_CONFIG = {
   },
 };
 
-function mountReference(container: HTMLElement): void {
-  const redraw = () => {
-    render(
-      html`${renderForm(
-        { properties: { author: { $ref: "#/content/authors" } } },
-        { author: "" },
-        {
-          onChange: () => {
-            /* Not committed here */
-          },
-          rerender: () => redraw(),
+/**
+ * Draw one reference field into `container`.
+ *
+ * The schema form is a document now, and so is the control it dispatches to
+ * (`surfaces/reference-field.json`), so what the engine hands back is the element the form lives in
+ * rather than a template: the container is ATTACHED (a kit element renders on connect) and the host
+ * is placed in it. Re-mounting under the same key is what the control's own `rerender` hook does.
+ */
+function mountReference(container: HTMLElement, key: string): void {
+  document.body.append(container);
+  const draw = () =>
+    mountSchemaForm(
+      key,
+      { properties: { author: { $ref: "#/content/authors" } } },
+      { author: "" },
+      {
+        onChange: () => {
+          /* Not committed here */
         },
-      )}`,
-      container,
+        rerender: () => {
+          draw();
+        },
+      },
     );
-  };
-  redraw();
+  container.append(draw());
 }
 
 function optionsIn(container: HTMLElement): (string | null)[] {
-  return [...container.querySelectorAll("sp-menu-item")].map((item) => item.textContent);
+  return [...container.querySelectorAll('[part="picker"] option [part="text"]')].map(
+    (text) => text.textContent,
+  );
 }
 
 function directoryReads(state: MockPlatformState): unknown[] {
@@ -146,18 +156,23 @@ describe("the reference control reads a collection once", () => {
     resetStudioState({ projectConfig: AUTHOR_CONFIG });
     invalidateReferenceEntries();
 
-    // Both mounts happen in the same tick: the cache holds an UNSETTLED promise, which is the only
-    // Moment the in-flight branch is reachable (a settled collection renders straight from
-    // `entryIdResult` and never asks again).
+    /* Both mounts happen in the same tick: the cache holds an UNSETTLED promise, which is the only
+       moment the in-flight branch is reachable (a settled collection renders straight from
+       `entryIdResult` and never asks again). Both fields must still END UP with the entries — one
+       READ is the guard, not one waiter, and the second control redraws itself when it lands. */
+    resetSchemaForms();
     const first = document.createElement("div");
     const second = document.createElement("div");
-    mountReference(first);
-    mountReference(second);
-    await waitFor(() => optionsIn(first).length > 0);
+    mountReference(first, "ref-first");
+    mountReference(second, "ref-second");
+    await waitFor(() => optionsIn(first).length > 0 && optionsIn(second).length > 0);
 
     expect(directoryReads(state)).toEqual(["content/authors"]);
     expect(optionsIn(first)).toEqual(["—", "ada", "grace"]);
     expect(optionsIn(second)).toEqual(["—", "ada", "grace"]);
+    resetSchemaForms();
+    first.remove();
+    second.remove();
   });
 });
 
@@ -165,17 +180,15 @@ describe("the reference control reads a collection once", () => {
 
 function publishBodyText(): string {
   return (
-    document.querySelector("#layer-modal .publish-modal")?.textContent?.replaceAll(/\s+/g, " ") ??
-    ""
+    document
+      .querySelector('#layer-modal jx-dialog[part="publish"]')
+      ?.textContent?.replaceAll(/\s+/g, " ") ?? ""
   );
 }
 
-function publishButton(label: string): HTMLElement | null {
-  return (
-    [...document.querySelectorAll<HTMLElement>("#layer-modal sp-button")].find((button) =>
-      button.textContent?.includes(label),
-    ) ?? null
-  );
+/** A control on the publish surface, by the `part` it carries — the panel is a document now. */
+function publishButton(part: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`#layer-modal [part="${part}"]`);
 }
 
 describe("the publish panel's Refresh button", () => {
@@ -212,7 +225,7 @@ describe("the publish panel's Refresh button", () => {
     expect(publishBodyText()).toContain("Connected to Pages project");
     expect(cfConnection).not.toHaveBeenCalled();
 
-    pointer(publishButton("Refresh")!, "click");
+    pointer(publishButton("refresh")!, "click");
     await flush();
 
     expect(cfConnection).toHaveBeenCalledTimes(1);
@@ -374,7 +387,7 @@ describe("the bootstrap's saveDocument hook", () => {
         registerCompletionItemProvider: mock(() => ({ dispose: noop })),
       },
     }));
-    void mock.module("../src/panels/statusbar.ts", () => ({
+    void mock.module("../src/surfaces/statusbar.ts", () => ({
       forgetSavedTimes: mock(() => {}),
       mountStatusbar: mock(() => {}),
       noteDocumentSaved: mock(() => {}),
@@ -382,12 +395,12 @@ describe("the bootstrap's saveDocument hook", () => {
       unmountStatusbar: mock(() => {}),
     }));
     void mock.module("../src/services/notify.ts", () => notifyModule(() => {}));
-    void mock.module("../src/panels/toolbar.ts", () => ({
+    void mock.module("../src/surfaces/commandbar.ts", () => ({
       mount: mock(() => {}),
       render: mock(() => {}),
       unmount: mock(() => {}),
     }));
-    void mock.module("../src/panels/welcome-screen.ts", () => ({
+    void mock.module("../src/surfaces/welcome.ts", () => ({
       initWelcome: mock(() => {}),
       renderWelcome: mock(() => {}),
     }));
@@ -415,6 +428,7 @@ describe("the bootstrap's saveDocument hook", () => {
     void mock.module("../src/canvas/canvas-render.ts", () => ({
       handOverCanvasStage: mock(() => {}),
       initCanvasRender: mock(() => {}),
+      redefineElementOnCanvases: mock(() => 0),
       registerSelectionSetCommand: mock(() => {}),
       renderCanvas: mock(() => {}),
       renderOverlays: mock(() => {}),

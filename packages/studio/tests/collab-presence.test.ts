@@ -1,14 +1,9 @@
-import { installMockPlatform, renderInto } from "./harness";
-import type { TemplateResult } from "lit-html";
+import { installMockPlatform } from "./harness";
 import { createMockCollabHub, settleCollab } from "./collab-mock";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { resetCollabForTests } from "../src/collab/collab-session";
 import { collabState } from "../src/collab/collab-state";
-import {
-  presenceChipsTemplate,
-  readOnlyBannerTemplate,
-  statusTitle,
-} from "../src/collab/presence-chips";
+import { presenceProjection, statusTitle } from "../src/collab/presence-chips";
 import { createOverlayLayer } from "../src/canvas/iframe-overlay";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -22,15 +17,14 @@ afterEach(() => {
 });
 
 describe("presence chips", () => {
-  test("render nothing while the platform offers no collaboration at all", async () => {
+  test("project nothing while the platform offers no collaboration at all", () => {
     installMockPlatform();
     const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
-    const el = document.createElement("div");
-    await renderInto(presenceChipsTemplate(tab) as TemplateResult, el);
-    expect(el.querySelector(".jx-presence")).toBeNull();
+    expect(presenceProjection(tab)).toBeNull();
+    expect(presenceProjection(null)).toBeNull();
   });
 
-  test("show the sync status and one colored chip per peer", async () => {
+  test("project the sync status and one colored chip per peer", () => {
     installMockPlatform();
     const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
     const state = collabState(tab);
@@ -54,26 +48,29 @@ describe("presence chips", () => {
         },
       },
     ];
-    const el = document.createElement("div");
-    await renderInto(presenceChipsTemplate(tab) as TemplateResult, el);
-    expect(el.querySelector(".jx-presence-status")?.textContent).toBe("Live");
-    const chips = [...el.querySelectorAll(".jx-presence-chip")];
-    expect(chips).toHaveLength(2);
-    expect(chips[0]?.getAttribute("title")).toContain("Octo Cat");
-    expect(chips[0]?.textContent?.trim()).toBe("O");
+    const projected = presenceProjection(tab)!;
+    expect(projected.label).toBe("Live");
+    expect(projected.status).toBe("synced");
+    expect(projected.title).toContain("Undo only takes back your own edits");
+    expect(projected.peers).toHaveLength(2);
+    expect(projected.peers[0]).toMatchObject({
+      color: "#e5484d",
+      hasAvatar: false,
+      initial: "O",
+      key: 1,
+    });
+    expect(projected.peers[0]?.title).toContain("Octo Cat");
     // A peer focused elsewhere names the file it is in.
-    expect(chips[1]?.getAttribute("title")).toContain("pages/other.json");
+    expect(projected.peers[1]?.title).toContain("pages/other.json");
   });
 
-  test("offline status surfaces in the pill", async () => {
+  test("offline status is projected as itself", () => {
     installMockPlatform();
     const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
     const state = collabState(tab);
     state.status = "offline";
-    const el = document.createElement("div");
-    await renderInto(presenceChipsTemplate(tab) as TemplateResult, el);
-    const pill = el.querySelector<HTMLElement>(".jx-presence-status");
-    expect(pill?.dataset["status"]).toBe("offline");
+    expect(presenceProjection(tab)?.status).toBe("offline");
+    expect(presenceProjection(tab)?.label).toBe("Offline — changes sync on reconnect");
   });
 });
 
@@ -135,38 +132,30 @@ describe("selection publishing", () => {
    was a three-second grey line, which is exactly what a bug looks like. */
 
 describe("collab honesty", () => {
-  async function chips(patch: Record<string, unknown>): Promise<HTMLElement> {
+  function chips(patch: Record<string, unknown>) {
     installMockPlatform();
     const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
     Object.assign(collabState(tab), patch);
-    const el = document.createElement("div");
-    await renderInto(presenceChipsTemplate(tab) as TemplateResult, el);
-    return el;
+    return presenceProjection(tab)!;
   }
 
-  test("solo says Solo — it is not the same word as broken", async () => {
-    const el = await chips({ active: false, status: "detached" });
-    expect(el.querySelector(".jx-presence-status")?.textContent?.trim()).toBe("Solo");
+  test("solo says Solo — it is not the same word as broken", () => {
+    expect(chips({ active: false, status: "detached" }).label).toBe("Solo");
   });
 
-  test("a failed attach says so, and carries the reason", async () => {
-    const el = await chips({ attachError: "relay unreachable", status: "failed" });
-    const pill = el.querySelector(".jx-presence-status")!;
-    expect(pill.textContent?.trim()).toBe("Not connected");
-    expect((pill as HTMLElement).dataset.status).toBe("failed");
-    expect(el.querySelector(".jx-presence")?.getAttribute("title")).toContain("relay unreachable");
+  test("a failed attach says so, and carries the reason", () => {
+    const projected = chips({ attachError: "relay unreachable", status: "failed" });
+    expect(projected.label).toBe("Not connected");
+    expect(projected.status).toBe("failed");
+    expect(projected.title).toContain("relay unreachable");
   });
 
-  test("the source-canonical freeze gets a standing indicator that denies being an error", async () => {
-    const el = await chips({ active: true, sourceCanonical: true, status: "synced" });
-    const flag = el.querySelector('[data-flag="frozen"]')!;
-    expect(flag.textContent?.trim()).toBe("Code view held");
-    expect(flag.getAttribute("title")).toContain("not an error");
+  test("the source-canonical freeze gets a standing indicator, which the band draws as a flag", () => {
+    expect(chips({ active: true, sourceCanonical: true, status: "synced" }).frozen).toBe(true);
   });
 
-  test("a read-only guest is told before they type, not after", async () => {
-    const el = await chips({ active: true, readOnly: true, status: "synced" });
-    expect(el.querySelector('[data-flag="read-only"]')?.textContent?.trim()).toBe("Read-only");
+  test("a read-only guest is told before they type, not after", () => {
+    expect(chips({ active: true, readOnly: true, status: "synced" }).readOnly).toBe(true);
   });
 
   test("statusTitle states the one undo fact nobody would guess", () => {
@@ -174,40 +163,5 @@ describe("collab honesty", () => {
     expect(statusTitle("offline", "")).toContain("never a collaborator's");
     expect(statusTitle("failed", "boom")).toContain("boom");
     expect(statusTitle("connecting", "")).toBe("Connecting…");
-  });
-});
-
-describe("read-only banner", () => {
-  function tabWith(patch: Record<string, unknown>) {
-    installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
-    Object.assign(collabState(tab), patch);
-    return tab;
-  }
-
-  test("renders only for an ACTIVE read-only session", async () => {
-    const el = document.createElement("div");
-    await renderInto(
-      readOnlyBannerTemplate(tabWith({ active: true, readOnly: true })) as TemplateResult,
-      el,
-    );
-    expect(el.querySelector('.jx-collab-banner[data-kind="read-only"]')?.textContent).toContain(
-      "not published",
-    );
-  });
-
-  test("renders nothing when writable, inactive, or tabless", async () => {
-    for (const patch of [
-      { active: true, readOnly: false },
-      { active: false, readOnly: true },
-    ]) {
-      const el = document.createElement("div");
-      const tpl = readOnlyBannerTemplate(tabWith(patch));
-      if (tpl !== undefined && typeof tpl !== "symbol") {
-        await renderInto(tpl as TemplateResult, el);
-      }
-      expect(el.querySelector(".jx-collab-banner")).toBeNull();
-    }
-    expect(readOnlyBannerTemplate(null)).toBeDefined();
   });
 });

@@ -1,0 +1,258 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxMenuItem",
+  "tagName": "jx-menu-item",
+  "observedAttributes": ["value", "disabled", "destructive", "requires", "checked", "haspopup"],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What the row stands for; the detail of the select event it dispatches."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "A row that cannot act is disabled, never absent; it stays reachable and explains itself through requires."
+    },
+    "destructive": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "destructive",
+      "description": "Draws the row in the danger colour. Derived from the command record, never decided per menu."
+    },
+    "requires": {
+      "type": "string",
+      "default": "",
+      "attribute": "requires",
+      "description": "The one-sentence reason a disabled row cannot act, printed as its tooltip."
+    },
+    "checked": {
+      "type": "string",
+      "default": "",
+      "attribute": "checked",
+      "description": "Empty for a plain item; true or false for a checkbox item, which then carries aria-checked."
+    },
+    "haspopup": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "haspopup",
+      "description": "The row owns a submenu, slotted as submenu. It still runs its own command; the submenu opens on hover, ArrowRight or the chevron."
+    },
+    "expanded": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the row's submenu is showing. Written by the menu behaviour."
+    },
+    "noPopup": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/haspopup"
+        }
+      }
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        },
+        {
+          "if": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "then": [
+            {
+              "dispatchEvent": "select",
+              "detail": {
+                "$ref": "#/state/value"
+              },
+              "bubbles": true
+            }
+          ]
+        }
+      ],
+      "emits": [
+        {
+          "name": "select",
+          "description": "The row was activated; detail is its value."
+        }
+      ],
+      "description": "Activation dispatches select unless the row is disabled. The click stops here: a row inside a submenu is a descendant of the row that owns it, and a click that kept bubbling would activate both."
+    }
+  },
+  "attributes": {
+    "role": "${state.checked ? 'menuitemcheckbox' : 'menuitem'}",
+    "tabindex": "-1",
+    "aria-disabled": "${state.disabled ? 'true' : 'false'}",
+    "aria-checked": "${state.checked || null}",
+    "aria-haspopup": "${state.haspopup ? 'menu' : null}",
+    "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}",
+    "title": "${state.disabled && state.requires ? state.requires : null}"
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "style": {
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "alignItems": "center",
+    "gap": "var(--jx-space-3)",
+    "minHeight": "var(--jx-control-h)",
+    "padding": "var(--jx-space-1) var(--jx-space-3)",
+    "borderRadius": "var(--jx-radius-sm)",
+    "cursor": "default",
+    "userSelect": "none",
+    "outline": "none",
+    "color": "${state.destructive && !state.disabled ? 'var(--jx-danger)' : 'inherit'}",
+    ":hover": {
+      "background": "var(--jx-hover-bg)"
+    },
+    ":focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "&[aria-disabled=\"true\"]": {
+      "opacity": "0.5"
+    },
+    "& > [part=\"icon\"]": {
+      "display": "inline-flex",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& > [part=\"text\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& > [part=\"text\"] > [part=\"label\"]": {
+      "whiteSpace": "nowrap",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& > [part=\"text\"] > [part=\"description\"]": {
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "var(--jx-leading-xs)",
+      "color": "var(--jx-fg-muted)"
+    },
+    "& > [part=\"value\"]": {
+      "color": "var(--jx-fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "whiteSpace": "nowrap"
+    },
+    "& > [part=\"value\"] kbd": {
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& > [part=\"chevron\"]": {
+      "display": "inline-flex",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& > [part=\"chevron\"][hidden]": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "icon"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "icon"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "text"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "description"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "name": "description"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "value"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "value"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "chevron"
+      },
+      "hidden": {
+        "$ref": "#/state/noPopup"
+      },
+      "children": [
+        {
+          "tagName": "jx-icon",
+          "$props": {
+            "name": "caret-right",
+            "weight": "bold"
+          },
+          "attributes": {
+            "part": "chevron-icon"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "slot",
+      "attributes": {
+        "name": "submenu"
+      }
+    }
+  ]
+}

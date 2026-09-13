@@ -10,7 +10,7 @@ import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { pinClock, unpinClock } from "../src/services/clock";
 import { relativeDate } from "../src/panels/git-panel";
-import { lastOpenedLabel } from "../src/panels/welcome-screen";
+import { lastOpenedLabel } from "../src/surfaces/welcome";
 import { relativeTime } from "../src/panels/ai-chat/sessions-view";
 import {
   addRecentProject,

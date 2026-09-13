@@ -80,8 +80,11 @@ export function resolveAtQuery(atKey: string, mediaQueries: Record<string, strin
  * when the built-in flips do not fit — could not be expressed at all.
  *
  * The name is part of the key (`@position-try --flip`), so this is a PREFIX match. `@keyframes` is
- * deliberately absent: its body is neither declarations nor selectors but percentage stops, which
- * is a third shape and a separate design.
+ * deliberately absent, and stays absent: its body is neither declarations nor selectors but
+ * keyframe stops, which is a third shape with its own predicate ({@link isKeyframesAtRule}) and its
+ * own serializer. Adding it here would be the tempting one-line fix and it deletes the animation
+ * without a word — every child of a keyframes block is a block, `declarationsOf` skips blocks, and
+ * a rule with no declarations is never emitted.
  *
  * @param {string} atKey - An `@`-prefixed style key
  * @returns {boolean} True when the block is emitted verbatim, with no selector inside
@@ -97,6 +100,26 @@ export function isDeclarationAtRule(atKey: string): boolean {
 }
 
 /**
+ * The at-rule whose body is a list of KEYFRAME BLOCKS: `@keyframes <name>`.
+ *
+ * The third body shape, and the only one. Its children are keyframe selectors — `from`, `to`,
+ * `50%`, `"0%, 100%"` — which name a point in an animation's timeline and not an element. Scoping
+ * one produces `@keyframes toast-in { .x from { … } }`, which a browser parses without complaint
+ * into a keyframes rule holding NO keyframes: the `animation` declaration still names a live
+ * animation, and that animation animates nothing. That is how the Studio toast lost its entry
+ * animation the day it became a Jx document.
+ *
+ * The name is part of the key, so this is a PREFIX match like {@link isDeclarationAtRule}.
+ *
+ * @param {string} atKey - An `@`-prefixed style key
+ * @returns {boolean}
+ * @docs framework/concepts/styling
+ */
+export function isKeyframesAtRule(atKey: string): boolean {
+  return atKey.startsWith("@keyframes");
+}
+
+/**
  * Resolve one nested style key against its parent selector.
  *
  * `&` splices, `:`/`.`/`[` concatenate, anything else is a descendant. Extracted because the same
@@ -109,13 +132,72 @@ export function isDeclarationAtRule(atKey: string): boolean {
  * @returns {string} The resolved selector
  */
 export function resolveNestedSelector(scope: string, key: string): string {
+  const resolved: string[] = [];
+  for (const scopePart of splitSelectorList(scope)) {
+    for (const keyPart of splitSelectorList(key)) {
+      resolved.push(resolveOneNestedSelector(scopePart, keyPart));
+    }
+  }
+  return resolved.join(", ");
+}
+
+/** One member of a scope against one member of a key — the four-branch decision itself. */
+function resolveOneNestedSelector(scope: string, key: string): string {
   if (key.startsWith("&")) {
-    return key.replace("&", scope);
+    return key.replaceAll("&", scope);
   }
   if (key.startsWith("[") || key.startsWith(":") || key.startsWith(".")) {
     return `${scope}${key}`;
   }
   return `${scope} ${key}`;
+}
+
+/**
+ * Split a selector list on its top-level commas.
+ *
+ * A comma inside `:is()`, `:where()`, `:not()`, an attribute value or a quoted string separates
+ * nothing, so depth and quotes are tracked. Members are trimmed and an empty member is dropped; a
+ * selector with no top-level comma comes back as itself, so callers never special-case the single
+ * form.
+ *
+ * Why this exists: a nested key was spliced onto its scope as ONE string, so `"& .a, & .b"` with a
+ * `":hover"` inside it emitted `#x .a, #x .b:hover` — the first member got the hover rule with no
+ * hover — and the second `&` of the key was never replaced at all. CSS Nesting distributes a nested
+ * selector over every member of the parent list (its implicit `:is()`); the flattener now does the
+ * same, member by member.
+ *
+ * @param {string} selector - A selector or a selector list
+ * @returns {string[]} The members, in order
+ */
+export function splitSelectorList(selector: string): string[] {
+  const members: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i]!;
+    if (quote) {
+      if (ch === "\\") {
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "(" || ch === "[") {
+      depth += 1;
+    } else if (ch === ")" || ch === "]") {
+      depth = Math.max(0, depth - 1);
+    } else if (ch === "," && depth === 0) {
+      members.push(selector.slice(start, i));
+      start = i + 1;
+    }
+  }
+  members.push(selector.slice(start));
+  const trimmed = members.map((member) => member.trim()).filter((member) => member !== "");
+  return trimmed.length > 0 ? trimmed : [selector];
 }
 
 /**
@@ -140,10 +222,105 @@ export function resolveNestedSelector(scope: string, key: string): string {
  * @docs framework/concepts/overlays
  */
 export function transposeCanvasPopoverSelector(selector: string): string | null {
+  return transposeCanvasOverlaySelector(selector);
+}
+
+/** What {@link transposeCanvasOverlaySelector} needs to know about the element that owns a rule. */
+export interface CanvasOverlayTransposeOptions {
+  /**
+   * The rule was authored on a `<dialog>`. It answers `[open]` only for a compound that names no
+   * element type at all (`&[open]`, `#d[open]`, `.panel[open]`) — a compound that names one is
+   * decided by that type instead, so a `<div>`'s `& dialog[open]` is transposed and a `<dialog>`'s
+   * `& details[open]` is not.
+   */
+  dialog?: boolean;
+}
+
+/** A character that ends the compound selector to the left of it. */
+const COMPOUND_BREAK = /[\s>+~,()]/;
+
+/** The leading type selector of a compound, if it has one. */
+const LEADING_TYPE = /^[A-Za-z_\u{00A0}-\u{FFFF}][\w\u{00A0}-\u{FFFF}-]*/u;
+
+/**
+ * Rewrite each `[open]` according to the compound it belongs to, not the element the style object
+ * hangs off. A compound naming `dialog` is the dialog's own open state and is transposed; one
+ * naming any other type (`details`, a custom element) is left alone; one naming no type — or naming
+ * the scope handle, which IS the styled element — inherits `options.dialog`.
+ */
+function transposeOpenAttribute(selector: string, options: CanvasOverlayTransposeOptions): string {
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const at = selector.indexOf("[open]", from);
+    if (at === -1) {
+      return out + selector.slice(from);
+    }
+    let start = at;
+    while (start > 0 && !COMPOUND_BREAK.test(selector[start - 1] as string)) {
+      start -= 1;
+    }
+    const type = LEADING_TYPE.exec(selector.slice(start, at))?.[0]?.toLowerCase();
+    const dialog = type === undefined ? options.dialog === true : type === "dialog";
+    out += selector.slice(from, at) + (dialog ? "[data-jx-dialog-open]" : "[open]");
+    from = at + "[open]".length;
+  }
+}
+
+/**
+ * Studio-canvas overlay selector transposition, for dialogs as well as popovers — the style half of
+ * `setCanvasDelinkPopovers` and `setCanvasDelinkCommands` together.
+ *
+ * A dialog the canvas shows in place is not `:modal` and, its `open` renamed with the rest of the
+ * invoker machinery, not `[open]` either; `[data-jx-dialog-open]` is the stand-in for both, at the
+ * same (0,1,0) specificity. `::backdrop` is dropped for the reason given above: neither kind of
+ * overlay has one outside the top layer.
+ *
+ * `[inert]` travels with `commandfor` and a dialog's `open`, and for the same reason: the canvas
+ * renames the attribute on every stamped node so the editor can select into an inert region, so a
+ * rule the author wrote against `[inert]` would match on the built page and silently not on the
+ * canvas. `[data-jx-inert]` is the same (0,1,0) specificity, so it wins and loses against the same
+ * neighbours. Unlike `[open]` it needs no option: `inert` is renamed whatever the tag is, where
+ * `<details open>` keeps its attribute and so its `[open]` must keep matching.
+ *
+ * **`[open]` follows the compound it is written on, not the element the style object hangs off.** A
+ * compound naming `dialog` is transposed whatever owns the rule, so a wrapper's `& dialog[open]`
+ * keeps matching; a compound naming any other type is left alone, so a dialog's `& details[open]`
+ * is not corrupted into a selector that can never match. Only a compound with no type of its own —
+ * `&[open]`, `#d[open]`, or the runtime's own scope handle — falls back to `options.dialog`. The
+ * handle needs no special case: it is not a parseable type name, so the scan finds none and the
+ * fallback is what answers for it, which is the right answer because the handle IS the styled
+ * element.
+ *
+ * Three shapes are out of reach of that scan and take the fallback: `:is(dialog)[open]`, a quoted
+ * attribute value carrying selector punctuation, and any functional pseudo between the type and the
+ * attribute — `dialog:not(.x)[open]` reads as no type, because a parenthesis breaks the backscan.
+ *
+ * **The rename is per NODE and the selector is not**, so one limitation survives whatever this
+ * does. `open` is renamed only on a node the canvas stamped, and a rule may address both stamped
+ * and unstamped dialogs at once: a stamped wrapper styling `& dialog[open]` whose dialog comes from
+ * a component's own template now emits an attribute that dialog does not carry. Before this, the
+ * same rule failed the other way round, on the stamped dialog. Whichever way it is decided one of
+ * the two is wrong, so it is decided for the addressable one and stated here rather than papered
+ * over.
+ *
+ * @param {string} selector - A fully resolved selector, canvas-side
+ * @param {CanvasOverlayTransposeOptions} [options]
+ * @returns {string | null} The selector to emit, or null to emit nothing
+ * @docs framework/concepts/overlays
+ */
+export function transposeCanvasOverlaySelector(
+  selector: string,
+  options: CanvasOverlayTransposeOptions = {},
+): string | null {
   if (selector.includes("::backdrop")) {
     return null;
   }
-  return selector.replaceAll(":popover-open", "[data-jx-popover-open]");
+  const transposed = selector
+    .replaceAll(":popover-open", "[data-jx-popover-open]")
+    .replaceAll(":modal", "[data-jx-dialog-open]")
+    .replaceAll("[inert]", "[data-jx-inert]");
+  return transposeOpenAttribute(transposed, options);
 }
 
 // ─── Color Schemes ────────────────────────────────────────────────────────────
@@ -214,10 +391,18 @@ export function schemeSelectors(
  * carries the scope handle. A `descendant` rule cannot be shared the moment it reads a custom
  * property, because `var()` resolves from the nearest ancestor that set it and a shared handle has
  * more than one such ancestor. `unscoped` is a declaration-body at-rule — `@font-face`,
- * `@position-try` — whose name is document-global and which is therefore hoisted once rather than
- * emitted per element.
+ * `@position-try` — or a `@keyframes` block, whose name is document-global and which is therefore
+ * hoisted once rather than emitted per element.
  */
 export type CssRuleTarget = "self" | "descendant" | "unscoped";
+
+/** One keyframe stop: its keyframe selector, verbatim as authored, and what it declares. */
+export interface CssKeyframeBlock {
+  /** `from`, `to`, `50%`, `"0%, 100%"` — a point on the timeline, never an element selector. */
+  selector: string;
+  /** Kebab-cased property/value pairs, in authored order. */
+  declarations: readonly (readonly [string, string])[];
+}
 
 /** One emitted CSS rule: its parts, its text, and a content hash of the two. */
 export interface CssRule {
@@ -225,10 +410,32 @@ export interface CssRule {
   text: string;
   /** At-rule wrappers, outermost first. Empty for a top-level rule. */
   conditions: readonly string[];
-  /** The resolved selector, or null for a declaration-body at-rule. */
+  /**
+   * The resolved selector, or null for a rule that has none: a declaration-body at-rule, or a
+   * `@keyframes` block (whose stops are in {@link CssRule.blocks} instead).
+   */
   selector: string | null;
-  /** Kebab-cased property/value pairs, in authored order. */
+  /** Kebab-cased property/value pairs, in authored order. Empty for a `@keyframes` block. */
   declarations: readonly (readonly [string, string])[];
+  /**
+   * The stops of a `@keyframes` block, in authored order. Absent for every other rule.
+   *
+   * `declarations` cannot describe N stops each with its own list, so it stays empty here and this
+   * carries the body. Nothing in the repository reads either field — `text`, `key` and `target` are
+   * the whole cross-consumer contract — but a rule that plainly has declarations must not report
+   * none without saying where they went.
+   */
+  blocks?: readonly CssKeyframeBlock[];
+  /**
+   * The block's `$description`, if it wrote one: why the rule exists, in the author's words.
+   *
+   * It is NOT in {@link CssRule.text}, and that is the point. `text` is what a sheet inserts and
+   * what {@link hashCss} interns, so prose there would make two identical rules two rules and put a
+   * paragraph in every adopted sheet at runtime. A static emitter — the one writing a stylesheet a
+   * person will read — renders it as a comment; every other consumer ignores it, exactly as a
+   * document's own `$description` is ignored.
+   */
+  description?: string;
   /** See {@link CssRuleTarget}. */
   target: CssRuleTarget;
   /** FNV-1a base36 hash of `text` — the dedup key. */
@@ -261,7 +468,12 @@ export interface CssBuildOptions {
    * is dropped — which is what the compiler already did for template strings, and what the runtime
    * should always have done with a `$ref` it was instead reading as a nested selector.
    */
-  resolveValue?: (property: string, value: string | JxRef) => string | null;
+  /**
+   * Resolve a reactive value to what the declaration should say, or `null` to emit no declaration
+   * at all. `target` is the rule's own target, so a resolver can treat a value on the element
+   * itself differently from one on a descendant.
+   */
+  resolveValue?: (property: string, value: string | JxRef, target: CssRuleTarget) => string | null;
 }
 
 /** A style-object key that names a nested selector rather than a CSS property. */
@@ -328,6 +540,60 @@ export function cssRuleText(
 }
 
 /**
+ * Serialize one `@keyframes` block: every stop, in authored order, inside ONE at-rule, wrapped in
+ * its enclosing conditions.
+ *
+ * One rule, not one per stop, and that is a correctness requirement rather than tidiness. CSS
+ * Animations 1: where two `@keyframes` rules share a name, the last in document order wins and the
+ * earlier ones are ignored ENTIRELY. So a block split into `@keyframes fade { from { … } }` plus
+ * `@keyframes fade { to { … } }` is valid CSS that animates only its last stop, which is the shape
+ * the site-style and compiler paths emitted before this existed.
+ *
+ * @param {readonly string[]} conditions
+ * @param {string} name - The animation name, as authored
+ * @param {readonly CssKeyframeBlock[]} blocks
+ * @returns {string}
+ */
+function cssKeyframesText(
+  conditions: readonly string[],
+  name: string,
+  blocks: readonly CssKeyframeBlock[],
+): string {
+  const body = blocks
+    .map(
+      ({ selector, declarations }) =>
+        `${selector} { ${declarations.map(([property, value]) => `${property}: ${value}`).join("; ")} }`,
+    )
+    .join(" ");
+  let text = `@keyframes ${name} { ${body} }`;
+  for (let i = conditions.length - 1; i >= 0; i -= 1) {
+    text = `${conditions[i]} { ${text} }`;
+  }
+  return text;
+}
+
+/**
+ * A block with its `@keyframes` children removed, for the forced-scheme twin of a dual emission.
+ *
+ * A scheme-pure query emits twice, once media-guarded and once under the root attribute, because a
+ * SELECTOR can be re-pointed at the forced state. A `@keyframes` name cannot: it is document-global
+ * and has no selector, so a second copy would be a second definition of one name, and the
+ * unconditional copy would silently replace the media-guarded one for every visitor. The
+ * media-guarded copy is the one that keeps the author's condition, so it is the one that survives.
+ */
+function withoutKeyframes(block: JxStyle): JxStyle {
+  const keyframeKeys = Object.keys(block).filter((key) => isKeyframesAtRule(key));
+  if (keyframeKeys.length === 0) {
+    return block;
+  }
+  const rest: JxStyle = { ...block };
+  for (const key of keyframeKeys) {
+    delete rest[key];
+  }
+  return rest;
+}
+
+/**
  * Whether a nested key COMPOUNDS onto its scope rather than descending from it.
  *
  * `:hover`, `.wide`, `[open]` and their `&`-spliced spellings still match the element the style was
@@ -377,7 +643,37 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   const isBlock = (value: unknown): value is JxStyle =>
     value !== null && typeof value === "object" && !Array.isArray(value) && !isRef(value);
 
-  const declarationValue = (property: string, value: unknown): string | null => {
+  /**
+   * The blocks written under one key: the block itself, or each of an ARRAY of them, in order.
+   *
+   * An object's keys are unique, so a key can name a rule only once — and `@font-face` is the
+   * at-rule whose identity is not in its key, so a family with three weights had no spelling at
+   * all. It was not refused either: an array here emitted NOTHING, silently, so a style block that
+   * looked complete shipped no faces and the page fell to its fallback stack.
+   *
+   * **Only a DECLARATION at-rule takes the array**, and the narrowness is the point rather than
+   * caution. Those four are leaves — `walkAt` emits their declarations and recurses into nothing —
+   * so admitting a list there teaches no other walker anything new. Under a selector key an array
+   * would say what one block already says, while every style walker in the repo (the overlay lint,
+   * the a11y lint, the canvas) assumes a block key holds ONE block; allowing it there would leave
+   * those reading past it in silence, which is the failure this codebase keeps finding.
+   */
+  const blocksOf = (key: string, value: unknown): JxStyle[] => {
+    if (isBlock(value)) {
+      return [value];
+    }
+    if (!isDeclarationAtRule(key) || !Array.isArray(value) || value.length === 0) {
+      return [];
+    }
+    return value.every((entry) => isBlock(entry)) ? value : [];
+  };
+
+  const declarationValue = (
+    property: string,
+    value: unknown,
+    reactive: boolean,
+    target: CssRuleTarget,
+  ): string | null => {
     if (value === undefined || value === null) {
       return null;
     }
@@ -385,29 +681,52 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
        runtime emitted `[data-jx="…"] color { $ref: #/state/tint }` — a rule for an element named
        `color`, and a declaration whose property is `$ref`. */
     if (isRef(value)) {
-      return resolveValue?.(property, value) ?? null;
+      return reactive ? (resolveValue?.(property, value, target) ?? null) : null;
     }
     if (typeof value === "object") {
       return null;
     }
     const raw = String(value);
     if (isTemplateString(raw)) {
-      return resolveValue?.(property, raw) ?? null;
+      return reactive ? (resolveValue?.(property, raw, target) ?? null) : null;
     }
     return transposeValue(raw);
   };
 
-  const declarationsOf = (node: JxStyle, skipSelectorKeys: boolean): [string, string][] => {
+  /**
+   * `reactive: false` drops a `${…}` or `{ $ref }` instead of resolving it, and only a `@keyframes`
+   * stop passes it. The resolver's answer is `var(--jx-rN-M)`, a custom property the runtime writes
+   * INLINE on the one element that declared the style — but a keyframes block is hoisted once for
+   * the whole document, so the variable would be read where it was never set. Worse, the hoist is
+   * refcounted by rule TEXT: two elements naming one animation would produce two different texts,
+   * hence two definitions of one name, and the later would erase the earlier.
+   */
+  const declarationsOf = (
+    node: JxStyle,
+    skipSelectorKeys: boolean,
+    reactive = true,
+    target: CssRuleTarget = "self",
+  ): [string, string][] => {
     const declarations: [string, string][] = [];
     for (const [key, value] of Object.entries(node)) {
-      if (isBlock(value)) {
+      /* `blocksOf`, not `isBlock`: an array of blocks is a rule written more than once, never a
+         declaration value, and reading it as one emitted `@font-face: [object Object]`. */
+      if (blocksOf(key, value).length > 0) {
         continue;
       }
       // A scalar under a selector or at-rule key is an invalid shape, not a declaration.
       if (skipSelectorKeys && (key.startsWith("@") || isNestedSelectorKey(key))) {
         continue;
       }
-      const resolved = declarationValue(key, value);
+      /* `$`-prefixed keys are METADATA, the way they are everywhere else in a document. No CSS
+         property begins with `$` — a custom property begins with `--` — so this can refuse the
+         whole prefix rather than name one key. `$description` used to emit
+         `$description: why this exists;`: an invalid declaration the parser drops in silence, which
+         also put the prose inside the text `hashCss` interns. */
+      if (key.startsWith("$")) {
+        continue;
+      }
+      const resolved = declarationValue(key, value, reactive, target);
       if (resolved !== null) {
         declarations.push([cssPropertyName(key), resolved]);
       }
@@ -420,6 +739,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     selector: string | null,
     declarations: readonly (readonly [string, string])[],
     target: CssRuleTarget,
+    description?: unknown,
   ) => {
     if (declarations.length === 0) {
       return;
@@ -440,6 +760,54 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       declarations,
       target,
       key: hashCss(text),
+      ...(typeof description === "string" && description !== "" ? { description } : {}),
+    });
+  };
+
+  /**
+   * Emit a whole `@keyframes` block as ONE unscoped rule.
+   *
+   * The enclosing `selector` is not a parameter, which is the fix stated as a signature: a keyframe
+   * selector is a point on a timeline, so there is nothing for a scope to compound onto or descend
+   * from. Its key is therefore taken VERBATIM — no `resolveNestedSelector`, no selector-list split
+   * (`"0%, 100%"` is one valid keyframe selector already), and no `transposeSelector`, whose canvas
+   * implementation may return null and would delete a stop out of an otherwise sound animation.
+   * `transposeValue` still runs on every declaration, so a `translateY(10vh)` stop keeps the
+   * canvas's viewport-to-container rewrite.
+   *
+   * It pushes onto `rules` rather than going through `emit`, which serializes a declaration list
+   * and refuses an empty one.
+   */
+  const emitKeyframes = (atKey: string, block: JxStyle, conditions: readonly string[]) => {
+    const name = atKey.slice("@keyframes".length).trim();
+    if (name === "") {
+      return;
+    }
+    const blocks: CssKeyframeBlock[] = [];
+    for (const [key, value] of Object.entries(block)) {
+      if (!isBlock(value)) {
+        continue;
+      }
+      /* A stop holds declarations and nothing else. A nested selector or at-rule inside one is not
+         valid CSS, and `declarationsOf` drops both shapes rather than emitting a block a parser
+         would throw the whole animation away over. */
+      const declarations = declarationsOf(value, true, false, "unscoped");
+      if (declarations.length > 0) {
+        blocks.push({ declarations, selector: key.trim() });
+      }
+    }
+    if (blocks.length === 0) {
+      return;
+    }
+    const text = cssKeyframesText(conditions, name, blocks);
+    rules.push({
+      blocks,
+      conditions: [...conditions],
+      declarations: [],
+      key: hashCss(text),
+      selector: null,
+      target: "unscoped",
+      text,
     });
   };
 
@@ -456,7 +824,17 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       return;
     }
     if (isDeclarationAtRule(atKey)) {
-      emit([...conditions, atKey], null, declarationsOf(block, false), "unscoped");
+      emit(
+        [...conditions, atKey],
+        null,
+        declarationsOf(block, false, true, "unscoped"),
+        "unscoped",
+        block["$description"],
+      );
+      return;
+    }
+    if (isKeyframesAtRule(atKey)) {
+      emitKeyframes(atKey, block, conditions);
       return;
     }
     const query = resolveAtQuery(atKey, mediaQueries);
@@ -465,7 +843,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     if (scheme !== null && selector !== null) {
       const { auto, forced } = schemeSelectors(selector, scheme);
       walk(block, auto, [...conditions, atRule], target);
-      walk(block, forced, conditions, target);
+      walk(withoutKeyframes(block), forced, conditions, target);
       return;
     }
     walk(block, selector, [...conditions, atRule], target);
@@ -477,20 +855,25 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     conditions: readonly string[],
     target: CssRuleTarget,
   ) {
-    emit(conditions, selector, declarationsOf(node, true), target);
+    emit(
+      conditions,
+      selector,
+      declarationsOf(node, true, true, target),
+      target,
+      node["$description"],
+    );
     for (const [key, value] of Object.entries(node)) {
-      if (!isBlock(value)) {
-        continue;
-      }
-      if (key.startsWith("@")) {
-        walkAt(key, value, selector, conditions, target);
-      } else if (selector !== null) {
-        walk(
-          value,
-          resolveNestedSelector(selector, key),
-          conditions,
-          compoundsOntoScope(key) ? target : "descendant",
-        );
+      for (const block of blocksOf(key, value)) {
+        if (key.startsWith("@")) {
+          walkAt(key, block, selector, conditions, target);
+        } else if (selector !== null) {
+          walk(
+            block,
+            resolveNestedSelector(selector, key),
+            conditions,
+            compoundsOntoScope(key) ? target : "descendant",
+          );
+        }
       }
     }
   }

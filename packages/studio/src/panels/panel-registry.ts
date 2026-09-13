@@ -38,10 +38,11 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab, TabUi } from "../tabs/tab";
 import type { nothing, TemplateResult } from "lit-html";
+import type { renderFilesTemplate } from "../files/files";
 import type { renderGitPanel } from "./git-panel";
 import type { renderHeadTemplate } from "./head-panel";
 import type { renderImportsTemplate } from "./imports-panel";
-import type { renderSignalsTemplate } from "./signals-panel";
+import type { mountSignalsPanel } from "./signals-panel";
 
 /**
  * The three docks that host panels.
@@ -68,8 +69,15 @@ export interface NavigatorPanelDeps {
   // Typed against their implementations so every call site stays checked. These are type-only
   // Imports, so they are erased — the modules themselves are never pulled in through this file.
   renderImportsTemplate: typeof renderImportsTemplate;
-  renderFilesTemplate: () => TemplateResult;
-  renderSignalsTemplate: typeof renderSignalsTemplate;
+  renderFilesTemplate: typeof renderFilesTemplate;
+  /**
+   * Draw the Data panel into the painted host.
+   *
+   * Injected rather than imported, and that is load-bearing rather than habit: `data-explorer.ts`
+   * owns the record and `signals-panel.ts` reads `data-explorer.ts`'s expansion store, so a direct
+   * import would close a cycle through `formula-workspace.ts`. A type-only import erases.
+   */
+  mountSignalsPanel: typeof mountSignalsPanel;
   renderHeadTemplate: typeof renderHeadTemplate;
   renderGitPanel: typeof renderGitPanel;
   renderCanvas: () => void;
@@ -128,7 +136,10 @@ export interface PanelRecord {
   /** REQUIRED. The level of the state this panel WRITES. Checked against the panel matrix. */
   level: Level;
   dock: PanelDock;
-  /** Icon key, resolved through `activity-bar.ts`'s `tabIcon()` map. */
+  /**
+   * The glyph, by its name in the UI kit's icon manifest (`@jxsuite/ui`); the rail draws it through
+   * `jx-icon`.
+   */
   icon: string;
   /**
    * `false` for a panel with no rail button.

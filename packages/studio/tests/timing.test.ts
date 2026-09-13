@@ -1,9 +1,7 @@
 import "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
-import { html, render } from "lit-html";
 import { CODE_DEBOUNCE, INPUT_DEBOUNCE, LIVE_PREVIEW, POLL_GIT } from "../src/ui/timing";
 import { debouncedStyleCommit } from "../src/store";
-import { clearDraft, rawTextArea } from "../src/ui/field-input";
 
 // ─── Local helpers ───────────────────────────────────────────────────────────
 
@@ -61,30 +59,5 @@ describe("migrated consumers", () => {
     const delays = recordDelays();
     debouncedStyleCommit("timing:explicit", 42, () => {})();
     expect(delays).toEqual([42]);
-  });
-
-  test("field-input widgets debounce their live preview at LIVE_PREVIEW", () => {
-    const container = document.createElement("div");
-    render(html`<div>${rawTextArea("timing:field", "", () => {})}</div>`, container);
-    const area = container.querySelector("textarea") as HTMLTextAreaElement;
-    const delays = recordDelays();
-    area.value = "typing";
-    area.dispatchEvent(new Event("input"));
-    expect(delays).toEqual([LIVE_PREVIEW]);
-    clearDraft("timing:field");
-  });
-
-  test("field-input widgets still honour an explicit debounceMs", () => {
-    const container = document.createElement("div");
-    render(
-      html`<div>${rawTextArea("timing:code", "", () => {}, { debounceMs: CODE_DEBOUNCE })}</div>`,
-      container,
-    );
-    const area = container.querySelector("textarea") as HTMLTextAreaElement;
-    const delays = recordDelays();
-    area.value = "typing";
-    area.dispatchEvent(new Event("input"));
-    expect(delays).toEqual([CODE_DEBOUNCE]);
-    clearDraft("timing:code");
   });
 });

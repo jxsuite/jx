@@ -70,10 +70,18 @@ const SETTINGS_TAB_MODES = [SETTINGS_MODE, "stylebook", "source"];
 /* Orders leave gaps so a contribution can land between two built-ins. Content Types is NOT here —
    the parser extension contributes it (order 50) through its Content class descriptor's
    `$studio.settings` block, registered via ./extension-sections, which is the same path any
-   extension's section takes. */
+   extension's section takes.
+
+   `icon` is a KEY into the kit's glyph manifest (`@jxsuite/ui/icons`), not a tag — `studio.md`
+   §13.5 is about exactly this distinction, and a key with no row draws nothing and says nothing.
+   These were `sp-icon-*` names, which is the OTHER key space: they named Spectrum elements, so
+   every one of them resolved to nothing the moment the nav was ready to draw one. The field is
+   still documented as reserved (`section-registry.ts`), so nothing here draws today; the names are
+   held to the kit's manifest by `settings-document.test.ts` so that a name is right when the inner
+   nav does draw it, rather than discovered wrong then. */
 
 registerSettingsSection({
-  icon: "sp-icon-properties",
+  icon: "sliders-horizontal",
   key: "overview",
   label: "Overview",
   order: 10,
@@ -87,14 +95,14 @@ registerSettingsSection({
  * registry and moves into the document's inner nav without its renderer being touched.
  */
 registerSettingsSection({
-  icon: "sp-icon-device-desktop",
+  icon: "browser",
   key: "contexts",
   label: "Contexts",
   order: 15,
   render: renderContextsSection,
 });
 registerSettingsSection({
-  icon: "sp-icon-file-single-web-page",
+  icon: "file-code",
   key: "head",
   label: "Site head",
   order: 20,
@@ -108,7 +116,7 @@ registerSettingsSection({
  * is the form over it.
  */
 registerSettingsSection({
-  icon: "sp-icon-globe",
+  icon: "globe",
   key: "locales",
   label: "Locales",
   order: 25,
@@ -121,42 +129,42 @@ registerSettingsSection({
  * key by name.
  */
 registerSettingsSection({
-  icon: "sp-icon-brush",
+  icon: "paint-brush",
   key: "cssVars",
   label: "CSS Variables",
   order: 30,
   render: renderCssVarsEditor,
 });
 registerSettingsSection({
-  icon: "sp-icon-data",
+  icon: "brackets-curly",
   key: "definitions",
   label: "Data Shapes",
   order: 40,
   render: renderDefsEditor,
 });
 registerSettingsSection({
-  icon: "sp-icon-box",
+  icon: "cube",
   key: "dependencies",
   label: "Packages",
   order: 60,
   render: renderDependenciesEditor,
 });
 registerSettingsSection({
-  icon: "sp-icon-plug",
+  icon: "share-network",
   key: "extensions",
   label: "Extensions",
   order: 70,
   render: renderExtensionsSection,
 });
 registerSettingsSection({
-  icon: "sp-icon-publish-check",
+  icon: "upload-simple",
   key: "deploy",
   label: "Deploy",
   order: 80,
   render: renderDeploySection,
 });
 registerSettingsSection({
-  icon: "sp-icon-code",
+  icon: "code",
   key: "rawJson",
   label: "Raw JSON",
   order: 900,

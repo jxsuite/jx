@@ -20,5 +20,10 @@ coveragePathIgnorePatterns = [
   "../site/**",
   "../starters/**",
   "../studio/**",
+  # `platform.test.ts` reads the kit's own KIT_TAGS, so the tags the update notice writes are held
+  # to the package that defines them rather than to a memory of them. That file is 100% under
+  # packages/ui's own run today, so listing it here changes no number — it is here for the same
+  # reason `../protocol/**` is, and before rather than after.
+  "../ui/**",
 ]
 coverageThreshold = { lines = 0.96, functions = 0.90 }

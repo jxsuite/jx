@@ -1,23 +1,28 @@
 /**
  * The chrome theme, end to end — Preferences → Appearance → Light used to be a setting that did
- * nothing, and this file is the three-part reason it could.
+ * nothing, and this file is the reason it could.
  *
- * 1. `<sp-theme>` adopts the colour fragment REGISTERED UNDER the `color` it is given, and adopts none
- *    at all for a name it does not know. Only "dark" was registered, so `color="light"` was a valid
- *    attribute over an empty palette: every `--spectrum-*` colour token went undefined, the studio
- *    semantic layer fell through to its dark hex fallbacks, and the chrome did not move. So the
- *    first test counts the ADOPTED FRAGMENTS per declared theme — the observable that was wrong —
- *    and pins an unregistered Spectrum colour as the negative control, because an assertion about a
- *    registry that cannot fail is not a test.
- * 2. The Jx brand fragment re-values the palette and is adopted for EVERY colour, so a stop it
- *    overrides in one ramp and forgets in the other silently paints the wrong theme's brand value.
- *    The second test holds the two ramps to the same stop set.
- * 3. Monaco paints from its own registry and cannot read a CSS custom property, so it is the one
- *    surface the Spectrum theme does not reach: both editors were created with a literal "vs-dark".
- *    The rest of the file covers the projection that now carries the record to it.
+ * The mechanism it was written against is gone. It was `<sp-theme>`, which adopted the colour
+ * fragment REGISTERED UNDER the `color` it was given and adopted none at all for a name it did not
+ * know: only "dark" was registered, so `color="light"` was a valid attribute over an empty palette
+ * — every `--spectrum-*` colour went undefined, Studio's semantic layer fell through to its dark
+ * hex fallbacks, and the chrome did not move.
+ *
+ * **The defect class survived the mechanism, so these tests were re-aimed rather than deleted.**
+ * The kit declares every colour as a `light-dark()` pair on `:root` and picks a side from the
+ * `color-scheme` its own theme sets under `[data-theme]`. A theme name the kit's block has no rule
+ * for gets no `color-scheme` of its own, falls back to `light dark`, and the OS chooses — which is
+ * the same bug with a different owner: a valid stamp, a silent absence, and a palette the user did
+ * not pick. So the first test still counts what each declared theme actually GETS, and still pins
+ * an undeclared name as the negative control.
+ *
+ * Monaco paints from its own registry and cannot read a CSS custom property, so it is the one
+ * surface the chrome theme does not reach: both editors were created with a literal "vs-dark". The
+ * rest of the file covers the projection that now carries the record to it.
  */
 import "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { themeCSS, themeTokens } from "@jxsuite/ui";
 
 /** What `applyChromeTheme` asked Monaco to paint, in call order. */
 const setThemeCalls: string[] = [];
@@ -40,25 +45,21 @@ void mock.module("../src/services/monaco-lazy", () => ({
   setProjectSchemasForMonaco: () => {},
 }));
 
-// Registers the component manifest AND the theme fragments — the subject of the first test.
-await import("../src/ui/spectrum");
 const { applyChromeTheme, CHROME_THEMES, monacoTheme, setChromeTheme, shell } =
   await import("../src/shell");
-const { jxTheme } = await import("../src/ui/jx-theme");
 
 /**
- * The fragments `<sp-theme color=…>` would adopt.
+ * The `color-scheme` the kit's theme gives a `data-theme` name, or `null` if it declares no rule
+ * for it.
  *
- * Read through the element's own public `styles` getter rather than Spectrum's private registry,
- * because adopting is what the app depends on and a fragment registered under a name nothing asks
- * for is not registered at all as far as the chrome is concerned.
+ * Read off the theme's own block rather than out of a live computed style, because the block is
+ * what ships: happy-dom resolves neither `light-dark()` nor a cascaded `color-scheme`, so a
+ * computed-style assertion here would agree with every possible answer.
  */
-function adoptedFragmentCount(color: string): number {
-  const theme = document.createElement("sp-theme") as HTMLElement & { styles: unknown[] };
-  theme.setAttribute("system", "spectrum");
-  theme.setAttribute("scale", "medium");
-  theme.setAttribute("color", color);
-  return theme.styles.length;
+function schemeFor(name: string): string | null {
+  const rule = themeTokens[`&[data-theme="${name}"]`] as Record<string, unknown> | undefined;
+  const scheme = rule?.["colorScheme"] ?? rule?.["color-scheme"];
+  return scheme === undefined ? null : String(scheme);
 }
 
 beforeEach(() => {
@@ -68,54 +69,53 @@ beforeEach(() => {
   delete document.documentElement.dataset.theme;
 });
 
-describe("every declared chrome theme has a Spectrum colour fragment", () => {
-  test("each of CHROME_THEMES adopts the same four fragments", () => {
-    // System + colour + scale + the Jx brand 'app' fragment. A theme missing its colour fragment
-    // Adopts three, which is exactly what `color="light"` did.
-    for (const color of CHROME_THEMES) {
-      expect(adoptedFragmentCount(color), color).toBe(4);
+describe("every declared chrome theme is one the kit's theme knows", () => {
+  test("each of CHROME_THEMES pins its own color-scheme", () => {
+    /* A theme with no rule of its own inherits `color-scheme: light dark` from the root block, and
+       the OS picks — which is what `color="light"` over an unregistered fragment amounted to. */
+    for (const name of CHROME_THEMES) {
+      expect(schemeFor(name), name).toBe(name);
     }
   });
 
-  test("a Spectrum colour Studio does not declare adopts one fewer — the failure mode itself", () => {
-    /* "lightest" is a colour `<sp-theme>` ACCEPTS (it is in Spectrum's COLOR_VALUES) and Studio has
-       no fragment for, so it reproduces the bug on demand: a valid attribute, a silent absence, and
-       a palette that never arrives. Without this the test above would pass over an app that
-       registered nothing at all. */
-    expect(adoptedFragmentCount("lightest")).toBe(3);
+  test("a name Studio does not declare gets nothing — the failure mode itself", () => {
+    /* "lightest" was a colour `<sp-theme>` ACCEPTED and Studio had no fragment for. Nothing rejects
+       an arbitrary `data-theme` value either, so it reproduces the bug on demand. Without this the
+       test above would pass over a kit that declared no per-theme rule at all. */
+    expect(schemeFor("lightest")).toBeNull();
+    expect(themeCSS()).not.toContain('[data-theme="lightest"]');
+  });
+
+  test("both themes are actually in the sheet the kit adopts", () => {
+    /* `themeTokens` reads the authored block; this reads what the builder emits from it. A rule
+       authored under a key the builder does not understand would satisfy the first test and reach
+       no document. */
+    const css = themeCSS();
+    for (const name of CHROME_THEMES) {
+      expect(css, name).toContain(`[data-theme="${name}"]`);
+    }
   });
 });
 
-describe("the brand fragment values both ramps", () => {
-  /** Every `--spectrum-*-rgb` stop declared inside one selector block of the brand fragment. */
-  function stopsUnder(selector: string): string[] {
-    const css = jxTheme.cssText;
-    const start = css.indexOf(selector);
-    expect(start, `${selector} is not in the brand fragment`).toBeGreaterThanOrEqual(0);
-    const open = css.indexOf("{", start);
-    const close = css.indexOf("}", open);
-    const block = css.slice(open, close);
-    return [...block.matchAll(/(--spectrum-[a-z]+-\d+-rgb):/g)]
-      .map((m) => m[1] as string)
-      .toSorted();
-  }
+describe("the palette moves with the stamp", () => {
+  /** The declaration behind a kit token, as authored. */
+  const valueOf = (token: string) => String(themeTokens[token] ?? "");
 
-  test("the light ramp overrides exactly the stops the dark ramp does", () => {
-    /* The 'app' fragment is registered once and adopted whatever `color` is, so an override the
-       light block forgets is not "unbranded" — it inherits the DARK brand value and paints a
-       near-black surface into a light theme. Set equality is the only assertion that catches it. */
-    const dark = stopsUnder(":host {");
-    const light = stopsUnder(':host([color="light"])');
-    expect(light).toEqual(dark);
-    expect(dark.length).toBeGreaterThan(20);
+  test("every chrome colour is a light-dark() pair, so one stamp repaints all of it", () => {
+    /* The Spectrum arrangement needed a whole second ramp registered under the other name, and a
+       stop overridden in one and forgotten in the other painted the wrong theme's value. A pair
+       cannot be half-written: the syntax carries both sides or it is not a pair. */
+    for (const token of ["--jx-bg", "--jx-bg-panel", "--jx-fg", "--jx-fg-dim", "--jx-accent"]) {
+      expect(valueOf(token), token).toStartWith("light-dark(");
+    }
   });
 
-  test("the two ramps disagree on the stops they share, or one of them is not a theme", () => {
-    const css = jxTheme.cssText;
-    // Gray-50 is the darkest surface in the dark ramp and the lightest in the light one — the ends
-    // Swap, which is why the light ramp cannot be authored by reversing the dark one.
-    expect(css).toContain("--spectrum-gray-50-rgb: 10, 10, 10");
-    expect(css).toContain("--spectrum-gray-50-rgb: 255, 255, 255");
+  test("the two sides of a pair disagree, or it is not a theme", () => {
+    const [light, dark] = valueOf("--jx-bg")
+      .replaceAll(/^light-dark\(|\)$/g, "")
+      .split(",")
+      .map((part) => part.trim());
+    expect(light).not.toBe(dark);
   });
 });
 
@@ -141,27 +141,30 @@ describe("monacoTheme", () => {
 });
 
 describe("applyChromeTheme projects the record", () => {
-  test("paints <sp-theme>, stamps <html>, and repaints a live editor", () => {
-    const theme = document.createElement("sp-theme");
-    theme.setAttribute("color", "dark");
-    document.body.append(theme);
-    try {
-      shell.theme = "light";
-      applyChromeTheme();
+  test("stamps <html> and repaints a live editor", () => {
+    shell.theme = "light";
+    applyChromeTheme();
 
-      expect(theme.getAttribute("color")).toBe("light");
-      // The one channel that reaches the html/body backdrop: <html> is an ANCESTOR of <sp-theme>,
-      // So `styles/tokens.css` cannot read a --spectrum-* token up there.
-      expect(document.documentElement.dataset.theme).toBe("light");
-      expect(setThemeCalls).toEqual(["vs"]);
+    /* The ONE channel now, and that is the removal rather than a simplification. There were two —
+       this stamp and a `color` attribute on the theme element the frame was wrapped in — so a
+       theme could half-apply, which is exactly how Light shipped as a switch that moved the
+       backdrop and nothing else. */
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(setThemeCalls).toEqual(["vs"]);
 
-      shell.theme = "dark";
+    shell.theme = "dark";
+    applyChromeTheme();
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(setThemeCalls).toEqual(["vs", "vs-dark"]);
+  });
+
+  test("writes a name the kit has a rule for, whatever the record says", () => {
+    /* The stamp is unvalidated by the DOM, so the record is the only thing keeping it inside the
+       set the kit draws. Every value `setChromeTheme` accepts must land on a declared rule. */
+    for (const name of CHROME_THEMES) {
+      setChromeTheme(name);
       applyChromeTheme();
-      expect(theme.getAttribute("color")).toBe("dark");
-      expect(document.documentElement.dataset.theme).toBe("dark");
-      expect(setThemeCalls).toEqual(["vs", "vs-dark"]);
-    } finally {
-      theme.remove();
+      expect(schemeFor(document.documentElement.dataset.theme as string)).not.toBeNull();
     }
   });
 

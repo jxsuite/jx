@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.4.13-draft\
+**Version:** 0.4.14-draft\
 **Status:** Pending\
-**Updated:** 2026-09-02\
+**Updated:** 2026-09-12\
 **License:** MIT
 
 ---
@@ -534,7 +534,7 @@ When the user navigates into a sub-component (via `pushDocument()` in the state 
 │  │                  │          │                    │ │
 │  │  - File I/O      │          │  - @jxsuite/studio  │ │
 │  │  - Utils.*       │          │  - @jxsuite/runtime │ │
-│  │  - Code services │          │  - Lit + Spectrum  │ │
+│  │  - Code services │          │  - @jxsuite/ui     │ │
 │  │  - Build / SSG   │          │  - Monaco          │ │
 │  └─────────────────┘          └──────────────────┘ │
 │                                                      │
@@ -1042,6 +1042,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.14-draft** (2026-09-12) — §7.1 webview box names @jxsuite/ui in place of Lit + Spectrum.
 - **0.4.13-draft** (2026-09-02) — Only authored sizes are emitted: a block-level box in normal flow drops the width and height a browser measured, so an imported layout stays fluid instead of pinned to the capture viewport.
 - **0.4.12-draft** (2026-09-02) — A control that declares which panel it expands becomes a native disclosure, with the flow deciding whether a pair is a details element or a popover.
 - **0.4.11-draft** (2026-09-02) — Import pairs a control with the panel it opens from the accessibility contract a site already ships, and emits a popover whose closed state lives in :popover-open rather than the base rule.
@@ -1099,4 +1100,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.4.13-draft_
+_Jx Studio Desktop Architecture Specification v0.4.14-draft_

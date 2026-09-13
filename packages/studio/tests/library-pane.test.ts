@@ -10,15 +10,20 @@
  * 2. **An upload has a destination the author chose.** With a category that names one it is printed on
  *    the control before the drop; with "All" it is asked for, and cancelling asks nobody's
  *    permission to guess.
+ *
+ * Everything is addressed by `part`, because the pane is a document (`surfaces/library-pane.json`):
+ * there is no `.library-card`, `.library-body` or `.library-empty` to find any more. A reader's
+ * choice on the language facet is made on the NATIVE `<select>` inside `jx-select` and their typing
+ * on the `<input>` inside `jx-textfield`, because writing the host's property would move a control
+ * no reader can move. The per-file menu and the New menu are the `menu` surface, so they are read
+ * out of `#layer-popover` and their rows are addressed by command id rather than by their label.
  */
 import {
   answerPromptDialog,
   dragEvent,
   flush,
   installMockPlatform,
-  pointer,
   resetStudioState,
-  stubRect,
   surfaceOf,
   testFile,
 } from "./harness";
@@ -27,8 +32,11 @@ import { setFormats } from "../src/format/format-host";
 import { MARKDOWN_FORMAT, mockFormatAction } from "./format-fixture";
 import { initLayers } from "../src/ui/layers";
 import { problems, resetNotifications } from "../src/services/notify";
+import libraryDoc from "../src/surfaces/library-pane.json";
+import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { activities, resetActivities } from "../src/panels/activity-panel";
 import type { DirEntry } from "../src/types";
+import type { LibraryViewKind } from "../src/surfaces/library-pane";
 
 // ─── Seams ───────────────────────────────────────────────────────────────────
 
@@ -190,6 +198,44 @@ function text(): string {
   return host.textContent ?? "";
 }
 
+/** Everything drawn under a part, in DOM order. */
+function parts(name: string): HTMLElement[] {
+  return [...host.querySelectorAll<HTMLElement>(`[part="${name}"]`)];
+}
+
+/** The one element under a part, or null. */
+function part(name: string): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="${name}"]`);
+}
+
+/** The pane's scroller, which is also its drop zone. */
+function body(): HTMLElement {
+  return part("body")!;
+}
+
+/** The rows of whichever menu the Library has up, addressed by command id. */
+function menuIds(): string[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item[data-command-id]"),
+  ].map((el) => el.dataset.commandId!);
+}
+
+/** One menu row, by the id it runs. */
+function menuRow(id: string): HTMLElement {
+  const found = document.querySelector<HTMLElement>(
+    `#layer-popover jx-menu-item[data-command-id="${id}"]`,
+  );
+  if (!found) {
+    throw new Error(`no menu row: ${id} (have: ${menuIds().join(", ")})`);
+  }
+  return found;
+}
+
+/** The native control inside a kit element — what a reader actually drives. */
+function control<T extends HTMLElement>(name: string, tag: string): T {
+  return part(name)!.querySelector<T>(tag)!;
+}
+
 beforeEach(() => {
   created.length = 0;
   opened.length = 0;
@@ -210,6 +256,65 @@ beforeEach(() => {
 afterEach(() => {
   detachLibraryPane("primary");
   host?.remove();
+});
+
+// ─── The document and the projection ─────────────────────────────────────────
+
+describe("the one discriminant", () => {
+  /** Every `part` and `$switch` in the document, walked once. */
+  function slotCases(slot: string): string[] {
+    const seen: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const child of node) {
+          walk(child);
+        }
+        return;
+      }
+      if (node === null || typeof node !== "object") {
+        return;
+      }
+      const el = node as Record<string, unknown>;
+      const attributes = el.attributes as Record<string, unknown> | undefined;
+      if (attributes?.part === slot && el.cases) {
+        seen.push(...Object.keys(el.cases as Record<string, unknown>));
+      }
+      for (const value of Object.values(el)) {
+        walk(value);
+      }
+    };
+    walk(libraryDoc);
+    return seen;
+  }
+
+  /**
+   * The nine states, in one place, twice — and this is what holds the two spellings together.
+   *
+   * A `$switch` renders NOTHING for a key it has no case for, silently: adding a tenth kind to the
+   * union and forgetting the case would empty the pane for whatever produces it, which is precisely
+   * the "No files found" failure mode this design exists to end, one level up.
+   */
+  const KINDS: LibraryViewKind[] = [
+    "loading",
+    "incomplete",
+    "empty",
+    "nomatch",
+    "cards",
+    "media",
+    "table",
+    "calendar",
+    "board",
+  ];
+
+  test("the document draws a case for every view the projection can name", () => {
+    expect(slotCases("view-slot").toSorted()).toEqual([...KINDS].toSorted());
+  });
+
+  test("every layout the model declares is one of them", () => {
+    for (const layout of LIBRARY_LAYOUTS) {
+      expect(KINDS).toContain(layout);
+    }
+  });
 });
 
 // ─── Mounting ────────────────────────────────────────────────────────────────
@@ -239,10 +344,10 @@ describe("mounting", () => {
     document.body.append(host);
     renderLibraryMode(surfaceOf(host), tab);
     await flush();
-    const first = host.querySelector(".library");
+    const first = part("library");
     renderLibraryMode(surfaceOf(host), tab);
     await flush();
-    expect(host.querySelector(".library")).toBe(first!);
+    expect(part("library")).toBe(first!);
   });
 
   test("detaching is idempotent", async () => {
@@ -258,6 +363,84 @@ describe("mounting", () => {
     expect(libraryPaneMounted("primary", tab)).toBe(false);
   });
 
+  test("a pane torn down before its mount settles leaves no document behind", async () => {
+    // `resetCanvasView` detaches every pane unconditionally, so a tab switch during the mount is
+    // Ordinary rather than exotic — and the mount is asynchronous, because the kit has to be
+    // Defined before a document can render.
+    const tab = openTab({
+      capabilities: { modes: ["manage"] },
+      document: { children: [], tagName: "div" },
+      documentPath: null,
+      id: "grid://library",
+    });
+    host = document.createElement("div");
+    document.body.append(host);
+    renderLibraryMode(surfaceOf(host), tab);
+    detachLibraryPane("primary");
+    await flush();
+    await flush();
+    expect(part("library")).toBeNull();
+    expect(libraryPaneMounted("primary", tab)).toBe(false);
+  });
+
+  test("a settle pass that outlives its pane runs against nothing, least of all its successor", async () => {
+    const reads: string[] = [];
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      readFile: (path: string) => {
+        reads.push(path);
+        return Promise.resolve('{"tagName":"div","children":[]}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    await mount();
+    await flush();
+    // The settle pass is the ONE timer a synchronous state change arms once the mount and the scan
+    // Have both landed: `scheduleSettle` coalesces, and the scan's own timer went with the scan.
+    // Hold its callback rather than letting it run, because the pass is written for the task AFTER
+    // The repaint — and by then the pane can be somebody else's.
+    const held: (() => void)[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+      held.push(fn);
+      return realSetTimeout(() => {}, ms);
+    }) as typeof setTimeout;
+    try {
+      setLibraryCategory("pages");
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+    expect(held.length).toBe(1);
+    // A tab switch: another tab's Library takes the pane, on a fresh stage.
+    const stale = host;
+    const successor = openTab({
+      capabilities: { modes: ["manage"] },
+      document: { children: [], tagName: "div" },
+      documentPath: null,
+      id: "grid://library-successor",
+    });
+    host = document.createElement("div");
+    document.body.append(host);
+    renderLibraryMode(surfaceOf(host), successor);
+    await flush();
+    await flush();
+    const before = reads.length;
+    // The pass the first pane scheduled now runs. Teardown emptied that pane's record and the stage
+    // Is the successor's, so there is nothing for it to tend: it must neither throw, read a document
+    // For a card that is gone, nor touch the successor's islands.
+    const { revision } = libraryView;
+    expect(() => held[0]!()).not.toThrow();
+    await flush();
+    expect(reads.length).toBe(before);
+    expect(libraryView.revision).toBe(revision);
+    expect(libraryPaneMounted("primary", successor)).toBe(true);
+    const slot = host.querySelector<HTMLElement>(
+      '[part="doc-preview"][data-path="pages/index.json"]',
+    );
+    expect(slot?.childElementCount).toBe(1);
+    stale.remove();
+  });
+
   test("a repaint while previews are still loading does not ask for them twice", async () => {
     const reads: string[] = [];
     installMockPlatform({
@@ -271,8 +454,8 @@ describe("mounting", () => {
     await mount();
     const first = reads.length;
     expect(first).toBeGreaterThan(0);
-    // Repaint immediately: lit hands a fresh `ref` closure per render, so the slot re-registers
-    // While its read is still in flight.
+    // Repaint immediately: the settle pass runs over every slot on screen, so a slot whose first
+    // Read is still in flight is offered a second time unless `pendingPaths` refuses it.
     setLibrarySearch("");
     setLibraryCategory("all");
     await flush();
@@ -287,14 +470,26 @@ describe("mounting", () => {
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await mount();
     await flush();
-    expect(host.querySelectorAll(".library-card").length).toBe(5);
-    expect(host.querySelector(".library-preview-slot")?.firstElementChild ?? null).toBeNull();
+    expect(parts("card").length).toBe(5);
+    expect(part("doc-preview")?.firstElementChild ?? null).toBeNull();
   });
 
   test("scans once and lists the project's files", async () => {
     await mount();
     expect(librarySource().files().length).toBe(5);
-    expect(host.querySelectorAll(".library-card").length).toBe(5);
+    expect(parts("card").length).toBe(5);
+  });
+
+  test("a card's preview is an island the document renders empty and the host fills", async () => {
+    await mount();
+    await flush();
+    // `pages/index.json` is the one file the mock platform has bytes for; the rest fail to read and
+    // Keep the empty box, which is the same shape a card in an unscanned project has.
+    const slot = host.querySelector<HTMLElement>(
+      '[part="doc-preview"][data-path="pages/index.json"]',
+    );
+    expect(slot).not.toBeNull();
+    expect(slot!.childElementCount).toBe(1);
   });
 });
 
@@ -314,10 +509,7 @@ describe("the four states the old view called “No files found”", () => {
     expect(text()).toContain("No files match");
     expect(text()).toContain("zzz");
     expect(text()).toContain("5 file(s) in the project");
-    const clear = [...host.querySelectorAll("sp-button")].find((b) =>
-      (b.textContent ?? "").includes("Clear filters"),
-    ) as HTMLElement;
-    clear.click();
+    part("reset")!.click();
     await flush();
     expect(libraryView.query).toBe("");
     expect(libraryView.category).toBe("all");
@@ -350,14 +542,12 @@ describe("the four states the old view called “No files found”", () => {
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await mount();
-    // Everything failed, so this is the empty state's Retry.
-    const emptyRetry = [...host.querySelectorAll("sp-button")].find((b) =>
-      (b.textContent ?? "").includes("Retry"),
-    ) as HTMLElement;
-    emptyRetry.click();
+    // Everything failed, so both Retries are drawn: the banner's above the body and the empty
+    // State's inside it. Either re-scans.
+    parts("retry")[0]!.click();
     await flush();
     await flush();
-    expect(host.querySelectorAll(".library-card").length).toBe(5);
+    expect(parts("card").length).toBe(5);
   });
 
   test("a partly-failed scan offers Retry in the banner above the list it did get", async () => {
@@ -372,12 +562,12 @@ describe("the four states the old view called “No files found”", () => {
     });
     resetStudioState({ projectConfig: null, projectDirs: [...Object.keys(TREE), "broken"] });
     await mount();
-    const banner = host.querySelector(".library-banner")!;
+    const banner = part("banner")!;
     broken = false;
-    (banner.querySelector("sp-button") as HTMLElement).click();
+    banner.querySelector<HTMLElement>('[part="retry"]')!.click();
     await flush();
     await flush();
-    expect(host.querySelector(".library-banner")).toBeNull();
+    expect(part("banner")).toBeNull();
   });
 
   test("and raises a Problem carrying the retry command and the directory", async () => {
@@ -414,7 +604,7 @@ describe("the four states the old view called “No files found”", () => {
     expect(text()).toContain("did not finish");
     await refreshLibrary();
     await flush();
-    expect(host.querySelectorAll(".library-card").length).toBe(2);
+    expect(parts("card").length).toBe(2);
   });
 });
 
@@ -451,17 +641,15 @@ describe("the language facet", () => {
     });
   }
 
-  function picker(): (HTMLElement & { value: string }) | null {
-    return host.querySelector(".library-locale-filter");
+  /* The part is on the `jx-select`; the `<select>` inside it is what a reader drives. */
+  function picker(): HTMLSelectElement | null {
+    return part("locale")?.querySelector("select") ?? null;
   }
 
   test("draws a picker of the locales PRESENT, labelled in each language's own words", async () => {
     setupI18n();
     await mount();
-    const options = [...picker()!.querySelectorAll("sp-menu-item")].map((el) => [
-      el.getAttribute("value"),
-      el.textContent?.trim(),
-    ]);
+    const options = [...picker()!.options].map((el) => [el.value, el.textContent?.trim()]);
     /*
      * `en` has no directory of its own and is still an option, because under
      * `prefix-except-default` the unprefixed `pages/index.json` IS its copy — and a language filter
@@ -496,20 +684,20 @@ describe("the language facet", () => {
     setLibraryLocale("fr");
     await flush();
     // A picker whose choices collapsed to the choice just made could not be used to make another.
-    expect([...picker()!.querySelectorAll("sp-menu-item")]).toHaveLength(4);
+    expect([...picker()!.options]).toHaveLength(4);
   });
 
   test("choosing a language filters to it, and All puts every file back", async () => {
     setupI18n();
     await mount();
-    const control = picker()!;
-    control.value = "fr";
-    control.dispatchEvent(new Event("change"));
+    const select = picker()!;
+    select.value = "fr";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
     expect(text()).toContain("about.json");
     expect(text()).not.toContain("main.json");
-    control.value = "all";
-    control.dispatchEvent(new Event("change"));
+    picker()!.value = "all";
+    picker()!.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
     expect(libraryView.locale).toBe("");
     expect(text()).toContain("main.json");
@@ -534,10 +722,7 @@ describe("the language facet", () => {
     setLibraryLocale("fr");
     await flush();
     expect(text()).toContain("in Layouts and français");
-    const clear = [...host.querySelectorAll("sp-button")].find((b) =>
-      (b.textContent ?? "").includes("Clear filters"),
-    ) as HTMLElement;
-    clear.click();
+    part("reset")!.click();
     await flush();
     expect(libraryView.locale).toBe("");
     expect(libraryView.category).toBe("all");
@@ -563,49 +748,52 @@ describe("layouts", () => {
       await flush();
     }
     expect(reads).toBe(after);
-    expect(host.querySelector(".library-board")).not.toBeNull();
+    expect(part("board")).not.toBeNull();
   });
 
   test("each layout draws its own structure", async () => {
     await mount();
     setLibraryLayout("table");
     await flush();
-    expect(host.querySelector(".library-table-head")).not.toBeNull();
+    expect(part("table-head")).not.toBeNull();
     setLibraryLayout("calendar");
     await flush();
-    expect(host.querySelector(".library-calendar")).not.toBeNull();
+    expect(part("calendar")).not.toBeNull();
     setLibraryLayout("media");
     await flush();
-    expect(host.querySelector(".library-grid-media")).not.toBeNull();
+    expect(host.querySelector('[part="grid"][data-layout="media"]')).not.toBeNull();
+  });
+
+  test("a Media tile is an asset thumbnail, never a live document render", async () => {
+    await mount();
+    setLibraryLayout("media");
+    await flush();
+    expect(parts("tile").length).toBe(5);
+    expect(part("doc-preview")).toBeNull();
   });
 
   test("the category buttons run the same state change the command does", async () => {
     await mount();
-    const pages = [...host.querySelectorAll("sp-action-button")].find(
-      (b) => (b.textContent ?? "").trim() === "Pages",
-    ) as HTMLElement;
-    pages.click();
+    host.querySelector<HTMLElement>('[part="category"][data-category="pages"]')!.click();
     await flush();
     expect(libraryView.category).toBe("pages");
-    expect(host.querySelectorAll(".library-card").length).toBe(2);
+    expect(parts("card").length).toBe(2);
   });
 
   test("the layout switcher runs the same state change the command does", async () => {
     await mount();
-    const board = [...host.querySelectorAll(".library-layout-switch sp-action-button")].find(
-      (b) => (b.textContent ?? "").trim() === "Board",
-    ) as HTMLElement;
-    board.click();
+    host.querySelector<HTMLElement>('[part="layout"][data-layout="board"]')!.click();
     await flush();
     expect(libraryView.layout).toBe("board");
-    expect(host.querySelector(".library-board")).not.toBeNull();
+    expect(part("board")).not.toBeNull();
   });
 
   test("the New menu creates through the same flow the command uses", async () => {
     await mount();
-    const menu = host.querySelector("sp-menu") as HTMLElement & { value: string };
-    menu.value = "layout";
-    menu.dispatchEvent(new Event("change", { bubbles: true }));
+    part("new")!.click();
+    await flush();
+    expect(menuIds()).toEqual(["page", "layout", "component", "collection:posts"]);
+    menuRow("layout").click();
     await flush();
     /* A layout takes a FIXED `.json`, and that is not a policy: both readers of a layout parse it
        as JSON and neither dispatches through the format registry (`site/layout-resolver.ts` throws,
@@ -622,29 +810,30 @@ describe("layouts", () => {
     ]);
   });
 
-  test("submitting the search field does not reload the page", async () => {
+  test("the New button is a toggle — a second press closes the menu it opened", async () => {
     await mount();
-    const search = host.querySelector("sp-search")!;
-    const submit = new Event("submit", { bubbles: true, cancelable: true });
-    search.dispatchEvent(submit);
-    expect(submit.defaultPrevented).toBe(true);
+    part("new")!.click();
+    await flush();
+    expect(menuIds().length).toBeGreaterThan(0);
+    part("new")!.click();
+    await flush();
+    expect(menuIds()).toEqual([]);
   });
 
   test("scrolling the body repaints — the window is recomputed, not the scan", async () => {
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
     const before = libraryView.revision;
-    body.dispatchEvent(new Event("scroll"));
+    body().dispatchEvent(new Event("scroll"));
     expect(libraryView.revision).toBeGreaterThan(before);
   });
 
   test("the search field filters", async () => {
     await mount();
-    const search = host.querySelector("sp-search") as HTMLElement & { value: string };
-    search.value = "logo";
-    search.dispatchEvent(new Event("input", { bubbles: true }));
+    const input = control<HTMLInputElement>("search", "input");
+    input.value = "logo";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     await flush();
-    expect(host.querySelectorAll(".library-card").length).toBe(1);
+    expect(parts("card").length).toBe(1);
   });
 });
 
@@ -654,20 +843,14 @@ describe("the upload destination", () => {
   test("a category that names a folder uploads there, and says so before the drop", async () => {
     setLibraryCategory("media");
     await mount();
-    const upload = [...host.querySelectorAll("sp-action-button")].find((b) =>
-      (b.textContent ?? "").includes("Upload"),
-    )!;
-    expect(upload.getAttribute("title")).toBe("Upload into public/");
+    expect(part("upload")!.getAttribute("title")).toBe("Upload into public/");
     expect(await resolveUploadDir()).toBe("public");
   });
 
   test("All has no folder of its own, so it ASKS rather than guessing", async () => {
     setLibraryCategory("all");
     await mount();
-    const upload = [...host.querySelectorAll("sp-action-button")].find((b) =>
-      (b.textContent ?? "").includes("Upload"),
-    )!;
-    expect(upload.getAttribute("title")).toBe("Upload — asks for a folder");
+    expect(part("upload")!.getAttribute("title")).toBe("Upload — asks for a folder");
     const pending = resolveUploadDir();
     await flush();
     await answerPromptDialog("assets/media/");
@@ -687,27 +870,28 @@ describe("the upload destination", () => {
   test("a drop on the body uploads into the named destination and re-scans", async () => {
     setLibraryCategory("media");
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
-    dragEvent(body, "dragover");
-    expect(body.classList.contains("library-drop-active")).toBe(true);
-    dragEvent(body, "drop", [testFile("shot.png")]);
+    dragEvent(body(), "dragover");
     await flush();
-    expect(body.classList.contains("library-drop-active")).toBe(false);
+    expect(body().dataset.drop).toBe("true");
+    dragEvent(body(), "drop", [testFile("shot.png")]);
+    await flush();
+    expect(body().dataset.drop).toBe("false");
     expect(uploads).toEqual([{ count: 1, dir: "public" }]);
   });
 
   test("dragging away clears the drop affordance", async () => {
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
-    dragEvent(body, "dragover");
-    dragEvent(body, "dragleave");
-    expect(body.classList.contains("library-drop-active")).toBe(false);
+    dragEvent(body(), "dragover");
+    await flush();
+    expect(body().dataset.drop).toBe("true");
+    dragEvent(body(), "dragleave");
+    await flush();
+    expect(body().dataset.drop).toBe("false");
   });
 
   test("a drop carrying no files does nothing", async () => {
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
-    dragEvent(body, "drop");
+    dragEvent(body(), "drop");
     await flush();
     expect(uploads).toEqual([]);
   });
@@ -716,29 +900,26 @@ describe("the upload destination", () => {
 // ─── The upload control ──────────────────────────────────────────────────────
 
 describe("the Upload control", () => {
-  test("clicks the hidden picker, and a chosen file uploads to the named folder", async () => {
+  test("is the picker itself, and a chosen file uploads to the named folder", async () => {
     setLibraryCategory("media");
     await mount();
-    const input = host.querySelector(".library-upload-input") as HTMLInputElement;
-    let clicked = 0;
-    input.click = () => {
-      clicked += 1;
-    };
-    const upload = [...host.querySelectorAll("sp-action-button")].find((b) =>
-      (b.textContent ?? "").includes("Upload"),
-    ) as HTMLElement;
-    upload.click();
-    expect(clicked).toBe(1);
+    // A LABEL around a real `<input type="file">`, so the click that opens the picker is the
+    // Platform's rather than a `querySelector` and a synthetic `.click()`.
+    const input = part("upload-input") as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(part("upload")!.contains(input)).toBe(true);
 
     Object.defineProperty(input, "files", { configurable: true, value: [testFile("a.png")] });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
     expect(uploads).toEqual([{ count: 1, dir: "public" }]);
+    // Cleared, or the same file cannot be chosen twice in a row.
+    expect(input.value).toBe("");
   });
 
   test("a picker dismissed with no file uploads nothing", async () => {
     await mount();
-    const input = host.querySelector(".library-upload-input") as HTMLInputElement;
+    const input = part("upload-input") as HTMLInputElement;
     Object.defineProperty(input, "files", { configurable: true, value: [] });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
@@ -956,34 +1137,29 @@ describe("a slow scan", () => {
 // ─── Context menu ────────────────────────────────────────────────────────────
 
 describe("the per-file context menu", () => {
-  async function openMenu(): Promise<HTMLElement> {
+  async function openContextMenu(): Promise<void> {
     await mount();
-    const card = host.querySelector(".library-card") as HTMLElement;
-    card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    parts("card")[0]!.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+    );
     await flush();
-    return document.querySelector("#layer-dialog") as HTMLElement;
   }
 
-  function item(layer: HTMLElement, label: string): HTMLElement {
-    const found = [...layer.querySelectorAll("sp-menu-item")].find(
-      (n) => (n.textContent ?? "").trim() === label,
-    );
-    if (!found) {
-      throw new Error(`no menu item: ${label}`);
-    }
-    return found as HTMLElement;
-  }
+  test("offers the file's verbs, with Delete set apart", async () => {
+    await openContextMenu();
+    expect(menuIds()).toEqual(["open", "rename", "duplicate", "delete"]);
+  });
 
   test("opens the file", async () => {
-    const layer = await openMenu();
-    item(layer, "Open").click();
+    await openContextMenu();
+    menuRow("open").click();
     await flush();
     expect(opened.length).toBe(1);
   });
 
   test("renames through the shared dialog, which states what moves with the file", async () => {
-    const layer = await openMenu();
-    item(layer, "Rename…").click();
+    await openContextMenu();
+    menuRow("rename").click();
     await flush();
     const dialog = document.querySelector("#layer-dialog")!;
     expect(dialog.textContent).toContain("Used on 2 pages.");
@@ -993,8 +1169,8 @@ describe("the per-file context menu", () => {
   });
 
   test("a cancelled rename changes nothing", async () => {
-    const layer = await openMenu();
-    item(layer, "Rename…").click();
+    await openContextMenu();
+    menuRow("rename").click();
     await flush();
     await answerPromptDialog(null);
     await flush();
@@ -1012,8 +1188,8 @@ describe("the per-file context menu", () => {
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
-    const layer = await openMenu();
-    item(layer, "Duplicate").click();
+    await openContextMenu();
+    menuRow("duplicate").click();
     await flush();
     await flush();
     expect(written).toEqual(["content/2024-01-02-hello-copy.md"]);
@@ -1022,8 +1198,8 @@ describe("the per-file context menu", () => {
 
   test("a refused delete deletes nothing", async () => {
     deleteAnswer = false;
-    const layer = await openMenu();
-    item(layer, "Delete").click();
+    await openContextMenu();
+    menuRow("delete").click();
     await flush();
     expect(librarySource().files().length).toBe(5);
   });
@@ -1039,8 +1215,8 @@ describe("the per-file context menu", () => {
         Promise.resolve((TREE[path] ?? []).filter((entry) => !removed.includes(entry.path))),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
-    const layer = await openMenu();
-    item(layer, "Delete").click();
+    await openContextMenu();
+    menuRow("delete").click();
     await flush();
     await flush();
     expect(removed.length).toBe(1);
@@ -1053,8 +1229,8 @@ describe("the per-file context menu", () => {
       listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
-    const layer = await openMenu();
-    item(layer, "Delete").click();
+    await openContextMenu();
+    menuRow("delete").click();
     await flush();
     await flush();
     const problem = problems.at(-1)!;
@@ -1062,36 +1238,31 @@ describe("the per-file context menu", () => {
     expect(problem.source).toBe("Library");
   });
 
-  test("a menu opened at the far edge of the window is pulled back inside it", async () => {
-    await mount();
-    const card = host.querySelector(".library-card") as HTMLElement;
-    card.dispatchEvent(
-      new MouseEvent("contextmenu", {
-        bubbles: true,
-        cancelable: true,
-        clientX: window.innerWidth - 2,
-        clientY: window.innerHeight - 2,
-      }),
+  test("a second right-click replaces the menu rather than stacking one on it", async () => {
+    await openContextMenu();
+    expect(document.querySelectorAll("#layer-popover jx-menu").length).toBe(1);
+    parts("card")[1]!.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
     );
-    const popover = document.querySelector("#layer-dialog sp-popover") as HTMLElement;
-    stubRect(popover, { height: 200, width: 240 });
     await flush();
-    expect(popover.style.left).toBe(`${window.innerWidth - 244}px`);
-    expect(popover.style.top).toBe(`${window.innerHeight - 204}px`);
+    expect(document.querySelectorAll("#layer-popover jx-menu").length).toBe(1);
+    menuRow("open").click();
+    await flush();
+    expect(opened).toEqual([parts("card")[1]!.dataset.path!]);
   });
 
-  test("dismissing by clicking away releases the handle, so the next right-click reopens", async () => {
+  test("a row whose file the scan has since dropped opens no menu at all", async () => {
     await mount();
-    const card = host.querySelector(".library-card") as HTMLElement;
+    const card = parts("card")[0]!;
+    const gone = card.dataset.path!;
+    installMockPlatform({
+      listDirectory: (dir: string) =>
+        Promise.resolve((TREE[dir] ?? []).filter((entry) => entry.path !== gone)),
+    });
+    await refreshLibrary();
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    expect(document.querySelectorAll("#layer-dialog sp-popover").length).toBe(1);
-    pointer(document.body, "pointerdown");
-    pointer(document.body, "click");
-    await flush();
-    card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-    await flush();
-    expect(document.querySelectorAll("#layer-dialog sp-popover").length).toBe(1);
+    expect(menuIds()).toEqual([]);
   });
 
   test("a failing rename and a failing duplicate report the same way", async () => {
@@ -1101,15 +1272,15 @@ describe("the per-file context menu", () => {
       renameFile: () => Promise.reject(new Error("EPERM")),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
-    let layer = await openMenu();
-    item(layer, "Rename…").click();
+    await openContextMenu();
+    menuRow("rename").click();
     await flush();
     await answerPromptDialog("other.json");
     await flush();
     expect(problems.at(-1)!.message).toContain("Could not rename");
 
-    layer = await openMenu();
-    item(layer, "Duplicate").click();
+    await openContextMenu();
+    menuRow("duplicate").click();
     await flush();
     await flush();
     expect(problems.at(-1)!.message).toContain("Could not duplicate");

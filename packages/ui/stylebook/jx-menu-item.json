@@ -1,0 +1,221 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookMenuItem",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-menu-item.json"
+    }
+  ],
+  "state": {
+    "rows": [
+      {
+        "id": "plain",
+        "title": "Plain",
+        "chord": "",
+        "requires": "",
+        "disabled": false,
+        "destructive": false,
+        "checked": "",
+        "haspopup": false,
+        "enabled": true,
+        "noChord": true,
+        "noPopup": true
+      },
+      {
+        "id": "chord",
+        "title": "With a chord",
+        "chord": "⌘K",
+        "requires": "",
+        "disabled": false,
+        "destructive": false,
+        "checked": "",
+        "haspopup": false,
+        "enabled": true,
+        "noChord": false,
+        "noPopup": true
+      },
+      {
+        "id": "disabled",
+        "title": "Disabled",
+        "chord": "⌘V",
+        "requires": "something on the clipboard",
+        "disabled": true,
+        "destructive": false,
+        "checked": "",
+        "haspopup": false,
+        "enabled": false,
+        "noChord": false,
+        "noPopup": true
+      },
+      {
+        "id": "checked",
+        "title": "Checked",
+        "chord": "",
+        "requires": "",
+        "disabled": false,
+        "destructive": false,
+        "checked": "true",
+        "haspopup": false,
+        "enabled": true,
+        "noChord": true,
+        "noPopup": true
+      },
+      {
+        "id": "unchecked",
+        "title": "Unchecked",
+        "chord": "",
+        "requires": "",
+        "disabled": false,
+        "destructive": false,
+        "checked": "false",
+        "haspopup": false,
+        "enabled": true,
+        "noChord": true,
+        "noPopup": true
+      },
+      {
+        "id": "submenu",
+        "title": "Owns a submenu",
+        "chord": "",
+        "requires": "",
+        "disabled": false,
+        "destructive": false,
+        "checked": "",
+        "haspopup": true,
+        "enabled": true,
+        "noChord": true,
+        "noPopup": false
+      },
+      {
+        "id": "destructive",
+        "title": "Destructive",
+        "chord": "⌫",
+        "requires": "",
+        "disabled": false,
+        "destructive": true,
+        "checked": "",
+        "haspopup": false,
+        "enabled": true,
+        "noChord": false,
+        "noPopup": true
+      }
+    ]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > [role=\"menu\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "width": "280px",
+      "padding": "var(--jx-space-2)",
+      "background": "var(--jx-bg-overlay)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-md)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-menu-item"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Every state a row can be in, laid out in a static list so each is visible at once. A row is disabled, never absent; its reason is its tooltip."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "menu",
+        "aria-label": "Row states"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/rows"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "jx-menu-item",
+            "$props": {
+              "value": {
+                "$ref": "$map/item/id"
+              },
+              "disabled": {
+                "$ref": "$map/item/disabled"
+              },
+              "destructive": {
+                "$ref": "$map/item/destructive"
+              },
+              "requires": {
+                "$ref": "$map/item/requires"
+              },
+              "haspopup": {
+                "$ref": "$map/item/haspopup"
+              },
+              "checked": {
+                "$ref": "$map/item/checked"
+              }
+            },
+            "children": [
+              {
+                "tagName": "jx-icon",
+                "attributes": {
+                  "slot": "icon"
+                },
+                "$props": {
+                  "name": "copy"
+                }
+              },
+              {
+                "tagName": "span",
+                "textContent": "${$map.item.title}"
+              },
+              {
+                "tagName": "kbd",
+                "attributes": {
+                  "slot": "value"
+                },
+                "hidden": {
+                  "$ref": "$map/item/noChord"
+                },
+                "textContent": "${$map.item.chord}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "slot": "description"
+                },
+                "hidden": {
+                  "$ref": "$map/item/enabled"
+                },
+                "textContent": "Needs ${$map.item.requires}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

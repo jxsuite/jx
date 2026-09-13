@@ -173,6 +173,8 @@ export const STUDIO_WORKERS: readonly string[] = [
  */
 export const STUDIO_STYLESHEETS: readonly string[] = [
   "styles/tokens.css",
+  /* The frame before the surfaces that fill it: generated from styles/shell-frame.json. */
+  "styles/shell-frame.css",
   "styles/shell.css",
   "styles/canvas.css",
   "styles/panels.css",

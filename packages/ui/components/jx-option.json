@@ -1,0 +1,350 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxOption",
+  "tagName": "jx-option",
+  "observedAttributes": [
+    "value",
+    "label",
+    "description",
+    "selected",
+    "disabled",
+    "face",
+    "swatch",
+    "line",
+    "weight",
+    "slant",
+    "variant",
+    "transform",
+    "decoration"
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What the row stands for; the detail of the select event it dispatches. The empty string is a LEGAL value — a row meaning inherit or none — and never absence."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The row's words, and its accessible name. There is deliberately no default slot, which is jx-tab's answer to the same question: option takes its name from its contents, so unnamed content in the row would join the name, and a row whose only content was a badge would be announced as the badge."
+    },
+    "description": {
+      "type": "string",
+      "default": "",
+      "attribute": "description",
+      "description": "A muted note drawn at the end of the row — a path, a category, a return type. It is TEXT and part of the row's name rather than a slot, exactly as jx-select's row description is, so a reader hears what they can see and the row keeps one accessible name. Absent draws no box."
+    },
+    "selected": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "selected",
+      "description": "Whether this is the row the caret is on. THE LISTBOX IS ITS SINGLE WRITER, exactly as jx-tabs is of every tab's: a consumer moves the highlight by writing the listbox's active id — the same id its owning field already points aria-activedescendant at — and never a row's flag. In this listbox the active descendant and the selection are ONE row, because selection follows the caret; a multi-select listbox, which would need them apart, is not offered."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "A row that cannot be picked is disabled, never absent: it stays in the list, stays announced, and dispatches nothing when clicked."
+    },
+    "face": {
+      "type": "string",
+      "default": "",
+      "attribute": "face",
+      "description": "The font family the label draws in, for a row that IS its own preview. It reaches the label as a custom property set inline on that span, so seventy rows intern the rules two rows do (spec.md 9.1) — the same channel jx-select's rows carry, under the same token name."
+    },
+    "swatch": {
+      "type": "string",
+      "default": "",
+      "attribute": "swatch",
+      "description": "A colour chip drawn before the label, as any CSS colour. Absent by default, so a row that is not about a colour pays no box for one."
+    },
+    "line": {
+      "type": "string",
+      "default": "",
+      "attribute": "line",
+      "description": "A border-style keyword drawn as a short rule before the label: solid, dashed, dotted, double. Absent by default."
+    },
+    "weight": {
+      "type": "string",
+      "default": "",
+      "attribute": "weight",
+      "description": "The font weight the label draws in, for a row that IS its own preview: 700, bold, lighter. It reaches the label the way face does, as a custom property set inline on that span, so a list of nine weights interns one rule. Absent draws the row's own weight."
+    },
+    "slant": {
+      "type": "string",
+      "default": "",
+      "attribute": "slant",
+      "description": "The font style the label draws in: italic or oblique. Named slant rather than style because style is the attribute every element already has. Absent draws upright."
+    },
+    "variant": {
+      "type": "string",
+      "default": "",
+      "attribute": "variant",
+      "description": "The font variant the label draws in: small-caps. Absent draws the row's own."
+    },
+    "transform": {
+      "type": "string",
+      "default": "",
+      "attribute": "transform",
+      "description": "The text transform the label draws with: uppercase, lowercase, capitalize. The label's WORDS are unchanged, so a reader hears the row's name and sees what choosing it would do. Absent draws the words as written."
+    },
+    "decoration": {
+      "type": "string",
+      "default": "",
+      "attribute": "decoration",
+      "description": "The text decoration the label draws with, as any text-decoration value: underline, line-through, underline wavy. Absent draws none."
+    },
+    "noSwatch": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/swatch"
+        }
+      }
+    },
+    "noLine": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/line"
+        }
+      }
+    },
+    "noDescription": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/description"
+        }
+      }
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "then": [
+            {
+              "dispatchEvent": "select",
+              "detail": {
+                "$ref": "#/state/value"
+              },
+              "bubbles": true,
+              "composed": true
+            }
+          ]
+        }
+      ],
+      "emits": [
+        {
+          "name": "select",
+          "description": "The row was picked; detail is its value. It bubbles, so the listbox's owner hears every row through one handler rather than one per row."
+        }
+      ],
+      "description": "Activation dispatches select unless the row is disabled. The click is NOT stopped, which is where this differs from jx-menu-item: a menu row can contain another menu row and would activate both, and a listbox row can contain nothing, so stopping the click here would only take the gesture away from the panel's own handler."
+    },
+    "onPointerDown": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "preventDefault": true
+        }
+      ],
+      "description": "Keeps the caret where it was while a row is pressed. A listbox row is not focusable, so the press would otherwise move focus to the nearest focusable ancestor — off the field that owns the keyboard, and out of the canvas the slash menu is filtering for — and a combobox would fire a change for a value the reader was in the middle of replacing. The same fix jx-textfield's clear button makes, for the same reason."
+    }
+  },
+  "attributes": {
+    "role": "option",
+    "aria-selected": "${state.selected ? 'true' : 'false'}",
+    "aria-disabled": "${state.disabled ? 'true' : null}"
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "onpointerdown": {
+    "$ref": "#/state/onPointerDown"
+  },
+  "style": {
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "alignItems": "center",
+    "gap": "var(--jx-space-3)",
+    "minHeight": "var(--jx-control-h)",
+    "padding": "var(--jx-space-1) var(--jx-space-3)",
+    "borderRadius": "var(--jx-radius-sm)",
+    "color": "var(--jx-fg)",
+    "cursor": "pointer",
+    "userSelect": "none",
+    "scrollMarginBlock": "var(--jx-space-1)",
+    ":hover": {
+      "background": "var(--jx-hover-bg)"
+    },
+    "&[aria-selected=\"true\"]": {
+      "$description": "The highlight is keyed on aria-selected rather than on a second data attribute, so the state a reader hears and the state a reader sees cannot come apart — and :hover is left as its own weaker rule, because the pointer moving over a row is a suggestion and the caret is the answer.",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)"
+    },
+    "&[aria-disabled=\"true\"]": {
+      "opacity": "0.45",
+      "cursor": "default"
+    },
+    "& [part=\"swatch\"]": {
+      "display": "block",
+      "flex": "0 0 auto",
+      "inlineSize": "16px",
+      "blockSize": "16px",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--jx-row-swatch, transparent)",
+      "boxShadow": "inset 0 0 0 1px var(--jx-border)"
+    },
+    "& [part=\"line\"]": {
+      "display": "block",
+      "flex": "0 0 auto",
+      "inlineSize": "32px",
+      "blockSize": "0",
+      "borderBlockStart": "2px var(--jx-row-line, none) currentColor"
+    },
+    "& [part=\"icon\"]": {
+      "display": "inline-flex",
+      "flex": "0 0 auto",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"label\"]": {
+      "display": "block",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--jx-row-face, inherit)",
+      "fontWeight": "var(--jx-row-weight, inherit)",
+      "fontStyle": "var(--jx-row-slant, inherit)",
+      "fontVariant": "var(--jx-row-variant, inherit)",
+      "textTransform": "var(--jx-row-transform, inherit)",
+      "textDecoration": "var(--jx-row-decoration, inherit)"
+    },
+    "& [part=\"description\"]": {
+      "display": "block",
+      "minWidth": "0",
+      "marginInlineStart": "auto",
+      "paddingInlineStart": "var(--jx-space-4)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"end\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "flex": "0 0 auto",
+      "paddingInlineStart": "var(--jx-space-3)",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"swatch\"][hidden], & [part=\"line\"][hidden], & [part=\"description\"][hidden]": {
+      "display": "none"
+    },
+    "& [part=\"icon\"]:empty, & [part=\"end\"]:empty": {
+      "$description": "A slot leaves NO node once its content is distributed (spec.md 16.6), so a container that received nothing is genuinely empty and asking it is how an element finds out (ui.md 3.2). Without this, a row using neither channel still pays two boxes and the one gap between its label and its end becomes three.",
+      "display": "none"
+    },
+    "& [part=\"description\"][hidden] + [part=\"end\"], & [part=\"description\"]:empty + [part=\"end\"]": {
+      "$description": "The auto margin that pushes the end of the row to the end of the row lives on the description, which is where it belongs when there is one. With no description there is nothing holding that space open, so it moves here — and a display:none sibling still matches +, which is what makes one rule enough.",
+      "marginInlineStart": "auto"
+    },
+    "&[aria-selected=\"true\"] [part=\"description\"], &[aria-selected=\"true\"] [part=\"end\"], &[aria-selected=\"true\"] [part=\"icon\"]": {
+      "$description": "A highlighted row draws on the accent, and a muted grey on an accent fails SC 1.4.3. Every channel takes the row's own ink instead of keeping its own.",
+      "color": "inherit"
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "swatch",
+        "aria-hidden": "true"
+      },
+      "style": {
+        "--jx-row-swatch": "${state.swatch || 'transparent'}"
+      },
+      "hidden": {
+        "$ref": "#/state/noSwatch"
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "line",
+        "aria-hidden": "true"
+      },
+      "style": {
+        "--jx-row-line": "${state.line || 'none'}"
+      },
+      "hidden": {
+        "$ref": "#/state/noLine"
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "icon"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "icon"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "label"
+      },
+      "style": {
+        "--jx-row-face": "${state.face || 'inherit'}",
+        "--jx-row-weight": "${state.weight || 'inherit'}",
+        "--jx-row-slant": "${state.slant || 'inherit'}",
+        "--jx-row-variant": "${state.variant || 'inherit'}",
+        "--jx-row-transform": "${state.transform || 'inherit'}",
+        "--jx-row-decoration": "${state.decoration || 'inherit'}"
+      },
+      "textContent": "${state.label}"
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "description"
+      },
+      "hidden": {
+        "$ref": "#/state/noDescription"
+      },
+      "textContent": "${state.description}"
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "end"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "end"
+          }
+        }
+      ]
+    }
+  ]
+}

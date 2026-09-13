@@ -1,18 +1,25 @@
 /**
  * The pane's chrome — the context bar (region ⑦) and the floating zoom pod (region ⑩).
  *
- * These cases are the old `tab-bar` suite re-aimed at what replaced it. The claims that changed:
+ * These cases are the old `tab-bar` suite re-aimed at what replaced it, and then re-aimed again at
+ * the DOCUMENT that replaced the lit template. The claims that changed:
  *
  * - **Three labelled axes, not five unlabelled controls.** Every axis renders under its own name, and
  *   the tests assert the names, because the label is the whole point of the restructure.
- * - **Preview is a value, not a toggle.** `Edit │ Design │ Preview` is one radio group; there is no
- *   `toggles` button anywhere in the bar for it to compose with.
+ * - **Preview is a flag over a base, not a third radio value.** The radio marks the base throughout
+ *   and a separate `aria-pressed` toggle says whether preview is on.
  * - **The rendering context only selects.** Its popover ends in "Manage contexts…", which runs
  *   `settings.open` — the definition site — rather than defining anything itself.
  * - **The pod floats.** Zoom left the band; the fit picker writes the declared {@link FitMode}.
- * - **The band is where a standing statement goes.** `collab/presence-chips.ts` wrote the read-only
- *   banner (§7.4) and nothing rendered it; this is the surface that owes it a home, because it is
- *   the per-document chrome directly above the editing surface.
+ * - **The band is where a standing statement goes.** The read-only banner (§7.4) is drawn here,
+ *   inside the band the stage is offset by, because this is the per-document chrome directly above
+ *   the editing surface.
+ *
+ * **Nothing below names a class**, and that is the conversion's own gate: a surface document styles
+ * through `part` and states itself through roles, so a test that still found a control by
+ * `.pc-view` would be asserting a stylesheet. Every query here is a `part`, a region, a role or an
+ * accessible name — which is also why the assertions got sharper rather than weaker: `aria-checked`
+ * on a radio and `aria-pressed` on a toggle are the contract `?selected` only implied.
  */
 import {
   flush,
@@ -25,16 +32,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Tab } from "../src/tabs/tab";
 
 const paneContext = await import("../src/panels/pane-context");
-const {
-  PRIMARY_PANE,
-  SECONDARY_PANE,
-  activeTab,
-  closeAllTabs,
-  focusPane,
-  openTab,
-  splitRight,
-  workspace,
-} = await import("../src/workspace/workspace");
+const { PRIMARY_PANE, SECONDARY_PANE, closeAllTabs, focusPane, openTab, splitRight, workspace } =
+  await import("../src/workspace/workspace");
 const { getFit, hasDeclaredFit, resetFits } = await import("../src/canvas/canvas-utils");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
@@ -42,6 +41,7 @@ const { activeRegistry, setActiveRegistry } = await import("../src/commands/acti
 const { canvasViewCommands } = await import("../src/canvas/canvas-utils");
 const { collabState } = await import("../src/collab/collab-state");
 const { getEffectiveLocales } = await import("../src/site-context");
+const { tabOfPane } = await import("../src/canvas/canvas-surface");
 const { localeLabel } = await import("@jxsuite/schema/locale");
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -84,12 +84,12 @@ function makeCtx(overrides: Partial<Ctx> = {}): Ctx {
  *
  * This used to set the tab's mode AND hand back a `getCanvasMode` double returning the same string,
  * with a docstring defending the pair as "both, because both are now read". They cannot disagree in
- * a fixture, which is the whole reason they disagreed in the app: `exportTpl` asked the ctx and got
- * the focused pane's answer, so a Code document in either pane put an Export button in both bars.
- * One source of truth, so the fixture can no longer hide the difference.
+ * a fixture, which is the whole reason they disagreed in the app: the Export control asked the ctx
+ * and got the focused pane's answer, so a Code document in either pane put an Export button in both
+ * bars. One source of truth, so the fixture can no longer hide the difference.
  */
 function ctxInMode(mode: string, overrides: Partial<Ctx> = {}): Ctx {
-  const tab = activeTab.value;
+  const tab = tabOfPane(PRIMARY_PANE);
   if (tab) {
     tab.session.ui.canvasMode = mode;
     tab.session.ui.preview = false;
@@ -117,30 +117,88 @@ const SCHEME_MEDIA = {
   md: "(min-width: 768px)",
 };
 
-/** Every button in the chrome, by trimmed text. */
-function buttons(): HTMLElement[] {
-  return [...root.querySelectorAll("sp-action-button")] as HTMLElement[];
+/**
+ * Mount and let the document settle.
+ *
+ * A mounted surface needs more turns than a lit render: `mountSurface` awaits the kit, the runtime
+ * renders a microtask after insertion, and each kit element settles its own template one
+ * `connectedCallback` later.
+ */
+async function mountBar(ctx: Ctx = makeCtx()): Promise<void> {
+  paneContext.mount(root, ctx);
+  await flush(6);
 }
 
-function btn(label: string): HTMLElement {
-  const match = buttons().find((b) => (b.textContent || "").trim() === label);
+// ─── Reading the surface: parts, roles and names — never classes ─────────────
+
+function part(name: string, host: HTMLElement = root): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="${name}"]`);
+}
+
+function partAll(name: string, host: HTMLElement = root): HTMLElement[] {
+  return [...host.querySelectorAll<HTMLElement>(`[part="${name}"]`)];
+}
+
+/** A kit button's accessible name: the words it prints, or the label it carries when it prints none. */
+function nameOf(el: Element): string {
+  const printed = el.querySelector('[part="label"]')?.textContent?.trim() ?? "";
+  return printed || (el.querySelector('[part="control"]')?.getAttribute("aria-label") ?? "");
+}
+
+/** Every kit button in the chrome, by accessible name. */
+function buttons(host: HTMLElement = root): HTMLElement[] {
+  return [...host.querySelectorAll<HTMLElement>("jx-action-button")];
+}
+
+function labels(host: HTMLElement = root): string[] {
+  return buttons(host).map((b) => nameOf(b));
+}
+
+function btn(label: string, host: HTMLElement = root): HTMLElement {
+  const match = buttons(host).find((b) => nameOf(b) === label);
   if (!match) {
-    throw new Error(`no button labelled "${label}" — have: ${labels().join(", ")}`);
+    throw new Error(`no button named "${label}" — have: ${labels(host).join(", ")}`);
   }
   return match;
 }
 
-function labels(): string[] {
-  return buttons().map((b) => (b.textContent || "").trim());
+function hasBtn(label: string, host: HTMLElement = root): boolean {
+  return buttons(host).some((b) => nameOf(b) === label);
 }
 
-function hasBtn(label: string): boolean {
-  return buttons().some((b) => (b.textContent || "").trim() === label);
+/** The inner control a kit element states itself on: role, aria-checked, aria-pressed, title. */
+function control(el: Element): HTMLElement {
+  return el.querySelector<HTMLElement>('[part="control"]')!;
 }
 
 /** The axis labels the bar prints, in order — the assertion the restructure exists for. */
-function axes(): string[] {
-  return [...root.querySelectorAll(".pc-axis-label")].map((el) => el.textContent?.trim() ?? "");
+function axes(host: HTMLElement = root): string[] {
+  return partAll("axis-label", host).map((el) => el.textContent?.trim() ?? "");
+}
+
+/** The segments of a named radio/toggle group, by printed word. */
+function segments(groupPart: string, host: HTMLElement = root): HTMLElement[] {
+  const strip = part(groupPart, host);
+  return strip ? [...strip.querySelectorAll<HTMLElement>("jx-action-button")] : [];
+}
+
+/** A `jx-select`'s native control — what a reader picks from, and what a test writes. */
+function select(partName: string, host: HTMLElement = root): HTMLSelectElement | null {
+  return part(partName, host)?.querySelector<HTMLSelectElement>("select") ?? null;
+}
+
+function choose(el: HTMLSelectElement | HTMLInputElement, value: string): void {
+  el.value = value;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** The popover group under `label` — the groups are keyed by their own heading. */
+function group(label: string, host: HTMLElement = root): HTMLElement | null {
+  return (
+    partAll("ctx-group", host).find(
+      (g) => g.querySelector('[part="ctx-group-label"]')?.textContent?.trim() === label,
+    ) ?? null
+  );
 }
 
 /**
@@ -170,6 +228,7 @@ function installRegistry(ran: string[]) {
       renderPane: () => {},
       setCanvasMode: () => {},
       setOpenPopover: () => {},
+      setOpenDialog: () => {},
 
       setResolvingOpen: paneContext.setResolvingOpen,
     }).filter((c) =>
@@ -227,23 +286,29 @@ afterEach(() => {
 describe("the bar", () => {
   test("renders the three labelled axes for an ordinary editor tab", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".pane-context")).not.toBeNull();
+    await mountBar();
+    expect(part("bar")).not.toBeNull();
     expect(axes()).toEqual(["Editor", "View", "Context"]);
   });
 
+  test("carries this pane's region on the BAR, never on the host it was handed", async () => {
+    // `resolveRegion` takes the LAST match, so an id on the wrapper as well would be a silently
+    // Widened crop — `panels/pane-grid.ts` says so at the ref that hands this module its host.
+    openTestTab();
+    await mountBar();
+    expect(part("bar")!.dataset.jxRegion).toBe("pane.primary/context");
+    expect(root.dataset.jxRegion).toBeUndefined();
+  });
+
   test("renders nothing — and no stage offset — when there is no active tab", async () => {
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".pane-context")).toBeNull();
+    await mountBar();
+    expect(part("bar")).toBeNull();
     expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
   });
 
   test("offsets the stage by the bar's height while a bar is on screen", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
     expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("28px");
     paneContext.unmount();
     expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
@@ -253,61 +318,82 @@ describe("the bar", () => {
     openTestTab();
     paneContext.render();
     expect(root.childElementCount).toBe(0);
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
     paneContext.unmount();
+    expect(part("bar")).toBeNull();
     paneContext.render();
-    expect(root.querySelector(".pane-context")).not.toBeNull();
+    await flush(6);
+    expect(part("bar")).toBeNull();
+  });
+
+  test("Project Settings gets no bar at all — three inert controls above their own definition site", async () => {
+    const tab = openTestTab();
+    await mountBar();
+    expect(part("bar")).not.toBeNull();
+    tab.session.ui.canvasMode = "settings";
+    await flush(6);
+    expect(part("bar")).toBeNull();
+    expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
   });
 
   test("no read-only banner while the document has no collaboration to report", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".jx-collab-banner")).toBeNull();
+    await mountBar();
+    expect(part("banner")).toBeNull();
   });
 
   test("a read-only collaborator gets the banner, above the stage, before the first keystroke", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, makeCtx());
+    await mountBar();
     const state = collabState(tab);
     state.active = true;
     state.readOnly = true;
-    await flush();
-    const banner = root.querySelector<HTMLElement>('.jx-collab-banner[data-kind="read-only"]');
+    await flush(4);
+    const banner = part("banner");
     expect(banner).not.toBeNull();
-    expect(banner?.textContent).toContain("not published to the other people");
-    expect(banner?.getAttribute("role")).toBe("status");
+    expect(banner!.dataset.kind).toBe("read-only");
+    expect(banner!.textContent).toContain("not published to the other people");
+    expect(banner!.getAttribute("role")).toBe("status");
     // Inside the band the stage is offset by, so it pushes the document down rather than over it.
-    expect(root.querySelector(".pc-band")?.contains(banner!)).toBe(true);
+    expect(part("band")!.contains(banner)).toBe(true);
   });
 
   test("the banner appears and disappears with the permission, without another edit", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, makeCtx());
+    await mountBar();
     const state = collabState(tab);
     state.active = true;
-    await flush();
-    expect(root.querySelector(".jx-collab-banner")).toBeNull();
+    await flush(4);
+    expect(part("banner")).toBeNull();
 
     state.readOnly = true;
-    await flush();
-    expect(root.querySelector(".jx-collab-banner")).not.toBeNull();
+    await flush(4);
+    expect(part("banner")).not.toBeNull();
 
     state.readOnly = false;
-    await flush();
-    expect(root.querySelector(".jx-collab-banner")).toBeNull();
+    await flush(4);
+    expect(part("banner")).toBeNull();
+  });
+
+  test("an inactive session with the read-only flag says nothing — there is nobody to be read-only to", async () => {
+    const tab = openTestTab();
+    await mountBar();
+    const state = collabState(tab);
+    state.readOnly = true;
+    state.active = false;
+    await flush(4);
+    expect(part("banner")).toBeNull();
   });
 
   test("a logic editor keeps the banner — a frozen guest is still a guest", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, makeCtx());
+    await mountBar();
     const state = collabState(tab);
     state.active = true;
     state.readOnly = true;
     tab.session.ui.editingFunction = { defName: "greet", type: "def" };
-    await flush();
-    expect(root.querySelector(".jx-collab-banner")).not.toBeNull();
+    await flush(4);
+    expect(part("banner")).not.toBeNull();
   });
 });
 
@@ -321,39 +407,38 @@ describe("a logic editor open in the dock", () => {
   // Document the reader could see.
   test("leaves all three axes and the zoom pod exactly where they were", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
     const before = axes();
     expect(before).toEqual(["Editor", "View", "Context"]);
 
     tab.session.ui.editingFunction = { defName: "greet", type: "def" };
-    await flush();
+    await flush(4);
     expect(axes()).toEqual(before);
-    expect(root.querySelector(".pane-zoom")).not.toBeNull();
+    expect(part("pod")).not.toBeNull();
 
     tab.session.ui.editingFunction = null;
     tab.session.ui.editingFormula = { defName: "total", type: "def" };
-    await flush();
+    await flush(4);
     expect(axes()).toEqual(before);
-    expect(root.querySelector(".pane-zoom")).not.toBeNull();
+    expect(part("pod")).not.toBeNull();
   });
 
   test("draws no Back and no breadcrumb — the dock header and the jump bar own both", async () => {
     // Two exits and two trails, side by side, for one sub-document. The Logic tab's header carries
     // The real Close (P8.5) and ⑥ carries the address; this bar drew a second of each.
     const tab = openTestTab();
-    paneContext.mount(root, makeCtx());
+    await mountBar();
     tab.session.ui.editingFunction = { defName: "greet", type: "def" };
-    await flush();
-    expect(root.querySelector(".breadcrumb")).toBeNull();
+    await flush(4);
+    expect(root.querySelector('[part="breadcrumb"]')).toBeNull();
     expect(hasBtn("Back")).toBe(false);
   });
 
   test("the Export control survives too, in the view that owns it", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, ctxInMode("source"));
+    await mountBar(ctxInMode("source"));
     tab.session.ui.editingFormula = { eventKey: "onclick", type: "event" };
-    await flush();
+    await flush(4);
     expect(hasBtn("Export")).toBe(true);
   });
 });
@@ -363,40 +448,32 @@ describe("a logic editor open in the dock", () => {
 describe("editor kind", () => {
   test("a document with several kinds gets a dropdown listing only those kinds", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
-    const picker = root.querySelector("sp-picker.pc-editor-kind") as HTMLElement & {
-      value: string;
-    };
+    await mountBar();
+    const picker = select("editor-kind")!;
     expect(picker).not.toBeNull();
-    const options = [...picker.querySelectorAll("sp-menu-item")].map((o) => o.textContent?.trim());
+    const options = [...picker.querySelectorAll("option")].map((o) => o.textContent?.trim());
     // Edit/design/preview all name the Canvas; source names Code. No dead entry for grid or diff.
     expect(options).toEqual(["Canvas", "Code"]);
-    expect(picker.getAttribute("value")).toBe("canvas");
+    expect(picker.value).toBe("canvas");
+    expect(picker.getAttribute("aria-label")).toBe("Editor");
   });
 
   test("a document with one kind prints its name instead of an immovable dropdown", async () => {
     const tab = openTestTab();
     tab.capabilities.modes = ["edit", "design", "preview"];
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector("sp-picker.pc-editor-kind")).toBeNull();
-    expect(root.querySelector(".pc-static")?.textContent?.trim()).toBe("Canvas");
+    await mountBar();
+    expect(part("editor-kind")).toBeNull();
+    expect(part("static")?.textContent?.trim()).toBe("Canvas");
   });
 
   test("choosing a kind lands on that kind's first mode and clears preview", async () => {
     const tab = openTestTab();
     tab.session.ui.preview = true;
     const ctx = makeCtx();
-    paneContext.mount(root, ctx);
-    await flush();
+    await mountBar(ctx);
 
-    const picker = root.querySelector("sp-picker.pc-editor-kind") as HTMLElement & {
-      value: string;
-    };
-    picker.value = "code";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    choose(select("editor-kind")!, "code");
+    await flush(4);
     expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "source");
     expect(tab.session.ui.preview).toBe(false);
   });
@@ -404,15 +481,18 @@ describe("editor kind", () => {
   test("a kind this document does not support is refused rather than half-applied", async () => {
     const tab = openTestTab();
     const ctx = makeCtx();
-    paneContext.mount(root, ctx);
-    await flush();
+    await mountBar(ctx);
 
-    const picker = root.querySelector("sp-picker.pc-editor-kind") as HTMLElement & {
-      value: string;
-    };
-    picker.value = "library";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    /* A kind the document does NOT declare, reported by the control anyway. The picker only ever
+       offers declared kinds, so this is the shape a stale option or a programmatic write takes —
+       and the refusal has to hold for it, because `modeForEditorKind` answering nothing is the
+       only thing standing between it and a half-applied mode. */
+    const picker = select("editor-kind")!;
+    const rogue = document.createElement("option");
+    rogue.value = "library";
+    picker.append(rogue);
+    choose(picker, "library");
+    await flush(4);
     expect(ctx.setCanvasMode).not.toHaveBeenCalled();
     expect(tab.session.ui.canvasMode).toBe("edit");
   });
@@ -421,7 +501,7 @@ describe("editor kind", () => {
 // ─── Axis 2 · Canvas view ─────────────────────────────────────────────────────
 
 describe("canvas view", () => {
-  test("is a two-value radio plus a SEPARATE preview toggle", async () => {
+  test("is a two-value radiogroup plus a SEPARATE preview toggle", async () => {
     /*
      * This asserted the opposite — three values in one radio group, and "nothing in the axis is a
      * toggle: a value cannot silently compose with another value". But preview does compose, and
@@ -431,55 +511,57 @@ describe("canvas view", () => {
      * could not say which mode you were previewing or which one you would come back to.
      */
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const group = root.querySelector(".pc-view") as HTMLElement;
-    const segs = [...group.querySelectorAll("sp-action-button")];
-    expect(segs.map((s) => s.textContent?.trim())).toEqual(["Edit", "Design"]);
-    expect(segs.map((s) => s.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    const strip = part("views")!;
+    expect(strip.getAttribute("role")).toBe("radiogroup");
+    expect(strip.getAttribute("aria-label")).toBe("Canvas view");
+    const segs = segments("views");
+    expect(segs.map((s) => nameOf(s))).toEqual(["Edit", "Design"]);
+    expect(segs.map((s) => control(s).getAttribute("role"))).toEqual(["radio", "radio"]);
+    expect(segs.map((s) => control(s).getAttribute("aria-checked"))).toEqual(["true", "false"]);
 
-    const toggle = root.querySelector(".pc-preview-toggle") as HTMLElement;
-    expect(toggle.textContent?.trim()).toBe("Preview");
-    expect(toggle.hasAttribute("toggles")).toBe(true);
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    const toggle = part("preview-toggle")!;
+    expect(nameOf(toggle)).toBe("Preview");
+    // A toggle, not a third radio: it announces `aria-pressed` and carries no `aria-checked`.
+    expect(control(toggle).getAttribute("aria-pressed")).toBe("false");
+    expect(control(toggle).getAttribute("aria-checked")).toBeNull();
   });
 
   test("previewing leaves the BASE marked — the state the radio could not express", async () => {
     const tab = openTestTab();
     tab.session.ui.canvasMode = "design";
     tab.session.ui.preview = true;
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const segs = [...root.querySelectorAll(".pc-view sp-action-button")];
-    expect(segs.map((s) => s.getAttribute("aria-checked"))).toEqual(["false", "true"]);
-    const toggle = root.querySelector(".pc-preview-toggle") as HTMLElement;
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(segments("views").map((s) => control(s).getAttribute("aria-checked"))).toEqual([
+      "false",
+      "true",
+    ]);
+    const toggle = part("preview-toggle")!;
+    expect(control(toggle).getAttribute("aria-pressed")).toBe("true");
     // And it says where "off" goes, rather than leaving the author to guess.
-    expect(toggle.getAttribute("title")).toContain("Design");
+    expect(control(toggle).getAttribute("title")).toContain("Design");
   });
 
   test("the toggle sets the flag and clears it, over either base", async () => {
     const tab = openTestTab();
     const ctx = makeCtx();
-    paneContext.mount(root, ctx);
-    await flush();
+    await mountBar(ctx);
 
-    const toggle = () => root.querySelector(".pc-preview-toggle") as HTMLElement;
-    pointer(toggle(), "click");
-    await flush();
+    pointer(part("preview-toggle")!, "click");
+    await flush(4);
     expect(tab.session.ui.preview).toBe(true);
     expect(tab.session.ui.canvasMode).toBe("edit"); // The base is untouched.
 
-    pointer(toggle(), "click");
-    await flush();
+    pointer(part("preview-toggle")!, "click");
+    await flush(4);
     expect(tab.session.ui.preview).toBe(false);
 
     pointer(btn("Design"), "click");
-    await flush();
-    pointer(toggle(), "click");
-    await flush();
+    await flush(4);
+    pointer(part("preview-toggle")!, "click");
+    await flush(4);
     expect(tab.session.ui.preview).toBe(true);
     expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "design");
   });
@@ -487,15 +569,14 @@ describe("canvas view", () => {
   test("Design clears the flag on the way past", async () => {
     const tab = openTestTab();
     const ctx = makeCtx();
-    paneContext.mount(root, ctx);
-    await flush();
+    await mountBar(ctx);
 
-    pointer(root.querySelector(".pc-preview-toggle") as HTMLElement, "click");
-    await flush();
+    pointer(part("preview-toggle")!, "click");
+    await flush(4);
     expect(tab.session.ui.preview).toBe(true);
 
     pointer(btn("Design"), "click");
-    await flush();
+    await flush(4);
     expect(tab.session.ui.preview).toBe(false);
     expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "design");
   });
@@ -503,32 +584,25 @@ describe("canvas view", () => {
   test("no toggle for a document that does not declare preview", async () => {
     const tab = openTestTab();
     tab.capabilities.modes = ["edit", "design"];
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".pc-preview-toggle")).toBeNull();
-    expect(
-      [...root.querySelectorAll(".pc-view sp-action-button")].map((s) => s.textContent?.trim()),
-    ).toEqual(["Edit", "Design"]);
+    await mountBar();
+    expect(part("preview-toggle")).toBeNull();
+    expect(segments("views").map((s) => nameOf(s))).toEqual(["Edit", "Design"]);
   });
 
   test("offers only the views the document declares", async () => {
     const tab = openTestTab();
     tab.capabilities.modes = ["edit", "source"];
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(
-      [...root.querySelectorAll(".pc-view sp-action-button")].map((s) => s.textContent?.trim()),
-    ).toEqual(["Edit"]);
+    await mountBar();
+    expect(segments("views").map((s) => nameOf(s))).toEqual(["Edit"]);
     // `source` is in the list but composes with no preview, so the toggle is not offered either.
-    expect(root.querySelector(".pc-preview-toggle")).toBeNull();
+    expect(part("preview-toggle")).toBeNull();
   });
 
   test("is absent entirely when the editor is not the Canvas", async () => {
     const tab = openTestTab();
     tab.session.ui.canvasMode = "source";
-    paneContext.mount(root, ctxInMode("source"));
-    await flush();
-    expect(root.querySelector(".pc-view")).toBeNull();
+    await mountBar(ctxInMode("source"));
+    expect(part("views")).toBeNull();
     expect(axes()).toEqual(["Editor", "Context"]);
   });
 
@@ -536,9 +610,8 @@ describe("canvas view", () => {
     const tab = openTestTab();
     tab.capabilities.modes = ["source"];
     tab.session.ui.canvasMode = "edit";
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".pc-view")).toBeNull();
+    await mountBar();
+    expect(part("views")).toBeNull();
   });
 });
 
@@ -557,23 +630,26 @@ describe("rendering context", () => {
       })),
     });
 
+  /** What the rendering-context trigger reads, without the caret glyph beside it. */
+  function summary(): string {
+    return part("context-trigger")!.querySelector('[part="label"] span')!.textContent!.trim();
+  }
+
   test("summarises size and scheme on the trigger", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, withScheme());
-    await flush();
-    expect(root.querySelector(".pc-context-trigger")?.textContent?.trim()).toBe("Base · Auto ⌄");
+    await mountBar(withScheme());
+    expect(summary()).toBe("Base · Auto");
 
     tab.session.ui.activeMedia = "md";
     tab.session.ui.previewColorScheme = "dark";
-    await flush();
-    expect(root.querySelector(".pc-context-trigger")?.textContent?.trim()).toBe("Md · Dark ⌄");
+    await flush(4);
+    expect(summary()).toBe("Md · Dark");
   });
 
   test("omits the scheme from the summary when the project declares no scheme query", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".pc-context-trigger")?.textContent?.trim()).toBe("Base ⌄");
+    await mountBar();
+    expect(summary()).toBe("Base");
   });
 
   test("the size segment writes activeMedia — the field a panel header writes", async () => {
@@ -581,55 +657,69 @@ describe("rendering context", () => {
     // Refuses a key the document cannot render under, and a fixture where the control offers one
     // The app would refuse is a fixture testing a shape the app does not have.
     const tab = openTestTab(SCHEME_MEDIA);
-    paneContext.mount(root, withScheme());
-    await flush();
+    await mountBar(withScheme());
 
-    const sizes = [...root.querySelectorAll(".pc-sizes sp-action-button")];
-    expect(sizes.map((s) => s.textContent?.trim())).toEqual(["Base", "Md"]);
+    const sizes = segments("sizes");
+    expect(sizes.map((s) => nameOf(s))).toEqual(["Base", "Md"]);
+    expect(part("sizes")!.getAttribute("role")).toBe("radiogroup");
     pointer(sizes[1]!, "click");
-    await flush();
+    await flush(4);
     expect(tab.session.ui.activeMedia).toBe("md");
+    expect(segments("sizes").map((s) => control(s).getAttribute("aria-checked"))).toEqual([
+      "false",
+      "true",
+    ]);
 
-    pointer([...root.querySelectorAll(".pc-sizes sp-action-button")][0]!, "click");
-    await flush();
+    pointer(segments("sizes")[0]!, "click");
+    await flush(4);
+    // The base row carries the empty string on the wire; the command reads it back as "no
+    // Breakpoint applied", which is `null` and not `""`.
     expect(tab.session.ui.activeMedia).toBeNull();
   });
 
   test("the scheme segment replaces the old bar-level Auto/Light/Dark control", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, withScheme());
-    await flush();
+    await mountBar(withScheme());
 
     pointer(btn("Dark"), "click");
-    await flush();
+    await flush(4);
     expect(tab.session.ui.previewColorScheme).toBe("dark");
-    expect(btn("Dark").hasAttribute("selected")).toBe(true);
+    expect(control(btn("Dark")).getAttribute("aria-checked")).toBe("true");
 
     pointer(btn("Auto"), "click");
-    await flush();
+    await flush(4);
     expect(tab.session.ui.previewColorScheme).toBe("auto");
+    expect(control(btn("Dark")).getAttribute("aria-checked")).toBe("false");
   });
 
   test("non-scheme feature queries keep their toggles, inside the popover", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, withScheme());
-    await flush();
+    await mountBar(withScheme());
 
-    const toggle = root.querySelector(
-      "sp-action-button[title='(prefers-reduced-motion: reduce)']",
-    ) as HTMLElement;
-    expect(toggle.textContent).toContain("Reduced Motion");
+    const toggle = segments("features").find(
+      (b) => control(b).getAttribute("title") === "(prefers-reduced-motion: reduce)",
+    )!;
+    expect(nameOf(toggle)).toBe("Reduced Motion");
+    // A feature is INDEPENDENTLY on or off, so the group is a plain group of pressed toggles —
+    // Never a radiogroup, which would say the two queries were mutually exclusive.
+    expect(part("features")!.getAttribute("role")).toBe("group");
+    expect(control(toggle).getAttribute("aria-pressed")).toBe("false");
     pointer(toggle, "click");
-    await flush();
+    await flush(4);
     expect(tab.session.ui.featureToggles["--reduced-motion"]).toBe(true);
+    expect(
+      control(
+        segments("features").find(
+          (b) => control(b).getAttribute("title") === "(prefers-reduced-motion: reduce)",
+        )!,
+      ).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   test("groups a document declares nothing for are absent", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
-    const groups = [...root.querySelectorAll(".pc-ctx-label")].map((el) => el.textContent?.trim());
-    expect(groups).toEqual(["Size"]);
+    await mountBar();
+    expect(partAll("ctx-group-label").map((el) => el.textContent?.trim())).toEqual(["Size"]);
   });
 
   // ─── The language segment ───────────────────────────────────────────────────
@@ -639,15 +729,6 @@ describe("rendering context", () => {
    * is why the tests assert it: a control that let an author believe the page had been translated
    * would be worse than no control.
    */
-
-  /** The popover group under `label`, or null — the groups are keyed by their own heading. */
-  function group(label: string): HTMLElement | null {
-    return (
-      ([...root.querySelectorAll(".pc-ctx-group")].find(
-        (g) => g.querySelector(".pc-ctx-label")?.textContent?.trim() === label,
-      ) as HTMLElement | undefined) ?? null
-    );
-  }
 
   /** A project that declares `locales`, with `path` open. */
   function multilingual(locales: string[], path = "pages/about.json"): Tab {
@@ -662,80 +743,68 @@ describe("rendering context", () => {
 
   test("there is no language group in a project that declares one language", async () => {
     multilingual(["en"]);
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
     // One declared locale is the same as none for this axis: there is nothing to switch TO.
     expect(group("Language")).toBeNull();
   });
 
   test("one button per declared locale, each labelled in its own language", async () => {
     multilingual(["en", "fr", "ar"]);
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const offered = [...group("Language")!.querySelectorAll("sp-action-button")];
-    expect(offered.map((b) => b.textContent?.trim())).toEqual(
-      ["en", "fr", "ar"].map((tag) => localeLabel(tag)),
-    );
+    const offered = segments("locales");
+    expect(offered.map((b) => nameOf(b))).toEqual(["en", "fr", "ar"].map((t) => localeLabel(t)));
     // The autonym, not the name in the site's language: a reader looking for their own language
     // Scans for their own word for it.
-    expect(offered[2]?.textContent?.trim()).not.toBe("Arabic");
+    expect(nameOf(offered[2]!)).not.toBe("Arabic");
   });
 
   test("the group says what it does and does not do", async () => {
     multilingual(["en", "ar"]);
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(group("Language")!.querySelector("sp-action-group")?.getAttribute("title")).toBe(
+    await mountBar();
+    expect(part("locales")!.getAttribute("title")).toBe(
       "The language this pane renders as — its lang and direction only. The text is whatever file is open.",
     );
   });
 
   test("a button writes through the command, onto THIS pane's tab", async () => {
     const tab = multilingual(["en", "ar"]);
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const arabic = [...group("Language")!.querySelectorAll("sp-action-button")].find(
-      (b) => b.textContent?.trim() === localeLabel("ar"),
-    ) as HTMLElement;
+    const arabic = segments("locales").find((b) => nameOf(b) === localeLabel("ar"))!;
     pointer(arabic, "click");
-    await flush();
+    await flush(4);
 
     // Through `i18n.switchLocale` — the popover is not the capability, the registry is.
     expect(tab.session.ui.previewLocale).toBe("ar");
     expect(
-      [...group("Language")!.querySelectorAll("sp-action-button")]
-        .find((b) => b.hasAttribute("selected"))
-        ?.textContent?.trim(),
+      nameOf(segments("locales").find((b) => control(b).getAttribute("aria-checked") === "true")!),
     ).toBe(localeLabel("ar"));
   });
 
   test("the document's own language is the selected one until an author says otherwise", async () => {
     multilingual(["en", "fr"], "pages/fr/a-propos.json");
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const offered = [...group("Language")!.querySelectorAll("sp-action-button")];
-    const french = offered.find((b) => b.textContent?.trim() === localeLabel("fr"))!;
-    expect(french.hasAttribute("selected")).toBe(true);
+    const offered = segments("locales");
+    const french = offered.find((b) => nameOf(b) === localeLabel("fr"))!;
+    expect(control(french).getAttribute("aria-checked")).toBe("true");
     // …and it says which one it is, because "no override" is not otherwise visible.
-    expect(french.getAttribute("title")).toContain("the language of the file this pane has open");
-    expect(offered[0]?.getAttribute("title")).not.toContain("the file this pane has open");
+    expect(control(french).getAttribute("title")).toContain(
+      "the language of the file this pane has open",
+    );
+    expect(control(offered[0]!).getAttribute("title")).not.toContain("the file this pane has open");
   });
 
   test("the trigger names the language only when it is not the document's own", async () => {
     const tab = multilingual(["en", "fr"], "pages/fr/a-propos.json");
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
     // A French page in a French pane is not a rendering context worth reporting.
-    expect(root.querySelector(".pc-context-trigger")?.textContent?.trim()).toBe("Base ⌄");
+    expect(summary()).toBe("Base");
 
     tab.session.ui.previewLocale = "en";
-    await flush();
-    expect(root.querySelector(".pc-context-trigger")?.textContent?.trim()).toBe(
-      `Base · ${localeLabel("en")} ⌄`,
-    );
+    await flush(4);
+    expect(summary()).toBe(`Base · ${localeLabel("en")}`);
   });
 
   test("the layout switch shows for a site page with a layout and flips showLayout", async () => {
@@ -744,55 +813,169 @@ describe("rendering context", () => {
       { $layout: "./layouts/base.json", children: [], tagName: "div" } as never,
       { documentPath: "pages/about.json", id: "layout-tab" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const toggle = root.querySelector(".pc-layout-switch") as HTMLElement;
-    expect(toggle.hasAttribute("checked")).toBe(true);
-    toggle.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    const input = () => part("layout-switch")!.querySelector<HTMLInputElement>("input")!;
+    expect(input().getAttribute("role")).toBe("switch");
+    expect(input().checked).toBe(true);
+    input().dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(4);
     expect(tab.session.ui.showLayout).toBe(false);
+    expect(input().checked).toBe(false);
 
-    (root.querySelector(".pc-layout-switch") as HTMLElement).dispatchEvent(
-      new Event("change", { bubbles: true }),
-    );
-    await flush();
+    input().dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(4);
     expect(tab.session.ui.showLayout).toBe(true);
   });
 
   test("no layout switch for a page without one", async () => {
     resetStudioState({ isSiteProject: true });
     resetWorkspaceWithTab({ children: [], tagName: "div" }, { documentPath: "pages/plain.json" });
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector(".pc-layout-switch")).toBeNull();
+    await mountBar();
+    expect(part("layout-switch")).toBeNull();
   });
 
   test("Manage contexts… routes to the definition site instead of defining anything", async () => {
     const ran: string[] = [];
     installRegistry(ran);
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    pointer(root.querySelector(".pc-ctx-manage") as HTMLElement, "click");
-    await flush();
+    pointer(part("manage")!, "click");
+    await flush(4);
     expect(ran).toEqual(["settings.open:contexts"]);
   });
 
   test("Manage contexts… is inert, not fatal, before a registry is published", async () => {
     openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(() =>
-      pointer(root.querySelector(".pc-ctx-manage") as HTMLElement, "click"),
-    ).not.toThrow();
+    await mountBar();
+    setActiveRegistry(null);
+    expect(() => pointer(part("manage")!, "click")).not.toThrow();
+  });
+
+  /**
+   * The two panels the axis opens, and the one thing about them this module still owns.
+   *
+   * Light dismissal, Escape and focus restoration are the PLATFORM's (`popover="auto"`); what the
+   * mount owns is that a trigger opens its own panel, that a second press closes it rather than
+   * being light-dismissed and reopened by the same gesture, and that a close the platform decided
+   * on reaches the flag `canvas.setResolvingOpen` reads.
+   */
+  describe("the two panels", () => {
+    /** Whether the panel behind a trigger is showing, as the trigger itself announces it. */
+    function expanded(trigger: string): string | null {
+      return control(part(trigger)!).getAttribute("aria-expanded");
+    }
+
+    /** A panel, as the kit element states itself: `open`, and the point it was placed at. */
+    function panel(kind: string): HTMLElement & { open?: boolean; x?: number; y?: number } {
+      return partAll("popover").find((p) => p.dataset.popover === kind)!;
+    }
+
+    test("the rendering-context trigger opens its own panel, and a second press closes it", async () => {
+      openTestTab();
+      await mountBar(withScheme());
+      expect(expanded("context-trigger")).toBe("false");
+
+      pointer(part("context-trigger")!, "click");
+      await flush(4);
+      expect(expanded("context-trigger")).toBe("true");
+      expect(panel("context").open).toBe(true);
+      // Its own panel, never the one beside it.
+      expect(panel("resolving").open).not.toBe(true);
+
+      pointer(part("context-trigger")!, "click");
+      await flush(4);
+      expect(expanded("context-trigger")).toBe("false");
+      expect(panel("context").open).toBe(false);
+    });
+
+    test("a panel opens under the control that opened it, at its trailing edge", async () => {
+      openTestTab();
+      await mountBar(withScheme());
+      const trigger = part("context-trigger")!;
+      trigger.getBoundingClientRect = () =>
+        ({ bottom: 40, height: 20, left: 300, right: 360, top: 20, width: 60 }) as DOMRect;
+      pointer(trigger, "click");
+      await flush(4);
+      /* Below it, and RIGHT-aligned to it: the three axes sit at the trailing edge of a pane that
+         may be half the window wide, so a panel hanging off the left of a trigger 40px from the
+         window edge would run off the screen. (A panel with no laid-out width in this DOM is zero
+         wide, so its trailing edge and the trigger's are the same number.) */
+      expect(panel("context").y).toBe(40);
+      expect(panel("context").x).toBe(360);
+    });
+
+    test("a close the platform decided on reaches the flag the command reads", async () => {
+      resetStudioState({ isSiteProject: true });
+      resetWorkspaceWithTab(
+        { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
+        { documentPath: "pages/products/[sku].json", id: "toggle-param" },
+      );
+      await mountBar();
+      await flush(4);
+
+      pointer(part("resolving-trigger")!, "click");
+      await flush(4);
+      expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(true);
+      expect(expanded("resolving-trigger")).toBe("true");
+
+      /* A light dismiss, an Escape, or a second panel taking the top layer: the platform hides it
+         and says so with one `toggle`. Without the mirror the flag would still read "open", and
+         the next press would try to close a panel that is already shut. */
+      panel("resolving").dispatchEvent(
+        Object.assign(new Event("toggle", { bubbles: false }), { newState: "closed" }),
+      );
+      await flush(4);
+      expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
+      expect(expanded("resolving-trigger")).toBe("false");
+
+      // …so the press after it OPENS, rather than closing something already closed.
+      pointer(part("resolving-trigger")!, "click");
+      await flush(4);
+      expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(true);
+    });
+
+    test("taking the chrome down closes whatever it had open", async () => {
+      resetStudioState({ isSiteProject: true });
+      resetWorkspaceWithTab(
+        { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
+        { documentPath: "pages/products/[sku].json", id: "dispose-param" },
+      );
+      await mountBar();
+      await flush(4);
+      pointer(part("resolving-trigger")!, "click");
+      await flush(4);
+      expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(true);
+
+      // A pane that stops having chrome cannot go on having a panel over the stage.
+      paneContext.unmount();
+      expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
+      expect(document.querySelector('[part="popover"][data-popover="resolving"]')).toBeNull();
+    });
+  });
+
+  test("the popovers are panels the pointer can reach, inside a chrome layer that takes none", async () => {
+    // `.pane-chrome` is `pointer-events: none` and handed it to its DIRECT children; a document
+    // Root is `display: contents`, so the three surfaces that take the pointer say so themselves.
+    openTestTab();
+    await mountBar();
+    for (const panel of partAll("popover")) {
+      expect(panel.getAttribute("popover")).toBe("auto");
+      expect(panel.id).toContain("primary");
+    }
+    expect(partAll("popover")).toHaveLength(2);
   });
 });
 
 // ─── "Resolving with…" ────────────────────────────────────────────────────────
 
 describe("resolving with", () => {
+  /** What the "resolving with" trigger reads, without the caret glyph beside it. */
+  function resolvingLabel(): string {
+    return part("resolving-trigger")!.querySelector('[part="label"] span')!.textContent!.trim();
+  }
+
   test("a page renders one picker per route param and auto-selects the first value", async () => {
     resetStudioState({ isSiteProject: true });
     const tab = resetWorkspaceWithTab(
@@ -803,20 +986,19 @@ describe("resolving with", () => {
       } as never,
       { documentPath: "pages/products/[sku].json", id: "param-tab" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
+    await flush(4);
 
-    const picker = root.querySelector("sp-picker.pc-param") as HTMLElement & { value: string };
+    const picker = select("param")!;
     expect(picker).not.toBeNull();
-    expect([...picker.querySelectorAll("sp-menu-item")].map((o) => o.textContent?.trim())).toEqual([
+    expect([...picker.querySelectorAll("option")].map((o) => o.textContent?.trim())).toEqual([
       "alpha",
       "beta",
     ]);
     expect(tab.session.ui.previewParams).toEqual({ sku: "alpha" });
 
-    picker.value = "beta";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    choose(picker, "beta");
+    await flush(4);
     expect(tab.session.ui.previewParams).toEqual({ sku: "beta" });
   });
 
@@ -833,16 +1015,20 @@ describe("resolving with", () => {
       { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
       { documentPath: "pages/products/[sku].json", id: "inline-param" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
+    await flush(4);
 
-    const picker = root.querySelector("sp-picker.pc-param") as HTMLElement;
-    expect(picker.closest("sp-popover")).not.toBeNull();
+    const picker = part("param")!;
+    expect((picker.closest('[part="popover"]') as HTMLElement | null)?.dataset.popover).toBe(
+      "resolving",
+    );
     // The phrase is the popover's group heading, and the fields stack under it.
-    const group = picker.closest(".pc-ctx-group") as HTMLElement;
-    expect(group.querySelector(".pc-ctx-label")?.textContent?.trim()).toBe("resolving with");
+    expect(
+      picker.closest('[part="ctx-group"]')!.querySelector('[part="ctx-group-label"]')!.textContent,
+    ).toBe("resolving with");
     // …and the bar itself carries only the trigger.
-    expect(root.querySelector(".pc-resolving-trigger")).not.toBeNull();
+    expect(part("bar")!.contains(part("resolving-trigger"))).toBe(true);
+    expect(part("bar")!.querySelector('[part="param"]')).toBeNull();
   });
 
   test("the trigger says how many values are set, so the chevron reads before it opens", async () => {
@@ -855,15 +1041,14 @@ describe("resolving with", () => {
       } as never,
       { documentPath: "pages/products/[sku].json", id: "count-param" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
-    const trigger = () => root.querySelector(".pc-resolving-trigger")!.textContent!.trim();
-    expect(trigger()).toBe("Defaults ⌄");
+    await mountBar();
+    await flush(4);
+    expect(resolvingLabel()).toBe("Defaults");
 
     tab.session.ui.previewParams = { sku: "beta" };
     paneContext.render();
-    await flush();
-    expect(trigger()).toBe("1 set ⌄");
+    await flush(4);
+    expect(resolvingLabel()).toBe("1 set");
   });
 
   test("canvas.setResolvingOpen is the door the camera and the keyboard use", async () => {
@@ -874,12 +1059,12 @@ describe("resolving with", () => {
       { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
       { documentPath: "pages/products/[sku].json", id: "cmd-param" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
+    await flush(4);
     expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
 
     void activeRegistry()!.run("canvas.setResolvingOpen", {});
-    await flush();
+    await flush(4);
     expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(true);
     // Idempotent, and `{ open: false }` closes through the same record rather than a second id.
     void activeRegistry()!.run("canvas.setResolvingOpen", {});
@@ -888,12 +1073,20 @@ describe("resolving with", () => {
     expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
   });
 
+  test("a pane with no chrome at all is closed, rather than answering for another pane's panel", async () => {
+    // The mount owns the answer; a pane that has no mount has no panel to be open.
+    await mountBar();
+    expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
+    expect(() => paneContext.setResolvingOpen(PRIMARY_PANE, true)).not.toThrow();
+    expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
+  });
+
   test("no pickers for a page without params", async () => {
     resetStudioState({ isSiteProject: true });
     resetWorkspaceWithTab({ children: [], tagName: "div" }, { documentPath: "pages/simple.json" });
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector("sp-picker.pc-param")).toBeNull();
+    await mountBar();
+    expect(part("param")).toBeNull();
+    expect(part("resolving-trigger")).toBeNull();
   });
 
   test("a component renders one test-prop field per prop, keeping its region id", async () => {
@@ -909,24 +1102,21 @@ describe("resolving with", () => {
       } as never,
       { documentPath: "components/x-card.json", id: "comp-tab" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const fields = [...root.querySelectorAll("sp-textfield.pc-prop")] as (HTMLElement & {
-      value: string;
-    })[];
-    expect(fields.map((f) => f.getAttribute("placeholder"))).toEqual(["count", "title"]);
+    const fields = partAll("prop");
+    expect(fields.map((f) => f.dataset.propName)).toEqual(["count", "title"]);
     // The screenshot manifest addresses this field by region; the id survives the move.
     expect(fields[0]!.dataset.jxRegion).toBe("pane.primary/prop:count");
+    const inputOf = (f: HTMLElement) => f.querySelector<HTMLInputElement>("input")!;
+    expect(inputOf(fields[0]!).getAttribute("placeholder")).toBe("count");
 
-    fields[1]!.value = "Test drive";
-    fields[1]!.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    choose(inputOf(fields[1]!), "Test drive");
+    await flush(4);
     expect(tab.session.ui.previewProps).toEqual({ title: "Test drive" });
 
-    fields[0]!.value = "7";
-    fields[0]!.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    choose(inputOf(fields[0]!), "7");
+    await flush(4);
     expect(tab.session.ui.previewProps).toEqual({ count: 7, title: "Test drive" });
   });
 
@@ -936,14 +1126,12 @@ describe("resolving with", () => {
       { documentPath: "components/x-card.json", id: "comp-clear" },
     );
     tab.session.ui.previewProps = { title: "Test drive" };
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const field = root.querySelector("sp-textfield.pc-prop") as HTMLElement & { value: string };
+    const field = part("prop")!.querySelector<HTMLInputElement>("input")!;
     expect(field.value).toBe("Test drive");
-    field.value = "";
-    field.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    choose(field, "");
+    await flush(4);
     expect(tab.session.ui.previewProps).toBeNull();
   });
 
@@ -952,132 +1140,125 @@ describe("resolving with", () => {
       { children: [], state: { fn: { $prototype: "Function", body: "" } }, tagName: "x-bare" },
       { documentPath: "components/x-bare.json" },
     );
-    paneContext.mount(root, makeCtx());
-    await flush();
-    expect(root.querySelector("sp-textfield.pc-prop")).toBeNull();
+    await mountBar();
+    expect(part("prop")).toBeNull();
   });
 });
 
 // ─── ⑩ The floating zoom pod ──────────────────────────────────────────────────
 
 describe("zoom pod", () => {
+  /** What the pod's reset button reads. */
+  function zoomLabel(host: HTMLElement = root): string {
+    return nameOf(part("zoom-label", host)!);
+  }
+
   test("floats outside the bar, and shows the edit-mode content zoom", async () => {
     const tab = openTestTab();
     tab.session.ui.editZoom = 1.5;
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    const pod = root.querySelector(".pane-zoom") as HTMLElement;
+    const pod = part("pod")!;
     expect(pod).not.toBeNull();
-    expect(pod.closest(".pane-context")).toBeNull();
+    expect(part("bar")!.contains(pod)).toBe(false);
     expect(pod.dataset.jxRegion).toBe("pane.primary/zoom");
-    expect(pod.querySelector(".pc-zoom-label")?.textContent?.trim()).toBe("150%");
+    expect(zoomLabel()).toBe("150%");
     // Edit mode has no artboard, so it has no fit.
-    expect(root.querySelector(".pc-fit")).toBeNull();
+    expect(part("fit")).toBeNull();
   });
 
   test("− / + step the edit zoom and the label tracks reactively", async () => {
     const tab = openTestTab();
-    paneContext.mount(root, makeCtx());
-    await flush();
+    await mountBar();
 
-    pointer(btn("+"), "click");
-    await flush();
+    pointer(part("zoom-in")!, "click");
+    await flush(4);
     expect(tab.session.ui.editZoom).toBeCloseTo(1.2);
-    expect(root.querySelector(".pc-zoom-label")?.textContent?.trim()).toBe("120%");
+    expect(zoomLabel()).toBe("120%");
 
-    pointer(btn("−"), "click");
-    await flush();
+    pointer(part("zoom-out")!, "click");
+    await flush(4);
     expect(tab.session.ui.editZoom).toBeCloseTo(1);
 
-    pointer(root.querySelector(".pc-zoom-label") as HTMLElement, "click");
-    await flush();
+    pointer(part("zoom-label")!, "click");
+    await flush(4);
     expect(tab.session.ui.editZoom).toBe(1);
   });
 
   test("design mode drives ui.zoom and declares each step as the document's fit", async () => {
     const tab = openTestTab();
     tab.session.ui.zoom = 2;
-    paneContext.mount(root, ctxInMode("design"));
-    await flush();
-    expect(root.querySelector(".pc-zoom-label")?.textContent?.trim()).toBe("200%");
+    await mountBar(ctxInMode("design"));
+    expect(zoomLabel()).toBe("200%");
     expect(hasDeclaredFit()).toBe(false);
 
-    pointer(btn("+"), "click");
-    await flush();
+    pointer(part("zoom-in")!, "click");
+    await flush(4);
     expect(tab.session.ui.zoom).toBeCloseTo(2.4);
     expect(tab.session.ui.editZoom).toBe(1);
     expect(getFit()).toBeCloseTo(2.4, 5);
 
-    pointer(btn("−"), "click");
-    await flush();
+    pointer(part("zoom-out")!, "click");
+    await flush(4);
     expect(tab.session.ui.zoom).toBeCloseTo(2);
   });
 
   test("the fit picker writes the declared fit, and 100% declares the number 1", async () => {
     openTestTab();
-    paneContext.mount(root, ctxInMode("design"));
-    await flush();
+    await mountBar(ctxInMode("design"));
 
-    const fit = root.querySelector("sp-picker.pc-fit") as HTMLElement & { value: string };
-    expect([...fit.querySelectorAll("sp-menu-item")].map((o) => o.textContent?.trim())).toEqual([
+    const fit = select("fit")!;
+    expect([...fit.querySelectorAll("option")].map((o) => o.textContent?.trim())).toEqual([
       "Fit page",
       "Fit width",
       "Actual size",
       "No fit",
     ]);
 
-    fit.value = "width";
-    fit.dispatchEvent(new Event("change", { bubbles: true }));
+    choose(fit, "width");
     expect(getFit()).toBe("width");
 
-    fit.value = "page";
-    fit.dispatchEvent(new Event("change", { bubbles: true }));
+    choose(fit, "page");
     expect(getFit()).toBe("page");
 
-    fit.value = "none";
-    fit.dispatchEvent(new Event("change", { bubbles: true }));
+    choose(fit, "none");
     expect(getFit()).toBe("none");
 
-    fit.value = "actual";
-    fit.dispatchEvent(new Event("change", { bubbles: true }));
+    choose(fit, "actual");
     expect(getFit()).toBe(1);
 
     // An unknown value is ignored rather than clearing the declared fit.
-    fit.value = "nonsense";
+    fit.dispatchEvent(new Event("change", { bubbles: true }));
+    fit.value = "";
     fit.dispatchEvent(new Event("change", { bubbles: true }));
     expect(getFit()).toBe(1);
 
     resetFits();
-    pointer(root.querySelector(".pc-zoom-label") as HTMLElement, "click");
+    pointer(part("zoom-label")!, "click");
     expect(getFit()).toBe(1);
   });
 
   test("the picker shows an author-chosen zoom as no named fit", async () => {
     const tab = openTestTab();
     tab.session.ui.zoom = 2;
-    paneContext.mount(root, ctxInMode("design"));
-    await flush();
-    pointer(btn("+"), "click");
-    await flush();
-    expect(root.querySelector("sp-picker.pc-fit")?.getAttribute("value")).toBe("");
+    await mountBar(ctxInMode("design"));
+    pointer(part("zoom-in")!, "click");
+    await flush(4);
+    expect(select("fit")!.value).toBe("");
   });
 
   test("stylebook is on the panzoom surface; preview and source have no pod", async () => {
     openTestTab();
-    paneContext.mount(root, ctxInMode("stylebook"));
-    await flush();
-    expect(root.querySelector(".pane-zoom")).not.toBeNull();
+    await mountBar(ctxInMode("stylebook"));
+    expect(part("pod")).not.toBeNull();
 
     paneContext.unmount();
-    paneContext.mount(root, ctxInMode("preview"));
-    await flush();
-    expect(root.querySelector(".pane-zoom")).toBeNull();
+    await mountBar(ctxInMode("preview"));
+    expect(part("pod")).toBeNull();
 
     paneContext.unmount();
-    paneContext.mount(root, ctxInMode("source"));
-    await flush();
-    expect(root.querySelector(".pane-zoom")).toBeNull();
+    await mountBar(ctxInMode("source"));
+    expect(part("pod")).toBeNull();
   });
 });
 
@@ -1087,14 +1268,12 @@ describe("export", () => {
   test("shows in the Code view only, and invokes ctx.exportFile", async () => {
     openTestTab();
     const ctx = ctxInMode("source");
-    paneContext.mount(root, ctx);
-    await flush();
+    await mountBar(ctx);
     pointer(btn("Export"), "click");
     expect(ctx.exportFile).toHaveBeenCalledTimes(1);
 
     paneContext.unmount();
-    paneContext.mount(root, ctxInMode("design"));
-    await flush();
+    await mountBar(ctxInMode("design"));
     expect(hasBtn("Export")).toBe(false);
   });
 });
@@ -1137,21 +1316,8 @@ describe("two bars, two panes", () => {
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
     paneContext.mount(root, ctx);
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
-    await flush();
+    await flush(8);
     return [home, away];
-  }
-
-  function btnIn(host: HTMLElement, label: string): HTMLElement {
-    const match = [...host.querySelectorAll("sp-action-button")].find(
-      (b) => (b.textContent || "").trim() === label,
-    );
-    if (!match) {
-      const have = [...host.querySelectorAll("sp-action-button")]
-        .map((b) => (b.textContent || "").trim())
-        .join(", ");
-      throw new Error(`no button labelled "${label}" in that bar — have: ${have}`);
-    }
-    return match as HTMLElement;
   }
 
   beforeEach(() => {
@@ -1163,15 +1329,32 @@ describe("two bars, two panes", () => {
     sideHost.remove();
   });
 
+  test("each bar carries its own region, so a shot of one never crops the other", async () => {
+    await twoBars(makeCtx());
+    expect(part("bar")!.dataset.jxRegion).toBe("pane.primary/context");
+    expect(part("bar", sideHost)!.dataset.jxRegion).toBe(`pane.${SECONDARY_PANE}/context`);
+    expect(part("pod", sideHost)!.dataset.jxRegion).toBe(`pane.${SECONDARY_PANE}/zoom`);
+  });
+
+  test("each bar's popovers carry their own ids — one pane's trigger cannot open the other's panel", async () => {
+    await twoBars(makeCtx());
+    const ids = (host: HTMLElement) => partAll("popover", host).map((p) => p.id);
+    expect(ids(root)).toEqual(["pane-context-primary-context", "pane-context-primary-resolving"]);
+    expect(ids(sideHost)).toEqual([
+      `pane-context-${SECONDARY_PANE}-context`,
+      `pane-context-${SECONDARY_PANE}-resolving`,
+    ]);
+  });
+
   test("the SIDE bar's size control writes the side pane's tab, not the focused one", async () => {
     const [home, away] = await twoBars(makeCtx({ parseMediaEntries: mock(() => WITH_MD) }));
     // Focus is the side pane after the split, so this is the case that used to look right. Move
     // It to the primary: the bar being clicked is then the one the keyboard is NOT in.
     focusPane(PRIMARY_PANE);
-    await flush();
+    await flush(4);
 
-    pointer(btnIn(sideHost, "Md"), "click");
-    await flush();
+    pointer(btn("Md", sideHost), "click");
+    await flush(4);
 
     expect(away.session.ui.activeMedia).toBe("md");
     expect(home.session.ui.activeMedia ?? null).toBeNull();
@@ -1186,14 +1369,10 @@ describe("two bars, two panes", () => {
   test("the SIDE bar's Editor picker moves the side pane's tab", async () => {
     const [home, away] = await twoBars(makeCtx());
     focusPane(PRIMARY_PANE);
-    await flush();
+    await flush(4);
 
-    const picker = sideHost.querySelector("sp-picker.pc-editor-kind") as HTMLElement & {
-      value: string;
-    };
-    picker.value = "code";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    choose(select("editor-kind", sideHost)!, "code");
+    await flush(4);
 
     expect(away.session.ui.canvasMode).toBe("source");
     expect(home.session.ui.canvasMode).not.toBe("source");
@@ -1208,23 +1387,22 @@ describe("two bars, two panes", () => {
     home.session.ui.canvasMode = "source";
     away.session.ui.canvasMode = "design";
     paneContext.render();
-    await flush();
+    await flush(4);
 
-    expect(root.querySelector(".pc-export")).not.toBeNull();
-    expect(sideHost.querySelector(".pc-export")).toBeNull();
+    expect(part("export")).not.toBeNull();
+    expect(part("export", sideHost)).toBeNull();
     console.log(
       `[pane-context] primary=source side=design → Export in primary bar: ` +
-        `${root.querySelector(".pc-export") !== null}, in side bar: ` +
-        `${sideHost.querySelector(".pc-export") !== null}`,
+        `${part("export") !== null}, in side bar: ${part("export", sideHost) !== null}`,
     );
 
     // And the other way round, with focus left where it is: the answer follows the DOCUMENT.
     home.session.ui.canvasMode = "design";
     away.session.ui.canvasMode = "source";
     paneContext.render();
-    await flush();
-    expect(root.querySelector(".pc-export")).toBeNull();
-    expect(sideHost.querySelector(".pc-export")).not.toBeNull();
+    await flush(4);
+    expect(part("export")).toBeNull();
+    expect(part("export", sideHost)).not.toBeNull();
   });
 
   test("the SIDE bar's Design segment leaves the primary's mode alone", async () => {
@@ -1232,12 +1410,22 @@ describe("two bars, two panes", () => {
     home.session.ui.canvasMode = "edit";
     away.session.ui.canvasMode = "edit";
     paneContext.render();
-    await flush();
+    await flush(4);
 
-    pointer(btnIn(sideHost, "Design"), "click");
-    await flush();
+    pointer(btn("Design", sideHost), "click");
+    await flush(4);
 
     expect(away.session.ui.canvasMode).toBe("design");
     expect(home.session.ui.canvasMode).toBe("edit");
+  });
+
+  test("the SIDE bar's resolving panel is the side pane's, and the primary's stays shut", async () => {
+    resetStudioState({ isSiteProject: true });
+    await twoBars(makeCtx());
+    paneContext.setResolvingOpen(SECONDARY_PANE, true);
+    expect(paneContext.isResolvingOpen(SECONDARY_PANE)).toBe(false);
+    // Neither document declares route params or props, so neither bar draws a trigger to open —
+    // Which is the honest answer, and the one a per-pane handle can give.
+    expect(paneContext.isResolvingOpen(PRIMARY_PANE)).toBe(false);
   });
 });

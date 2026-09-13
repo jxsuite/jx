@@ -2,16 +2,16 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.6-draft\
+**Version:** 0.11.3-draft\
 **Status:** Partial\
-**Updated:** 2026-09-01\
+**Updated:** 2026-09-12\
 **License:** MIT
 
 ---
 
 ## 1. Overview
 
-Jx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the Jx schema and pipeline. It renders a live canvas via the Jx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The UI is built with Adobe Spectrum Web Components.
+Jx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the Jx schema and pipeline. It renders a live canvas via the Jx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The chrome is built from the Jx UI kit ([`ui.md`](./ui.md)) — interface elements authored as Jx documents — with Adobe Spectrum Web Components remaining for the surfaces that have not yet migrated (`studio-ui-guidelines.md` §1, §9.3).
 
 At the component level, Studio is a visual builder for individual Jx files. At the site level, it is a content management system — providing a project explorer, content collection browser, schema-driven entry editors, media management, SEO tooling, and redirect management. The full site-level architecture is specified in the companion [Site Architecture Specification](site-architecture.md).
 
@@ -22,7 +22,7 @@ At the component level, Studio is a visual builder for individual Jx files. At t
 1. **JSON is the source of truth** — Studio reads and writes `.json` files. No proprietary intermediate format.
 2. **Canvas is the runtime** — The preview canvas renders via `@jxsuite/runtime`, showing exactly what users will see.
 3. **Zero lock-in** — Studio edits produce standard Jx files. Any editor can open them.
-4. **Self-hosting** — Studio is itself a Jx application served by `@jxsuite/server`.
+4. **Self-hosting** — Studio is itself a Jx application served by `@jxsuite/server`, and its chrome is Jx documents mounted through the runtime ([`embedding.md`](./embedding.md); `studio-ui-guidelines.md` §9.3), so Studio can open and edit its own interface.
 5. **Developer-first** — Keyboard shortcuts, undo/redo, and code editing are first-class.
 
 ---
@@ -221,21 +221,39 @@ Monaco's web workers are resolved relative to the studio bundle's own URL. No wo
 
 > **Status: Implemented.**
 
-An OPEN popover is in the **top layer**, and CSS Position 4 §3.1 gives a top-layer element the viewport as its containing block whatever its ancestors say. In an editable mode that viewport is a fiction: the frame is sized to its own content height, so a drawer pinned with `inset: 0` lands halfway down a long page, and a panel taller than a short component frame is clipped by the `overflow: hidden` the canvas document needs. Worse, a top-layer box contributes to no ancestor's scrollable overflow, so the artboard can never grow to fit one.
+An OPEN popover is in the **top layer**, and CSS Position 4 §3.1 gives a top-layer element the viewport as its containing block whatever its ancestors say. In every mode but Preview that viewport is a fiction: the frame is sized to its own content height, so a drawer pinned with `inset: 0` lands halfway down a long page, and a panel taller than a short component frame is clipped by the `overflow: hidden` the canvas document needs. Worse, a top-layer box contributes to no ancestor's scrollable overflow, so the artboard can never grow to fit one.
 
-So editable modes **de-popover**: the runtime stamps `popover` onto `data-jx-popover` for nodes the studio can ADDRESS — those carrying a `data-jx-path` — exactly as it de-links `<a href>`. That drops every `[popover]` UA rule at once, and the one that matters is `position: fixed`: with it gone the panel lays out in normal flow at its document position, contributes to the content height, and the host grows the artboard by exactly its height. The canvas marks it **POPOVER · SHOWN IN PLACE**, and forces `position` and the flex/grid alignment so a panel declared inside a header's flex row is not centred on a 64px header with half of it above the artboard.
+So **every mode but Preview de-popovers**: the runtime stamps `popover` onto `data-jx-popover` for nodes the studio can ADDRESS — those carrying a `data-jx-path` — exactly as it de-links `<a href>`. That drops every `[popover]` UA rule at once, and the one that matters is `position: fixed`: with it gone the panel lays out in normal flow at its document position, contributes to the content height, and the host grows the artboard by exactly its height. The canvas marks it **POPOVER · SHOWN IN PLACE**, and forces `position` and the flex/grid alignment so a panel declared inside a header's flex row is not centred on a 64px header with half of it above the artboard.
 
 Two things do NOT rescue this, and both are the intuitive answer: `container-type: size` on the canvas's query container does not make it a containing block for fixed descendants (measured in Chrome 151: `contain` computes to `none`, and a fixed child measures the window), and leaving the top layer is necessary but not sufficient, because a fixed box contributes nothing to an ancestor's overflow either.
 
-**The studio re-supplies one UA rule and no more** — `display: none` while closed — inside a cascade LAYER, so an author declaration still beats it exactly as it beats the real UA rule on the shipped page. That is deliberate rather than an oversight: a popover whose base rule sets `display` is laid out on every page whether open or not, and the canvas has to SHOW that defect. §16.6's report names it and offers the repair.
+**The studio re-supplies one UA rule and no more** — `display: none` while closed — inside a cascade LAYER, so an author declaration still beats it exactly as it beats the real UA rule on the shipped page. That is deliberate rather than an oversight: a popover whose base rule sets `display` is laid out on every page whether open or not, and the canvas has to SHOW that defect. §16.6's report names it and offers the repair. **The substitute rules ship with the de-link, not with the editing affordances** — same predicate, one stylesheet — because an attribute renamed without its substitute rule is an overlay that can never be drawn: a closed panel would lay out in flow and inflate the artboard, and an opened dialog would stay hidden behind the UA `dialog:not([open])`. So a read-only artboard renders an overlay exactly as the design canvas does, which is what a Stylebook specimen and a git-diff side, read beside its pair, both require.
+
+**The de-link reaches inside a defined element, and it has to.** The gate is `data-jx-path`, which only a node of the edited document carries: an element's INTERNAL nodes belong to its definition, so the studio's stamper never sees them and never could. A kit element that declares `popover` on a panel inside itself would therefore keep a real one on the canvas, opening a genuine top-layer popover inside an editable page while the single writer of open state learned nothing about it. So the runtime raises a render-scoped flag while a STAMPED instance renders its own children, and the de-link accepts that in place of a per-node path. It is restored rather than cleared, because one definition may render another, and an unstamped instance — the same definition rendered by the shell itself — keeps its real popover.
 
 `:popover-open` is transposed to `[data-jx-popover-open]` — the same specificity, so a block still wins and loses against the same neighbours. **`::backdrop` is dropped rather than emitted inert**: there is no backdrop pseudo-element outside the top layer, synthesising one would paint a scrim over the document being edited, and a rule that can never match would mark the selector as styled in the Style tab while doing nothing. Preview renders all of it natively.
 
 **Which popover is open is per-tab view state, and exactly one.** It writes nothing to the document, takes no undo entry, does not replicate over collaboration, and is not restored with a session. `canvas.setPopoverOpen` is the single verb — a setter rather than a toggle, because §13.3 clause 3 requires a command to name the state it ends in, and a toggle could never drive a documentation screenshot. Three surfaces are renderings of it: the block action bar, the Style tab's selector segment (§6.2), and the trigger's own click in the canvas, which the frame reports because de-popovering removed the browser's invoker activation — leaving exactly one writer of open state instead of a race between the platform and the editor.
 
+**A `hide` invoker closes its own target and no other.** In either spelling — `popovertargetaction="hide"`, or the `hide-popover` command of §4.2.3 — the host runs the setter only when the named popover is the one that is open. `hidePopover()` on a popover that is not showing does nothing on a real page, so a trigger for one panel must leave a different open panel alone; a host that resolved `hide` to `open: false` and wrote it unconditionally would close whichever panel happened to be showing.
+
 **Selecting reveals.** A selection at or inside a popover opens it, from whichever surface made the selection — the canvas, the Outline, quick search, a Problem, or an undo. The rule is asymmetric on purpose: selecting outside every popover does NOT close the open one, because reaching a colour swatch in the Inspector is a selection change and a panel that shut on every one could never be styled.
 
+**A selection MOVE is what fires it, and an explicit close stays closed.** The rule observes the selection; it does not observe which overlay is open, and it must not, because it writes that. An implementation whose reveal effect also tracks the open state closes and reopens in one turn: the close lands, the effect re-runs on its own write, finds the selection still at or inside the panel, and opens it straight back. That defeats both of the explicit closes above — the action-bar control on a popover the reader has selected into, and a close button INSIDE a dialog, which is the ordinary shape of one. The two are indistinguishable from a control that does nothing.
+
 Three exclusions, all consequences of the `data-jx-path` gate rather than special cases: a popover rendered inside a component's own template stays native (the studio cannot address it); a layout popover stays native while a page is open and becomes editable when the layout itself is; and `<dialog>` is refused, because its UA rules key off `open` rather than `popover`.
+
+#### 4.2.3 Dialogs, invoker commands and inert
+
+> **Status: Implemented.** `setCanvasDelinkCommands` and `transposeCanvasOverlaySelector` in `@jxsuite/runtime`; `canvas/dialog-path.ts`, `canvas/dialog-state.ts`, the `canvas.setDialogOpen` record and the `commandTargetClick` message in Studio.
+
+A `<dialog>` has the popover's problem twice over. Shown modally it is in the top layer, with the viewport as its containing block and no contribution to any ancestor's overflow; and a modal makes the rest of the page **inert**, so a `show-modal` invoker that ran inside a canvas frame would leave every other element unclickable. So every mode but Preview de-links the whole invoker family on nodes the studio can address: `commandfor` becomes `data-jx-commandfor` (a button with `command` and no target does nothing), `inert` becomes `data-jx-inert` (an author's inert region is a region the editor could not select into), and a dialog's authored `open` becomes `data-jx-open`, so the browser's own `dialog:not([open]) { display: none }` keeps every dialog closed until the canvas opens one. `<details open>` is untouched: its `open` is content. `popovertarget` is left alone, because its target has no `popover` attribute on the canvas and the platform already does nothing with it.
+
+The open dialog is `data-jx-dialog-open`, stamped by the frame exactly as `data-jx-popover-open` is, and shown by one rule in the same cascade layer — `dialog[data-jx-dialog-open] { display: block }` — so an author `display` on the base rule still beats it and the base-display defect (§16.6) shows rather than hides. The forced `position` and the **DIALOG · SHOWN IN PLACE** mark follow the popover's. `:modal` is transposed to `[data-jx-dialog-open]`, `[open]` is transposed the same way on the compound whose SUBJECT is the dialog — a compound naming `dialog` is transposed whoever owns the rule, so a wrapper's `& dialog[open]` keeps matching; a compound naming any other element type is left alone, so a dialog's `& details[open]` is not rewritten into a selector that can never match; and a compound naming no type at all (`&[open]`, `#d[open]`) follows the element the style was authored on — and `[inert]` is transposed to `[data-jx-inert]` wherever it appears, because the attribute is renamed on every stamped node whatever the tag is; `::backdrop` is dropped for the reason §4.2.2 gives. Each rename carries its selectors with it: an attribute renamed without its selectors transposed is a dialog that can never be styled open, or a region that can never be styled inert, and a canvas that shows something other than what ships. Preview renders the dialog natively: modal, backdrop, inert page and all.
+
+**Which dialog is open is per-tab view state, and exactly one**, held beside the open popover and written by one verb, `canvas.setDialogOpen` — a setter with the same shape and the same refusals as `canvas.setPopoverOpen`. The reveal rule of §4.2.2 covers dialogs from the same effect: a selection at or inside a dialog opens it, and selecting outside every dialog leaves it alone. The Style tab's `[open]` and `:modal` segments open the dialog the selection is in, as `:popover-open` opens its popover.
+
+**An invoker's click is reported, never acted on in the frame.** A click on a de-linked `<button command commandfor>` posts `commandTargetClick` with the target's path and the command; the host resolves it against the model — a popover command lands on `canvas.setPopoverOpen` with `toggle-popover` resolved there, `show-modal` opens the dialog, `hide-popover`, `close` and `request-close` close only the overlay they name and only when it is the open one, and a custom `--command` is the document's own business. **The command's family and the target's kind must agree**, and the host reads both: a popover verb aimed at a `<dialog>`, or a dialog verb aimed at a popover, is ignored exactly as the platform ignores it (spec.md §8.7) and as Problems already reports it (`command-target-mismatch`, §16.6). Dispatching on the command name alone routed the mismatch to a setter that refuses a path of the wrong kind, so an authoring mistake the report calls harmless became a thrown error out of the frame's message channel. A `targetPath` naming no node — a report an edit has since invalidated — is ignored for the same reason. The built page carries every one of these attributes verbatim (`packages/compiler/tests/shared.test.ts`); only the canvas renames them.
 
 ---
 
@@ -335,7 +353,7 @@ Only applicable buttons render for each row's position in the tree. Clicking a m
 
 **§5.3 and §5.4 are one panel — Insert (`insert`).** They were two rail tabs listing two kinds of thing you drag onto the canvas, and the question a user has ("what can I put here?") does not distinguish them. The sections stay separate because the two catalogues have different sources and different rules; the surface does not.
 
-HTML element palette organized by category using Spectrum accordions (`sp-accordion` with `allow-multiple`). Each element displays as a full-width card with:
+HTML element palette organized by category using the kit's accordion (`jx-accordion` with `multiple`). Each element displays as a full-width card with:
 
 - **Live preview**: Actual DOM element rendered at natural browser sizes
 - **Tag label**: Element tag name below the preview
@@ -359,7 +377,7 @@ Git-integrated source control panel providing commit, staging, branch management
 
 #### Layout (top to bottom)
 
-1. **Toolbar** — Branch picker (`sp-picker`, quiet) + action button group (Fetch, Pull, Push, Refresh)
+1. **Toolbar** — Branch picker (`jx-select`, quiet) + action button group (Fetch, Pull, Push, Refresh)
 2. **Sync indicator** — Shows commits ahead/behind remote when applicable
 3. **Commit area** — Multi-line text field with `Ctrl+Enter` to commit + Commit button
 4. **Staged Changes** — Section with file list and per-file Unstage button; section header has Unstage All button
@@ -463,7 +481,7 @@ When a Jx component is selected, the property panel renders its declared `state`
 1. `format` → format-specific control (see table)
 2. `type === "boolean"` → checkbox
 3. `type === "number"` → number field
-4. `type` has enum/union → combobox (`jx-value-selector`)
+4. `type` has enum/union → select (`jx-select`)
 5. Fallback → text field
 
 | `format`  | Control                                                          |
@@ -476,7 +494,7 @@ Each prop's value source is chosen from the shared ladder (§6.6) rather than a 
 
 **A draft belongs to a node.** The in-progress text of a field that has not been committed yet is keyed by node path AND field name. Keyed by field name alone — as the Element rows were — every element shared one draft slot per field: typing a class name, clicking a sibling before blurring, and blurring there committed your text to the wrong element.
 
-**An event name is typed, not picked.** The Logic tab's event rows use the same `jx-value-selector` combobox: the ten common `on*` names are SUGGESTIONS, and any handler name may be entered — a closed list of ten made `ondragover`, `onpointerdown`, `onwheel` and every custom event a component emits unbindable from the Inspector. The field is free-form, not unchecked: a name that is not an `on*` handler is refused, because the list that used to constrain it is gone.
+**An event name is typed, not picked.** The Logic tab's event rows open the kit menu on the name: what this element already binds, the ten common `on*` names as SUGGESTIONS, and **Other name…**, which is the prompt dialog of §8.7. Any handler name may be entered — a closed list of ten made `ondragover`, `onpointerdown`, `onwheel` and every custom event a component emits unbindable from the Inspector. The field is free-form, not unchecked: a name that is not an `on*` handler is refused on the way out of the prompt, because the list that used to constrain it is gone.
 
 ### 6.2 Style Sidebar (Metadata-Driven)
 
@@ -547,61 +565,53 @@ Organized, metadata-driven style sections. Metadata loaded from `css-meta.json` 
 
 #### Color Picker
 
-Inline color editing via Spectrum color components (`sp-color-area`, `sp-color-slider`, `sp-swatch`, `sp-textfield`). Features:
+Inline color editing through the kit's `jx-color-field` (`ui.md` §5.6), drawn by the Style and Content tabs in their own documents. Features:
 
-- Swatch button opens popover with color area + hue slider + hex text field
+- Swatch button opens a popover with a colour area, a hue slider and a hex text field
 - All three controls stay in sync — area, slider, and text field update each other in real time
 - Hex values always `#`-prefixed for valid CSS
-- Right panel swatch and field update live during color picking (bypasses focus-guard optimization in `_update`)
+- The project's NAMED colours are offered beside the free picker, and choosing one commits the reference (`var(--color-accent)`) rather than the literal behind it: committing the literal would resolve the token at the moment of the click and quietly opt that declaration out of the palette for ever. `src/ui/color-selector.ts` is that projection and nothing else — the control it used to be was the last Spectrum surface in Studio
+- The swatch still shows the colour a token stands for. The reference resolves in the canvas and nowhere in Studio's own page, so the field is also handed `resolved` (`ui.md` §5.6): the literal at the end of the token's chain, followed through the effective style by `resolvedColor()` in the same module. Without it a pick from the palette drew the no-colour chip. A literal value hands the field nothing, and draws itself
 
 #### Font Family (Combobox with Modern Font Stacks)
 
-The `fontFamily` property uses the `jx-styled-combobox` component — a dual-mode control that automatically switches between text input (combobox) and predefined selection (picker) modes based on whether the current value matches a known option.
+The `fontFamily` row is one `jx-combobox` with `allows-custom-value` (`ui.md` §5.3) over `jx-option` rows, each drawn in its own typeface through the row's `face` channel — the same element the keyword rows are, over a different list, with a different commit.
 
-**Modern Font Stacks:** Preset font stacks from `css-meta.json` (e.g. "Geometric Humanist", "Classical Humanist") are listed as dropdown options. These are not literal font names — they are aliases for multi-font fallback stacks.
+**Modern Font Stacks:** Preset font stacks from `css-meta.json` (e.g. "Geometric Humanist", "Classical Humanist") are listed as rows. These are not literal font names — they are aliases for multi-font fallback stacks.
 
-**Styled font options:** Every font option renders in its own typeface via inline `font-family` styles on each menu item. This gives users a live preview of each font before selecting. In picker mode, the picker element itself displays the current font style.
+**Every row is its own specimen.** A token row is set in the stack its token resolves to (an alias such as `--font-display: var(--font-ui)` is followed to the end of the chain), and a preset row in the stack it would mint. This is the reason the row is a combobox rather than the kit menu the unit row uses: a menu row is an action and carries no typeface channel (`ui.md` §5.1), and a font is the one value a reader chooses by looking.
 
-**Option grouping:**
+**The list, in order:**
 
-1. **Local project font variables** — `--font-*` custom properties already defined in the document root style appear first
-2. **Divider** — separates local from global
-3. **Global presets** — Unadded modern font stack presets from `css-meta.json`. Presets already instantiated as local variables are excluded from this section.
+1. **Project font tokens** — every `--font-*` custom property of the effective style, the site's `project.json` block under the document's own, because a project declares its fonts once and a list that read only the document offered a component none of them. A token row is labelled by its display name ("Body") with the token's own name (`--font-body`) as its description, so what a pick will write is in the list.
+2. **Unminted presets** — the Modern Font Stacks not yet instantiated as a token, labelled by their title and carrying no description. The list draws no divider; the description a token row has and a preset row lacks is what tells the two groups apart.
+
+**A row's value is a token name**, minted or not: `--font-body` for a token, `--font-geometric-humanist` for the preset that would mint it. That is what the field holds after a pick, and it is what the commit turns into a reference.
 
 **Selection flow:**
 
-1. User selects a preset (e.g. "Geometric Humanist") from the dropdown
-2. The system creates a CSS custom property on the document root style (e.g. `--font-geometric-humanist: "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif"`)
-3. The selected element's `fontFamily` is set to `var(--font-geometric-humanist)`
-4. If the variable already exists in the document root, step 2 is skipped
+1. User picks a row, or types a value and leaves the field
+2. A value that is not a token name — `Georgia, serif` — is the value itself, with no `var()` wrapping
+3. A token name is committed as `var(--name)`. If the name is a preset's and no such token exists in the effective style, the token is minted into the document root style first (e.g. `--font-geometric-humanist: "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif"`), so it exists before anything references it; a token that exists is left exactly as it is
+4. Minting happens on the COMMIT only — the pick, Enter, or leaving the field. The debounced edit that follows each keystroke writes the reference and mints nothing, because a reader halfway through typing `--font-slab-serif` has not asked for a token, and one minted early would be left behind when they finished typing something else
 
-**Existing font variables:** Variables already defined in the document root (`--font-*`) appear at the top of the dropdown. Selecting one assigns `var(--name)` without creating a new variable.
+**A token reads as its name:** when the current value is a `--font-*` reference, the field shows the token's name rather than the `var()` around it, because the field edits WHICH token this is and the punctuation is not something the reader typed. Emptying the field clears the value.
 
-**Free-text entry:** Typing a plain font family string (e.g. "serif", "Arial, sans-serif") sets the value directly — no `var()` wrapping.
+#### Typography rows preview their values
 
-**Mode switching:** When the current value matches a dropdown option (e.g. a `--font-*` variable name), the component renders as a native `sp-picker`. Selecting "—" clears the value and returns to combobox mode.
+The keyword rows of the Typography section — `fontWeight`, `fontStyle`, `fontVariant`, `textTransform` and `textDecoration` — draw each value AS that value: `700` is set at 700, `Italic` leans, `Small Caps` is in small caps, `Uppercase` is capitalised, `Underline wavy` is underlined. Each reaches its row through the `jx-option` channel of the same axis (`weight`, `slant`, `variant`, `transform`, `decoration`; `ui.md` §5.3), and `TYPO_PREVIEW_CHANNELS` in `panels/style-utils.ts` is the one map from property to channel. The words are never changed, so a reader hears the row's name and sees what choosing it would do.
 
-#### `jx-styled-combobox` Component
+Every such row is also set in the element's own `face`: its `fontFamily`, else the base context's when a breakpoint is being edited, followed through the effective style to the stack at the end of the chain — so a weight previews in the typeface the element actually uses rather than in the panel's. An element with no typeface of its own previews in the panel's, and a row that is not about type carries no channel at all.
 
-A custom LitElement (no shadow DOM) used across all dual-mode style inputs. Replaces the former `sp-combobox` (which stripped inline styling) and the ad-hoc manual overlay pattern.
+#### The dual-mode row
 
-**Properties:**
+A row that must accept both a fixed option and arbitrary text is a **composition**, not an element: a `jx-textfield` beside a button that opens a `jx-menu` of the options, drawn by the surface that wants it.
 
-- `value` (String) — current value
-- `placeholder` (String) — placeholder text for combobox mode
-- `size` (String) — Spectrum sizing token (e.g. `"s"`)
-- `options` (Array) — `[{ value, label, style? }, { divider: true }, ...]`
+It was a custom `LitElement` — `jx-styled-combobox`, and `jx-value-selector` behind it — introduced because `sp-combobox` stripped the inline styling each option needs to preview its own typeface. Both classes are deleted. The reason is worth keeping rather than the code: a control whose two modes differ in what they COMMIT, not in what they look like, is two widgets a surface already has, and wrapping them in a third element only moved the width-matching, the overlay placement and the mode switch somewhere a test could not reach. The kit's menu places and clamps itself, so the width-matching hack that replicated `sp-picker`'s internal `containerStyles` went with the class.
 
-**Events:** `change` (on menu selection), `input` (on textfield typing)
+The composition is for a row whose list runs a VERB: the unit row, where a choice re-attaches a unit to the number the field holds. A row whose list commits a VALUE is not this composition but one `jx-combobox` with `allows-custom-value` (ui.md §5.3): the Style tab's keyword rows — fontWeight, fontStyle, fontVariant, textTransform, textDecoration and every other enum — are that element, the field being the value and the rows under it the values worth offering. The font row was on the menu side of that line, on the argument that a preset is minted into a token before the property is pointed at it, and moved to the combobox: the styling the class above existed for is what a menu row cannot carry and a `jx-option` row can, and the minting is the adapter's commit rather than the row's verb (see **Font Family** above).
 
-**Modes:**
-
-- **Picker mode** (`value` matches an option) — renders `sp-picker` with styled items + "—" clear option
-- **Combobox mode** (`value` is empty/custom) — renders `sp-textfield` + `sp-picker-button` + `sp-overlay` + `sp-popover` + `sp-menu` with styled items
-
-**Width matching:** The combobox popover width matches the trigger width via `@sp-opened` handler, replicating `sp-picker`'s internal `containerStyles` behavior.
-
-**Used by:** `renderKeywordInput` (fontWeight, fontStyle, fontVariant, textTransform, textDecoration), `renderComboboxInput` (fontFamily), `renderSelectInput` (enum properties).
+**Used by:** the Style tab's unit rows, drawing the pair in `style-panel.json` rather than through a shared class.
 
 #### Conditional Display (`$show`)
 
@@ -721,7 +731,7 @@ Until then the gap is stated rather than hidden, because the alternative is a pi
 
 The project's design tokens and element defaults, edited as a **document** (§17) with the live canvas beside them: every HTML element and project component rendered under the project's root styles, so tuning a token shows the page changing rather than describing it.
 
-**The user-facing name is Project Styles; `"stylebook"` remains the wire value.** It is a member of `CANVAS_MODES` and therefore of the `ParentToIframe` union, so renaming it would require the studio bundle and `dist/iframe-entry.js` rebuilt in lockstep. The id and the name are different things, and the code says which is which. Tokens are pickable as chips from any Style field, and a colour scheme is declared as a row in Contexts (§16) rather than by a control that exists only here.
+**The user-facing name is Project Styles; `"stylebook"` remains the wire value.** It is a member of `CANVAS_MODES` and therefore of the `ParentToIframe` union, so renaming it would require the studio bundle and `dist/iframe-entry.js` rebuilt in lockstep. The id and the name are different things, and the code says which is which. A colour token is pickable from any colour field's palette, and a font token from the font row's menu; a size field takes a `var()` reference typed, because a picker for it is promised nowhere (ui.md §5.5, `jx-token-field`). A colour scheme is declared as a row in Contexts (§16) rather than by a control that exists only here.
 
 **`styles.open` is how it is reached by name** (project level, `requires: "an open project"`). Until it existed, Project Styles had no command at all: the pane's Editor control can only re-mode a tab that is already open, and the only other door was a button inside Project Settings › Overview that wrote `session.ui.canvasMode` itself. So from a closed configuration tab there was no way to ask for it — `canvas.setMode` is document level and requires an open document. It is a peer of `settings.open` over the same `project.json` tab and declares the same availability rule (§17.1), and it renders in the rail foot's Settings menu and the palette.
 
@@ -902,7 +912,7 @@ The studio tracks:
 
 ### 9.1.1 Create, Rename, Delete
 
-Every name the user supplies is collected through the Spectrum dialogs in §8.7 of studio-ui-guidelines.md — no native browser prompts:
+Every name the user supplies is collected through the dialog flows in §8.7 of studio-ui-guidelines.md — no native browser prompts:
 
 | Action                                                        | Dialog                                                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -967,6 +977,17 @@ Three states, three different sentences, and they are never collapsed:
 The same query backs the inspector's **Used on N pages** line for a selected component instance and the `selection.findUsages` command; all three read one cache, invalidated by the filesystem rather than by a timer, so they cannot disagree. A local rename, delete or **drag-move** drops that cache itself: those writes suppress the watcher echo that would otherwise announce them, so a gesture that did not invalidate would leave every count in the session answering about a path that no longer exists.
 
 **A promise made must be a promise reported on.** The rename sentence commits the refactor pass to rewriting the references it counted, and the pass can fail to keep that for a nameable reason — a document that does not parse, or a tag rename inside a format with no serializer. A format that is read but never round-tripped is NOT such a reason: a CSV collection declares the narrower `rewrite` capability (`extensions.md` §8), so a reference inside one is repaired cell by cell. Where the pass genuinely cannot write, the engine names those files rather than dropping them (`site-architecture.md` §9.3), and Studio MUST surface the naming: a move whose report carries them reports a **warning** identifying them, not the plain success. This binds the drag-move most of all, since it shows no dialog and therefore makes its promise only in retrospect.
+
+##### A refused drop is refused, not delegated outward
+
+> **Status: Implemented.** The drag-move has three drop targets stacked on top of one another — the row under the pointer, and the tree element, which is the project root and which CONTAINS every row. Which of them the drop reaches is not a detail; it is the difference between "nothing happened" and a file moved somewhere the author never pointed at.
+
+Two rules, and both are about the stack rather than about any one target.
+
+1.  **The innermost target decides, and its refusal ends the gesture.** Pragmatic Drag and Drop documents that blocking a drop target does not block its ancestors, so a row that answers `canDrop: false` is not a refusal — it is an absence, and the drop lands on whatever is behind it. A row therefore participates in every tree drag and carries its verdict in its DATA; a file row, which has no inside to move something into, participates in order to say so. Dropping an entry on the folder it is already in must do nothing, and it did the most surprising thing available instead: it moved the entry to the project root, silently, with the tree's own background lit for a target the author never aimed at.
+2.  **A move that cannot be made is not offered.** The predicate is one function, shared by the affordance, the monitor and the background's own `canDrop`, and it refuses four things: a directory onto itself, an entry already inside the target at any depth, a directory into its own descendant (a rename onto a path underneath the thing being renamed, which the tree offered until the server answered 500), and an entry already directly in the target. Path spellings are normalised before any of that, because `assets\logo.png` and `assets/logo.png` name one entry and a predicate that agreed with itself on only one of them is a predicate with a hole.
+
+**The affordance is derived from the same answer, and only one thing may claim the drop.** A row highlights only when it will take the entry, and the tree background offers the project root only while no row is under the pointer — the two used to be written independently, so a refused row left the background saying the root would take it, which was the untruth and then also the outcome.
 
 ### 9.1.2 The Library
 
@@ -1181,15 +1202,15 @@ Where the built site is browsable is unchanged: a loopback origin rooted AT the 
 
 ## 11. Dependencies
 
-| Package                             | Purpose                                |
-| ----------------------------------- | -------------------------------------- |
-| `@jxsuite/runtime`                  | Canvas rendering                       |
-| `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop               |
-| `lit-html`                          | Studio UI template rendering           |
-| `monaco-editor`                     | Code editor (loaded on demand — §11.1) |
-| `yaml`                              | YAML frontmatter parsing               |
-| `unified` / `remark-*`              | Markdown conversion pipeline           |
-| `@spectrum-web-components/*` (15+)  | Adobe Spectrum UI components           |
+| Package                             | Purpose                                                               |
+| ----------------------------------- | --------------------------------------------------------------------- |
+| `@jxsuite/runtime`                  | Canvas rendering, and the chrome's surface documents (`embedding.md`) |
+| `@jxsuite/ui`                       | The UI kit: chrome elements, theme tokens, icons (`ui.md`)            |
+| `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop                                              |
+| `lit-html`                          | The overlay layers, the canvas realm and the grid's cell editors      |
+| `monaco-editor`                     | Code editor (loaded on demand — §11.1)                                |
+| `yaml`                              | YAML frontmatter parsing                                              |
+| `unified` / `remark-*`              | Markdown conversion pipeline                                          |
 
 ### 11.1 Bundle Layout
 
@@ -1220,6 +1241,8 @@ Two facts the list cannot state about itself, both measured rather than reasoned
 
 > **Status:** Implemented
 
+**The shell requires `'unsafe-eval'`.** Its chrome mounts Jx documents through the interpreter, which compiles templates and inline bodies with `new Function` (`spec.md` §21.3, `embedding.md` §8), so a host's Content Security Policy for the Studio page must allow it for as long as the shell interprets. This is a property of the shell, stated rather than worked around; the canvas iframe already carried it.
+
 A host serves the tree and supplies a platform. Both halves are the package's to describe, and before they were, four hosts described them instead — the desktop's staging, its bundler's copy block, its bundle verifier, and the cloud's asset build all carried the same list, and every one of them was missing `dist/codicon.ttf`.
 
 **The manifest is the list.** `@jxsuite/studio/hosting/layout` exports `STUDIO_ASSETS`: what ships, whether it is a directory copied wholesale, whether absence is fatal, and _why_ — the `why` is what a staging failure prints, because "a file is missing" and "the code view will silently have no schema validation" are different things to be told. `dist/manifest.json` carries the same data for a host that cannot import TypeScript.
@@ -1244,7 +1267,7 @@ Six of these nine rows were still marked **Pending** long after they shipped —
 
 | Feature                      | Description                                                    | Status                                                                                                                                                                                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CSS custom properties panel  | Declare `--custom-property` interfaces for CEM                 | **Partial** — the Logic tab's **CSS Properties** section lists the `--*` entries of the component's root `style`, read-only (`renderStaticKvRow`). Declaring one means authoring a style value; there is no interface form                                                         |
+| CSS custom properties panel  | Declare `--custom-property` interfaces for CEM                 | **Partial** — the Logic tab's **CSS Properties** section lists the `--*` entries of the component's root `style`, read-only (`surfaces/logic-panel.json`, the `cssprops` section). Declaring one means authoring a style value; there is no interface form                         |
 | CSS parts panel              | Declare `::part()` styling hooks for CEM                       | **Partial** — same shape: the Logic tab's **CSS Parts** section lists the parts collected from the tree, read-only. The tree is the declaration                                                                                                                                    |
 | Full CEM document export     | Generate complete Custom Elements Manifest JSON                | **Pending** — `services/cem-export.ts` builds a complete CEM 2.1.0 manifest, `cssProperties` and `cssParts` included, and **nothing invokes it**. `tests/reachability.test.ts` carries the ledger entry: no menu offers it, and it still takes the deleted flat state shape        |
 | Component library management | Browse, install, and manage component packages                 | **Implemented** — the Packages panel adds and removes npm packages (`platform.addPackage` / `removePackage`) and cherry-picks components per document through the one `$elements` service (§11.2)                                                                                  |
@@ -1370,11 +1393,13 @@ One reactive record (`commands/context.ts`), derived from the reactive `shell` r
 
 All four run in CI, and `createCommandRegistry` applies the placement check again at registration so a violation cannot reach a running app either.
 
-**An icon is checked because nothing else can see it — and there are TWO key spaces, which fail differently.** A TAG written in a template (`<sp-icon-x>`) resolves through `customElements`, and an element the browser has never heard of is an `HTMLUnknownElement`: no shadow root, no content, no warning, an empty box the size of the missing glyph. The type checker is silent (the tag is a string in a template), and happy-dom is as content to render nothing as Chrome is, so a test asserting the element is present passes. Eleven shipped that way. Three named elements Spectrum has no such thing as — `sp-icon-rail-left-open`/`-close`, written by symmetry with the right-hand pair, which exists.
+**An icon is checked because nothing else can see it — and there are TWO key spaces, which fail differently.** A TAG written in a surface document (`"tagName": "jx-icon"`) resolves through `customElements`, and an element the browser has never heard of is an `HTMLUnknownElement`: no shadow root, no content, no warning, an empty box the size of the missing glyph. The type checker is silent (the tag is a string in a document), and happy-dom is as content to render nothing as Chrome is, so a test asserting the element is present passes. Eleven shipped that way while the tags were Spectrum's. Three named elements the library had no such thing as — `sp-icon-rail-left-open`/`-close`, written by symmetry with the right-hand pair, which existed.
 
-A KEY on a record (`icon: "sp-icon-x"`) is **not a tag**. It resolves through a map, and never reaches `customElements` at all. A panel record's key goes to `activity-bar.ts`'s `tabIcon()`, whose tail is `return fn ? fn(size) : nothing`: a key with no row is not a missing element, it is zero nodes, and registering the element does nothing because the tag is never constructed.
+A KEY on a record (`icon: "folder"`) is **not a tag**. It resolves through the kit's icon MANIFEST, and never reaches `customElements` at all. A panel record's key is drawn by the rail through `jx-icon`: a key with no glyph is not a missing element, it is zero nodes above the label and one console warning, and defining an element does nothing because the tag is never constructed.
 
-**Conflating the two is not hypothetical.** Both spaces are spelled `sp-icon-*`, and one of the map's own rows — `sp-icon-git-branch` — is not a Spectrum element but a hand-drawn inline `<svg>`, because the workflow set ships no Git family. Reading that key as a tag says a working, pixel-perfect glyph is broken; "correcting" it to a real Spectrum name replaced it with a key nothing resolved, and a checker that asked only about registration passed the result. So keys are checked against their resolver, and the resolver that is enforced is the one whose miss is SILENT: `commandIcon()` falls back to the command's title and degrades visibly, `tabIcon()` falls back to nothing. A dead ROW is checked too — the orphan left behind by that regression was still being exercised by a test, which is how the suite went on proving a glyph rendered while the shipped panel pointed elsewhere.
+**Conflating the two is not hypothetical.** Both spaces were spelled `sp-icon-*`, and one of the map's own rows — `sp-icon-git-branch` — was not a Spectrum element but a hand-drawn inline `<svg>`, because the workflow set shipped no Git family. Reading that key as a tag said a working, pixel-perfect glyph was broken; "correcting" it to a real Spectrum name replaced it with a key nothing resolved, and a checker that asked only about registration passed the result. The two spaces no longer share a spelling — a tag is `jx-*` and a key is a bare glyph name — which removes the trap and not the rule: keys are still checked against their resolver, and the resolver that is enforced is the one whose miss is SILENT. `commandIcon()` falls back to the command's title and degrades visibly; a rail key falls back to nothing.
+
+**One of the two rules that used to sit here went with Spectrum, and its absence is a decision.** A registered element no template wrote was a finding, because Spectrum's registry was hand-written: a row named a tag, a separate import named a class, and the two could disagree in ways nothing type-checked. The kit defines one element per component document it ships, so there is no second list to fall out of step with the first, and asking this package to ratchet `@jxsuite/ui`'s inventory would be asking it about somebody else's file.
 
 **The scripting surface is a rendering, and these three rules are what make that true.** `window.__jxAutomation` (installed only under `?automation=1`) exposes `run(id, args)`, `seed(id, args)` and a read-only `probe`, and nothing else.
 
@@ -1430,15 +1455,17 @@ The rule that generalises: **a stack needs a push, and the push is the part to s
 
 ### 14.4 The tab strip
 
-| Behaviour        | Rule                                                                                                                                                                                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Label            | The shortest **unique** path suffix among the open tabs. A page labels by its **route** (`/blog/[slug]`), because a realistic session has four files named `index.md`. A tab with no path uses its own name (a grid tab's table, otherwise "Untitled"). |
-| Widening         | Only the tabs that actually collide grow a segment; one collision does not put a directory on every tab.                                                                                                                                                |
-| Overflow         | A chevron at the strip's fixed right edge lists the tabs currently out of view and activates the chosen one. The scrollbar is hidden by design and the wheel is a mouse-only affordance, so the chevron is the pointer-independent route.               |
-| Activation       | Activating a tab points the **file tree** at its document — the tree and the strip never disagree about where you are — and promotes it in the MRU order.                                                                                               |
-| Dirty            | A dot; closing a dirty tab asks before it discards — see §14.7. `⌘W` and the tab's `×` are one implementation, because two copies of that prompt drifted apart once already.                                                                            |
-| `⌃Tab` / `⌃⇧Tab` | Cycle the **MRU** order, not the strip order (§14.5).                                                                                                                                                                                                   |
-| `⌘⇧T`            | Reopen the most recently closed document (§14.6).                                                                                                                                                                                                       |
+| Behaviour        | Rule                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Label            | The shortest **unique** path suffix among the open tabs. A page labels by its **route** (`/blog/[slug]`), because a realistic session has four files named `index.md`. A tab with no path uses its own name (a grid tab's table, otherwise "Untitled").                                                                                                                                                              |
+| Widening         | Only the tabs that actually collide grow a segment; one collision does not put a directory on every tab.                                                                                                                                                                                                                                                                                                             |
+| Overflow         | A chevron at the strip's fixed right edge lists the tabs currently out of view and activates the chosen one. The scrollbar is hidden by design and the wheel is a mouse-only affordance, so the chevron is the pointer-independent route.                                                                                                                                                                            |
+| Activation       | Activating a tab points the **file tree** at its document — the tree and the strip never disagree about where you are — and promotes it in the MRU order.                                                                                                                                                                                                                                                            |
+| Marks            | Three, and each is a slot on the kit's tab rather than a chip this surface hand-draws: the drill-in `↳` (§14.2) before the label, and after it the draft pill (§7.6) and the pin. The dot and the `×` are the element's own and always come last, so a mark Studio adds can never push the close button off the end of a chip.                                                                                       |
+| Dirty            | A dot; closing a dirty tab asks before it discards — see §14.7. `⌘W` and the tab's `×` are one implementation, because two copies of that prompt drifted apart once already.                                                                                                                                                                                                                                         |
+| Keyboard         | The strip is a real `tablist` and each chip a `tab` (`ui.md` §5.4), so it is **one stop** in the tab order with a roving caret inside it: the arrows walk it and switch as they land, `Home` and `End` reach its ends, and `Delete` closes the tab the caret is on — through the same close the `×` runs, prompt included. A control on a chip (the pin) is in the tab order only while its chip is the current one. |
+| `⌃Tab` / `⌃⇧Tab` | Cycle the **MRU** order, not the strip order (§14.5).                                                                                                                                                                                                                                                                                                                                                                |
+| `⌘⇧T`            | Reopen the most recently closed document (§14.6).                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### 14.5 MRU cycling
 
@@ -1580,6 +1607,10 @@ Three checks run over the document rather than over the app, and all file their 
 
 Its rules live in `@jxsuite/schema/overlays` rather than in the studio, because three surfaces judge the same documents — this report, `jx build`, and the starter conformance test — and three copies of "what is wrong with a popover" is three chances to disagree in front of an author. It runs at the one chokepoint every edit passes through, a successful SAVE, beside the component-slot check that is already there; a render-time lint would re-file a record every frame, which is the noise a notification key exists to prevent.
 
+**The lints are told which custom elements are which, or they misjudge the app's own idioms.** A component's `popover` attribute lives in its DEFINITION, so a page writes only `<jx-menu id="actions">` and every structural rule read it as an unknown tag: a command aimed at it was reported as a target mismatch, "does this document have a popover?" answered no, so selecting one never revealed it and the open command refused. The same asymmetry runs the other way for invokers: `popovertarget` and `commandfor` come from an IDL mixin HTML includes into `<button>` and `<input>` and nothing else, and a component that observes them and forwards them to its own inner button is the exception the rule cannot see. So the rules take an optional scope naming the tags that ARE popovers and the tags that forward invocation. The studio passes the kit's, derived from the kit's own documents rather than listed; a project's registered definitions answer the same question for `jx validate`. The rules keep no knowledge of any particular kit.
+
+The scope decides STRUCTURE only. The style rules — a base `display`, a missing `:popover-open`, a transition that cuts the exit — still judge only a node that declares `popover` ITSELF, because they read the style that node carries and a component's use site carries none. Judging a use site by them would report a warning on every correct one.
+
 Every finding that can be repaired carries the command that repairs it, and the ones that cannot carry none. Moving `display` into `:popover-open`, removing two attributes that do nothing on the element they are written on, and writing the house spelling of `popover` are all mechanical, and each is ONE transaction so undo takes one press. "Point this invoker at the right panel" is not — which panel is the author's decision — so that finding is a sentence.
 
 **Why Problems and not a panel of their own.** Problems is where this app keeps the records that outlive the frame the reader was not watching, and both of these are exactly that: a page shipped with no description, or with an unlabelled image, is a fact worth knowing whether or not the author thought to open a window. The Search appearance window keeps rendering its own list — the previews are what that window is for — and files the same warnings, keyed by warning id, so the two surfaces are naming one thing rather than two.
@@ -1587,6 +1618,8 @@ Every finding that can be repaired carries the command that repairs it, and the 
 **No score, in either report.** A single figure out of a hundred aggregates unrelated facts into a verdict, and the verdict is what gets optimised. The list is the report.
 
 **Every accessibility finding names its WCAG criterion**, which is what ATAG 2.0 B.3.1 asks a report to carry. B.3.2 — a repair the author can invoke from the finding — is only partly answered: a finding whose repair is a command carries it, and most repairs ("give this image alt text") have no command yet, so those findings carry none. Naming a command that merely reopens a panel would put a button on a finding that does not do what the button says.
+
+**A Problem key names a FINDING, not a rule and a node.** A key dedupes by replacing, so two records sharing one are one record — and one element can break three aria references at once, or one panel can set `display` inside two `@media` blocks, which is several findings of one rule at one path. Keyed by rule and path alone the report named the last of them and silently dropped the rest, while the count in its own toast still said three. The key carries an ordinal for the second and later occurrence at a node; the first keeps the bare key, so nothing already distinct moves.
 
 **A run says what it could NOT check.** Colour contrast between computed colours, target size in rendered pixels, focus order and reading order are all properties of built output in a browser, not of a document tree; answering them means running the page with an engine like axe-core. Two Problems name that absence on every run, because a report that lists nothing otherwise reads as "this page is accessible" — a claim the run cannot make. This is the `redirects-grid.ts` idiom, for the same reason it exists there.
 
@@ -1804,6 +1837,23 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.3-draft** (2026-09-12) — The Style tab's font row is a jx-combobox whose rows are their own specimens over the project's font tokens (site and document) and the unminted presets, minting on the commit only; the typography keyword rows draw each value as itself in the element's own face; the colour chip is handed the literal behind a token.
+- **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
+- **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
+- **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
+- **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
+- **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
+- **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
+- **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
+- **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
+- **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).
+- **0.10.13-draft** (2026-09-02) — 16.6 a Problems key is per finding, so several defects of one rule on one node are several rows.
+- **0.10.12-draft** (2026-09-02) — [inert] is transposed to [data-jx-inert] with the attribute rename, so an author's inert rule still applies on the canvas (§4.2.3).
+- **0.10.11-draft** (2026-09-02) — the canvas [open] transpose follows the selector's subject, not the styled element.
+- **0.10.10-draft** (2026-09-02) — a hide invoker closes its own target, not whichever popover is open (4.2.2, 4.2.3).
+- **0.10.9-draft** (2026-09-02) — A selection move fires the reveal rule, and an explicit close stays closed: the rule must not observe the open state it writes (§4.2.2).
+- **0.10.8-draft** (2026-09-02) — Dialogs, invoker commands and inert on the canvas: de-linked on stamped nodes, one open dialog per tab, canvas.setDialogOpen and the commandTargetClick report (§4.2.3).
+- **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.
 - **0.10.5-draft** (2026-08-31) — the canvas de-popovers so an open popover lays out in place and grows the artboard (4.2.2); the selector axis is element-aware and choosing :popover-open changes the rendering (6.2); a third document report checks popover correctness (16.6).
 - **0.10.4-draft** (2026-08-31) — Edit's canvas column is drag-resizable, and the active breakpoint is derived from its width.
@@ -1919,4 +1969,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.6-draft_
+_`@jxsuite/studio` Specification v0.11.3-draft_

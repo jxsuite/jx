@@ -1,28 +1,45 @@
 /**
  * Guard the studio UI against hard-coded styling values and undefined CSS classes.
  *
- * The studio drives its styling from Spectrum design tokens (`--spectrum-*`) and a thin studio
- * semantic layer (`--bg`, `--accent`, `--radius`, `--font-mono`, …) declared on the `<sp-theme>`
- * element in `styles/tokens.css`. Raw hex colours bypass that system and stop the UI from
- * responding to the Spectrum theme, so this guard fails (exit 1) when it finds a hard-coded hex
- * that is not:
+ * The studio drives its styling from the Jx UI kit's design tokens (`--jx-*`) and a thin studio
+ * semantic layer (`--bg`, `--accent`, `--radius`, `--font-mono`, …) that aliases them at `:root` in
+ * `styles/tokens.css`. Raw hex colours bypass that system and stop the UI from responding to the
+ * theme, so this guard fails (exit 1) when it finds a hard-coded hex that is not:
  *
  * - A fallback inside a token reference: var(--token, #hex)
  * - An explicitly allow-listed brand/structural colour (see ALLOWED_HEX)
  * - A colour _value_ in a data file (colour pickers, the CSS-var editor)
  *
  * It also _warns_ (without failing) on `font-size` / `border-radius` px literals that have an exact
- * Spectrum token equivalent, to nudge new code toward tokens. Spacing, structural dimensions,
- * z-index, and rgba() shadow/scrim values are intentionally not policed — Spectrum's scale is
- * coarse and a dense editor UI legitimately uses off-grid structural px. See STYLING.md for the
- * full policy.
+ * kit token equivalent, to nudge new code toward tokens. Spacing, structural dimensions, z-index,
+ * and rgba() shadow/scrim values are intentionally not policed — the kit's scale is coarse and a
+ * dense editor UI legitimately uses off-grid structural px. See STYLING.md for the full policy.
  *
  * The second rule is the mirror image: a class name emitted by a `src/**` template that no
  * stylesheet in the package defines. An orphan class is a surface that opted out of the design
  * system — it is invariably being held together by inline `style=` attributes instead, which is how
  * half the app drifted away from the tokens in the first place. See ALLOWED_ORPHANS.
  *
- * The third rule is the FOCUS RING. UX-REDESIGN-PLAN §12 P0 workstream 7 replaced eight bare
+ * The third rule is the SPECTRUM BAN, and it is the one rule here with an allow-list that is empty
+ * on purpose. Adobe Spectrum Web Components drew every Studio surface until the kit replaced them;
+ * the last of it left in §C8, and this is what stops it coming back one convenient import at a
+ * time. Two names are banned — an `sp-` tag, and a `--spectrum-*` custom property — over the four
+ * globs {@link scanStyles} walks: the stylesheets, the CSS and TypeScript under `src`, and the
+ * surface documents. That is what SHIPS, and it is the honest scope. `tests` is outside it on
+ * purpose: a dozen assertions there read `querySelector("sp-underlay")` and expect null, which is
+ * the ban working rather than violating it, and a rule that reddened on them would be teaching
+ * people to delete the proof. Neither name resolves to anything any more — an `sp-` tag parses as
+ * `HTMLUnknownElement`, which paints nothing and blocks nothing, and a `--spectrum-*` read silently
+ * takes its hex fallback and stops following the theme. Both failures are invisible, which is
+ * exactly why they need a mechanical rule rather than a review habit.
+ *
+ * **It reads code, not commentary.** Comments in `.ts` and `.css` are blanked first, and
+ * `$description`/`$comment` values in a surface document are skipped, because the migration record
+ * is the most valuable thing those files carry: seventy-seven of them say what a part's value USED
+ * to be and why it is what it is now. A rule that forced those to be coy would delete more than it
+ * protected.
+ *
+ * The fourth rule is the FOCUS RING. UX-REDESIGN-PLAN §12 P0 workstream 7 replaced eight bare
  * `outline: none` declarations with `:focus-visible` pairs and promised "a stylelint rule bans bare
  * `outline: none`" — the sweep landed and the rule never did, so the next `outline: none` would
  * have gone in unremarked and taken a control off the keyboard with it. A ban alone would have been
@@ -31,7 +48,7 @@
  * verifies that rule still exists and still sets an outline — deleting the restore turns the
  * allowance red at the line the suppression is on. See FOCUS_RING_ALLOWANCES.
  *
- * The fourth and fifth rules are about SILENCE rather than styling, and they live here because this
+ * The fifth and sixth rules are about SILENCE rather than styling, and they live here because this
  * file is the package's idiom for "a wide, shallow property with a ratcheting allow-list" — the
  * shape UX-REDESIGN-PLAN §7.1 asks for by name:
  *
@@ -75,22 +92,26 @@ const ALLOWED_HEX = new Set([
   "#c9252d",
 ]);
 
-/** Files where a hex is a colour _value_ (user data), not chrome styling. */
+/**
+ * Files where a hex is a colour _value_ (user data), not chrome styling.
+ *
+ * Two entries left with Spectrum and are not here any more. `src/ui/jx-theme.ts` was the brand ramp
+ * that re-valued Spectrum's palette from the kit's, and it is deleted. `src/ui/color-selector.ts`
+ * was a control that drew a swatch and a picker; it is a projection of the project's named colours
+ * now, holds no literal at all, and an exemption for a file that no longer needs one is an
+ * exemption nobody would notice going stale.
+ */
 const DATA_FILES = [
-  "src/ui/color-selector.ts",
+  /* <input type="color"> needs a real hex default. */
   "src/settings/css-vars-editor.ts",
-  /* Brand ramp source of truth: defines the Jx palette as Spectrum `-rgb`
-     triplets; hexes appear only in the annotation comments. */
-  "src/ui/jx-theme.ts",
-  /* <input type="color"> needs a real hex default; same category as color-selector.ts. */
   /* Example project.json style block shown to the LLM as prompt content, not actual
      chrome CSS — the hexes are illustrative data, like a colour picker's default. */
   "src/services/ai-system-prompt.ts",
 ];
 
-/** Px values that have an exact Spectrum token and should be tokenized in new code. */
-const TOKENIZABLE_FONT_PX = new Set(["11", "12", "14"]); // Spectrum font-size-50 / -75 / -100
-const TOKENIZABLE_RADIUS_PX = new Set(["2", "4", "8"]); // Spectrum corner-radius-75 / -100 / -200
+/** Px values that have an exact kit token and should be tokenized in new code. */
+const TOKENIZABLE_FONT_PX = new Set(["10", "11", "12", "14"]); // Kit --jx-text-xs / -sm / -md / -lg
+const TOKENIZABLE_RADIUS_PX = new Set(["2", "4", "6", "10"]); // Kit --jx-radius-xs / -sm / -md / -lg
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
 const VAR_FALLBACK_RE = /var\(\s*--[a-z0-9-]+\s*,\s*#[0-9a-fA-F]{3,8}\s*\)/gi;
@@ -107,8 +128,6 @@ const VENDOR_CLASS_PREFIXES = [
   "mtk", // Monaco token classes
   "codicon", // Monaco / VS Code icon font
   "tabulator", // Tabulator-tables
-  "sp-", // Spectrum Web Components
-  "spectrum-", // Spectrum CSS
 ];
 
 /**
@@ -122,8 +141,6 @@ const VENDOR_CLASS_PREFIXES = [
  * including these) if you ever need to regenerate the grouping wholesale.
  */
 export const ALLOWED_ORPHANS = new Set<string>([
-  // Owner: about/about-modal.ts
-  "about-section",
   // Owner: canvas/iframe-host.ts
   "jx-canvas-iframe",
   // Owner: canvas/iframe-overlay.ts
@@ -133,132 +150,32 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "overlay-presence-tag",
   /* Owner: collab/presence-chips.ts — jx-presence, -chip, -status and the two new flags now have
      rules in styles/shell.css. The flagship co-editing affordance shipped unstyled (§7.4). */
-  // Owner: editor/slash-menu.ts
-  "slash-filter",
-  // Owner: grid/grid-open.ts
-  "jx-grid-picker",
-  // Owner: grid/grid-panel.ts
-  "jx-grid-replace-popover",
-  // Owner: new-project/add-repo-modal.ts
-  "add-repo-filter",
-  // Owner: new-project/location-fields.ts
-  "new-project-error--destination",
-  "new-project-owner",
-  "new-project-slug",
-  "new-project-visibility",
-  // Owner: new-project/new-project-modal.ts
-  "new-project-name",
-  // Owner: panels/ai-chat/composer.ts
-  "ai-send-btn",
-  // Owner: panels/data-grid.ts
-  "data-action-grid",
-  "data-action-push",
-  "data-action-test",
-  "data-section-actions",
-  "data-test-result",
-  "push-apply",
-  "push-cancel",
-  "push-dialog",
-  "push-dialog-actions",
-  "push-dialog-error",
-  "push-dialog-plan",
-  "push-dialog-status",
-  "push-dialog-steps",
-  "push-dialog-warning",
-  "push-step",
   // Owner: panels/drag-ghost.ts
   "jx-drag-ghost",
   // Owner: panels/events-panel.ts
-  "body-mode-code",
-  "body-mode-statements",
-  "body-mode-toggle",
-  "event-body-mode",
   /* Owner: panels/formula-workspace.ts — the seventeen `fw-*` classes that were here are styled in
      styles/panels.css now. The takeover held itself together with inline `style=` attributes; a
      dock tab cannot, because its height is the dock's rather than the stage's. Two remain: both
      are Spectrum action buttons the surface only needs a HANDLE on, and neither carries a rule. */
-  "fw-browse-catalog",
-  "fw-close",
-  // Owner: panels/head-panel.ts
-  "head-add-attr",
-  "head-add-tag",
-  "head-add-val",
-  "imports-section-title",
-  // Owner: panels/imports-panel.ts
-  "import-add-name",
-  "import-add-path",
-  "import-component-label",
-  "import-component-row",
-  "imports-component-list",
   // Owner: panels/layers-panel.ts
-  "layers-container",
-  "layers-tree",
   /* Owner: panels/properties-panel.ts — the breakpoint form these three belonged to is gone.
      $media is defined in Project Settings › Contexts and nowhere else (plan §4.2). */
-  "link-target-field",
-  "link-target-kind",
-  "link-target-value",
-  "link-target-window",
-  "style-section-body",
   /* Owner: panels/statement-editor.ts — the whole surface (twenty names, including the two
      drag-feedback classes that had no rule anywhere) is styled in styles/inspector.css now. It
      held itself together with inline `style=` attributes, and an attribute cannot carry the
      `min-width: 0` a flex chain needs, so the Logic tab's operand controls were clipped by the
      right edge of the window at Inspector width. */
-  // Owner: panels/welcome-screen.ts
-  "welcome-catalogue",
-  // Owner: publish/publish-panel.ts
-  "publish-actions",
-  "publish-error",
-  "publish-field",
-  "publish-hint",
-  "publish-modal",
-  // Owner: settings/contributed-section.ts
-  "contributed-section",
-  "entry-name-input",
-  "settings-form-panel",
-  "settings-section",
   // Owner: settings/css-vars-editor.ts
-  "css-var-scheme-row",
   /* "css-vars-enable-dark" retired with the button: this section overrides tokens per scheme, it
      no longer DEFINES a scheme — that is Settings › Contexts (§2 principle 5). */
-  // Owner: settings/head-editor.ts
-  "head-add-actions",
-  "head-entries",
-  "head-entry-body",
-  "head-entry-fields",
-  // Owner: settings/schema-field-ui.ts
-  "schema-field-label",
-  "schema-field-ref-target",
-  // Owner: ui/dynamic-slot.ts
-  "dynamic-slot",
-  "dynamic-slot-mode",
   /* Owner: ui/expression-editor.ts — styled in styles/inspector.css beside the statement editor it
      is drawn inside. `array-object-*` and `expr-live-badge` are shared with ui/schema-form.ts and
      ui/formula-chips.ts, which still pass their own inline copies; the rule they now inherit is
      the wrap and the shrink. */
-  // Owner: ui/form-controls.ts
-  "schema-builder",
-  "secret-field",
-  // Owner: ui/formula-chips.ts
-  "formula-chip",
-  "formula-chip--group",
-  "formula-chips",
-  // Owner: ui/formula-palette.ts
-  "formula-palette",
-  "formula-palette-input",
-  "formula-palette-overlay",
-  // Owner: ui/layers.ts
-  "dialog-destructive",
-  // Owner: ui/media-picker.ts
-  "media-picker-browse",
-  "media-picker-filter",
-  "media-picker-upload",
-  // Owner: ui/schema-form.ts
-  "schema-param-editor",
-  // Owner: ui/value-selector.ts
-  "jx-combobox-picker",
-  "jx-combobox-popover",
+  /* Owner: ui/value-selector.ts — the module is gone. Its two names were the picker and the
+     popover of a dual-mode combobox that had already lost every caller: the Style tab's unit row
+     and the Logic tab's event name are documents over the kit. Deleting the file discharged the
+     entries, which is the only way this list is ever meant to shrink. */
 ]);
 
 export interface Finding {
@@ -304,19 +221,6 @@ export interface FocusRingAllowance {
  * them.
  */
 export const FOCUS_RING_ALLOWANCES: readonly FocusRingAllowance[] = [
-  /* The AI composer's textarea. The only one of the six scoped to `:focus:not(:focus-visible)`
-     rather than to the bare element, which is the same bargain said in CSS instead of in a pair. */
-  {
-    file: "styles/shell.css",
-    restoredBy: ".ai-composer-input:focus-visible",
-    selector: ".ai-composer-input:focus:not(:focus-visible)",
-  },
-  // The quick-search field: borderless inside its own framed popover.
-  {
-    file: "styles/overlays.css",
-    restoredBy: ".quick-search-input:focus-visible",
-    selector: ".quick-search-input",
-  },
   // The Source view textarea, which fills its pane edge to edge.
   {
     file: "styles/overlays.css",
@@ -344,6 +248,95 @@ export const FOCUS_RING_ALLOWANCES: readonly FocusRingAllowance[] = [
     selector: ".jx-grid-pill-input",
   },
 ];
+
+/* ------------------------------------------------------------------------- the Spectrum ban --- */
+
+/**
+ * Spectrum names this package may still write. It is EMPTY, and that is the whole rule.
+ *
+ * Every previous shape of this policy was an exemption: `VENDOR_CLASS_PREFIXES` carried `sp-` and
+ * `spectrum-` so Spectrum's own class names were not read as design-system escapes, `DATA_FILES`
+ * carried the brand ramp, and `check-lit-conventions.ts` carried a per-file `SPECTRUM_DEBT`. All
+ * three were correct while Spectrum drew surfaces. None of them is now, and an exemption whose
+ * subject is gone is worse than no rule at all, because it looks like the policy still has one.
+ *
+ * The list stays as an array rather than being deleted because a ban with nowhere to write an
+ * exception is a ban somebody eventually edits the regex to get past. If a name ever has to come
+ * back, it comes back here with a sentence saying why, and the sentence is reviewable.
+ */
+export const SPECTRUM_ALLOWED: readonly string[] = [];
+
+/**
+ * An `sp-` element tag.
+ *
+ * The tag is the half that fails LOUDEST and is therefore the half people assume is safe: an
+ * unregistered `sp-picker` parses fine, lays out as an inline box, paints nothing and swallows
+ * every event aimed at the control it was standing in for.
+ *
+ * Word-bounded, so `resp-` inside a word does not match — but a HYPHEN is a word boundary, so a
+ * name like `data-jx-sp-open` would be read as the tag `sp-open`. That is a known false positive
+ * and it is recorded rather than worked around: excluding a preceding hyphen would stop matching
+ * `.foo sp-picker`, which is the selector shape this rule most needs to catch. No `-sp-` name
+ * exists in the package today. If one arrives, rename it or give it an entry in
+ * {@link SPECTRUM_ALLOWED} with a sentence.
+ */
+const SPECTRUM_TAG_RE = /\bsp-[a-z][a-z0-9]*(?:-[a-z0-9]+)*/g;
+
+/** A `--spectrum-*` custom property, in a declaration or a `var()`. */
+const SPECTRUM_TOKEN_RE = /--spectrum-[a-z0-9-]+/g;
+
+/**
+ * A `@spectrum-web-components/*` module specifier — and the reason this rule reads three patterns
+ * rather than two.
+ *
+ * `.oxlintrc.json` bans the same specifier with `no-restricted-imports`, which would make this
+ * redundant if it caught every form. It does not: a BARE side-effect import (`import
+ * "@spectrum-web-components/base/src/define-element.js";`) passes it, and a side-effect import is
+ * precisely how Spectrum registered — `src/ui/spectrum.ts` carried one deliberately, for
+ * `sp-tooltip`. So the one shape the removal is most likely to come back in is the one the lint
+ * rule cannot see, and the gate that can is this one.
+ */
+const SPECTRUM_PACKAGE_RE = /@spectrum-web-components\/[a-z0-9-]+/g;
+
+/** Every banned Spectrum name in one file's text, which the caller has already de-commented. */
+export function scanSpectrum(rel: string, text: string): Finding[] {
+  const findings: Finding[] = [];
+  for (const [idx, line] of text.split("\n").entries()) {
+    for (const re of [SPECTRUM_TAG_RE, SPECTRUM_TOKEN_RE, SPECTRUM_PACKAGE_RE]) {
+      for (const [name] of line.matchAll(re)) {
+        if (SPECTRUM_ALLOWED.includes(name)) {
+          continue;
+        }
+        findings.push({ file: rel, line: idx + 1, text: name });
+      }
+    }
+  }
+  return findings;
+}
+
+/**
+ * A surface document with every `$description` and `$comment` value removed, newlines preserved.
+ *
+ * The documents are where the migration is WRITTEN DOWN — "it read `--spectrum-font-size-50` with
+ * an 11px fallback, which resolved only inside `<sp-theme>`" is why a part carries the value it
+ * carries. Forty-eight documents say something of that shape. They are prose, they are the reason a
+ * reviewer can tell a deliberate value from a copied one, and the ban must not reach them.
+ */
+export function stripDocProse(json: string): string {
+  return json.replaceAll(/"\$(?:description|comment)"\s*:\s*"(?:[^"\\]|\\.)*"/g, (block) =>
+    block.replaceAll(/[^\n]/g, " "),
+  );
+}
+
+/**
+ * A stylesheet with its `/* … *\/` comments blanked, newlines preserved.
+ *
+ * Same reason: `styles/*.css` carries the note saying which Spectrum token each declaration used to
+ * read, and those notes are what make the re-pointing reviewable.
+ */
+export function stripCssComments(css: string): string {
+  return css.replaceAll(/\/\*[\s\S]*?\*\//g, (block) => block.replaceAll(/[^\n]/g, " "));
+}
 
 /* --------------------------------------------------------------------------- silence rules --- */
 
@@ -376,7 +369,6 @@ export const SILENT_CATCH_BUDGET: Readonly<Record<string, number>> = {
   // Owner: panels/signals-panel.ts — a JSON default typed one character at a time.
   "src/panels/signals-panel.ts": 1,
   // Owner: ui/schema-form.ts — two debounced JSON fields, mid-keystroke parse failures.
-  "src/ui/schema-form.ts": 2,
 };
 
 /**
@@ -395,6 +387,22 @@ const BARE_CATCH_RE = /catch\s*(?:\([^)]*\)\s*)?\{\s*\}/g;
  * commentary would force those two files to be coy about it.
  */
 export function stripCommentsAndStrings(src: string): string {
+  return stripTsComments(src, true);
+}
+
+/**
+ * Blank out comments only, leaving every string body intact.
+ *
+ * What the Spectrum ban reads. A Spectrum tag reaches the DOM through a selector string —
+ * `querySelector("sp-picker")`, a focusable-selector list, a fixture — at least as often as through
+ * a template, so a rule that blanked strings would exempt the shape it exists for. Comments are
+ * still blanked, because the migration record is written in them.
+ */
+export function stripComments(src: string): string {
+  return stripTsComments(src, false);
+}
+
+function stripTsComments(src: string, blankStrings: boolean): string {
   let out = "";
   let i = 0;
   const blank = (text: string) => text.replaceAll(/[^\n]/g, " ");
@@ -428,7 +436,8 @@ export function stripCommentsAndStrings(src: string): string {
         }
         j += 1;
       }
-      out += quote + blank(src.slice(i + 1, j - 1)) + (src[j - 1] ?? "");
+      const body = src.slice(i + 1, j - 1);
+      out += quote + (blankStrings ? blank(body) : body) + (src[j - 1] ?? "");
       i = j;
       continue;
     }
@@ -504,6 +513,201 @@ export function scanHex(rel: string, source: string): { errors: Finding[]; warni
     }
   }
   return { errors, warnings };
+}
+
+/* ---------------------------------------------------------------------- animation names --- */
+
+/**
+ * Every `@keyframes` name a stylesheet or a document defines, with where it was defined.
+ *
+ * A name is document-GLOBAL, and CSS resolves a duplicate by keeping the LAST one and ignoring
+ * every earlier definition entirely — silently, with no parse error and a live `Animation` object
+ * either way. Two surfaces that each define `pulse` therefore leave one of them animating the
+ * other's timeline.
+ *
+ * That is a latent trap today, when the three animations live one per stylesheet, and a certain one
+ * once the surfaces carry their own: the runtime hoists a declaration-body at-rule ONCE PER RULE
+ * TEXT (`spec.md` §9.6), so two documents naming one animation with different bodies produce two
+ * definitions of one name rather than a collision anybody notices.
+ *
+ * @param source A stylesheet, or a surface document's raw text
+ * @returns Each name and the line it is defined on
+ */
+export function keyframeNames(source: string): [string, number][] {
+  const found: [string, number][] = [];
+  /* Both spellings: `@keyframes name {` in CSS, and `"@keyframes name": {` in a document, where the
+     key carries the name exactly as the runtime's own prefix match reads it. */
+  const re = /(?:"@keyframes\s+([^"\s]+)"|@keyframes\s+([\w-]+))/g;
+  let match: RegExpExecArray | null = re.exec(source);
+  while (match !== null) {
+    found.push([match[1] ?? match[2]!, source.slice(0, match.index).split("\n").length]);
+    match = re.exec(source);
+  }
+  return found;
+}
+
+/* ------------------------------------------------------------------ surface-document scanning --- */
+
+/**
+ * The same two rules, over a SURFACE DOCUMENT's `style` blocks.
+ *
+ * A surface is a Jx document, and its styling is a `style` object inside JSON rather than a rule in
+ * a stylesheet — so `styles/*.css`, `src/**` + '/' + `*.css` and `src/**` + '/' + `*.ts`, which is
+ * everything this gate walked, do not contain it. Every surface converted from lit takes its
+ * declarations out of a file this gate reads and puts them in one it does not, which means the
+ * raw-hex rule and the tokenizable-px nudge stop watching the studio one surface at a time, in
+ * silence, with the gate still reporting success.
+ *
+ * That is why this landed while the migration was two dead rules rather than after it, when it is
+ * thousands of live ones: a gate added late has to be argued past whatever drifted in while it was
+ * off, and this one has nothing to forgive yet.
+ *
+ * A style value is the only thing read. A hex in a `textContent`, a `$description` or a document's
+ * own prose is data or commentary, not chrome styling, and flagging it would make the gate
+ * something to switch off.
+ *
+ * @param rel Repo-relative path, for the finding
+ * @param source The document's raw text, so a finding carries the line it is on
+ */
+export function scanJsonStyle(
+  rel: string,
+  source: string,
+): { errors: Finding[]; warnings: Finding[] } {
+  const errors: Finding[] = [];
+  const warnings: Finding[] = [];
+  for (const block of jsonStyleBlocks(source)) {
+    const lines = block.text.split("\n");
+    for (const [offset, line] of lines.entries()) {
+      const stripped = line.replace(VAR_FALLBACK_RE, "");
+      const at = block.line + offset;
+      const bad = (stripped.match(HEX_RE) ?? []).filter((h) => !ALLOWED_HEX.has(h.toLowerCase()));
+      if (bad.length > 0) {
+        errors.push({ file: rel, line: at, text: line.trim() });
+      }
+      for (const [re, set] of [
+        [JSON_FONT_PX_RE, TOKENIZABLE_FONT_PX],
+        [JSON_RADIUS_PX_RE, TOKENIZABLE_RADIUS_PX],
+      ] as const) {
+        re.lastIndex = 0;
+        let match: RegExpExecArray | null = re.exec(stripped);
+        while (match !== null) {
+          if (set.has(match[1]!)) {
+            warnings.push({ file: rel, line: at, text: line.trim() });
+          }
+          match = re.exec(stripped);
+        }
+      }
+    }
+  }
+  return { errors, warnings };
+}
+
+/** A style declaration as JSON writes it: `"fontSize": "12px"`, or the hyphenated spelling. */
+const JSON_FONT_PX_RE = /"font-?[sS]ize"\s*:\s*"(\d+)px"/g;
+const JSON_RADIUS_PX_RE = /"border-?[rR]adius"\s*:\s*"(\d+)px"/g;
+
+/**
+ * Every `"style": { … }` block in a document, as a slice of the raw text and the line it opens on.
+ *
+ * Brace-matched over the SOURCE rather than walked over `JSON.parse`, for one reason: a finding
+ * needs the line it is on, and a parsed object has forgotten where it came from. Strings and their
+ * escapes are tracked, so a `}` inside a value — `"content": "}"`, or a `${…}` template — closes
+ * nothing.
+ *
+ * Nested selector keys are inside the slice by construction, so `&:hover` and `@media` blocks are
+ * read without knowing anything about them.
+ */
+export function jsonStyleBlocks(source: string): { line: number; text: string }[] {
+  const blocks: { line: number; text: string }[] = [];
+  const key = /"style"\s*:\s*\{/g;
+  let match: RegExpExecArray | null = key.exec(source);
+  while (match !== null) {
+    const open = match.index + match[0].length - 1;
+    let depth = 0;
+    let inString = false;
+    let end = source.length;
+    for (let i = open; i < source.length; i += 1) {
+      const c = source[i];
+      if (inString) {
+        if (c === "\\") {
+          i += 1;
+        } else if (c === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c === '"') {
+        inString = true;
+      } else if (c === "{") {
+        depth += 1;
+      } else if (c === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    blocks.push({
+      line: source.slice(0, open).split("\n").length,
+      text: source.slice(open, end),
+    });
+    key.lastIndex = end;
+    match = key.exec(source);
+  }
+  return blocks;
+}
+
+/**
+ * Class names a surface document puts on an element, with the line each is on.
+ *
+ * A document should name none — the kit's elements carry `part` and the document styles them
+ * through it (`ui.md` §3.1) — so this exists to make an exception VISIBLE rather than to support
+ * one. A name here is held to the same orphan rule as one emitted by a lit template: give it a rule
+ * in a stylesheet, or it is a surface opting out of the design system.
+ *
+ * A token carrying a `${…}` is dropped, because a computed name is not a name this gate can check.
+ */
+export function surfaceClasses(source: string): [string, number][] {
+  const found: [string, number][] = [];
+  const re = /"class(?:Name)?"\s*:\s*"([^"]*)"/g;
+  let match: RegExpExecArray | null = re.exec(source);
+  while (match !== null) {
+    const line = source.slice(0, match.index).split("\n").length;
+    for (const name of match[1]!.split(/\s+/).filter(Boolean)) {
+      if (!name.includes("$")) {
+        found.push([name, line]);
+      }
+    }
+    match = re.exec(source);
+  }
+  return found;
+}
+
+/**
+ * Every class a surface document's own style block DEFINES a rule for.
+ *
+ * A document's style object is a stylesheet: its keys are selectors, and `"&
+ * .tabulator-cell.jx-grid-cell--dirty"` declares a rule exactly as a `.css` file would. The orphan
+ * rule reads a class emitted by `src/` and asks whether anything styles it, so without this it saw
+ * only `styles/*.css` and the `css` templates in TypeScript — and reported six live grid state
+ * classes as unstyled while the rules for them sat in `surfaces/grid-panel.json`. An island's state
+ * vocabulary is the case that surfaces it: the document styles what its island writes, so the
+ * definition and the emission are in different files by construction.
+ */
+export function surfaceDefinedClasses(source: string): string[] {
+  const found: string[] = [];
+  for (const block of jsonStyleBlocks(source)) {
+    for (const [, key] of block.text.matchAll(/"((?:[^"\\]|\\.)*)"\s*:/g)) {
+      if (!key || !key.includes(".")) {
+        continue;
+      }
+      for (const [, name] of key.matchAll(SELECTOR_CLASS_RE)) {
+        found.push(name!);
+      }
+    }
+  }
+  return found;
 }
 
 /* --------------------------------------------------------------------- source-text scanning --- */
@@ -984,47 +1188,89 @@ export function extractCssTemplates(source: string): string[] {
   return templateLiterals(source).filter((t) => CSS_SHAPE_RE.test(t));
 }
 
-/* ------------------------------------------------------------------------ underlay-stacking rule --- */
+/* --------------------------------------------------------------------- overlay-stacking rule --- */
 
 /**
- * The card an `<sp-underlay>` is opened beside, and the line it sits on.
+ * The four overlay layers, in the order they must paint — furthest back first.
  *
- * A modal body in this app is two siblings: the scrim and the surface. Only the FIRST element with
- * a class after the underlay is taken — that is the card; everything below it is inside it.
+ * **This rule replaces the `<sp-underlay>` one, and it is the same guarantee moved onto the shape
+ * that still exists.** The old rule found a modal card opened as a SIBLING of an `<sp-underlay>`
+ * and demanded some stylesheet give the card a positive z-index, because the scrim paints at
+ * z-index 1 and a card at `auto` beside it is visible through the scrim and unclickable. That
+ * shipped: a blocking progress modal whose only exit button could not be pressed.
+ *
+ * Three things retired the shape rather than the defect. `sp-underlay` is not an element any more —
+ * it parses as an `HTMLUnknownElement`, and the ban above is what keeps it that way, so the old
+ * rule now matches nothing and could never match again. Every modal is a `jx-dialog`, which renders
+ * a native `<dialog>` and opens it with `showModal()`: the browser's top layer is not z-index
+ * ordered, so a dialog cannot be under its own `::backdrop` whatever anyone forgets. And the one
+ * hand-drawn overlay left — the two palettes — puts its panel INSIDE the scrim part rather than
+ * beside it, where a descendant always paints above its ancestor's own background.
+ *
+ * What survives all three is the ORDER of the four layers, and `styles/shell-frame.json` says so in
+ * its own words: those z-indices were inline `style` attributes on four divs in `index.html`, which
+ * "put the one piece of ordering the whole overlay system depends on outside `check-styles.ts`'s
+ * stacking rule". They are classes now precisely so this rule can read them. A toast raised from a
+ * dialog must be readable, a dialog must sit over a modal, and a popover must not cover either —
+ * and every one of those is a silent failure, because CSS reports nothing when two layers tie.
  */
-export function extractUnderlayCards(source: string): { classes: string[]; line: number }[] {
-  const newlines = newlineOffsets(source);
-  const out: { classes: string[]; line: number }[] = [];
-  const underlay = /<sp-underlay\b/g;
-  let match: RegExpExecArray | null;
-  while ((match = underlay.exec(source))) {
-    const after = source.slice(match.index, match.index + 600);
-    const card = /<(?!sp-underlay\b)[a-z][\w-]*[^>]*?\bclass\s*=\s*"([^"]*)"/i.exec(after);
-    if (!card) {
+const OVERLAY_LAYERS = [
+  "jx-layer--popover",
+  "jx-layer--modal",
+  "jx-layer--dialog",
+  "jx-layer--toast",
+] as const;
+
+/** Class name → the positive `z-index` some rule in this stylesheet gives it. */
+export function stackedClasses(css: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const rule of extractRules(css)) {
+    const z = /(?:^|[;{\s])z-index\s*:\s*([1-9]\d*)/.exec(rule.body);
+    if (!z) {
       continue;
     }
-    const classes = card[1]!.split(/\s+/).filter((c) => c.length > 0 && !c.includes("$"));
-    if (classes.length > 0) {
-      out.push({ classes, line: lineOf(newlines, match.index) });
+    for (const selector of rule.selectors) {
+      for (const [, name] of selector.matchAll(SELECTOR_CLASS_RE)) {
+        out.set(name!, Number(z[1]));
+      }
     }
   }
   return out;
 }
 
-/** Class names that some rule in this stylesheet gives a positive `z-index`. */
-export function stackedClasses(css: string): Set<string> {
-  const out = new Set<string>();
-  for (const rule of extractRules(css)) {
-    if (!/(?:^|[;{\s])z-index\s*:\s*(?:[1-9]\d*|var\()/.test(rule.body)) {
+/**
+ * The four layers, each declared and each strictly above the one before it.
+ *
+ * Fails both ways on purpose: an undeclared layer is a layer at `auto`, which ties with everything
+ * and is resolved by document order, and an equal pair is the same tie written out loud.
+ */
+export function overlayOrderFindings(stacked: Map<string, number>): Finding[] {
+  const findings: Finding[] = [];
+  let previous = 0;
+  let previousName = "";
+  for (const name of OVERLAY_LAYERS) {
+    const z = stacked.get(name);
+    if (z === undefined) {
+      findings.push({
+        file: "styles/shell-frame.css",
+        line: 0,
+        text: `.${name} has no z-index, so it stacks by document order and ties with every other layer.`,
+      });
       continue;
     }
-    for (const selector of rule.selectors) {
-      for (const [, name] of selector.matchAll(SELECTOR_CLASS_RE)) {
-        out.add(name!);
-      }
+    if (z <= previous) {
+      findings.push({
+        file: "styles/shell-frame.css",
+        line: 0,
+        text:
+          `.${name} is at z-index ${z}, not above .${previousName} at ${previous} — ` +
+          `an overlay that cannot be seen over the thing that opened it.`,
+      });
     }
+    previous = z;
+    previousName = name;
   }
-  return out;
+  return findings;
 }
 
 /* ------------------------------------------------------------------------------ the run itself --- */
@@ -1236,8 +1482,12 @@ export interface StyleCheckResult {
   focusRings: Finding[];
   /** FOCUS_RING_ALLOWANCES entries that suppress nothing any more — the ratchet. */
   staleFocusRings: string[];
-  /** Modal cards opened beside an `sp-underlay` that no rule lifts above it. */
-  underScrim: Finding[];
+  /** Animation names defined more than once. Every definition of the name, so both sites are named. */
+  duplicateAnimations: Finding[];
+  /** Overlay layers with no z-index, or one that does not clear the layer below it. */
+  overlayOrder: Finding[];
+  /** Spectrum names — an `sp-` tag or a `--spectrum-*` token — still written in code. */
+  spectrum: Finding[];
   /** Required token pairs that miss the ratio WCAG 2.2 asks of them. */
   contrast: Finding[];
   /** Rows of `studio-ui-guidelines.md` §1.1 that disagree with `tokens.css`. */
@@ -1271,14 +1521,23 @@ export async function collect(root: string): Promise<StyleCheckResult> {
   const read = (rel: string): Promise<string> => Bun.file(join(root, rel)).text();
 
   const focusRings: Finding[] = [];
+  /** Animation name → every place it is defined. More than one is the finding. */
+  const animations = new Map<string, Finding[]>();
+  const scanAnimations = (rel: string, source: string): void => {
+    for (const [name, line] of keyframeNames(source)) {
+      const at = animations.get(name) ?? [];
+      at.push({ file: rel, line, text: name });
+      animations.set(name, at);
+    }
+  };
   const suppressedRings = new Set<string>();
-  /** Classes some rule gives a positive z-index — the underlay-stacking rule's evidence. */
-  const stacked = new Set<string>();
-  /** Every card opened beside an `sp-underlay`, with where it was opened. */
-  const underlayCards: { file: string; line: number; classes: string[] }[] = [];
+  /** Class → the positive z-index some rule gives it — the overlay-order rule's evidence. */
+  const stacked = new Map<string, number>();
+  /** Every Spectrum name still written in code, across every file kind in the package. */
+  const spectrum: Finding[] = [];
   const scanStacking = (css: string): void => {
-    for (const name of stackedClasses(css)) {
-      stacked.add(name);
+    for (const [name, z] of stackedClasses(css)) {
+      stacked.set(name, z);
     }
   };
   /** Run the focus-ring rule over one stylesheet, accumulating both halves of its answer. */
@@ -1317,6 +1576,8 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     pxWarnings.push(...warnings);
     scanRings(rel, source);
     scanStacking(source);
+    scanAnimations(rel, source);
+    spectrum.push(...scanSpectrum(rel, stripCssComments(source)));
     for (const name of extractDefinedClasses(source)) {
       defined.add(name);
     }
@@ -1348,6 +1609,10 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     // Would force those two files to be coy about it. The catch rule reads the RAW source, because
     // There a comment is the answer rather than noise.
     banned.push(...scanBannedIdentifiers(rel, stripCommentsAndStrings(source)));
+    /* Comments blanked, STRINGS KEPT: a Spectrum tag reaches the DOM through a selector string
+       (`querySelector("sp-picker")`) far more often than through a template, so blanking strings
+       here would exempt the very shape the ban exists for. The prose lives in comments. */
+    spectrum.push(...scanSpectrum(rel, stripComments(source)));
     const bare = countBareCatches(source);
     if (bare > 0) {
       bareCatches.set(rel, bare);
@@ -1359,13 +1624,35 @@ export async function collect(root: string): Promise<StyleCheckResult> {
         defined.add(name);
       }
     }
-    for (const card of extractUnderlayCards(source)) {
-      underlayCards.push({ classes: card.classes, file: rel, line: card.line });
-    }
     for (const [name, line] of extractEmittedClasses(source)) {
       if (!emitted.has(name)) {
         emitted.set(name, { file: rel, line, text: name });
       }
+    }
+  }
+
+  /*
+   * The surfaces: Jx documents whose styling is a `style` object rather than a stylesheet rule.
+   * They are subject to the hex and px rules like any other chrome, and to the orphan rule for the
+   * classes they should not be naming at all. Nothing here DEFINES a class — a document's style
+   * object is scoped to the element it hangs off, so it can never be the answer to somebody else's
+   * class — which is why this walk only ever adds to `emitted`.
+   */
+  for await (const raw of new Glob("src/surfaces/**/*.json").scan(root)) {
+    const rel = scanned(raw);
+    const source = await read(rel);
+    const { errors, warnings } = scanJsonStyle(rel, source);
+    hexErrors.push(...errors);
+    pxWarnings.push(...warnings);
+    scanAnimations(rel, source);
+    spectrum.push(...scanSpectrum(rel, stripDocProse(source)));
+    for (const [name, line] of surfaceClasses(source)) {
+      if (!emitted.has(name)) {
+        emitted.set(name, { file: rel, line, text: name });
+      }
+    }
+    for (const name of surfaceDefinedClasses(source)) {
+      defined.add(name);
     }
   }
 
@@ -1390,20 +1677,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     }
   }
 
-  /* An `sp-underlay` paints at `z-index: 1`. A card beside it at `auto` is therefore UNDER its own
-     scrim — visible through it, and unclickable, which is how a blocking progress modal shipped
-     with its only exit button unpressable. One rule anywhere giving one of the card's classes a
-     positive z-index is enough; this asks for evidence, not for a particular number. */
-  const underScrim: Finding[] = underlayCards
-    .filter((card) => !card.classes.some((name) => stacked.has(name)))
-    .map((card) => ({
-      file: card.file,
-      line: card.line,
-      text:
-        `.${card.classes.join(".")} is opened beside an <sp-underlay> but no rule stacks it. ` +
-        `The scrim paints at z-index 1, so the surface is under it: visible, and every click ` +
-        `lands on the underlay. Give the card a z-index.`,
-    }));
+  const overlayOrder = overlayOrderFindings(stacked);
 
   const staleFocusRings = FOCUS_RING_ALLOWANCES.filter(
     (a) => !suppressedRings.has(focusKey(a.file, normalizeSelector(a.selector))),
@@ -1433,19 +1707,22 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     silentCatches: silentCatches.toSorted((a, b) => a.file.localeCompare(b.file)),
     focusRings,
     staleFocusRings,
-    underScrim,
+    overlayOrder,
+    spectrum,
+    duplicateAnimations: [...animations.values()].filter((at) => at.length > 1).flat(),
   };
 }
 
 /** Print the findings and return the process exit code. */
 export function report(result: StyleCheckResult): number {
   const { hexErrors, pxWarnings, orphans, staleAllowed, banned, silentCatches } = result;
-  const { focusRings, staleFocusRings, underScrim, contrast, guidelineTokens } = result;
+  const { focusRings, staleFocusRings, overlayOrder, spectrum, contrast, guidelineTokens } = result;
+  const { duplicateAnimations } = result;
 
   if (pxWarnings.length > 0) {
     console.warn(
-      `\n⚠️  ${pxWarnings.length} px literal(s) with a Spectrum token equivalent ` +
-        `(prefer --spectrum-font-size-* / --spectrum-corner-radius-*):`,
+      `\n⚠️  ${pxWarnings.length} px literal(s) with an exact kit token equivalent ` +
+        `(prefer --jx-text-* / --jx-radius-*):`,
     );
     for (const w of pxWarnings.slice(0, 20)) {
       console.warn(`   ${w.file}:${w.line}  ${w.text}`);
@@ -1457,8 +1734,8 @@ export function report(result: StyleCheckResult): number {
 
   if (hexErrors.length > 0) {
     console.error(
-      `\n❌ ${hexErrors.length} hard-coded colour(s) found. Use a Spectrum token ` +
-        `(--spectrum-*) or a studio semantic token (--bg, --accent, …), optionally ` +
+      `\n❌ ${hexErrors.length} hard-coded colour(s) found. Use a kit token ` +
+        `(--jx-*) or a studio semantic token (--bg, --accent, …), optionally ` +
         `with a hex fallback: var(--token, #hex).`,
     );
     for (const e of hexErrors) {
@@ -1527,6 +1804,18 @@ export function report(result: StyleCheckResult): number {
     }
   }
 
+  if (duplicateAnimations.length > 0) {
+    const names = [...new Set(duplicateAnimations.map((finding) => finding.text))];
+    console.error(
+      `\n❌ ${names.length} animation name(s) defined more than once. A @keyframes name is ` +
+        `document-global: CSS keeps the LAST definition and ignores every earlier one, with no ` +
+        `parse error either way, so one of these animates the other's timeline.`,
+    );
+    for (const finding of duplicateAnimations) {
+      console.error(`   ${finding.file}:${finding.line}  ${finding.text}`);
+    }
+  }
+
   if (staleFocusRings.length > 0) {
     console.error(
       `\n❌ ${staleFocusRings.length} stale FOCUS_RING_ALLOWANCES entry(ies) — these selectors no ` +
@@ -1537,15 +1826,30 @@ export function report(result: StyleCheckResult): number {
     }
   }
 
-  if (underScrim.length > 0) {
+  if (overlayOrder.length > 0) {
     console.error(
-      `\n❌ ${underScrim.length} modal card(s) opened under their own scrim. <sp-underlay> paints ` +
-        `at z-index 1, so a card beside it at auto is visible THROUGH the scrim and unclickable — ` +
-        `which shipped a blocking progress modal whose only exit could not be pressed.`,
+      `\n❌ ${overlayOrder.length} overlay layer(s) mis-stacked. The four layers in ` +
+        `styles/shell-frame.json are the one piece of ordering the whole overlay system depends ` +
+        `on, and a tie is resolved silently by document order — which is how a blocking modal ` +
+        `once shipped above its own scrim with no reachable exit.`,
     );
-    for (const u of underScrim) {
-      console.error(`   ${u.file}:${u.line}  ${u.text}`);
+    for (const o of overlayOrder) {
+      console.error(`   ${o.file}  ${o.text}`);
     }
+  }
+
+  if (spectrum.length > 0) {
+    const names = [...new Set(spectrum.map((f) => f.text))].toSorted();
+    console.error(
+      `\n❌ ${spectrum.length} Spectrum name(s) in ${new Set(spectrum.map((f) => f.file)).size} ` +
+        `file(s). Adobe Spectrum Web Components are removed: an <sp-*> tag is an ` +
+        `HTMLUnknownElement that paints nothing and swallows every event, and a --spectrum-* read ` +
+        `silently takes its hex fallback and stops following the theme. Neither fails loudly.`,
+    );
+    for (const f of spectrum) {
+      console.error(`   ${f.file}:${f.line}  ${f.text}`);
+    }
+    console.error(`\n   Names: ${names.join(", ")}`);
   }
 
   if (contrast.length > 0) {
@@ -1572,7 +1876,8 @@ export function report(result: StyleCheckResult): number {
   }
 
   if (
-    underScrim.length > 0 ||
+    overlayOrder.length > 0 ||
+    spectrum.length > 0 ||
     contrast.length > 0 ||
     guidelineTokens.length > 0 ||
     hexErrors.length > 0 ||
@@ -1581,7 +1886,8 @@ export function report(result: StyleCheckResult): number {
     banned.length > 0 ||
     silentCatches.length > 0 ||
     focusRings.length > 0 ||
-    staleFocusRings.length > 0
+    staleFocusRings.length > 0 ||
+    duplicateAnimations.length > 0
   ) {
     return 1;
   }
@@ -1593,10 +1899,12 @@ export function report(result: StyleCheckResult): number {
       `(${ALLOWED_ORPHANS.size} allow-listed orphan(s) remaining), no banned identifiers, ` +
       `${silentTotal} allow-listed silent catch(es) remaining, ` +
       `${FOCUS_RING_ALLOWANCES.length} focus-ring suppression(s) each paired with its ` +
-      `:focus-visible restore, every underlay-bearing card stacked above its scrim, ` +
+      `:focus-visible restore, no Spectrum name (${SPECTRUM_ALLOWED.length} allowed), ` +
+      `the four overlay layers strictly stacked, ` +
       `${CONTRAST_PAIRS.length} contrast pair(s) checked ` +
       `(${Object.keys(CONTRAST_DEBT).length} on the debt list), ` +
-      `and studio-ui-guidelines.md §1.1 agrees with tokens.css${pxNote}.`,
+      `and studio-ui-guidelines.md §1.1 agrees with tokens.css, ` +
+      `every animation name defined once${pxNote}.`,
   );
   return 0;
 }

@@ -1,0 +1,640 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioBlockActionBar",
+  "$description": "The floating action bar over the canvas selection (plan §3.2 region ⑩, studio-ui-guidelines.md §8.6), as a Jx document over the kit. ONE SHAPE is the whole rule this markup exists to keep: the parent selector, the element badge, the drag handle and every verb are drawn on every selection, and a control that cannot act is DISABLED rather than removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button. Nothing here decides what a verb is called, whether it can act or what its chord reads: `panels/block-action-bar.ts` projects the command registry into `verbs` and `formats`, already resolved to a glyph, a name, a tooltip and a refusal, and this document draws them. The toolbar role, the roving caret and the arrow keys are `jx-action-group`'s, so no keyboard code rides along; Escape is the one key this document claims, because leaving the bar means going back to the canvas and only the host knows where that is. The drag handle is an ISLAND (§9.4): the document draws the node and `surfaces/block-action-bar.ts` attaches the pragmatic-dnd registration to it through `onNodeCreated`. Position is a DECISION measured against the selection rect, so it arrives as two numbers the flow projects — `barX` and `barY` — rather than as a layout this document could compute; the `style` object below binds them, because a style declaration may read state like any other value (spec §9.1).",
+  "tagName": "div",
+  "attributes": {
+    "part": "root",
+    "role": "none"
+  },
+  "style": {
+    "$description": "The `.block-action-bar` rules that used to live in `styles/canvas.css`, re-valued onto the kit's tokens. The bar is `position: fixed` because its anchor is a rect in viewport space that crossed the iframe bridge; the layer it sits in has no clipping, which is why the host clamps it rather than letting overflow do it.\n\nThe two placement properties are declared HERE, bound to the flow's measured numbers. They used to travel as a `style` ATTRIBUTE the flow assembled into one string, on the belief that a document cannot bind a style declaration to state. It can, and always could: a reactive value on a custom property in a rule targeting the element itself is written inline under the author's own name (spec §9.1), which is precisely the attribute that string was hand-writing. The bar reads them by name through the ordinary cascade — the root is `display: contents`, so a custom property set on it inherits down — and `panels/block-action-bar.ts` overrides `--jx-bar-x` on the bar itself when it clamps, because a value set on an element beats one it inherits — which is also why that clamp releases its own previous write before it measures, or the bar would be pinned at the right edge for the rest of the session.",
+    "display": "contents",
+    "--jx-bar-x": "${state.barX}px",
+    "--jx-bar-y": "${state.barY}px",
+    "& [part=\"bar\"]": {
+      "position": "fixed",
+      "left": "var(--jx-bar-x, 0px)",
+      "top": "var(--jx-bar-y, 0px)",
+      "zIndex": "100",
+      "pointerEvents": "auto",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "2px",
+      "padding": "2px var(--jx-space-2)",
+      "background": "var(--jx-bg-panel)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "boxShadow": "var(--jx-shadow-popover)",
+      "whiteSpace": "nowrap",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"bar\"][data-offscreen]": {
+      "$description": "The anchor scrolled out of the stage. Hidden by `visibility` rather than by the `visible` switch, so the drag registration and the caret survive a scroll that will bring the anchor straight back.",
+      "visibility": "hidden"
+    },
+    "& [part=\"tools\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "2px"
+    },
+    "& [part=\"tag\"] > [part=\"control\"]": {
+      "$description": "The element badge. It is a button on every selection and disabled where the tag cannot be changed — a component instance, a repeater — which is §8.6's rule applied to the one control that used to change shape.",
+      "minWidth": "0",
+      "minHeight": "0",
+      "maxWidth": "140px",
+      "padding": "0 var(--jx-space-2)",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--jx-tag)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "display": "block",
+      ":hover": {
+        "background": "var(--jx-accent)",
+        "color": "var(--jx-accent-fg)"
+      },
+      ":disabled": {
+        "opacity": "1",
+        "background": "var(--jx-tag)",
+        "cursor": "default"
+      }
+    },
+    "& [part=\"tag-text\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "display": "block"
+    },
+    "& [part=\"drag-handle\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "padding": "0 var(--jx-space-2)",
+      "lineHeight": "1",
+      "color": "var(--jx-fg-dim)",
+      "cursor": "grab",
+      "opacity": "0.7",
+      "userSelect": "none",
+      ":hover": {
+        "opacity": "1"
+      },
+      ":active": {
+        "cursor": "grabbing"
+      }
+    },
+    "& [part=\"drag-handle\"][aria-disabled=\"true\"]": {
+      "$description": "ONE shape (§8.6): the handle is greyed on the document root, never removed — a toolbar whose controls move under the cursor is worse than one with a dead affordance.",
+      "cursor": "default",
+      "opacity": "0.3"
+    },
+    "& jx-divider": {
+      "height": "20px",
+      "margin": "0 2px"
+    },
+    "& [part=\"verb\"][data-destructive] > [part=\"control\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "& [part=\"cmd-label\"]": {
+      "$description": "A record with no icon draws its title instead of a blank button.",
+      "padding": "0 2px",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"format\"], & [part=\"overflow-slot\"], & [part=\"format-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"link\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)",
+      "alignItems": "center",
+      "padding": "var(--jx-space-3)"
+    },
+    "& [part=\"link-field\"]": {
+      "width": "200px"
+    }
+  },
+  "$switch": {
+    "$ref": "#/state/visible"
+  },
+  "cases": {
+    "true": {
+      "tagName": "div",
+      "attributes": {
+        "part": "bar",
+        "data-jx-region": "overlay.menu:block-action-bar",
+        "data-offscreen": "${state.offscreen ? '' : null}"
+      },
+      "onmousedown": {
+        "$ref": "#/state/guardFocus"
+      },
+      "onkeydown": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "$switch": {
+              "$ref": "event#/key"
+            },
+            "cases": {
+              "Escape": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/leaveBar"
+                  },
+                  "value": []
+                },
+                {
+                  "preventDefault": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "attributes": {
+            "part": "tools"
+          },
+          "$props": {
+            "selects": "none",
+            "compact": false,
+            "label": "Block actions",
+            "orientation": "horizontal"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "parent",
+                "data-command-id": "selection.selectParent"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "icon": "arrow-elbow-left-up",
+                "label": {
+                  "$ref": "#/state/parentLabel"
+                },
+                "hint": {
+                  "$ref": "#/state/parentHint"
+                },
+                "disabled": {
+                  "$ref": "#/state/parentDisabled"
+                }
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "stopPropagation": true
+                  },
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/selectParent"
+                    },
+                    "value": []
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "tag"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "label": {
+                  "$ref": "#/state/tagLabel"
+                },
+                "hint": {
+                  "$ref": "#/state/tagHint"
+                },
+                "haspopup": {
+                  "$ref": "#/state/tagPopup"
+                },
+                "disabled": {
+                  "$ref": "#/state/tagDisabled"
+                }
+              },
+              "onclick": {
+                "$ref": "#/state/openTagMenu"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "tag-text"
+                  },
+                  "textContent": "${state.tagLabel}"
+                }
+              ]
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "drag-handle",
+                "role": "button",
+                "aria-label": "Drag to reorder",
+                "aria-disabled": "${state.canDrag ? null : 'true'}",
+                "title": "${state.dragHint}"
+              },
+              "textContent": "⠿"
+            },
+            {
+              "tagName": "jx-divider",
+              "$props": {
+                "orientation": "vertical"
+              }
+            },
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/verbs"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "verb",
+                  "data-command-id": "${$map.item.id}",
+                  "data-destructive": "${$map.item.destructive ? '' : null}"
+                },
+                "$props": {
+                  "size": "sm",
+                  "quiet": true,
+                  "icon": {
+                    "$ref": "$map/item/icon"
+                  },
+                  "label": {
+                    "$ref": "$map/item/title"
+                  },
+                  "hint": {
+                    "$ref": "$map/item/tooltip"
+                  },
+                  "disabled": {
+                    "$ref": "$map/item/disabled"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "stopPropagation": true
+                    },
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/run"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "label-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/hasIcon"
+                    },
+                    "cases": {
+                      "false": {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "cmd-label"
+                        },
+                        "textContent": "${$map.item.title}"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "overflow-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/hasOverflow"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "overflow"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "dots-three-vertical",
+                    "label": "More block actions",
+                    "hint": "More block actions",
+                    "haspopup": "menu",
+                    "expanded": {
+                      "$ref": "#/state/overflowOpen"
+                    }
+                  },
+                  "onclick": {
+                    "$ref": "#/state/openOverflow"
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "format-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/showFormat"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "format",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-divider",
+                      "$props": {
+                        "orientation": "vertical"
+                      }
+                    },
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/formats"
+                      },
+                      "key": {
+                        "$ref": "$map/item/id"
+                      },
+                      "map": {
+                        "tagName": "jx-action-button",
+                        "attributes": {
+                          "part": "format-button",
+                          "data-command-id": "${$map.item.id}",
+                          "data-tag": "${$map.item.value}"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "quiet": true,
+                          "emphasized": true,
+                          "toggles": true,
+                          "icon": {
+                            "$ref": "$map/item/icon"
+                          },
+                          "label": {
+                            "$ref": "$map/item/title"
+                          },
+                          "hint": {
+                            "$ref": "$map/item/tooltip"
+                          },
+                          "selected": {
+                            "$ref": "$map/item/selected"
+                          },
+                          "disabled": {
+                            "$ref": "$map/item/disabled"
+                          }
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "stopPropagation": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/run"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/id"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "label-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/hasIcon"
+                            },
+                            "cases": {
+                              "false": {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "cmd-label"
+                                },
+                                "textContent": "${$map.item.title}"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "insert-data",
+                        "data-jx-region": "overlay.menu:block-action-bar/insertData"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "database",
+                        "label": "Insert data",
+                        "hint": "Insert data",
+                        "haspopup": "menu"
+                      },
+                      "onclick": {
+                        "$ref": "#/state/openMergeTags"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-popover",
+          "attributes": {
+            "part": "link"
+          },
+          "$props": {
+            "label": "Link URL",
+            "x": {
+              "$ref": "#/state/linkX"
+            },
+            "y": {
+              "$ref": "#/state/linkY"
+            }
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "link-field"
+              },
+              "$props": {
+                "size": "sm",
+                "type": "url",
+                "label": "Link URL",
+                "placeholder": "https://...",
+                "value": {
+                  "$ref": "#/state/linkValue"
+                }
+              },
+              "oninput": {
+                "$ref": "#/state/linkInput"
+              },
+              "onkeydown": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "$switch": {
+                      "$ref": "event#/key"
+                    },
+                    "cases": {
+                      "Enter": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/applyLink"
+                          },
+                          "value": []
+                        },
+                        {
+                          "preventDefault": true
+                        }
+                      ],
+                      "Escape": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/closeLink"
+                          },
+                          "value": []
+                        },
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "stopPropagation": true
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "link-apply"
+              },
+              "$props": {
+                "size": "sm",
+                "label": {
+                  "$ref": "#/state/linkApplyLabel"
+                }
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/applyLink"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.linkApplyLabel}"
+                }
+              ]
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "link-remove-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/linkExisting"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "link-remove"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Remove"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/removeLink"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Remove"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

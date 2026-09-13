@@ -1,5 +1,6 @@
 /**
- * The rail foot's ⚙ Settings menu — `src/panels/settings-menu.ts`.
+ * The rail foot's ⚙ Settings menu — `src/panels/settings-menu.ts`, the `menu` surface with a
+ * submenu level.
  *
  * A SYNTHETIC registry throughout, holding the three ids by hand. That is the idiom
  * `tests/activity-bar.test.ts` states outright, and here it does a second job: importing the real
@@ -7,10 +8,9 @@
  * cf-settings, the settings kernel) into a file that is about a popover. What the REAL records
  * declare is proved in `tests/app-commands.test.ts`, where the whole set is already loaded.
  *
- * `sp-menu-item` is an undefined custom element here — `ui/spectrum.ts` is imported by `studio.ts`
- * and two dedicated suites and by nothing else — so every assertion below is about light-DOM
- * markup, attributes and handlers. The chevron's grid area, real overlay stacking and the focus
- * ring belong to the browser lane.
+ * The menu is a `jx-menu` in a popover slot, so what is asserted is the document's contract — rows,
+ * roles, the submenu as a child menu, the keyboard — under the kit's popover shim. Paint, the top
+ * layer and the focus ring belong to the browser lane.
  */
 import { flush, mountOverlayLayers, pointer, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -97,9 +97,9 @@ function installRegistry(opts: RegistryOpts = {}): CommandRegistry {
       enablement: (ctx: CommandContext) => ctx.project.open,
     }),
     /* A fourth record, the shape an extension contributing to the placement takes. It is what
-       makes "a command goes away while its submenu is open" expressible: the built-in three
-       never leave. `app.preferences` is the only id `SECTION_SOURCES` knows besides
-       `settings.open`, so this one gets no submenu, which is the other thing it pins. */
+       makes "a command goes away while its submenu is open" expressible: the built-in three never
+       leave. `app.preferences` is the only id `SECTION_SOURCES` knows besides `settings.open`, so
+       this one gets no submenu, which is the other thing it pins. */
     ...(opts.contributed
       ? [record("ext.configure", "Configure Extension", "project", { group: "8_ext" })]
       : []),
@@ -116,30 +116,63 @@ function gear(): HTMLElement {
   return button;
 }
 
-const rootItems = () => [
-  ...document.querySelectorAll<HTMLElement>("#layer-popover sp-menu-item[data-command-id]"),
-];
-const subItems = () => [
-  ...document.querySelectorAll<HTMLElement>("#layer-popover sp-menu-item[data-section-key]"),
-];
-const rootIds = () => rootItems().map((el) => el.dataset.commandId);
-const subKeys = () => subItems().map((el) => el.dataset.sectionKey);
-const rowFor = (id: string) => rootItems().find((el) => el.dataset.commandId === id)!;
-/** Direct text only — the chord, the chevron and the reason are children. */
-const titleOf = (el: HTMLElement) =>
-  [...el.childNodes]
-    .filter((n) => n.nodeType === 3)
-    .map((n) => n.textContent?.trim())
-    .join("");
+type MenuEl = HTMLElement & { open: boolean; x: number; y: number; floor: number };
 
-/** The menu's listener is capture-phase, ON DOCUMENT. */
+const rootMenu = () =>
+  document.querySelector<MenuEl>('#layer-popover jx-menu[aria-label="Settings"]');
+/** The root rows: the ones whose nearest menu is the root. */
+const rootItems = () =>
+  [...(rootMenu()?.querySelectorAll<HTMLElement>("jx-menu-item[data-command-id]") ?? [])].filter(
+    (el) => el.closest("jx-menu") === rootMenu(),
+  );
+/** The rows of whichever submenu is SHOWING; none when no submenu is. */
+const subItems = () =>
+  [...(rootMenu()?.querySelectorAll<HTMLElement>("jx-menu jx-menu-item") ?? [])].filter((el) => {
+    const sub = el.closest<MenuEl>("jx-menu");
+    return sub !== rootMenu() && sub?.open === true;
+  });
+const rootIds = () => rootItems().map((el) => el.dataset.commandId);
+/** A section row's id is `<command>:<section>`; the section is what it names. */
+const sectionKeyOf = (el: HTMLElement) => el.dataset.commandId?.split(":").at(-1);
+const subKeys = () => subItems().map((el) => sectionKeyOf(el));
+const rowFor = (id: string) => rootItems().find((el) => el.dataset.commandId === id)!;
+/** The row's own name — its label part, with the chord and reason parts left out. */
+const titleOf = (el: HTMLElement) => el.querySelector('[part="label"]')!.textContent!.trim();
+/** A chord or a reason the surface left out prints nothing, exactly as it shows nothing. */
+const shownText = (el: Element | null) => el?.textContent?.trim() || undefined;
+const chordOf = (el: HTMLElement) => shownText(el.querySelector("kbd"));
+const reasonOf = (el: HTMLElement) => shownText(el.querySelector('[slot="description"]'));
+const isDisabled = (el: HTMLElement) => el.getAttribute("aria-disabled") === "true";
+const submenuOf = (el: HTMLElement) => el.querySelector<MenuEl>('[slot="submenu"] > jx-menu');
+
+/** Press a key where a keyboard would: at the focused row, or on the document when none has focus. */
 function menuKey(key: string): KeyboardEvent {
   const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key });
-  document.dispatchEvent(event);
+  const active = document.activeElement;
+  (active?.closest("#layer-popover") ? active : document).dispatchEvent(event);
   return event;
 }
 
-const focusedKey = () => (document.activeElement as HTMLElement | null)?.dataset;
+/** The focused row, as `{ commandId, sectionKey }`. */
+function focusedKey(): { commandId?: string; sectionKey?: string } {
+  const id = (document.activeElement as HTMLElement | null)?.dataset?.commandId;
+  if (!id) {
+    return {};
+  }
+  const [commandId = "", sectionKey] = id.split(":");
+  return sectionKey ? { commandId, sectionKey } : { commandId };
+}
+
+/** Hover a row the way the pointer does: `pointerover` bubbling up to the menu. */
+function hover(el: HTMLElement): void {
+  el.dispatchEvent(new Event("pointerover", { bubbles: true }));
+}
+
+/** Open the gear menu and wait for the surface to mount and show. */
+async function open(opts?: Parameters<typeof openSettingsMenu>[1]): Promise<void> {
+  openSettingsMenu(anchor, opts);
+  await flush();
+}
 
 let anchor: HTMLElement;
 
@@ -156,40 +189,55 @@ beforeEach(() => {
   anchor = gear();
 });
 
-afterEach(() => {
+afterEach(async () => {
   dismissSettingsMenu();
   anchor.remove();
   setActiveRegistry(null);
   resetNotifications();
+  await flush();
 });
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
 describe("rendering", () => {
-  test("the rows are the placement, ordered level-first with one divider at the boundary", () => {
+  test("the rows are the placement, ordered level-first with one divider at the boundary", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     expect(rootIds()).toEqual(["app.preferences", "settings.open", "styles.open"]);
     // The divider IS the level boundary — the same thing the rail's own panel groups draw, and
     // The reason a menu may hold two levels where a pinned slot may not.
-    const dividers = [...document.querySelectorAll("#layer-popover sp-menu-divider")];
-    expect(dividers).toHaveLength(1);
-    expect((dividers[0]!.nextElementSibling as HTMLElement | null)?.dataset.commandId).toBe(
-      "settings.open",
+    const dividers = [...rootMenu()!.querySelectorAll("hr")].filter(
+      (hr) => hr.closest("jx-menu") === rootMenu(),
     );
+    expect(dividers).toHaveLength(1);
+    expect(
+      dividers[0]!
+        .closest('[role="none"]')!
+        .parentElement!.querySelector<HTMLElement>("jx-menu-item")!.dataset.commandId,
+    ).toBe("settings.open");
   });
 
-  test("every row prints its own title and its own chord, from the record", () => {
+  test("the menu is a native popover with the menu role, named, in the settings region", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    expect(titleOf(rowFor("app.preferences"))).toBe("Preferences…");
-    expect(rowFor("app.preferences").querySelector("kbd")?.textContent).toBe("⌘,");
-    expect(rowFor("settings.open").querySelector("kbd")?.textContent).toBe("⌘⇧,");
-    // No chord declared, so none printed — not an empty one.
-    expect(rowFor("styles.open").querySelector("kbd")).toBeNull();
+    await open();
+    const menu = rootMenu()!;
+    expect(menu.getAttribute("role")).toBe("menu");
+    expect(menu.getAttribute("popover")).toBe("auto");
+    expect(menu.open).toBe(true);
+    expect(menu.parentElement!.dataset.jxRegion).toBe("overlay.menu:settings");
   });
 
-  test("a chord that merely restates the row's own name is not printed", () => {
+  test("every row prints its own title and its own chord, from the record", async () => {
+    installRegistry();
+    await open();
+    expect(titleOf(rowFor("app.preferences"))).toBe("Preferences…");
+    expect(chordOf(rowFor("app.preferences"))).toBe("⌘,");
+    expect(chordOf(rowFor("settings.open"))).toBe("⌘⇧,");
+    // No chord declared, so none printed — not an empty one.
+    expect(chordOf(rowFor("styles.open"))).toBeUndefined();
+  });
+
+  test("a chord that merely restates the row's own name is not printed", async () => {
     const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
     registry.register({
       id: "app.preferences",
@@ -201,63 +249,61 @@ describe("rendering", () => {
       run: () => {},
     } as never);
     setActiveRegistry(registry);
-    openSettingsMenu(anchor);
-    expect(rowFor("app.preferences").querySelector("kbd")).toBeNull();
+    await open();
+    expect(chordOf(rowFor("app.preferences"))).toBeUndefined();
   });
 
-  test("only rows whose command takes a section advertise a submenu", () => {
+  test("only rows whose command takes a section advertise a submenu", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     for (const id of ["app.preferences", "settings.open"]) {
       expect(rowFor(id).getAttribute("aria-haspopup")).toBe("menu");
       expect(rowFor(id).getAttribute("aria-expanded")).toBe("false");
-      expect(rowFor(id).querySelector("sp-icon-chevron-right")).not.toBeNull();
+      expect(submenuOf(rowFor(id))).not.toBeNull();
     }
-    // `styles.open` has no `section` argument, so lit removes the attributes rather than
-    // Emitting aria-haspopup="false" — an announced popup that does not exist is worse than none.
+    // `styles.open` has no `section` argument, so the attributes are absent rather than
+    // Aria-haspopup="false" — an announced popup that does not exist is worse than none.
     expect(rowFor("styles.open").hasAttribute("aria-haspopup")).toBe(false);
     expect(rowFor("styles.open").hasAttribute("aria-expanded")).toBe(false);
-    expect(rowFor("styles.open").querySelector("sp-icon-chevron-right")).toBeNull();
+    expect(submenuOf(rowFor("styles.open"))).toBeNull();
   });
 
-  test("with no project open the two project rows are DISABLED, not absent", () => {
+  test("with no project open the two project rows are DISABLED, not absent", async () => {
     /* The welcome screen. They used to be hidden — `forPlacement` filters by `when` — which left
        the gear holding a single row and saying nothing about the two things most people open it
        looking for. §12.3: a control that cannot act renders disabled with its reason. The divider
        stays, because the level boundary is still there. */
     installRegistry({ project: false });
-    openSettingsMenu(anchor);
+    await open();
     expect(rootIds()).toEqual(["app.preferences", "settings.open", "styles.open"]);
-    expect(rowFor("app.preferences").hasAttribute("disabled")).toBe(false);
+    expect(isDisabled(rowFor("app.preferences"))).toBe(false);
     for (const id of ["settings.open", "styles.open"]) {
-      expect(rowFor(id).hasAttribute("disabled")).toBe(true);
-      expect(rowFor(id).getAttribute("aria-disabled")).toBe("true");
-      expect(rowFor(id).querySelector("[slot='description']")?.textContent).toContain(
-        "an open project",
-      );
+      expect(isDisabled(rowFor(id))).toBe(true);
+      expect(reasonOf(rowFor(id))).toContain("an open project");
+      expect(rowFor(id).getAttribute("title")).toBe("an open project");
     }
     // A row that cannot run advertises no submenu: every one of its rows runs that same refusal.
     expect(rowFor("settings.open").hasAttribute("aria-haspopup")).toBe(false);
-    expect(document.querySelectorAll("#layer-popover sp-menu-divider")).toHaveLength(1);
+    expect(submenuOf(rowFor("settings.open"))).toBeNull();
   });
 
-  test("a disabled project row does nothing when clicked, and the menu stays up", () => {
+  test("a disabled project row does nothing when clicked, and the menu stays up", async () => {
     installRegistry({ project: false });
-    openSettingsMenu(anchor);
+    await open();
     pointer(rowFor("settings.open"), "click");
+    await flush();
     expect(ran).toEqual([]);
     expect(isSettingsMenuOpen()).toBe(true);
   });
 
-  test("a record refused by `enablement` renders disabled, with its reason, and offers no sections", () => {
+  test("a record refused by `enablement` renders disabled, with its reason, and offers no sections", async () => {
     // §12.3: a control that cannot act explains itself rather than vanishing. And a row that cannot
     // Run offers no submenu, because every one of its rows would run that same refusal.
     installRegistry({ refusePreferences: true });
-    openSettingsMenu(anchor);
+    await open();
     const row = rowFor("app.preferences");
-    expect(row.hasAttribute("disabled")).toBe(true);
-    expect(row.getAttribute("aria-disabled")).toBe("true");
-    expect(row.querySelector("[slot='description']")?.textContent).toContain("a reason of its own");
+    expect(isDisabled(row)).toBe(true);
+    expect(reasonOf(row)).toContain("a reason of its own");
     expect(row.hasAttribute("aria-haspopup")).toBe(false);
   });
 });
@@ -268,44 +314,47 @@ describe("activation", () => {
   /*
    * THE LOAD-BEARING CASE, and the deliberate APG deviation.
    *
-   * The pattern gives a parent `menuitem` no action of its own, and Spectrum's stock
-   * `slot="submenu"` enforces exactly that: `Menu.handlePointerBasedSelection` bails on
-   * `hasSubmenu`, so a parent emits no `change` at all. Here the heading opens Project Settings on
-   * its default section and the submenu is a second way in. It is why the submenu is hand-rolled.
+   * The pattern gives a parent `menuitem` no action of its own. Here the heading opens Project
+   * Settings on its default section and the submenu is a second way in — which is what the kit's
+   * row does by design (ui.md §5.1).
    */
-  test("clicking a parent runs its OWN command, with no arguments, and dismisses", () => {
+  test("clicking a parent runs its OWN command, with no arguments, and dismisses", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     pointer(rowFor("settings.open"), "click");
+    await flush();
     expect(ran).toEqual([{ args: {}, id: "settings.open" }]);
     expect(isSettingsMenuOpen()).toBe(false);
   });
 
-  test("Enter on a parent runs it rather than opening its submenu", () => {
+  test("Enter on a parent runs it rather than opening its submenu", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     menuKey("ArrowDown");
     expect(menuKey("Enter").defaultPrevented).toBe(true);
+    await flush();
     expect(ran).toEqual([{ args: {}, id: "settings.open" }]);
   });
 
-  test("clicking a disabled row does nothing and leaves the menu up", () => {
+  test("clicking a disabled row does nothing and leaves the menu up", async () => {
     installRegistry({ refusePreferences: true });
-    openSettingsMenu(anchor);
+    await open();
     pointer(rowFor("app.preferences"), "click");
+    await flush();
     expect(ran).toEqual([]);
     expect(isSettingsMenuOpen()).toBe(true);
   });
 
-  test("a run that throws SYNCHRONOUSLY reaches notify too", () => {
+  test("a run that throws SYNCHRONOUSLY reaches notify too", async () => {
     // `registry.run` throws `CommandUnavailableError` for a record whose gate has turned false
     // Between the render and the click — a real race with the section-registry repaint.
     const registry = installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     registry.run = (() => {
       throw new RangeError("gate closed under the pointer");
     }) as typeof registry.run;
     pointer(rowFor("settings.open"), "click");
+    await flush();
     expect([...toasts, ...problems].map((n) => n.message)).toContain(
       "gate closed under the pointer",
     );
@@ -315,7 +364,7 @@ describe("activation", () => {
     // `settings.open` throws AFTER awaiting the contributed-section sync, and `registry.run` does
     // Not catch — so a bare `void result` would strand it.
     installRegistry({ reject: true });
-    openSettingsMenu(anchor);
+    await open();
     pointer(rowFor("settings.open"), "click");
     await flush();
     expect([...toasts, ...problems].map((n) => n.message)).toContain(
@@ -327,118 +376,137 @@ describe("activation", () => {
 // ─── The submenu ──────────────────────────────────────────────────────────────
 
 describe("the submenu", () => {
-  test("hovering a parent opens its sections, named and ordered by the registry", () => {
+  test("hovering a parent opens its sections, named and ordered by the registry", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("settings.open"));
+    await flush();
     expect(subKeys()).toEqual(["overview", "contexts", "cssVars"]);
-    expect(subItems().map((el) => el.textContent?.trim())).toEqual([
-      "Overview",
-      "Contexts",
-      "CSS Variables",
-    ]);
+    expect(subItems().map((el) => titleOf(el))).toEqual(["Overview", "Contexts", "CSS Variables"]);
     expect(rowFor("settings.open").getAttribute("aria-expanded")).toBe("true");
     // Derived, so no surface renames anything.
-    expect(
-      document
-        .querySelector("#layer-popover .settings-submenu sp-menu")
-        ?.getAttribute("aria-label"),
-    ).toBe("Sections of Open Project Settings");
+    expect(submenuOf(rowFor("settings.open"))!.getAttribute("aria-label")).toBe(
+      "Sections of Open Project Settings",
+    );
+    expect(submenuOf(rowFor("settings.open"))!.getAttribute("role")).toBe("menu");
   });
 
-  test("the Preferences submenu is that command's own four sections", () => {
+  test("the Preferences submenu is that command's own four sections", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("app.preferences").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    expect(subItems().map((el) => el.textContent?.trim())).toEqual(
+    await open();
+    hover(rowFor("app.preferences"));
+    await flush();
+    expect(subItems().map((el) => titleOf(el))).toEqual(
       PREFERENCES_SECTIONS.map((section) => section.title),
     );
   });
 
-  test("a submenu row runs the PARENT's command with the section it names", () => {
+  test("a submenu row runs the PARENT's command with the section it names", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("settings.open"));
+    await flush();
     pointer(
-      subItems().find((el) => el.dataset.sectionKey === "cssVars")!,
+      subItems().find((el) => sectionKeyOf(el) === "cssVars")!,
       "click",
     );
+    await flush();
     expect(ran).toEqual([{ args: { section: "cssVars" }, id: "settings.open" }]);
     expect(isSettingsMenuOpen()).toBe(false);
     expect(subItems()).toHaveLength(0);
   });
 
-  test("re-entering the same parent leaves its submenu exactly as it was", () => {
+  test("re-entering the same parent leaves its submenu exactly as it was", async () => {
     /* An ordinary pointer path: crossing a row, leaving and coming back. Rebuilding the submenu
-       would reset the caret to row 0 and throw away the section subscription for no reason. */
+       would reset the caret to row 0 for no reason. */
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     const parent = rowFor("settings.open");
-    parent.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    hover(parent);
+    await flush();
     menuKey("ArrowDown");
     menuKey("ArrowRight");
     menuKey("End");
-    expect(focusedKey()?.sectionKey).toBe("cssVars");
-    parent.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    expect(focusedKey().sectionKey).toBe("cssVars");
+    hover(parent);
+    await flush();
     expect(subKeys()).toEqual(["overview", "contexts", "cssVars"]);
-    expect(focusedKey()?.sectionKey).toBe("cssVars");
+    expect(focusedKey().sectionKey).toBe("cssVars");
   });
 
-  test("entering a row that takes no section opens nothing", () => {
+  test("entering a row that takes no section opens nothing", async () => {
     // `styles.open` has no `section` argument, so there is no submenu for it to own.
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("styles.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("styles.open"));
+    await flush();
     expect(subItems()).toHaveLength(0);
     expect(rowFor("styles.open").hasAttribute("aria-expanded")).toBe(false);
   });
 
-  test("hovering a sibling closes the open submenu", () => {
+  test("hovering a sibling closes the open submenu", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("settings.open"));
+    await flush();
     expect(subItems().length).toBeGreaterThan(0);
-    rowFor("styles.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    hover(rowFor("styles.open"));
+    await flush();
     expect(subItems()).toHaveLength(0);
     expect(rowFor("settings.open").getAttribute("aria-expanded")).toBe("false");
   });
 
-  test("a section registered while the submenu is open appears in it", () => {
+  test("a section registered while the submenu is open appears in it, in place", async () => {
     /* Six of Project Settings' sections are contributed by extensions and register a tick after the
-       built-ins. A submenu opened in that window would otherwise be permanently short. */
+       built-ins. A submenu opened in that window would otherwise be permanently short. The rows are
+       keyed, so the ones that were there keep their nodes — and the caret. */
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    menuKey("ArrowDown");
+    menuKey("ArrowRight");
+    menuKey("End");
+    await flush();
+    const before = subItems();
     expect(subKeys()).not.toContain("locales");
+    expect(focusedKey().sectionKey).toBe("cssVars");
     registerSettingsSection({ key: "locales", label: "Locales", order: 25, render: () => {} });
+    await flush();
     expect(subKeys()).toEqual(["overview", "contexts", "locales", "cssVars"]);
+    expect(subItems()[0]).toBe(before[0]!);
+    expect(subItems()[3]).toBe(before[2]!);
+    expect(focusedKey().sectionKey).toBe("cssVars");
+    expect(isSettingsMenuOpen()).toBe(true);
     unregisterSettingsSection("locales");
   });
 
-  test("a section going away while it is open removes its row and clamps the caret", () => {
+  test("a section going away while it is open removes its row and keeps the caret on a row", async () => {
     // Driven by KEYBOARD, not hover: hovering opens a submenu without moving the roving caret (the
     // Pointer and the caret are separate), so ArrowRight would open whichever row the caret is on.
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     menuKey("ArrowDown"); // → settings.open
     menuKey("ArrowRight"); // → its submenu, caret on row 0
     menuKey("End"); // → CSS Variables, the row about to go
-    expect(focusedKey()?.sectionKey).toBe("cssVars");
+    expect(focusedKey().sectionKey).toBe("cssVars");
     unregisterSettingsSection("cssVars");
+    await flush();
     expect(subKeys()).toEqual(["overview", "contexts"]);
-    // The caret cannot point past the end of what is left.
+    // The caret cannot be left on a row that is gone.
     expect(subItems()).toHaveLength(2);
-    expect(subItems()[1]?.hasAttribute("focused")).toBe(true);
+    expect(subItems().includes(document.activeElement as HTMLElement)).toBe(true);
   });
 
-  test("closing the submenu unsubscribes — a later registration does not repaint it", () => {
+  test("the menu closing unsubscribes — a later registration touches nothing", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    rowFor("styles.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("settings.open"));
+    await flush();
+    dismissSettingsMenu();
+    await flush();
     registerSettingsSection({ key: "locales", label: "Locales", order: 25, render: () => {} });
     notifySettingsDocument();
-    expect(subItems()).toHaveLength(0);
+    await flush();
+    expect(rootMenu()).toBeNull();
     unregisterSettingsSection("locales");
   });
 });
@@ -446,159 +514,178 @@ describe("the submenu", () => {
 // ─── Keyboard ─────────────────────────────────────────────────────────────────
 
 describe("keyboard", () => {
-  test("it opens with row 0 focused, and the roving tabindex says so", () => {
+  test("it opens with row 0 focused, and the roving tabindex says so", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     const [first, second] = rootItems();
+    expect(document.activeElement).toBe(first!);
     expect(first?.tabIndex).toBe(0);
-    expect(first?.hasAttribute("focused")).toBe(true);
     expect(second?.tabIndex).toBe(-1);
   });
 
-  test("Down/Up move and wrap; Home and End jump", () => {
+  test("Down/Up move and wrap; Home and End jump", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     menuKey("ArrowDown");
-    expect(focusedKey()?.commandId).toBe("settings.open");
+    expect(focusedKey().commandId).toBe("settings.open");
     menuKey("ArrowUp");
-    expect(focusedKey()?.commandId).toBe("app.preferences");
+    expect(focusedKey().commandId).toBe("app.preferences");
     // Wrapping at both ends, so a list is a ring rather than a dead end.
     menuKey("ArrowUp");
-    expect(focusedKey()?.commandId).toBe("styles.open");
+    expect(focusedKey().commandId).toBe("styles.open");
     menuKey("Home");
-    expect(focusedKey()?.commandId).toBe("app.preferences");
+    expect(focusedKey().commandId).toBe("app.preferences");
     menuKey("End");
-    expect(focusedKey()?.commandId).toBe("styles.open");
+    expect(focusedKey().commandId).toBe("styles.open");
+    menuKey("ArrowDown");
+    expect(focusedKey().commandId).toBe("app.preferences");
   });
 
-  test("ArrowRight opens a submenu and moves in; ArrowLeft closes it and hands focus back", () => {
+  test("ArrowRight opens a submenu and moves in; ArrowLeft closes it and hands focus back", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     menuKey("ArrowDown");
     expect(menuKey("ArrowRight").defaultPrevented).toBe(true);
-    expect(focusedKey()?.sectionKey).toBe("overview");
+    await flush();
+    expect(subKeys()).toEqual(["overview", "contexts", "cssVars"]);
+    expect(focusedKey()).toEqual({ commandId: "settings.open", sectionKey: "overview" });
+    expect(rowFor("settings.open").getAttribute("aria-expanded")).toBe("true");
     expect(menuKey("ArrowLeft").defaultPrevented).toBe(true);
+    await flush();
     expect(subItems()).toHaveLength(0);
-    expect(focusedKey()?.commandId).toBe("settings.open");
+    expect(focusedKey()).toEqual({ commandId: "settings.open" });
+    expect(rowFor("settings.open").getAttribute("aria-expanded")).toBe("false");
   });
 
-  test("ArrowRight on a row with no sections is not swallowed", () => {
+  test("ArrowRight on a row with no sections is not swallowed", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    menuKey("End"); // Styles.open — the row with no `section` argument
+    await open();
+    menuKey("End"); // Lands on styles.open, the last row
     expect(menuKey("ArrowRight").defaultPrevented).toBe(false);
+    expect(subItems()).toHaveLength(0);
   });
 
-  test("ArrowLeft on the root is not swallowed either", () => {
+  test("ArrowLeft on the root is not swallowed either", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     expect(menuKey("ArrowLeft").defaultPrevented).toBe(false);
+    expect(isSettingsMenuOpen()).toBe(true);
   });
 
-  test("Enter in the submenu runs the parent with that section", () => {
+  test("Enter in the submenu runs the parent with that section", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     menuKey("ArrowDown");
     menuKey("ArrowRight");
     menuKey("ArrowDown");
+    expect(focusedKey().sectionKey).toBe("contexts");
     menuKey("Enter");
+    await flush();
     expect(ran).toEqual([{ args: { section: "contexts" }, id: "settings.open" }]);
+    expect(isSettingsMenuOpen()).toBe(false);
   });
 
-  test("Escape closes ONE level at a time, and the last one returns focus to the gear", () => {
+  test("Escape closes ONE level at a time, and the last one returns focus to the gear", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    anchor.focus();
+    await open();
     menuKey("ArrowDown");
     menuKey("ArrowRight");
-    menuKey("Escape");
+    await flush();
+    expect(subItems().length).toBeGreaterThan(0);
+    expect(menuKey("Escape").defaultPrevented).toBe(true);
+    await flush();
     expect(subItems()).toHaveLength(0);
     expect(isSettingsMenuOpen()).toBe(true);
+    expect(focusedKey()).toEqual({ commandId: "settings.open" });
     menuKey("Escape");
+    await flush();
     expect(isSettingsMenuOpen()).toBe(false);
     expect(document.activeElement).toBe(anchor);
   });
 
-  test("Tab dismisses, and the listener goes with it", () => {
+  test("Tab dismisses the whole stack", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    expect(menuKey("Tab").defaultPrevented).toBe(true);
+    await open();
+    menuKey("ArrowDown");
+    menuKey("ArrowRight");
+    await flush();
+    menuKey("Tab");
+    await flush();
     expect(isSettingsMenuOpen()).toBe(false);
-    // Nothing is left listening on `document` for a menu that is gone.
+    // Nothing is left listening: a later key must not be swallowed.
     expect(menuKey("ArrowDown").defaultPrevented).toBe(false);
   });
 
-  test("a handled key is prevented and stopped; an unhandled one is neither", () => {
+  test("a handled key is prevented and stopped; an unhandled one is neither", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    expect(menuKey("ArrowDown").defaultPrevented).toBe(true);
-    // The app's own Escape walks the selection ladder and the canvas nudges on arrows — but only
-    // The keys this menu actually handles may be taken from them.
-    expect(menuKey("a").defaultPrevented).toBe(false);
+    await open();
+    const handled = menuKey("ArrowDown");
+    expect(handled.defaultPrevented).toBe(true);
+    // No row starts with "z", so typeahead has nothing to say about it either.
+    const unhandled = menuKey("z");
+    expect(unhandled.defaultPrevented).toBe(false);
   });
 });
 
-// ─── Dismissal and lifecycle ──────────────────────────────────────────────────
+// ─── Dismissal ────────────────────────────────────────────────────────────────
 
 describe("dismissal", () => {
-  /** The capture-phase mousedown the module arms a frame after opening. */
   function mousedownOn(target: Node): void {
-    const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
-    target.dispatchEvent(event);
+    target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
   }
 
-  test("an outside mousedown dismisses", async () => {
+  test("an outside mousedown dismisses, through the popover's own light dismissal", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
-    await flush(); // The handler is armed a frame late, so the opening click cannot close it
+    await open();
     mousedownOn(document.body);
+    await flush();
     expect(isSettingsMenuOpen()).toBe(false);
   });
 
-  /*
-   * THE REGRESSION THE HAND-ROLLED HANDLER EXISTS TO PREVENT.
-   *
-   * `renderPopover`'s own `dismissOnOutsideClick` tests one slot, so with two popovers a mousedown
-   * in the submenu is "outside" the root — and `dismiss()` REMOVES the node, so the submenu row's
-   * own `click` would never arrive. Following a section would silently do nothing.
-   */
   test("a mousedown inside the SUBMENU does not dismiss the root", async () => {
+    // A submenu is a child popover of its row, so it is inside the root's hierarchy: what used to
+    // Need a hand-rolled handler over two popovers is the platform's own rule now.
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("settings.open"));
     await flush();
     mousedownOn(subItems()[0]!);
+    await flush();
     expect(isSettingsMenuOpen()).toBe(true);
     expect(subItems().length).toBeGreaterThan(0);
   });
 
   test("a mousedown on the gear does not dismiss — its own click owns the toggle", async () => {
+    // The gear is the popover's INVOKER (`showPopover({ source })`), which the platform does not
+    // Count as outside; otherwise every second click would re-open.
     installRegistry();
-    openSettingsMenu(anchor);
-    await flush();
+    await open();
     mousedownOn(anchor);
+    await flush();
     expect(isSettingsMenuOpen()).toBe(true);
   });
 
-  test("opening while open closes, and `isSettingsMenuOpen` tracks both edges", () => {
+  test("opening while open closes, and `isSettingsMenuOpen` tracks both edges", async () => {
     installRegistry();
     expect(isSettingsMenuOpen()).toBe(false);
-    openSettingsMenu(anchor);
+    await open();
     expect(isSettingsMenuOpen()).toBe(true);
-    openSettingsMenu(anchor);
+    await open();
     expect(isSettingsMenuOpen()).toBe(false);
   });
 
-  test("dismissing is idempotent", () => {
+  test("dismissing is idempotent", async () => {
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     dismissSettingsMenu();
     dismissSettingsMenu();
     expect(isSettingsMenuOpen()).toBe(false);
   });
 
-  test("with no registry, and with an empty placement, opening does nothing", () => {
+  test("with no registry, and with an empty placement, opening does nothing", async () => {
     setActiveRegistry(null);
-    openSettingsMenu(anchor);
+    await open();
     expect(isSettingsMenuOpen()).toBe(false);
 
     const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
@@ -611,16 +698,16 @@ describe("dismissal", () => {
       run: () => {},
     } as never);
     setActiveRegistry(registry);
-    openSettingsMenu(anchor);
+    await open();
     expect(isSettingsMenuOpen()).toBe(false);
   });
 
-  test("the rerender callback fires on open AND on dismiss", () => {
+  test("the rerender callback fires on open AND on dismiss", async () => {
     // That is what keeps the trigger's `aria-expanded` a BINDING rather than an imperative write —
     // A stale one is a defect this app has shipped before.
     installRegistry();
     let calls = 0;
-    openSettingsMenu(anchor, { rerender: () => (calls += 1) });
+    await open({ rerender: () => (calls += 1) });
     expect(calls).toBe(1);
     dismissSettingsMenu();
     expect(calls).toBe(2);
@@ -636,161 +723,78 @@ describe("dismissal", () => {
  * between the frame that drew a row and the click that runs it.
  */
 describe("the world changing underneath it", () => {
-  test("a row clicked after the registry went away does nothing", () => {
+  test("a row clicked after the registry went away does nothing", async () => {
     // Closing a project drops the registry. The menu is still on screen, so its rows are still
     // Clickable, and they must decline rather than throw at a caller that no longer exists.
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     setActiveRegistry(null);
     pointer(rowFor("settings.open"), "click");
+    await flush();
     expect(ran).toEqual([]);
   });
 
-  test("a section registering after the registry went away redraws nothing", () => {
-    /* The subscription outlives the registry by a moment: `onSettingsDocumentChanged` is held for
-       as long as the submenu is up, and the sections can move for reasons that have nothing to do
-       with the menu. Rebuilding rows from a registry that is gone is what it must not do. */
+  test("a section registering after the registry went away redraws nothing", async () => {
+    /* The subscription outlives the registry by a moment, and the sections can move for reasons
+       that have nothing to do with the menu. Rebuilding rows from a registry that is gone is what
+       it must not do. */
     installRegistry();
-    openSettingsMenu(anchor);
-    rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    await open();
+    hover(rowFor("settings.open"));
+    await flush();
     expect(subKeys()).toEqual(["overview", "contexts", "cssVars"]);
     setActiveRegistry(null);
     registerSettingsSection({ key: "locales", label: "Locales", order: 25, render: () => {} });
+    await flush();
     // Unchanged: the rows are the ones the live registry last gave, not a half-built set.
     expect(subKeys()).toEqual(["overview", "contexts", "cssVars"]);
     unregisterSettingsSection("locales");
   });
 
-  test("the command owning the open submenu going away leaves the menu standing", () => {
+  test("the command owning the open submenu going away leaves the menu standing", async () => {
     /* An extension being disabled takes its records with it. The submenu belongs to a row that no
-       longer exists, so there is nothing to redraw — and the redraw is what must not reach for
-       `_rows[_subIdx]` and find nothing. */
+       longer exists; the keyed rows reconcile and the menu stays up. */
     installRegistry({ contributed: true });
-    openSettingsMenu(anchor);
+    await open();
     expect(rootIds()).toContain("ext.configure");
-    // Drive the caret onto the contributed row and open Preferences' sections from it, so the
-    // Submenu is owned by an index the next rebuild will not have.
-    rowFor("app.preferences").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    hover(rowFor("app.preferences"));
+    await flush();
     expect(subItems().length).toBeGreaterThan(0);
     installRegistry();
     notifySettingsDocument();
+    await flush();
     expect(rootIds()).not.toContain("ext.configure");
     expect(isSettingsMenuOpen()).toBe(true);
   });
 
-  test("every section going away while the submenu is open leaves the caret with nowhere to go", () => {
-    // A project closing unregisters all of them. Moving the caret through an empty list must be a
-    // No-op rather than a subscript of nothing.
+  test("every section going away while the submenu is open closes it and keeps the caret", async () => {
+    // A project closing unregisters all of them. The emptied submenu closes and its parent row
+    // Takes the caret, so the keyboard still has somewhere to be.
     installRegistry();
-    openSettingsMenu(anchor);
+    await open();
     menuKey("ArrowDown");
     menuKey("ArrowRight");
-    expect(focusedKey()?.sectionKey).toBe("overview");
+    expect(focusedKey().sectionKey).toBe("overview");
     for (const key of ["overview", "contexts", "cssVars"]) {
       unregisterSettingsSection(key);
     }
+    await flush();
     expect(subItems()).toHaveLength(0);
+    expect(focusedKey()).toEqual({ commandId: "settings.open" });
     expect(menuKey("ArrowDown").defaultPrevented).toBe(true);
     expect(isSettingsMenuOpen()).toBe(true);
   });
 
-  test("a contributed row whose command takes no section offers none", () => {
+  test("a contributed row whose command takes no section offers none", async () => {
     // `SECTION_SOURCES` is keyed by command id, so a record it does not know gets an empty list
     // Rather than a guess. That is what keeps the submenu the ARGUMENT's enumeration.
     installRegistry({ contributed: true });
-    openSettingsMenu(anchor);
+    await open();
     const row = rowFor("ext.configure");
     expect(row.hasAttribute("aria-haspopup")).toBe(false);
-    row.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    hover(row);
+    await flush();
     expect(subItems()).toHaveLength(0);
-  });
-});
-
-// ─── The deferred passes ──────────────────────────────────────────────────────
-
-/*
- * Everything this menu does after the browser has painted, which is where the two defects the unit
- * suite could NOT see both lived: the menu rendered off the bottom of the window because it clamped
- * against a not-yet-laid-out box, and ArrowRight opened a submenu the focus ring never reached
- * because `sp-menu-item.focus()` is a no-op until Spectrum has set the item up. Both were found by
- * driving a real browser; these are the regressions kept honest here.
- */
-describe("after the frame", () => {
-  /** One animation frame, the unit the module schedules its second passes on. */
-  const frame = () =>
-    new Promise<void>((resolve) => {
-      requestAnimationFrame(() => resolve());
-    });
-
-  test("the caret is re-applied until the browser agrees where focus is", async () => {
-    // In happy-dom the element is inert and the first, synchronous pass already lands — so the
-    // Retry sees `document.activeElement === wanted` and stops. That it stops is the assertion:
-    // The loop is bounded by agreement, not by burning its frame budget.
-    installRegistry();
-    openSettingsMenu(anchor);
-    menuKey("ArrowDown");
-    menuKey("ArrowRight");
-    expect(focusedKey()?.sectionKey).toBe("overview");
-    await frame();
-    await frame();
-    expect(focusedKey()?.sectionKey).toBe("overview");
-    expect(subItems()[0]?.hasAttribute("focused")).toBe(true);
-  });
-
-  test("the caret is re-applied when the browser has not agreed yet", async () => {
-    /* The browser case, forced: `sp-menu-item.focus()` is a no-op until Spectrum has set the item
-       up, so the first pass moves nothing and the loop has to try again. Here focus is dragged
-       elsewhere after the synchronous pass, which is the same state that pass leaves in a browser. */
-    installRegistry();
-    openSettingsMenu(anchor);
-    menuKey("ArrowDown");
-    menuKey("ArrowRight");
-    const elsewhere = document.createElement("button");
-    document.body.append(elsewhere);
-    elsewhere.focus();
-    expect(focusedKey()?.sectionKey).toBeUndefined();
-    await frame();
-    expect(focusedKey()?.sectionKey).toBe("overview");
-    elsewhere.remove();
-  });
-
-  test("a pointer that moved on is not yanked back by a stale deferral", async () => {
-    installRegistry();
-    openSettingsMenu(anchor);
-    menuKey("ArrowDown");
-    menuKey("ArrowRight");
-    // The submenu closes before the deferred pass runs: its guard must hold.
-    menuKey("ArrowLeft");
-    await frame();
-    await frame();
-    expect(subItems()).toHaveLength(0);
-    expect(focusedKey()?.commandId).toBe("settings.open");
-  });
-
-  test("the placement runs again after layout, and clamping twice does not drift", async () => {
-    /* The bug this pins: a popover measures 0×0 until layout runs, and layout does not run inside
-       the call that rendered it — so the synchronous pass clamped against a zero-height box and
-       parked the menu at the bottom edge of the window. The second pass is what fixes it, and it
-       can only be safe because the clamp reads its own output. */
-    installRegistry();
-    openSettingsMenu(anchor);
-    const popover = document.querySelector<HTMLElement>("#layer-popover sp-popover")!;
-    stubRect(popover, { height: 400, width: 260 });
-    await frame();
-    const settled = popover.style.top;
-    expect(settled).toBe(`${window.innerHeight - 400}px`);
-    await frame();
-    expect(popover.style.top).toBe(settled);
-  });
-
-  test("a deferred pass on a dismissed menu touches nothing", async () => {
-    installRegistry();
-    openSettingsMenu(anchor);
-    dismissSettingsMenu();
-    await frame();
-    await frame();
-    expect(isSettingsMenuOpen()).toBe(false);
-    expect(rootItems()).toHaveLength(0);
   });
 });
 
@@ -798,26 +802,26 @@ describe("after the frame", () => {
 
 describe("geometry", () => {
   /*
-   * Happy-dom does no layout, so a popover measures 0×0 — and the clamp runs INSIDE the render
-   * that creates the element, which is too early for a per-element `stubRect`. So the size is
-   * stubbed on the prototype for the duration, which is the only way to be measurable at the
-   * moment the code under test measures.
+   * Happy-dom does no layout, so a menu measures 0×0 — and the placement runs inside the show
+   * that makes it measurable. The size is stubbed on the prototype for the duration, which is the
+   * only way to be measurable at the moment the code under test measures.
    */
-  async function withPopoverSize<T>(
+  async function withMenuSize<T>(
     size: { height: number; width: number },
     body: () => T | Promise<T>,
   ): Promise<T> {
     const original = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
-      if (this.tagName.toLowerCase() === "sp-popover") {
+      if (this.tagName.toLowerCase() === "jx-menu") {
+        const menu = this as MenuEl;
         return {
           ...size,
-          bottom: size.height,
-          left: 0,
-          right: size.width,
-          top: 0,
-          x: 0,
-          y: 0,
+          bottom: (menu.y ?? 0) + size.height,
+          left: menu.x ?? 0,
+          right: (menu.x ?? 0) + size.width,
+          top: menu.y ?? 0,
+          x: menu.x ?? 0,
+          y: menu.y ?? 0,
         } as DOMRect;
       }
       return original.call(this);
@@ -829,8 +833,10 @@ describe("geometry", () => {
     }
   }
 
-  const popoverStyle = () =>
-    document.querySelector<HTMLElement>("#layer-popover sp-popover")!.style;
+  const frame = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
 
   test("the menu hangs off the trigger's right edge and ends flush with the floor", async () => {
     /* Not "below the trigger": the gear is the last control in a full-height rail, so a menu
@@ -838,14 +844,17 @@ describe("geometry", () => {
        upward from it — flush, with no inset, because the floor is a real edge (the status bar's
        top) rather than an arbitrary margin. */
     installRegistry();
-    await withPopoverSize({ height: 200, width: 260 }, () => openSettingsMenu(anchor));
+    await withMenuSize({ height: 200, width: 260 }, async () => {
+      await open();
+      await frame();
+    });
     // `x = anchorRect.right + 4` — the gear is 56px wide at left 0.
-    expect(popoverStyle().left).toBe("60px");
-    // No region ancestor in this fixture, so the floor is the viewport: 768 − 200.
-    expect(popoverStyle().top).toBe(`${window.innerHeight - 200}px`);
+    expect(rootMenu()!.x).toBe(60);
+    // No region ancestor in this fixture, so the floor is the viewport.
+    expect(rootMenu()!.y).toBe(window.innerHeight - 200);
   });
 
-  test("it aligns to the REGION the trigger lives in, not to the trigger", async () => {
+  test("it aligns to the REGION the trigger lives in, not to the trigger, and floors its submenus there", async () => {
     /* The rail's foot carries 6px of padding, so the gear's own bottom floats clear of the status
        bar; the rail's bottom IS the status bar's top. Aligning to the region is what puts the menu
        flush with it — and it is the shell's own addressing grammar, so a menu button in another
@@ -856,42 +865,28 @@ describe("geometry", () => {
     rail.append(anchor);
     stubRect(rail, { height: 760, left: 0, top: 0, width: 56 });
     installRegistry();
-    await withPopoverSize({ height: 200, width: 260 }, () => openSettingsMenu(anchor));
+    await withMenuSize({ height: 200, width: 260 }, async () => {
+      await open();
+      await frame();
+    });
     // The RAIL's bottom is 760, not the gear's 744, so the menu sits 200 above it.
-    expect(popoverStyle().top).toBe("560px");
+    expect(rootMenu()!.y).toBe(560);
+    // And every submenu keeps above the same floor.
+    expect(rootMenu()!.floor).toBe(760);
     dismissSettingsMenu();
     document.body.append(anchor);
     rail.remove();
   });
 
-  test("a popover taller than the viewport floors at 4 rather than going negative", async () => {
+  test("a menu taller than the viewport floors at 4 rather than going negative", async () => {
     /* Project Settings has ~16 sections once extensions have contributed theirs. Capping only the
        bottom edge would push `top` negative and take the FIRST rows off the top of the window,
        where nothing can reach them — which is why both axes are floored, not just capped. */
     installRegistry();
-    await withPopoverSize({ height: window.innerHeight + 400, width: 260 }, () =>
-      openSettingsMenu(anchor),
-    );
-    expect(popoverStyle().top).toBe("4px");
-  });
-
-  test("a submenu that would overflow the right edge flips to the menu's left", async () => {
-    // The flip measures the popover, so like the placement it happens AFTER layout — an unlaid-out
-    // Popover is 0 wide and would never appear to overflow anything.
-    installRegistry();
-    let sub!: HTMLElement;
-    await withPopoverSize({ height: 120, width: window.innerWidth }, async () => {
-      openSettingsMenu(anchor);
-      rowFor("settings.open").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
-      });
-      sub = [...document.querySelectorAll<HTMLElement>("#layer-popover sp-popover")].at(-1)!;
+    await withMenuSize({ height: window.innerHeight + 400, width: 260 }, async () => {
+      await open();
+      await frame();
     });
-    // The unit comes off first: `Number("60px")` is NaN, and a silent NaN passes nothing.
-    const left = Number(sub.style.left.replace("px", ""));
-    // Flipped, then clamped — so it is on screen either way.
-    expect(left).toBeGreaterThanOrEqual(4);
-    expect(left).toBeLessThan(window.innerWidth);
+    expect(rootMenu()!.y).toBe(4);
   });
 });

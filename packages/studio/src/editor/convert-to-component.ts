@@ -1,9 +1,23 @@
 /// <reference lib="dom" />
 // ─── Convert to Component ─────────────────────────────────────────────────────
-import { html, render as litRender } from "lit-html";
+/**
+ * Extract the selected element into a reusable component.
+ *
+ * The naming question is `showPromptDialog` — one headline, one sentence, one field, one refusal —
+ * which is exactly the shape this used to hand-render as an `sp-dialog-wrapper` of its own, down to
+ * the Enter binding, the focus move and the select-all. That helper is already a document over the
+ * kit (`src/surfaces/dialog.json`, studio-ui-guidelines §8.7), so the conversion here is a DELETION
+ * rather than a second surface: a prompt authored beside the prompt would be a second answer to a
+ * question Studio has settled once, and the two would drift the first time one of them was fixed.
+ *
+ * What is left is the flow, which is all this module ever owned that mattered: what the default
+ * name is, what makes a name usable, whether the document actually took the reference, and what is
+ * written to disk once it has.
+ *
+ * @docs studio/design/components
+ */
 import { displayTagName } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { ref } from "lit-html/directives/ref.js";
 import { childIndex, getNodeAtPath, parentElementPath } from "../store";
 import { primarySelection } from "../tabs/selection";
 import { activeTab } from "../workspace/workspace";
@@ -12,7 +26,7 @@ import { componentRegistry, computeRelativePath, loadComponentRegistry } from ".
 import { getPlatform } from "../platform";
 import { jsonClone } from "../utils/studio-utils";
 import { notify } from "../services/notify";
-import { showDialog } from "../ui/layers";
+import { showPromptDialog } from "../ui/layers";
 import { validateComponentSlots } from "../services/cem-export";
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -33,10 +47,14 @@ export async function convertToComponent() {
   }
 
   const defaultName = deriveDefaultName(node);
-  const name = await promptComponentName(defaultName);
-  if (!name) {
+  const chosen = await promptComponentName(defaultName);
+  if (!chosen) {
     return;
   }
+  /* The prompt resolves the TRIMMED value; the case fold is this module's, because it is the case
+     fold `validateName` already judged the name in. A tag name is lower-case by the same rule that
+     made `Hero-Block` default to `hero-block`. */
+  const name = chosen.toLowerCase();
 
   // Extract component definition
   const componentDef = extractComponentDef(node);
@@ -167,85 +185,22 @@ function validateName(val: string) {
 }
 
 /**
- * Show a naming dialog using Lit-rendered sp-dialog-wrapper.
+ * Ask for the new component's tag name.
+ *
+ * Resolves the trimmed name, or `null` when the dialog was dismissed. The refusal, the Enter
+ * binding, the focus move and the select-all all belong to `showPromptDialog`, which owns them for
+ * every prompt in Studio; the only thing this passes in that no other prompt has is what counts as
+ * a usable tag name.
  *
  * @param {string} defaultName
  * @returns {Promise<string | null>}
  */
-function promptComponentName(defaultName: string) {
-  let value = defaultName;
-  let error = "";
-
-  return showDialog<string | null>((done) => {
-    function confirm() {
-      const result = validateName(value);
-      if (!result.valid) {
-        ({ error } = result);
-        rerender();
-        return;
-      }
-      done(value.trim().toLowerCase());
-    }
-
-    function onInput(e: Event) {
-      value = (e.target as HTMLInputElement).value || "";
-      const result = validateName(value);
-      error = result.valid ? "" : result.error;
-      rerender();
-    }
-
-    function onKeydown(e: KeyboardEvent) {
-      if (e.key === "Enter") {
-        confirm();
-      }
-    }
-
-    function rerender() {
-      const layer = document.querySelector("#layer-dialog");
-      const slot = layer?.lastElementChild;
-      if (slot) {
-        litRender(buildTpl(), slot as HTMLElement);
-      }
-    }
-
-    function buildTpl() {
-      return html`
-        <sp-dialog-wrapper
-          open
-          underlay
-          headline="Convert to Component"
-          confirm-label="Convert"
-          cancel-label="Cancel"
-          size="s"
-          @confirm=${confirm}
-          @cancel=${() => done(null)}
-          @close=${() => done(null)}
-        >
-          <p>Enter a hyphenated tag name for the new component.</p>
-          <sp-textfield
-            placeholder="my-component"
-            value=${value}
-            ?invalid=${Boolean(error)}
-            @input=${onInput}
-            @keydown=${onKeydown}
-            ${ref((el) => {
-              if (el) {
-                requestAnimationFrame(() => {
-                  (el as HTMLElement).focus();
-                  const input = (el as HTMLElement).shadowRoot?.querySelector("input");
-                  if (input) {
-                    input.select();
-                  }
-                });
-              }
-            })}
-          >
-            <sp-help-text slot="negative-help-text">${error}</sp-help-text>
-          </sp-textfield>
-        </sp-dialog-wrapper>
-      `;
-    }
-
-    return buildTpl();
+function promptComponentName(defaultName: string): Promise<string | null> {
+  return showPromptDialog("Convert to Component", {
+    confirmLabel: "Convert",
+    message: "Enter a hyphenated tag name for the new component.",
+    placeholder: "my-component",
+    validate: (value) => validateName(value).error,
+    value: defaultName,
   });
 }

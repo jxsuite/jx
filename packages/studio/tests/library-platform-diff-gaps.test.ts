@@ -1,10 +1,10 @@
 /**
  * Diff-gap tests for three surfaces the existing suites leave unexercised.
  *
- * - **`src/browse/library-pane.ts`** — the context menu's outside-click dismissal (the sibling test
- *   dismisses with `pointerdown`, and the layer listens for `mousedown`); a drop whose destination
- *   prompt is cancelled; the EMPTY state's own Retry, which is a different button from the
- *   incomplete-scan banner's and sits below it in the DOM; and the click that opens a card.
+ * - **`src/browse/library-pane.ts`** — the context menu's outside-click dismissal, which is the
+ *   platform popover's light dismissal rather than anything this module binds; a drop whose
+ *   destination prompt is cancelled; the EMPTY state's own Retry, which is a different button from
+ *   the incomplete-scan banner's and sits below it in the DOM; and the click that opens a card.
  * - **`src/platforms/devserver.ts`** — `buildSite`, including the sentence it falls back to when the
  *   backend named no error at all.
  * - **`src/platforms/cloud.ts`** — `cfConnect`'s poll RE-ARMING itself: the popup is still open and
@@ -127,8 +127,9 @@ async function mount(): Promise<HTMLElement> {
   return host;
 }
 
-function popovers(): number {
-  return document.querySelectorAll("#layer-dialog sp-popover").length;
+/** Menus on screen. The kit's menu is a popover on the platform's own top layer. */
+function menus(): number {
+  return document.querySelectorAll("#layer-popover jx-menu").length;
 }
 
 // ─── Library pane ────────────────────────────────────────────────────────────
@@ -154,7 +155,7 @@ describe("the Library pane", () => {
 
   test("a click on a card opens THAT card's path, not the first one drawn", async () => {
     await mount();
-    const card = host.querySelector('.library-card[data-path="public/logo.png"]') as HTMLElement;
+    const card = host.querySelector('[part="card"][data-path="public/logo.png"]') as HTMLElement;
     expect(card).not.toBeNull();
     card.click();
     await flush();
@@ -169,23 +170,23 @@ describe("the Library pane", () => {
     await mount();
     // Nothing was read, so the list is empty AND incomplete: the banner is drawn above the body and
     // The empty state inside it. They are two buttons, and this is the second one.
-    const empty = host.querySelector(".library-empty") as HTMLElement;
+    const empty = host.querySelector('[part="empty"]') as HTMLElement;
     expect(empty.textContent).toContain("the scan did not finish");
-    const retry = empty.querySelector("sp-button") as HTMLElement;
-    expect(host.querySelectorAll("sp-button").length).toBeGreaterThan(1);
+    const retry = empty.querySelector('[part="retry"]') as HTMLElement;
+    expect(host.querySelectorAll('[part="retry"]').length).toBeGreaterThan(1);
 
     broken = false;
     retry.click();
     await flush();
     await flush();
-    expect(host.querySelectorAll(".library-card").length).toBe(5);
-    expect(host.querySelector(".library-empty")).toBeNull();
+    expect(host.querySelectorAll('[part="card"]').length).toBe(5);
+    expect(host.querySelector('[part="empty"]')).toBeNull();
   });
 
   test("a drop into All whose destination prompt is cancelled uploads nothing", async () => {
     setLibraryCategory("all");
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
+    const body = host.querySelector('[part="body"]') as HTMLElement;
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
     // The drop really did reach the upload flow — it is waiting on the destination.
@@ -198,7 +199,7 @@ describe("the Library pane", () => {
   test("…and the same drop, answered, uploads into the folder the author named", async () => {
     setLibraryCategory("all");
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
+    const body = host.querySelector('[part="body"]') as HTMLElement;
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
     await answerPromptDialog("assets/media/");
@@ -208,20 +209,24 @@ describe("the Library pane", () => {
 
   test("an outside mousedown dismisses the context menu, and the next right-click reopens one", async () => {
     await mount();
-    const card = host.querySelector(".library-card") as HTMLElement;
+    const card = host.querySelector('[part="card"]') as HTMLElement;
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    expect(popovers()).toBe(1);
+    expect(menus()).toBe(1);
 
-    // The layer's dismissal listener is a capturing `mousedown` on the document — not `pointerdown`.
+    /* Light dismissal is the PLATFORM's: an `auto` popover closes on an outside mousedown, and the
+       `toggle` event that follows is what tells `openMenu` to empty its slot. Nothing in the
+       Library binds a document listener for it any more — which is the whole reason the
+       hand-rolled popover, its dismissal handler and its edge clamping went. */
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(popovers()).toBe(0);
+    await flush();
+    expect(menus()).toBe(0);
 
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    expect(popovers()).toBe(1);
-    const open = [...document.querySelectorAll("#layer-dialog sp-menu-item")].find(
-      (n) => (n.textContent ?? "").trim() === "Open",
+    expect(menus()).toBe(1);
+    const open = document.querySelector(
+      '#layer-popover jx-menu-item[data-command-id="open"]',
     ) as HTMLElement;
     open.click();
     await flush();

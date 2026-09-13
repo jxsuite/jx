@@ -786,9 +786,7 @@ const MUTANTS: Mutant[] = [
     test: "tests/lens-chrome.test.ts",
   },
   {
-    edits: [
-      { find: `                focusPane(row.pane);`, replace: `                void row.pane;` },
-    ],
+    edits: [{ find: `      focusPane(row.pane);`, replace: `      void row.pane;` }],
     file: "src/panels/pane-context.ts",
     id: "pane-context.ts · a menu row acts on the pane it is a row of",
     means:
@@ -840,8 +838,13 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `              if (row.disabled === null) {`,
-        replace: `              if (true) {`,
+        /* The rows are projected for the KIT menu now, and the refusal is the projected flag
+           rather than a conditional in a click handler: `jx-menu-item` raises no `select` while
+           `aria-disabled` is true, so this one line is the whole guard — which is also why the
+           lit version's second check inside `run` went with the conversion. Same discriminator,
+           one frame further back. */
+        find: `    disabled: row.disabled !== null,`,
+        replace: `    disabled: false,`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -854,8 +857,10 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `      ${"${"}lens ? nothing : readOnlyBannerTemplate(tab)}`,
-        replace: `      ${"${"}readOnlyBannerTemplate(tab)}`,
+        /* The bar is a Jx document, so the banner is a projected FLAG rather than a branch in a
+           template — the same discriminator the lit version carried, one line further back. */
+        find: `    bannerState: !lens && readOnly ? "shown" : "hidden",`,
+        replace: `    bannerState: readOnly ? "shown" : "hidden",`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -890,8 +895,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `${"${"}zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom(surface) / 1.2, surface))}`,
-        replace: `${"${"}zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom() / 1.2))}`,
+        find: `      setUserZoom(stageZoom(surface) / 1.2, surface);`,
+        replace: `      setUserZoom(stageZoom() / 1.2);`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -904,8 +909,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `${"${"}zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom(surface) * 1.2, surface))}`,
-        replace: `${"${"}zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom() * 1.2))}`,
+        find: `      setUserZoom(stageZoom(surface) * 1.2, surface);`,
+        replace: `      setUserZoom(stageZoom() * 1.2);`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -916,10 +921,12 @@ const MUTANTS: Mutant[] = [
 
   // ─── panels/properties-panel.ts ─────────────────────────────────────────────
   {
+    /* The Content tab is a Jx document now, so the guard is a projected FLAG rather than a
+       conditional in a template — same discriminator, one line further back. */
     edits: [
       {
-        find: `\${deriveRefusal(workspace.activePaneId) === null ? openLayoutTpl() : nothing}`,
-        replace: `\${openLayoutTpl()}`,
+        find: `    layoutCanOpen: deriveRefusal(workspace.activePaneId) === null,`,
+        replace: `    layoutCanOpen: true,`,
       },
     ],
     file: "src/panels/properties-panel.ts",
@@ -993,8 +1000,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `<span class="tab-derivation-of">${"${"}of ? tabLabel(of) : "no document"}</span>`,
-        replace: `<span class="tab-derivation-of">${"${"}of ? tabLabel(of) : ""}</span>`,
+        find: `  const subject = of ? tabLabel(of) : "no document";`,
+        replace: `  const subject = of ? tabLabel(of) : "";`,
       },
     ],
     file: "src/panels/tab-strip.ts",
@@ -1007,12 +1014,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find:
-          `      class=\${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}\n` +
-          `      @mousedown=\${() => focusPane(pane.id)}`,
-        replace:
-          `      class=\${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}\n` +
-          `      @mousedown=\${() => void pane.id}`,
+        find: `      focusPane(drawnPane(host)?.id ?? PRIMARY_PANE);`,
+        replace: `      void drawnPane(host);`,
       },
     ],
     file: "src/panels/tab-strip.ts",
@@ -1753,17 +1756,19 @@ const MUTANTS: Mutant[] = [
      screenshot, and shell.css says so at the rule.
      **This list is now empty.** An honest exclusion is still available — see {@link Mutant.browserOnly} —
      but every claim in the table is executed. */
+  /* Moved with its subject. The rule was `.tab-derivation` in `styles/shell.css` until the strip
+     became a document; it is the same declaration, now inside the surface that draws it. */
   {
     edits: [
       {
-        find: `  padding: 4px 10px;\n  border-bottom: 2px solid transparent;`,
-        replace: `  padding: 0;\n  border-bottom: 2px solid transparent;`,
+        find: `"padding": "4px 10px",\n      "borderBottom": "2px solid transparent",`,
+        replace: `"padding": "0",\n      "borderBottom": "2px solid transparent",`,
       },
     ],
-    file: "styles/shell.css",
-    id: "shell.css · a derivation chip's row keeps the tab row's vertical box",
+    file: "src/surfaces/tab-strip.json",
+    id: "tab-strip.json · a derivation chip's row keeps the tab row's vertical box",
     means: "the derived pane's strip collapses against the tab row in the pane beside it",
-    test: "tests/lens-chrome.test.ts",
+    test: "tests/tab-strip.test.ts",
   },
 ];
 

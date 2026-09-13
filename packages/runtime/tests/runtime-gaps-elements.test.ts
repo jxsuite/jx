@@ -283,15 +283,20 @@ describe("distributeSlots", () => {
     document.body.append(el);
     await wait();
 
-    const headerSlot = el.querySelector('header slot[name="head"]') as HTMLElement;
-    expect(headerSlot.children.length).toBe(1);
-    expect(headerSlot.children[0]!.textContent).toBe("H");
+    /* A slot UNWRAPS: its matches stand in its place and it leaves no node. It used to survive,
+       holding its matches as children — which looks right (a slot is `display: contents`) and is
+       wrong in the selector tree, because a definition's `& > x` rule then addresses a
+       grandchild and silently stops matching. */
+    expect(el.querySelector("slot")).toBeNull();
 
-    const sideSlot = el.querySelector('slot[name="side"]') as HTMLElement;
-    expect(sideSlot.childNodes.length).toBe(0);
+    const header = el.querySelector("header") as HTMLElement;
+    expect(header.children.length).toBe(1);
+    expect(header.children[0]!.textContent).toBe("H");
+    // The slotted child is a DIRECT child of the node the definition put the slot in.
+    expect(header.children[0]!.parentElement).toBe(header);
 
-    const defaultSlot = el.querySelector("slot:not([name])") as HTMLElement;
-    expect(defaultSlot.textContent).toBe("txtB"); // Fallback replaced by unnamed children
+    // An unmatched slot unwraps to its own fallback, which here is nothing at all.
+    expect(el.textContent).toBe("HtxtB");
     el.remove();
   });
 

@@ -22,6 +22,11 @@ import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { generateClassSchema } from "@jxsuite/schema";
 import { validateProjectFile } from "@jxsuite/schema/validate-project";
+import { findA11yDefects } from "@jxsuite/schema/a11y";
+import { findDialogDefects } from "@jxsuite/schema/dialogs";
+import { findPopoverDefects, overlayScopeFor } from "@jxsuite/schema/overlays";
+import type { OverlayScope } from "@jxsuite/schema/overlays";
+import type { JxElement } from "@jxsuite/schema/types";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import { readBundledProjectSchemas } from "./schema-command.ts";
@@ -46,8 +51,36 @@ export interface ProjectTreeIssue {
   errors: unknown[];
 }
 
+/**
+ * One overlay, dialog or accessibility finding in a document — `jx validate`'s rendering of the
+ * lints Studio files as Problems (spec §8.7, §8.8). Advisory by default: a lint is a judgement
+ * about a document that is well-formed, so it never makes the tree INVALID unless `strict` asks it
+ * to.
+ */
+export interface ProjectTreeLintFinding {
+  /** Project-relative file path. */
+  file: string;
+  /** The node's path inside the document. */
+  path: (string | number)[];
+  /** Which lint: `popover`, `dialog` or `accessibility`. */
+  source: "popover" | "dialog" | "accessibility";
+  rule: string;
+  message: string;
+  detail: string;
+  severity: "error" | "warn";
+  /** The WCAG success criterion, for accessibility findings. */
+  criterion?: string;
+}
+
+export interface ValidateProjectTreeOptions {
+  /** Fail the tree on a lint ERROR as well as on a schema error. Warnings never fail it. */
+  strict?: boolean;
+}
+
 export interface ProjectTreeValidationResult {
   valid: boolean;
+  /** Every lint finding, whatever `valid` says. */
+  lint: ProjectTreeLintFinding[];
   /** Number of files checked across all five walks. */
   checked: number;
   issues: ProjectTreeIssue[];
@@ -91,9 +124,11 @@ async function loadAjv(): Promise<{ Ajv: AjvCtor; addFormats: AddFormatsFn }> {
  */
 export async function validateProjectTree(
   projectRoot: string,
+  options: ValidateProjectTreeOptions = {},
 ): Promise<ProjectTreeValidationResult> {
   const root = resolve(projectRoot);
   const issues: ProjectTreeIssue[] = [];
+  const lint: ProjectTreeLintFinding[] = [];
   let checked = 0;
 
   /* 1. Committed entry documents must be self-contained (the editor-resolution guarantee). This
@@ -120,7 +155,7 @@ export async function validateProjectTree(
     }
   }
   if (issues.length > 0) {
-    return { checked, issues, valid: false };
+    return { checked, issues, lint, valid: false };
   }
 
   // 2. project.json against the generated entry schema.
@@ -137,6 +172,21 @@ export async function validateProjectTree(
   const docAjv = new Ajv({ allErrors: true, ownProperties: true, strict: false });
   addFormats(docAjv);
   const validateDoc = docAjv.compile(documentSchema);
+  /* The project's own element definitions, so the overlay rules judge a custom element as what it
+     renders. A component IS a popover when its definition declares one, and a component FORWARDS
+     invocation when it observes the four invoker attributes — neither fact is visible in the page
+     that uses it, so without this the CLI reports a target mismatch on correct markup that the
+     studio, which passes the same scope, calls clean. */
+  const scope = overlayScopeFor(
+    walkClassFiles(root).flatMap((file) => {
+      try {
+        return [JSON.parse(readFileSync(file, "utf8")) as JxElement];
+      } catch {
+        // A malformed definition is reported by the class-schema pass below, not here.
+        return [];
+      }
+    }),
+  );
   for (const dir of DOCUMENT_DIRS) {
     for (const file of walkJsonFiles(resolve(root, dir))) {
       if (file.endsWith(".class.json")) {
@@ -144,7 +194,10 @@ export async function validateProjectTree(
       }
       checked += 1;
       const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
-      if (!validateDoc(doc)) {
+      if (validateDoc(doc)) {
+        // Only a well-formed document is judged; a schema error is the report for the rest.
+        lint.push(...lintDocument(doc as JxElement, relative(root, file), scope));
+      } else {
         issues.push({ errors: validateDoc.errors ?? [], file: relative(root, file) });
       }
     }
@@ -191,7 +244,51 @@ export async function validateProjectTree(
     }
   }
 
-  return { checked, issues, valid: issues.length === 0 };
+  const fatalLint = options.strict === true && lint.some((finding) => finding.severity === "error");
+  return { checked, issues, lint, valid: issues.length === 0 && !fatalLint };
+}
+
+/** The three lints over one document, as findings that name their file. */
+function lintDocument(doc: JxElement, file: string, scope: OverlayScope): ProjectTreeLintFinding[] {
+  const findings: ProjectTreeLintFinding[] = [];
+  for (const defect of findPopoverDefects(doc, scope)) {
+    findings.push({ ...pick(defect), file, source: "popover" });
+  }
+  for (const defect of findDialogDefects(doc, scope)) {
+    findings.push({ ...pick(defect), file, source: "dialog" });
+  }
+  for (const defect of findA11yDefects(doc)) {
+    findings.push({ ...pick(defect), criterion: defect.criterion, file, source: "accessibility" });
+  }
+  return findings;
+}
+
+/** The fields every defect shape shares. */
+function pick(defect: {
+  rule: string;
+  path: (string | number)[];
+  message: string;
+  detail: string;
+  severity: "error" | "warn";
+}): Pick<ProjectTreeLintFinding, "rule" | "path" | "message" | "detail" | "severity"> {
+  return {
+    detail: defect.detail,
+    message: defect.message,
+    path: defect.path,
+    rule: defect.rule,
+    severity: defect.severity,
+  };
+}
+
+/** One line per lint finding, for the CLI: `file: severity: message [source/rule, WCAG n]`. */
+export function formatProjectTreeLint(result: ProjectTreeValidationResult): string[] {
+  return result.lint.map((finding) => {
+    const cite =
+      finding.criterion === undefined
+        ? `${finding.source}/${finding.rule}`
+        : `${finding.source}/${finding.rule}, WCAG ${finding.criterion}`;
+    return `${finding.file}: ${finding.severity}: ${finding.message} [${cite}]`;
+  });
 }
 
 /**

@@ -20,7 +20,7 @@ Each tab renders under a header naming the tab and what it is pointed at: the se
 
 Every element starts with the same basics:
 
-- **Tag**: the element's type. Change it to turn a `div` into a `section`, a `p` into an `h2`. Like other fields, it carries a **value-source** chip: switch it from **Fixed value** to **Formula** and the element becomes an `a` when it has somewhere to go and a `div` when it doesn't, wrapping the same content either way. You build that formula in the same operator editor you use everywhere else. There is no _Mixed text_ option here, because a tag is a name and not something you assemble from other text. The tag is settled when the element is created; see [Choosing an element's tag](/docs/framework/concepts/expressions#choosing-an-elements-tag).
+- **Tag**: the element's type. Change it to turn a `div` into a `section`, a `p` into an `h2`. Like other fields, it carries a **value-source** chip: switch it from **Fixed value** to **Formula** and the element becomes an `a` when it has somewhere to go and a `div` when it doesn't, wrapping the same content either way. You build that formula in the same operator editor you use everywhere else, with one difference: a tag has to be a name the page can be built from before it runs, so the editor offers only the two operators that choose between names, `?:` and `switch`, and no formula catalog. There is no _Mixed text_ option here either, because a tag is a name and not something you assemble from other text. The tag is settled when the element is created; see [Choosing an element's tag](/docs/framework/concepts/expressions#choosing-an-elements-tag).
 - **ID** and **Class**: the element's identifier and CSS classes.
 - **Text Content**: the element's text, shown when it has no child elements.
 - **Hidden**: a checkbox that removes the element from the rendered page without deleting it.
@@ -50,7 +50,7 @@ Buttons and inputs get an **Interactive** section holding the two [popover](/doc
 
 `popover` itself is a global attribute and lives in **Identity**, beside `hidden`. Its value is one of `auto`, `manual` or `hint`. `auto` is the one you almost always want, and the only one that closes on Escape and on a click outside. Whether the popover is currently _open on the canvas_ is a view control, not a value in the file: see [The canvas](/docs/studio/interface/canvas).
 
-Anything not covered lives in the **Custom** section: click **+ Add attribute** to add any attribute by name, edit its value inline, or remove it with **✕**.
+Anything not covered lives in the **Custom** section: click **+ Add attribute** to add any attribute by name, edit its value inline, or remove it with the **Remove** button at the end of its row.
 
 ## Make any value dynamic
 
@@ -67,7 +67,7 @@ Studio remembers what you had at each source for the rest of the session, so swi
 
 ## Component settings
 
-When the selection is a component instance, a **Component Settings** section lists the options the component exposes (see **[Working with components](/docs/studio/design/components)**). Each one gets a control matched to its type: a checkbox for on/off options, a number field, a dropdown for a fixed set of choices, a media picker for images, a color control for colors. Its value source chip switches the prop between a fixed value, a signal, and mixed text; its provenance chip says whether the value is set on this instance or still the component's own default. **→ Edit definition** opens the component itself, and a **Usage** section beneath counts and lists the other files that place it. A component with no options declared yet says so instead of showing an empty section, and a tag the project's library doesn't know says that instead. When you have the component's **own definition** open instead, the section is titled **Component Defaults** and edits what the component ships: the fallback each setting takes when a page doesn't supply one. Same controls, different question: on an instance you're overriding, in the definition you're deciding what there is to override.
+When the selection is a component instance, a **Component Settings** section lists the options the component exposes (see **[Working with components](/docs/studio/design/components)**). Each one gets a control matched to its type: a checkbox for on/off options, a number field, a dropdown for a fixed set of choices, a media picker for images, a color control for colors, with your project's color tokens in its picker and a swatch that shows a picked token's color. Its value source chip switches the prop between a fixed value, a signal, and mixed text; its provenance chip says whether the value is set on this instance or still the component's own default. **→ Edit definition** opens the component itself, and a **Usage** section beneath counts and lists the other files that place it. A component with no options declared yet says so instead of showing an empty section, and a tag the project's library doesn't know says that instead. When you have the component's **own definition** open instead, the section is titled **Component Defaults** and edits what the component ships: the fallback each setting takes when a page doesn't supply one. Same controls, different question: on an instance you're overriding, in the definition you're deciding what there is to override.
 
 ## Several elements at once
 

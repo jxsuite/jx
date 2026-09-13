@@ -1,26 +1,38 @@
 /// <reference lib="dom" />
 // oxlint-disable unicorn/no-thenable -- `then` is the JSON Schema conditional keyword (spec §20), not a promise
 /**
- * Statement editor (spec §20) — vertical statement-card list for structured function bodies.
+ * Statement editor (spec §20) — the FLOW behind the `statements` surface.
  *
- * Renders a Function entry's `body: JxStatement[]` as cards on a connector line: bare expression
- * nodes (mutation or `call`), `if`/`then`/`else` branches, `$switch`/`cases` multiway branches, and
- * WHATWG `dispatchEvent` statements. Branch bodies render as indented lanes (the expression
- * editor's `border-left` nesting idiom) with their own add-statement pickers. Cards drag-reorder
- * within their lane via the pragmatic-drag-and-drop tree-item pattern (see panels/dnd.ts). All
- * edits flow through `onChange(next)` immutably — no statement object is mutated in place.
+ * A Function entry's `body: JxStatement[]` is edited here as structure rather than as text: bare
+ * expression nodes (mutation or `call`), `if`/`then`/`else` branches, `$switch`/`cases` multiway
+ * branches, and WHATWG `dispatchEvent` statements. All edits flow through `onChange(next)`
+ * immutably — no statement object is mutated in place.
  *
- * **The layout is CSS, in `styles/inspector.css` (§ "The statement editor").** Every frame, indent
- * and connector here used to be an inline `style=` attribute, so nothing in the chain could set
- * `min-width: 0` and the operand controls refused to shrink: in a 280px Inspector an If/Else card
- * pushed Operator, Target and Value past the right edge of the window. This editor has two hosts of
- * very different widths — the Navigator's State panel and the Inspector's Events tab — plus the
- * Bottom dock, so a fixed pixel layout is wrong by construction and only a stylesheet can say so.
+ * **The markup left.** It is `surfaces/statements.json`, mounted by `surfaces/statements.ts`, and
+ * what is here is the part that was never markup: which kind a statement is, which lane a card
+ * lives in, what a fresh statement is seeded with, how the tree is rewritten around an edit, and
+ * how a card is dragged.
+ *
+ * **The tree is FLATTENED on this side of the seam.** A statement nests to any depth — an `if`
+ * holds two lanes, a `$switch` one per case plus a default, and either may hold another of both —
+ * while a document's one repeater walks a LIST. So {@link flattenStatements} walks the tree once in
+ * reading order and emits rows that carry their own indent, exactly as `panels/data-explorer.ts`
+ * does for a value tree. Recursion is a property of the walk; the markup has none.
+ *
+ * Two things the conversion settled, and each was a defect rather than a translation:
+ *
+ * - **The drag feedback finally draws.** `dragging`, `drop-above` and `drop-below` were class toggles
+ *   with no rule in any stylesheet in the package, so a card being dragged looked exactly like one
+ *   that was not. They are `data-dragging` and `data-drop` now, and the surface's own style block
+ *   paints them.
+ * - **The add-statement control is a menu, not a picker.** It was an `sp-picker` that had to reset
+ *   its own value to `""` inside its change handler so the placeholder came back. A document's
+ *   binding skips an equal write, so that trick cannot work here — and it should not have to: §12.5
+ *   asks for one list of actions, and the kit's menu is it.
+ *
+ * @docs studio/logic/statements
  */
 
-import { html, nothing } from "lit-html";
-import { live } from "lit-html/directives/live.js";
-import { ref } from "lit-html/directives/ref.js";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
 import {
@@ -28,8 +40,9 @@ import {
   extractInstruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
 import { isJsonObject } from "@jxsuite/schema/guards";
-import { renderExpressionEditor, renderOperandEditor } from "../ui/expression-editor";
-import { renderFieldRow } from "../ui/field-row";
+import { mountExpressionEditor, mountOperandEditor } from "../ui/expression-editor";
+import { openMenu } from "../surfaces/menu";
+import { disposeDetachedStatementEditors, renderStatementsSurface } from "../surfaces/statements";
 
 import type {
   CemEvent,
@@ -39,7 +52,7 @@ import type {
   JxStateDefinition,
   JxSwitchStatement,
 } from "@jxsuite/schema/types";
-import type { TemplateResult } from "lit-html";
+import type { StatementFieldView, StatementRowView, StatementOption } from "../surfaces/statements";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -54,15 +67,15 @@ export interface StatementEditorOpts {
    *
    * Required, and required of every host, which is the point. The editor used to hard-stamp
    * `navigator/statements` on itself, and it has two hosts that can be open at the same time — the
-   * Navigator's State panel (`signals-panel.ts`) and the INSPECTOR's Events tab
-   * (`events-panel.ts`). `resolveRegion` takes the last match in document order and `#right-panel`
-   * follows `#left-panel`, so the id resolved to the Inspector's editor while saying Navigator, and
-   * the shot that crops it cropped the wrong control.
+   * Navigator's State panel (`signals-panel.ts`) and the INSPECTOR's Logic tab (`events-panel.ts`).
+   * `resolveRegion` takes the last match in document order and `#right-panel` follows
+   * `#left-panel`, so the id resolved to the Inspector's editor while saying Navigator, and the
+   * shot that crops it cropped the wrong control.
    *
    * A shared control cannot know where it is, so it may not claim to. This is the same verdict
-   * `ui/regions.ts`'s `DERIVED_RESOLVERS` records for the media picker's Browse button — _an
+   * `ui/regions.ts`'s `DERIVED_RESOLVERS` records for the media picker's Browse button — an
    * `inspector/…` id on an element outside the Inspector is not a pane-scoping problem, it is a
-   * wrong id_ — reached the other way round: the picker's id is derived from the Inspector because
+   * wrong id — reached the other way round: the picker's id is derived from the Inspector because
    * nothing addresses the card's copies, whereas both statement editors are real surfaces that
    * deserve names, so the HOST names them.
    */
@@ -137,6 +150,15 @@ const STATEMENT_SEEDS: Record<string, () => JxStatement> = {
   switch: () => ({ $switch: { $ref: "" }, cases: {} }),
 };
 
+/** The add-statement menu, in the order the rows read. One list, and this is it (§12.5). */
+const STATEMENT_CHOICES: readonly StatementOption[] = [
+  { label: "Set state", value: "set" },
+  { label: "Call function", value: "call" },
+  { label: "If / Else", value: "if" },
+  { label: "Switch", value: "switch" },
+  { label: "Dispatch event", value: "dispatch" },
+];
+
 // ─── Lane Addressing (immutable read/write through nested statement lists) ───
 
 /** Resolve the statement list a lane path points at; null when the path is stale. */
@@ -196,14 +218,408 @@ export function withLaneList(
   return list.map((s, i) => (i === idx ? (updated as unknown as JxStatement) : s));
 }
 
+// ─── The plan: what every key in the projection addresses ────────────────────
+
+/** One card of the projection, and everything an edit to it needs. */
+interface CardPlan {
+  stmt: JxStatement;
+  /** Replace this statement in its own lane. */
+  commit: (next: JxStatement) => void;
+  /** Replace the whole lane this statement is in — a delete, or a reorder. */
+  commitLane: (next: JxStatement[]) => void;
+  list: JxStatement[];
+  index: number;
+}
+
+/** One lane of the projection: a `then`, an `else`, a case, or a `default`. */
+interface LanePlan {
+  path: LanePath;
+  list: JxStatement[];
+  /** Commit a new list into this lane. */
+  commit: (next: JxStatement[]) => void;
+  /** Take this lane away entirely; absent on a lane that is not optional. */
+  remove?: () => void;
+  /** Rename this lane's `$switch` case; absent on every other lane. */
+  rename?: (value: string) => void;
+}
+
+/** An `+ Add else` / `+ Add case` row. */
+type ActionPlan = () => void;
+
+/** One operand's island painter, or the commit behind a text/select operand. */
+interface FieldPlan {
+  paint?: (host: HTMLElement) => void;
+  set?: (value: string) => void;
+  flag?: (name: string, checked: boolean) => void;
+}
+
+interface Projection {
+  rows: StatementRowView[];
+  cards: Map<string, CardPlan>;
+  lanes: Map<string, LanePlan>;
+  adds: Map<string, LanePlan>;
+  actions: Map<string, ActionPlan>;
+  fields: Map<string, FieldPlan>;
+}
+
+function operandOpts(opts: StatementEditorOpts) {
+  return {
+    allowEventRef: opts.allowEventRef,
+    depth: 0,
+    stateDefs: opts.stateDefs,
+    stateEntries: opts.stateEntries ?? null,
+  };
+}
+
+/** A row's own indent. Depth is a property of the row, not of the tree (`panel-data.json`). */
+function indentOf(depth: number): string {
+  return depth === 0 ? "0" : `calc(var(--jx-space-3) * ${depth})`;
+}
+
+function emptyField(over: Partial<StatementFieldView>): StatementFieldView {
+  return {
+    flags: [],
+    key: "",
+    kind: "control",
+    label: "",
+    options: [],
+    placeholder: "",
+    prop: "",
+    value: "",
+    ...over,
+  };
+}
+
+/**
+ * Walk the statement tree once and emit the flat rows the document draws, together with the plans
+ * every key in them addresses.
+ *
+ * Exported for its own test: the walk IS the editor now, so the order of the rows and the identity
+ * of their keys are the contract, not an implementation detail of a template.
+ *
+ * @param {JxStatement[]} statements The body being edited.
+ * @param {(next: JxStatement[]) => void} onChange Receives a fresh array on every edit.
+ * @param {StatementEditorOpts} opts
+ * @returns {Projection}
+ */
+export function flattenStatements(
+  statements: JxStatement[],
+  onChange: (next: JxStatement[]) => void,
+  opts: StatementEditorOpts,
+): Projection {
+  const rows: StatementRowView[] = [];
+  const cards = new Map<string, CardPlan>();
+  const lanes = new Map<string, LanePlan>();
+  const adds = new Map<string, LanePlan>();
+  const actions = new Map<string, ActionPlan>();
+  const fields = new Map<string, FieldPlan>();
+  const emitNames = (opts.emits ?? [])
+    .map((e) => e.name)
+    .filter((n): n is string => typeof n === "string" && n.length > 0);
+
+  const laneId = (path: LanePath) => JSON.stringify(path);
+
+  function lanePlan(path: LanePath, list: JxStatement[]): LanePlan {
+    return {
+      commit: (next) => onChange(withLaneList(statements, path, next)),
+      list,
+      path,
+    };
+  }
+
+  function addRow(plan: LanePlan, depth: number): void {
+    const key = `add:${laneId(plan.path)}`;
+    adds.set(key, plan);
+    rows.push({
+      editable: false,
+      fields: [],
+      index: 0,
+      indent: indentOf(depth),
+      key,
+      kind: "add",
+      label: "Add statement",
+      lane: laneId(plan.path),
+      removable: false,
+      stmt: "",
+      title: "Add statement",
+    });
+  }
+
+  function laneRow(
+    plan: LanePlan,
+    depth: number,
+    label: string,
+    extras: { editable?: boolean; title?: string } = {},
+  ): void {
+    const key = `lane:${laneId(plan.path)}`;
+    lanes.set(key, plan);
+    rows.push({
+      editable: extras.editable ?? false,
+      fields: [],
+      index: 0,
+      indent: indentOf(depth),
+      key,
+      kind: "lane",
+      label,
+      lane: laneId(plan.path),
+      removable: Boolean(plan.remove),
+      stmt: "",
+      title: extras.title ?? `Remove ${label}`,
+    });
+  }
+
+  function actionRow(key: string, depth: number, label: string, run: ActionPlan): void {
+    actions.set(key, run);
+    rows.push({
+      editable: false,
+      fields: [],
+      index: 0,
+      indent: indentOf(depth),
+      key,
+      kind: "action",
+      label,
+      lane: "",
+      removable: false,
+      stmt: "",
+      title: label,
+    });
+  }
+
+  /** The operands of one card, and the plans that commit them. */
+  function fieldsOf(cardKey: string, plan: CardPlan): StatementFieldView[] {
+    const { commit, stmt } = plan;
+    const kind = statementKind(stmt);
+    const field = (prop: string) => `${cardKey}::${prop}`;
+    if (kind === "if") {
+      const s = stmt as JxIfStatement;
+      fields.set(field("if"), {
+        paint: (host) =>
+          mountOperandEditor(host, s.if, (v) => commit({ ...s, if: v } as JxStatement), {
+            ...operandOpts(opts),
+            label: "If",
+            prop: "if",
+          }),
+      });
+      return [emptyField({ key: field("if"), kind: "control", label: "If", prop: "if" })];
+    }
+    if (kind === "switch") {
+      const s = stmt as JxSwitchStatement;
+      fields.set(field("$switch"), {
+        paint: (host) =>
+          mountOperandEditor(host, s.$switch, (v) => commit({ ...s, $switch: v } as JxStatement), {
+            ...operandOpts(opts),
+            label: "Switch on",
+            prop: "$switch",
+          }),
+      });
+      return [
+        emptyField({ key: field("$switch"), kind: "control", label: "Switch on", prop: "$switch" }),
+      ];
+    }
+    if (kind === "dispatch") {
+      const s = stmt as JxDispatchStatement;
+      fields.set(field("dispatchEvent"), {
+        set: (value) => commit({ ...s, dispatchEvent: value } as JxStatement),
+      });
+      fields.set(field("detail"), {
+        paint: (host) =>
+          mountOperandEditor(
+            host,
+            s.detail ?? null,
+            (v) => commit({ ...s, detail: v } as JxStatement),
+            {
+              ...operandOpts(opts),
+              label: "Detail",
+              prop: "detail",
+            },
+          ),
+      });
+      fields.set(field("eventInit"), {
+        flag: (name, checked) => {
+          const { [name as "bubbles"]: _removed, ...rest } = s;
+          commit((checked ? { ...rest, [name]: true } : rest) as JxStatement);
+        },
+      });
+      return [
+        emptyField({
+          key: field("dispatchEvent"),
+          kind: emitNames.length > 0 ? "select" : "text",
+          label: "Event",
+          options: emitNames.map((n) => ({ label: n, value: n })),
+          placeholder: "event-name",
+          prop: "dispatchEvent",
+          value: s.dispatchEvent ?? "",
+        }),
+        emptyField({ key: field("detail"), kind: "control", label: "Detail", prop: "detail" }),
+        emptyField({
+          flags: [
+            {
+              checked: Boolean(s.bubbles),
+              key: `${field("eventInit")}::bubbles`,
+              label: "Bubbles",
+            },
+            {
+              checked: Boolean(s.composed),
+              key: `${field("eventInit")}::composed`,
+              label: "Composed",
+            },
+          ],
+          key: field("eventInit"),
+          kind: "flags",
+          label: "Options",
+          prop: "eventInit",
+        }),
+      ];
+    }
+    fields.set(field("expression"), {
+      paint: (host) =>
+        mountExpressionEditor(host, stmt, (n) => commit(n as JxStatement), {
+          allowEventRef: opts.allowEventRef,
+          stateDefs: opts.stateDefs,
+          stateEntries: opts.stateEntries ?? null,
+        }),
+    });
+    /* No label: the card header already names the statement, and the expression editor draws its
+       own Operator / Target / Value rows underneath. The surface hides an empty label node. */
+    return [emptyField({ key: field("expression"), kind: "control", prop: "expression" })];
+  }
+
+  /**
+   * One lane, in reading order: its cards, each card's own lanes beneath it, and the add row that
+   * ends it.
+   *
+   * `commitLane` is the LANE'S, never recomputed from the path. A `$switch`'s `default` is the case
+   * that proves it: emptying that lane must delete the key rather than leave `default: []` behind,
+   * and a card's delete button commits through the lane it is in — so a generic `withLaneList` here
+   * would write the empty array and the key would survive its last statement.
+   */
+  function walk(
+    list: JxStatement[],
+    path: LanePath,
+    depth: number,
+    commitLane: (next: JxStatement[]) => void = (next) =>
+      onChange(withLaneList(statements, path, next)),
+  ): void {
+    for (const [index, stmt] of list.entries()) {
+      const cardKey = `${laneId(path)}#${index}`;
+      const commit = (next: JxStatement) =>
+        commitLane(list.map((s, i) => (i === index ? next : s)));
+      const plan: CardPlan = { commit, commitLane, index, list, stmt };
+      cards.set(cardKey, plan);
+      rows.push({
+        editable: false,
+        fields: fieldsOf(cardKey, plan),
+        index,
+        indent: indentOf(depth),
+        key: cardKey,
+        kind: "card",
+        label: kindLabel(stmt),
+        lane: laneId(path),
+        removable: false,
+        stmt: statementKind(stmt),
+        title: "Delete statement",
+      });
+
+      const kind = statementKind(stmt);
+      if (kind === "if") {
+        const s = stmt as JxIfStatement;
+        const thenPath = [...path, index, "then"];
+        const thenPlan = lanePlan(thenPath, s.then ?? []);
+        laneRow(thenPlan, depth + 1, "Then");
+        walk(s.then ?? [], thenPath, depth + 1, thenPlan.commit);
+        if (Array.isArray(s.else)) {
+          const elsePath = [...path, index, "else"];
+          const elsePlan: LanePlan = {
+            ...lanePlan(elsePath, s.else),
+            remove: () => {
+              const { else: _else, ...rest } = s;
+              commit(rest as JxStatement);
+            },
+          };
+          laneRow(elsePlan, depth + 1, "Else", { title: "Remove branch" });
+          walk(s.else, elsePath, depth + 1, elsePlan.commit);
+        } else {
+          actionRow(`act:${cardKey}:else`, depth + 1, "Add else", () =>
+            commit({ ...s, else: [] } as JxStatement),
+          );
+        }
+      } else if (kind === "switch") {
+        const s = stmt as JxSwitchStatement;
+        const cases = isJsonObject(s.cases) ? (s.cases as Record<string, JxStatement[]>) : {};
+        const entries = Object.entries(cases);
+        const setCases = (next: Record<string, JxStatement[]>) =>
+          commit({ ...s, cases: next } as JxStatement);
+        for (const [caseKey, caseList] of entries) {
+          const casePath = [...path, index, "cases", caseKey];
+          const list_ = Array.isArray(caseList) ? caseList : [];
+          const casePlan: LanePlan = {
+            ...lanePlan(casePath, list_),
+            remove: () => {
+              const next = { ...cases };
+              delete next[caseKey];
+              setCases(next);
+            },
+            rename: (value) => {
+              if (value === caseKey) {
+                return;
+              }
+              const next: Record<string, JxStatement[]> = {};
+              for (const [k, v] of entries) {
+                next[k === caseKey ? value : k] = v;
+              }
+              setCases(next);
+            },
+          };
+          laneRow(casePlan, depth + 1, caseKey, { editable: true, title: "Remove branch" });
+          walk(list_, casePath, depth + 1, casePlan.commit);
+        }
+        const defaultPath = [...path, index, "default"];
+        const defaultList = Array.isArray(s.default) ? s.default : [];
+        const defaultPlan: LanePlan = {
+          ...lanePlan(defaultPath, defaultList),
+          commit: (next) => {
+            /* The key goes with its last statement. A `default: []` left behind is a branch the
+               runtime still matches, so an emptied lane has to delete the key rather than clear it. */
+            if (next.length === 0) {
+              const { default: _default, ...rest } = s;
+              commit(rest as JxStatement);
+              return;
+            }
+            commit({ ...s, default: next } as JxStatement);
+          },
+        };
+        laneRow(defaultPlan, depth + 1, "Default");
+        walk(defaultList, defaultPath, depth + 1, defaultPlan.commit);
+        actionRow(`act:${cardKey}:case`, depth + 1, "Add case", () => {
+          let n = entries.length + 1;
+          let key = `case ${n}`;
+          while (Object.hasOwn(cases, key)) {
+            n += 1;
+            key = `case ${n}`;
+          }
+          setCases({ ...cases, [key]: [] });
+        });
+      }
+    }
+    addRow(lanePlan(path, list), depth);
+  }
+
+  walk(statements, [], 0);
+  return { actions, adds, cards, fields, lanes, rows };
+}
+
 // ─── Drag-reorder (pragmatic-drag-and-drop, per-lane) ────────────────────────
 
-/** Active DnD registration cleanup per editor root — replaced on every re-render. */
+/** Active DnD registration cleanup per editor host — replaced on every projection. */
 const dndRegistrations = new WeakMap<HTMLElement, () => void>();
 
 /**
- * Register drag-reorder on all statement rows under `root` (post-render, like registerLayersDnD).
- * Rows may only reorder within their own lane — the source's lane id must match the target's.
+ * Register drag-reorder on all statement rows under `root`.
+ *
+ * Rows may only reorder within their own lane — the source's lane id must match the target's — and
+ * the flat projection is what makes that a plain sibling comparison rather than a tree walk. This
+ * is an ISLAND (studio-ui-guidelines.md §9.4): the drag adapter measures and decorates real nodes,
+ * so it reads them from the mounted document rather than being handed them.
  */
 function registerStatementsDnD(
   root: HTMLElement,
@@ -220,7 +636,7 @@ function registerStatementsDnD(
     for (const row of root.querySelectorAll("[data-stmt-row]") as NodeListOf<HTMLElement>) {
       const laneId = row.dataset.stmtLane ?? "[]";
       const index = Math.trunc(Number(row.dataset.stmtIndex)) || 0;
-      const handle = row.querySelector(".statement-drag-handle");
+      const handle = row.querySelector('[part="drag"]');
 
       cleanups.push(
         combine(
@@ -238,10 +654,10 @@ function registerStatementsDnD(
               disableNativeDragPreview({ nativeSetDragImage });
             },
             onDragStart() {
-              row.classList.add("dragging");
+              row.dataset.dragging = "";
             },
             onDrop() {
-              row.classList.remove("dragging");
+              delete row.dataset.dragging;
             },
           }),
           dropTargetForElements({
@@ -270,11 +686,10 @@ function registerStatementsDnD(
             },
             onDrag({ self }: { self: { data: Record<string, unknown> } }) {
               const instruction = extractInstruction(self.data);
-              row.classList.toggle("drop-above", instruction?.type === "reorder-above");
-              row.classList.toggle("drop-below", instruction?.type === "reorder-below");
+              markDrop(row, instruction?.type);
             },
             onDragLeave() {
-              row.classList.remove("drop-above", "drop-below");
+              markDrop(row);
             },
             onDrop({
               self,
@@ -283,7 +698,7 @@ function registerStatementsDnD(
               self: { data: Record<string, unknown> };
               source: { data: Record<string, unknown> };
             }) {
-              row.classList.remove("drop-above", "drop-below");
+              markDrop(row);
               const instruction = extractInstruction(self.data);
               if (
                 !instruction ||
@@ -321,410 +736,123 @@ function registerStatementsDnD(
   });
 }
 
-// ─── Small shared widgets ────────────────────────────────────────────────────
-
-function operandOpts(opts: StatementEditorOpts) {
-  return {
-    allowEventRef: opts.allowEventRef,
-    depth: 0,
-    stateDefs: opts.stateDefs,
-    stateEntries: opts.stateEntries ?? null,
-  };
-}
-
-/** The "+ Add statement" picker appended to every lane. */
-function renderAddStatement(
-  list: JxStatement[],
-  commit: (next: JxStatement[]) => void,
-): TemplateResult {
-  return html`
-    <sp-picker
-      size="s"
-      quiet
-      class="statement-add"
-      label="+ Add statement"
-      placeholder="+ Add statement"
-      .value=${live("")}
-      @change=${(e: Event) => {
-        const kind = (e.target as HTMLInputElement).value;
-        const seed = STATEMENT_SEEDS[kind];
-        if (!seed) {
-          return;
-        }
-        (e.target as HTMLInputElement).value = "";
-        commit([...list, seed()]);
-      }}
-    >
-      <sp-menu-item value="set">Set state</sp-menu-item>
-      <sp-menu-item value="call">Call function</sp-menu-item>
-      <sp-menu-item value="if">If / Else</sp-menu-item>
-      <sp-menu-item value="switch">Switch</sp-menu-item>
-      <sp-menu-item value="dispatch">Dispatch event</sp-menu-item>
-    </sp-picker>
-  `;
-}
-
-/** An indented branch lane: header label (+ optional remove) above a nested statement list. */
-function renderLane(
-  label: string | TemplateResult,
-  list: JxStatement[],
-  commit: (next: JxStatement[]) => void,
-  opts: StatementEditorOpts,
-  lanePath: LanePath,
-  extras: { onRemove?: () => void } = {},
-): TemplateResult {
-  return html`
-    <div class="statement-lane">
-      <div class="statement-lane-header">
-        <span class="statement-lane-label">${label}</span>
-        ${
-          extras.onRemove
-            ? html`
-                <sp-action-button
-                  quiet
-                  size="xs"
-                  class="statement-lane-remove"
-                  title="Remove branch"
-                  @click=${extras.onRemove}
-                >
-                  <sp-icon-delete slot="icon"></sp-icon-delete>
-                </sp-action-button>
-              `
-            : nothing
-        }
-      </div>
-      ${renderStatementList(list, commit, opts, lanePath)}
-    </div>
-  `;
-}
-
-// ─── Kind-specific card bodies ───────────────────────────────────────────────
-
-function renderIfBody(
-  stmt: JxIfStatement,
-  commit: (next: JxStatement) => void,
-  opts: StatementEditorOpts,
-  lanePath: LanePath,
-  index: number,
-): TemplateResult {
-  return html`
-    ${renderFieldRow({
-      hasValue: false,
-      label: "If",
-      prop: "if",
-      widget: renderOperandEditor(
-        stmt.if,
-        (v) => commit({ ...stmt, if: v } as JxStatement),
-        operandOpts(opts),
-      ),
-    })}
-    ${renderLane("Then", stmt.then ?? [], (next) => commit({ ...stmt, then: next }), opts, [
-      ...lanePath,
-      index,
-      "then",
-    ])}
-    ${
-      Array.isArray(stmt.else)
-        ? renderLane(
-            "Else",
-            stmt.else,
-            (next) => commit({ ...stmt, else: next }),
-            opts,
-            [...lanePath, index, "else"],
-            {
-              onRemove: () => {
-                const { else: _else, ...rest } = stmt;
-                commit(rest as JxStatement);
-              },
-            },
-          )
-        : html`
-            <sp-action-button
-              quiet
-              size="s"
-              class="statement-add-else"
-              @click=${() => commit({ ...stmt, else: [] })}
-            >
-              + Add else
-            </sp-action-button>
-          `
-    }
-  `;
-}
-
-function renderSwitchBody(
-  stmt: JxSwitchStatement,
-  commit: (next: JxStatement) => void,
-  opts: StatementEditorOpts,
-  lanePath: LanePath,
-  index: number,
-): TemplateResult {
-  const cases = isJsonObject(stmt.cases) ? (stmt.cases as Record<string, JxStatement[]>) : {};
-  const entries = Object.entries(cases);
-  const setCases = (next: Record<string, JxStatement[]>) =>
-    commit({ ...stmt, cases: next } as JxStatement);
-
-  return html`
-    ${renderFieldRow({
-      hasValue: false,
-      label: "Switch on",
-      prop: "$switch",
-      widget: renderOperandEditor(
-        stmt.$switch,
-        (v) => commit({ ...stmt, $switch: v } as JxStatement),
-        operandOpts(opts),
-      ),
-    })}
-    ${entries.map(([key, list]) =>
-      renderLane(
-        html`
-          <sp-textfield
-            size="s"
-            class="statement-case-key"
-            placeholder="value"
-            .value=${live(key)}
-            @change=${(e: Event) => {
-              const newKey = (e.target as HTMLInputElement).value;
-              if (newKey === key) {
-                return;
-              }
-              const next: Record<string, JxStatement[]> = {};
-              for (const [k, v] of entries) {
-                next[k === key ? newKey : k] = v;
-              }
-              setCases(next);
-            }}
-          ></sp-textfield>
-        `,
-        Array.isArray(list) ? list : [],
-        (next) => setCases({ ...cases, [key]: next }),
-        opts,
-        [...lanePath, index, "cases", key],
-        {
-          onRemove: () => {
-            const next = { ...cases };
-            delete next[key];
-            setCases(next);
-          },
-        },
-      ),
-    )}
-    ${renderLane(
-      "Default",
-      Array.isArray(stmt.default) ? stmt.default : [],
-      (next) => {
-        if (next.length === 0) {
-          const { default: _default, ...rest } = stmt;
-          commit(rest as JxStatement);
-          return;
-        }
-        commit({ ...stmt, default: next } as JxStatement);
-      },
-      opts,
-      [...lanePath, index, "default"],
-    )}
-    <sp-action-button
-      quiet
-      size="s"
-      class="statement-add-case"
-      @click=${() => {
-        let n = entries.length + 1;
-        let key = `case ${n}`;
-        while (Object.hasOwn(cases, key)) {
-          n += 1;
-          key = `case ${n}`;
-        }
-        setCases({ ...cases, [key]: [] });
-      }}
-    >
-      + Add case
-    </sp-action-button>
-  `;
-}
-
-function renderDispatchBody(
-  stmt: JxDispatchStatement,
-  commit: (next: JxStatement) => void,
-  opts: StatementEditorOpts,
-): TemplateResult {
-  const emitNames = (opts.emits ?? [])
-    .map((e) => e.name)
-    .filter((n): n is string => typeof n === "string" && n.length > 0);
-  const commitName = (e: Event) =>
-    commit({ ...stmt, dispatchEvent: (e.target as HTMLInputElement).value } as JxStatement);
-  const toggle = (key: "bubbles" | "composed") => (e: Event) => {
-    const { checked } = e.target as HTMLInputElement;
-    const { [key]: _removed, ...rest } = stmt;
-    commit((checked ? { ...rest, [key]: true } : rest) as JxStatement);
-  };
-
-  return html`
-    ${renderFieldRow({
-      hasValue: false,
-      label: "Event",
-      prop: "dispatchEvent",
-      widget:
-        emitNames.length > 0
-          ? html`
-              <sp-combobox
-                size="s"
-                allows-custom-value
-                class="statement-dispatch-name"
-                .value=${live(stmt.dispatchEvent ?? "")}
-                @change=${commitName}
-              >
-                ${emitNames.map((n) => html`<sp-menu-item value=${n}>${n}</sp-menu-item>`)}
-              </sp-combobox>
-            `
-          : html`
-              <sp-textfield
-                size="s"
-                class="statement-dispatch-name"
-                placeholder="event-name"
-                .value=${live(stmt.dispatchEvent ?? "")}
-                @input=${commitName}
-              ></sp-textfield>
-            `,
-    })}
-    ${renderFieldRow({
-      hasValue: false,
-      label: "Detail",
-      prop: "detail",
-      widget: renderOperandEditor(
-        stmt.detail ?? null,
-        (v) => commit({ ...stmt, detail: v } as JxStatement),
-        operandOpts(opts),
-      ),
-    })}
-    ${renderFieldRow({
-      hasValue: false,
-      label: "Options",
-      prop: "eventInit",
-      widget: html`
-        <div class="statement-dispatch-options">
-          <sp-checkbox
-            size="s"
-            class="statement-dispatch-bubbles"
-            ?checked=${Boolean(stmt.bubbles)}
-            @change=${toggle("bubbles")}
-            >Bubbles</sp-checkbox
-          >
-          <sp-checkbox
-            size="s"
-            class="statement-dispatch-composed"
-            ?checked=${Boolean(stmt.composed)}
-            @change=${toggle("composed")}
-            >Composed</sp-checkbox
-          >
-        </div>
-      `,
-    })}
-  `;
-}
-
-// ─── Statement Card + List ───────────────────────────────────────────────────
-
-function renderStatementCard(
-  stmt: JxStatement,
-  index: number,
-  list: JxStatement[],
-  commitList: (next: JxStatement[]) => void,
-  opts: StatementEditorOpts,
-  lanePath: LanePath,
-): TemplateResult {
-  const kind = statementKind(stmt);
-  const commit = (next: JxStatement) => commitList(list.map((s, i) => (i === index ? next : s)));
-
-  let body: TemplateResult;
-  switch (kind) {
-    case "if": {
-      body = renderIfBody(stmt as JxIfStatement, commit, opts, lanePath, index);
-      break;
-    }
-    case "switch": {
-      body = renderSwitchBody(stmt as JxSwitchStatement, commit, opts, lanePath, index);
-      break;
-    }
-    case "dispatch": {
-      body = renderDispatchBody(stmt as JxDispatchStatement, commit, opts);
-      break;
-    }
-    default: {
-      body = renderExpressionEditor(stmt, (n) => commit(n as JxStatement), {
-        allowEventRef: opts.allowEventRef,
-        stateDefs: opts.stateDefs,
-        stateEntries: opts.stateEntries ?? null,
-      });
-      break;
-    }
+/** Where a drop would land, as data the surface's style block paints. */
+function markDrop(row: HTMLElement, type?: string): void {
+  if (type === "reorder-above") {
+    row.dataset.drop = "above";
+  } else if (type === "reorder-below") {
+    row.dataset.drop = "below";
+  } else {
+    delete row.dataset.drop;
   }
-
-  return html`
-    <div
-      class="statement-card"
-      data-stmt-row
-      data-stmt-kind=${kind}
-      data-stmt-lane=${JSON.stringify(lanePath)}
-      data-stmt-index=${index}
-    >
-      <div class="statement-card-header">
-        <span class="statement-drag-handle" title="Drag to reorder">⠿</span>
-        <span class="statement-kind-label">${kindLabel(stmt)}</span>
-        <sp-action-button
-          quiet
-          size="xs"
-          class="statement-delete"
-          title="Delete statement"
-          @click=${() => commitList(list.filter((_, i) => i !== index))}
-        >
-          <sp-icon-delete slot="icon"></sp-icon-delete>
-        </sp-action-button>
-      </div>
-      <div class="statement-card-body">${body}</div>
-    </div>
-  `;
-}
-
-/** One lane's vertical card list on its connector line, ending in the add-statement picker. */
-function renderStatementList(
-  list: JxStatement[],
-  commitList: (next: JxStatement[]) => void,
-  opts: StatementEditorOpts,
-  lanePath: LanePath,
-): TemplateResult {
-  return html`
-    <div class="statement-list">
-      ${list.map((stmt, index) =>
-        renderStatementCard(stmt, index, list, commitList, opts, lanePath),
-      )}
-      ${renderAddStatement(list, commitList)}
-    </div>
-  `;
 }
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
+/** Every operand host a standing editor has been handed, so an update can repaint it. */
+const islandHosts = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
+
 /**
- * Render a structured function body (spec §20) as an editable statement-card list. `onChange`
- * receives a fresh statement array on every edit; the input array is never mutated.
+ * Draw a structured function body (spec §20) into `host`, or bring the one already there up to
+ * date. `onChange` receives a fresh statement array on every edit; the input array is never
+ * mutated.
+ *
+ * The host belongs to the CALLER — a lit template renders an empty element for it, or another
+ * document renders `[part="statements-host"]` — because a document clears the host it is given and
+ * lit renders beside foreign nodes, so the two can never share a container.
+ *
+ * @param {HTMLElement} host
+ * @param {JxStatement[]} statements
+ * @param {(next: JxStatement[]) => void} onChange
+ * @param {StatementEditorOpts} opts
  */
-export function renderStatementEditor(
+export function mountStatementEditor(
+  host: HTMLElement,
   statements: JxStatement[],
   onChange: (next: JxStatement[]) => void,
   opts: StatementEditorOpts,
-): TemplateResult {
+): void {
+  /* An entry the reader collapsed, or a handler they unbound, takes its host out of the page and
+     nothing else in the chain hears about it — the panel around it simply renders something else.
+     Sweeping here is the one moment this module is guaranteed to run. */
+  disposeDetachedStatementEditors();
   const safe = Array.isArray(statements) ? statements : [];
-  return html`
-    <div
-      class="statement-editor"
-      data-jx-region=${opts.region}
-      ${ref((el) => {
-        if (el) {
-          registerStatementsDnD(el as HTMLElement, safe, onChange);
+  const projection = flattenStatements(safe, onChange, opts);
+  let hosts = islandHosts.get(host);
+  if (!hosts) {
+    hosts = new Map<string, HTMLElement>();
+    islandHosts.set(host, hosts);
+  }
+  const held = hosts;
+
+  const paint = (id: string, slot: HTMLElement): void => {
+    projection.fields.get(id)?.paint?.(slot);
+  };
+
+  renderStatementsSurface(
+    host,
+    projection.rows,
+    opts.region,
+    {
+      act: (key) => projection.actions.get(key)?.(),
+      add: (key, anchor) => {
+        const plan = projection.adds.get(key);
+        if (!plan) {
+          return;
         }
-      })}
-    >
-      ${renderStatementList(safe, onChange, opts, [])}
-    </div>
-  `;
+        openMenu({
+          label: "Add statement",
+          opener: anchor,
+          region: "statement-add",
+          rows: STATEMENT_CHOICES.map((choice) => ({
+            destructive: false,
+            disabled: false,
+            dividerAbove: false,
+            id: choice.value,
+            title: choice.label,
+          })),
+          run: (id) => {
+            const seed = STATEMENT_SEEDS[id];
+            if (seed) {
+              plan.commit([...plan.list, seed()]);
+            }
+          },
+        });
+      },
+      remove: (key) => {
+        const lane = projection.lanes.get(key);
+        if (lane) {
+          lane.remove?.();
+          return;
+        }
+        const card = projection.cards.get(key);
+        card?.commitLane(card.list.filter((_, i) => i !== card.index));
+      },
+      rename: (key, value) => projection.lanes.get(key)?.rename?.(value),
+      setField: (key, value) => projection.fields.get(key)?.set?.(value),
+      setFlag: (key, checked) => {
+        const at = key.lastIndexOf("::");
+        projection.fields.get(key.slice(0, at))?.flag?.(key.slice(at + 2), checked);
+      },
+    },
+    {
+      controlSlot: (id, slot) => {
+        held.set(id, slot);
+        paint(id, slot);
+      },
+    },
+  );
+
+  /* Repaint the hosts that were already standing. `onNodeCreated` fires once per node and a keyed
+     row keeps its own, so an operand whose statement changed under it would otherwise still be
+     showing the previous one's editor. A host whose field is gone is dropped rather than repainted. */
+  for (const [id, slot] of held) {
+    if (!projection.fields.has(id)) {
+      held.delete(id);
+      continue;
+    }
+    paint(id, slot);
+  }
+
+  registerStatementsDnD(host, safe, onChange);
 }

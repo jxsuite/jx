@@ -3,6 +3,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { StudioPlatform } from "@jxsuite/studio/types";
+import { KIT_TAGS } from "@jxsuite/ui/documents";
 
 try {
   GlobalRegistrator.register();
@@ -195,22 +196,98 @@ describe("RPC setup", () => {
     expect(() => handler({ path: "some/file.json" })).not.toThrow();
   });
 
-  test("updateReady message shows toast and restart button triggers applyUpdate", () => {
+  /**
+   * Raise one update notice and hand back the wrapper it appended.
+   *
+   * The newest, not the first: a test that leaves its own notice up would otherwise hand the next
+   * one somebody else's DOM, and every assertion below would still pass while measuring the wrong
+   * toast.
+   */
+  function raiseUpdateToast(version: string): HTMLElement {
     const handler = capturedRpcConfig!.handlers.messages.updateReady as (p: {
       version: string;
     }) => void;
-    handler({ version: "9.9.9" });
+    handler({ version });
+    const raised = [...document.body.querySelectorAll(".update-toast-container")].at(-1);
+    expect(raised).toBeDefined();
+    return raised as HTMLElement;
+  }
 
-    const container = document.body.querySelector(".update-toast-container");
-    expect(container).not.toBeNull();
-    expect(container!.textContent).toContain("9.9.9");
+  test("updateReady raises a kit toast whose recovery control triggers applyUpdate", () => {
+    const container = raiseUpdateToast("9.9.9");
+    expect(container.textContent).toContain("9.9.9");
 
+    const host = container.querySelector("jx-toast-host");
+    expect(host).not.toBeNull();
+    const toast = host!.querySelector("jx-toast");
+    expect(toast).not.toBeNull();
+    expect(toast!.hasAttribute("open")).toBe(true);
+    expect(toast!.getAttribute("variant")).toBe("info");
+
+    /* The recovery control is reachable by the slot the toast projects it through, which is the
+       whole of what a consumer promises the element: `jx-toast` draws its own dismiss button and
+       hosts exactly one control in `action`. This assertion stood as `querySelector("sp-button")`
+       and is re-authored rather than dropped — it is the same contract, addressed the kit's way. */
     const before = callsFor("updaterApplyUpdate").length;
-    const button = container!.querySelector("sp-button");
-    expect(button).not.toBeNull();
-    button!.dispatchEvent(new Event("click", { bubbles: true }));
+    const action = toast!.querySelector('[slot="action"]');
+    expect(action).not.toBeNull();
+    expect(action!.textContent).toContain("Restart to update");
+    action!.dispatchEvent(new Event("click", { bubbles: true }));
     expect(callsFor("updaterApplyUpdate").length).toBe(before + 1);
-    container!.remove();
+    container.remove();
+  });
+
+  /**
+   * An update nobody has answered is not an outcome that may retire itself, and `F8` belongs to
+   * Studio's own stack — two hosts in one document would each answer the press with their own first
+   * control and the reader would land wherever the last listener ran.
+   */
+  test("the notice is sticky and leaves the stack's hotkey to Studio", () => {
+    const container = raiseUpdateToast("1.2.3");
+    const host = container.querySelector("jx-toast-host")!;
+    expect(host.getAttribute("hotkey")).toBe("");
+    expect(host.getAttribute("live")).toBe("polite");
+    expect(container.querySelector("jx-toast")!.getAttribute("timeout")).toBe("0");
+    container.remove();
+  });
+
+  /**
+   * `close` is dispatched only when the element itself decided (ui.md §5.2), so the wrapper can
+   * follow it without ever answering a removal this code performed. Without this the body collects
+   * one dead wrapper per update message for the rest of the session.
+   */
+  test("the wrapper leaves with the toast it held", () => {
+    const container = raiseUpdateToast("4.5.6");
+    expect(container.isConnected).toBe(true);
+    container
+      .querySelector("jx-toast")!
+      .dispatchEvent(new CustomEvent("close", { bubbles: true, detail: { reason: "dismissed" } }));
+    expect(container.isConnected).toBe(false);
+  });
+
+  /**
+   * The tag names, held to the kit that defines them.
+   *
+   * This webview never registers an element of its own: `<sp-toast>` worked because the studio
+   * bundle happened to register Spectrum, and nothing in this package declared that or would have
+   * gone red when it stopped being true — which is how this call site became the last Spectrum
+   * consumer in the repository. The `@jxsuite/ui` devDependency exists so this assertion can read
+   * the kit's own list rather than a copy of it. It buys no CI routing that was missing: a kit
+   * change already reached this suite through `@jxsuite/studio`, which depends on the kit — the run
+   * was there all along and simply had nothing to say about the tag names.
+   */
+  test("every custom element the notice writes is one the kit defines", () => {
+    const container = raiseUpdateToast("7.8.9");
+    const tags = new Set(
+      [...container.querySelectorAll("*")]
+        .map((element) => element.tagName.toLowerCase())
+        .filter((tag) => tag.includes("-")),
+    );
+    expect(tags.size).toBeGreaterThan(0);
+    for (const tag of tags) {
+      expect(KIT_TAGS).toContain(tag);
+    }
+    container.remove();
   });
 });
 

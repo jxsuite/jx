@@ -1,94 +1,170 @@
+/**
+ * The Navigator's Page panel — `src/panels/head-panel.ts`, the flow, and
+ * `src/surfaces/panel-page.json`, the document it mounts — plus the merged-`$head` preview model
+ * that has no surface at all.
+ *
+ * **Everything visual is addressed by `part`, `role` or `data-prop`**, because the panel is a
+ * document: there is no `sp-textfield`, `sp-picker`, `.imports-section` or `.set-dot` left to find,
+ * and a document may emit no class at all. A section carries the `data-section` it is about and a
+ * row the `data-prop` a reader and `ui/regions.ts`'s `field:<prop>` grammar call it, so a query
+ * says which thing it is acting on rather than counting siblings.
+ *
+ * **Every paint is awaited.** `mountSurface` is asynchronous and each kit element settles its own
+ * template one `connectedCallback` after that, so the `render(); assert;` these tests used to do
+ * would now assert against an empty container. The host is also ATTACHED, because a kit element
+ * renders on connect and a detached one gets `<jx-textfield>` tags with nothing inside them.
+ *
+ * **An edit is made on the NATIVE control inside the kit element** (`[part="input"]` for a field,
+ * `[part="control"]` for a select or a checkbox), because that is what a reader's edit is: the
+ * element hears its own control's event and lets it bubble on. Writing the host's `value` property
+ * would move the element without ever telling the control.
+ *
+ * **The media picker is DOUBLED.** Its two behaviours reach the panel through a lazy `import()`, so
+ * without a double there is nothing to assert against — and two real dynamic imports of one module
+ * can race Bun's coverage recorder into dropping the file.
+ */
 import {
   flush,
   installMockPlatform,
   pointer,
-  renderInto,
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
-import {
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { nothing } from "lit-html";
+import { getPanel, resetPanels } from "../src/panels/panel-registry";
+import { closeAllTabs } from "../src/workspace/workspace";
+import { createCommandRegistry } from "../src/commands/registry";
+import { emptyContext } from "../src/commands/context";
+import { activeRegistry, setActiveRegistry } from "../src/commands/active-registry";
+
+import type { HeadLayers, SeoPreview } from "../src/panels/head-panel";
+import type { Tab } from "../src/tabs/tab";
+import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+
+/** Every browse and upload the panel asked the media picker for, in order. */
+const mediaCalls: string[] = [];
+let browseAnchor: HTMLElement | null = null;
+let browseCommit: ((val: string) => void) | null = null;
+let uploadCommit: ((val: string) => void) | null = null;
+void mock.module("../src/ui/media-picker.js", () => ({
+  invalidateMediaCache: () => {},
+  pickAndUpload: (onCommit: (val: string) => void) => {
+    mediaCalls.push("upload");
+    uploadCommit = onCommit;
+  },
+  showMediaPickerPopover: (anchor: HTMLElement, onCommit: (val: string) => void) => {
+    mediaCalls.push("browse");
+    browseAnchor = anchor;
+    browseCommit = onCommit;
+  },
+  uploadAndAssign: () => Promise.resolve(null),
+}));
+
+const {
   BUILD_FALLBACK_TITLE,
   buildSeoPreview,
   invalidateLayoutHeadCache,
   invalidateLayoutPickerCache,
   layoutDisplayName,
   layoutHeadEntries,
-  renderHeadTemplate,
+  registerPagePanel,
+  renderPagePanel,
   resolveMetaField,
   resolveSeoUrl,
   resolveTitleField,
   seoField,
   seoPreviewFor,
   visibleLength,
-} from "../src/panels/head-panel";
-import { invalidateLayoutCache } from "../src/site-context";
-import { closeAllTabs } from "../src/workspace/workspace";
-
-import type { HeadLayers, SeoPreview } from "../src/panels/head-panel";
-import type { Tab } from "../src/tabs/tab";
-import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+} = await import("../src/panels/head-panel");
+const { invalidateLayoutCache } = await import("../src/site-context");
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
 
-/** Run fn with setTimeout/clearTimeout replaced by immediate invocation (deterministic debounce). */
-function withImmediateTimers<T>(fn: () => T): T {
+/**
+ * Collect scheduled timers instead of running them, and honour cancellation.
+ *
+ * The one way to drive the debounce, and the reason there is no "fire every callback on the spot"
+ * variant beside it: that shape has to stub `clearTimeout` to a no-op, so a test written with it
+ * cannot tell a cancelled debounce from one that ran — which is exactly the distinction the
+ * pending-edit guard exists for — and the timer it failed to cancel stays on the REAL queue, to
+ * fire `LIVE_PREVIEW` later into whichever document the panel holds by then. This one records,
+ * cancels for real, and lets the test fire whatever survived.
+ */
+function withCapturedTimers<T>(fn: (runPending: () => void) => T): T {
   const origSet = globalThis.setTimeout;
   const origClear = globalThis.clearTimeout;
+  const pending = new Map<number, () => void>();
+  let next = 1;
   (globalThis as any).setTimeout = (cb: () => void) => {
-    cb();
-    return 0;
+    next += 1;
+    pending.set(next, cb);
+    return next;
   };
-  (globalThis as any).clearTimeout = () => {};
+  (globalThis as any).clearTimeout = (id: number) => {
+    pending.delete(id);
+  };
   try {
-    return fn();
+    return fn(() => {
+      const due = [...pending.values()];
+      pending.clear();
+      for (const cb of due) {
+        cb();
+      }
+    });
   } finally {
     globalThis.setTimeout = origSet;
     globalThis.clearTimeout = origClear;
   }
 }
 
-interface RenderResult {
-  container: HTMLElement;
+interface Drawn {
+  host: HTMLElement;
   doc: JxMutableNode;
   mutations: number;
   leftPanelRenders: number;
 }
 
-/** Render the head panel template around a doc, applying mutations directly to it. */
-async function renderHead(doc: Record<string, unknown>): Promise<RenderResult> {
-  const result: RenderResult = {
-    container: document.createElement("div"),
+/**
+ * Draw the panel into a fresh, attached host and let the document mount.
+ *
+ * A fresh host is also a fresh draft — the panel drops a half-typed tag when its content area is
+ * replaced — so each call starts with an empty add form without reaching into module state.
+ */
+async function draw(doc: Record<string, unknown>): Promise<Drawn> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const result: Drawn = {
     doc: doc as unknown as JxMutableNode,
+    host,
     leftPanelRenders: 0,
     mutations: 0,
   };
-  await renderInto(
-    renderHeadTemplate({
-      applyMutation: (fn) => {
-        result.mutations += 1;
-        fn(result.doc);
-      },
-      document: result.doc,
-      renderLeftPanel: () => {
-        result.leftPanelRenders += 1;
-      },
-    }),
-    result.container,
-  );
+  renderPagePanel(host, {
+    applyMutation: (fn) => {
+      result.mutations += 1;
+      fn(result.doc);
+    },
+    document: result.doc,
+    renderLeftPanel: () => {
+      result.leftPanelRenders += 1;
+    },
+  });
+  await flush(4);
   return result;
 }
 
-function sectionByTitle(container: HTMLElement, title: string): HTMLElement | null {
-  for (const sec of container.querySelectorAll(".imports-section")) {
-    const t = sec.querySelector(".imports-section-title")?.textContent ?? "";
-    if (t.startsWith(title)) {
-      return sec as HTMLElement;
-    }
-  }
-  return null;
+/** One band of the panel, by the name it is addressed under. */
+function section(host: HTMLElement, key: string): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="section"][data-section="${key}"]`);
 }
 
+/** A band's heading. */
+function heading(host: HTMLElement, key: string): string {
+  return section(host, key)?.querySelector('[part="title"]')?.textContent ?? "";
+}
+
+/** One row, by the name a reader and the inspector call it. */
 function row(scope: ParentNode, prop: string): HTMLElement {
   const el = scope.querySelector(`[data-prop="${prop}"]`);
   if (!el) {
@@ -97,19 +173,68 @@ function row(scope: ParentNode, prop: string): HTMLElement {
   return el as HTMLElement;
 }
 
-function fireChange(el: Element, value: string): void {
-  (el as any).value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+/** The kit element a row draws. */
+function widget(scope: ParentNode, prop: string): HTMLElement {
+  const el = row(scope, prop).querySelector('[part="widget"]');
+  if (!el) {
+    throw new Error(`row ${prop} draws no widget`);
+  }
+  return el as HTMLElement;
+}
+
+/** The native control inside a kit element — what a reader actually types into or picks from. */
+function control(scope: ParentNode, prop: string): HTMLInputElement {
+  const el = widget(scope, prop).querySelector<HTMLInputElement>(
+    '[part="input"], [part="control"]',
+  );
+  if (!el) {
+    throw new Error(`no native control inside the ${prop} widget`);
+  }
+  return el;
+}
+
+/** Type and commit, the way a reader does: the write and the event are both on the control. */
+function setAndFire(scope: ParentNode, prop: string, value: string, type = "change"): void {
+  const el = control(scope, prop);
+  el.value = value;
+  el.dispatchEvent(new Event(type, { bubbles: true }));
+}
+
+/** Press a row's clear dot. */
+function clearRow(scope: ParentNode, prop: string): void {
+  const chip = row(scope, prop).querySelector<HTMLElement>('[part="chip"]');
+  if (!chip) {
+    throw new Error(`row ${prop} has no clear chip`);
+  }
+  pointer(chip, "click");
+}
+
+/** Whether a row draws its clear dot at all — §4.2's "set on this document". */
+function hasChip(scope: ParentNode, prop: string): boolean {
+  return row(scope, prop).querySelector('[part="chip"]') !== null;
+}
+
+/** The labels a picker offers, in the order they are offered. */
+function options(scope: ParentNode, prop: string): string[] {
+  return [...widget(scope, prop).querySelectorAll('option[part="option"] [part="text"]')].map(
+    (t) => t.textContent?.trim() ?? "",
+  );
 }
 
 function metaContent(doc: any, attr: string, keyName: string): string | undefined {
-  const entry = (doc.$head ?? []).find(
+  return (doc.$head ?? []).find(
     (e: any) => e?.tagName === "meta" && e?.attributes?.[attr] === keyName,
-  );
-  return entry?.attributes?.content;
+  )?.attributes?.content;
 }
 
 beforeEach(() => {
+  mediaCalls.length = 0;
+  browseAnchor = null;
+  browseCommit = null;
+  uploadCommit = null;
+  for (const stale of document.querySelectorAll("body > div:not([id])")) {
+    stale.remove();
+  }
   installMockPlatform();
   resetStudioState();
   closeAllTabs();
@@ -119,115 +244,224 @@ beforeEach(() => {
 // ─── Page section ─────────────────────────────────────────────────────────────
 
 describe("page section", () => {
-  test("renders title with set-dot when present; clearing deletes doc.title", async () => {
-    const { container, doc } = await renderHead({ tagName: "div", title: "Hello" });
-    const titleRow = row(container, "title");
-    expect(titleRow.querySelector("sp-field-label")?.textContent).toBe("Title");
-    const dot = titleRow.querySelector(".set-dot");
-    expect(dot).toBeTruthy();
-    pointer(dot!, "click");
-    expect((doc as any).title).toBeUndefined();
+  test("renders title with a set dot when present; the dot deletes doc.title", async () => {
+    const drawn = await draw({ tagName: "div", title: "Hello" });
+    const page = section(drawn.host, "page")!;
+    expect(row(page, "title").querySelector('[part="row-name"]')?.textContent).toBe("Title");
+    clearRow(page, "title");
+    expect((drawn.doc as any).title).toBeUndefined();
   });
 
   test("committing a title sets doc.title; whitespace-only deletes it", async () => {
-    const { container, doc } = await renderHead({ tagName: "div" });
-    expect(row(container, "title").querySelector(".set-dot")).toBeNull();
-    const field = row(container, "title").querySelector("sp-textfield")!;
-    fireChange(field, "My Page");
-    expect((doc as any).title).toBe("My Page");
-    fireChange(field, "   ");
-    expect((doc as any).title).toBeUndefined();
+    const drawn = await draw({ tagName: "div" });
+    const page = section(drawn.host, "page")!;
+    expect(hasChip(page, "title")).toBe(false);
+    setAndFire(page, "title", "My Page");
+    expect((drawn.doc as any).title).toBe("My Page");
+    setAndFire(page, "title", "   ");
+    expect((drawn.doc as any).title).toBeUndefined();
   });
 
   test("description meta upserts: add, replace in place, then remove", async () => {
-    const { container, doc } = await renderHead({ tagName: "div" });
-    const field = row(container, "description").querySelector("sp-textfield")!;
-    fireChange(field, "First");
-    expect(metaContent(doc, "name", "description")).toBe("First");
-    expect((doc as any).$head.length).toBe(1);
-    fireChange(field, "Second");
-    expect(metaContent(doc, "name", "description")).toBe("Second");
-    expect((doc as any).$head.length).toBe(1); // Replaced, not appended
-    fireChange(field, "");
-    expect(metaContent(doc, "name", "description")).toBeUndefined();
-    expect((doc as any).$head.length).toBe(0);
+    const drawn = await draw({ tagName: "div" });
+    const page = section(drawn.host, "page")!;
+    setAndFire(page, "description", "First");
+    expect(metaContent(drawn.doc, "name", "description")).toBe("First");
+    expect((drawn.doc as any).$head.length).toBe(1);
+    setAndFire(page, "description", "Second");
+    expect(metaContent(drawn.doc, "name", "description")).toBe("Second");
+    expect((drawn.doc as any).$head.length).toBe(1); // Replaced, not appended
+    setAndFire(page, "description", "");
+    expect(metaContent(drawn.doc, "name", "description")).toBeUndefined();
+    expect((drawn.doc as any).$head.length).toBe(0);
   });
 
   test("viewport field gets the canonical placeholder", async () => {
-    const { container } = await renderHead({ tagName: "div" });
-    const field = row(container, "viewport").querySelector("sp-textfield")!;
-    expect(field.getAttribute("placeholder")).toBe("width=device-width, initial-scale=1");
+    const drawn = await draw({ tagName: "div" });
+    expect(control(section(drawn.host, "page")!, "viewport").getAttribute("placeholder")).toBe(
+      "width=device-width, initial-scale=1",
+    );
   });
 
-  test("icon row shows media picker; clear dot removes the link entry", async () => {
+  test("icon row draws the media control; the dot removes the link entry", async () => {
     const head: JxHeadEntry[] = [
       { attributes: { href: "/favicon.ico", rel: "icon" }, tagName: "link" },
     ];
-    const { container, doc } = await renderHead({ $head: head, tagName: "div" });
-    const iconRow = row(container, "icon");
-    expect(iconRow.querySelector(".media-picker")).toBeTruthy();
-    pointer(iconRow.querySelector(".set-dot")!, "click");
-    expect((doc as any).$head.length).toBe(0);
+    const drawn = await draw({ $head: head, tagName: "div" });
+    const page = section(drawn.host, "page")!;
+    expect(row(page, "icon").querySelector('[part="media"]')).not.toBeNull();
+    clearRow(page, "icon");
+    expect((drawn.doc as any).$head.length).toBe(0);
   });
 
-  test("icon media picker input upserts the link entry (add then replace)", async () => {
-    const { container, doc } = await renderHead({ tagName: "div" });
-    const field = row(container, "icon").querySelector(".media-picker sp-textfield")!;
-    withImmediateTimers(() => {
-      (field as any).value = "/icon.svg";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
+  test("the icon field upserts the link entry (add, then replace in place)", async () => {
+    const drawn = await draw({ tagName: "div" });
+    const page = section(drawn.host, "page")!;
+    setAndFire(page, "icon", "/icon.svg");
+    expect((drawn.doc as any).$head[0].attributes.href).toBe("/icon.svg");
+    setAndFire(page, "icon", "/icon2.svg");
+    expect((drawn.doc as any).$head.filter((e: any) => e?.attributes?.rel === "icon").length).toBe(
+      1,
+    );
+    expect((drawn.doc as any).$head[0].attributes.href).toBe("/icon2.svg");
+  });
+
+  test("typing into a field commits once, after the live-preview pause", async () => {
+    /* Captured rather than immediate timers, because `withImmediateTimers` stubs `clearTimeout` to
+       a no-op: the first keystroke's timer then survived the second, on the REAL queue, and fired
+       `LIVE_PREVIEW` later into whatever document the panel held by then — which is a stray
+       `description: half` in a test several hundred milliseconds down the file, appearing only when
+       the suite ran slowly enough. Cancelling for real is also the stronger assertion: a survivor
+       here would overwrite "whole" with "half" rather than escaping into another test. */
+    const drawn = await draw({ tagName: "div" });
+    const page = section(drawn.host, "page")!;
+    withCapturedTimers((runPending) => {
+      // Un-flushed: the reader is still typing, so nothing has been written.
+      setAndFire(page, "description", "half", "input");
+      expect(metaContent(drawn.doc, "name", "description")).toBeUndefined();
+      setAndFire(page, "description", "whole", "input");
+      runPending();
     });
-    const link = (doc as any).$head.find((e: any) => e?.attributes?.rel === "icon");
-    expect(link?.attributes?.href).toBe("/icon.svg");
-    withImmediateTimers(() => {
-      (field as any).value = "/icon2.svg";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(metaContent(drawn.doc, "name", "description")).toBe("whole");
+  });
+
+  test("a half-typed edit is dropped when the panel changes document, not landed on the next one", async () => {
+    /* The debounce belongs to the DOCUMENT it was typed into. The panel keeps its host across a tab
+       switch, so cancelling only on a new host let a queued commit outlive its subject and write,
+       `LIVE_PREVIEW` later, into whatever was open by then. */
+    const first = await draw({ tagName: "div" });
+    const next = { tagName: "section" } as unknown as JxMutableNode;
+
+    withCapturedTimers((runPending) => {
+      setAndFire(section(first.host, "page")!, "description", "half", "input");
+      renderPagePanel(first.host, {
+        applyMutation: (fn) => {
+          fn(next);
+        },
+        document: next,
+        renderLeftPanel: () => {},
+      });
+      runPending();
     });
-    expect((doc as any).$head.filter((e: any) => e?.attributes?.rel === "icon").length).toBe(1);
-    expect((doc as any).$head[0].attributes.href).toBe("/icon2.svg");
+
+    expect(metaContent(next, "name", "description")).toBeUndefined();
+    expect(metaContent(first.doc, "name", "description")).toBeUndefined();
+  });
+});
+
+// ─── The media picker's two behaviours ───────────────────────────────────────
+
+describe("media rows reach the shared picker rather than drawing one", () => {
+  test("Browse opens the popover under the button and commits what it returns", async () => {
+    const drawn = await draw({ tagName: "div" });
+    const page = section(drawn.host, "page")!;
+    const browse = row(page, "icon").querySelector<HTMLElement>('[part="browse"]')!;
+    pointer(browse, "click");
+    await flush(2);
+    expect(mediaCalls).toEqual(["browse"]);
+    expect(browseAnchor).toBe(browse);
+    browseCommit!("/from-browser.png");
+    expect((drawn.doc as any).$head[0].attributes.href).toBe("/from-browser.png");
+  });
+
+  test("Upload opens the OS picker and assigns what comes back", async () => {
+    const drawn = await draw({ tagName: "div" });
+    const og = section(drawn.host, "opengraph")!;
+    pointer(row(og, "og:image").querySelector<HTMLElement>('[part="upload"]')!, "click");
+    await flush(2);
+    expect(mediaCalls).toEqual(["upload"]);
+    uploadCommit!("/uploaded.png");
+    expect(metaContent(drawn.doc, "property", "og:image")).toBe("/uploaded.png");
+  });
+
+  test("an image value draws a thumbnail; a non-image draws none", async () => {
+    const withImage = await draw({
+      $head: [{ attributes: { content: "/card.png", property: "og:image" }, tagName: "meta" }],
+      tagName: "div",
+    });
+    expect(
+      row(section(withImage.host, "opengraph")!, "og:image").querySelector('[part="thumb"]'),
+    ).not.toBeNull();
+
+    const withText = await draw({
+      $head: [{ attributes: { content: "not-an-image", property: "og:image" }, tagName: "meta" }],
+      tagName: "div",
+    });
+    expect(
+      row(section(withText.host, "opengraph")!, "og:image").querySelector('[part="thumb"]'),
+    ).toBeNull();
   });
 });
 
 // ─── OpenGraph section ────────────────────────────────────────────────────────
 
 describe("opengraph section", () => {
-  test("og:description renders multiline; og:image renders a media picker", async () => {
-    const { container } = await renderHead({ tagName: "div" });
-    const og = sectionByTitle(container, "OpenGraph")!;
-    const descField = row(og, "og:description").querySelector("sp-textfield")!;
-    expect(descField.hasAttribute("multiline")).toBe(true);
-    expect(row(og, "og:image").querySelector(".media-picker")).toBeTruthy();
+  test("og:description is a multiline field; og:image draws the media control", async () => {
+    const drawn = await draw({ tagName: "div" });
+    const og = section(drawn.host, "opengraph")!;
+    // "Multiline" is a fact about the control a reader types into, not about an attribute.
+    expect(control(og, "og:description").tagName.toLowerCase()).toBe("textarea");
+    expect(row(og, "og:image").querySelector('[part="media"]')).not.toBeNull();
   });
 
-  test("og:image media picker commits a meta entry and its dot clears it", async () => {
+  test("og:image commits a meta entry and its dot clears it", async () => {
     const head: JxHeadEntry[] = [
       { attributes: { content: "/old.png", property: "og:image" }, tagName: "meta" },
     ];
-    const { container, doc } = await renderHead({ $head: head, tagName: "div" });
-    const og = sectionByTitle(container, "OpenGraph")!;
-    const imageRow = row(og, "og:image");
-    const field = imageRow.querySelector(".media-picker sp-textfield")!;
-    withImmediateTimers(() => {
-      (field as any).value = "/new.png";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(metaContent(doc, "property", "og:image")).toBe("/new.png");
-    pointer(imageRow.querySelector(".set-dot")!, "click");
-    expect(metaContent(doc, "property", "og:image")).toBeUndefined();
+    const drawn = await draw({ $head: head, tagName: "div" });
+    const og = section(drawn.host, "opengraph")!;
+    setAndFire(og, "og:image", "/new.png");
+    expect(metaContent(drawn.doc, "property", "og:image")).toBe("/new.png");
+    clearRow(og, "og:image");
+    expect(metaContent(drawn.doc, "property", "og:image")).toBeUndefined();
   });
 
-  test("og:title shows the existing value, commits trimmed updates, dot clears", async () => {
+  test("og:title shows the existing value, commits trimmed updates, and its dot clears", async () => {
     const head: JxHeadEntry[] = [
       { attributes: { content: "Old", property: "og:title" }, tagName: "meta" },
     ];
-    const { container, doc } = await renderHead({ $head: head, tagName: "div" });
-    const og = sectionByTitle(container, "OpenGraph")!;
-    const titleRow = row(og, "og:title");
-    expect((titleRow.querySelector("sp-textfield") as any).value).toBe("Old");
-    fireChange(titleRow.querySelector("sp-textfield")!, "  New OG  ");
-    expect(metaContent(doc, "property", "og:title")).toBe("New OG");
-    pointer(titleRow.querySelector(".set-dot")!, "click");
-    expect(metaContent(doc, "property", "og:title")).toBeUndefined();
+    const drawn = await draw({ $head: head, tagName: "div" });
+    const og = section(drawn.host, "opengraph")!;
+    expect(control(og, "og:title").value).toBe("Old");
+    setAndFire(og, "og:title", "  New OG  ");
+    expect(metaContent(drawn.doc, "property", "og:title")).toBe("New OG");
+    clearRow(og, "og:title");
+    expect(metaContent(drawn.doc, "property", "og:title")).toBeUndefined();
+  });
+});
+
+// ─── The door to Search appearance ───────────────────────────────────────────
+
+describe("the door to Search appearance", () => {
+  test("the button runs the shared command rather than opening the modal itself", async () => {
+    const ran: string[] = [];
+    const registry = createCommandRegistry({ getContext: emptyContext });
+    registry.register({
+      category: "Document",
+      id: "document.openSeo",
+      level: "document",
+      run: () => {
+        ran.push("document.openSeo");
+      },
+      title: "Search Appearance",
+      undo: "none",
+    });
+    setActiveRegistry(registry);
+    try {
+      const drawn = await draw({ tagName: "div" });
+      const button = section(drawn.host, "page")!.querySelector<HTMLElement>(
+        '[part="seo-button"]',
+      )!;
+      expect(button.textContent?.trim()).toBe("Search appearance…");
+      pointer(button, "click");
+      expect(ran).toEqual(["document.openSeo"]);
+      // Ran THROUGH the registry, which is still the active one: the button opened nothing itself.
+      expect(activeRegistry()).toBe(registry);
+      // One door per surface and only one of them: OpenGraph does not offer a second.
+      expect(drawn.host.querySelectorAll('[part="seo-button"]')).toHaveLength(1);
+    } finally {
+      setActiveRegistry(null);
+    }
   });
 });
 
@@ -262,113 +496,138 @@ describe("custom $head entries", () => {
     { tagName: "style", textContent: ".a{color:red}" } as JxHeadEntry,
   ];
 
-  test("filters managed/font entries and labels each custom entry", async () => {
-    const { container } = await renderHead({
-      $head: [...managed, ...fonts, ...custom],
-      tagName: "div",
-    });
-    const section = sectionByTitle(container, "Custom Tags")!;
-    expect(section.querySelector(".imports-count")?.textContent).toBe("6");
-    const names = [...section.querySelectorAll(".import-name")].map((n) => n.textContent);
-    expect(names).toEqual([
-      '<meta charset="utf8">',
-      '<script src="/app.js">',
-      '<link rel="canonical">',
-      '<meta name="generator">',
-      '<meta property="og:custom">',
-      "<style>",
+  /** The custom-tag rows, as the pair of strings each one prints. */
+  function tags(host: HTMLElement): { name: string; value: string }[] {
+    return [...section(host, "custom")!.querySelectorAll('[part="tag-row"]')].map((r) => ({
+      name: r.querySelector('[part="tag-name"]')?.textContent ?? "",
+      value: r.querySelector('[part="tag-value"]')?.textContent ?? "",
+    }));
+  }
+
+  test("filters managed and font entries and labels each custom entry", async () => {
+    const drawn = await draw({ $head: [...managed, ...fonts, ...custom], tagName: "div" });
+    expect(section(drawn.host, "custom")!.querySelector('[part="count"]')?.textContent).toBe("6");
+    expect(tags(drawn.host)).toEqual([
+      { name: '<meta charset="utf8">', value: "" },
+      { name: '<script src="/app.js">', value: "/app.js" },
+      { name: '<link rel="canonical">', value: "/c" },
+      { name: '<meta name="generator">', value: "Jx" },
+      { name: '<meta property="og:custom">', value: "x" },
+      { name: "<style>", value: ".a{color:red}" },
     ]);
-    const values = [...section.querySelectorAll(".import-path")].map((n) => n.textContent);
-    expect(values).toEqual(["", "/app.js", "/c", "Jx", "x", ".a{color:red}"]);
   });
 
-  test("an entry without a tagName is labeled unknown", async () => {
-    const { container } = await renderHead({
+  test("an entry without a tagName is labelled unknown", async () => {
+    const drawn = await draw({
       $head: [{ textContent: "?" } as unknown as JxHeadEntry],
       tagName: "div",
     });
-    const section = sectionByTitle(container, "Custom Tags")!;
-    expect(section.querySelector(".import-name")?.textContent).toBe("unknown");
+    expect(tags(drawn.host)[0]?.name).toBe("unknown");
   });
 
-  test("shows empty message when there are no custom entries", async () => {
-    const { container } = await renderHead({ $head: [...managed], tagName: "div" });
-    const section = sectionByTitle(container, "Custom Tags")!;
-    expect(section.querySelector(".empty-state-message")?.textContent).toContain(
+  test("says what custom tags are for when there are none", async () => {
+    const drawn = await draw({ $head: [...managed], tagName: "div" });
+    const band = section(drawn.host, "custom")!;
+    expect(band.querySelector('[part="empty"]')?.textContent).toContain(
       "Custom tags add your own meta, link and script elements",
     );
-    expect(section.querySelector(".imports-count")?.textContent).toBe("0");
+    expect(band.querySelector('[part="count"]')?.textContent).toBe("0");
   });
 
-  test("remove button splices the entry and re-renders the left panel", async () => {
-    const result = await renderHead({ $head: [...custom], tagName: "div" });
-    const section = sectionByTitle(result.container, "Custom Tags")!;
-    const firstRemove = section.querySelector(".import-row sp-action-button")!;
-    pointer(firstRemove, "click");
-    expect((result.doc as any).$head.length).toBe(5);
-    expect((result.doc as any).$head.some((e: any) => e?.attributes?.charset === "utf8")).toBe(
+  test("Remove splices the entry it names and re-renders the left panel", async () => {
+    const drawn = await draw({ $head: [...custom], tagName: "div" });
+    const first = section(drawn.host, "custom")!.querySelector('[part="tag-row"]')!;
+    // The button says which tag it takes away, so a screen reader is not left counting rows.
+    expect(
+      first.querySelector('[part="remove"] [part="control"]')?.getAttribute("aria-label"),
+    ).toBe('Remove <meta charset="utf8">');
+    pointer(first.querySelector('[part="remove"]')!, "click");
+    expect((drawn.doc as any).$head.length).toBe(5);
+    expect((drawn.doc as any).$head.some((e: any) => e?.attributes?.charset === "utf8")).toBe(
       false,
     );
-    expect(result.leftPanelRenders).toBe(1);
+    expect(drawn.leftPanelRenders).toBe(1);
   });
 });
 
 // ─── Add custom tag form ──────────────────────────────────────────────────────
 
 describe("add custom tag form", () => {
-  test("adds a meta entry by default and clears the inputs", async () => {
-    const result = await renderHead({ tagName: "div" });
-    const form = result.container.querySelector(".head-add-form")!;
-    const attr = form.querySelector(".head-add-attr") as any;
-    const val = form.querySelector(".head-add-val") as any;
-    attr.value = "author";
-    val.value = "Jane";
-    pointer(form.querySelector("sp-action-button")!, "click");
-    expect((result.doc as any).$head).toEqual([
+  /** One field of the add form, by the half of the entry it holds. */
+  function draft(host: HTMLElement, name: string): HTMLInputElement {
+    return host.querySelector(
+      `[part="add"] [data-field="${name}"] [part="input"], [part="add"] [data-field="${name}"] [part="control"]`,
+    ) as HTMLInputElement;
+  }
+
+  function type(host: HTMLElement, name: string, value: string): void {
+    const el = draft(host, name);
+    el.value = value;
+    el.dispatchEvent(new Event(name === "tag" ? "change" : "input", { bubbles: true }));
+  }
+
+  test("adds a meta entry by default and clears the typed fields", async () => {
+    const drawn = await draw({ tagName: "div" });
+    type(drawn.host, "attr", "author");
+    type(drawn.host, "value", "Jane");
+    await flush(2);
+    pointer(drawn.host.querySelector('[part="add-button"]')!, "click");
+    expect((drawn.doc as any).$head).toEqual([
       { attributes: { content: "Jane", name: "author" }, tagName: "meta" },
     ]);
-    expect(attr.value).toBe("");
-    expect(val.value).toBe("");
-    expect(result.leftPanelRenders).toBe(1);
+    await flush(2);
+    expect(draft(drawn.host, "attr").value).toBe("");
+    expect(draft(drawn.host, "value").value).toBe("");
+    expect(drawn.leftPanelRenders).toBe(1);
   });
 
   test("adds link and script entries with the right attribute mapping", async () => {
-    const result = await renderHead({ tagName: "div" });
-    const form = result.container.querySelector(".head-add-form")!;
-    const picker = form.querySelector(".head-add-tag") as any;
-    const attr = form.querySelector(".head-add-attr") as any;
-    const val = form.querySelector(".head-add-val") as any;
-    const button = form.querySelector("sp-action-button")!;
+    const drawn = await draw({ tagName: "div" });
+    const add = () => pointer(drawn.host.querySelector('[part="add-button"]')!, "click");
 
-    picker.value = "link";
-    attr.value = "preload";
-    val.value = "/x.css";
-    pointer(button, "click");
-    expect((result.doc as any).$head.at(-1)).toEqual({
+    type(drawn.host, "tag", "link");
+    type(drawn.host, "attr", "preload");
+    type(drawn.host, "value", "/x.css");
+    await flush(2);
+    add();
+    expect((drawn.doc as any).$head.at(-1)).toEqual({
       attributes: { href: "/x.css", rel: "preload" },
       tagName: "link",
     });
 
-    picker.value = "script";
-    attr.value = "src";
-    val.value = "/x.js";
-    pointer(button, "click");
-    expect((result.doc as any).$head.at(-1)).toEqual({
+    await flush(2);
+    type(drawn.host, "tag", "script");
+    type(drawn.host, "attr", "src");
+    type(drawn.host, "value", "/x.js");
+    await flush(2);
+    add();
+    expect((drawn.doc as any).$head.at(-1)).toEqual({
       attributes: { src: "/x.js" },
       tagName: "script",
     });
   });
 
-  test("does nothing when attribute or value is missing", async () => {
-    const result = await renderHead({ tagName: "div" });
-    const form = result.container.querySelector(".head-add-form")!;
-    const attr = form.querySelector(".head-add-attr") as any;
-    const val = form.querySelector(".head-add-val") as any;
-    attr.value = "only-attr";
-    val.value = "  ";
-    pointer(form.querySelector("sp-action-button")!, "click");
-    expect((result.doc as any).$head).toBeUndefined();
-    expect(result.mutations).toBe(0);
+  test("Enter in either field adds the entry", async () => {
+    const drawn = await draw({ tagName: "div" });
+    type(drawn.host, "attr", "robots");
+    type(drawn.host, "value", "noindex");
+    await flush(2);
+    draft(drawn.host, "value").dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+    );
+    expect((drawn.doc as any).$head).toEqual([
+      { attributes: { content: "noindex", name: "robots" }, tagName: "meta" },
+    ]);
+  });
+
+  test("does nothing when the attribute or the value is missing", async () => {
+    const drawn = await draw({ tagName: "div" });
+    type(drawn.host, "attr", "only-attr");
+    type(drawn.host, "value", "  ");
+    await flush(2);
+    pointer(drawn.host.querySelector('[part="add-button"]')!, "click");
+    expect((drawn.doc as any).$head).toBeUndefined();
+    expect(drawn.mutations).toBe(0);
   });
 });
 
@@ -406,74 +665,70 @@ describe("layout section", () => {
   test("absent for non-site projects and non-page paths", async () => {
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     resetWorkspaceWithTab(undefined, { documentPath: "components/x.json" });
-    let { container } = await renderHead({ tagName: "div" });
-    expect(sectionByTitle(container, "Layout")).toBeNull();
+    let drawn = await draw({ tagName: "div" });
+    expect(section(drawn.host, "layout")).toBeNull();
 
     resetStudioState({ isSiteProject: false, projectConfig: {} });
     resetWorkspaceWithTab(undefined, { documentPath: "pages/x.json" });
-    ({ container } = await renderHead({ tagName: "div" }));
-    expect(sectionByTitle(container, "Layout")).toBeNull();
+    drawn = await draw({ tagName: "div" });
+    expect(section(drawn.host, "layout")).toBeNull();
   });
 
-  test("first render kicks off the layout listing; second render shows the picker", async () => {
+  test("first paint kicks off the layout listing; the next one shows the picker", async () => {
     const counters = setupSitePage();
-    const first = await renderHead({ tagName: "div" });
-    expect(sectionByTitle(first.container, "Layout")).toBeNull(); // Still loading
+    const first = await draw({ tagName: "div" });
+    expect(section(first.host, "layout")).toBeNull(); // Still loading
     await flush();
     expect(counters.layoutLists).toBe(1);
 
-    const second = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(second.container, "Layout")!;
-    const items = [...section.querySelectorAll("sp-menu-item")].map((i) => i.textContent?.trim());
-    expect(items[0]).toBe("Default (Main Layout)");
-    expect(items[1]).toBe("None");
-    expect(items.slice(2)).toEqual(["Main Layout", "Blog"]); // Only .json files, prettified
-    expect(section.querySelector("sp-picker")?.getAttribute("value")).toBe("__default__");
+    const second = await draw({ tagName: "div" });
+    const layout = section(second.host, "layout")!;
+    expect(options(layout, "layout")).toEqual([
+      "Default (Main Layout)",
+      "None",
+      "Main Layout",
+      "Blog",
+    ]); // Only .json files, prettified
+    expect(control(layout, "layout").value).toBe("__default__");
   });
 
-  test("works with ./pages/ prefixed paths and reflects explicit/false layouts", async () => {
+  test("works with ./pages/ prefixed paths and reflects explicit and false layouts", async () => {
     setupSitePage("./pages/about.json");
-    await renderHead({ tagName: "div" });
+    await draw({ tagName: "div" });
     await flush();
 
-    let { container } = await renderHead({
-      $layout: "./layouts/blog.json",
-      tagName: "div",
-    });
-    let picker = sectionByTitle(container, "Layout")!.querySelector("sp-picker")!;
-    expect(picker.getAttribute("value")).toBe("./layouts/blog.json");
+    let drawn = await draw({ $layout: "./layouts/blog.json", tagName: "div" });
+    expect(control(section(drawn.host, "layout")!, "layout").value).toBe("./layouts/blog.json");
 
-    ({ container } = await renderHead({ $layout: false, tagName: "div" }));
-    picker = sectionByTitle(container, "Layout")!.querySelector("sp-picker")!;
-    expect(picker.getAttribute("value")).toBe("__none__");
+    drawn = await draw({ $layout: false, tagName: "div" });
+    expect(control(section(drawn.host, "layout")!, "layout").value).toBe("__none__");
   });
 
-  test("picker changes write $layout: path, false, or delete", async () => {
+  test("picking writes $layout as a path, as false, or deletes it", async () => {
     setupSitePage();
-    await renderHead({ tagName: "div" });
+    await draw({ tagName: "div" });
     await flush();
-    const result = await renderHead({ tagName: "div" });
-    const picker = sectionByTitle(result.container, "Layout")!.querySelector("sp-picker")!;
+    const drawn = await draw({ tagName: "div" });
+    const layout = section(drawn.host, "layout")!;
 
-    fireChange(picker, "./layouts/blog.json");
-    expect((result.doc as any).$layout).toBe("./layouts/blog.json");
-    fireChange(picker, "__none__");
-    expect((result.doc as any).$layout).toBe(false);
-    fireChange(picker, "__default__");
-    expect("$layout" in (result.doc as any)).toBe(false);
+    setAndFire(layout, "layout", "./layouts/blog.json");
+    expect((drawn.doc as any).$layout).toBe("./layouts/blog.json");
+    setAndFire(layout, "layout", "__none__");
+    expect((drawn.doc as any).$layout).toBe(false);
+    setAndFire(layout, "layout", "__default__");
+    expect("$layout" in (drawn.doc as any)).toBe(false);
   });
 
-  test("clear dot removes an explicit $layout", async () => {
+  test("the clear dot removes an explicit $layout", async () => {
     setupSitePage();
-    await renderHead({ tagName: "div" });
+    await draw({ tagName: "div" });
     await flush();
-    const result = await renderHead({ $layout: "./layouts/blog.json", tagName: "div" });
-    const section = sectionByTitle(result.container, "Layout")!;
-    pointer(section.querySelector(".set-dot")!, "click");
-    expect((result.doc as any).$layout).toBeUndefined();
+    const drawn = await draw({ $layout: "./layouts/blog.json", tagName: "div" });
+    clearRow(section(drawn.host, "layout")!, "layout");
+    expect((drawn.doc as any).$layout).toBeUndefined();
   });
 
-  test("listing failure falls back to an empty layout list", async () => {
+  test("a listing failure falls back to an empty layout list", async () => {
     installMockPlatform({
       listDirectory: async () => {
         throw new Error("boom");
@@ -481,21 +736,20 @@ describe("layout section", () => {
     } as any);
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     resetWorkspaceWithTab(undefined, { documentPath: "pages/p.json" });
-    await renderHead({ tagName: "div" });
+    await draw({ tagName: "div" });
     await flush();
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Layout")!;
-    const items = [...section.querySelectorAll("sp-menu-item")].map((i) => i.textContent?.trim());
-    expect(items).toEqual(["Default", "None"]); // No default label without config
+    const drawn = await draw({ tagName: "div" });
+    // No default label without config.
+    expect(options(section(drawn.host, "layout")!, "layout")).toEqual(["Default", "None"]);
   });
 
-  test("invalidateLayoutPickerCache forces a reload on next render", async () => {
+  test("invalidateLayoutPickerCache forces a reload on the next paint", async () => {
     const counters = setupSitePage();
-    await renderHead({ tagName: "div" });
+    await draw({ tagName: "div" });
     await flush();
     invalidateLayoutPickerCache();
-    const { container } = await renderHead({ tagName: "div" });
-    expect(sectionByTitle(container, "Layout")).toBeNull(); // Loading again
+    const drawn = await draw({ tagName: "div" });
+    expect(section(drawn.host, "layout")).toBeNull(); // Loading again
     await flush();
     expect(counters.layoutLists).toBe(2);
   });
@@ -539,130 +793,217 @@ describe("frontmatter section", () => {
   test("hidden in component mode even when frontmatter exists", async () => {
     const tab = setupContentTab({ description: "x" });
     tab.doc.mode = "component";
-    const { container } = await renderHead({ tagName: "div" });
-    expect(sectionByTitle(container, "Frontmatter")).toBeNull();
+    const drawn = await draw({ tagName: "div" });
+    expect(section(drawn.host, "frontmatter")).toBeNull();
   });
 
-  test("schema-driven fields render with type-specific widgets and required marker", async () => {
+  test("schema-driven fields draw type-specific controls and the required marker", async () => {
     setupContentTab({ draft: true, extra: "loose", tags: ["a", "b"], title: "skip me" });
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter (posts)")!;
-    expect(section).toBeTruthy();
-    expect(section.querySelector('[data-prop="title"]')).toBeNull(); // Reserved
-    expect(row(section, "draft").querySelector("sp-checkbox")).toBeTruthy();
-    expect((row(section, "tags").querySelector("sp-textfield") as any).value).toBe("a, b");
-    expect(row(section, "category").querySelector("sp-picker")).toBeTruthy();
-    const catOptions = [...row(section, "category").querySelectorAll("sp-menu-item")].map(
-      (i) => i.textContent,
-    );
-    expect(catOptions).toEqual(["news", "guide"]);
-    expect(row(section, "hero").querySelector(".media-picker")).toBeTruthy();
-    expect(row(section, "weight").querySelector("sp-number-field")).toBeTruthy();
-    expect(row(section, "date").querySelector("sp-textfield")?.getAttribute("placeholder")).toBe(
-      "YYYY-MM-DD",
-    );
-    expect(row(section, "description").querySelector("sp-field-label")?.textContent).toBe(
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+    expect(heading(drawn.host, "frontmatter")).toBe("Frontmatter (posts)");
+    expect(fm.querySelector('[data-prop="title"]')).toBeNull(); // Reserved by the Title row
+    expect(widget(fm, "draft").tagName.toLowerCase()).toBe("jx-checkbox");
+    expect(control(fm, "tags").value).toBe("a, b");
+    expect(widget(fm, "category").tagName.toLowerCase()).toBe("jx-select");
+    expect(options(fm, "category")).toEqual(["—", "news", "guide"]);
+    expect(row(fm, "hero").querySelector('[part="media"]')).not.toBeNull();
+    expect(widget(fm, "weight").tagName.toLowerCase()).toBe("jx-number-field");
+    expect(control(fm, "date").getAttribute("placeholder")).toBe("YYYY-MM-DD");
+    expect(row(fm, "description").querySelector('[part="row-name"]')?.textContent).toBe(
       "Description *",
     );
-    // Loose fm key not in schema still renders as a string field
-    expect((row(section, "extra").querySelector("sp-textfield") as any).value).toBe("loose");
+    // A loose frontmatter key not in the schema still draws as a string field.
+    expect(control(fm, "extra").value).toBe("loose");
   });
 
   test("matches the content type when the document path uses Windows backslashes", async () => {
     // The desktop platform on Windows hands the studio backslash paths.
-    // Format-driven widgets (e.g. the image picker) must still resolve from the schema.
+    // Format-driven controls (e.g. the image picker) must still resolve from the schema.
     setupContentTab({ hero: "x.png" }, true, String.raw`posts\hello.json`);
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter (posts)")!;
-    expect(section).toBeTruthy();
-    expect(row(section, "hero").querySelector(".media-picker")).toBeTruthy();
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+    expect(heading(drawn.host, "frontmatter")).toBe("Frontmatter (posts)");
+    expect(row(fm, "hero").querySelector('[part="media"]')).not.toBeNull();
   });
 
-  test("checkbox toggles boolean frontmatter; unchecking deletes the field", async () => {
+  test("the checkbox toggles boolean frontmatter; unchecking deletes the field", async () => {
     const tab = setupContentTab({});
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter")!;
-    const checkbox = row(section, "draft").querySelector("sp-checkbox") as any;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    const drawn = await draw({ tagName: "div" });
+    const box = control(section(drawn.host, "frontmatter")!, "draft");
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
     expect(tab.doc.content.frontmatter.draft).toBe(true);
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    box.checked = false;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
     expect("draft" in tab.doc.content.frontmatter).toBe(false);
   });
 
-  test("array field parses comma-separated input and clears on empty", async () => {
+  test("an array field parses comma-separated input and clears on empty", async () => {
     const tab = setupContentTab({});
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter")!;
-    const field = row(section, "tags").querySelector("sp-textfield")!;
-    fireChange(field, "x, y ,, z");
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+    setAndFire(fm, "tags", "x, y ,, z");
     expect(tab.doc.content.frontmatter.tags).toEqual(["x", "y", "z"]);
-    fireChange(field, "");
+    setAndFire(fm, "tags", "");
     expect("tags" in tab.doc.content.frontmatter).toBe(false);
   });
 
-  test("enum picker sets and clears the field", async () => {
+  test("an enum picker sets and clears the field", async () => {
     const tab = setupContentTab({ category: "news" });
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter")!;
-    const picker = row(section, "category").querySelector("sp-picker")!;
-    fireChange(picker, "guide");
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+    setAndFire(fm, "category", "guide");
     expect(tab.doc.content.frontmatter.category).toBe("guide");
-    fireChange(picker, "");
+    setAndFire(fm, "category", "");
     expect("category" in tab.doc.content.frontmatter).toBe(false);
   });
 
-  test("number field commits numbers and deletes on empty or NaN", async () => {
+  test("a number field commits numbers and deletes on empty or NaN", async () => {
     const tab = setupContentTab({ weight: 1 });
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter")!;
-    const field = row(section, "weight").querySelector("sp-number-field")!;
-    fireChange(field, "42");
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+    setAndFire(fm, "weight", "42");
     expect(tab.doc.content.frontmatter.weight).toBe(42);
-    fireChange(field, "");
+    setAndFire(fm, "weight", "");
     expect("weight" in tab.doc.content.frontmatter).toBe(false);
-    fireChange(field, "abc");
+    setAndFire(fm, "weight", "abc");
     expect("weight" in tab.doc.content.frontmatter).toBe(false);
   });
 
-  test("string field commits text; clear dot deletes the value", async () => {
+  test("a string field commits text; the clear dot deletes the value", async () => {
     const tab = setupContentTab({ description: "old" });
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter")!;
-    const descRow = row(section, "description");
-    fireChange(descRow.querySelector("sp-textfield")!, "fresh");
+    const drawn = await draw({ tagName: "div" });
+    setAndFire(section(drawn.host, "frontmatter")!, "description", "fresh");
     expect(tab.doc.content.frontmatter.description).toBe("fresh");
 
-    // Re-render to get a dot bound to the new value, then clear it.
-    const second = await renderHead({ tagName: "div" });
-    const dot = row(sectionByTitle(second.container, "Frontmatter")!, "description").querySelector(
-      ".set-dot",
-    )!;
-    pointer(dot, "click");
+    // Repaint to get a dot bound to the new value, then clear it.
+    const second = await draw({ tagName: "div" });
+    clearRow(section(second.host, "frontmatter")!, "description");
     expect("description" in tab.doc.content.frontmatter).toBe(false);
   });
 
-  test("without a schema, fields are inferred from frontmatter values", async () => {
+  test("without a schema, fields are inferred from the frontmatter values", async () => {
     setupContentTab(
       { $hidden: "skip", published: false, publishDate: "2026-01-01", title: "skip" },
       false,
     );
-    const { container } = await renderHead({ tagName: "div" });
-    const section = sectionByTitle(container, "Frontmatter")!;
-    expect(section.querySelector(".imports-section-title")?.textContent).toBe("Frontmatter");
-    expect(row(section, "published").querySelector("sp-checkbox")).toBeTruthy();
-    expect(row(section, "publishDate").querySelector("sp-field-label")?.textContent).toBe(
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+    expect(heading(drawn.host, "frontmatter")).toBe("Frontmatter");
+    expect(widget(fm, "published").tagName.toLowerCase()).toBe("jx-checkbox");
+    expect(row(fm, "publishDate").querySelector('[part="row-name"]')?.textContent).toBe(
       "Publish Date",
     );
-    expect(section.querySelector('[data-prop="$hidden"]')).toBeNull();
-    expect(section.querySelector('[data-prop="title"]')).toBeNull();
+    expect(fm.querySelector('[data-prop="$hidden"]')).toBeNull();
+    expect(fm.querySelector('[data-prop="title"]')).toBeNull();
   });
 
-  test("section is omitted entirely with no schema and no displayable fields", async () => {
+  test("the section is omitted entirely with no schema and no displayable fields", async () => {
     setupContentTab({ $internal: "x", title: "only reserved" }, false);
-    const { container } = await renderHead({ tagName: "div" });
-    expect(sectionByTitle(container, "Frontmatter")).toBeNull();
+    const drawn = await draw({ tagName: "div" });
+    expect(section(drawn.host, "frontmatter")).toBeNull();
+  });
+});
+
+// ─── The panel record, and which document it is drawn for ────────────────────
+
+/*
+ * These four moved here from `tests/left-panel.test.ts`, where they read the arguments the
+ * Navigator handed a lit renderer. The renderer is gone, so what they assert is asserted through
+ * the record itself: `afterRender` mounts the document, and the contract is which document it draws
+ * and where a commit lands. `left-panel.test.ts` goes on covering the Navigator's own routing.
+ */
+describe("the Page panel record", () => {
+  /**
+   * Run the registered panel's `afterRender` against a body the Navigator would have drawn.
+   *
+   * The record is what is under test, so it is asked for by id rather than called directly: the
+   * mount seam a panel gets is `.panel-content` inside the body, and a record that returned markup
+   * instead would leave that node empty.
+   */
+  async function paint(tab: Tab): Promise<HTMLElement> {
+    resetPanels();
+    registerPagePanel();
+    const record = getPanel("page")!;
+    const body = document.createElement("div");
+    body.innerHTML = '<div class="panel-content"></div>';
+    document.body.append(body);
+    // `render` draws nothing: the document is mounted in `afterRender` and lit owns the body.
+    expect(record.render({ deps: {} as never, doc: null, rerender: () => {} })).toBe(nothing);
+    record.afterRender!(
+      {
+        deps: {} as never,
+        doc: {
+          canvas: null,
+          content: tab.doc.content,
+          document: tab.doc.document,
+          documentPath: tab.documentPath,
+          mode: tab.doc.mode,
+          selection: [],
+          ui: tab.session.ui,
+        },
+        rerender: () => {},
+      },
+      body,
+    );
+    await flush(4);
+    return body;
+  }
+
+  test("a JSON document is drawn from its root node and transacts mutations directly", async () => {
+    resetStudioState();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" }) as Tab;
+    const body = await paint(tab);
+    const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
+    setAndFire(page, "title", "Page title");
+    expect(tab.doc.document.title).toBe("Page title");
+    expect(tab.doc.dirty).toBe(true);
+  });
+
+  test("a content document is drawn from its frontmatter title and $head", async () => {
+    resetStudioState();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/a.md" }) as any;
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = {
+      $head: [{ attributes: { content: "d", name: "description" }, tagName: "meta" }],
+      title: "FM Title",
+    };
+    const body = await paint(tab as Tab);
+    const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
+    expect(control(page, "title").value).toBe("FM Title");
+    expect(control(page, "description").value).toBe("d");
+  });
+
+  test("a content document's title and $head are committed into its frontmatter", async () => {
+    resetStudioState();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/b.md" }) as any;
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { title: "Old" };
+    const body = await paint(tab as Tab);
+    const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
+    setAndFire(page, "title", "New");
+    expect(tab.doc.content.frontmatter.title).toBe("New");
+    setAndFire(page, "description", "Fresh");
+    expect(tab.doc.content.frontmatter.$head).toEqual([
+      { attributes: { content: "Fresh", name: "description" }, tagName: "meta" },
+    ]);
+    expect(tab.doc.dirty).toBe(true);
+  });
+
+  test("emptying the last $head entry clears the frontmatter key rather than leaving []", async () => {
+    resetStudioState();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/c.md" }) as any;
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = {
+      $head: [{ attributes: { content: "x", name: "description" }, tagName: "meta" }],
+      title: "Same",
+    };
+    const body = await paint(tab as Tab);
+    const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
+    setAndFire(page, "description", "");
+    expect(tab.doc.content.frontmatter.$head).toBeUndefined();
+    expect(tab.doc.content.frontmatter.title).toBe("Same");
   });
 });
 

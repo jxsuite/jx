@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
 // ─── Data Explorer ──────────────────────────────────────────────────────────
 
-import { html, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
+import { nothing } from "lit-html";
 import { activeTab } from "../workspace/workspace";
-import { renderOnly } from "../store";
 import { booleanArg, stringArg, stringProperty } from "../commands/command-args";
+import { renderDataTreeSurface } from "../surfaces/panel-data";
 import { registerPanel } from "./panel-registry";
+import type { PanelBody } from "./panel-registry";
+import type { DataTreeRow } from "../surfaces/panel-data";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /**
@@ -62,32 +63,48 @@ export function raiseDataLimit(path: string, kind: "items" | "keys" | "depth"): 
 }
 
 /**
- * One truncation marker: a button that shows more of what is already in hand.
+ * One truncation marker: a row the document draws as a button that shows more of what is in hand.
  *
- * It repaints through `renderOnly("leftPanel")` rather than a callback, because this renderer is
- * called from three places and threading a repaint through all of them to reach one `<button>`
- * would put a required callback on a pure formatter.
+ * It carries the subtree and the limit it raises rather than a callback. The press arrives back
+ * here through the surface's one action, so a pure formatter stays pure and there is a single
+ * repaint to reason about instead of one threaded through every caller.
  */
-function moreTemplate(
+function moreRow(
   path: string,
-  kind: "items" | "keys" | "depth",
+  limit: "items" | "keys" | "depth",
   indent: string,
-  label: string,
-  after?: () => string,
-) {
-  return html`<button
-    type="button"
-    class="data-leaf data-ellipsis data-more"
-    style="padding-left:${indent}"
-    title=${after?.() ?? `Show ${MORE_STEP} more`}
-    @click=${(e: Event) => {
-      e.stopPropagation();
-      raiseDataLimit(path, kind);
-      renderOnly("leftPanel");
-    }}
-  >
-    ${label}
-  </button>`;
+  text: string,
+  title = `Show ${MORE_STEP} more`,
+): DataTreeRow {
+  return {
+    indent,
+    key: `${path}\u0000${limit}`,
+    kind: "more",
+    label: "",
+    limit,
+    path,
+    text,
+    title,
+    tone: "marker",
+  };
+}
+
+/** A value as the tree prints it, capped at `max` characters. `undefined` prints as nothing. */
+function valueText(value: unknown, max: number): string {
+  if (typeof value === "string" && value.length > max) {
+    return `"${value.slice(0, max)}…"`;
+  }
+  return JSON.stringify(value) ?? "";
+}
+
+/** Which colour a value takes. `null` and a summary label are the two the tree actually paints. */
+function toneOf(value: unknown): string {
+  return value === null ? "null" : typeof value;
+}
+
+/** `Array(3)` or `{2}` — what a value you can open says while it is closed. */
+function summaryLabel(value: object): string {
+  return Array.isArray(value) ? `Array(${value.length})` : `{${Object.keys(value).length}}`;
 }
 
 /** Unwrap a Vue ref (has .value and .__v_isRef) to get the underlying value. */
@@ -121,98 +138,110 @@ export function dataTypeLabel(value: unknown) {
    panel listing every state entry with its badge and how it is defined: the same names twice, and
    you read one to understand the other. Plan §11.2 asks for "definitions + live values in one row",
    so the definition row now carries the resolved type and expands to the value tree, and what is
-   left here is the tree renderer, the type label and the row-expansion record the merged rows read.
-   `renderDataTreeTemplate` is unchanged — it was never the redundant half. */
+   left here is the tree WALK, the type label and the row-expansion record the merged rows read. */
+
 /**
- * Recursively render a JSON value as a tree view (Lit template).
+ * Flatten a JSON value into the lines the Data surface draws (`surfaces/panel-data.{json,ts}`).
  *
- * @returns {import("lit-html").TemplateResult}
+ * The tree used to BE a lit template, one recursive call per level. It is a document now, and a
+ * document's one repeater walks a LIST — so the recursion moved here and comes out as rows that
+ * each carry their own indent. Nothing else changed: the caps are the same caps, the text is
+ * truncated at the same lengths, and a capped list still ends in a marker.
+ *
+ * @param {unknown} value The resolved value to read.
+ * @param {number} depth How deep this call already is; the indent is derived from it.
+ * @param {number} [maxDepth] The default depth cap, before whatever the reader has raised.
+ * @param {string} path This subtree's path, which is what a raised limit is remembered against.
+ * @returns {DataTreeRow[]}
  */
-export function renderDataTreeTemplate(
+export function dataTreeRows(
   value: unknown,
   depth: number,
   maxDepth = 5,
   path = "",
-): TemplateResult {
+): DataTreeRow[] {
   const indent = `${(depth + 1) * 12}px`;
+  const row = (label: string, text: string, tone: string, key: string): DataTreeRow => ({
+    indent,
+    key,
+    kind: "row",
+    label,
+    limit: "",
+    path: "",
+    text,
+    title: "",
+    tone,
+  });
 
   if (depth > capFor(path, "depth", maxDepth)) {
-    return moreTemplate(path, "depth", indent, "…", () => `Show ${MORE_STEP} more levels`);
+    return [moreRow(path, "depth", indent, "…", `Show ${MORE_STEP} more levels`)];
   }
-
+  /* The one line a value with nothing under it renders as, keyed by the subtree's own path. That
+     is unique by construction: a descent only ever happens into an object or an array, so this
+     row exists only at the top of a tree, where it has no siblings to collide with. */
   if (value === null || value === undefined) {
-    return html`<div class="data-leaf data-null" style="padding-left:${indent}">
-      ${String(value)}
-    </div>`;
+    return [row("", String(value), "null", path)];
   }
-
   if (typeof value !== "object") {
-    const text =
-      typeof value === "string" && value.length > 200
-        ? `"${value.slice(0, 200)}\u2026"`
-        : JSON.stringify(value);
-    return html`<div class="data-leaf data-${typeof value}" style="padding-left:${indent}">
-      ${text}
-    </div>`;
+    return [row("", valueText(value, 200), toneOf(value), path)];
   }
 
-  if (Array.isArray(value)) {
-    const cap = capFor(path, "items", 20);
-    const items: TemplateResult[] = value.slice(0, cap).map((item, i) => {
-      if (item === null || item === undefined || typeof item !== "object") {
-        const valText =
-          typeof item === "string" && item.length > 80
-            ? `"${item.slice(0, 80)}\u2026"`
-            : JSON.stringify(item);
-        return html`<div class="data-branch" style="padding-left:${indent}">
-          <span class="data-key">[${i}] </span
-          ><span class="data-value data-${item === null ? "null" : typeof item}">${valText}</span>
-        </div>`;
-      }
-      const label = Array.isArray(item)
-        ? `Array(${item.length})`
-        : `{${Object.keys(item as object).length}}`;
-      return html`
-        <div class="data-branch" style="padding-left:${indent}">
-          <span class="data-key">[${i}] </span
-          ><span class="data-value data-object-label">${label}</span>
-        </div>
-        ${renderDataTreeTemplate(item, depth + 1, maxDepth, `${path}/${i}`)}
-      `;
-    });
-    return html`${items}${
-      value.length > cap
-        ? moreTemplate(path, "items", indent, `… ${value.length - cap} more`)
-        : nothing
-    }`;
-  }
+  const array = Array.isArray(value);
+  const entries: [string, string, unknown][] = array
+    ? value.map((item, i) => [`${i}`, `[${i}] `, item])
+    : Object.keys(value).map((key) => [key, `${key}: `, (value as Record<string, unknown>)[key]]);
+  const limit = array ? "items" : "keys";
+  const cap = capFor(path, limit, array ? 20 : 30);
 
-  // Object
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj);
-  const cap = capFor(path, "keys", 30);
-  const items: TemplateResult[] = keys.slice(0, cap).map((key) => {
-    const v = obj[key];
-    if (v === null || v === undefined || typeof v !== "object") {
-      const valText =
-        typeof v === "string" && v.length > 80 ? `"${v.slice(0, 80)}\u2026"` : JSON.stringify(v);
-      return html`<div class="data-branch" style="padding-left:${indent}">
-        <span class="data-key">${key}: </span
-        ><span class="data-value data-${v === null ? "null" : typeof v}">${valText}</span>
-      </div>`;
+  const rows: DataTreeRow[] = [];
+  for (const [segment, label, item] of entries.slice(0, cap)) {
+    const childPath = `${path}/${segment}`;
+    if (item === null || item === undefined || typeof item !== "object") {
+      rows.push(row(label, valueText(item, 80), toneOf(item), childPath));
+      continue;
     }
-    const label = Array.isArray(v) ? `Array(${v.length})` : `{${Object.keys(v).length}}`;
-    return html`
-      <div class="data-branch" style="padding-left:${indent}">
-        <span class="data-key">${key}: </span
-        ><span class="data-value data-object-label">${label}</span>
-      </div>
-      ${renderDataTreeTemplate(v, depth + 1, maxDepth, `${path}/${key}`)}
-    `;
+    rows.push(
+      row(label, summaryLabel(item), "object", childPath),
+      ...dataTreeRows(item, depth + 1, maxDepth, childPath),
+    );
+  }
+  if (entries.length > cap) {
+    rows.push(moreRow(path, limit, indent, `… ${entries.length - cap} more`));
+  }
+  return rows;
+}
+
+/**
+ * Draw one value tree into the host that was made for it, or bring the one already there up to
+ * date.
+ *
+ * Idempotent, because it runs on EVERY repaint: a host that already holds its document is assigned
+ * to rather than remounted, which is what keeps the reader's place inside a long tree. Taking a
+ * CLOSED tree down is the panel's job rather than this one's — a row the reader collapsed never
+ * reaches here again — so `panels/signals-panel.ts` calls `disposeDetachedDataTrees()` once per
+ * repaint instead of this sweeping per host.
+ *
+ * @param {HTMLElement} host The node the tree is drawn into.
+ * @param {unknown} value What the canvas resolved this entry to.
+ * @param {string} path The subtree's path, which is what a raised limit is remembered against.
+ * @param {() => void} rerender Repaint the panel, so that a raised limit is drawn.
+ * @param {number} [maxDepth] The default depth cap, before whatever the reader has raised.
+ */
+export function paintDataTree(
+  host: HTMLElement,
+  value: unknown,
+  path: string,
+  rerender: () => void,
+  maxDepth = 5,
+): void {
+  renderDataTreeSurface(host, dataTreeRows(value, 0, maxDepth, path), {
+    showMore: (subtree, limit) => {
+      if (limit === "items" || limit === "keys" || limit === "depth") {
+        raiseDataLimit(subtree, limit);
+      }
+      rerender();
+    },
   });
-  return html`${items}${
-    keys.length > cap ? moreTemplate(path, "keys", indent, `… ${keys.length - cap} more`) : nothing
-  }`;
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -349,6 +378,14 @@ export function registerDataExplorerCommands(
  *
  * Defining and watching are the same task interrupted: you add an entry, then look at what it
  * resolved to. Two panels made that two panels.
+ *
+ * **Both halves are documents now** — `surfaces/panel-signals.{json,ts}` for the entry list and its
+ * editors, `surfaces/panel-data.{json,ts}` for the value tree under an open row. So lit draws
+ * nothing at all here: `render` returns `nothing` and `afterRender` mounts against the painted DOM,
+ * which is the seam `panels/git-panel.ts` uses for the same reason. The mount comes through `deps`
+ * rather than an import — this module owns the expansion store that one reads, so importing it back
+ * would close a cycle — and it is idempotent, so running on every repaint is what keeps the
+ * projection current.
  */
 export function registerDataPanel(): void {
   registerPanel({
@@ -356,14 +393,16 @@ export function registerDataPanel(): void {
     title: "Data",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-data",
+    icon: "database",
     requiresDocument: "Open a page to give it data — values it can read, compute or fetch.",
-    render: (ctx) =>
+    render: (): PanelBody => nothing,
+    afterRender: (ctx, host) => {
       // `ctx.doc!` — `requiresDocument` means the registry renders the empty state instead of
       // Calling this, the same assertion `head-panel.ts` makes for the same reason.
-      ctx.deps.renderSignalsTemplate(ctx.doc!, {
+      ctx.deps.mountSignalsPanel(host, ctx.doc!, {
         refreshData: ctx.deps.refreshData,
         renderLeftPanel: ctx.rerender,
-      }),
+      });
+    },
   });
 }

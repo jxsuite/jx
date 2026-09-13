@@ -536,3 +536,100 @@ describe("documentHasPopover", () => {
     expect(documentHasPopover(plain)).toBe(false);
   });
 });
+
+describe("a custom element whose DEFINITION declares popover", () => {
+  /* A kit popover's `popover` attribute lives in its definition, so a consumer writes
+     `<jx-popover id="p1">` and every structural rule read it as an ordinary div: a command aimed
+     at it was a target mismatch, `documentHasPopover` was false, so Studio's "reveal the popover
+     you selected" never fired and the open command refused. The tags come in from the caller. */
+  const scope = { popoverTags: new Set(["jx-popover"]) };
+  const consumer = (): JxElement =>
+    ({
+      attributes: { id: "p1" },
+      children: [{ tagName: "p" }],
+      tagName: "jx-popover",
+    }) as JxElement;
+
+  test("is invisible without the scope, and is a popover with it", () => {
+    const page = doc(consumer());
+    expect(documentHasPopover(page)).toBe(false);
+    expect(popoverIdsIn(page)).toEqual([]);
+    expect(documentHasPopover(page, scope)).toBe(true);
+    expect(popoverIdsIn(page, scope)).toEqual(["p1"]);
+  });
+
+  test("the style rules stay off it, because the definition owns the style", () => {
+    /* `no-open-rule` is a warning that fires on a popover with no `:popover-open` rule, and a
+       consumer carries no style at all. Reporting it here would put a warning on every correct
+       use — and the kit's own conformance suites assert `toEqual([])`, so a warning is fatal. */
+    const page = doc(consumer());
+    expect(findPopoverDefects(page, scope)).toEqual([]);
+    expect(findPopoverDefects(page)).toEqual([]);
+  });
+
+  test("a panel that declares popover ITSELF is still judged, scope or no scope", () => {
+    const bad = { attributes: { popover: "auto" }, style: { display: "flex" }, tagName: "div" };
+    const found = findPopoverDefects(doc(bad as JxElement), scope);
+    expect(found.map((d) => d.rule)).toContain("base-display");
+  });
+
+  test("an unknown tag is still not a popover", () => {
+    const page = doc(consumer());
+    expect(documentHasPopover(page, { popoverTags: new Set(["jx-menu"]) })).toBe(false);
+  });
+});
+
+describe("a custom element that forwards the invoker attributes", () => {
+  /* `popovertarget` comes from an IDL mixin HTML includes into <button> and <input> and nothing
+     else, which is what `invoker-not-button` is for. A kit button observes it and passes it to its
+     own inner <button>, so the natural spelling is correct and the rule fired on it anyway. */
+  const scope = { invokerTags: new Set(["jx-button"]), popoverTags: new Set(["jx-popover"]) };
+  const page = (invoker: JxElement): JxElement =>
+    doc(invoker, { attributes: { id: "p1" }, tagName: "jx-popover" } as JxElement);
+
+  test("is an invoker with the scope, and a defect without it", () => {
+    const node = { attributes: { popovertarget: "p1" }, tagName: "jx-button" } as JxElement;
+    expect(findPopoverDefects(page(node)).map((d) => d.rule)).toEqual(["invoker-not-button"]);
+    expect(findPopoverDefects(page(node), scope)).toEqual([]);
+  });
+
+  test("a tag that forwards nothing is still refused, scope or no scope", () => {
+    const node = { attributes: { href: "#", popovertarget: "p1" }, tagName: "a" } as JxElement;
+    expect(findPopoverDefects(page(node), scope).map((d) => d.rule)).toContain(
+      "invoker-not-button",
+    );
+  });
+});
+
+describe("display: revert is the one base display that is not a defect", () => {
+  /* The rule exists because any author `display` beats the UA's `[popover]:not(:popover-open)
+     { display: none }` at any specificity, so the panel lays out on every page. `revert` is the
+     exception by definition: it rolls the cascade back TO the UA value. Measured in Chrome 152 —
+     closed computes `none`, open computes the `:popover-open` value. It is also what an author
+     must write when the interpreter would otherwise inject a default `display` on a custom
+     element, so refusing it would refuse the fix for this very defect. */
+  const panel = (display: string): JxElement =>
+    ({
+      attributes: { "aria-label": "Menu", popover: "auto" },
+      id: "menu",
+      style: { display, flexDirection: "column", ":popover-open": { display: "flex" } },
+      tagName: "div",
+    }) as JxElement;
+
+  test("accepts revert and revert-layer", () => {
+    const plain = doc(trigger(), panel("revert"));
+    const layered = doc(trigger(), panel("revert-layer"));
+    expect(findPopoverDefects(plain)).toEqual([]);
+    expect(findPopoverDefects(layered)).toEqual([]);
+  });
+
+  test("still refuses every value that really does beat the UA rule", () => {
+    for (const value of ["block", "flex", "grid", "inline-flex", "none"]) {
+      const found = findPopoverDefects(doc(trigger(), panel(value)));
+      expect(
+        found.map((d) => d.rule),
+        value,
+      ).toContain("base-display");
+    }
+  });
+});

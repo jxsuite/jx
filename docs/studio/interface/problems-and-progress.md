@@ -9,8 +9,8 @@ code:
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/panels/activity-panel.ts
   - packages/studio/src/ui/progress-modal.ts
-  - packages/studio/src/ui/field-row.ts
-  - packages/studio/src/panels/statusbar.ts
+  - packages/studio/src/surfaces/style-panel.ts
+  - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/services/connection.ts
 ---
 
@@ -70,7 +70,7 @@ Some Problems are about the document rather than about Studio. Saving a file che
 
 Where the fix is mechanical the row carries a **Fix** button that performs it in one step you can undo with one press: moving `display` into `:popover-open`, removing attributes that do nothing where they are, writing `popover="auto"`. Where it is not, the row is a sentence with no button, because a button that does not do what it says is worse than none. Which panel a control should point at is your decision, not something Studio can guess.
 
-You can run the same check on demand: press :kbd[⌘K] and choose **Check Popovers**. **Check Accessibility** is its neighbour and files under **Accessibility** instead.
+You can run the same check on demand: press :kbd[⌘K] and choose **Check Popovers**. **Check Accessibility** is its neighbour and files under **Accessibility** instead, with the WCAG criterion behind each finding; the rules it applies are listed on the [Accessibility](/docs/framework/concepts/accessibility) page, and `jx validate` applies the same ones.
 
 ### Losing the backend
 
@@ -151,3 +151,8 @@ The selection field carries what an address can't state: **3 selected** when mor
 - **[Keyboard shortcuts](/docs/studio/interface/shortcuts)**: the full generated list
 - **[Dependencies and imports](/docs/studio/projects/dependencies)**: the one operation that still blocks
 - **[Source control](/docs/studio/publish/source-control)**: where a failed commit or push sends you back to
+  - packages/studio/src/surfaces/panel-problems.json
+  - packages/studio/src/surfaces/panel-problems.ts
+  - packages/studio/src/surfaces/panel-activity.json
+  - packages/studio/src/surfaces/panel-activity.ts
+  - packages/studio/src/surfaces/panel-deploy-checklist.ts

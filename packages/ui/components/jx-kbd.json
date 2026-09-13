@@ -1,0 +1,24 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxKbd",
+  "tagName": "jx-kbd",
+  "style": {
+    "display": "inline-block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "padding": "0 var(--jx-space-2)",
+    "border": "1px solid var(--jx-border)",
+    "borderRadius": "var(--jx-radius-xs)",
+    "background": "var(--jx-bg-panel)",
+    "color": "var(--jx-fg-dim)",
+    "fontFamily": "var(--jx-font-mono)",
+    "fontSize": "var(--jx-text-xs)",
+    "lineHeight": "var(--jx-leading-sm)"
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

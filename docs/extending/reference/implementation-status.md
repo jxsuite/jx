@@ -17,19 +17,21 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `ai.md`                   | 0.1.12-draft | Partial     | 2026-08-31 |
 | `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
 | `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
-| `desktop.md`              | 0.4.13-draft | Pending     | 2026-09-02 |
-| `extensions.md`           | 0.4.3-draft  | Partial     | 2026-08-31 |
+| `desktop.md`              | 0.4.14-draft | Pending     | 2026-09-12 |
+| `embedding.md`            | 0.1.4        | Implemented | 2026-09-11 |
+| `extensions.md`           | 0.4.4-draft  | Partial     | 2026-09-10 |
 | `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
 | `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
 | `parser.md`               | 0.2.10-draft | Partial     | 2026-08-27 |
 | `relationships.md`        | 0.1.4-draft  | Partial     | 2026-08-15 |
-| `schema.md`               | 0.4.8-draft  | Partial     | 2026-08-16 |
+| `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
-| `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.0-draft  | Partial     | 2026-09-01 |
-| `standards.md`            | 0.1.15-draft | Partial     | 2026-08-17 |
-| `studio-ui-guidelines.md` | 0.3.16       | Implemented | 2026-08-27 |
-| `studio.md`               | 0.10.6-draft | Partial     | 2026-09-01 |
+| `site-architecture.md`    | 0.6.11-draft | Partial     | 2026-09-10 |
+| `spec.md`                 | 0.6.21-draft | Partial     | 2026-09-10 |
+| `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
+| `studio-ui-guidelines.md` | 0.8.5-draft  | Partial     | 2026-09-11 |
+| `studio.md`               | 0.11.3-draft | Partial     | 2026-09-12 |
+| `ui.md`                   | 0.1.45-draft | Partial     | 2026-09-12 |
 
 ## Sections not yet implemented
 
@@ -55,6 +57,20 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio.md` §17 — Project Documents (Settings and Styles)
 - `studio.md` §20 — Internationalization Surfaces
 - `studio.md` §20.2 — Rendering Language
+- `ui.md` §1 — Overview
+- `ui.md` §2 — Principles
+- `ui.md` §3 — Authoring Model
+- `ui.md` §4 — Theme and Tokens
+- `ui.md` §5 — Element Catalogue
+- `ui.md` §5.1 — Primitives
+- `ui.md` §5.2 — Overlays
+- `ui.md` §5.3 — Forms
+- `ui.md` §5.4 — Containers
+- `ui.md` §5.5 — Builder
+- `ui.md` §6 — Overlay Model
+- `ui.md` §7 — Keyboard and Focus
+- `ui.md` §9 — Build and Distribution
+- `ui.md` §10 — Studio Integration
 
 ### Pending
 

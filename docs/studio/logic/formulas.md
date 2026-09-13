@@ -5,8 +5,9 @@ code:
   - packages/studio/src/ui/value-source.ts
   - packages/studio/src/ui/dynamic-slot.ts
   - packages/studio/src/ui/expression-editor.ts
+  - packages/studio/src/surfaces/expression-editor.ts
   - packages/studio/src/ui/formula-chips.ts
-  - packages/studio/src/ui/formula-palette.ts
+  - packages/studio/src/surfaces/formula-palette.ts
   - packages/studio/src/ui/formula-catalog.ts
 ---
 

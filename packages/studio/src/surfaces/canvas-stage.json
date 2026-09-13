@@ -1,0 +1,444 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioCanvasStage",
+  "$description": "The canvas's own chrome: the artboards, the boxes around them, and the empty hosts the islands attach to. `canvas/canvas-render.ts` keeps every decision — which mode this pane is in, which breakpoints the document declares, how wide Edit's column is, whether a comparison has a visual half — and `canvas/canvas-utils.ts` keeps the geometry; this document owns the markup and the style, and it draws NOTHING it decides for itself.\n\n**Every island stays an island** (studio-ui-guidelines.md §9.4). Monaco gets `[part=\"source-editor\"]` or `[part=\"diff-code-editor\"]`, the artboard's iframe gets `[part=\"panel-canvas\"]`, the Document Header card gets `[part=\"doc-header\"]`, the Compare bar gets `[part=\"diff-toolbar\"]` and the Project Styles bar gets `[part=\"chrome-host\"]` — each drawn empty and announced through `onNodeCreated`, one reconcile step before it is in the page.\n\n**Three of the five frames share one artboard vocabulary**, which is why `framePart` and `innerPart` are bound rather than written: Preview, the pan/zoom surface and Edit's column are all \"a box holding N artboards\", differing only in what the box is and what else stands in it. Writing the artboard three times would be three places for a breakpoint's viewport to drift.\n\n**The stage draws no box of its own.** Its root is `display: contents`, so the frame and whatever leads it are the flex items of the pane's own stage cell — the axis `canvas-render.ts` sets on that cell still reaches them, and no depth was added between the stage and the artboards for the pan maths to have to account for.",
+  "tagName": "div",
+  "attributes": {
+    "part": "stage"
+  },
+  "style": {
+    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.doc-header-host`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`. Two selectors reach FOREIGN DOM and say so where they stand: `.doc-header` is the card's own root inside its host, and `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
+    "display": "contents",
+    "& [part=\"panzoom\"]": {
+      "$description": "The transformed surface. `applyTransform` writes `transform` on it imperatively, so only the origin is declared here. `--boards-inset` is the Project Styles bar's clearance: that bar floats over the stage, so the boards start below it.",
+      "display": "inline-flex",
+      "gap": "24px",
+      "alignItems": "flex-start",
+      "transformOrigin": "0 0",
+      "marginBlock": "auto",
+      "paddingTop": "var(--boards-inset, 0)"
+    },
+    "& [part=\"panel\"]": {
+      "flexShrink": "0"
+    },
+    "& [part=\"panel\"][data-full-width]": {
+      "minWidth": "0"
+    },
+    "& [part=\"panel-header\"]": {
+      "$description": "The breakpoint's name over its board, and a click target: it sets the pane's active breakpoint. `data-active` is written by `updateActivePanelHeaders` rather than bound, because the answer is a fact about the pane's session that changes without the stage being rebuilt — the same reason the pan transform is written rather than bound.",
+      "padding": "4px var(--jx-space-2)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "background": "var(--bg-panel)",
+      "border": "1px solid var(--border)",
+      "borderBottom": "none",
+      "borderRadius": "var(--radius) var(--radius) 0 0",
+      "textAlign": "center",
+      "cursor": "pointer",
+      "userSelect": "none",
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"panel-header\"][data-active]": {
+      "color": "var(--accent)",
+      "borderColor": "var(--accent)"
+    },
+    "& [part=\"panel-viewport\"]": {
+      "$description": "The white page surface. `color-scheme: light` is pinned whatever the chrome theme is: the author's document renders against paper, and native form controls and scrollbars inside it must match that rather than the editor around it. The background is the `white` KEYWORD and not a token, for the same reason: it was `var(--spectrum-white, #fff)`, which resolved to white inside `<sp-theme>` and to its fallback everywhere else, so a token was never what it meant. A themed token here would put the editor's ground under the author's page in the dark chrome. The width is a variable so the one declaration serves a board with a declared breakpoint and one without.",
+      "position": "relative",
+      "width": "var(--panel-viewport-w, auto)",
+      "background": "white",
+      "border": "1px solid var(--border)",
+      "colorScheme": "light"
+    },
+    "& [part=\"panel-header\"][data-active] + [part=\"panel-viewport\"]": {
+      "borderColor": "var(--accent)"
+    },
+    "& [part=\"panel-canvas\"]": {
+      "$description": "The iframe's host. `isolation: isolate` keeps the artboard's own stacking context off the chrome's. `applyEditZoom` writes `width` and `transform` here imperatively for the content zoom, and an inline write beats this declaration by construction.",
+      "isolation": "isolate",
+      "width": "var(--panel-canvas-w, auto)"
+    },
+    "& [part=\"panel-canvas\"] *": {
+      "cursor": "default"
+    },
+    "& [part=\"source-wrap\"]": {
+      "$description": "`width`, `flex` and `min-width` are all three load-bearing, and their absence is a bug only a browser could show: the stage is a flex container, so a child with no width and no grow collapses to its CONTENT width — and Monaco's internals are absolutely positioned, so they contribute none.",
+      "display": "flex",
+      "flexDirection": "column",
+      "width": "100%",
+      "height": "100%",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"source-editor\"]": {
+      "flex": "1",
+      "minHeight": "0"
+    },
+    "& [part=\"diff-code-wrap\"]": {
+      "$description": "The Code half of a comparison: one Monaco diff editor filling the stage, no artboards and no pan/zoom. It follows the CHROME theme rather than the canvas ramp, because a code editor is chrome. The top inset is the floating bar's clearance. Same three load-bearing declarations as `source-wrap`, for the same reason.",
+      "display": "flex",
+      "flexDirection": "column",
+      "width": "100%",
+      "height": "100%",
+      "flex": "1",
+      "minWidth": "0",
+      "paddingTop": "40px"
+    },
+    "& [part=\"diff-code-editor\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "minHeight": "0"
+    },
+    "& [part=\"diff-toolbar\"]": {
+      "$description": "Absolutely positioned OVER the stage rather than in flow: the artboards live on a pan/zoom surface whose origin the transform maths depends on, and a flow sibling would move it. The bar itself is `surfaces/diff-toolbar.json`, mounted into this box.",
+      "position": "absolute",
+      "zIndex": "2",
+      "top": "var(--jx-space-2)",
+      "left": "50%",
+      "transform": "translateX(-50%)"
+    },
+    "& [part=\"doc-header\"][data-placement=\"in-column\"]": {
+      "$description": "Edit: the card is a block of the artefact's own column and scrolls with it, so it is part of the document rather than a strip above it.",
+      "display": "block",
+      "paddingBottom": "16px"
+    },
+    "& [part=\"doc-header\"][data-placement=\"pinned\"]": {
+      "$description": "Design: the artboards are drawn under a pan/zoom transform, and a form drawn at 40% is a picture of a form — so the card sits above the surface at 1:1 and keeps its own scroll. This is the one placement that still needs a cap.",
+      "flexShrink": "0",
+      "maxHeight": "40vh",
+      "overflowY": "auto"
+    },
+    "& [part=\"doc-header\"][data-placement=\"pinned\"] .doc-header": {
+      "$description": "FOREIGN DOM: `.doc-header` is the frontmatter card's own root, mounted into this host by `panels/frontmatter-panel.ts`. Pinned, the card is a band across the stage rather than a card on it, so it loses its own rounding and keeps only the edge that separates it from the boards.",
+      "borderWidth": "0 0 1px",
+      "borderRadius": "0"
+    },
+    "& [part=\"edit-canvas\"]": {
+      "$description": "The side gutter is LOAD-BEARING, not breathing room: the resize handles hang outside the column's own box — flex siblings with a negative margin, so they take no width from it — and this container clips horizontally, so without it the handles would be unreachable at exactly the width where dragging inward matters most. It must stay at least as wide as `EDIT_CANVAS_GUTTER` in `canvas/edit-width.ts`, which is what the drag's own ceiling subtracts. This box is also the TRACK the two `jx-split`s measure: the first ancestor of a handle that generates a box, which is why the handles are drawn here beside the column rather than inside it — inside, the column would have been the track, and the track cannot be the thing being resized.",
+      "width": "100%",
+      "height": "100%",
+      "overflowY": "auto",
+      "overflowX": "hidden",
+      "display": "flex",
+      "justifyContent": "center",
+      "padding": "32px 16px"
+    },
+    "& [part=\"edit-column\"]": {
+      "$description": "The page's column. `max-width` is written imperatively after the render and never bound — see the note on the width in `canvas-render.ts`. `position: relative` is for the live readout drawn as its `::after` while a drag is on.",
+      "width": "100%",
+      "minHeight": "100%",
+      "position": "relative"
+    },
+    "& [part=\"edit-column\"][data-hug]": {
+      "$description": "A content PAGE fills the viewport, a document-like surface you can click into below the text. A component DEFINITION is a fragment — flooring its column to the viewport and letting the flex parent stretch it leaves dead scrollable space below a short component — so it hugs its iframe and sits at the top.",
+      "minHeight": "0",
+      "alignSelf": "flex-start"
+    },
+    "& [part=\"edit-column\"] [part=\"panel\"][data-full-width]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"edit-column\"] [part=\"panel-viewport\"]": {
+      "border": "none",
+      "background": "transparent"
+    },
+    "& [part=\"edit-column\"].is-resizing::after": {
+      "$description": "FOREIGN CLASS: `canvas/edit-width-drag.ts` writes `is-resizing` and `data-edit-width` on the column with the same bare style pass that moves it, so the live readout costs no element and no render.",
+      "content": "attr(data-edit-width)",
+      "position": "absolute",
+      "top": "var(--jx-space-2)",
+      "left": "50%",
+      "transform": "translateX(-50%)",
+      "zIndex": "3",
+      "padding": "2px var(--jx-space-2)",
+      "borderRadius": "10px",
+      "background": "var(--accent)",
+      "color": "var(--bg-panel)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontVariantNumeric": "tabular-nums",
+      "pointerEvents": "none"
+    },
+    "& [part=\"edit-handle\"]": {
+      "$description": "The two `jx-split`s (ui.md §5.5), one on each side of the column and dragged symmetrically about its centre. They are flex SIBLINGS of the column in the canvas's row, and each pulls itself outside the column with a negative margin on its outer side so its margin box is zero wide: the column keeps the full content width and the handle's 9px strip stands in the gutter, exactly where the absolutely positioned div it replaces stood. Stretched to the row, so the grab target is the canvas's height whatever the column's — which is the same height the old `top: 0; bottom: 0` resolved to, the column being a stretched item itself. Invisible at rest as it has always been: the element's own `--jx-border` bar beside the page would be new chrome. The weight is the substance, and a browser found it: the element's rules are `[data-jx]` (0,1,0) and its hover `[data-jx]:hover` (0,2,0), which is exactly what this document's `[data-jx] [part]` rules weigh — so `background: transparent` here TIED the element's accent on hover and won on source order, and the handle lit to half opacity of nothing. The lit look is restated below one attribute heavier, the same move `styles/shell-frame.json` makes for the docks. Physical `margin-left`/`margin-right` rather than logical properties, and deliberately: the sign the drag applies is physical too, and Studio's own chrome is never mirrored — the artboard's `dir` is a property of the document INSIDE the iframe.",
+      "width": "9px",
+      "background": "transparent"
+    },
+    "& [part=\"edit-handle\"][data-side=\"start\"]": {
+      "marginLeft": "-9px"
+    },
+    "& [part=\"edit-handle\"][data-side=\"end\"]": {
+      "marginRight": "-9px"
+    },
+    "& [part=\"edit-handle\"]:hover, & [part=\"edit-handle\"][data-dragging]": {
+      "$description": "The element's own hover and drag paint, restated at (0,3,0) because the rest rule above ties its (0,2,0) and would otherwise win — see that rule. `[data-dragging]` is the element's mirror of its own gesture, so the highlight outlives the pointer leaving the 9px strip.",
+      "background": "var(--jx-accent)",
+      "opacity": "0.5"
+    },
+    "& [part=\"preview-stage\"]": {
+      "$description": "Preview is the fidelity view: one frame, sized to the pane, scrolling its own document so sticky positioning, scroll-driven animation and IntersectionObserver reveals behave as they will in production. That means no pan/zoom surface and no content-height growth — so every box between the stage and the iframe needs a definite height for the frame's `height: 100%` to resolve against, and the artboard chrome is dropped: this is the page, not a specimen of it. Centred, because the stage is as wide as the chosen breakpoint rather than the pane, and a 640px preview pinned to the left edge of a 1400px pane reads as a broken layout rather than a phone.",
+      "display": "flex",
+      "width": "100%",
+      "height": "100%",
+      "margin": "0 auto",
+      "maxWidth": "var(--preview-w, none)"
+    },
+    "& [part=\"preview-stage\"] [part=\"panel\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "height": "100%"
+    },
+    "& [part=\"preview-stage\"] [part=\"panel-viewport\"]": {
+      "flex": "1",
+      "height": "100%",
+      "border": "none"
+    },
+    "& [part=\"preview-stage\"] [part=\"panel-canvas\"]": {
+      "height": "100%"
+    }
+  },
+  "children": [
+    {
+      "$description": "What stands over the frame, and only ever one of the three: the Document Header card above a pan/zoom surface, the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
+      "tagName": "div",
+      "attributes": {
+        "part": "lead-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/lead"
+      },
+      "cases": {
+        "header": {
+          "tagName": "div",
+          "attributes": {
+            "part": "doc-header",
+            "data-placement": "pinned"
+          }
+        },
+        "toolbar": {
+          "tagName": "div",
+          "attributes": {
+            "part": "diff-toolbar"
+          }
+        },
+        "chrome": {
+          "$description": "`chrome-host`, not `chrome`: the bar that stands here is `surfaces/stylebook-chrome.json`, whose own root is `[part=\"chrome\"]`. A host and its occupant sharing one name makes every selector over the pair ambiguous.",
+          "tagName": "div",
+          "attributes": {
+            "part": "chrome-host"
+          }
+        }
+      }
+    },
+    {
+      "$description": "The frame. Three of its five shapes are the same two boxes with different parts — Preview's centred column, the pan/zoom surface and Edit's scrolling column all hold artboards — so they share one case and differ in `framePart` / `innerPart`. Monaco's two shapes are their own cases, because a code editor holds no artboards and an empty `$map` inside its host would leave nodes in a box the editor is about to take over.",
+      "tagName": "div",
+      "attributes": {
+        "part": "frame-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/frame"
+      },
+      "cases": {
+        "boards": {
+          "$description": "The frame's box. `part` is BOUND — a Preview column, a pan/zoom surface and an Edit canvas are one shape with three names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
+          "tagName": "div",
+          "attributes": {
+            "part": "${state.framePart}",
+            "data-slot": "frame",
+            "style": "${state.frameVars}"
+          },
+          "children": [
+            {
+              "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+              "tagName": "div",
+              "attributes": {
+                "part": "handle-start-slot"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/handles"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-split",
+                  "attributes": {
+                    "part": "edit-handle",
+                    "data-side": "start",
+                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                  },
+                  "$props": {
+                    "orientation": "vertical",
+                    "label": "Resize the page from its left edge"
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "${state.innerPart}",
+                "data-slot": "inner",
+                "data-hug": "${state.hug ? '' : null}"
+              },
+              "style": {
+                "$description": "`boards` is a pass-through: Preview and the pan/zoom surface hold their artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to two of the three frames is what lets one subtree serve all three.",
+                "&[part=\"boards\"]": {
+                  "display": "contents"
+                }
+              },
+              "children": [
+                {
+                  "$description": "Edit draws the Document Header card INSIDE the document's column, as its first block — the column's first child by contract. The width handles are not in the column at all (they stand beside it, see the frame), so nothing here can get in front of it.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "column-header-slot"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/columnHeader"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "doc-header",
+                        "data-placement": "in-column"
+                      }
+                    }
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": { "$ref": "#/state/panels" },
+                  "key": { "$ref": "$map/item/key" },
+                  "map": {
+                    "$description": "One artboard: its breakpoint's name, the white page under it, and the empty box the iframe mounts into. Keyed on the breakpoint, because each board owns a live iframe and the declared set changes with the document's `$media` — position-based reuse would hand one breakpoint's frame to another's width, which is a live document rendered at the wrong viewport rather than a cosmetic diff.",
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "panel",
+                      "data-media": "${$map.item.mediaAttr}",
+                      "data-full-width": "${$map.item.fullWidth ? '' : null}",
+                      "style": "${$map.item.widthVars}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "header-slot"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/header"
+                        },
+                        "cases": {
+                          "shown": {
+                            "$description": "The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the parent-side twin of the iframe's `hit` message, resolved the same way. Writing the FOCUSED pane's tab instead set another document's breakpoint, and the Style panel then edited a compound block the person never opened.",
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "panel-header"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": { "$ref": "#/state/pickPanel" },
+                                  "value": [{ "$ref": "$map/item/key" }]
+                                }
+                              ]
+                            },
+                            "textContent": "${$map.item.label}"
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "panel-viewport"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "panel-canvas"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "handle-end-slot"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/handles"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-split",
+                  "attributes": {
+                    "part": "edit-handle",
+                    "data-side": "end",
+                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                  },
+                  "$props": {
+                    "orientation": "vertical",
+                    "label": "Resize the page from its right edge"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "source": {
+          "tagName": "div",
+          "attributes": {
+            "part": "source-wrap"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "source-editor"
+              }
+            }
+          ]
+        },
+        "code": {
+          "tagName": "div",
+          "attributes": {
+            "part": "diff-code-wrap"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "diff-code-editor"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

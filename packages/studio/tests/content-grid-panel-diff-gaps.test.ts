@@ -14,13 +14,11 @@ import {
   installMockPlatform,
   pointer,
   registerPrimaryStage,
-  renderInto,
   resetStudioState,
   resetWorkspaceWithTab,
   surfaceOf,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { render as litRender } from "lit-html";
 import type { AiWrite } from "../src/services/ai-writes";
 import type { AnyCommand } from "../src/commands/registry";
 import type { Message } from "@jxsuite/ai/chat-state";
@@ -51,7 +49,7 @@ const { activeTab, closeAllTabs, openTab, workspace } = await import("../src/wor
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
-const { detachEntryPane, renderEntryMode, setEntryDraft } =
+const { detachEntryPane, entryPaneMounted, renderEntryMode, setEntryDraft } =
   await import("../src/content/entry-editor");
 const { getGridController } = await import("../src/grid/grid-controller");
 const {
@@ -64,8 +62,23 @@ const {
 } = await import("../src/grid/grid-layout");
 const { parseRedirectsCsv } = await import("../src/grid/redirects");
 const { REDIRECTS_TAB_ID, openRedirectsGrid } = await import("../src/grid/redirects-grid");
-const { logicPanelBody, logicTarget } = await import("../src/panels/formula-workspace");
-const { renderMessageList } = await import("../src/panels/ai-chat/chat-view");
+/**
+ * Only the Monaco mount is doubled, and only because it is the one thing this file cannot host.
+ *
+ * The Logic tab's code surface draws an empty `[part="code-host"]` and `syncFunctionEditor` fills
+ * it with a real Monaco against a real `StudioPlatform`. What is under test here is the REAL
+ * {@link closeFunctionEditor} — that pressing Close clears the target rather than merely hiding a
+ * surface — so every other export stays the module's own.
+ */
+const realEditors = await import("../src/panels/editors");
+void mock.module("../src/panels/editors.js", () => ({
+  ...realEditors,
+  syncFunctionEditor: () => {},
+}));
+
+const { logicTarget, syncLogicPanel } = await import("../src/panels/formula-workspace");
+const { bottomPanelRegion } = await import("../src/ui/regions");
+const { projectRows } = await import("../src/panels/ai-chat/chat-view");
 const { initShellRefs, registerRenderer } = await import("../src/store");
 const frontmatterPanel = await import("../src/panels/frontmatter-panel");
 
@@ -124,13 +137,16 @@ describe("the entry editor's way out of a document with no schema", () => {
     }) as unknown as Tab;
     const el = host();
     renderEntryMode(surfaceOf(el), tab);
-    await flush();
+    /* The editor is a mounted document (`src/surfaces/entry-editor.json`): `mountSurface` settles
+       when it has rendered, and `jx-action-button` settles its own template one
+       `connectedCallback` after that. */
+    await flush(6);
     return el;
   }
 
   test("Content types… opens Project Settings AT the content section", async () => {
     const el = await mountNotAnEntry();
-    const button = el.querySelector("sp-action-button");
+    const button = el.querySelector('[part="content-types"]');
     expect(button?.textContent).toContain("Content types");
     expect(el.textContent).toContain("is not an entry of any content collection");
 
@@ -144,14 +160,14 @@ describe("the entry editor's way out of a document with no schema", () => {
   test("with no registry composed yet the button is inert rather than a crash", async () => {
     setActiveRegistry(null);
     const el = await mountNotAnEntry();
-    pointer(el.querySelector("sp-action-button")!, "click");
+    pointer(el.querySelector('[part="content-types"]')!, "click");
     expect(ran).toEqual([]);
   });
 
   test("that inertness is a no-op, not an exception the DOM swallowed", async () => {
     setActiveRegistry(null);
     const el = await mountNotAnEntry();
-    const button = el.querySelector("sp-action-button")!;
+    const button = el.querySelector('[part="content-types"]')!;
 
     // Happy-dom catches whatever a dispatched listener throws and re-raises it as an `error` event
     // On the window, so "nothing ran" and "it threw a TypeError" are the SAME observation from
@@ -182,7 +198,7 @@ describe("the entry editor's way out of a document with no schema", () => {
 
 describe("the entry form's repaints, and the pane that stops owning it", () => {
   /** A project with one JSON collection that has a draft axis, and a tab holding an entry of it. */
-  function mountEntry(): { el: HTMLElement; tab: Tab } {
+  async function mountEntry(): Promise<{ el: HTMLElement; tab: Tab }> {
     resetStudioState({
       projectConfig: {
         content: {
@@ -204,29 +220,32 @@ describe("the entry form's repaints, and the pane that stops owning it", () => {
     }) as unknown as Tab;
     const el = host();
     renderEntryMode(surfaceOf(el), tab);
+    await flush(8);
     return { el, tab };
   }
 
   test("a field commit repaints the form, and detaching the pane ends that for good", async () => {
-    const { el, tab } = mountEntry();
-    expect(el.querySelector(".entry-editor-collection")?.textContent).toContain("notes");
-    expect(el.querySelector(".entry-editor-note")).toBeNull();
+    const { el, tab } = await mountEntry();
+    expect(el.querySelector('[part="collection"]')?.textContent).toContain("notes");
+    expect(el.querySelector('[part="note"]')).toBeNull();
 
     // The form's effect owns the repaint: nothing calls `draw()` after a commit, the entry's own
     // Fields do. Inverting the effect's `activeIn(paneId) !== panel` guard blanks the pane on the
     // FIRST render, so both this line and the one above it fail.
     setEntryDraft(tab, true);
-    await flush();
-    expect(el.querySelector(".entry-editor-note")?.textContent).toContain("Marked a draft");
-    expect(el.querySelector(".entry-draft-switch")).not.toBeNull();
+    await flush(4);
+    expect(el.querySelector('[part="note"]')?.textContent).toContain("Marked a draft");
+    expect(el.querySelector('[part="draft"]')).not.toBeNull();
 
     detachEntryPane("primary");
     setEntryDraft(tab, false);
-    await flush();
-    // Frozen exactly as the pane left it. A detached form is not merely skipped when it repaints —
-    // Its scope is stopped, so it never repaints at all, which is why the effect's own guard cannot
-    // Be reached from here: an effect that has been stopped is not re-run to see it.
-    expect(el.querySelector(".entry-editor-note")).not.toBeNull();
+    await flush(4);
+    /* The pane has stopped owning a form at all. The lit version left its markup behind and this
+       line asserted it was FROZEN; a mounted document is TAKEN DOWN by the detach, which states
+       the same contract more strongly — the scope is stopped, so the commit above repaints
+       nothing, and there is nothing left in the stage for it to repaint. */
+    expect(el.querySelector('[part="entry"]')).toBeNull();
+    expect(entryPaneMounted("primary", tab)).toBe(false);
   });
 });
 
@@ -361,14 +380,10 @@ describe("the changed-files summary of an assistant turn", () => {
     timestamp: 1,
   } as Message;
 
-  const list = () =>
-    renderMessageList({
-      error: null,
-      listRef: () => {},
-      messages: [turn],
-      onScroll: () => {},
-      status: "idle",
-    });
+  /* The assistant is a Jx document now, so the summary is a PROJECTION rather than a template:
+     `changesState` is what the surface's `$switch` reads, and it is what "no expander at all"
+     means with no markup in this module to look for. */
+  const row = () => projectRows({ messages: [turn], status: "idle" })[0]!;
 
   afterEach(() => {
     stubWrites = [];
@@ -378,26 +393,29 @@ describe("the changed-files summary of an assistant turn", () => {
   test("a summary that has something to say is drawn above the file list", async () => {
     stubWrites = [{ disk: false, ok: true, path: "pages/index.json", tool: "write_file" }];
     stubSummary = "Changed 1 file";
-    const el = await renderInto(list());
-    expect(el.querySelector(".ai-msg-changes > summary")?.textContent).toContain("Changed 1 file");
-    expect(el.querySelectorAll(".ai-msg-changes-list li")).toHaveLength(1);
+    const projected = row();
+    expect(projected.changesState).toBe("list");
+    expect(projected.changesSummary).toBe("Changed 1 file");
+    expect(projected.changes).toHaveLength(1);
   });
 
   test("writes that summarise to nothing draw no expander at all", async () => {
     stubWrites = [{ disk: false, ok: true, path: "pages/index.json", tool: "write_file" }];
     stubSummary = "";
-    const el = await renderInto(list());
+    const projected = row();
     // An empty <summary> over a file list is a disclosure widget whose label is a blank line.
-    expect(el.querySelector(".ai-msg-changes")).toBeNull();
+    expect(projected.changesState).toBe("none");
+    expect(projected.changes).toHaveLength(0);
     // The message itself is untouched — only its footer is withheld.
-    expect(el.querySelector(".ai-msg-md")?.textContent).toContain("Done.");
+    expect(projected.markdown).toContain("Done.");
   });
 });
 
 // ─── The Logic tab's function surface ────────────────────────────────────────
 
 describe("closing the function body in the Logic tab", () => {
-  function openFunctionPane(): { dock: HTMLElement; tab: Tab } {
+  /** The tab, mounted the way the Bottom dock mounts it: a body carrying the tab's own region. */
+  async function openFunctionPane(): Promise<{ dock: HTMLElement; tab: Tab }> {
     const tab = resetWorkspaceWithTab(
       {
         children: [],
@@ -408,32 +426,29 @@ describe("closing the function body in the Logic tab", () => {
     ) as unknown as Tab;
     tab.session.ui.editingFunction = { defName: "greet", type: "def" } as never;
     const dock = host();
-    litRender(
-      logicPanelBody(() => {}),
-      dock,
-    );
+    dock.dataset["jxRegion"] = bottomPanelRegion("logic");
+    syncLogicPanel(dock);
+    await flush(3);
     return { dock, tab };
   }
 
   test("Close clears the target, so the tab stops claiming to hold one", async () => {
-    const { dock, tab } = openFunctionPane();
-    expect(dock.querySelector(".fw-code")).not.toBeNull();
-    expect(dock.querySelector(".fw-title")?.textContent).toContain("greet");
+    const { dock, tab } = await openFunctionPane();
+    expect(dock.querySelector('[part="code-host"]')).not.toBeNull();
+    expect(dock.querySelector('[part="title"]')?.textContent).toContain("greet");
     expect(logicTarget(tab)?.surface).toBe("function");
 
-    pointer(dock.querySelector(".fw-close")!, "click");
-    await flush();
+    pointer(dock.querySelector('[part="close"]')!, "click");
+    await flush(3);
 
     expect(tab.session.ui.editingFunction).toBeNull();
     expect(logicTarget(tab)).toBeNull();
-    // And the tab redraws as what it now is: nothing open, with the sentence that says so.
-    litRender(
-      logicPanelBody(() => {}),
-      host(),
-    );
-    const repainted = document.body.lastElementChild as HTMLElement;
-    expect(repainted.querySelector(".fw-code")).toBeNull();
-    expect(repainted.textContent).toContain("Open a formula or a function to edit it here");
+    // And the tab re-projects into what it now is: nothing open, with the sentence that says so.
+    expect(dock.querySelector('[part="code-host"]')).toBeNull();
+    expect(dock.textContent).toContain("Open a formula or a function to edit it here");
+    // Down the way the dock takes it down: a repaint whose body is not Logic's.
+    delete dock.dataset["jxRegion"];
+    syncLogicPanel(dock);
   });
 });
 
@@ -470,7 +485,7 @@ describe("a Document Header repaint that lands after the host is gone", () => {
     resetStudioState({ projectConfig: {} });
     document.body.innerHTML = `<div id="app">
       <div class="pane-stage" data-jx-region="pane.primary">
-        <div class="doc-header-host"></div>
+        <div part="doc-header"></div>
       </div>
     </div>`;
     initShellRefs();
@@ -481,23 +496,24 @@ describe("a Document Header repaint that lands after the host is gone", () => {
     });
     tab.doc.document.title = "Hello";
 
-    const el = document.querySelector<HTMLElement>(".doc-header-host")!;
+    const el = document.querySelector<HTMLElement>('[part="doc-header"]')!;
     frontmatterPanel.attachDocumentHeaderHost("primary", el);
-    await flush(4);
-    expect(el.querySelector(".doc-header")).not.toBeNull();
+    await flush(8);
+    expect(el.querySelector('[part="card"]')).not.toBeNull();
     expect(el.hidden).toBeFalse();
 
     // The stage asks for a repaint and then redraws itself without a header slot before the frame
     // Lands. The queued repaint still runs, and it has nowhere to paint.
     frontmatterPanel.render();
     frontmatterPanel.attachDocumentHeaderHost("primary", null);
-    await flush(4);
+    await flush(8);
 
-    expect(frontmatterPanel.documentHeaderHost("primary")).toBeNull();
     expect(frameErrors).toEqual([]);
-    // The element the stage took back is left exactly as it was — the orphaned repaint neither
-    // Cleared it nor hid it, because it never ran against it.
-    expect(el.querySelector(".doc-header")).not.toBeNull();
+    /* The stage's own node is left as it found it — nothing hides it and nothing else is written
+       into it — but the CARD goes with the hand-back. It is a mounted document now, and a document
+       owns runtime effects: leaving one bound to a tree the stage has taken away is a subscription
+       to a document nobody can see, which is exactly the leak the lit card had no way to have. */
     expect(el.hidden).toBeFalse();
+    expect(el.querySelector('[part="card"]')).toBeNull();
   });
 });

@@ -137,11 +137,32 @@
     // oxfmt rewrites hex digits to lowercase; this rule demands uppercase. Formatter wins.
     "unicorn/number-literal-case": "off",
 
+    // ─── On: a removal that must stay removed ────────────────────────────────
+    // Adobe Spectrum Web Components drew every Studio surface until the Jx UI kit replaced them,
+    // and the last of it left in §C8. The packages are gone from every manifest, so an import
+    // would not resolve — but the failure that matters is the one that DOES resolve: somebody
+    // reinstalls one package to reach a single control, and the family follows it back in through
+    // its own dependencies (the 36 declared entries pulled 50). `scripts/check-styles.ts` bans the
+    // TAGS, the `--spectrum-*` tokens AND the specifier; this rule is the second lock on the door
+    // rather than the only one, because oxlint's version does not see a BARE side-effect import —
+    // which is exactly how Spectrum registered.
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@spectrum-web-components/*"],
+            "message": "Adobe Spectrum is removed (studio-ui-guidelines.md §1, §6). Use @jxsuite/ui: a surface is a Jx document over the kit, and a control the kit lacks is a component document in packages/ui/components/ rather than a second element family."
+          }
+        ]
+      }
+    ],
+
     // ─── Off: deliberate architecture ─────────────────────────────────────────
     // Studio store/PAL pattern: `export let` refs populated once by initShellRefs().
     "import/no-mutable-exports": "off",
-    // Side-effect imports are the registration mechanism (Spectrum components,
-    // monaco-setup, happy-dom test bootstrap).
+    // Side-effect imports are the registration mechanism (monaco-setup, form controls,
+    // happy-dom test bootstrap).
     "import/no-unassigned-import": "off",
     // `import * as panel` module-object registries (studio panels) and monaco's canonical
     // namespace import.

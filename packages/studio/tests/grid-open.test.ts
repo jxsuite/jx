@@ -1,4 +1,4 @@
-import { installMockPlatform, resetStudioState } from "./harness";
+import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { activePane, closeAllTabs, workspace } from "../src/workspace/workspace";
 
@@ -117,7 +117,28 @@ describe("virtual grid openers", () => {
     expect(workspace.tabs.size).toBe(2);
   });
 
-  test("the source picker lists pages, collections, and connector tables", async () => {
+  /* The picker is a document (`surfaces/grid-open.json`) inside the confirm dialog `ui/layers.ts`
+     already owns, so there is no `.jx-grid-picker` and no `sp-menu-item` to find. A row is
+     `[part="source"]`, and its `data-source` is the grid tab id it opens — which is what makes each
+     row addressable by what it does rather than by the label somebody typed. */
+  const rows = () => [...document.querySelectorAll<HTMLElement>('#layer-dialog [part="source"]')];
+  /* Labels, never the elements themselves: `toEqual` over a happy-dom node walks its whole parent
+     chain and never comes back, which reads as a hung suite rather than a failing assertion. */
+  const rowLabels = () => rows().map((el) => el.textContent?.trim());
+  const openDialog = () =>
+    [...document.querySelectorAll<HTMLElement>("#layer-dialog jx-dialog")].at(-1) ?? null;
+  const dismiss = async () => {
+    openDialog()?.dispatchEvent(new Event("cancel"));
+    await flush(2);
+  };
+  const row = (id: string) =>
+    document.querySelector<HTMLElement>(`#layer-dialog [part="source"][data-source="${id}"]`)!;
+  const groupTitles = () =>
+    [...document.querySelectorAll('#layer-dialog [part="group-title"]')].map((el) =>
+      el.textContent?.trim(),
+    );
+
+  test("the source picker groups pages, collections and connector tables", async () => {
     installMockPlatform({
       dataConnections: async () => ({
         connections: [
@@ -140,25 +161,30 @@ describe("virtual grid openers", () => {
       },
     });
     await openGridSourcePicker();
-    const picker = document.querySelector("#layer-modal .jx-grid-picker")!;
-    expect(picker).not.toBeNull();
-    const items = [...picker.querySelectorAll("sp-menu-item")].map((m) => m.textContent?.trim());
-    expect(items).toEqual(["Pages", "Collection: posts", "users"]);
+    await flush(3);
+    expect(groupTitles()).toEqual(["Project", "Data · main"]);
+    expect(rowLabels()).toEqual(["Pages", "Collection: posts", "users"]);
+    // The dialog names itself, so the picker inherits a headline and a cancel it does not draw.
+    expect(document.querySelector("#layer-dialog jx-dialog")?.getAttribute("headline")).toBe(
+      "Open Grid",
+    );
 
-    // Picking entries closes the dialog and opens (deduped) tabs.
-    const item = (label: string) =>
-      [...document.querySelectorAll("#layer-modal sp-menu-item")].find(
-        (m) => m.textContent?.trim() === label,
-      ) as HTMLElement;
-    item("users").click();
+    // Picking a row closes the dialog and opens (deduped) tabs.
+    row("grid://data/main/users").click();
+    await flush(2);
     expect(workspace.tabs.has("grid://data/main/users")).toBeTrue();
+    expect(rows()).toHaveLength(0);
 
     await openGridSourcePicker();
-    item("Pages").click();
+    await flush(3);
+    row("grid://pages").click();
+    await flush(2);
     expect(workspace.tabs.has("grid://pages")).toBeTrue();
 
     await openGridSourcePicker();
-    item("Collection: posts").click();
+    await flush(3);
+    row("grid://collection/posts").click();
+    await flush(2);
     expect(workspace.tabs.has("grid://collection/posts")).toBeTrue();
 
     // Re-picking activates the existing tabs instead of duplicating them.
@@ -166,17 +192,44 @@ describe("virtual grid openers", () => {
     openConnectorGrid("main", "users");
     openPagesGrid();
     expect(workspace.tabs.size).toBe(before);
-    document.querySelector("#layer-modal")!.replaceChildren();
   });
 
-  test("the picker dismisses on the dialog close event", async () => {
+  test("a connection with no tables says why instead of drawing an empty group", async () => {
+    installMockPlatform({
+      dataConnections: async () => ({
+        connections: [
+          {
+            configured: true,
+            isDefault: true,
+            missingSecrets: [],
+            name: "blank",
+            provider: "sqlite",
+            settings: {},
+            tables: [],
+          },
+        ],
+      }),
+      dataRows: async () => ({ columns: [], rows: [], total: 0 }),
+    });
+    resetStudioState({ projectConfig: { content: {} } });
+    await openGridSourcePicker();
+    await flush(3);
+    expect(document.querySelector('#layer-dialog [part="group-empty"]')?.textContent).toContain(
+      "push a schema first",
+    );
+    expect(rows().map((el) => el.dataset["source"])).toEqual(["grid://pages"]);
+    await dismiss();
+  });
+
+  test("the picker goes down with the dialog it lives in", async () => {
     installMockPlatform({ dataRows: async () => ({ columns: [], rows: [], total: 0 }) });
     resetStudioState({ projectConfig: { content: {} } });
     await openGridSourcePicker();
-    const dialog = document.querySelector("#layer-modal sp-dialog-wrapper")!;
-    expect(dialog).not.toBeNull();
-    dialog.dispatchEvent(new Event("close"));
-    expect(document.querySelector("#layer-modal .jx-grid-picker")).toBeNull();
+    await flush(3);
+    expect(openDialog()).not.toBeNull();
+    expect(rows()).toHaveLength(1);
+    await dismiss();
+    expect(rows()).toHaveLength(0);
   });
 
   test("a failing connections fetch degrades to no connector groups", async () => {
@@ -188,9 +241,9 @@ describe("virtual grid openers", () => {
     });
     resetStudioState({ projectConfig: { content: {} } });
     await openGridSourcePicker();
-    const picker = document.querySelector("#layer-modal .jx-grid-picker")!;
-    const items = [...picker.querySelectorAll("sp-menu-item")].map((m) => m.textContent?.trim());
-    expect(items).toEqual(["Pages"]);
-    document.querySelector("#layer-modal")!.replaceChildren();
+    await flush(3);
+    expect(groupTitles()).toEqual(["Project"]);
+    expect(rowLabels()).toEqual(["Pages"]);
+    await dismiss();
   });
 });

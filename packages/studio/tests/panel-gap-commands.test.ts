@@ -9,7 +9,6 @@
  * `inspector.setSection` is also the setter that empties the last of `TOGGLE_DEBT`.
  */
 import { flush, resetWorkspaceWithTab } from "./harness";
-import { render as litRender } from "lit-html";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -24,7 +23,8 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 void mock.module("../src/ui/media-picker.js", () => ({
   invalidateMediaCache: () => {},
-  renderMediaPicker: () => "",
+  mountMediaPicker: () => {},
+  unmountMediaPicker: () => {},
   uploadAndAssign: () => Promise.resolve(null),
 }));
 
@@ -44,7 +44,7 @@ const {
 const { registerSignalsCommands, signalsCommands } = await import("../src/panels/signals-panel");
 const { formulaEditorCommands, registerFormulaEditorCommands } =
   await import("../src/panels/formula-workspace");
-const { registerStyleCommands, renderStylePanelTemplate, resetSelectorMenu, styleCommands } =
+const { bindStyleHost, registerStyleCommands, resetSelectorMenu, styleCommands } =
   await import("../src/panels/style-panel");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -327,17 +327,23 @@ describe("style.openSelectorMenu", () => {
     activeTab.value!.session.selection = [["children", 0]];
     const host = document.createElement("div");
     document.body.append(host);
-    // Render the REAL Style sidebar: the handle comes from the Target Line's `ref`, which is the
-    // Whole point — no selector crosses the boundary, in the manifest or in this test.
-    litRender(renderStylePanelTemplate({ getCanvasMode: () => "design" }), host);
-    await flush();
+    // Mount the REAL Style tab: the handle comes from the Target Line's own host, announced
+    // Through `onNodeCreated`, which is the whole point — no selector crosses the boundary, in the
+    // Manifest or in this test.
+    bindStyleHost(host, { getCanvasMode: () => "design" });
+    /* Four turns: two documents land here — the tab's own and the Target Line's inside it — so its
+       button exists after both mounts resolve and the keyed `$map` over the words reconciles. */
+    await flush(4);
 
-    const trigger = host.querySelector("overlay-trigger") as
-      | (HTMLElement & { open?: string })
-      | null;
-    expect(trigger).not.toBeNull();
-    void registry.run("style.openSelectorMenu");
-    expect(trigger?.open).toBe("click");
+    /* The trigger the command looks up at the moment of the press. It used to be a Spectrum
+       `overlay-trigger` whose `open="click"` attribute this test read back; the Target Line is a
+       document now and the menu is the kit's, raised into the popover layer — so what is left to
+       assert HERE is the wiring, which is this test's subject: the command finds the handle the
+       Style tab's own document announced, and does not refuse. That the menu then paints is
+       asserted where the menu lives, in `target-line.test.ts`. */
+    expect(host.querySelector('[data-seg="selector"]')).not.toBeNull();
+    expect(() => registry.run("style.openSelectorMenu")).not.toThrow();
+    bindStyleHost(null);
     host.remove();
   });
 

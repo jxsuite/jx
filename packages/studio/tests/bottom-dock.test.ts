@@ -11,7 +11,7 @@ import { flush, installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   activeBottomPanel,
-  bottomDockTemplate,
+  bottomDockValues,
   bottomPanelSet,
   bottomTabLabel,
   mountBottomDock,
@@ -33,6 +33,19 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 function host(): HTMLElement {
   return document.querySelector("#bottom-dock") as HTMLElement;
+}
+
+/** The tab drawn as current. Exactly one, always. */
+function selectedTab(): HTMLElement | null {
+  return host().querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+}
+
+/** Activate a tab the way a pointer does: the tab dispatches `select`, the strip answers `change`. */
+function clickTab(value: string): void {
+  const tab = [...host().querySelectorAll<HTMLElement>('[role="tab"]')].find(
+    (el) => el.getAttribute("value") === value,
+  );
+  tab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
 beforeEach(() => {
@@ -132,47 +145,54 @@ describe("Logic — the takeover that became a tab", () => {
     setBottomTab("problems");
     setDockCollapsed("bottom", true);
     mountBottomDock();
-    await flush();
+    await flush(4);
     expect(host().textContent?.trim()).toBe("");
 
     openFormulaTab();
-    await flush();
+    await flush(4);
 
     // The dock opened itself, on the tab that hosts the surface — a takeover reveals itself by
     // Definition and a dock tab does not, so this is the wiring the move has to add.
     expect(shell.docks.bottom.collapsed).toBe(false);
     expect(shell.bottomTab).toBe("logic");
-    expect(host().querySelector<HTMLElement>(".bd-body")?.dataset.jxRegion).toBe(
+    expect(host().querySelector<HTMLElement>('[part="dock-body"]')?.dataset.jxRegion).toBe(
       "dock.bottom/panel:logic",
     );
-    expect(host().querySelector(".formula-workspace")).not.toBeNull();
-    expect(host().querySelector(".fw-title")?.textContent).toContain("total");
+    /* The strip says so too, and it is a real `tablist` now: the tab that is selected is the one
+       whose panel the body is. What the Logic tab then DRAWS is its own surface's contract and is
+       asserted where that surface is — this dock only owes the reader the right tab, addressable. */
+    expect(selectedTab()?.getAttribute("value")).toBe("logic");
+    expect(host().querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby")).toBe(
+      selectedTab()?.id,
+    );
   });
 
   test("closing the dock over an open formula keeps it closed", async () => {
     mountBottomDock();
     openFormulaTab();
-    await flush();
-    (host().querySelector(".bd-close") as HTMLElement).click();
-    await flush();
+    await flush(4);
+    (host().querySelector('[part="close"]') as HTMLElement).click();
+    await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
     // A reveal that re-fired on every repaint would be a dock you cannot close.
     notify.error("unrelated");
-    await flush();
+    await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
   });
 
   test("closing the formula takes the tab out of the strip and falls back", async () => {
     mountBottomDock();
     openFormulaTab();
-    await flush();
-    expect(host().querySelectorAll("sp-tab")).toHaveLength(3);
+    await flush(4);
+    expect(host().querySelectorAll('[role="tab"]')).toHaveLength(3);
 
-    (host().querySelector(".fw-close") as HTMLElement).click();
-    await flush();
-    expect(activeTab.value?.session.ui.editingFormula).toBeNull();
-    expect(host().querySelectorAll("sp-tab")).toHaveLength(2);
-    expect(host().querySelector<HTMLElement>(".bd-body")?.dataset.jxRegion).toBe(
+    /* Through the model rather than through the tab's own ✕: what the Logic tab draws is its
+       surface's contract, and what this dock owes is that a tab whose `when` stops holding leaves
+       the strip and the selection falls back. */
+    activeTab.value!.session.ui.editingFormula = null;
+    await flush(4);
+    expect(host().querySelectorAll('[role="tab"]')).toHaveLength(2);
+    expect(host().querySelector<HTMLElement>('[part="dock-body"]')?.dataset.jxRegion).toBe(
       "dock.bottom/panel:problems",
     );
   });
@@ -181,28 +201,28 @@ describe("Logic — the takeover that became a tab", () => {
     const seen: string[] = [];
     const logic = bottomPanelSet().find((panel) => panel.id === "logic")!;
     // Restored by the suite's `resetPanels()`, which drops every record and re-registers.
-    logic.afterRender = (_ctx, el) => seen.push(el.className || el.id);
+    logic.afterRender = (_ctx, el) => seen.push(el.getAttribute("part") ?? el.id);
     mountBottomDock();
     openFormulaTab();
-    await flush();
-    expect(seen).toContain("bd-body");
+    await flush(4);
+    expect(seen).toContain("dock-body");
 
     // The three ways to stop showing it. Each must reach the surface, or the Monaco instance the
     // Logic tab holds stays attached to DOM lit has already discarded.
     seen.length = 0;
     setBottomTab("activity");
-    await flush();
-    expect(seen).toEqual(["bd-body"]);
+    await flush(4);
+    expect(seen).toEqual(["dock-body"]);
 
     seen.length = 0;
     setDockCollapsed("bottom", true);
-    await flush();
+    await flush(4);
     expect(seen).toEqual(["bottom-dock"]);
 
     // Four, in fact. Blanking the host on unmount is the one nothing else covers, and the
     // Canvas-side dispose that used to mop it up went away with the takeover.
     setDockCollapsed("bottom", false);
-    await flush();
+    await flush(4);
     seen.length = 0;
     unmountBottomDock();
     expect(seen).toEqual(["bottom-dock"]);
@@ -217,32 +237,32 @@ describe("Logic — the takeover that became a tab", () => {
   test("re-asking for the SAME target reopens a dock the user closed", async () => {
     mountBottomDock();
     openFormulaTab();
-    await flush();
+    await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(false);
 
-    (host().querySelector(".bd-close") as HTMLElement).click();
-    await flush();
+    (host().querySelector('[part="close"]') as HTMLElement).click();
+    await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
 
     // Exactly what "Open in formula workspace" on `total` does the second time.
     openLogicTarget({ editing: { defName: "total", type: "def" }, surface: "formula" });
-    await flush();
+    await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(false);
     expect(shell.bottomTab).toBe("logic");
-    expect(host().querySelector(".fw-title")?.textContent).toContain("total");
+    expect(selectedTab()?.getAttribute("value")).toBe("logic");
   });
 
   test("the panel's afterRender runs against the painted body", async () => {
-    const seen: (string | undefined)[] = [];
+    const seen: string[] = [];
     const logic = bottomPanelSet().find((panel) => panel.id === "logic")!;
     // Restored by the suite's `resetPanels()`, which drops every record and re-registers.
-    logic.afterRender = (_ctx, el) => seen.push(el.className);
+    logic.afterRender = (_ctx, el) => seen.push(el.getAttribute("part") ?? el.id);
     mountBottomDock();
     openFormulaTab();
-    await flush();
+    await flush(4);
     // Monaco's mount hangs off this hook, so a dock that skipped it would host the record and
     // Never the editor.
-    expect(seen).toContain("bd-body");
+    expect(seen).toContain("dock-body");
   });
 });
 
@@ -277,10 +297,10 @@ describe("bottomTabLabel", () => {
 describe("mounting", () => {
   test("renders the strip and the selected tab's body, and stamps the region", async () => {
     mountBottomDock();
-    await flush();
-    expect(host().querySelector(".bd-strip")).not.toBeNull();
-    expect(host().querySelectorAll("sp-tab")).toHaveLength(2);
-    expect(host().querySelector<HTMLElement>(".bd-body")?.dataset.jxRegion).toBe(
+    await flush(4);
+    expect(host().querySelector('[part="strip"]')).not.toBeNull();
+    expect(host().querySelectorAll('[role="tab"]')).toHaveLength(2);
+    expect(host().querySelector<HTMLElement>('[part="dock-body"]')?.dataset.jxRegion).toBe(
       "dock.bottom/panel:problems",
     );
     expect(resolveRegion("dock.bottom")).toBe(host());
@@ -288,9 +308,9 @@ describe("mounting", () => {
 
   test("a collapsed dock renders nothing and resolves to nothing", async () => {
     mountBottomDock();
-    await flush();
+    await flush(4);
     setDockCollapsed("bottom", true);
-    await flush();
+    await flush(4);
     // Focus must not land in a `display: none` box and a shot must not crop one — so
     // `view.setBottomDock { open: true }` is what makes the region addressable.
     expect(host().textContent?.trim()).toBe("");
@@ -299,55 +319,64 @@ describe("mounting", () => {
 
   test("repaints when a problem arrives, with nothing pushing DOM at it", async () => {
     mountBottomDock();
-    await flush();
+    await flush(4);
     expect(host().textContent).toContain("Nothing needs fixing");
     notify.error("project.json:14 unknown key", { source: "Validation" });
-    await flush();
+    await flush(4);
     expect(host().textContent).toContain("unknown key");
-    expect(host().querySelector("sp-tab")?.getAttribute("label")).toBe("Problems 1");
+    expect(host().querySelector('[role="tab"]')?.getAttribute("label")).toBe("Problems 1");
   });
 
   test("selecting a tab through the strip writes the shell record", async () => {
     mountBottomDock();
-    await flush();
-    const tabs = host().querySelector("sp-tabs") as HTMLElement & { selected: string };
-    tabs.selected = "activity";
-    tabs.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await flush(4);
+    clickTab("activity");
+    await flush(4);
     expect(shell.bottomTab).toBe("activity");
-    expect(host().querySelector<HTMLElement>(".bd-body")?.dataset.jxRegion).toBe(
+    expect(host().querySelector<HTMLElement>('[part="dock-body"]')?.dataset.jxRegion).toBe(
       "dock.bottom/panel:activity",
     );
   });
 
   test("re-selecting the tab already showing changes nothing", async () => {
     mountBottomDock();
-    await flush();
-    const tabs = host().querySelector("sp-tabs") as HTMLElement & { selected: string };
-    tabs.selected = "problems";
-    tabs.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await flush(4);
+    clickTab("problems");
+    await flush(4);
     expect(shell.bottomTab).toBe("problems");
   });
 
   test("the close button collapses the dock", async () => {
     mountBottomDock();
-    await flush();
-    (host().querySelector(".bd-close") as HTMLElement).click();
-    await flush();
+    await flush(4);
+    (host().querySelector('[part="close"]') as HTMLElement).click();
+    await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
   });
 
   test("mounting twice is a no-op, and unmounting clears the host", async () => {
     mountBottomDock();
     mountBottomDock();
-    await flush();
-    expect(host().querySelectorAll(".bd-strip")).toHaveLength(1);
+    await flush(4);
+    expect(host().querySelectorAll('[part="strip"]')).toHaveLength(1);
     unmountBottomDock();
     expect(host().textContent?.trim()).toBe("");
     expect(Object.hasOwn(host().dataset, "jxRegion")).toBe(false);
     // And a render after unmount has no host to write to, rather than throwing.
     expect(() => renderBottomDock()).not.toThrow();
+  });
+
+  test("unmounting before the mount lands leaves nothing behind", async () => {
+    /* The chrome is a document and a document mounts asynchronously, so `mount(); unmount()` in one
+       turn is a real sequence — a project closing under a dock that has only just been asked for.
+       The handle that settles afterwards has to throw its own surface away rather than append it,
+       or `#bottom-dock` is never `:empty` again and the shell's sheet cannot take the dock out of
+       the grid. */
+    mountBottomDock();
+    unmountBottomDock();
+    await flush(4);
+    expect(host().childNodes).toHaveLength(0);
+    expect(resolveRegion("dock.bottom")).toBeNull();
   });
 
   test("an absent host is inert, not fatal — the desktop shell boots a partial tree", () => {
@@ -357,9 +386,18 @@ describe("mounting", () => {
   });
 });
 
-describe("the template, without a host", () => {
-  test("renders every visible tab and the selected body", () => {
-    expect(() => bottomDockTemplate(emptyContext())).not.toThrow();
+describe("the projection, without a host", () => {
+  test("names every visible tab, and pairs the selected one with the body", () => {
+    /* The projection is a plain object, so this is a comparison rather than a DOM walk — and it
+       states the pairing the strip's ARIA is built from: the tab that is selected is the one whose
+       element id the panel names as its `aria-labelledby`. */
+    const values = bottomDockValues(emptyContext());
+    expect(values.tabs.map((tab) => tab.key)).toEqual(
+      visibleBottomPanels(emptyContext()).map((panel) => panel.id),
+    );
+    expect(values.tab).toBe(activeBottomPanel(emptyContext())?.id ?? "");
+    expect(values.tabId).toBe(values.tabs.find((tab) => tab.key === values.tab)?.tabId ?? "");
+    expect(values.bodyRegion).toBe(`dock.bottom/panel:${values.tab}`);
   });
 
   test("with no visible tab at all it says so instead of painting a blank box", async () => {
@@ -373,9 +411,9 @@ describe("the template, without a host", () => {
     expect(none).toBeGreaterThan(0);
     setBottomTab("logic");
     mountBottomDock();
-    await flush();
+    await flush(4);
     // A hidden stored tab falls back rather than emptying the dock.
-    expect(host().querySelector<HTMLElement>(".bd-body")?.dataset.jxRegion).toBe(
+    expect(host().querySelector<HTMLElement>('[part="dock-body"]')?.dataset.jxRegion).toBe(
       "dock.bottom/panel:problems",
     );
   });

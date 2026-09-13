@@ -4,6 +4,8 @@ description: "Application settings in Jx Studio: the theme, the AI provider, eve
 spec: studio.md#15
 code:
   - packages/studio/src/settings/preferences-dialog.ts
+  - packages/studio/src/surfaces/preferences.json
+  - packages/studio/src/surfaces/preferences.ts
   - packages/studio/src/settings/preferences-sections.ts
   - packages/studio/src/panels/settings-menu.ts
   - packages/studio/src/settings/preferences-accounts.ts

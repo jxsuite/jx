@@ -1,0 +1,108 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsDeploy",
+  "$description": "Project Settings › Deploy: where the site ships, and what it is built with. One row over `build.adapter`, and the sentence a failed write leaves behind. The adapter (`surfaces/settings-deploy.ts`) hands in the chosen adapter, the enumeration it is chosen from and whatever the last write had to say; the document draws them and hands the change straight back. Nothing here reads `project.json` — a section that re-read the config while drawing would be a second opinion about a file one module already owns.",
+  "tagName": "section",
+  "attributes": {
+    "part": "deploy"
+  },
+  "style": {
+    "$description": "What is NOT in this block is most of the conversion. Four borrowed rules had nothing to transcribe: `.settings-field-label` and `.settings-field-desc` drew a row's label and the sentence under it, and `jx-field` draws both — with the label actually NAMING the control, which the bare `<label class=…>` beside the picker never did; `.settings-field` added a 20px bottom margin to separate one row from the next, and this section has one row, so the margin separated it from the end of the section; and `.settings-section` was never defined by any stylesheet at all, which is why it sits in `check-styles.ts`'s allow-list rather than in a rule.",
+    "display": "block",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"error\"]": {
+      "$description": "A write that failed, said under the section title rather than pinned to the picker: settings save on change, so a silent rejection would read as \"my edit just vanished\", and what failed was the whole file rather than the value. Its size read `--spectrum-font-size-75` with a 12px fallback, which resolved only inside `<sp-theme>` — a document is mounted in the settings pane, where that name is not in scope and the fallback is all it would ever have taken — so the size is the kit's scale and the colour is the studio layer's.",
+      "margin": "0 0 16px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"adapter\"]": {
+      "$description": "How wide the picker may grow. A control offering five short words does not want the width of a 900px pane, and 320px is the one thing `.settings-build-adapter` said that the kit does not — the same measure the two pickers in Locales take.",
+      "maxWidth": "320px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "Deploy"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "error-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "error",
+            "role": "alert"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "tagName": "jx-field",
+      "attributes": {
+        "part": "row",
+        "data-field": "adapter"
+      },
+      "$props": {
+        "span": true,
+        "label": "Platform Adapter",
+        "description": "What the site is built for. Static writes plain files; the others emit a server entry for that runtime."
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "adapter"
+          },
+          "$props": {
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/adapters"
+            },
+            "value": {
+              "$ref": "#/state/adapter"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setAdapter"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -321,7 +321,7 @@ describe("caret, focus and modal", () => {
     expect(context().caret.active).toBe(true);
   });
 
-  test.each(["input", "textarea", "select", "sp-textfield", "sp-search", "sp-number-field"])(
+  test.each(["input", "textarea", "select"])(
     "a focused %s owns the keyboard exactly as a canvas caret does",
     (tag) => {
       const el = document.createElement(tag);
@@ -332,6 +332,30 @@ describe("caret, focus and modal", () => {
       expect(context().caret.active).toBe(true);
     },
   );
+
+  /**
+   * The kit is answered one node deeper, and that is the whole reason the four `sp-*` tags went.
+   *
+   * This list used to include `sp-textfield`, `sp-search` and `sp-number-field`, because a Spectrum
+   * control's `<input>` sits in a shadow root and `document.activeElement` retargets onto the HOST.
+   * No kit element declares `$shadow` (`ui.md` §3.2), so a `jx-textfield` puts a real `<input>` in
+   * this tree and focus lands on it. Both halves are asserted: naming the host tags again would
+   * have passed the first half on its own while matching a node that never takes focus.
+   */
+  test("a kit field answers through the native control it renders, not through its host", () => {
+    const field = document.createElement("jx-textfield");
+    const input = document.createElement("input");
+    field.append(input);
+    document.body.append(field);
+    input.focus();
+    expect(isTextEntryFocused()).toBe(true);
+    expect(context().caret.active).toBe(true);
+
+    field.setAttribute("tabindex", "0");
+    field.focus();
+    expect(document.activeElement).toBe(field);
+    expect(isTextEntryFocused()).toBe(false);
+  });
 
   test("a focused button does not", () => {
     const el = document.createElement("button");

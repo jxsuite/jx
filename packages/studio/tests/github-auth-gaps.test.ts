@@ -1,12 +1,18 @@
 /**
- * Gap coverage for src/github/github-auth.ts — the device-flow dialog template (user code,
- * verification link, cancel/close handlers) and the poll loop's cancelled / network-error branches,
- * which tests/github-auth.test.ts leaves uncovered by never rendering the dialog.
+ * The GitHub device-flow waiting room — `src/surfaces/github-auth.json` and its adapter, driven
+ * through the real flow that `tests/github-auth.test.ts` bypasses with a doubled surface. It also
+ * covers the poll loop's cancelled and network-error branches, which that file never reaches
+ * because it never lets the dialog exist.
+ *
+ * Everything is addressed by `part`, because the dialog is a document now: there is no
+ * `.github-auth-code` to find and no `sp-dialog-wrapper` to dispatch at — the box, the header, the
+ * one answer button and the backdrop all belong to `jx-dialog`, and the code, the link and the wait
+ * are parts of the document inside it.
  */
-import "./with-dom.js";
+import { flush } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
-import { render as litRender } from "lit-html";
+import { REGION_ATTR } from "../src/ui/regions";
 import type { NotifyCall } from "./notify-mock";
 
 if (globalThis.localStorage === undefined) {
@@ -21,23 +27,13 @@ if (globalThis.localStorage === undefined) {
 
 const STORAGE_KEY = "jx_github_token";
 
-let dialogHosts: HTMLElement[] = [];
+/** The dialog layer, standing in for `#layer-dialog` without a shell to hang it off. */
+const dialogLayer = document.createElement("div");
+document.body.append(dialogLayer);
 
 void mock.module("../src/ui/layers.js", () => ({
+  layerHost: () => dialogLayer,
   showConfirmDialog: async () => true,
-  showDialog: (templateFn: any) =>
-    new Promise((resolve) => {
-      const host = document.createElement("div");
-      document.body.append(host);
-      dialogHosts.push(host);
-      litRender(
-        templateFn((value: any) => {
-          host.remove();
-          resolve(value);
-        }),
-        host,
-      );
-    }),
 }));
 
 const notifications: NotifyCall[] = [];
@@ -101,12 +97,31 @@ const waitFor = async (cond: () => boolean, timeoutMs = 2000) => {
   }
 };
 
+/** The waiting room, or null. Named by its own `part`, so nothing else can answer for it. */
+function dialogElement(): HTMLElement | null {
+  return dialogLayer.querySelector<HTMLElement>('jx-dialog[part="github-auth"]');
+}
+
+/**
+ * Wait for the dialog to be addressable.
+ *
+ * Two settlings, not one: the mount resolving means the DOCUMENT rendered, and `jx-dialog` settles
+ * its own template one `connectedCallback` later — so a single flush finds the element with none of
+ * its parts inside it (specs/studio-ui-guidelines.md §1.1).
+ */
+async function openedDialog(): Promise<HTMLElement> {
+  await waitFor(() => dialogElement()?.querySelector('[part="code"]') != null);
+  return dialogElement()!;
+}
+
+/** One part's text, trimmed the way a reader would read it. */
+function partText(dialog: HTMLElement, part: string): string {
+  return dialog.querySelector(`[part="${part}"]`)?.textContent?.trim() ?? "";
+}
+
 beforeEach(() => {
   localStorage.removeItem(STORAGE_KEY);
-  for (const host of dialogHosts) {
-    host.remove();
-  }
-  dialogHosts = [];
+  dialogLayer.replaceChildren();
   fetchQueue = [];
   notifications.length = 0;
   installFetch();
@@ -116,37 +131,53 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("authenticateGithub dialog", () => {
-  test("renders the user code and verification link, cancel stops polling", async () => {
+describe("the device-flow dialog", () => {
+  test("prints the code and the page, and offers only a way out", async () => {
     // Interval of 1s: the first poll never fires before we cancel.
     fetchQueue = [deviceResp(1)];
     const promise = authenticateGithub();
-    await sleep(5);
+    const dialog = await openedDialog();
 
-    const host = dialogHosts.at(-1)!;
-    expect(host).toBeTruthy();
-    expect(host.textContent).toContain("GAPS-1234");
-    expect(host.textContent).toContain("Waiting for authorization");
-    const link = host.querySelector("a")!;
+    expect(partText(dialog, "headline")).toBe("Sign in to GitHub");
+    expect(partText(dialog, "lede")).toBe("Enter this code on GitHub to authorize Jx Studio:");
+    expect(partText(dialog, "code")).toBe("GAPS-1234");
+    expect(partText(dialog, "waiting")).toBe("Waiting for authorization…");
+
+    const link = dialog.querySelector<HTMLAnchorElement>('[part="link"]')!;
     expect(link.getAttribute("href")).toBe("https://github.com/login/device");
     expect(link.textContent).toContain("https://github.com/login/device");
+    expect(link.getAttribute("target")).toBe("_blank");
 
-    host.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("cancel"));
+    /*
+     * No primary button at all: the answer arrives from GitHub over the poll, so a confirm would be
+     * a control with nothing to do. Cancel is the only thing on screen the reader can press.
+     */
+    expect(dialog.querySelector('[part="confirm"]')).toBeNull();
+    expect(partText(dialog, "cancel-label")).toBe("Cancel");
+
+    // The slot the document was mounted into carries the region the camera addresses.
+    expect(dialog.closest(`[${REGION_ATTR}]`)?.getAttribute(REGION_ATTR)).toBe(
+      "overlay.dialog:github-auth",
+    );
+
+    dialog.dispatchEvent(new Event("cancel"));
     expect(await promise).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-
-    // The pending poll timer was cleared — only the device-code request ever fired.
+    // Cancel took the document down with it, and the pending poll timer went too.
+    expect(dialogElement()).toBeNull();
     await sleep(20);
     expect(fetchCalls).toEqual(["https://github.com/login/device/code"]);
   });
 
-  test("close dismisses the dialog and resolves null", async () => {
+  test("the platform's own close dismisses it and resolves null", async () => {
+    // Escape, or a dismissal `closedby` allows: the element reports `close` and nothing else.
     fetchQueue = [deviceResp(1)];
     const promise = authenticateGithub();
-    await sleep(5);
+    const dialog = await openedDialog();
 
-    dialogHosts.at(-1)!.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("close"));
+    dialog.dispatchEvent(new Event("close"));
     expect(await promise).toBeNull();
+    expect(dialogElement()).toBeNull();
     await sleep(20);
     expect(fetchCalls.length).toBe(1);
   });
@@ -164,9 +195,9 @@ describe("authenticateGithub dialog", () => {
     // 0s interval: wait until the poll has fired and the token request is in flight (a fixed sleep
     // Races setTimeout(0) under load / Windows timer granularity).
     await waitFor(() => fetchCalls.length === 2);
-    expect(fetchCalls.length).toBe(2);
+    const dialog = await openedDialog();
 
-    dialogHosts.at(-1)!.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("cancel"));
+    dialog.dispatchEvent(new Event("cancel"));
     expect(await promise).toBeNull();
 
     // The pending poll completes with authorization_pending and schedules another poll,
@@ -195,8 +226,10 @@ describe("authenticateGithub dialog", () => {
       "https://github.com/login/oauth/access_token",
       "https://github.com/login/oauth/access_token",
     ]);
-    // The dialog was torn down once the token arrived.
-    expect(dialogHosts.at(-1)!.isConnected).toBe(false);
+    // The dialog was torn down once the token arrived — including the mount that may still have
+    // Been in flight when it did, which is the one case a bare `close()` cannot cover on its own.
+    await flush();
+    expect(dialogLayer.childElementCount).toBe(0);
   });
 
   test("access_denied resolves null and closes the dialog", async () => {
@@ -204,7 +237,8 @@ describe("authenticateGithub dialog", () => {
     const result = await authenticateGithub();
     expect(result).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(dialogHosts.at(-1)!.isConnected).toBe(false);
+    await flush();
+    expect(dialogLayer.childElementCount).toBe(0);
     // It rests rather than persisting: the state is CORRECT — there is no token because the user
     // Declined to grant one — and a Problems row promises something still needs fixing.
     expect(notifications).toHaveLength(1);
@@ -262,5 +296,53 @@ describe("authenticateGithub dialog", () => {
     ];
     expect(await authenticateGithub()).toBe("ghp_recovered");
     expect(notifications).toHaveLength(0);
+  });
+
+  test("a token that lands first is not overwritten by the close it provokes", async () => {
+    /*
+     * The defect the two-step answer exists to prevent. Closing the dialog raises `close` behind
+     * it, and the old template bound one handler to both `@cancel` and `@close` that resolved the
+     * promise with `null` — so "GitHub answered" and "the reader dismissed this" were the same code
+     * path, and whichever ran second decided what the caller got.
+     */
+    fetchQueue = [deviceResp(0), jsonResp({ access_token: "ghp_not_clobbered" })];
+    expect(await authenticateGithub()).toBe("ghp_not_clobbered");
+    await flush();
+    expect(dialogLayer.childElementCount).toBe(0);
+  });
+});
+
+describe("the waiting room on its own", () => {
+  test("closing before the mount lands disposes it, and a second close says nothing twice", async () => {
+    /*
+     * The flow reaches this on its ordinary path rather than its unusual one: with a zero-second
+     * device interval GitHub can answer before the document has finished mounting, and the mount
+     * that arrives afterwards must be disposed rather than left showing over an app that has moved
+     * on. `onClosed` fires once, because two paths reach it and either may be first.
+     */
+    const { openGithubAuthSurface } = await import("../src/surfaces/github-auth");
+    const layer = document.createElement("div");
+    document.body.append(layer);
+    let closures = 0;
+    const handle = openGithubAuthSurface({
+      layer,
+      onCancel: () => {},
+      onClosed: () => {
+        closures += 1;
+      },
+      userCode: "EARL-Y000",
+      verificationUri: "https://github.com/login/device",
+    });
+    expect(layer.childElementCount).toBe(1);
+
+    handle.close();
+    expect(layer.childElementCount).toBe(0);
+    handle.close();
+    expect(closures).toBe(1);
+
+    const element = await handle.ready;
+    await flush();
+    expect(element.isConnected).toBe(false);
+    layer.remove();
   });
 });

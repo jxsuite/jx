@@ -1,0 +1,201 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTab",
+  "tagName": "main",
+  "$elements": [
+    { "$ref": "../components/jx-action-button.json" },
+    { "$ref": "../components/jx-icon.json" },
+    { "$ref": "../components/jx-tab.json" },
+    { "$ref": "../components/jx-tabs.json" }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& [slot=\"status\"]": {
+      "borderRadius": "999px",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "var(--jx-leading-xs)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [slot=\"icon\"]": {
+      "color": "var(--jx-fg-muted)",
+      "lineHeight": "1"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-tab" },
+    {
+      "tagName": "p",
+      "textContent": "A tab is a string with a role, and three places a consumer may decorate it. Write label as an ATTRIBUTE — a property write does not reflect, and selectors read the attribute — and write it whenever anything is slotted: the label is the tab's accessible name, so slotted content never joins it, and a tab with no label falls back to naming itself from whatever was put inside."
+    },
+    { "tagName": "h2", "textContent": "States" },
+    {
+      "tagName": "p",
+      "textContent": "Selected, plain, dirty, closable, and a label longer than the tab is wide."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": { "label": "Tab states", "selected": "one" },
+      "children": [
+        { "tagName": "jx-tab", "attributes": { "value": "one", "label": "Selected" } },
+        { "tagName": "jx-tab", "attributes": { "value": "two", "label": "Plain" } },
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "three", "label": "Unsaved", "dirty": "" }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "four", "label": "Closable", "closable": "" }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "five",
+            "label": "A label far longer than the tab it sits in",
+            "closable": "",
+            "dirty": ""
+          }
+        }
+      ]
+    },
+    { "tagName": "h2", "textContent": "The three slots" },
+    {
+      "tagName": "p",
+      "textContent": "icon draws before the label, status and actions after it, and both land before the tab's own dirty dot and close button — so a consumer decorates a tab without re-implementing the tablist. There is deliberately no default slot: the tab's words are the label attribute, and unnamed content has nowhere to go."
+    },
+    {
+      "tagName": "p",
+      "textContent": "status is for a mark ABOUT the document (a draft pill, a count, a sync state) and actions is for a control (a pin, a lock). The difference is the click: a click on a mark is a click on the tab and selects it, and a click inside actions stops there, exactly as the close button's does."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": { "label": "Slots", "selected": "post" },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "post", "label": "hello.md", "closable": "", "dirty": "" },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": { "slot": "icon", "aria-hidden": "true" },
+              "textContent": "↳"
+            },
+            { "tagName": "span", "attributes": { "slot": "status" }, "textContent": "Draft" },
+            {
+              "tagName": "jx-action-button",
+              "attributes": { "slot": "actions" },
+              "$props": {
+                "icon": "eye",
+                "size": "sm",
+                "label": "Preview hello.md",
+                "hint": "Preview",
+                "tabindex": "0"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "about", "label": "about.md", "closable": "" },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "attributes": { "slot": "icon", "aria-hidden": "true" },
+              "$props": { "name": "file-text" }
+            },
+            { "tagName": "span", "attributes": { "slot": "status" }, "textContent": "Published" }
+          ]
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "styles", "label": "main.css", "closable": "" }
+        }
+      ]
+    },
+    { "tagName": "h2", "textContent": "A control inside a tab" },
+    {
+      "tagName": "p",
+      "textContent": "A control in actions is in the tab order only while its tab is the current one — bind its tabindex the way the close button's is bound, or a strip of ten tabs becomes ten stops. jx-action-button takes tabindex as a property for exactly this. Enter and Space on it belong to the control; the arrows still move the strip's caret from wherever focus is."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": { "label": "Roving caret", "selected": "current" },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "current", "label": "Current", "closable": "" },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "attributes": { "slot": "actions" },
+              "$props": {
+                "icon": "eye",
+                "size": "sm",
+                "label": "Preview Current",
+                "hint": "Preview",
+                "tabindex": "0"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "other", "label": "Other", "closable": "" },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "attributes": { "slot": "actions" },
+              "$props": {
+                "icon": "eye",
+                "size": "sm",
+                "label": "Preview Other",
+                "hint": "Preview",
+                "tabindex": "-1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    { "tagName": "h2", "textContent": "The close affordance" },
+    {
+      "tagName": "p",
+      "textContent": "It is a plain button with a jx-icon inside, never a nested kit button: a defined element that ships its own default slot would capture the host's slot distribution. The click stops at the button, so closing never also selects."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": { "label": "Open documents", "selected": "index" },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "index", "label": "index.page.json", "closable": "" }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": { "value": "about", "label": "about.page.json", "closable": "" }
+        }
+      ]
+    }
+  ]
+}

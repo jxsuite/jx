@@ -7,7 +7,7 @@
  * (interpreter) and `compileStatements` (JS emitter), shared by the runtime and every compiler
  * target. Statement kinds reuse web-platform names only: bare expression nodes (§19), the JSON
  * Schema `if`/`then`/`else` triple, `$switch`/`cases` in statement position, and WHATWG's
- * `dispatchEvent` with `CustomEventInit` members.
+ * `dispatchEvent` with `CustomEventInit` members, `stopPropagation` and `preventDefault`.
  */
 
 import {
@@ -24,11 +24,23 @@ import type { JxScope } from "./types.ts";
 interface RunOpts {
   /** Named-formula-style arguments bound for $args/<name> refs in the body. */
   args?: Record<string, unknown>;
-  /** Dispatch target for dispatchEvent statements; defaults to event?.currentTarget. */
-  target?: EventTarget | null;
+  /**
+   * Dispatch target for dispatchEvent statements when there is no event to read `currentTarget`
+   * from — a parameterised body invoked through `call`, or a lifecycle hook. A thunk is read at
+   * dispatch time, because a mount's root does not exist yet when its scope is built.
+   */
+  target?: EventTarget | null | (() => EventTarget | null);
 }
 
-function statementKind(statement: JxStatement): "expression" | "if" | "switch" | "dispatch" {
+type StatementKind =
+  | "expression"
+  | "if"
+  | "switch"
+  | "dispatch"
+  | "stopPropagation"
+  | "preventDefault";
+
+function statementKind(statement: JxStatement): StatementKind {
   if ("operator" in statement) {
     return "expression";
   }
@@ -37,6 +49,12 @@ function statementKind(statement: JxStatement): "expression" | "if" | "switch" |
   }
   if ("$switch" in statement) {
     return "switch";
+  }
+  if ("stopPropagation" in statement) {
+    return "stopPropagation";
+  }
+  if ("preventDefault" in statement) {
+    return "preventDefault";
   }
   return "dispatch";
 }
@@ -91,7 +109,9 @@ export async function runStatements(
           bubbles?: boolean;
           composed?: boolean;
         };
-        const target = opts.target ?? event?.currentTarget;
+        // An event's own target wins; the option is the fallback for bodies run without one.
+        const fallback = typeof opts.target === "function" ? opts.target() : opts.target;
+        const target = event?.currentTarget ?? fallback;
         if (!target) {
           break;
         }
@@ -106,6 +126,15 @@ export async function runStatements(
           init.composed = dispatch.composed;
         }
         target.dispatchEvent(new CustomEvent(dispatch.dispatchEvent, init));
+        break;
+      }
+      case "stopPropagation": {
+        // The event the handler is running for; a body run without one has nothing to stop.
+        event?.stopPropagation();
+        break;
+      }
+      case "preventDefault": {
+        event?.preventDefault();
         break;
       }
       default: {
@@ -201,6 +230,14 @@ export function compileStatements(
         lines.push(
           `${indent}${target}?.dispatchEvent(new CustomEvent(${JSON.stringify(dispatch.dispatchEvent)}${initSource}));`,
         );
+        break;
+      }
+      case "stopPropagation": {
+        lines.push(`${indent}${opts.eventParam ?? "event"}?.stopPropagation();`);
+        break;
+      }
+      case "preventDefault": {
+        lines.push(`${indent}${opts.eventParam ?? "event"}?.preventDefault();`);
         break;
       }
       default: {

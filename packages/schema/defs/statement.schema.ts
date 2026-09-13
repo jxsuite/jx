@@ -6,12 +6,13 @@
  * string: explicit structured function declaration, mirroring ESTree's `BlockStatement.body =
  * Statement[]`. Every statement kind reuses a web-platform name: bare expression nodes (§19), the
  * JSON Schema 2020-12 `if`/`then`/`else` keyword triple, the element-level `$switch`/`cases`
- * convention in statement position, and WHATWG's `dispatchEvent` with `CustomEventInit` members.
+ * convention in statement position, and WHATWG's `dispatchEvent` with `CustomEventInit` members,
+ * `stopPropagation` and `preventDefault`.
  */
 
 export const statementSchema = {
   description:
-    "One statement of a structured function body. Either a bare expression node in statement position (a mutation like =/push, or a call — its result discarded unless captured by an assignment), an if/then/else branch (JSON Schema conditional keywords; if holds a pure expression, then/else hold statement lists), a $switch multiway branch (discriminant matched by string form against cases keys, like element-level $switch), or a dispatchEvent statement (WHATWG DOM: dispatches a CustomEvent from the handler's current target, with CustomEventInit members detail/bubbles/composed).",
+    "One statement of a structured function body. Either a bare expression node in statement position (a mutation like =/push, or a call — its result discarded unless captured by an assignment), an if/then/else branch (JSON Schema conditional keywords; if holds a pure expression, then/else hold statement lists), a $switch multiway branch (discriminant matched by string form against cases keys, like element-level $switch), a dispatchEvent statement (WHATWG DOM: dispatches a CustomEvent from the handler's current target, with CustomEventInit members detail/bubbles/composed), or the two WHATWG event verbs stopPropagation and preventDefault, each spelled as the member set to true.",
   oneOf: [
     { $ref: "#/$defs/ExpressionNode" },
     {
@@ -52,6 +53,32 @@ export const statementSchema = {
       },
       required: ["dispatchEvent"],
       title: "dispatchEvent — emit a CustomEvent (WHATWG naming, CustomEventInit members)",
+      type: "object",
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        stopPropagation: {
+          const: true,
+          description:
+            "Stop the handler's event at the current target (WHATWG DOM stopPropagation), so an ancestor's handler for the same event does not run. A body run without an event has nothing to stop.",
+        },
+      },
+      required: ["stopPropagation"],
+      title: "stopPropagation — stop the event here (WHATWG DOM)",
+      type: "object",
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        preventDefault: {
+          const: true,
+          description:
+            "Cancel the handler's event's default action (WHATWG DOM preventDefault): a link's navigation, a form's submission, a key's scroll.",
+        },
+      },
+      required: ["preventDefault"],
+      title: "preventDefault — cancel the event's default action (WHATWG DOM)",
       type: "object",
     },
   ],

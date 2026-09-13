@@ -1,0 +1,780 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelImports",
+  "$description": "The Navigator's Packages panel: what the thing in front of you is allowed to use. It has two moods and one shape. Over `project.json` it lists the project's imported modules and offers the two npm verbs a project has — install a package, uninstall one; over a page, layout or component it lists that document's `$ref` imports and the picker that adds one. Both moods then draw the same thing underneath — one section per npm package the registry knows, with a checkbox per element, which is the cherry-pick. The adapter (`surfaces/panel-imports.ts`) hands in rows that are already strings and booleans: nothing here asks what a specifier is, whether an element is already imported, or which of the two moods a document is in. A component row carries an `id` the flow minted, because the two arrays are NESTED and `$map/item` inside the inner one is the element rather than the package it came from — so the row cannot name its own package and does not have to.",
+  "tagName": "div",
+  "attributes": {
+    "part": "imports"
+  },
+  "style": {
+    "$description": "The panel's own look, keyed on `part`. Thirteen `.import*` rules in `styles/panels.css` become the parts below — `.imports-panel`'s own scroll and padding are the root's declarations here — and exactly one does not come with them: `.import-add-form sp-textfield` reached INSIDE another component to widen it, which is a thing a part cannot do and no longer has to, because `[part=\"field\"]` is the field itself. Five names that never had a rule at all travel with them and stop being names: `imports-component-list`, `import-component-row`, `import-component-label`, `import-add-name` and `import-add-path` were handles rather than styling, and a `part` is the handle now. Two token repairs came too. `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document is mounted outside it, so every row that read it would silently have taken its 11px fallback; each is `--jx-text-sm` here. And `.imports-count` read `--text-hint`, a name NO stylesheet in this package defines — an unresolvable custom property makes the whole declaration invalid at computed-value time, so the count has been inheriting its colour all along rather than taking the one that was written for it. It says `--fg-dim`, which is what it was drawing anyway.",
+    "display": "block",
+    "overflowY": "auto",
+    "padding": "var(--jx-space-2)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-sm)",
+    "color": "var(--fg)",
+    "& [part=\"section\"]": {
+      "marginBottom": "var(--jx-space-4)"
+    },
+    "& [part=\"section-header\"]": {
+      "$description": "The uppercase band every section opens with. It is the only thing that ever styled a section title, which is why `[part=\"title\"]` below carries one declaration and not six: the weight, the size, the colour and the letter-spacing are all inherited from here.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "padding": "6px 8px 2px",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "color": "var(--fg-dim)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.5px"
+    },
+    "& [part=\"title\"][data-mono]": {
+      "$description": "A package name is an identifier, so it is set in the monospace face and NOT uppercased. The uppercasing is the header's, and it applied to these titles too: `@acme/kit` was drawn as `@ACME/KIT`, which is a name npm does not have. Case is meaning here, so the band's transform stops at this one part.",
+      "fontFamily": "var(--font-mono)",
+      "textTransform": "none"
+    },
+    "& [part=\"count\"]": {
+      "fontWeight": "400",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"list\"]": {
+      "padding": "0 var(--jx-space-2)"
+    },
+    "& [part=\"components\"]": {
+      "padding": "0 var(--jx-space-2)"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "3px var(--jx-space-2)",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"row\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"name\"]": {
+      "fontWeight": "500",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"path\"]": {
+      "$description": "The specifier: a module path or a `$ref`. It takes the row's slack and ellipses rather than wrapping, because a row is a line and a wrapped path would push the remove button off the one the eye is on. The `title` attribute beside it is what makes the full text readable when it does.",
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The compact teaching state, drawn here rather than by `panels/empty-state.ts`: that helper is a lit template, and a surface is a document or a lit template and never a mix. It keeps the compact variant's shape — left-aligned, above the add form that IS its action, so it offers no button of its own (empty-state rule 2's stated exception).",
+      "margin": "0",
+      "padding": "var(--jx-space-3) var(--jx-space-4)",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"add\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2)"
+    },
+    "& [part=\"field\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"picker\"]": {
+      "width": "100%"
+    },
+    "& [part=\"component-label\"]": {
+      "fontFamily": "var(--font-mono)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "mood-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/mode"
+      },
+      "cases": {
+        "site": {
+          "tagName": "div",
+          "attributes": {
+            "part": "section",
+            "data-section": "modules"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "section-header"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title"
+                  },
+                  "textContent": "Imported Modules"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "count"
+                  },
+                  "textContent": "${state.moduleCount}"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "modules-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/moduleState"
+              },
+              "cases": {
+                "empty": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "Imported modules give this project extra kinds of data — a content collection, a CMS, an API client. Name one below."
+                },
+                "listed": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "list"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/modules"
+                      },
+                      "key": {
+                        "$ref": "$map/item/name"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "data-import": "${$map.item.name}"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "name",
+                              "title": "${$map.item.path}"
+                            },
+                            "textContent": "${$map.item.name}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "path"
+                            },
+                            "textContent": "${$map.item.path}"
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "remove"
+                            },
+                            "$props": {
+                              "icon": "x",
+                              "size": "sm",
+                              "quiet": true,
+                              "label": "Remove the ${$map.item.name} import",
+                              "hint": "Remove"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/removeModule"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/name"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "add",
+                "data-add": "import"
+              },
+              "children": [
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "field",
+                    "data-field": "name"
+                  },
+                  "$props": {
+                    "label": "Import name",
+                    "placeholder": "Name",
+                    "size": "sm",
+                    "value": {
+                      "$ref": "#/state/addName"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/editName"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "field",
+                    "data-field": "path"
+                  },
+                  "$props": {
+                    "label": "Import path",
+                    "placeholder": "Path",
+                    "size": "sm",
+                    "mono": true,
+                    "value": {
+                      "$ref": "#/state/addPath"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/editPath"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "add-button",
+                    "data-add": "import"
+                  },
+                  "$props": {
+                    "icon": "plus",
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "Add import",
+                    "hint": "Add import"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/addModule"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "document": {
+          "tagName": "div",
+          "attributes": {
+            "part": "section",
+            "data-section": "refs"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "section-header"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title"
+                  },
+                  "textContent": "Components"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "count"
+                  },
+                  "textContent": "${state.refCount}"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "refs-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/refState"
+              },
+              "cases": {
+                "empty": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "${state.refEmptyMessage}"
+                },
+                "listed": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "list"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/refs"
+                      },
+                      "key": {
+                        "$ref": "$map/item/ref"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "data-ref": "${$map.item.ref}"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "path",
+                              "title": "${$map.item.ref}"
+                            },
+                            "textContent": "${$map.item.ref}"
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "remove"
+                            },
+                            "$props": {
+                              "icon": "x",
+                              "size": "sm",
+                              "quiet": true,
+                              "label": "Remove the ${$map.item.ref} import",
+                              "hint": "Remove"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/removeRef"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/ref"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "picker-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasOptions"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "add",
+                    "data-add": "component"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-select",
+                      "attributes": {
+                        "part": "picker"
+                      },
+                      "$props": {
+                        "label": "Add component",
+                        "size": "sm",
+                        "options": {
+                          "$ref": "#/state/pickerOptions"
+                        },
+                        "value": {
+                          "$ref": "#/state/pickerValue"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/pick"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/packages"
+      },
+      "key": {
+        "$ref": "$map/item/name"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "section",
+          "data-package": "${$map.item.name}"
+        },
+        "children": [
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "section-header"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "title",
+                  "data-mono": "true"
+                },
+                "textContent": "${$map.item.name}"
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "remove-package-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/canRemove"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "remove-package"
+                    },
+                    "$props": {
+                      "icon": "x",
+                      "size": "sm",
+                      "quiet": true,
+                      "label": "Remove the ${$map.item.name} package",
+                      "hint": "Remove package"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/removePackage"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/name"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "components"
+            },
+            "children": [
+              {
+                "$prototype": "Array",
+                "items": {
+                  "$ref": "$map/item/components"
+                },
+                "key": {
+                  "$ref": "$map/item/id"
+                },
+                "map": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "row",
+                    "data-component": "${$map.item.id}"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-checkbox",
+                      "attributes": {
+                        "part": "component"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "checked": {
+                          "$ref": "$map/item/enabled"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/toggleComponent"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/id"
+                              },
+                              {
+                                "$ref": "event#/target/checked"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "component-label"
+                          },
+                          "textContent": "${$map.item.label}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "dependency-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/mode"
+      },
+      "cases": {
+        "site": {
+          "tagName": "div",
+          "attributes": {
+            "part": "section",
+            "data-section": "add-dependency"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "section-header"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title"
+                  },
+                  "textContent": "Add Dependency"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "add",
+                "data-add": "package"
+              },
+              "children": [
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "field",
+                    "data-field": "package"
+                  },
+                  "$props": {
+                    "label": "Package name",
+                    "placeholder": "Package name…",
+                    "size": "sm",
+                    "value": {
+                      "$ref": "#/state/addPackageValue"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/editPackage"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "Enter": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/addPackage"
+                              },
+                              "value": []
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "add-button",
+                    "data-add": "package"
+                  },
+                  "$props": {
+                    "icon": "plus",
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "Add package",
+                    "hint": "Add package"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/addPackage"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

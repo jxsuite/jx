@@ -11,11 +11,13 @@ import {
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
   resolveNestedSelector,
+  setCanvasDelinkCommands,
   toCSSText,
+  transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
   transposeCanvasUnits,
 } from "../src/runtime";
-import { elementCSS } from "./style-text.ts";
+import { adoptedCSS, elementCSS } from "./style-text.ts";
 
 try {
   GlobalRegistrator.register();
@@ -162,6 +164,72 @@ describe("applyStyle viewport transpose", () => {
     const on = document.createElement("div");
     applyStyle(on, { height: "100vh" });
     expect(elementCSS(off)).not.toBe(elementCSS(on));
+  });
+});
+
+// ─── applyStyle @keyframes ──────────────────────────────────────────────────────
+
+describe("applyStyle @keyframes", () => {
+  /** A node the studio has stamped, which is what the canvas rewrites are gated on. */
+  function stamped(tag = "div"): HTMLElement {
+    const el = document.createElement(tag);
+    el.dataset.jxPath = '["children",0]';
+    document.body.append(el);
+    return el;
+  }
+
+  test("the block reaches the document sheet whole, and the element's handle is nowhere in it", () => {
+    /* The Studio toast lost its entry animation here: the emitter walked the keyframes body
+       carrying the element scope, so the sheet got `@keyframes toast-in { [data-jx="…"] from { … } }`
+       — which a browser parses into a keyframes rule holding no keyframes at all, while the
+       `animation` declaration beside it still names a live animation. */
+    const el = document.createElement("div");
+    document.body.append(el);
+    applyStyle(el, {
+      animation: "kf-toast 180ms ease-out",
+      "@keyframes kf-toast": { from: { opacity: "0" }, to: { opacity: "1" } },
+    });
+    const adopted = adoptedCSS();
+    expect(adopted).toContain("@keyframes kf-toast { from { opacity: 0 } to { opacity: 1 } }");
+    // The animation and its keyframes both land, and the scope stays out of the stops.
+    expect(elementCSS(el)).toContain("animation: kf-toast 180ms ease-out");
+    const keyframeLine = adopted.split("\n").find((line) => line.includes("kf-toast {"));
+    expect(keyframeLine).not.toContain("data-jx");
+  });
+
+  test("two elements naming one animation hoist ONE copy, released with the last of them", () => {
+    // The `@font-face` path: document-global by name, refcounted by text.
+    const style = { "@keyframes kf-shared": { from: { opacity: "0" } } };
+    const a = document.createElement("div");
+    const b = document.createElement("div");
+    document.body.append(a, b);
+    applyStyle(a, style);
+    applyStyle(b, style);
+    const lines = adoptedCSS()
+      .split("\n")
+      .filter((line) => line.includes("kf-shared"));
+    expect(lines.length).toBe(1);
+    // Neither element carries a scoped rule set, so neither is handed a handle.
+    expect(a.dataset.jx).toBeUndefined();
+    expect(b.dataset.jx).toBeUndefined();
+  });
+
+  test("the canvas unit transpose reaches a stop; the overlay transpose never touches one", () => {
+    /* `transposeCanvasOverlaySelector` returns null for `::backdrop`, and a keyframe selector is
+       not a selector at all — handing it over would delete a stop from an otherwise sound
+       animation. The value hook still has to run, or a `10vh` stop would move the artboard. */
+    setCanvasViewportTranspose(true);
+    setCanvasDelinkPopovers(true);
+    const el = stamped();
+    applyStyle(el, {
+      "@keyframes kf-rise": {
+        "0%": { transform: "translateY(10vh)" },
+        "100%": { transform: "none" },
+      },
+    });
+    expect(adoptedCSS()).toContain(
+      "@keyframes kf-rise { 0% { transform: translateY(10cqh) } 100% { transform: none } }",
+    );
   });
 });
 
@@ -504,6 +572,94 @@ describe("setCanvasDelinkPopovers", () => {
     expect(seen).toEqual([false]);
   });
 
+  test("a defined element's own internals are de-linked when its instance is stamped", async () => {
+    // The de-link gates on `data-jx-path`, which an INTERNAL node of a definition can never carry:
+    // The internals belong to the definition, not to the page being edited, so the studio's
+    // Stamper never sees them. Without this a kit element that declares `popover` on a panel
+    // Inside itself opens a genuine top-layer popover inside an editable canvas, while Studio's
+    // Single writer of open state learns nothing about it.
+    setCanvasDelinkPopovers(true);
+    setCanvasDelinkCommands(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [
+        { attributes: { part: "panel", popover: "auto" }, tagName: "div" },
+        { attributes: { commandfor: "x", part: "trigger" }, tagName: "button" },
+      ],
+      tagName: "cv-panel",
+    } as never);
+    const host = document.createElement("cv-panel");
+    host.dataset.jxPath = '["children",0]';
+    document.body.append(host);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    const panel = host.querySelector('[part="panel"]') as HTMLElement;
+    const trigger = host.querySelector('[part="trigger"]') as HTMLElement;
+    expect(panel.hasAttribute("popover")).toBe(false);
+    expect(panel.dataset.jxPopover).toBe("auto");
+    expect(trigger.hasAttribute("commandfor")).toBe(false);
+    expect(trigger.dataset.jxCommandfor).toBe("x");
+    host.remove();
+  });
+
+  test("a stamped host's internals get the selector transposed, not only the attribute", async () => {
+    /* The rename and the transposition must answer the same question. An attribute renamed
+       without its selectors transposed is a panel that can never be styled open: the runtime
+       de-links it and then leaves a `:popover-open` rule that can no longer match anything. */
+    setCanvasDelinkPopovers(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [
+        {
+          attributes: { part: "panel", popover: "auto" },
+          style: { ":popover-open": { display: "flex" }, opacity: "0" },
+          tagName: "div",
+        },
+      ],
+      tagName: "cv-styled-panel",
+    } as never);
+    const host = document.createElement("cv-styled-panel");
+    host.dataset.jxPath = "[]";
+    document.body.append(host);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    const panel = host.querySelector('[part="panel"]') as HTMLElement;
+    const css = elementCSS(panel);
+    expect(panel.dataset.jxPopover).toBe("auto");
+    expect(css).toContain("[data-jx-popover-open] { display: flex }");
+    expect(css).not.toContain(":popover-open");
+    host.remove();
+  });
+
+  test("an UNstamped instance keeps its real popover, because it is not on the canvas", async () => {
+    // The same definition rendered by the shell itself must still be a working popover; the flag
+    // Is raised per instance, and restored after, so one stamped host cannot leak into the next.
+    setCanvasDelinkPopovers(true);
+    setCanvasDelinkCommands(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [{ attributes: { part: "panel", popover: "auto" }, tagName: "div" }],
+      tagName: "cv-shell-panel",
+    } as never);
+    const stampedHost = document.createElement("cv-shell-panel");
+    stampedHost.dataset.jxPath = "[]";
+    const plainHost = document.createElement("cv-shell-panel");
+    document.body.append(stampedHost, plainHost);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(
+      (stampedHost.querySelector('[part="panel"]') as HTMLElement).hasAttribute("popover"),
+    ).toBe(false);
+    expect((plainHost.querySelector('[part="panel"]') as HTMLElement).getAttribute("popover")).toBe(
+      "auto",
+    );
+    stampedHost.remove();
+    plainHost.remove();
+  });
+
   test(":popover-open transposes to the attribute selector, at the same specificity", () => {
     setCanvasDelinkPopovers(true);
     const el = stamped();
@@ -548,6 +704,188 @@ describe("setCanvasDelinkPopovers", () => {
   });
 });
 
+describe("setCanvasDelinkCommands", () => {
+  afterEach(() => {
+    setCanvasDelinkCommands(false);
+    setCanvasDelinkPopovers(false);
+    document.body.replaceChildren();
+  });
+
+  function stampedRender(def: Record<string, unknown>): HTMLElement {
+    return renderNode(def as never, reactive({}), {
+      _path: [],
+      onNodeCreated: (n: HTMLElement) => (n.dataset.jxPath = "[]"),
+    } as never) as HTMLElement;
+  }
+
+  test("flag on renames commandfor, inert and a dialog's open on a stamped node", () => {
+    setCanvasDelinkCommands(true);
+    const button = stampedRender({
+      attributes: { command: "show-modal", commandfor: "d" },
+      tagName: "button",
+    });
+    // `command` stays: a button with a command and no target does nothing, which is the point.
+    expect(button.getAttribute("command")).toBe("show-modal");
+    expect(button.getAttribute("commandfor")).toBeNull();
+    expect(button.dataset.jxCommandfor).toBe("d");
+
+    const region = stampedRender({ attributes: { inert: true }, tagName: "section" });
+    expect(region.hasAttribute("inert")).toBe(false);
+    expect(region.dataset.jxInert).toBeDefined();
+
+    const dialog = stampedRender({ attributes: { id: "d", open: true }, tagName: "dialog" });
+    expect(dialog.hasAttribute("open")).toBe(false);
+    expect(dialog.dataset.jxOpen).toBeDefined();
+  });
+
+  test("open on anything but a dialog is content, and stays", () => {
+    setCanvasDelinkCommands(true);
+    const details = stampedRender({ attributes: { open: true }, tagName: "details" });
+    expect(details.hasAttribute("open")).toBe(true);
+    expect(details.dataset.jxOpen).toBeUndefined();
+  });
+
+  test("an UNSTAMPED node keeps its native invoker — a component's own internals", () => {
+    setCanvasDelinkCommands(true);
+    const button = renderNode(
+      { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" } as never,
+      reactive({}),
+    );
+    expect(button.getAttribute("commandfor")).toBe("d");
+    const dialog = renderNode(
+      { attributes: { open: true }, tagName: "dialog" } as never,
+      reactive({}),
+    );
+    expect(dialog.hasAttribute("open")).toBe(true);
+  });
+
+  test("flag off leaves every one of them alone", () => {
+    const button = stampedRender({
+      attributes: { command: "close", commandfor: "d", inert: true },
+      tagName: "button",
+    });
+    expect(button.getAttribute("commandfor")).toBe("d");
+    expect(button.hasAttribute("inert")).toBe(true);
+  });
+
+  test(":modal transposes to the dialog attribute, and [open] does so only on a dialog", () => {
+    setCanvasDelinkCommands(true);
+    const dialog = document.createElement("dialog");
+    dialog.dataset.jxPath = '["children",0]';
+    document.body.append(dialog);
+    applyStyle(dialog, {
+      "&[open]": { display: "grid" },
+      ":modal": { border: "0" },
+      "::backdrop": { background: "black" },
+    });
+    const dialogCss = elementCSS(dialog);
+    expect(dialogCss).toContain("[data-jx-dialog-open] { display: grid }");
+    expect(dialogCss).toContain("[data-jx-dialog-open] { border: 0 }");
+    expect(dialogCss).not.toContain("[open]");
+    expect(dialogCss).not.toContain("backdrop");
+
+    const details = document.createElement("details");
+    details.dataset.jxPath = '["children",1]';
+    document.body.append(details);
+    applyStyle(details, { "&[open]": { display: "grid" } });
+    expect(elementCSS(details)).toContain("[open] { display: grid }");
+  });
+
+  test("[open] follows the compound it names, not the element the style hangs off", () => {
+    setCanvasDelinkCommands(true);
+    /* A wrapper styling the dialogs inside it. The canvas renamed those dialogs' `open`, so the
+       author's rule has to be transposed even though a `<div>` owns it. */
+    const wrapper = document.createElement("div");
+    wrapper.dataset.jxPath = '["children",0]';
+    document.body.append(wrapper);
+    applyStyle(wrapper, { "& dialog[open]": { display: "grid" } });
+    const wrapperCss = elementCSS(wrapper);
+    expect(wrapperCss).toContain("dialog[data-jx-dialog-open] { display: grid }");
+    expect(wrapperCss).not.toContain("[open] {");
+
+    /* An accordion inside a dialog. `<details open>` keeps its attribute on the canvas, so a rule
+       the owner's tag alone would have rewritten is left exactly as authored. */
+    const dialog = document.createElement("dialog");
+    dialog.dataset.jxPath = '["children",1]';
+    document.body.append(dialog);
+    applyStyle(dialog, {
+      "& details[open]": { color: "red" },
+      "&[open]": { display: "grid" },
+    });
+    const dialogCss = elementCSS(dialog);
+    expect(dialogCss).toContain("details[open] { color: red }");
+    expect(dialogCss).toContain("[data-jx-dialog-open] { display: grid }");
+  });
+
+  test("[inert] transposes with the attribute, so the author's rule still selects the region", () => {
+    setCanvasDelinkCommands(true);
+    const region = stampedRender({ attributes: { inert: true }, tagName: "section" });
+    document.body.append(region);
+    applyStyle(region, { "&[inert]": { opacity: "0.4" } });
+    const css = elementCSS(region);
+    expect(css).toContain("[data-jx-inert] { opacity: 0.4 }");
+    expect(css).not.toContain("[inert] {");
+    /* Text is not the point: the rule has to select the element the canvas actually rendered. */
+    expect(region.matches(css.split(" {")[0]!)).toBe(true);
+
+    /* An unstamped node — a component's own internals — keeps the native attribute, so its rule
+       must keep naming it. */
+    const inner = document.createElement("section");
+    inner.toggleAttribute("inert", true);
+    document.body.append(inner);
+    applyStyle(inner, { "&[inert]": { opacity: "0.4" } });
+    expect(elementCSS(inner)).toContain("[inert] { opacity: 0.4 }");
+  });
+});
+
+describe("transposeCanvasOverlaySelector", () => {
+  test("substitutes both pseudo-classes, drops a backdrop, and treats [open] as the dialog's only when told", () => {
+    expect(transposeCanvasOverlaySelector("#a:popover-open")).toBe("#a[data-jx-popover-open]");
+    expect(transposeCanvasOverlaySelector("dialog:modal")).toBe("dialog[data-jx-dialog-open]");
+    expect(transposeCanvasOverlaySelector("#d[open]")).toBe("#d[open]");
+    expect(transposeCanvasOverlaySelector("#d[open]", { dialog: true })).toBe(
+      "#d[data-jx-dialog-open]",
+    );
+    expect(transposeCanvasOverlaySelector("#d:modal::backdrop", { dialog: true })).toBeNull();
+  });
+
+  test("[open] is decided by its own compound, and by the owner only when it names no type", () => {
+    // A compound that names `dialog` is the dialog's open state whatever owns the rule.
+    expect(transposeCanvasOverlaySelector(".x dialog[open]", { dialog: false })).toBe(
+      ".x dialog[data-jx-dialog-open]",
+    );
+    // A compound that names anything else is content, and is left exactly as authored.
+    expect(transposeCanvasOverlaySelector(".x details[open]", { dialog: true })).toBe(
+      ".x details[open]",
+    );
+    /* A compound with NO type takes the owner's answer, both ways, which is also how the runtime's
+       own scope handle is answered: it is not a parseable type name, so the scan finds none. */
+    expect(transposeCanvasOverlaySelector("&[open]", { dialog: true })).toBe(
+      "&[data-jx-dialog-open]",
+    );
+    expect(transposeCanvasOverlaySelector("&[open]", { dialog: false })).toBe("&[open]");
+    expect(transposeCanvasOverlaySelector("\u0001jx-scope\u0001[open]", { dialog: true })).toBe(
+      "\u0001jx-scope\u0001[data-jx-dialog-open]",
+    );
+    // Two compounds in one selector are answered one at a time.
+    expect(transposeCanvasOverlaySelector("dialog[open] details[open]", { dialog: true })).toBe(
+      "dialog[data-jx-dialog-open] details[open]",
+    );
+    /* A functional pseudo between the type and the attribute defeats the backscan, so the compound
+       reads as typeless and takes the fallback. Written down rather than claimed away. */
+    expect(transposeCanvasOverlaySelector("dialog:not(.x)[open]", { dialog: false })).toBe(
+      "dialog:not(.x)[open]",
+    );
+  });
+
+  test("[inert] is transposed wherever it appears, and needs no option to be", () => {
+    expect(transposeCanvasOverlaySelector("#a[inert]")).toBe("#a[data-jx-inert]");
+    expect(transposeCanvasOverlaySelector("#a [inert] .x")).toBe("#a [data-jx-inert] .x");
+    // Already transposed, or somebody else's attribute: neither is `[inert]`.
+    expect(transposeCanvasOverlaySelector("#a[data-jx-inert]")).toBe("#a[data-jx-inert]");
+  });
+});
+
 describe("transposeCanvasPopoverSelector", () => {
   test("substitutes the pseudo-class and drops any backdrop rule", () => {
     expect(transposeCanvasPopoverSelector("#a:popover-open")).toBe("#a[data-jx-popover-open]");
@@ -564,5 +902,30 @@ describe("resolveNestedSelector", () => {
     expect(resolveNestedSelector("#a", "[open]")).toBe("#a[open]");
     expect(resolveNestedSelector("#a", ".child")).toBe("#a.child");
     expect(resolveNestedSelector("#a", "> li")).toBe("#a > li");
+  });
+
+  test("a selector list on either side distributes, as CSS Nesting's implicit :is() does", () => {
+    expect(resolveNestedSelector("#a, #b", ":hover")).toBe("#a:hover, #b:hover");
+    expect(resolveNestedSelector("#a", "& .x, & .y")).toBe("#a .x, #a .y");
+    expect(resolveNestedSelector("#a .x, #a .y", ":focus-visible")).toBe(
+      "#a .x:focus-visible, #a .y:focus-visible",
+    );
+    expect(resolveNestedSelector("#a, #b", "& .x, .y")).toBe("#a .x, #a.y, #b .x, #b.y");
+    // Every `&` in a member is the scope, not just the first.
+    expect(resolveNestedSelector("#a", "& + &")).toBe("#a + #a");
+  });
+
+  test("a comma inside :is(), :not() or a quoted attribute value separates nothing", () => {
+    expect(resolveNestedSelector("#a", "&:is(.x, .y)")).toBe("#a:is(.x, .y)");
+    expect(resolveNestedSelector("#a", "&:not(.x, .y) .z")).toBe("#a:not(.x, .y) .z");
+    expect(resolveNestedSelector("#a", '&[title="x, y"]')).toBe('#a[title="x, y"]');
+    // An empty member is dropped, and whitespace around a member is not part of it.
+    expect(resolveNestedSelector("#a", "& .x, , & .y ")).toBe("#a .x, #a .y");
+    // A blank scope is a member of its own: nothing to distribute over, nothing dropped.
+    expect(resolveNestedSelector("   ", ":hover")).toBe("   :hover");
+    // An escaped quote inside a quoted value does not end the string early.
+    expect(resolveNestedSelector("#a", String.raw`&[x="q\"z, w"], & .b`)).toBe(
+      String.raw`#a[x="q\"z, w"], #a .b`,
+    );
   });
 });

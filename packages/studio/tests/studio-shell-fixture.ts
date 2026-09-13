@@ -85,7 +85,7 @@ export async function bootStudio(opts: {
      could report it because the fixture WAS the thing under test.
      src/studio.ts mounts the frame itself at boot, so this is belt and braces for the assertions
      that run before the import; both go through the one definition. */
-  mountShellTree();
+  await mountShellTree();
 
   void mock.module("../src/services/monaco-setup.js", () => ({}));
 
@@ -101,7 +101,7 @@ export async function bootStudio(opts: {
     },
   }));
 
-  void mock.module("../src/panels/statusbar.ts", () => ({
+  void mock.module("../src/surfaces/statusbar.ts", () => ({
     forgetSavedTimes: mock(() => {}),
     mountStatusbar: mock(() => {}),
     noteDocumentSaved: mock(() => {}),
@@ -114,7 +114,7 @@ export async function bootStudio(opts: {
     notifyModule((call) => statusMessages.push(call.message)),
   );
 
-  void mock.module("../src/panels/toolbar.ts", () => ({
+  void mock.module("../src/surfaces/commandbar.ts", () => ({
     mount: (_el: HTMLElement, ctx: unknown) => {
       captured.toolbarCtx = ctx;
     },
@@ -122,7 +122,7 @@ export async function bootStudio(opts: {
     unmount: mock(() => {}),
   }));
 
-  void mock.module("../src/panels/welcome-screen.ts", () => ({
+  void mock.module("../src/surfaces/welcome.ts", () => ({
     initWelcome: (ctx: unknown) => {
       captured.welcomeCtx = ctx;
     },
@@ -181,6 +181,7 @@ export async function bootStudio(opts: {
     initCanvasRender: (ctx: unknown) => {
       captured.canvasRenderCtx = ctx;
     },
+    redefineElementOnCanvases: mock(() => 0),
     registerSelectionSetCommand: mock(() => {}),
     renderCanvas: mock(() => {}),
     renderOverlays: mock(() => {}),

@@ -19,6 +19,7 @@ import {
   runScoped,
   setCanvasAssetResolver,
   setCanvasDelinkAnchors,
+  setCanvasDelinkCommands,
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
   setRootMedia,
@@ -223,68 +224,6 @@ export const EDIT_PLACEHOLDER_CSS = `
 [data-jx-layout-region] [data-jx-layout-region]::before {
   content: none;
 }
-/* The UA rule a de-popovered element lost, re-supplied at UA-EQUIVALENT PRECEDENCE.
-
-   The cascade layer is the mechanism and it is the whole point. An unlayered author declaration
-   beats a layered one whatever its specificity, and every declaration applyStyle emits is an
-   unlayered rule in an adopted sheet. That is exactly how author origin beats UA origin on the
-   shipped page, so the canvas reproduces the real cascade rather than an approximation of it.
-
-   This used to read "a base declaration is written as an INLINE style", which was true and is the
-   reason the guarantee survived the move: inline beat layered harder still, and unlayered beats it
-   by the same rule one step down. Jx emits no layer of its own, which is what keeps that true.
-
-   Deliberately NOT forced with a priority flag. A popover whose base rule sets display is laid out
-   on every page whether open or not; that is a real defect, @jxsuite/schema/overlays reports it as
-   base-display, and the canvas's job is to SHOW it, not to hide it behind a stronger rule. */
-@layer jx-canvas-ua {
-  [data-jx-popover]:not([data-jx-popover-open]) {
-    display: none;
-  }
-}
-/* SHOWN IN PLACE, and the position declaration is what makes that true.
-
-   Dropping the popover attribute drops the UA rule that made the panel fixed, so a panel that never
-   set position itself — every one in the fleet — lands in normal flow at its document position,
-   contributes to #jx-canvas-root's scrollHeight, and the host grows the artboard to fit it. That is
-   the whole geometry fix, and it is why an open panel is reachable at all.
-
-   The two alignment declarations are the other half, and they were found by measuring rather than
-   by reasoning. Every drawer in the fleet is declared inside its header's flex row, so in flow it
-   becomes a FLEX ITEM: align-items:center on the row centres a 904px panel on a 64px header and
-   half of it sits above the artboard at a negative offset, where it contributes nothing to the
-   scrollable overflow the host measures. Pinned to the start and refused any flex sizing, the same
-   panel hangs down from its own position and the artboard grows by its full height.
-
-   Forced, because a panel that DOES set position: fixed would otherwise keep it and be laid out
-   against the frame's own viewport — which in an editable mode is the document's full height, so a
-   drawer pinned with inset: 0 lands halfway down a long page and a short component frame clips it.
-   This is a presentation override for an editing affordance, the same kind as the layout-region
-   dimming above, and it is NOT the same move as forcing display: that would hide a real defect in
-   the document (base-display), while this hides nothing — Preview renders the panel natively, top
-   layer and all. */
-[data-jx-popover][data-jx-popover-open] {
-  position: relative !important;
-  inset: auto !important;
-  align-self: start !important;
-  flex: none !important;
-  outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
-  outline-offset: 2px;
-}
-[data-jx-popover][data-jx-popover-open]::before {
-  content: "POPOVER \\00B7 SHOWN IN PLACE";
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 2;
-  padding: 1px 5px;
-  border-radius: 0 0 3px 0;
-  background: color-mix(in srgb, #808080 78%, transparent);
-  color: #fff;
-  font: 700 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.08em;
-  pointer-events: none;
-}
 `;
 
 /**
@@ -304,6 +243,137 @@ export function syncEditModeCss(doc: Document, mode: CanvasMode): void {
   const style = doc.createElement("style");
   style.id = EDIT_PLACEHOLDER_STYLE_ID;
   style.textContent = EDIT_PLACEHOLDER_CSS;
+  doc.head.append(style);
+}
+
+/** Id of the injected canvas UA-substitute stylesheet (the overlay rules). */
+export const CANVAS_OVERLAY_STYLE_ID = "jx-canvas-overlay-css";
+
+/**
+ * The rules that stand in for the UA behaviour a de-linked overlay has just lost.
+ *
+ * **This sheet's predicate IS the predicate of `setCanvasDelinkPopovers` /
+ * `setCanvasDelinkCommands` — every mode but Preview — and that is the invariant to keep.** An
+ * attribute renamed without its substitute rule is an overlay that can never be drawn: `popover`
+ * renamed to `data-jx-popover` with no replacement hide rule lays every CLOSED panel out as
+ * ordinary in-flow content and inflates the artboard, and a dialog stamped `data-jx-dialog-open`
+ * stays hidden behind the UA `dialog:not([open])` for good. These rules used to ship inside
+ * `EDIT_PLACEHOLDER_CSS`, which is installed for design/edit alone, so Stylebook and a git-diff
+ * side de-linked without them. A read-only artboard must draw an overlay exactly as the design
+ * canvas does — a git-diff pair is read side by side, and the artboard-growth argument below is
+ * about a content-sized frame, not about editing.
+ */
+/*
+ * NOTE: this is a template literal, so a BACKTICK anywhere inside — including in a CSS comment —
+ * ends the string and produces a syntax error several lines later. Quote property names bare.
+ */
+export const CANVAS_OVERLAY_CSS = `
+/* The UA rule a de-popovered element lost, re-supplied at UA-EQUIVALENT PRECEDENCE.
+
+   The cascade layer is the mechanism and it is the whole point. An unlayered author declaration
+   beats a layered one whatever its specificity, and every declaration applyStyle emits is an
+   unlayered rule in an adopted sheet. That is exactly how author origin beats UA origin on the
+   shipped page, so the canvas reproduces the real cascade rather than an approximation of it.
+
+   This used to read "a base declaration is written as an INLINE style", which was true and is the
+   reason the guarantee survived the move: inline beat layered harder still, and unlayered beats it
+   by the same rule one step down. Jx emits no layer of its own, which is what keeps that true.
+
+   Deliberately NOT forced with a priority flag. A popover whose base rule sets display is laid out
+   on every page whether open or not; that is a real defect, @jxsuite/schema/overlays reports it as
+   base-display, and the canvas's job is to SHOW it, not to hide it behind a stronger rule. */
+@layer jx-canvas-ua {
+  [data-jx-popover]:not([data-jx-popover-open]) {
+    display: none;
+  }
+  dialog[data-jx-dialog-open] {
+    display: block;
+  }
+}
+/* SHOWN IN PLACE, and the position declaration is what makes that true.
+
+   Dropping the popover attribute drops the UA rule that made the panel fixed, so a panel that never
+   set position itself — every one in the fleet — lands in normal flow at its document position,
+   contributes to #jx-canvas-root's scrollHeight, and the host grows the artboard to fit it. That is
+   the whole geometry fix, and it is why an open panel is reachable at all.
+
+   The two alignment declarations are the other half, and they were found by measuring rather than
+   by reasoning. Every drawer in the fleet is declared inside its header's flex row, so in flow it
+   becomes a FLEX ITEM: align-items:center on the row centres a 904px panel on a 64px header and
+   half of it sits above the artboard at a negative offset, where it contributes nothing to the
+   scrollable overflow the host measures. Pinned to the start and refused any flex sizing, the same
+   panel hangs down from its own position and the artboard grows by its full height.
+
+   Forced, because a panel that DOES set position: fixed would otherwise keep it and be laid out
+   against the frame's own viewport — which in a de-linked mode is the document's full height, so a
+   drawer pinned with inset: 0 lands halfway down a long page and a short component frame clips it.
+   This is a presentation override for a canvas affordance, the same kind as the layout-region
+   dimming in EDIT_PLACEHOLDER_CSS, and it is NOT the same move as forcing display: that would hide
+   a real defect in the document (base-display), while this hides nothing — Preview renders the
+   panel natively, top layer and all. */
+[data-jx-popover][data-jx-popover-open] {
+  position: relative !important;
+  inset: auto !important;
+  align-self: start !important;
+  flex: none !important;
+  outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
+  outline-offset: 2px;
+}
+[data-jx-popover][data-jx-popover-open]::before {
+  content: "POPOVER \\00B7  SHOWN IN PLACE";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 0 0 3px 0;
+  background: color-mix(in srgb, #808080 78%, transparent);
+  color: #fff;
+  font: 700 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+dialog[data-jx-dialog-open] {
+  position: relative !important;
+  inset: auto !important;
+  align-self: start !important;
+  flex: none !important;
+  outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
+  outline-offset: 2px;
+}
+dialog[data-jx-dialog-open]::before {
+  content: "DIALOG \\00B7  SHOWN IN PLACE";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 0 0 3px 0;
+  background: color-mix(in srgb, #808080 78%, transparent);
+  color: #fff;
+  font: 700 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+`;
+
+/**
+ * Keep the overlay stylesheet in sync with the render mode: present (idempotently) wherever the
+ * render de-links its overlays, removed for preview — which keeps the real `popover`/`open`
+ * attributes, so the real UA rules and the real top layer apply there.
+ */
+export function syncCanvasOverlayCss(doc: Document, mode: CanvasMode): void {
+  const existing = doc.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`);
+  if (mode === "preview") {
+    existing?.remove();
+    return;
+  }
+  if (existing) {
+    return;
+  }
+  const style = doc.createElement("style");
+  style.id = CANVAS_OVERLAY_STYLE_ID;
+  style.textContent = CANVAS_OVERLAY_CSS;
   doc.head.append(style);
 }
 
@@ -686,6 +756,43 @@ export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): v
   }
 }
 
+/**
+ * Mark the one `<dialog>` the canvas draws open — the dialog twin of
+ * {@link applyCanvasPopoverOpen}.
+ *
+ * @param root The render container (`#jx-canvas-root`).
+ * @param path Serialized document path of the dialog to open, or null to close them all.
+ * @docs studio/interface/canvas
+ */
+/*
+ * The dialog rules in the sheet above, explained here rather than inside the template literal,
+ * because a comment inside the string ships in iframe-entry.js.
+ *
+ * `dialog[data-jx-dialog-open] { display: block }` in the `jx-canvas-ua` layer is the dialog's
+ * other half: its authored `open` is renamed away, so the browser's own
+ * `dialog:not([open]) { display: none }` keeps every dialog closed, and this is the one rule that
+ * shows the dialog the canvas opened. Layered for the reason the popover rule gives: an author
+ * `display` on the base rule beats it, and that defect (@jxsuite/schema/dialogs' base-display) has
+ * to show on the canvas rather than hide behind a stronger rule.
+ *
+ * The forced `position` block is the popover's, by the same move: the UA's absolute positioning
+ * and modal top layer are gone with the renamed attributes, so the open dialog lays out in normal
+ * flow at its document position and the artboard grows to fit it. Preview renders it modally,
+ * backdrop and all.
+ */
+export function applyCanvasDialogOpen(root: ParentNode, path: string | null): void {
+  for (const el of root.querySelectorAll("[data-jx-dialog-open]")) {
+    delete (el as HTMLElement).dataset.jxDialogOpen;
+  }
+  if (path === null) {
+    return;
+  }
+  const target = root.querySelector(`dialog${jxPathSelector(path)}`);
+  if (target) {
+    (target as HTMLElement).dataset.jxDialogOpen = "";
+  }
+}
+
 /** Inject the document's `$head` (link/meta/script) into the iframe's <head>, de-duped by href/src. */
 export function injectHead(doc: JxDocument, assets: AssetContext | null = null): void {
   const head = (doc as { $head?: HeadEntry[] }).$head;
@@ -886,6 +993,8 @@ export async function renderResolvedDocument(opts: {
   diffMarks?: WireDiffMarks | null;
   /** Serialized path of the popover to draw open, or null/absent for none. */
   popoverOpen?: string | null;
+  /** The dialog to draw open after this render, serialized; the twin of `popoverOpen`. */
+  dialogOpen?: string | null;
 }): Promise<RenderHandle> {
   /* FIRST, before anything emits CSS or an attribute. The resolver is module-global in the runtime,
      so it is set on every render — including to null — or a previous document's context would
@@ -913,6 +1022,10 @@ export async function renderResolvedDocument(opts: {
      content — and which contributes to no ancestor's scrollable overflow, so the artboard could
      never grow to fit one. Preview keeps the real top layer, backdrop and all. */
   setCanvasDelinkPopovers(opts.mode !== "preview");
+  /* And de-link invoker commands, `inert` and a dialog's `open` with them: a `show-modal` invoker
+     would put its dialog in the top layer and make the rest of the page inert, which is the
+     popover problem plus an unclickable document. The frame reports the click instead. */
+  setCanvasDelinkCommands(opts.mode !== "preview");
   // Stamp `data-jx-bound-prop` on component-internal invertible text bindings in design/edit only —
   // The inline prop-edit affordance. Set every render so a preview/stylebook render in the same
   // Iframe clears it (page-level templates are inert in design/edit via prepareForEditMode, so only
@@ -921,6 +1034,11 @@ export async function renderResolvedDocument(opts: {
   applySiteStyle(opts.siteStyle, (opts.doc as { $media?: Record<string, string> }).$media ?? {});
   injectHead(opts.doc, assets);
   syncEditModeCss(opts.container.ownerDocument, opts.mode);
+  // The substitute rules for the attributes the de-link above renamed. Same predicate as the
+  // De-link, not the narrower design/edit one: a Stylebook specimen and a git-diff side rename
+  // Their overlays too, and without this sheet a closed panel would lay out in flow and an open
+  // Dialog could never be shown.
+  syncCanvasOverlayCss(opts.container.ownerDocument, opts.mode);
   syncPreviewShell(opts.container.ownerDocument, opts.mode);
   syncStylebookCss(opts.container.ownerDocument, opts.mode);
   syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));
@@ -947,6 +1065,7 @@ export async function renderResolvedDocument(opts: {
   );
   opts.container.replaceChildren(el);
   applyCanvasPopoverOpen(opts.container, opts.popoverOpen ?? null);
+  applyCanvasDialogOpen(opts.container, opts.dialogOpen ?? null);
   // Claim (or release) the editing host AFTER the tree lands, so the browser computes editability
   // Against the final DOM rather than an empty container.
   syncEditableRoot(opts.container, opts.mode);

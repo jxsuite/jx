@@ -109,6 +109,12 @@ const EXTRA_EDGES: ExtraEdge[] = [
     why: "project-config globs every committed sites/*/project.json as its only real-formatting fixture; the DOM harness loads sites/test-blank as its site.",
   },
   {
+    patterns: ["packages/site/src/site-style.ts"],
+    seeds: ["packages/ui"],
+    evidence: ["packages/ui/tests/theme.test.ts"],
+    why: "An INVERTED edge: the kit does not depend on the site builder, yet its theme test imports buildSiteStyleCSS to hold the two readings of one style block in agreement — the kit emits the theme through buildStyleRules and the builder emits the same block for a page, and a divergence between them is exactly the defect that made installTheme a third emitter. Without this the test that guards the agreement never runs when the builder side moves.",
+  },
+  {
     patterns: ["examples/**"],
     seeds: ["packages/compiler"],
     evidence: [

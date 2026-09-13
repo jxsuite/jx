@@ -50,6 +50,17 @@ export function setSlashController(controller: SlashController): void {
 export interface InlineAction {
   tag: string;
   label: string;
+  /**
+   * REMOVED from the data, for the same reason `shortcut` below was, and the field stays only so an
+   * older `elements-meta.json` still parses.
+   *
+   * It held an `sp-icon-*` name — a SECOND definition site for a glyph the `format.*` command
+   * record already carries (`panels/block-action-bar.ts`, kit keys like `text-b` and
+   * `text-italic`), and one that named a Spectrum element rather than a key in the kit's manifest.
+   * The bar draws `toolOf(registry, command, …)`, so this was never read: `$inlineActions` says
+   * WHICH of the eight verbs a tag accepts and in what order, and the record says what each one
+   * looks like. Nothing reads this.
+   */
   icon?: string;
   command?: string;
   /**

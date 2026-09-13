@@ -5,6 +5,7 @@ code:
   - packages/studio/src/editor/convert-to-component.ts
   - packages/studio/src/component-props.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/panels/properties-panel.ts
   - packages/studio/src/panels/provenance.ts
 ---

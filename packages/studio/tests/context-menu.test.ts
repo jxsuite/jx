@@ -155,8 +155,20 @@ function doc(): JxMutableNode {
 /** Every rendered row, in order. Rows are addressed by command id, never by their label. */
 function menuItems(): HTMLElement[] {
   return [
-    ...document.querySelectorAll<HTMLElement>("#layer-popover sp-menu-item[data-command-id]"),
+    ...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item[data-command-id]"),
   ];
+}
+
+/** The one menu on screen, with the kit's property accessors. */
+function menuElement(): (HTMLElement & { open: boolean; x: number; y: number }) | null {
+  return document.querySelector("#layer-popover jx-menu");
+}
+
+/** Let a queued animation frame run. */
+async function frame(): Promise<void> {
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => resolve(null));
+  });
 }
 
 function menuIds(): string[] {
@@ -171,28 +183,30 @@ function itemById(id: string): HTMLElement {
   return item;
 }
 
-/** The row's own name — its direct text, with the chord and reason elements left out. */
+/** The row's own name — its label part, with the chord and reason parts left out. */
 function titleOf(id: string): string {
-  return [...itemById(id).childNodes]
-    .filter((node) => node.nodeType === Node.TEXT_NODE)
-    .map((node) => node.textContent)
-    .join("")
-    .trim();
+  return itemById(id).querySelector('[part="label"]')!.textContent!.trim();
+}
+
+/** A slot container the surface left empty prints nothing, exactly as it shows nothing. */
+function shownText(el: Element | null): string | undefined {
+  return el?.textContent?.trim() || undefined;
 }
 
 function chordOf(id: string): string | undefined {
-  return itemById(id).querySelector("kbd")?.textContent ?? undefined;
+  return shownText(itemById(id).querySelector("kbd"));
 }
 
 function reasonOf(id: string): string | undefined {
-  return itemById(id).querySelector('[slot="description"]')?.textContent ?? undefined;
+  return shownText(itemById(id).querySelector('[slot="description"]'));
 }
 
 function isDisabled(id: string): boolean {
-  return itemById(id).hasAttribute("disabled");
+  return itemById(id).getAttribute("aria-disabled") === "true";
 }
 
-function rightClick(path: JxPath, opts?: Parameters<typeof showContextMenu>[2]) {
+/** Right-click a path and wait for the surface to mount and the popover to show. */
+async function rightClick(path: JxPath, opts?: Parameters<typeof showContextMenu>[2]) {
   const e = new MouseEvent("contextmenu", {
     bubbles: true,
     cancelable: true,
@@ -200,13 +214,15 @@ function rightClick(path: JxPath, opts?: Parameters<typeof showContextMenu>[2]) 
     clientY: 20,
   });
   showContextMenu(e, path, opts);
+  await flush();
   return e;
 }
 
-/** Press a key the way the document-level capture listener sees it. */
+/** Press a key where a keyboard would: at the focused row, or on the document when none has focus. */
 function menuKey(name: string, opts: KeyboardEventInit = {}): KeyboardEvent {
   const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: name, ...opts });
-  document.dispatchEvent(e);
+  const active = document.activeElement;
+  (active?.closest("#layer-popover") ? active : document).dispatchEvent(e);
   return e;
 }
 
@@ -623,9 +639,9 @@ describe("element command records", () => {
 // ─── Context menu rendering ──────────────────────────────────────────────────
 
 describe("showContextMenu", () => {
-  test("prevents default, selects the node, and renders the registry's element rows", () => {
+  test("prevents default, selects the node, and renders the registry's element rows", async () => {
     workspace.styleClipboard = { color: "blue" };
-    const e = rightClick(["children", 0]);
+    const e = await rightClick(["children", 0]);
     expect(e.defaultPrevented).toBe(true);
     expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
     // Group order, then title order — the registry's sort, not a hand-kept array.
@@ -645,21 +661,23 @@ describe("showContextMenu", () => {
       "selection.delete",
     ]);
     // One divider per group boundary: clipboard | styles | structure | identity | danger.
-    expect(document.querySelectorAll("#layer-popover sp-menu-divider").length).toBe(4);
+    expect(document.querySelectorAll("#layer-popover jx-menu hr").length).toBe(4);
   });
 
-  test("the menu carries the ARIA menu contract", () => {
-    rightClick(["children", 0]);
-    const menu = document.querySelector("#layer-popover sp-menu")!;
+  test("the menu carries the ARIA menu contract", async () => {
+    await rightClick(["children", 0]);
+    const menu = menuElement()!;
     expect(menu.getAttribute("role")).toBe("menu");
+    expect(menu.getAttribute("popover")).toBe("auto");
+    expect(menu.open).toBe(true);
     expect(menu.getAttribute("aria-label")).toBe("Element actions");
     for (const item of menuItems()) {
       expect(item.getAttribute("role")).toBe("menuitem");
     }
   });
 
-  test("rows print the record's title and its chord", () => {
-    rightClick(["children", 0]);
+  test("rows print the record's title and its chord", async () => {
+    await rightClick(["children", 0]);
     expect(titleOf("edit.copy")).toBe("Copy");
     expect(chordOf("edit.copy")).toBe("Ctrl+C");
     expect(chordOf("edit.cut")).toBe("Ctrl+X");
@@ -671,14 +689,14 @@ describe("showContextMenu", () => {
     expect(chordOf("selection.delete")).toBeUndefined();
   });
 
-  test("destructive styling comes off the record, not the call site", () => {
-    rightClick(["children", 0]);
-    expect(itemById("selection.delete").getAttribute("style")).toContain("--danger");
-    expect(itemById("edit.copy").getAttribute("style")).toBe("");
+  test("destructive styling comes off the record, not the call site", async () => {
+    await rightClick(["children", 0]);
+    expect(itemById("selection.delete").getAttribute("style")).toContain("var(--jx-danger)");
+    expect(itemById("edit.copy").getAttribute("style")).not.toContain("var(--jx-danger)");
   });
 
-  test("an inapplicable verb greys out WITH its reason instead of vanishing", () => {
-    rightClick(["children", 1]); // No style on this node, and nothing in the style clipboard
+  test("an inapplicable verb greys out WITH its reason instead of vanishing", async () => {
+    await rightClick(["children", 1]); // No style on this node, and nothing in the style clipboard
     expect(menuIds()).toContain("edit.copyStyles");
     expect(isDisabled("edit.copyStyles")).toBe(true);
     expect(reasonOf("edit.copyStyles")).toBe("Needs styles on the selected element");
@@ -688,8 +706,8 @@ describe("showContextMenu", () => {
     expect(reasonOf("edit.copy")).toBeUndefined();
   });
 
-  test("the document root keeps Copy and explains every structural refusal", () => {
-    rightClick([]);
+  test("the document root keeps Copy and explains every structural refusal", async () => {
+    await rightClick([]);
     expect(isDisabled("edit.copy")).toBe(false);
     expect(isDisabled("edit.cut")).toBe(true);
     expect(isDisabled("selection.delete")).toBe(true);
@@ -699,7 +717,7 @@ describe("showContextMenu", () => {
     expect(reasonOf("selection.wrap")).toContain("sibling position");
   });
 
-  test("a repeater template is unspliceable too, so Delete stays disabled", () => {
+  test("a repeater template is unspliceable too, so Delete stays disabled", async () => {
     resetWorkspaceWithTab({
       children: [
         {
@@ -712,19 +730,19 @@ describe("showContextMenu", () => {
       tagName: "div",
     });
     // The repeater itself is a real child: deletable, but not repeatable and not a paste target.
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     expect(isDisabled("selection.delete")).toBe(false);
     expect(isDisabled("selection.repeat")).toBe(true);
     expect(isDisabled("edit.pasteInside")).toBe(true);
 
     // The template (path tail "map") has no numeric child index — splicing it would hit NaN.
-    rightClick(["children", 0, "map"]);
+    await rightClick(["children", 0, "map"]);
     expect(isDisabled("selection.delete")).toBe(true);
     expect(isDisabled("edit.cut")).toBe(true);
     expect(isDisabled("edit.copy")).toBe(false);
   });
 
-  test("Duplicate and Delete run on the menu's target, gated only by their records", () => {
+  test("Duplicate and Delete run on the menu's target, gated only by their records", async () => {
     // Both records live in `commands/defaults.ts` and declare `enablement: structurallyEditable`,
     // Which reads `selection.isRoot` — and this file derives that from the SHARED
     // `isSpliceablePath`. The implementations here therefore carry no second copy of the test:
@@ -737,16 +755,16 @@ describe("showContextMenu", () => {
       tagName: "div",
     });
 
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("selection.duplicate").click();
     expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "A", "B"]);
 
-    rightClick(["children", 1]);
+    await rightClick(["children", 1]);
     itemById("selection.delete").click();
     expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "B"]);
   });
 
-  test("the record's own gate refuses Duplicate on an unspliceable target", () => {
+  test("the record's own gate refuses Duplicate on an unspliceable target", async () => {
     resetWorkspaceWithTab({
       children: [
         {
@@ -758,7 +776,7 @@ describe("showContextMenu", () => {
       state: { rows: { default: [], type: "array" } },
       tagName: "div",
     });
-    rightClick(["children", 0, "map"]);
+    await rightClick(["children", 0, "map"]);
     expect(isDisabled("selection.duplicate")).toBe(true);
     // Clicking the greyed row does nothing, and reaching past the row to the registry is a throw —
     // Not a hand-written warning toast beside a mutator that would have spliced at NaN.
@@ -773,17 +791,17 @@ describe("showContextMenu", () => {
     expect((doc().children as JxMutableNode[]).length).toBe(1);
   });
 
-  test("does nothing without a tab or for a missing node", () => {
-    rightClick(["children", 9]);
+  test("does nothing without a tab or for a missing node", async () => {
+    await rightClick(["children", 9]);
     expect(menuItems().length).toBe(0);
 
     closeAllTabs();
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     expect(menuItems().length).toBe(0);
   });
 
-  test("dismissContextMenu removes the menu and is safe when closed", () => {
-    rightClick(["children", 0]);
+  test("dismissContextMenu removes the menu and is safe when closed", async () => {
+    await rightClick(["children", 0]);
     expect(menuItems().length).toBeGreaterThan(0);
     dismissContextMenu();
     expect(menuItems().length).toBe(0);
@@ -791,16 +809,16 @@ describe("showContextMenu", () => {
   });
 
   test("an outside mousedown dismisses the menu", async () => {
-    rightClick(["children", 0]);
-    await flush(); // RAF registers the outside-click listener
+    await rightClick(["children", 0]);
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush(); // Light dismissal reports through the popover's toggle, a microtask later
     expect(menuItems().length).toBe(0);
   });
 
-  test("reopening replaces the previous menu", () => {
-    rightClick(["children", 0]);
-    rightClick(["children", 1]);
-    expect(document.querySelectorAll("#layer-popover sp-menu").length).toBe(1);
+  test("reopening replaces the previous menu", async () => {
+    await rightClick(["children", 0]);
+    await rightClick(["children", 1]);
+    expect(document.querySelectorAll("#layer-popover jx-menu").length).toBe(1);
   });
 
   test("clamps the popover position to the window after layout", async () => {
@@ -811,15 +829,27 @@ describe("showContextMenu", () => {
       clientY: window.innerHeight - 10,
     });
     showContextMenu(e, ["children", 0]);
-    const popover = document.querySelector("#layer-popover sp-popover") as HTMLElement;
-    stubRect(popover, { height: 200, left: window.innerWidth - 10, top: 0, width: 300 });
+    // The surface mounts over a few microtasks; the clamp measures a frame after the popover shows.
+    for (let i = 0; i < 50 && !menuElement(); i++) {
+      await Promise.resolve();
+    }
+    const menu = menuElement()!;
+    expect(menu.x).toBe(window.innerWidth - 10);
+    stubRect(menu, {
+      height: 200,
+      left: window.innerWidth - 10,
+      top: window.innerHeight - 10,
+      width: 300,
+    });
     await flush();
-    expect(popover.style.left).toBe(`${window.innerWidth - 300 - 4}px`);
-    expect(popover.style.top).toBe(`${window.innerHeight - 200 - 4}px`);
+    await frame();
+    expect(menu.x).toBe(window.innerWidth - 300 - 4);
+    // The bottom edge is a floor, not a margin: flush with the viewport's bottom.
+    expect(menu.y).toBe(window.innerHeight - 200);
   });
 
-  test("an unknown placement renders nothing and leaves no target behind", () => {
-    rightClick(["children", 0], { placement: "context/file" });
+  test("an unknown placement renders nothing and leaves no target behind", async () => {
+    await rightClick(["children", 0], { placement: "context/file" });
     expect(menuItems().length).toBe(0);
     // A verb needing the MENU's target is gone. `edit.copy` is not asserted here any more: its
     // Target falls back to the selection, so it is correctly still available — that fallback is
@@ -836,17 +866,14 @@ describe("menu keyboard", () => {
   }
 
   test("opens with the first row focused and a roving tabindex", async () => {
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     expect(focusedId()).toBe("edit.copy");
     expect(itemById("edit.copy").getAttribute("tabindex")).toBe("0");
     expect(itemById("edit.cut").getAttribute("tabindex")).toBe("-1");
-    expect(itemById("edit.copy").hasAttribute("focused")).toBe(true);
   });
 
   test("Down / Up / Home / End move the roving focus and wrap", async () => {
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     const ids = menuIds();
 
     menuKey("ArrowDown");
@@ -865,16 +892,25 @@ describe("menu keyboard", () => {
   });
 
   test("navigation keys are swallowed so the canvas does not also move", async () => {
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     expect(menuKey("ArrowDown").defaultPrevented).toBe(true);
-    // An unhandled key falls through to the app untouched.
-    expect(menuKey("a").defaultPrevented).toBe(false);
+    // An unhandled key falls through to the app untouched. No row starts with "z", so typeahead
+    // Has nothing to say about it either.
+    expect(menuKey("z").defaultPrevented).toBe(false);
+  });
+
+  test("typing a letter moves to the next row that starts with it", async () => {
+    await rightClick(["children", 0]);
+    menuKey("d");
+    expect(focusedId()).toBe("selection.duplicate");
+    menuKey("d");
+    expect(focusedId()).toBe("selection.delete");
+    menuKey("d"); // Wraps
+    expect(focusedId()).toBe("selection.duplicate");
   });
 
   test("Enter runs the focused row", async () => {
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     menuKey("End"); // Lands on selection.delete, the last row
     expect(focusedId()).toBe("selection.delete");
     menuKey("Enter");
@@ -884,55 +920,54 @@ describe("menu keyboard", () => {
   });
 
   test("Space runs the focused row too", async () => {
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     menuKey(" ");
     await flush();
     expect(menuItems().length).toBe(0);
     expect(workspace.clipboard).not.toBeNull();
   });
 
-  test("Enter on a disabled row does nothing and leaves the menu up", async () => {
-    rightClick(["children", 1]); // Paste styles is disabled here
-    await flush();
-    const at = menuIds().indexOf("edit.pasteStyles");
-    for (let i = 0; i < at; i++) {
+  test("the caret skips a disabled row, which stays on screen with its reason", async () => {
+    await rightClick(["children", 1]); // Paste styles is disabled here
+    expect(isDisabled("edit.pasteStyles")).toBe(true);
+    const visited: string[] = [];
+    for (let i = 0; i < menuIds().length; i++) {
       menuKey("ArrowDown");
+      visited.push(focusedId()!);
     }
-    expect(focusedId()).toBe("edit.pasteStyles");
-    menuKey("Enter");
-    await flush();
+    expect(visited).not.toContain("edit.pasteStyles");
+    expect(visited).toContain("edit.copy");
     expect(menuItems().length).toBeGreaterThan(0);
   });
 
   test("clicking a disabled row does nothing", async () => {
-    rightClick(["children", 1]);
-    await flush();
+    await rightClick(["children", 1]);
     itemById("edit.pasteStyles").click();
     await flush();
     expect((doc().children as JxMutableNode[])[1]!.style).toBeUndefined();
+    expect(menuItems().length).toBeGreaterThan(0);
   });
 
   test("Escape dismisses and hands the keyboard back to the opener", async () => {
     const opener = document.createElement("button");
     document.body.append(opener);
     opener.focus();
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     expect(focusedId()).toBe("edit.copy");
     const e = menuKey("Escape");
     expect(e.defaultPrevented).toBe(true);
+    await flush();
     expect(menuItems().length).toBe(0);
     expect(document.activeElement).toBe(opener);
     opener.remove();
   });
 
   test("Tab dismisses rather than walking out of the menu", async () => {
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     menuKey("Tab");
+    await flush();
     expect(menuItems().length).toBe(0);
-    // The listener is gone with the menu: a later key must not be swallowed.
+    // Nothing is left listening: a later key must not be swallowed.
     expect(menuKey("ArrowDown").defaultPrevented).toBe(false);
   });
 
@@ -940,10 +975,10 @@ describe("menu keyboard", () => {
     const opener = document.createElement("button");
     document.body.append(opener);
     opener.focus();
-    rightClick(["children", 0]);
-    await flush();
+    await rightClick(["children", 0]);
     opener.remove();
     menuKey("Escape");
+    await flush();
     expect(document.activeElement).not.toBe(opener);
   });
 });
@@ -952,7 +987,7 @@ describe("menu keyboard", () => {
 
 describe("context menu actions", () => {
   test("Duplicate clones the node after itself and dismisses the menu", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("selection.duplicate").click();
     await flush();
     expect(menuItems().length).toBe(0);
@@ -961,24 +996,24 @@ describe("context menu actions", () => {
     expect(children[1]!.textContent).toBe("A");
   });
 
-  test("Duplicate on the page root reports why it cannot, instead of corrupting the document", () => {
+  test("Duplicate on the page root reports why it cannot, instead of corrupting the document", async () => {
     // `selection.duplicate` (commands/defaults.ts) declares no `enablement`, so it renders enabled
     // Even where there is no splice coordinate. Until it gains one the injected implementation
     // Refuses out loud — splicing at a non-numeric index would remove the WRONG child.
-    rightClick([]);
+    await rightClick([]);
     itemById("selection.duplicate").click();
     expect(doc().children).toHaveLength(2);
   });
 
   test("Insert before / Insert after add empty paragraphs around the node", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("selection.insertBefore").click();
     await flush();
     let children = doc().children as JxMutableNode[];
     expect(children.length).toBe(3);
     expect(children[0]).toEqual({ children: [], tagName: "p" });
 
-    rightClick(["children", 1]); // Original "A" node
+    await rightClick(["children", 1]); // Original "A" node
     itemById("selection.insertAfter").click();
     await flush();
     children = doc().children as JxMutableNode[];
@@ -987,7 +1022,7 @@ describe("context menu actions", () => {
   });
 
   test("Wrap in Div wraps the node", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("selection.wrap").click();
     await flush();
     const wrapper = (doc().children as JxMutableNode[])[0]!;
@@ -996,7 +1031,7 @@ describe("context menu actions", () => {
   });
 
   test("Delete removes the node", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("selection.delete").click();
     await flush();
     const children = doc().children as JxMutableNode[];
@@ -1005,7 +1040,7 @@ describe("context menu actions", () => {
   });
 
   test("Cut copies then removes", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("edit.cut").click();
     await flush();
     expect(workspace.clipboard).toMatchObject({ textContent: "A" });
@@ -1013,19 +1048,19 @@ describe("context menu actions", () => {
   });
 
   test("Copy writes the node to the clipboard", async () => {
-    rightClick(["children", 1]);
+    await rightClick(["children", 1]);
     itemById("edit.copy").click();
     await flush();
     expect(workspace.clipboard).toMatchObject({ textContent: "B" });
   });
 
   test("Copy styles and Paste styles move styles between nodes", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("edit.copyStyles").click();
     await flush();
     expect(workspace.styleClipboard).toEqual({ color: "red" });
 
-    rightClick(["children", 1]);
+    await rightClick(["children", 1]);
     itemById("edit.pasteStyles").click();
     await flush();
     expect((doc().children as JxMutableNode[])[1]!.style).toEqual({ color: "red" });
@@ -1037,7 +1072,7 @@ describe("context menu actions", () => {
         "web application/jx+json": JSON.stringify({ tagName: "span", textContent: "i" }),
       }),
     ];
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("edit.pasteInside").click();
     await flush();
     const target = (doc().children as JxMutableNode[])[0]!;
@@ -1049,7 +1084,7 @@ describe("context menu actions", () => {
 
   test("Paste inside with an empty clipboard changes nothing", async () => {
     readResult = [];
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("edit.pasteInside").click();
     await flush();
     expect((doc().children as JxMutableNode[])[0]!.children).toBeUndefined();
@@ -1057,7 +1092,7 @@ describe("context menu actions", () => {
 
   test("Paste after inserts clipboard nodes as following siblings", async () => {
     readResult = [fakeItem({ "web application/jx+json": JSON.stringify({ tagName: "hr" }) })];
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("edit.pasteAfter").click();
     await flush();
     expect((doc().children as JxMutableNode[])[1]).toEqual({ tagName: "hr" });
@@ -1065,14 +1100,14 @@ describe("context menu actions", () => {
 
   test("Paste after with an empty clipboard changes nothing", async () => {
     readResult = [];
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("edit.pasteAfter").click();
     await flush();
     expect((doc().children as JxMutableNode[]).length).toBe(2);
   });
 
   test("Repeat... delegates to the repeater conversion", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     // The screenshot manifest reaches this row by its exact text through `element.repeat`.
     expect(itemById("selection.repeat").textContent!.replaceAll(/\s+/g, " ").trim()).toBe(
       "Repeat...",
@@ -1083,16 +1118,16 @@ describe("context menu actions", () => {
   });
 
   test("Convert to Component delegates to the component conversion", async () => {
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     itemById("selection.convertToComponent").click();
     await flush();
     expect(convertToComponent).toHaveBeenCalledTimes(1);
   });
 
   test("Set Title with a rerender hook lazily loads the layers panel editor", async () => {
-    rightClick(["children", 0], { rerender: () => {} });
+    await rightClick(["children", 0], { rerender: () => {} });
     itemById("selection.setTitle").click();
-    await flush(4); // Await the dynamic import; no .layer-row exists so it returns early
+    await flush(4); // Await the dynamic import; the Outline holds no rows, so it returns early
     expect((doc().children as JxMutableNode[]).length).toBe(2);
   });
 });
@@ -1108,25 +1143,25 @@ describe("component rows", () => {
     });
   });
 
-  test("registered components get Edit Component instead of Convert to Component", () => {
-    rightClick(["children", 0]);
+  test("registered components get Edit Component instead of Convert to Component", async () => {
+    await rightClick(["children", 0]);
     expect(menuIds()).toContain("selection.editComponent");
     expect(menuIds()).not.toContain("selection.convertToComponent");
   });
 
-  test("…and get it from EVERY host, not just one that remembered a hook", () => {
+  test("…and get it from EVERY host, not just one that remembered a hook", async () => {
     // The row used to be gated on a per-target `onEditComponent` callback each host passed in, so
     // A component right-clicked from a host that did not pass one showed neither Edit nor Convert:
     // The one selection where both rows were hidden was a component instance.
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     expect(menuIds()).toContain("selection.editComponent");
   });
 
-  test("a node with no tagName cannot be converted, and the row says so", () => {
+  test("a node with no tagName cannot be converted, and the row says so", async () => {
     // Both verbs are `panels/block-action-bar.ts`'s single records now. Convert renders DISABLED
     // Rather than vanishing, which is the same choice Cut makes on the document root: a greyed row
     // Carrying its `requires` sentence teaches, and an absent row teaches nothing.
-    rightClick(["children", 1]);
+    await rightClick(["children", 1]);
     expect(menuIds()).not.toContain("selection.editComponent");
     expect(isDisabled("selection.convertToComponent")).toBe(true);
   });

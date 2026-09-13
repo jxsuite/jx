@@ -18,12 +18,11 @@
  *   vanishing and leaving the author to guess the menu is state-dependent at all.
  *
  * Group ordering and `when` filtering are the registry's; dividers fall where `group` changes. What
- * is left here is positioning, popover rendering, and the menu keyboard contract.
+ * is left here is the projection: the menu itself is the `menu` surface (`surfaces/menu.json`), a
+ * `jx-menu` the kit gives its keyboard contract, its popover and its dismissal.
  */
-import { html, nothing } from "lit-html";
 import { displayTagName } from "@jxsuite/schema/guards";
 import { jsonClone } from "../utils/studio-utils";
-import { ref } from "lit-html/directives/ref.js";
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
 import { childIndex, getNodeAtPath, parentElementPath } from "../store";
 import { activeTab, workspace } from "../workspace/workspace";
@@ -39,12 +38,12 @@ import {
 } from "../tabs/transact";
 import { notify } from "../services/notify";
 import { componentRegistry } from "../files/components";
-import { renderPopover } from "../ui/layers";
-import { rectOf } from "../utils/geometry";
 import { createCommandRegistry } from "../commands/registry";
 import { registerSelectionCommands } from "../panels/block-action-bar";
 import { convertToComponent } from "./convert-to-component";
 import { activeRegistry } from "../commands/active-registry";
+import { openMenu } from "../surfaces/menu";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import { defaultCommands, noopCommandDeps } from "../commands/defaults";
 import { inspectorCommands } from "../panels/properties-panel";
 import { usagesSupported } from "../services/references";
@@ -825,143 +824,32 @@ export function contextMenuRegistry(): CommandRegistry {
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-/** One rendered row: a record plus everything the registry says about it right now. */
-interface MenuRow {
-  command: AnyCommand;
-  enabled: boolean;
-  /** The `requires` sentence, printed as a greyed subtitle when the row is disabled. */
-  reason: string | undefined;
-  chord: string | undefined;
-  /** Whether a divider opens this row's group. */
-  dividerAbove: boolean;
-}
-
-let _ctxHandle: ReturnType<typeof renderPopover> | null = null;
-let _rows: MenuRow[] = [];
-let _activeIdx = 0;
-/** Whatever owned the keyboard before the menu took it, so it can be handed back. */
-let _opener: HTMLElement | null = null;
-
-/** The rendered `sp-menu-item` elements, in row order. */
-function itemElements(): HTMLElement[] {
-  return _ctxHandle
-    ? [..._ctxHandle.host.querySelectorAll<HTMLElement>("sp-menu-item[data-command-id]")]
-    : [];
-}
+let _menu: MenuHandle | null = null;
+let _rows: MenuRowProjection[] = [];
 
 /**
- * Move the roving tabindex (and the caret) to `index`, wrapping at both ends.
- *
- * Still imperative, deliberately and not happily. The menu's template is inline in the
- * `renderPopover` call and its `ref` closure MUTATES the `x`/`y` it was rendered with to clamp the
- * popover into the viewport, so re-rendering to move focus would also re-run the placement from
- * stale coordinates. The template's own `tabindex`/`?focused` now read `_activeIdx` rather than
- * hard-coding row 0, so first paint and this function at least agree on where focus starts; making
- * the binding the only writer needs the template hoisted out and the placement state with it.
- * Carried in check-lit-conventions' allow-list with that reason.
+ * Run the row's command, then close. A disabled row never reaches here — the row refuses its own
+ * activation — but the registry's own gate is what would throw if one did.
  */
-function focusItem(index: number): void {
-  const items = itemElements();
-  if (items.length === 0) {
-    return;
-  }
-  const next = ((index % items.length) + items.length) % items.length;
-  for (const [at, item] of items.entries()) {
-    item.tabIndex = at === next ? 0 : -1;
-    item.toggleAttribute("focused", at === next);
-  }
-  _activeIdx = next;
-  items[next]?.focus();
-}
-
-/** Run the row's command, then close. Disabled rows explain themselves and do nothing. */
-function activateRow(index: number): void {
-  const row = _rows[index];
-  if (!row?.enabled) {
+function activateRow(id: string): void {
+  const row = _rows.find((r) => r.id === id);
+  if (!row || row.disabled) {
     return;
   }
   // Run BEFORE dismissing: every `run` reads `deps.target()` synchronously on entry, and dismissal
   // Clears the target.
-  const result = contextMenuRegistry().run(row.command.id);
+  const result = contextMenuRegistry().run(id);
   dismissContextMenu();
   void result;
 }
 
-/**
- * The menu keyboard contract: Up/Down/Home/End move, Enter/Space activate, Escape and Tab dismiss.
- *
- * Bound on `document` in the CAPTURE phase, the same shape `editor/slash-menu.ts` uses: the app's
- * own Escape (which walks the selection ladder) and the canvas arrow-key nudges must not also fire,
- * and a bubble-phase handler on the popover would race Spectrum's own menu key handling.
- */
-function onMenuKeydown(e: KeyboardEvent): void {
-  if (!_ctxHandle) {
-    return;
-  }
-  switch (e.key) {
-    case "ArrowDown": {
-      focusItem(_activeIdx + 1);
-      break;
-    }
-    case "ArrowUp": {
-      focusItem(_activeIdx - 1);
-      break;
-    }
-    case "Home": {
-      focusItem(0);
-      break;
-    }
-    case "End": {
-      focusItem(_rows.length - 1);
-      break;
-    }
-    case "Enter":
-    case " ": {
-      activateRow(_activeIdx);
-      break;
-    }
-    case "Escape":
-    case "Tab": {
-      dismissContextMenu();
-      break;
-    }
-    default: {
-      return;
-    }
-  }
-  e.preventDefault();
-  e.stopPropagation();
-}
-
-/** Drop the menu's global state and hand the keyboard back to whatever opened it. */
-function teardownMenu(): void {
-  document.removeEventListener("keydown", onMenuKeydown, true);
-  const opener = _opener;
-  _target = null;
-  _rows = [];
-  _activeIdx = 0;
-  _opener = null;
-  // Only when the menu still held the keyboard: an outside CLICK has already moved focus somewhere
-  // The author chose, and yanking it back to the opener would fight them.
-  const active = document.activeElement;
-  if (opener?.isConnected && (!active || active === document.body)) {
-    opener.focus();
-  }
-}
-
 /** Dismiss the context menu if open. */
 export function dismissContextMenu() {
-  if (!_ctxHandle) {
-    return;
-  }
-  const handle = _ctxHandle;
-  _ctxHandle = null;
-  handle.dismiss();
-  teardownMenu();
+  _menu?.close();
 }
 
-/** Ask the registry what belongs in `placement` right now and decorate each record for rendering. */
-function buildRows(placement: Placement): MenuRow[] {
+/** Ask the registry what belongs in `placement` right now and project each record for the surface. */
+function buildRows(placement: Placement): MenuRowProjection[] {
   const registry = contextMenuRegistry();
   let group: string | undefined;
   return registry.forPlacement(placement).map((command, index) => {
@@ -969,42 +857,31 @@ function buildRows(placement: Placement): MenuRow[] {
     ({ group } = command);
     const enabled = registry.isEnabled(command.id);
     const chord = registry.keymap.formatBinding(command.id);
-    return {
-      // A chord that just restates the row's own name ("Delete" bound to Delete) teaches nothing
-      // And reads as a stutter, so it is not printed.
-      chord: chord?.toLowerCase() === command.title.toLowerCase() ? undefined : chord,
-      command,
+    // A chord that just restates the row's own name ("Delete" bound to Delete) teaches nothing
+    // And reads as a stutter, so it is not printed.
+    const taught = chord && chord.toLowerCase() !== command.title.toLowerCase() ? chord : undefined;
+    const reason = enabled ? undefined : registry.disabledReason(command.id);
+    const row: MenuRowProjection = {
+      destructive: command.destructive === true,
+      disabled: !enabled,
       dividerAbove,
-      enabled,
-      reason: enabled ? undefined : registry.disabledReason(command.id),
+      id: command.id,
+      title: command.title,
     };
+    if (taught) {
+      row.chord = taught;
+    }
+    if (reason) {
+      row.requires = reason;
+    }
+    return row;
   });
 }
 
-/** One row. Everything it prints comes off the record — nothing is passed in per call site. */
-function rowTemplate(row: MenuRow, index: number) {
-  return html`${
-      row.dividerAbove ? html`<sp-menu-divider role="separator"></sp-menu-divider>` : nothing
-    }<sp-menu-item
-      role="menuitem"
-      data-command-id=${row.command.id}
-      tabindex=${index === _activeIdx ? 0 : -1}
-      ?focused=${index === _activeIdx}
-      ?disabled=${!row.enabled}
-      aria-disabled=${row.enabled ? "false" : "true"}
-      style=${row.command.destructive && row.enabled ? "color: var(--danger)" : ""}
-      @click=${() => activateRow(index)}
-      >${row.command.title}${
-        row.chord
-          ? html`<kbd slot="value" style="color: var(--fg-dim)">${row.chord}</kbd>`
-          : nothing
-      }${
-        row.reason ? html`<span slot="description">Needs ${row.reason}</span>` : nothing
-      }</sp-menu-item
-    >`;
-}
-
 /**
+ * Open the element menu at the pointer. The menu itself is the `menu` surface — a `jx-menu` of the
+ * rows built here — so what this function owns is the target, the selection and the projection.
+ *
  * @param {MouseEvent} e
  * @param {JxPath} path
  * @param {{
@@ -1046,49 +923,21 @@ export function showContextMenu(
     _target = null;
     return;
   }
-  _activeIdx = 0;
-  _opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-  let x = e.clientX;
-  let y = e.clientY;
-
-  _ctxHandle = renderPopover(
-    html`<sp-popover
-      open
-      style="position:fixed;z-index:10000;left:${x}px;top:${y}px"
-      ${ref((el) => {
-        if (!el) {
-          return;
-        }
-        requestAnimationFrame(() => {
-          const popover = el as HTMLElement;
-          const menuRect = rectOf(popover);
-          if (x + menuRect.width > window.innerWidth) {
-            x = window.innerWidth - menuRect.width - 4;
-          }
-          if (y + menuRect.height > window.innerHeight) {
-            y = window.innerHeight - menuRect.height - 4;
-          }
-          popover.style.left = `${x}px`;
-          popover.style.top = `${y}px`;
-        });
-      })}
-    >
-      <sp-menu role="menu" aria-label="Element actions">
-        ${_rows.map((row, index) => rowTemplate(row, index))}
-      </sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      onDismiss: () => {
-        _ctxHandle = null;
-        teardownMenu();
-      },
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  _menu = openMenu({
+    label: "Element actions",
+    onClosed: (handle) => {
+      if (_menu === handle) {
+        _menu = null;
+        _target = null;
+        _rows = [];
+      }
     },
-  );
-
-  document.addEventListener("keydown", onMenuKeydown, true);
-  // A frame later: lit has committed the items, and focusing the first row is what makes the whole
-  // Keyboard contract reachable at all (the menu used to open with focus left behind it).
-  requestAnimationFrame(() => focusItem(0));
+    opener,
+    origin: { x: e.clientX, y: e.clientY },
+    region: "context",
+    rows: _rows,
+    run: activateRow,
+  });
 }

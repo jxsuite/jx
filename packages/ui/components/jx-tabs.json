@@ -1,0 +1,124 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTabs",
+  "tagName": "jx-tabs",
+  "observedAttributes": ["selected", "label", "activation", "orientation"],
+  "state": {
+    "selected": {
+      "type": "string",
+      "default": "",
+      "attribute": "selected",
+      "description": "The value of the tab whose panel is showing. The strip is the one writer of its children's selected state, so a host owns this and nothing else."
+    },
+    "label": {
+      "type": "string",
+      "default": "Tabs",
+      "attribute": "label",
+      "description": "The accessible name of the strip. A tablist is named by nothing else — it takes no name from its tabs — and no lint can say so, because a bound role switches the naming rules off. Name every strip."
+    },
+    "activation": {
+      "type": "string",
+      "default": "auto",
+      "attribute": "activation",
+      "description": "auto selects a tab as the caret lands on it; manual moves the caret alone and waits for Enter or Space. auto is right for a strip whose panels are already built, manual for one whose panels cost something to show."
+    },
+    "orientation": {
+      "type": "string",
+      "default": "horizontal",
+      "attribute": "orientation",
+      "description": "horizontal or vertical. It chooses which arrow keys move the caret, and which edge carries both the strip's rule and the selected tab's mark on it — a tab cannot see the strip's orientation from its own sheet, so the strip draws that mark."
+    },
+    "applySelection": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tabs.ts",
+      "$export": "applySelection",
+      "parameters": ["scope"],
+      "description": "Writes the selection onto the tabs and returns it. Idempotent: it runs inside a render effect."
+    },
+    "sync": "${state.applySelection(state)}",
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tabs.ts",
+      "$export": "onTabsKeydown",
+      "description": "The tab keyboard contract: the arrows of the strip's orientation move the caret with wrap, Home and End go to the ends, Enter and Space activate under manual activation, and Delete closes a closable tab."
+    },
+    "onSelect": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tabs.ts",
+      "$export": "onTabsSelect",
+      "description": "A tab was activated: selected is written first, then change is dispatched, so a listener reading e.target.selected sees the new value.",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The selection moved; detail is the newly selected tab's value."
+        }
+      ]
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tabs.ts",
+      "$export": "onTabsMount",
+      "description": "Gives the strip its first sight of itself and syncs the tabs. Not optional: applyAttributes runs before distributeSlots, so no tab exists when the root's bindings first evaluate."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the strip has rendered and taken its slotted tabs, which is how onReady reaches the element itself."
+    }
+  },
+  "attributes": {
+    "role": "tablist",
+    "aria-label": "${state.label}",
+    "aria-orientation": "${state.orientation}",
+    "tabindex": "-1",
+    "data-selection": "${state.sync}"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onselect": {
+    "$ref": "#/state/onSelect"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "style": {
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "alignItems": "stretch",
+    "gap": "var(--jx-space-1)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "color": "var(--jx-fg-dim)",
+    "borderBlockEnd": "1px solid var(--jx-border)",
+    "outline": "none",
+    "&[aria-orientation=\"vertical\"]": {
+      "flexDirection": "column",
+      "borderBlockEnd": "0",
+      "borderInlineEnd": "1px solid var(--jx-border)",
+      "& > jx-tab": {
+        "marginBlockEnd": "0",
+        "marginInlineEnd": "-1px",
+        "borderBlockEnd": "0",
+        "borderInlineEnd": "2px solid transparent"
+      },
+      "& > jx-tab[aria-selected=\"true\"]": {
+        "borderInlineEndColor": "var(--jx-accent-solid)"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

@@ -83,6 +83,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `desktop.md`
 
+- **0.4.14-draft** (2026-09-12) — §7.1 webview box names @jxsuite/ui in place of Lit + Spectrum.
 - **0.4.13-draft** (2026-09-02) — Only authored sizes are emitted: a block-level box in normal flow drops the width and height a browser measured, so an imported layout stays fluid instead of pinned to the capture viewport.
 - **0.4.12-draft** (2026-09-02) — A control that declares which panel it expands becomes a native disclosure, with the flow deciding whether a pair is a details element or a popover.
 - **0.4.11-draft** (2026-09-02) — Import pairs a control with the panel it opens from the accessibility contract a site already ships, and emits a popover whose closed state lives in :popover-open rather than the base rule.
@@ -138,8 +139,17 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 - **0.1.1-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
 - **0.1.0-draft** (2026-04-15) — Implement platform abstraction (`962ba588`).
 
+## `embedding.md`
+
+- **0.1.4** (2026-09-11) — preloadModule accepts a loader: a lazy registration that imports on first use, once, shared by concurrent resolvers, and retried after a failed load (§6).
+- **0.1.3** (2026-09-10) — §2.4 the node hooks: onNodeCreated fires before a node's bindings are applied, and there is no detach counterpart.
+- **0.1.2** (2026-09-02) — A second realm forwards redefineElement across its bridge and re-renders (§7).
+- **0.1.1** (2026-09-02) — redefineElement and elementDefinition: a definition is read through the registry at connection, so a host may replace it live (§7); every section is now implemented.
+- **0.1.0-draft** (2026-09-02) — Initial release: mount() with dispose and AbortSignal, host scope, host functions through call, events out, per-mount context, preloadDocument and preloadModule.
+
 ## `extensions.md`
 
+- **0.4.4-draft** (2026-09-10) — A settings section's icon is a key in the Jx UI kit's glyph manifest, never an element tag; the §9.1 example named a Spectrum element, which resolved to nothing.
 - **0.4.3-draft** (2026-08-31) — The extension catalogue (§9.2): a host answers for what it can run, with bundled and installed probed rather than declared; §2 lists feed.
 - **0.4.2-draft** (2026-08-29) — A format may declare rewrite: replace authored values in its own source text, for a format that is read but never round-tripped.
 - **0.4.1-draft** (2026-08-27) — Studio conversion and creation are parse/serialize consumers; what parse returns is decided by documentKinds.
@@ -227,6 +237,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `schema.md`
 
+- **0.4.9-draft** (2026-09-02) — ArrayNamespace gains key, a $map/item pointer.
 - **0.4.8-draft** (2026-08-16) — §3.5 documents, configs and class definitions cross the parse boundary in NFC (UAX #31 §R4).
 - **0.4.7-draft** (2026-08-16) — §3.2 language-tag keys carry a BCP 47 pattern, so author-time and build-time agree; gap:bcp47-locale-validation closed.
 - **0.4.6-draft** (2026-08-16) — §3.2 and §7: BCP 47 validation exists in the build; the schema is the half that still lacks it.
@@ -292,6 +303,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `site-architecture.md`
 
+- **0.6.11-draft** (2026-09-10) — the CSV table-editor backlog item names a grid rather than a Spectrum element that no longer exists.
 - **0.6.10-draft** (2026-08-29) — A site deployed under a subpath: url's path is the base every emitted reference resolves against, applied to every output a host reads and answered by the dev server alongside the bare path.
 - **0.6.9-draft** (2026-08-29) — A reference inside a format that cannot round-trip is repaired through the rewrite capability rather than reported as a remainder.
 - **0.6.8-draft** (2026-08-29) — Media reachable only through a cross-root asset mount has no project-relative name, which is why it has no usage count; addressing it is a host file-API question, not an engine one.
@@ -378,6 +390,27 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.21-draft** (2026-09-10) — a style declaration may bind a value the host measured, which two surfaces had worked around as impossible.
+- **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
+- **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
+- **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
+- **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
+- **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
+- **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
+- **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
+- **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
+- **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
+- **0.6.11-draft** (2026-09-02) — the container rules honour aria-owns.
+- **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.
+- **0.6.9-draft** (2026-09-02) — Accessibility rules (§8.8): nine static rules over the overlay walker, each citing its WCAG criterion, with WAI-ARIA, accname and WCAG alignment rows.
+- **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
+- **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
+- **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
+- **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
+- **0.6.4-draft** (2026-09-02) — Statements gain stopPropagation and preventDefault (§20.2); a definition's root-level event handlers listen on the host (§16.1); an attribute value that resolves to null or undefined removes the attribute (§8.3).
+- **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
+- **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
+- **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
 - **0.5.9-draft** (2026-08-31) — popover is enumerated and emitted through the presence branch; declaration-body at-rules (@position-try, @property) emit verbatim; all four boolean-attribute writers now defer to booleanAttrValue.
 - **0.5.8-draft** (2026-08-26) — §5.3: $lazy on a $src Function defers the module to first call.
@@ -442,6 +475,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `standards.md`
 
+- **0.1.17-draft** (2026-09-02) — §1 no longer links the deleted adoption plan.
+- **0.1.16-draft** (2026-09-02) — §11: CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts moved to ui.md §11.
 - **0.1.15-draft** (2026-08-17) — §4.1: the Standards Alignment heading is matched tolerantly and a visual-editor escape is reported as heading-escaped.
 - **0.1.14-draft** (2026-08-16) — §11 WebDriver BiDi leaves the adoption backlog — the pipeline speaks it, and studio-ui-guidelines.md §15 owns it.
 - **0.1.13-draft** (2026-08-16) — §11 RFC 8414 leaves the adoption backlog — the flow it would configure now exists, and it is recorded Rejected in desktop.md for the reason that remains.
@@ -461,6 +496,39 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.
+- **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.
+- **0.8.3-draft** (2026-09-11) — §9.3 records the live chrome lane: a saved surface or kit component re-mounts the roots it draws in the shell, keyed on the path under packages/studio or packages/ui, and names the canvas half that waits on the frame seeding the kit's modules.
+- **0.8.2-draft** (2026-09-10) — Both Studio trees are jx-tree: the role, the counts, the roving tab stop and the arrow keys are the element's, and the two hand-written copies of that contract are gone; §8.2's drop highlight is named as the element's data-drop.
+- **0.8.1-draft** (2026-09-10) — The bound on surviving lit templates is a gate (LIT_TEMPLATE_AUTHORS) rather than prose (§9.3).
+- **0.8.0-draft** (2026-09-10) — Adobe Spectrum is removed: one element family, styles/spectrum.css re-homed into the token source, and the inventory in 6.1 replaced by a ban with an empty allow-list.
+- **0.7.0-draft** (2026-09-10) — Studio owns no custom elements: §6.2 graduates as the last LitElement (jx-value-selector) is deleted with its two retired callers, and the checklist item that governed them names the kit instead.
+- **0.6.1-draft** (2026-09-10) — showDialog and its slot helper are gone: Open Project's three-way question was never bespoke and calls openDialogSurface, so the last lit dialog body converted; the empty-state pattern is one spec with two renderers and no class of its own; the inspector row vocabulary drops .style-row/.field-row with ui/field-row.ts.
+- **0.6.0-draft** (2026-09-10) — renderPopover is gone: the tab strip's overflow list and context/tab menu are projections handed to the kit menu, which leaves the lit popover helper with no caller and takes its row out of the layers API table.
+- **0.5.1-draft** (2026-09-10) — The pane tab strip is a Jx document over jx-tabs; every strip in the shell now carries real tab semantics (gap:apg-coverage).
+- **0.5.0-draft** (2026-09-10) — openModal and the hand-rolled Tab trap are deleted with their last caller; a persistent modal is a jx-dialog surface document (§8.7).
+- **0.4.21-draft** (2026-09-10) — The dock tab strips carry real tab semantics; the pane strip waits on a slot in jx-tab (gap:apg-coverage).
+- **0.4.20-draft** (2026-09-10) — The Files tree's per-row menu is the kit menu: the tree's own verbs and the declared context/file records in one list, and the hand-written viewport clamp gone with the sp-popover.
+- **0.4.19-draft** (2026-09-09) — The migrated-surface list is the src/surfaces directory rather than an enumeration in the prose (§9.3).
+- **0.4.18-draft** (2026-09-09) — the About dialog is a document: the pattern a converted surface follows, and the readiness trap it hit.
+- **0.4.17-draft** (2026-09-09) — the shell frame is a Jx document, and mounting it is asynchronous because initShellRefs reads its cells on the next line.
+- **0.4.16-draft** (2026-09-09) — the shell frame's stylesheet is generated from a style block; its markup waits because initShellRefs reads the hosts synchronously.
+- **0.4.15-draft** (2026-09-09) — forced-colors.css is generated from a style block with its reasoning intact; the keyframes stay put and gain the duplicate-name gate.
+- **0.4.14-draft** (2026-09-09) — tokens.css is a build output generated from tokens.json, and stays a linked stylesheet because everything in it is pre-paint.
+- **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
+- **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
+- **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
+- **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.
+- **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).
+- **0.4.8-draft** (2026-09-02) — The toast stack is a Jx document projected by ui/layers.ts (§9.3).
+- **0.4.7-draft** (2026-09-02) — The confirm, save-or-discard and prompt dialogs are a Jx document over jx-dialog, opened modally on the native substrate (§8.7, §9.3).
+- **0.4.6-draft** (2026-09-02) — The Command Bar is a Jx document: surfaces/commandbar.json over the registry's projections, with the Studio menu on the menu surface (§9.3).
+- **0.4.5-draft** (2026-09-02) — The Start pane is a surface: the first whole pane as a document (§9.3).
+- **0.4.4-draft** (2026-09-02) — The status bar is a surface: three projected fields, buttons where an item names a command (§9.3).
+- **0.4.3-draft** (2026-09-02) — The Navigator rail is a surface: stacked jx-action-buttons held by the shell, the gear a menu button, panel icons as kit glyph names (§9.3).
+- **0.4.2-draft** (2026-09-02) — The rail's Settings menu is the second surface on the menu document: sections as a child jx-menu, live rows through a reactive scope, the rail's bottom as the stack's floor (§8.4, §9.3).
+- **0.4.1-draft** (2026-09-02) — The element context menu is the first surface built as a Jx document: surfaces/menu.json over a jx-menu, mounted through a popover layer slot (§8.4, §9.3).
+- **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
 - **0.3.16** (2026-08-27) — showPromptDialog carries an optional choice control beside its field.
 - **0.3.15** (2026-08-26) — §8.4 becomes Menus: menu-button triggers, submenus and the APG deviation; §12.1 gains the settings/menu placement.
 - **0.3.14** (2026-08-22) — Template conventions (9.4) and the gate behind them; render orchestration described as it is; custom components corrected to the two that exist.
@@ -494,6 +562,23 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.11.3-draft** (2026-09-12) — The Style tab's font row is a jx-combobox whose rows are their own specimens over the project's font tokens (site and document) and the unminted presets, minting on the commit only; the typography keyword rows draw each value as itself in the element's own face; the colour chip is handed the literal behind a token.
+- **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
+- **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
+- **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
+- **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
+- **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
+- **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
+- **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
+- **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
+- **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).
+- **0.10.13-draft** (2026-09-02) — 16.6 a Problems key is per finding, so several defects of one rule on one node are several rows.
+- **0.10.12-draft** (2026-09-02) — [inert] is transposed to [data-jx-inert] with the attribute rename, so an author's inert rule still applies on the canvas (§4.2.3).
+- **0.10.11-draft** (2026-09-02) — the canvas [open] transpose follows the selector's subject, not the styled element.
+- **0.10.10-draft** (2026-09-02) — a hide invoker closes its own target, not whichever popover is open (4.2.2, 4.2.3).
+- **0.10.9-draft** (2026-09-02) — A selection move fires the reveal rule, and an explicit close stays closed: the rule must not observe the open state it writes (§4.2.2).
+- **0.10.8-draft** (2026-09-02) — Dialogs, invoker commands and inert on the canvas: de-linked on stamped nodes, one open dialog per tab, canvas.setDialogOpen and the commandTargetClick report (§4.2.3).
+- **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.
 - **0.10.5-draft** (2026-08-31) — the canvas de-popovers so an open popover lays out in place and grows the artboard (4.2.2); the selector axis is element-aware and choosing :popover-open changes the rendering (6.2); a third document report checks popover correctness (16.6).
 - **0.10.4-draft** (2026-08-31) — Edit's canvas column is drag-resizable, and the active breakpoint is derived from its width.
@@ -606,3 +691,52 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 - **0.1.2-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
 - **0.1.1-draft** (2026-04-10) — Finalize vision for site architecture (`da594993`).
 - **0.1.0-draft** (2026-04-10) — Consolidate specs (`80ca313f`).
+
+## `ui.md`
+
+- **0.1.45-draft** (2026-09-12) — jx-option and jx-select rows carry five typographic channels (weight, slant, variant, transform, decoration) beside face, swatch and line; jx-color-field takes resolved, the colour behind a reference the page cannot resolve, for its chip and its picker; the Style tab's font row is a jx-combobox of specimen rows and the unit row is the last menu composite.
+- **0.1.44-draft** (2026-09-11) — §11: WCAG 2.2 is a Subset with a test per criterion, and SC 2.4.7 is a gate (every focusable control has the kit's focus ring); CSS Scoping is a Subset now that the light-DOM decision is held by the conformance test, and gap:ui-scoping is retired (§11).
+- **0.1.43-draft** (2026-09-11) — jx-tooltip is anchor-positioned against the control it was shown from, flipped through a named @position-try option so the arrow's gap moves with it; every overlay that hangs from something is the platform's to place, and §11 retires gap:ui-anchor (§5.2, §6, §11).
+- **0.1.42-draft** (2026-09-11) — jx-menu is anchor-positioned under placement, and a submenu anchors beside its row on its own; jx-tooltip is what is left (§5.1, §5.2, §6, §11).
+- **0.1.41-draft** (2026-09-11) — jx-popover is placed by CSS anchor positioning against the platform's implicit anchor whenever it was shown from a source (placement prop, flips, anchor-size), with the measured coordinate as the fallback; §6's marker catches up with the dialog, invoker and discrete-transition halves that were built; §11 moves CSS Anchor Positioning and CSS Transitions 2 to Subset (§5.2, §6, §11).
+- **0.1.40-draft** (2026-09-11) — §10 records the canvas as the kit's second realm: elements from the project's files, behaviours from @jxsuite/ui/loaders on first use, measured on the combobox stylebook page, and a saved component reaching both realms.
+- **0.1.39-draft** (2026-09-11) — The Style tab's keyword rows are jx-combobox with allows-custom-value (the unit and font rows stay the menu composite, because their rows are verbs); the commit judges the control's text and closes the list, as does Enter with nothing highlighted; §2 gains a light-DOM check and a sidecar scan as its evidence and is Partial, §8 is Implemented, §10 is Partial, and §2's cascade claim is corrected: element rules are unlayered (0,1,0) and adopted last; §11 retires gap:ui-accname (every control forwards its name) and gap:ui-parts (a decision, not a gap) and binds both rows to the sections the elements live in; §10 names the canvas realm's unresolved `jx-ui:` behaviours as the one gap outside the kit (§2, §5.3, §5.5, §8, §10, §11).
+- **0.1.38-draft** (2026-09-11) — jx-split reports each step's modifiers as the detail of input and change, and the Edit column's snapping handles are jx-split beside the column; setupHandle is deleted (§5.5).
+- **0.1.37-draft** (2026-09-11) — jx-combobox lands a gesture-opened list on the row the field already holds, shows no empty list, closes on Tab either way and matches its field's width, and ai-credentials-form is one jx-combobox with allows-custom-value over the fetched catalogue rather than two controls bound to one draft (5.3).
+- **0.1.36-draft** (2026-09-11) — jx-color-field declares the property-only tabindex, landing on the swatch (now part=control) and parking the text field, eyedropper and system well while roved, so a colour well is one stop in a jx-toolbar; §5.5 no longer names it as the gap and records the shape of the nested-composite fix.
+- **0.1.35-draft** (2026-09-11) — The five unbuilt builder elements are audited rather than pending: jx-dimension-field and jx-token-field fold onto the Style tab's kit-menu composite and jx-color-field's tokens slot, jx-box-editor is the shorthand row, jx-breakpoint-bar is three surfaces studio.md split on purpose, and jx-inline-edit has one consumer while every other rename is the prompt dialog (§5, §5.5).
+- **0.1.34-draft** (2026-09-11) — §5's catalogue catches up with the kit: the intro names the seven entries still pending rather than the three first built, jx-action-button's row describes haspopup/expanded and the checked radio segment in place of a hold prop that never shipped, jx-divider's row matches its stylebook, §5.3 records jx-field as built, and §1 and §9 stop calling the catalogue and the stylebook pending.
+- **0.1.33-draft** (2026-09-11) — The three dock edges are jx-split; only the Edit column's snapping handle remains pointer-only (§5.5).
+- **0.1.32-draft** (2026-09-10) — jx-tree keeps the keyboard across a handed-off caret move: it focuses the revealed row once the roving tabindex is on it, and abandons the request if the reader has moved on.
+- **0.1.31-draft** (2026-09-10) — jx-split: a window splitter with role=separator, a tab stop, aria-valuenow, the arrows of its own axis and a collapse toggle on Enter or a double click; Studio's pane grid and rail no longer hand-roll a separator.
+- **0.1.30-draft** (2026-09-10) — jx-toolbar ships: one tab stop over a row of mixed controls, a text field that keeps the arrows until its caret runs out, and overflow left with the host that already answers it (5.1, 5.5, 7).
+- **0.1.29-draft** (2026-09-10) — jx-tree dispatches typeahead for a host to resolve against the model while it is windowed, and the APG's * key is recorded as a named deviation.
+- **0.1.28-draft** (2026-09-10) — jx-combobox, jx-listbox and jx-option ship: the highlight is one id the field and the row are both told, a listbox that never takes focus, and a lint replaces the absence that guarded the select (5.1, 5.3, 7, 11).
+- **0.1.27-draft** (2026-09-10) — jx-tree and jx-tree-item ship: a flat projected row list so the tree can be windowed, ARIA counts that describe the full set, multi-select as an intent the host resolves, and cut and paste kept reachable beside the drag island (5.5, 7, 11).
+- **0.1.26-draft** (2026-09-10) — the authoring model in 3 is enforced over every element by conformance.test.ts, and WAI-ARIA and WHATWG HTML are cited Subsets rather than promises.
+- **0.1.25-draft** (2026-09-10) — jx-toast and jx-toast-host ship: the stack owns the live region, the clock pauses on attention and resumes with what was left, and a hotkey is the way into a status message (§5.2, §7, §11).
+- **0.1.24-draft** (2026-09-10) — a value the colour field cannot decompose is kept and drawn rather than refused, so a project's own tokens live in the same field as a colour.
+- **0.1.23-draft** (2026-09-10) — the colour elements are built: two transparent native ranges behind a 2D square, a styled range over a gradient, a contrast-measured swatch, a roving swatch group, and a composed colour field that dispatches from itself.
+- **0.1.22-draft** (2026-09-10) — §5.1 jx-select cannot draw an unlabelled separator between projected rows, and jx-menu is a list of actions rather than a media browser.
+- **0.1.21-draft** (2026-09-10) — the layers façade no longer lists showDialog: a bespoke dialog body is a named flow with an island.
+- **0.1.20-draft** (2026-09-10) — jx-tab takes slotted content in three named slots (icon, status, actions); label becomes required once anything is slotted, because aria-label is what keeps a slotted mark out of the tab's name.
+- **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).
+- **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.
+- **0.1.17-draft** (2026-09-04) — jx-select is a native select under appearance: base-select — the four things a document must never author, the sidecar that keeps selectedness alive, and why the kit ships no jx-option.
+- **0.1.16-draft** (2026-09-04) — the theme layer is an authored key, so themeCSS writes no CSS text and agrees with the site builder about the same block (4.2).
+- **0.1.15-draft** (2026-09-03) — the recipe kind is gone: 3.1 decides element or part by how many definitions draw the box, 3.5 states host position, and the catalogue rows are redistributed.
+- **0.1.14-draft** (2026-09-03) — slots leave no node, and an overlay opts out of the display default with display revert (3.2).
+- **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
+- **0.1.12-draft** (2026-09-02) — the loading button's refusal is stopPropagation as well as preventDefault; the spinner and popover override tokens join the semantic list.
+- **0.1.11-draft** (2026-09-02) — jx-popover, jx-tooltip and jx-spinner ship (5.2); the anchor prop is dropped with its reason; SC 1.4.13 joins the WCAG subset.
+- **0.1.10-draft** (2026-09-02) — jx-checkbox, jx-switch and jx-number-field ship (5.3); the value-stepping amendment to principle 5; jx-textfield gains clearable, grows and rows (5.1).
+- **0.1.9-draft** (2026-09-02) — jx-textfield gives its control a default value, so a form reset cannot desync it.
+- **0.1.8-draft** (2026-09-02) — the textfield's error live region is permanent, so the first refusal is announced.
+- **0.1.7-draft** (2026-09-02) — jx-textfield names its error and help sentences in aria-describedby, and forwards labelledby and describedby.
+- **0.1.6-draft** (2026-09-02) — jx-dialog claims focus on open (confirm, or cancel when destructive) and jx-button forwards autofocus (§5.1, §5.2).
+- **0.1.5-draft** (2026-09-02) — jx-dialog and jx-textfield are built (§5.1, §5.2, §6).
+- **0.1.4-draft** (2026-09-02) — jx-action-button gains stacked, haspopup/expanded and badge (§5.1).
+- **0.1.3-draft** (2026-09-02) — jx-button and jx-action-button are built: one native button each, invoker attributes forwarded, loading and toggling states (§5.1).
+- **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).
+- **0.1.1-draft** (2026-09-02) — jx-menu and jx-menu-item are built (§5.1), with the popover half of the overlay model (§6) and the menu keyboard contract (§7).
+- **0.1.0-draft** (2026-09-02) — Initial release: principles, authoring model, theme and tokens, element catalogue, overlay and keyboard models, icons, build and distribution, Studio integration.

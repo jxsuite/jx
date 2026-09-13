@@ -12,16 +12,18 @@
  * actually lands, not merely that something did.
  */
 import {
+  flush,
   installMockPlatform,
   pointer,
-  renderInto,
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { initLayers } from "../src/ui/layers";
 import {
+  bindContentHost,
   invalidatePageRouteCache,
-  renderPropertiesPanelTemplate,
+  renderPropertiesPanel,
 } from "../src/panels/properties-panel";
 import { componentRegistry } from "../src/files/components";
 import { resetSlotModeMemory } from "../src/ui/dynamic-slot";
@@ -30,10 +32,26 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── Local helpers (same shape as tests/properties-panel.test.ts) ─────────────
 
-const ctx = { navigateToComponent: () => {} };
+for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
+  if (!document.querySelector(`#${id}`)) {
+    const el = document.createElement("div");
+    el.id = id;
+    document.body.append(el);
+  }
+}
+initLayers();
+
+let host: HTMLElement | null = null;
 
 async function renderPanel(): Promise<HTMLElement> {
-  return await renderInto(renderPropertiesPanelTemplate(ctx));
+  if (!host) {
+    host = document.createElement("div");
+    document.body.append(host);
+    bindContentHost(host);
+  }
+  renderPropertiesPanel();
+  await flush(6);
+  return host;
 }
 
 /** A `<x-card>` root holding one child element, with that child selected. */
@@ -56,10 +74,32 @@ function selectedNode(): JxMutableNode {
 
 const tagRow = (c: HTMLElement) => c.querySelector('[data-prop="tagName"]') as HTMLElement;
 
-/** Pick a rung on the Tag row's Value Source picker — `elementTag` offers exactly these two. */
-function chooseValueSource(row: Element, mode: "literal" | "expression") {
-  pointer(row.querySelector(`sp-menu-item[data-mode="${mode}"]`)!, "click");
+/** The rung the Tag row is currently at, in the ladder's own words. */
+const rungLabel = (c: HTMLElement) =>
+  tagRow(c).querySelector('[part="source"]')!.textContent!.trim();
+
+/**
+ * Pick a rung on the Tag row's Value Source picker — `elementTag` offers exactly these two.
+ *
+ * The rungs are a kit menu in the popover layer now, not an `sp-overlay` inside the row: the ladder
+ * is one answer shared with every other bindable position (studio-ui-guidelines.md §6.3).
+ */
+async function chooseValueSource(c: HTMLElement, mode: "literal" | "expression"): Promise<void> {
+  pointer(tagRow(c).querySelector('[part="source"] [part="control"]')!, "click");
+  await flush(6);
+  const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu');
+  if (!menu) {
+    throw new Error("the value-source menu did not open for the Tag row");
+  }
+  menu.querySelector<HTMLElement>(`[data-command-id="${mode}"]`)!.click();
+  await flush(4);
 }
+
+afterEach(() => {
+  bindContentHost(null);
+  host?.remove();
+  host = null;
+});
 
 beforeEach(() => {
   componentRegistry.length = 0;
@@ -74,7 +114,7 @@ describe("the Tag row commits what the rung change produced", () => {
     openWithChildTag("section");
     const c = await renderPanel();
 
-    chooseValueSource(tagRow(c), "expression");
+    await chooseValueSource(c, "expression");
 
     /* `?:` with both arms holding the outgoing name — NOT the generic `{ operator: "??",
        target: null, value: null }`, which `TagExpression` does not admit. */
@@ -87,31 +127,53 @@ describe("the Tag row commits what the rung change produced", () => {
     openWithChildTag("section");
     const c = await renderPanel();
 
-    chooseValueSource(tagRow(c), "expression");
+    await chooseValueSource(c, "expression");
 
     expect(docNow().tagName).toBe("x-card");
   });
 
   test("the seeded formula reads back as Formula, and never as [object Object]", async () => {
     openWithChildTag("section");
-    let c = await renderPanel();
-    chooseValueSource(tagRow(c), "expression");
+    const c = await renderPanel();
+    await chooseValueSource(c, "expression");
 
-    c = await renderPanel();
-    expect(tagRow(c).querySelector(".dynamic-slot-mode")!.textContent!.trim()).toBe("Formula");
+    await renderPanel();
+    expect(rungLabel(c)).toBe("Formula");
     expect(tagRow(c).textContent).not.toContain("[object Object]");
   });
 
   test("dropping back to Fixed value writes the name the formula was seeded from", async () => {
     openWithChildTag("section");
-    let c = await renderPanel();
-    chooseValueSource(tagRow(c), "expression");
+    const c = await renderPanel();
+    await chooseValueSource(c, "expression");
     expect(typeof selectedNode().tagName).toBe("object");
 
-    c = await renderPanel();
-    chooseValueSource(tagRow(c), "literal");
+    await renderPanel();
+    await chooseValueSource(c, "literal");
 
     expect(selectedNode().tagName).toBe("section");
+  });
+
+  test("the Formula rung offers the tag grammar and nothing else", async () => {
+    openWithChildTag("section");
+    const c = await renderPanel();
+    await chooseValueSource(c, "expression");
+    await renderPanel();
+
+    const select = tagRow(c).querySelector('[part="operator"]') as HTMLElement & {
+      groups?: { rows: { value: string }[] }[];
+    };
+    const offered = (select.groups ?? []).flatMap((group) => group.rows.map((row) => row.value));
+
+    /* `TagExpression` is `?:` and `switch`, both branches resolving to a literal tag — and this row
+       used to offer the whole operator table. Reoperating the seed to `capitalize` wrote a document
+       `jx validate` rejects and `tagNameCandidates` cannot enumerate, and the Command Bar, the jump
+       bar, the Inspector and the canvas each threw reading it. */
+    expect(offered).toEqual(["?:", "switch"]);
+    expect(offered).not.toContain("toUpperCase");
+    expect(offered).not.toContain("call");
+    // The catalog half of the same restriction is asserted on the projection, in
+    // `tests/expression-editor.test.ts` — the button's absence here is not a witness on its own.
   });
 
   test("a formula the user never seeded here clears the tag rather than seeding one", async () => {
@@ -121,13 +183,13 @@ describe("the Tag row commits what the rung change produced", () => {
     openWithChildTag({
       $expression: { initial: "div", operator: "?:", target: { $ref: "#/state/href" }, value: "a" },
     });
-    let c = await renderPanel();
-    expect(tagRow(c).querySelector(".dynamic-slot-mode")!.textContent!.trim()).toBe("Formula");
+    const c = await renderPanel();
+    expect(rungLabel(c)).toBe("Formula");
 
-    chooseValueSource(tagRow(c), "literal");
+    await chooseValueSource(c, "literal");
     expect(selectedNode().tagName).toBeUndefined();
 
-    c = await renderPanel();
-    expect(tagRow(c).querySelector(".dynamic-slot-mode")!.textContent!.trim()).toBe("Fixed value");
+    await renderPanel();
+    expect(rungLabel(c)).toBe("Fixed value");
   });
 });

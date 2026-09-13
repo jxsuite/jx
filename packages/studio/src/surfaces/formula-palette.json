@@ -1,0 +1,364 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioFormulaPalette",
+  "$description": "The formula palette (spec §19.9): a search field over the formula catalog, its results grouped by the catalog's own group order, and one pick that hands an entry back to whoever opened it. The same shape as `palette.json` — a scrim, a framed panel, a borderless field, a listbox — because it is the same gesture over a different corpus, and the two used to share a stylesheet by sharing its class names. `groups` is the filtered catalog already grouped; `activeId` is the highlight, and it is ONE string — the id the field points `aria-activedescendant` at and the id the listbox is handed as `active` — kept apart from the rows so a key moves it without the list reconciling, which is why every row carries the FLAT index it would otherwise have to be asked for. Panel position is the caller's: centred under the top edge by default, and pinned under an anchor control when one was named, which is the only thing about this surface a document cannot decide for itself — it arrives as `anchorLeft`/`anchorTop`, two numbers the `style` object below binds, because a style declaration may read state like any other value (spec §9.1).",
+  "tagName": "div",
+  "attributes": {
+    "part": "palette"
+  },
+  "style": {
+    "$description": "The `.quick-search-*` rules the palette used to borrow from `styles/overlays.css`, brought here and re-valued. Every colour in the originals was a `--spectrum-*` name with a hex fallback, and a mounted document is outside `<sp-theme>` — so each of those resolved to its fallback and the palette had stopped following the chrome theme at all. The names now read from the kit's own layer, which is where a surface's colours come from.",
+    "display": "contents",
+    "--formula-palette-left": "${state.anchorLeft}px",
+    "--formula-palette-top": "${state.anchorTop}px",
+    "& [part=\"overlay\"]": {
+      "position": "fixed",
+      "inset": "0",
+      "zIndex": "1000",
+      "display": "flex",
+      "justifyContent": "center",
+      "paddingTop": "60px",
+      "background": "rgba(0, 0, 0, 0.4)"
+    },
+    "& [part=\"panel\"]": {
+      "width": "560px",
+      "maxWidth": "calc(100vw - 32px)",
+      "maxHeight": "420px",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignSelf": "flex-start",
+      "background": "var(--jx-bg-overlay)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "boxShadow": "var(--jx-shadow-dialog)",
+      "color": "var(--jx-fg)",
+      "fontFamily": "var(--jx-font-sans)",
+      "overflow": "hidden"
+    },
+    "& [part=\"panel\"][data-anchored]": {
+      "$description": "Opened from a control rather than from a chord: the panel hangs under that control instead of sitting under the top edge. The two custom properties are the only measured numbers in the surface — a rect belongs to the moment it was taken, so the adapter measures it once per open and this document binds the result. They used to travel as a `style` ATTRIBUTE the adapter assembled into one string, on the belief that a document cannot bind a style declaration to state; it can, and always could. They are declared at the top of this object rather than here because a reactive custom property in a rule targeting the element ITSELF is written inline under the author's own name (spec §9.1), and the panel then reads them by inheritance — the root is `display: contents`, so nothing sits between the two.",
+      "position": "fixed",
+      "left": "var(--formula-palette-left)",
+      "top": "var(--formula-palette-top)",
+      "margin": "0"
+    },
+    "& [part=\"input\"]": {
+      "$description": "Borderless inside its own framed panel: the frame is the affordance and a second one around the field would only draw a box inside a box. The keyboard ring is given back explicitly, because the reader who arrives here by Tab has nothing else to go on.",
+      "flex": "0 0 auto",
+      "minWidth": "0",
+      "padding": "var(--jx-space-4) var(--jx-space-5)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-lg)",
+      "border": "none",
+      "borderBottom": "1px solid var(--jx-border)",
+      "outline": "none",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "::placeholder": {
+        "color": "var(--jx-fg-muted)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"results\"]": {
+      "$description": "The list is the kit's `jx-listbox`, its groups the `role=\"group\"` wrappers that element's own definition names as the shape it draws headings for, and its rows `jx-option`s. The kit's row pads itself by `--jx-space-3`; the other half of the panel's 16px optical margin sits here, on the list, so the heading, the rows and the empty sentence all line up on one edge.",
+      "flex": "1",
+      "paddingInline": "var(--jx-space-3)"
+    },
+    "& [part=\"empty-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"option\"] [part=\"label\"]": {
+      "$description": "Monospaced because these are identifiers the reader will type: `??`, `?:`, `Math.max`. It is a rule rather than the kit's per-row `face`, because the whole catalogue draws this way — `face` is data a row carries, and every row carrying the same string would be this decision written once per entry.",
+      "fontFamily": "var(--jx-font-mono)",
+      "fontWeight": "500"
+    },
+    "& [part=\"option\"] [part=\"description\"]": {
+      "$description": "A `jx-select` row's note is a category at the END of the row, so the kit pushes it there with an auto margin. Here the note is what the identifier MEANS and reads as a definition beside it, while the far edge belongs to the kind badge. So the auto margin moves to the end slot.",
+      "marginInlineStart": "0"
+    },
+    "& [part=\"option\"] [part=\"end\"]": {
+      "marginInlineStart": "auto"
+    },
+    "& [part=\"badge\"]": {
+      "flexShrink": "0",
+      "fontSize": "var(--jx-text-xs)",
+      "padding": "1px var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-border)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"option\"][aria-selected=\"true\"] [part=\"badge\"]": {
+      "$description": "The highlight is keyed on `aria-selected`, which the listbox's sidecar is the single writer of — so the state a reader hears and the state a reader sees are one attribute rather than two that could disagree.",
+      "background": "transparent",
+      "border": "1px solid currentColor",
+      "color": "inherit"
+    }
+  },
+  "$switch": {
+    "$ref": "#/state/open"
+  },
+  "cases": {
+    "true": {
+      "tagName": "div",
+      "attributes": {
+        "part": "overlay"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/close"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "panel",
+            "data-anchored": "${state.anchored ? '' : null}"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "stopPropagation": true
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "input",
+              "attributes": {
+                "part": "input",
+                "type": "text",
+                "role": "combobox",
+                "aria-controls": "formula-palette-listbox",
+                "aria-expanded": "${state.expanded ? 'true' : 'false'}",
+                "aria-activedescendant": "${state.activeId || null}",
+                "aria-autocomplete": "list",
+                "aria-label": "Search formulas, operators and globals",
+                "placeholder": "Search formulas, operators, globals…"
+              },
+              "value": {
+                "$ref": "#/state/query"
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/input"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "onkeydown": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "$switch": {
+                      "$ref": "event#/key"
+                    },
+                    "cases": {
+                      "ArrowDown": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/move"
+                          },
+                          "value": [1]
+                        }
+                      ],
+                      "ArrowUp": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/move"
+                          },
+                          "value": [-1]
+                        }
+                      ],
+                      "Enter": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/activate"
+                          },
+                          "value": []
+                        }
+                      ],
+                      "Escape": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/close"
+                          },
+                          "value": []
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-listbox",
+              "attributes": {
+                "part": "results",
+                "id": "formula-palette-listbox"
+              },
+              "$props": {
+                "label": "Formulas",
+                "active": "${state.activeId}"
+              },
+              "onselect": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/activateRow"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ],
+                "description": "One handler for every row, because a row's `select` bubbles. The detail is the row's `value`, which is the FLAT index it occupies across all the groups — the number the nested map cannot count for itself, and the number the id is built from."
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty-slot",
+                    "role": "none"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/isEmpty"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "${state.emptyHint}"
+                    }
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/groups"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "group",
+                      "role": "group",
+                      "aria-label": "${$map.item.label}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "group-heading",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "${$map.item.label}"
+                      },
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/rows"
+                        },
+                        "key": {
+                          "$ref": "$map/item/key"
+                        },
+                        "map": {
+                          "tagName": "jx-option",
+                          "attributes": {
+                            "part": "option",
+                            "id": "formula-palette-option-${$map.item.index}",
+                            "title": "${$map.item.description}",
+                            "data-kind": "${$map.item.kind}"
+                          },
+                          "$props": {
+                            "value": "${$map.item.index}",
+                            "label": {
+                              "$ref": "$map/item/label"
+                            },
+                            "description": {
+                              "$ref": "$map/item/description"
+                            }
+                          },
+                          "onmouseenter": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/hover"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/index"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "slot": "end",
+                                "part": "badge"
+                              },
+                              "textContent": "${$map.item.kind}"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

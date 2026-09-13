@@ -23,7 +23,7 @@ let renderBlockActionBar: ReturnType<typeof mock>;
 function makePanel(mediaName = "base"): CanvasPanel {
   const element = document.createElement("div");
   const header = document.createElement("div");
-  header.className = "canvas-panel-header";
+  header.setAttribute("part", "panel-header");
   const canvas = document.createElement("div");
   element.append(header, canvas);
   document.body.append(element);
@@ -68,12 +68,12 @@ describe("overlays — header sync", () => {
     const md = makePanel("md");
     activeTab.value!.session.ui.activeMedia = "md";
     await mountAndFlush();
-    expect(md.element.querySelector(".canvas-panel-header")?.classList.contains("active")).toBe(
-      true,
-    );
-    expect(base.element.querySelector(".canvas-panel-header")?.classList.contains("active")).toBe(
-      false,
-    );
+    expect(
+      (md.element.querySelector('[part="panel-header"]') as HTMLElement | null)?.dataset.active,
+    ).toBe("");
+    expect(
+      (base.element.querySelector('[part="panel-header"]') as HTMLElement | null)?.dataset.active,
+    ).toBeUndefined();
   });
 
   test("panels' DOM is otherwise untouched (the iframe draws its own overlays)", async () => {

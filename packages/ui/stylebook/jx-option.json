@@ -1,0 +1,285 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookOption",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-kbd.json"
+    },
+    {
+      "$ref": "../components/jx-option.json"
+    },
+    {
+      "$ref": "../components/jx-listbox.json"
+    }
+  ],
+  "state": {
+    "picked": "",
+    "note": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/picked"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& jx-listbox": {
+      "width": "420px",
+      "maxWidth": "100%",
+      "padding": "var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--jx-bg-overlay)"
+    },
+    "& > [part=\"picked\"]": {
+      "margin": "var(--jx-space-3) 0 0",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-option"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One row of a jx-listbox, and never of a select: a custom element inside a <select> renders, reads convincingly in the accessibility tree and cannot be picked at all, which is why a conformance rule now refuses one. A row's words are its label attribute rather than slotted content, so a badge beside them can never become its name."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "The channels a row can carry"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A label, a muted description at the end of the row, a glyph in slot=icon and one control or mark in slot=end. Each unused channel draws no box, because a slot leaves no node and the container asks its own :empty."
+    },
+    {
+      "tagName": "jx-listbox",
+      "attributes": {
+        "id": "option-channels"
+      },
+      "$props": {
+        "label": "Commands",
+        "active": "option-channels-o1"
+      },
+      "onselect": {
+        "$ref": "#/state/note"
+      },
+      "children": [
+        {
+          "tagName": "jx-option",
+          "attributes": {
+            "id": "option-channels-o0"
+          },
+          "$props": {
+            "value": "open",
+            "label": "Open file…"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "attributes": {
+                "slot": "icon"
+              },
+              "$props": {
+                "name": "folder-open"
+              }
+            },
+            {
+              "tagName": "jx-kbd",
+              "attributes": {
+                "slot": "end"
+              },
+              "textContent": "⌘O"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-option",
+          "attributes": {
+            "id": "option-channels-o1"
+          },
+          "$props": {
+            "value": "save",
+            "label": "Save",
+            "description": "~/src/index.jx"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "attributes": {
+                "slot": "icon"
+              },
+              "$props": {
+                "name": "floppy-disk"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "plain",
+            "label": "A row with nothing else on it"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "locked",
+            "label": "Publish",
+            "description": "no project open",
+            "disabled": true
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "picked"
+      },
+      "textContent": "Picked: ${state.picked}"
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A row that is its own preview"
+    },
+    {
+      "tagName": "p",
+      "textContent": "face, swatch, line, weight, slant, variant, transform and decoration are the same drawing channels a jx-select row carries, under the same token names: each reaches its own span as a custom property set inline, so seventy rows intern the rules two rows do. The five typographic ones change how the label is drawn and never its words, which is what lets a list of weights read as its weights."
+    },
+    {
+      "tagName": "jx-listbox",
+      "attributes": {
+        "id": "option-previews"
+      },
+      "$props": {
+        "label": "Styles"
+      },
+      "children": [
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "Georgia, serif",
+            "label": "Georgia",
+            "face": "Georgia, serif"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "mono",
+            "label": "Courier New",
+            "face": "\"Courier New\", monospace"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "danger",
+            "label": "Danger",
+            "swatch": "var(--jx-danger)"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "accent",
+            "label": "Accent",
+            "swatch": "var(--jx-accent)"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "dashed",
+            "label": "Dashed",
+            "line": "dashed"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "double",
+            "label": "Double",
+            "line": "double"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "700",
+            "label": "Bold",
+            "weight": "700",
+            "face": "Georgia, serif"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "italic",
+            "label": "Italic",
+            "slant": "italic"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "small-caps",
+            "label": "Small caps",
+            "variant": "small-caps"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "uppercase",
+            "label": "Uppercase",
+            "transform": "uppercase"
+          }
+        },
+        {
+          "tagName": "jx-option",
+          "$props": {
+            "value": "underline wavy",
+            "label": "Underline wavy",
+            "decoration": "underline wavy"
+          }
+        }
+      ]
+    }
+  ]
+}

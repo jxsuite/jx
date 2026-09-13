@@ -1,0 +1,58 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTabPanel",
+  "tagName": "jx-tab-panel",
+  "observedAttributes": ["active", "labelledby"],
+  "state": {
+    "active": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "active",
+      "description": "Whether this panel is the showing one. Every other panel is hidden, not absent, so the ids its tab names stay resolvable."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "The id of the tab that controls this panel, announced as aria-labelledby. Nothing checks the pairing: mint this id and the tab's aria-controls from one key."
+    },
+    "notActive": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/active"
+        }
+      }
+    }
+  },
+  "attributes": {
+    "role": "tabpanel",
+    "tabindex": "0",
+    "aria-labelledby": "${state.labelledby || null}",
+    "hidden": {
+      "$ref": "#/state/notActive"
+    }
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "padding": "var(--jx-space-3)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "color": "var(--jx-fg)",
+    "outline": "none",
+    ":focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

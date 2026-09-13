@@ -41,6 +41,7 @@
     "@happy-dom/global-registrator": "^20.12.2",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/server": "workspace:^",
+    "@jxsuite/ui": "workspace:^",
     "electrobun": "2.0.1",
     "rcedit": "^5.0.2"
   }

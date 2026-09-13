@@ -9,13 +9,27 @@
  * the tests cover the whole story: classification, naming, validation, and the two failure modes (a
  * schema refusal and a refused write) that the predecessors dropped on the floor.
  *
+ * **The section is a Jx document now** (`src/surfaces/settings-contexts.json`), so three things
+ * about this file are deliberate rather than incidental:
+ *
+ * - The container is APPENDED TO THE DOCUMENT. A kit element renders in `connectedCallback`, so a
+ *   detached container gets `<jx-textfield>` tags with nothing inside them — every assertion about
+ *   a control would read `null` and the failure would look like a missing element rather than a
+ *   missing connection.
+ * - Rendering is awaited. `renderContextsSection` still returns void, as the registry's
+ *   `render(container)` seam requires, and mounting is asynchronous underneath it; {@link settle}
+ *   is the one place that knows how long that takes.
+ * - An edit is made on the NATIVE control inside the kit element, not on the element. That is what a
+ *   reader's edit is: `jx-textfield` hears its own input's event and lets it bubble on, so a test
+ *   that wrote the host's `value` property would be moving the control without ever telling it.
+ *
  * `jx-validate` is mocked. The real one compiles the project's generated entry document with ajv,
  * which is both slow and dependent on which extensions the fixture happens to enable — neither of
  * which is what this file is about. What it IS about is that a human editing project.json through a
  * form gets the same gate the AI's `write_project_config` has always had.
  */
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { projectState } from "../src/store";
 
 import type { MockPlatformState } from "./harness";
@@ -51,17 +65,32 @@ void mock.module("../src/services/jx-validate.js", () => ({
 
 const { contextKeyOf, contextKindOf, renderContextsSection, splitContexts } =
   await import("../src/settings/contexts-section");
+const { mountContextsSurface } = await import("../src/surfaces/settings-contexts");
 
-function setup(
+/**
+ * Let the document catch up.
+ *
+ * Generous on purpose, and in one place: the mount awaits the kit's registration, each kit element
+ * builds its own scope asynchronously in `connectedCallback`, and a write runs two validations and
+ * a `writeFile` before it re-projects. A per-test turn count would be four different guesses at the
+ * same number.
+ */
+async function settle(): Promise<void> {
+  await flush(8);
+}
+
+async function setup(
   media: Record<string, string> | undefined,
   overrides: Partial<StudioPlatform> = {},
-): { container: HTMLElement; state: MockPlatformState } {
+): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides);
   resetStudioState({
     projectConfig: { name: "Site", ...(media ? { $media: media } : {}) } as unknown,
   });
   const container = document.createElement("div");
+  document.body.append(container);
   renderContextsSection(container);
+  await settle();
   return { container, state };
 }
 
@@ -87,9 +116,28 @@ function addButton(container: HTMLElement, kind: string): HTMLElement {
   return group(container, kind).querySelector(`[data-add="${kind}"]`) as HTMLElement;
 }
 
+/** The name field of the first row in a group. */
+function nameField(container: HTMLElement, kind: string, index = 0): Element {
+  return group(container, kind).querySelectorAll('[part="name"]')[index]!;
+}
+
+/** The value control of the first row in a group — a text field, or a scheme select. */
+function valueField(container: HTMLElement, kind: string, index = 0): Element {
+  return group(container, kind).querySelectorAll('[part="value"]')[index]!;
+}
+
+/**
+ * Type into a kit control and commit it, the way a reader does: the write and the event both happen
+ * on the native control inside the element (`[part="input"]` for a field, `[part="control"]` for a
+ * select), and the element lets `change` bubble on to whoever is listening.
+ */
 function setAndFire(el: Element, value: string): void {
-  (el as HTMLInputElement).value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  const control = el.querySelector<HTMLInputElement>('[part="input"], [part="control"]');
+  if (!control) {
+    throw new Error(`no native control inside <${el.tagName.toLowerCase()}>`);
+  }
+  control.value = value;
+  control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /** The base-width field, addressed by the data hook rather than by position. */
@@ -98,7 +146,7 @@ function baseField(container: HTMLElement): Element {
 }
 
 function errorTexts(container: HTMLElement): string[] {
-  return [...container.querySelectorAll(".settings-field-error")].map(
+  return [...container.querySelectorAll('[part="row-error"], [part="section-error"]')].map(
     (el) => el.textContent?.trim() ?? "",
   );
 }
@@ -106,6 +154,10 @@ function errorTexts(container: HTMLElement): string[] {
 beforeEach(() => {
   validatorResult = [];
   validateProjectConfig.mockClear();
+});
+
+afterEach(() => {
+  document.body.replaceChildren();
 });
 
 // ─── Classification ──────────────────────────────────────────────────────────
@@ -165,8 +217,8 @@ describe("naming", () => {
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
 describe("rendering", () => {
-  test("the three groups always render, each with an empty state and an add button", () => {
-    const { container } = setup(undefined);
+  test("the three groups always render, each with an empty state and an add button", async () => {
+    const { container } = await setup(undefined);
     for (const kind of ["size", "scheme", "feature"]) {
       expect(rowKeys(container, kind)).toEqual([]);
       expect(addButton(container, kind)).not.toBeNull();
@@ -175,8 +227,8 @@ describe("rendering", () => {
     expect(container.textContent).toContain("No colour schemes yet");
   });
 
-  test("entries land in their own group and nowhere else", () => {
-    const { container } = setup({
+  test("entries land in their own group and nowhere else", async () => {
+    const { container } = await setup({
       "--": "1280px",
       "--dark": "(prefers-color-scheme: dark)",
       "--print": "print",
@@ -187,18 +239,54 @@ describe("rendering", () => {
     expect(rowKeys(container, "feature")).toEqual(["--print"]);
   });
 
-  test("the base width renders its own row, outside every group", () => {
-    const { container } = setup({ "--": "1280px" });
-    const base = container.querySelector('[data-context="base"]') as HTMLInputElement;
+  test("the base width renders its own row, outside every group", async () => {
+    const { container } = await setup({ "--": "1280px" });
+    const base = baseField(container) as HTMLElement & { value: string };
     expect(base.value).toBe("1280px");
     expect(base.closest("[data-context-group]")).toBeNull();
   });
 
-  test("a scheme row is a picker, so a scheme can never be mistyped into a feature", () => {
-    const { container } = setup({ "--dark": "(prefers-color-scheme: dark)" });
-    const picker = group(container, "scheme").querySelector("sp-picker");
+  test("a scheme row is a select, so a scheme can never be mistyped into a feature", async () => {
+    const { container } = await setup({ "--dark": "(prefers-color-scheme: dark)" });
+    const picker = group(container, "scheme").querySelector("jx-select");
     expect(picker).not.toBeNull();
     expect((picker as unknown as { value: string }).value).toBe("dark");
+    expect([...picker!.querySelectorAll("option")].map((o) => o.value)).toEqual(["light", "dark"]);
+  });
+
+  test("the section is one mounted document, re-used rather than re-mounted", async () => {
+    /*
+     * The host calls `render(container)` again for every change it notices — a nav click, an
+     * extension registering, a command selecting an entry — and the lit version answered each by
+     * rebuilding the whole section. A remount would take the reader's focus and their caret with
+     * it, so what a repeat call must do is write the new projection into the scope that is already
+     * mounted, leaving the element identities alone.
+     */
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    const before = valueField(container, "size");
+    renderContextsSection(container);
+    await settle();
+    expect(valueField(container, "size")).toBe(before);
+  });
+
+  test("a container another section took over is rebuilt, not written into from a distance", async () => {
+    /*
+     * Two sections share one container: the pane hands it to whoever is displayed, and the one that
+     * arrives clears it. Coming back has to notice that the mounted document is gone — otherwise
+     * the scope stays live over detached nodes and the section renders nothing, for good.
+     */
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    container.textContent = "";
+    renderContextsSection(container);
+    await settle();
+    expect(rowKeys(container, "size")).toEqual(["--sm"]);
+  });
+
+  test("remove is an icon button the kit draws, not a × somebody typed", async () => {
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    const remove = group(container, "size").querySelector('[data-remove="--sm"]')!;
+    expect(remove.querySelector('[part="icon-glyph"]')).not.toBeNull();
+    expect(remove.querySelector('[part="control"]')?.getAttribute("aria-label")).toBe("Remove Sm");
   });
 });
 
@@ -206,74 +294,73 @@ describe("rendering", () => {
 
 describe("editing", () => {
   test("adding a breakpoint writes one entry with a real query", async () => {
-    const { container } = setup({ "--": "1280px" });
+    const { container } = await setup({ "--": "1280px" });
     pointer(addButton(container, "size"), "click");
-    await flush(4);
+    await settle();
     expect(config().$media).toEqual({ "--": "1280px", "--breakpoint": "(max-width: 768px)" });
   });
 
   test("adding twice does not collide — the second takes the next free name", async () => {
-    const { container } = setup({});
+    const { container } = await setup({});
     pointer(addButton(container, "size"), "click");
-    await flush(4);
+    await settle();
     pointer(addButton(container, "size"), "click");
-    await flush(4);
+    await settle();
     expect(Object.keys(config().$media)).toEqual(["--breakpoint", "--breakpoint-2"]);
   });
 
   test("adding a colour scheme writes the canonical prefers-color-scheme query", async () => {
-    const { container } = setup({});
+    const { container } = await setup({});
     pointer(addButton(container, "scheme"), "click");
-    await flush(4);
+    await settle();
     expect(config().$media["--dark"]).toBe("(prefers-color-scheme: dark)");
   });
 
   test("changing a query persists it", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)" });
-    const value = group(container, "size").querySelector(".settings-media-value")!;
-    setAndFire(value, "(max-width: 720px)");
-    await flush(4);
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    setAndFire(valueField(container, "size"), "(max-width: 720px)");
+    await settle();
     expect(config().$media["--sm"]).toBe("(max-width: 720px)");
   });
 
   test("renaming preserves order — a rename is not a reordering", async () => {
-    const { container } = setup({
+    const { container } = await setup({
       "--": "1280px",
       "--sm": "(max-width: 600px)",
       "--md": "(max-width: 900px)",
     });
-    const name = group(container, "size").querySelector(".settings-media-name")!;
-    setAndFire(name, "Phone");
-    await flush(4);
+    setAndFire(nameField(container, "size"), "Phone");
+    await settle();
     expect(Object.keys(config().$media)).toEqual(["--", "--phone", "--md"]);
     expect(config().$media["--phone"]).toBe("(max-width: 600px)");
   });
 
-  test("switching a scheme row's picker rewrites the query, not the name", async () => {
-    const { container } = setup({ "--scheme": "(prefers-color-scheme: dark)" });
-    const picker = group(container, "scheme").querySelector("sp-picker")!;
-    (picker as unknown as { value: string }).value = "light";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(4);
+  test("switching a scheme row's select rewrites the query, not the name", async () => {
+    const { container } = await setup({ "--scheme": "(prefers-color-scheme: dark)" });
+    setAndFire(valueField(container, "scheme"), "light");
+    await settle();
     expect(config().$media).toEqual({ "--scheme": "(prefers-color-scheme: light)" });
   });
 
   test("remove deletes exactly one entry", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)", "--md": "(max-width: 900px)" });
+    const { container } = await setup({
+      "--sm": "(max-width: 600px)",
+      "--md": "(max-width: 900px)",
+    });
     const remove = group(container, "size").querySelector('[data-remove="--sm"]') as HTMLElement;
     pointer(remove, "click");
-    await flush(4);
+    await settle();
     expect(config().$media).toEqual({ "--md": "(max-width: 900px)" });
   });
 
   test("the base width accepts pixels and clearing it drops the key", async () => {
-    const { container } = setup({ "--": "1280px", "--sm": "(max-width: 600px)" });
-    setAndFire(container.querySelector('[data-context="base"]')!, "1440px");
-    await flush(4);
+    const { container } = await setup({ "--": "1280px", "--sm": "(max-width: 600px)" });
+    setAndFire(baseField(container), "1440px");
+    await settle();
     expect(config().$media["--"]).toBe("1440px");
 
-    setAndFire(container.querySelector('[data-context="base"]')!, "");
-    await flush(4);
+    setAndFire(baseField(container), "");
+    await settle();
     expect(config().$media).toEqual({ "--sm": "(max-width: 600px)" });
   });
 });
@@ -285,26 +372,30 @@ describe("editing", () => {
 
 describe("refusals", () => {
   test("a base width that is not pixels is refused at its own control", async () => {
-    const { container } = setup({ "--": "1280px" });
-    setAndFire(container.querySelector('[data-context="base"]')!, "wide");
-    await flush(4);
+    const { container } = await setup({ "--": "1280px" });
+    setAndFire(baseField(container), "wide");
+    await settle();
     expect(errorTexts(container)).toContain("Enter a width in pixels, like 1280px.");
     expect(config().$media["--"]).toBe("1280px");
+    // And the control says so itself, rather than only the line under it.
+    expect((baseField(container) as unknown as { invalid: boolean }).invalid).toBe(true);
   });
 
   test("an empty name is refused and the entry survives", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)" });
-    setAndFire(group(container, "size").querySelector(".settings-media-name")!, "   ");
-    await flush(4);
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    setAndFire(nameField(container, "size"), "   ");
+    await settle();
     expect(errorTexts(container)).toContain("A context needs a name.");
     expect(config().$media).toEqual({ "--sm": "(max-width: 600px)" });
   });
 
   test("renaming onto an existing name is refused instead of eating the other entry", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)", "--md": "(max-width: 900px)" });
-    const names = group(container, "size").querySelectorAll(".settings-media-name");
-    setAndFire(names[0]!, "md");
-    await flush(4);
+    const { container } = await setup({
+      "--sm": "(max-width: 600px)",
+      "--md": "(max-width: 900px)",
+    });
+    setAndFire(nameField(container, "size", 0), "md");
+    await settle();
     expect(errorTexts(container).join(" ")).toContain("already defined");
     expect(config().$media).toEqual({
       "--md": "(max-width: 900px)",
@@ -313,17 +404,17 @@ describe("refusals", () => {
   });
 
   test("renaming to the same name is a no-op, not an error", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)" });
-    setAndFire(group(container, "size").querySelector(".settings-media-name")!, "sm");
-    await flush(4);
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    setAndFire(nameField(container, "size"), "sm");
+    await settle();
     expect(errorTexts(container)).toEqual([]);
     expect(config().$media).toEqual({ "--sm": "(max-width: 600px)" });
   });
 
   test("an empty query is refused", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)" });
-    setAndFire(group(container, "size").querySelector(".settings-media-value")!, "  ");
-    await flush(4);
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    setAndFire(valueField(container, "size"), "  ");
+    await settle();
     expect(errorTexts(container).join(" ")).toContain("needs a media query");
     expect(config().$media["--sm"]).toBe("(max-width: 600px)");
   });
@@ -336,9 +427,9 @@ describe("validation", () => {
     // Clean before, broken after: an error THIS edit introduced.
     validatorResult = (candidate) =>
       candidate.$media?.["--sm"] === "nonsense" ? ["/$media/--sm: must match pattern"] : [];
-    const { container, state } = setup({ "--sm": "(max-width: 600px)" });
-    setAndFire(group(container, "size").querySelector(".settings-media-value")!, "nonsense");
-    await flush(6);
+    const { container, state } = await setup({ "--sm": "(max-width: 600px)" });
+    setAndFire(valueField(container, "size"), "nonsense");
+    await settle();
     expect(errorTexts(container)).toContain("/$media/--sm: must match pattern");
     expect(config().$media["--sm"]).toBe("(max-width: 600px)");
     expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
@@ -353,9 +444,9 @@ describe("validation", () => {
      * baseline has to be subtracted or the section can only ever be used on a perfect one.
      */
     validatorResult = ["(root): must NOT have unevaluated properties (title)"];
-    const { container, state } = setup({ "--sm": "(max-width: 600px)" });
+    const { container, state } = await setup({ "--sm": "(max-width: 600px)" });
     setAndFire(baseField(container), "1280px");
-    await flush(6);
+    await settle();
 
     expect(config().$media["--"]).toBe("1280px");
     expect(state.calls.filter(([name]) => name === "writeFile").length).toBeGreaterThan(0);
@@ -363,11 +454,11 @@ describe("validation", () => {
 
   test("but the file's own problem is still reported, once, at section level", async () => {
     validatorResult = ["(root): must NOT have unevaluated properties (title)"];
-    const { container } = setup({ "--sm": "(max-width: 600px)" });
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
     setAndFire(baseField(container), "1280px");
-    await flush(6);
+    await settle();
 
-    const notice = container.querySelector(".settings-section-notice")?.textContent ?? "";
+    const notice = container.querySelector('[part="notice"]')?.textContent ?? "";
     expect(notice).toContain("pre-existing schema");
     // And it NAMES the key, which is the whole difference between a diagnosis and a mystery.
     expect(notice).toContain("(title)");
@@ -377,51 +468,69 @@ describe("validation", () => {
 
   test("a validator that will not compile reports itself and blocks nothing else", async () => {
     validatorResult = new Error("ajv exploded");
-    const { container } = setup({ "--sm": "(max-width: 600px)" });
-    setAndFire(
-      group(container, "size").querySelector(".settings-media-value")!,
-      "(min-width: 1px)",
-    );
-    await flush(6);
+    const { container } = await setup({ "--sm": "(max-width: 600px)" });
+    setAndFire(valueField(container, "size"), "(min-width: 1px)");
+    await settle();
     expect(errorTexts(container).join(" ")).toContain("Could not validate project.json");
   });
 
   test("a rejected write is shown, not swallowed", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)" }, {
+    const { container } = await setup({ "--sm": "(max-width: 600px)" }, {
       writeFile: async () => {
         throw new Error("EROFS: read-only file system");
       },
     } as unknown as Partial<StudioPlatform>);
-    setAndFire(
-      group(container, "size").querySelector(".settings-media-value")!,
-      "(min-width: 1px)",
-    );
-    await flush(6);
+    setAndFire(valueField(container, "size"), "(min-width: 1px)");
+    await settle();
     expect(errorTexts(container).join(" ")).toContain(
       "Could not save project.json — EROFS: read-only file system",
     );
   });
 
   test("a later success clears the error", async () => {
-    const { container } = setup({ "--sm": "(max-width: 600px)" }, {
+    const { container } = await setup({ "--sm": "(max-width: 600px)" }, {
       writeFile: async () => {
         throw new Error("EROFS");
       },
     } as unknown as Partial<StudioPlatform>);
-    setAndFire(
-      group(container, "size").querySelector(".settings-media-value")!,
-      "(min-width: 1px)",
-    );
-    await flush(6);
+    setAndFire(valueField(container, "size"), "(min-width: 1px)");
+    await settle();
     expect(errorTexts(container)).not.toEqual([]);
 
     installMockPlatform();
-    setAndFire(
-      group(container, "size").querySelector(".settings-media-value")!,
-      "(min-width: 2px)",
-    );
-    await flush(6);
+    setAndFire(valueField(container, "size"), "(min-width: 2px)");
+    await settle();
     expect(errorTexts(container)).toEqual([]);
     expect(config().$media["--sm"]).toBe("(min-width: 2px)");
+  });
+});
+
+// ─── The adapter's own lifecycle ─────────────────────────────────────────────
+
+describe("the contexts surface", () => {
+  test("disposing before the mount lands tears it down rather than leaving it running", async () => {
+    /*
+     * Mounting is asynchronous and closing is not, so the two can cross. `attached()` answers "yes"
+     * for a mount in flight — otherwise a second synchronous render would tear down the mount it is
+     * waiting for — which makes this the one path where a handle is disposed with nothing to
+     * dispose yet, and the effects and the nodes both have to go when it does land.
+     */
+    const host = document.createElement("div");
+    document.body.append(host);
+    const noop = () => {};
+    const handle = mountContextsSurface(host, {
+      add: noop,
+      remove: noop,
+      rename: noop,
+      setBase: noop,
+      setQuery: noop,
+      setScheme: noop,
+    });
+    handle.dispose();
+    await handle.ready;
+    await settle();
+
+    expect(handle.attached()).toBe(false);
+    expect(host.querySelector('[part="contexts"]')).toBeNull();
   });
 });

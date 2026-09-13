@@ -12,17 +12,19 @@
  * `services/notify.ts`'s `toasts` array and owns exactly two things that array does not: the timer
  * that retires a resting toast, and the transition account {@link overlayIdleBlockers} publishes.
  */
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
-import { repeat } from "lit-html/directives/repeat.js";
-import { choiceField } from "./choice-field";
+import { render as litRender, nothing } from "lit-html";
 import { overlayRegion, REGION_ATTR } from "./regions";
+import { openDialogSurface } from "../surfaces/dialog";
+import { mountSurface, registerSurface } from "./surface";
+import toastsDoc from "../surfaces/toasts.json";
 import { dismiss, toasts } from "../services/notify";
 import { activeRegistry } from "../commands/active-registry";
-import { effect, effectScope } from "../reactivity";
-import type { ChoiceOption } from "./choice-field";
+import { effect, effectScope, reactive } from "../reactivity";
+import type { DialogChoiceOption, DialogSurfaceOptions } from "../surfaces/dialog";
 import type { Notification, Severity } from "../services/notify";
 import type { EffectScope } from "@vue/reactivity";
+import type { SurfaceHandle } from "./surface";
+import type { JxDocument } from "@jxsuite/schema/types";
 import type { TemplateResult } from "lit-html";
 
 /** The four fixed layer hosts, by name. Also the `kind` half of every overlay region id. */
@@ -33,8 +35,14 @@ let _modalLayer: HTMLElement;
 let _dialogLayer: HTMLElement;
 let _toastLayer: HTMLElement;
 
-/** The host a layer kind renders into, falling back to `<body>` before `initLayers()` has run. */
-function layerHost(kind: LayerKind): HTMLElement {
+/**
+ * The host a layer kind renders into, falling back to `<body>` before `initLayers()` has run.
+ *
+ * Exported for the surfaces that mount THEMSELVES into a layer rather than handing this module a
+ * template — `surfaces/about.ts` is the first — so a converted surface asks for its layer by name
+ * instead of reaching for `#layer-dialog` and re-deriving the fallback.
+ */
+export function layerHost(kind: LayerKind): HTMLElement {
   const host =
     kind === "popover"
       ? _popoverLayer
@@ -54,12 +62,29 @@ export function initLayers() {
   mountToastHost();
 }
 
-/** Anything in the modal/dialog layers that paints a viewport-wide underlay over the app. */
-const UNDERLAID = "sp-dialog-wrapper[open], sp-underlay[open]";
+/**
+ * Anything in the modal/dialog layers that paints a viewport-wide underlay over the app.
+ *
+ * It read `jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]`, and the two Spectrum
+ * halves were kept deliberately: the selector is a question about the LIVE DOM ("whatever blocks
+ * the mouse"), so it cost nothing to keep answering it for an element a not-yet-converted surface
+ * could still put in a layer. With Spectrum unregistered that argument inverts. `sp-underlay` is no
+ * longer an element anybody can construct — it parses as an `HTMLUnknownElement`, which paints
+ * nothing and blocks nothing — so a match on it would be a FALSE positive: the shortcuts would
+ * stand down for a scrim that is not there, and ⌘S would stop working under a stray tag.
+ *
+ * `dialog[open]` replaces both, and it is the substrate rather than a second vocabulary:
+ * `jx-dialog` renders a native `<dialog>` and opens it with `showModal()`, so the platform's top
+ * layer and `::backdrop` are what actually blocks the mouse. The kit host is kept beside it because
+ * it is the thing this package mounts and the attribute it mirrors is the one a test can set; a
+ * surface that ever opens a bare `<dialog>` in a layer is answered by the second half.
+ */
+const UNDERLAID = "jx-dialog[data-open], dialog[open]";
 
 /**
- * Whether a surface with an underlay is up — a dialog from {@link showDialog}, or an
- * {@link openModal} body that renders its own `sp-underlay`.
+ * Whether a surface with an underlay is up — a dialog from {@link showConfirmDialog} and its two
+ * siblings, or a `jx-dialog` surface mounted into the modal layer (`surfaces/progress-modal.ts`,
+ * `surfaces/publish.ts`).
  *
  * Read by the app-level keyboard handlers, which must stand down while one is: an underlay swallows
  * every pointer event across the viewport, so leaving shortcuts live means <kbd>Delete</kbd>,
@@ -71,194 +96,28 @@ export function isModalOpen(): boolean {
   return Boolean(_dialogLayer?.querySelector(UNDERLAID) || _modalLayer?.querySelector(UNDERLAID));
 }
 
-/** Focusable candidates in an overlay body, in the order a keyboard user would reach them. */
-const BODY_FOCUSABLE =
-  'a[href], input, textarea, select, button, sp-textfield, sp-button, sp-action-button, sp-picker, sp-checkbox, sp-menu-item, [tabindex]:not([tabindex="-1"])';
-
-/** The body's focusables that can actually take the caret right now. */
-function focusablesIn(slot: HTMLElement): HTMLElement[] {
-  return [...slot.querySelectorAll<HTMLElement>(BODY_FOCUSABLE)].filter(
-    (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true",
-  );
-}
-
-/**
- * Hand the keyboard to a freshly opened overlay.
+/*
+ * `showDialog` was here, with `openOverlaySlot`, `focusOverlay`, `focusablesIn` and
+ * `BODY_FOCUSABLE` under it — and all five are GONE together.
  *
- * `sp-dialog-wrapper` only throws focus into itself when an `<sp-overlay>` drives it. Opened
- * directly through its `open` attribute — Studio's pattern, because this layer stack owns stacking
- * rather than Spectrum's overlay system — NOTHING does, so focus stays on whatever sits behind the
- * underlay: the surface is unreachable by keyboard, <kbd>Escape</kbd> never reaches it, and
- * keystrokes keep landing in the app the underlay is blocking.
+ * It was the last bespoke-body path: a caller handed it a lit template, usually an
+ * `sp-dialog-wrapper` it had written itself, and this module wrapped the machinery a hand-written
+ * dialog needs around it — a slot with a region id, `role="dialog"` and `aria-modal`, an accessible
+ * name scraped off the wrapper's `headline` after the render, a deferred focus move into the body
+ * or the wrapper's shadow-root buttons, an Escape that had to be translated into the wrapper's own
+ * `close` event, and a focus restore on the way out. Every line of that existed because the body
+ * was arbitrary markup rather than a dialog element.
  *
- * Prefers the first focusable in the BODY (a bespoke form's opening field), else the wrapper's own
- * cancel button — DialogWrapper renders cancel → secondary → confirm, so the first shadow button is
- * the least destructive landing spot — else the slot itself, which carries `tabindex="-1"` so a
- * body made only of static content (a progress spinner) still receives <kbd>Escape</kbd>. A body
- * that already claimed focus ({@link showPromptDialog}'s field) is left alone.
+ * `surfaces/dialog.json` is a `jx-dialog`, and the platform's `<dialog>` owns modality, the
+ * backdrop, Escape, the initial focus and the focus restore. So the machinery is not reimplemented
+ * anywhere — it is not needed. The last caller, `editor/shortcuts.ts`'s "where should this project
+ * open" question, was a three-way confirm all along and calls `openDialogSurface` directly
+ * (studio-ui-guidelines.md §12.5); `showConfirmDialog`, `showSaveDiscardDialog` and
+ * `showPromptDialog` below are the three named questions, and they go through the same document.
+ *
+ * A body that is genuinely richer than a sentence is an ISLAND, not a new dialog: `message` accepts
+ * a lit template and `messageOptions` renders it into the document's `[part="island"]` (§9.4).
  */
-function focusOverlay(slot: HTMLElement): void {
-  // Deferred a frame: the wrapper's buttons live in a shadow root Spectrum renders asynchronously.
-  requestAnimationFrame(() => {
-    if (!slot.isConnected || slot.contains(document.activeElement)) {
-      return;
-    }
-    const wrapper = slot.querySelector("sp-dialog-wrapper");
-    const target =
-      focusablesIn(slot)[0] ?? wrapper?.shadowRoot?.querySelector<HTMLElement>("sp-button") ?? slot;
-    target.focus();
-  });
-}
-
-/**
- * Keep <kbd>Tab</kbd> inside the overlay: cycle through the body's focusables, wrapping at both
- * ends. With no focusable body at all the caret stays on the slot — tabbing out of a surface the
- * mouse cannot leave either would strand the keyboard behind the underlay.
- */
-function trapTab(slot: HTMLElement, e: KeyboardEvent): void {
-  e.preventDefault();
-  const items = focusablesIn(slot);
-  if (items.length === 0) {
-    return;
-  }
-  const at = items.indexOf(document.activeElement as HTMLElement);
-  const next = e.shiftKey
-    ? items[at <= 0 ? items.length - 1 : at - 1]
-    : items[at === -1 || at === items.length - 1 ? 0 : at + 1];
-  next?.focus();
-}
-
-/** How an overlay slot behaves once it is up. */
-interface OverlaySlotOptions {
-  /** Layer host the slot is appended to. */
-  layer: HTMLElement;
-  /** Which layer this is, for the slot's region id. */
-  kind: LayerKind;
-  /**
-   * Optional instance name, making the slot `overlay.<instance>:<id>` instead of the bare
-   * `overlay.<instance>`. A surface that can be open alongside another one of its kind wants this.
-   */
-  regionId?: string | undefined;
-  /** Handle <kbd>Escape</kbd> pressed inside the slot; the callback owns `preventDefault`. */
-  onEscape?: (e: KeyboardEvent, slot: HTMLElement) => void;
-  /** Cycle <kbd>Tab</kbd> within the slot instead of letting it walk into the app behind. */
-  trapFocus?: boolean;
-}
-
-/**
- * Open a slot in a layer with the full overlay keyboard contract: focus in on open, focus back to
- * the opener on close, centralised <kbd>Escape</kbd>, and (optionally) a Tab trap.
- *
- * Both {@link showDialog} and {@link openModal} are thin wrappers over this — one contract, one
- * implementation, so no surface can ship without the machinery.
- */
-function openOverlaySlot(opts: OverlaySlotOptions): { slot: HTMLElement; release: () => void } {
-  const slot = document.createElement("div");
-  slot.style.pointerEvents = "auto";
-  slot.setAttribute(REGION_ATTR, overlayRegion(opts.kind, opts.regionId));
-  // Focusable as a last resort, so a body with no controls still owns the keyboard (focusOverlay).
-  slot.tabIndex = -1;
-  // The slot is a zero-height wrapper around fixed-position bodies, so its own focus ring would
-  // Paint as a stray line across the top of the layer.
-  slot.style.outline = "none";
-  opts.layer.append(slot);
-  // Whoever held focus before the overlay took it, so it can be handed back (a dialog opened from a
-  // Toolbar button returns the caret to that button, not to <body>).
-  const restoreTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const onKeydown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      opts.onEscape?.(e, slot);
-      return;
-    }
-    if (e.key === "Tab" && opts.trapFocus) {
-      trapTab(slot, e);
-    }
-  };
-  slot.addEventListener("keydown", onKeydown);
-  return {
-    release() {
-      slot.removeEventListener("keydown", onKeydown);
-      litRender(nothing, slot);
-      slot.remove();
-      if (restoreTo?.isConnected) {
-        restoreTo.focus();
-      }
-    },
-    slot,
-  };
-}
-
-/**
- * Show an ephemeral dialog. Returns a Promise that resolves when the dialog is dismissed.
- *
- * Takes the keyboard on open ({@link focusOverlay}) and hands it back to the previously focused
- * element on close. <kbd>Escape</kbd> dismisses by firing the wrapper's `close` event, so each
- * helper's own `@close` binding decides what "dismissed" resolves to; a bespoke body with no
- * `sp-dialog-wrapper` owns its own keys.
- *
- * @template T
- * @param {(done: (value: T) => void) => import("lit-html").TemplateResult} templateFn
- * @returns {Promise<T>}
- */
-export function showDialog<T>(
-  templateFn: (done: (value: T) => void) => TemplateResult,
-  opts: { region?: string; label?: string } = {},
-): Promise<T> {
-  return new Promise((resolve) => {
-    const { release, slot } = openOverlaySlot({
-      kind: "dialog",
-      // `layerHost`, not the raw binding: it is the one that falls back to `<body>`, and reading
-      // The binding directly threw before `initLayers()` had run — which is any test that stands up
-      // A shell without the four layer hosts, and the boot window before layers are bound.
-      layer: layerHost("dialog"),
-      regionId: opts.region,
-      onEscape(e, host) {
-        const wrapper = host.querySelector("sp-dialog-wrapper");
-        if (!wrapper) {
-          return;
-        }
-        // Stop it ALSO reaching the app behind (which clears the canvas selection on Escape).
-        e.preventDefault();
-        e.stopPropagation();
-        wrapper.dispatchEvent(new Event("close", { bubbles: true }));
-      },
-      // No Tab trap: the wrapper's action buttons live in a shadow root a light-DOM cycle cannot
-      // Enumerate, so trapping here would strand the caret on the body and never reach Cancel.
-    });
-    /*
-     * The slot IS the dialog, so it says so.
-     *
-     * `aria-modal` is also the answer to the comment above: it tells assistive technology that
-     * everything outside this element is inert, which constrains a screen reader's virtual cursor —
-     * the thing a Tab trap cannot reach anyway, since the virtual cursor does not use Tab. So the
-     * caret still escapes into the shadow-root buttons, as it must, and a reader is no longer free
-     * to wander the page behind a modal that is covering it.
-     */
-    slot.setAttribute("role", "dialog");
-    slot.setAttribute("aria-modal", "true");
-    let resolved = false;
-    const done = (value: T) => {
-      if (resolved) {
-        return;
-      }
-      resolved = true;
-      release();
-      resolve(value);
-    };
-    litRender(templateFn(done), slot);
-    /*
-     * The name, after render, because the usual source of one is the wrapper's own `headline` —
-     * which does not exist until the template has run. An explicit `label` wins; a dialog with
-     * neither is nameless, which is a defect in the caller rather than something to invent here.
-     */
-    const headline =
-      opts.label ?? slot.querySelector("sp-dialog-wrapper")?.getAttribute("headline") ?? null;
-    if (headline !== null && headline !== "") {
-      slot.setAttribute("aria-label", headline);
-    }
-    focusOverlay(slot);
-  });
-}
 
 /**
  * Show a confirm/cancel dialog. Returns true if confirmed, false otherwise.
@@ -276,28 +135,30 @@ export function showConfirmDialog(
     cancelLabel?: string;
     destructive?: boolean;
   } = {},
-) {
+): Promise<boolean> {
   const { confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false } = opts;
-  // Explicit, because `done(true)` gives the generic nothing to infer from and it landed on
-  // `unknown` — which every caller happened to survive by using the answer in a truthy position.
-  return showDialog<boolean>(
-    (done) => html`
-      <sp-dialog-wrapper
-        open
-        underlay
-        headline=${headline}
-        confirm-label=${confirmLabel}
-        cancel-label=${cancelLabel}
-        size="s"
-        @confirm=${() => done(true)}
-        @cancel=${() => done(false)}
-        @close=${() => done(false)}
-        class=${destructive ? "dialog-destructive" : ""}
-      >
-        <p>${message}</p>
-      </sp-dialog-wrapper>
-    `,
-  );
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve(value);
+    };
+    const handle = openDialogSurface({
+      cancelLabel,
+      confirmLabel,
+      destructive,
+      headline,
+      layer: layerHost("dialog"),
+      ...messageOptions(message),
+      onCancel: () => done(false),
+      onClosed: () => done(false),
+      onConfirm: () => done(true),
+    });
+  });
 }
 
 /**
@@ -319,25 +180,46 @@ export function showSaveDiscardDialog(
   } = {},
 ): Promise<"save" | "discard" | "cancel"> {
   const { saveLabel = "Save", discardLabel = "Discard", cancelLabel = "Cancel" } = opts;
-  return showDialog<"save" | "discard" | "cancel">(
-    (done) => html`
-      <sp-dialog-wrapper
-        open
-        underlay
-        headline=${headline}
-        confirm-label=${saveLabel}
-        secondary-label=${discardLabel}
-        cancel-label=${cancelLabel}
-        size="s"
-        @confirm=${() => done("save")}
-        @secondary=${() => done("discard")}
-        @cancel=${() => done("cancel")}
-        @close=${() => done("cancel")}
-      >
-        <p>${message}</p>
-      </sp-dialog-wrapper>
-    `,
-  );
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: "save" | "discard" | "cancel") => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve(value);
+    };
+    const handle = openDialogSurface({
+      cancelLabel,
+      confirmLabel: saveLabel,
+      headline,
+      layer: layerHost("dialog"),
+      ...messageOptions(message),
+      onCancel: () => done("cancel"),
+      onClosed: () => done("cancel"),
+      onConfirm: () => done("save"),
+      onSecondary: () => done("discard"),
+      secondaryLabel: discardLabel,
+    });
+  });
+}
+
+/**
+ * A message as the surface takes it: a sentence, or a lit template rendered into the document's
+ * island once the element is ready — the island rule of studio-ui-guidelines §9.4.
+ */
+function messageOptions(
+  message: string | TemplateResult,
+): Pick<DialogSurfaceOptions, "message" | "island"> {
+  if (typeof message === "string") {
+    return { message };
+  }
+  return {
+    island: (host) => {
+      litRender(message, host);
+    },
+  };
 }
 
 /**
@@ -350,6 +232,18 @@ export function showSaveDiscardDialog(
  * New File dialog's format picker is exactly that case: switching from Markdown to JSON changes
  * whether the typed name is already taken, with no keystroke to notice.
  */
+/** One option of a prompt's choice, as a caller lists them. */
+export interface ChoiceOption {
+  value: string;
+  label: string;
+  /**
+   * Set a sentinel row apart from the ones before it. Kept for callers; `jx-select` draws a
+   * delimiter for a GROUP, which carries a heading, and this is a bare rule between two rows of one
+   * list — so nothing draws it yet and `files.ts`'s "Other…" row reads as an ordinary row.
+   */
+  dividerBefore?: boolean;
+}
+
 export interface PromptChoice {
   /** Label above the picker. */
   label: string;
@@ -388,10 +282,24 @@ export interface PromptDialogOptions {
   value?: string;
   /** A picker above the field whose selection this dialog owns. */
   choice?: PromptChoice;
+  /**
+   * Make the field a paste box: several lines, Enter inserts one rather than confirming.
+   *
+   * This is still `showPromptDialog` and not a second dialog. A redirects import is one value the
+   * author pastes and one answer they give, which is exactly what this flow is; what it needed was
+   * a field tall enough to read the value back in, and that is a property of the field.
+   */
+  multiline?: boolean;
+  /** How many lines a multiline field opens at. */
+  rows?: string;
+  /** Monospaced, for a format whose columns line up in the file it was copied from. */
+  mono?: boolean;
+  /** The dialog's width — a paste box wants more than a name does. */
+  size?: "sm" | "md" | "lg";
 }
 
 /**
- * Show a single-field text-entry dialog — the Spectrum replacement for `window.prompt()`.
+ * Show a single-field text-entry dialog — the in-app replacement for `window.prompt()`.
  *
  * Resolves the trimmed value, or `null` when cancelled/dismissed. Confirming with an invalid value
  * keeps the dialog open and surfaces the validation message as negative help text.
@@ -409,8 +317,12 @@ export function showPromptDialog(
     choice,
     confirmLabel = "OK",
     message,
+    mono = false,
+    multiline = false,
     placeholder = "",
+    rows = "3",
     select = "all",
+    size,
     validate,
     value: initialValue = "",
   } = opts;
@@ -421,8 +333,6 @@ export function showPromptDialog(
   let value = initialValue;
   let chosen = choice?.initial ?? "";
   let error = "";
-  let wrapperEl: HTMLElement | null = null;
-  let focusRequested = false;
   /*
    * Whether the reader has typed yet.
    *
@@ -432,287 +342,72 @@ export function showPromptDialog(
    * still refuses, because `confirm()` runs `check` unconditionally.
    */
   let touched = false;
+  const placeholderNow = () => (typeof placeholder === "function" ? placeholder() : placeholder);
+  const optionsNow = (): DialogChoiceOption[] =>
+    choice ? choice.options().map((option) => ({ label: option.label, value: option.value })) : [];
 
-  return showDialog<string | null>((done) => {
-    function rerender() {
-      // Resolved lazily: lit commits element refs before inserting the fragment, so the host is
-      // Only reachable once the first render has landed.
-      const host = wrapperEl?.parentElement;
-      if (host) {
-        litRender(buildTpl(), host);
-      }
-    }
-
-    function confirm() {
-      error = check(value);
-      if (error) {
-        rerender();
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result: string | null) => {
+      if (settled) {
         return;
       }
-      done(value.trim());
-    }
-
-    function onInput(e: Event) {
-      touched = true;
-      value = (e.target as HTMLInputElement).value || "";
-      const next = check(value);
-      if (next !== error) {
-        error = next;
-        rerender();
-      }
-    }
-
-    /**
-     * Take a pick, and re-render UNCONDITIONALLY.
-     *
-     * `onInput` re-renders only when the error string changed, which is right for a keystroke: the
-     * template it would rebuild is identical. A pick is not that. It can change the placeholder,
-     * the picker's own selected row, and — for the New File dialog — whether the composed filename
-     * is already taken, all with the error text unchanged. Comparing error strings here would leave
-     * a dialog showing "about.md already exists" after the reader switched the format to JSON.
-     */
-    function onPick(next: string) {
-      chosen = next;
-      choice?.onChange?.(next);
-      const candidate = check(value);
-      error = touched || error ? candidate : "";
-      rerender();
-    }
-
-    function onKeydown(e: KeyboardEvent) {
-      if (e.key === "Enter") {
-        confirm();
-      }
-    }
-
-    /** Capture the dialog element so validation errors can re-render in place. */
-    function onWrapperRef(el?: Element) {
-      if (el) {
-        wrapperEl = el as HTMLElement;
-      }
-    }
-
-    /** Focus (and optionally select) the field once, on first render only. */
-    function onFieldRef(el?: Element) {
-      if (!el || focusRequested) {
-        return;
-      }
-      focusRequested = true;
-      const field = el as HTMLElement;
-      requestAnimationFrame(() => {
-        field.focus();
-        const input = field.shadowRoot?.querySelector("input");
-        if (!input || select === "none") {
-          return;
-        }
-        if (select === "stem") {
-          const dot = input.value.lastIndexOf(".");
-          input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
-          return;
-        }
-        input.select();
-      });
-    }
-
-    function buildTpl() {
-      return html`
-        <sp-dialog-wrapper
-          open
-          underlay
-          headline=${headline}
-          confirm-label=${confirmLabel}
-          cancel-label=${cancelLabel}
-          size="s"
-          @confirm=${confirm}
-          @cancel=${() => done(null)}
-          @close=${() => done(null)}
-          ${ref(onWrapperRef)}
-        >
-          ${
-            // Spectrum resets <p> margins to 0, so without this the copy sits flush on the field.
-            message ? html`<p style="margin:0 0 8px">${message}</p>` : nothing
-          }
-          ${
-            /*
-             * Above the field, and in ONE template position in every mode.
-             *
-             * The `sp-textfield` below must never move or be rebuilt by a conditional branch: lit
-             * would commit a new element, `onFieldRef` would fire again, the `focusRequested` latch
-             * would refuse to re-focus it, and the caret would be stranded mid-name. Only the
-             * placeholder, the validation rules and the help text vary between modes.
-             */
-            choice
-              ? choiceField({
-                  label: choice.label,
-                  onChange: onPick,
-                  options: choice.options(),
-                  value: chosen,
-                })
-              : nothing
-          }
-          <sp-textfield
-            style="width:100%"
-            placeholder=${typeof placeholder === "function" ? placeholder() : placeholder}
-            value=${value}
-            ?invalid=${Boolean(error)}
-            @input=${onInput}
-            @keydown=${onKeydown}
-            ${ref(onFieldRef)}
-          >
-            ${
-              error
-                ? html`<sp-help-text slot="negative-help-text">${error}</sp-help-text>`
-                : nothing
-            }
-          </sp-textfield>
-        </sp-dialog-wrapper>
-      `;
-    }
-
-    return buildTpl();
-  });
-}
-
-/** Options accepted by {@link openModal}. */
-export interface ModalOptions {
-  /**
-   * Accessible name for the modal, applied as `aria-label` on the wrapper. Required: it is the only
-   * name assistive tech gets, and a per-modal opt-in would be forgotten.
-   */
-  label: string;
-  /**
-   * Whether <kbd>Escape</kbd> dismisses. `false` for modals that must not vanish mid-flight (a
-   * running operation, a step that has to be confirmed).
-   */
-  dismissible?: boolean;
-  /**
-   * What <kbd>Escape</kbd> runs. Defaults to the handle's own `close()`; pass the call site's close
-   * function when it keeps bookkeeping of its own (a module-level handle to clear).
-   */
-  onDismiss?: () => void;
-  /**
-   * Instance name for this modal's region — `overlay.dialog:settings`.
-   *
-   * Optional because one modal at a time is the norm and `overlay.dialog` addresses it. A modal
-   * that can be open beside another, or that a command needs to move focus back into by name,
-   * declares one.
-   */
-  region?: string;
-}
-
-/**
- * Open a persistent modal. Returns a handle with update() and close() methods.
- *
- * The wrapper — not the body — owns the modal contract, so no surface can ship without it: the slot
- * is the `role="dialog"` element, carries `aria-modal` and the caller's label, takes the keyboard
- * on open, cycles <kbd>Tab</kbd> within itself, dismisses on <kbd>Escape</kbd>, and hands focus
- * back to the opener on close. Bodies render content only.
- *
- * @param {import("lit-html").TemplateResult} template
- * @param {ModalOptions} opts
- */
-export function openModal(template: TemplateResult, opts: ModalOptions) {
-  const { release, slot } = openOverlaySlot({
-    kind: "modal",
-    layer: layerHost("modal"),
-    onEscape(e) {
-      if (opts.dismissible === false) {
-        return;
-      }
-      // Stop it ALSO reaching the app behind (which clears the canvas selection on Escape).
-      e.preventDefault();
-      e.stopPropagation();
-      (opts.onDismiss ?? handle.close)();
-    },
-    regionId: opts.region,
-    trapFocus: true,
-  });
-  slot.setAttribute("role", "dialog");
-  slot.setAttribute("aria-modal", "true");
-  slot.setAttribute("aria-label", opts.label);
-
-  const handle = {
-    close() {
-      release();
-    },
-    host: slot,
-    /** @param {import("lit-html").TemplateResult} tpl */
-    update(tpl: TemplateResult) {
-      litRender(tpl, slot);
-    },
-  };
-  litRender(template, slot);
-  focusOverlay(slot);
-  return handle;
-}
-
-/**
- * Render a popover into a layer.
- *
- * @param {import("lit-html").TemplateResult} template
- * @param {{
- *   dismissOnOutsideClick?: boolean;
- *   onDismiss?: () => void;
- *   layer?: LayerKind;
- *   region?: string;
- * }} [opts]
- */
-export function renderPopover(
-  template: TemplateResult,
-  opts: {
-    dismissOnOutsideClick?: boolean;
-    onDismiss?: () => void;
-    layer?: LayerKind;
-    /** Instance name for this popover's region — `overlay.menu:blockbar`. */
-    region?: string;
-  } = {},
-) {
-  const kind = opts.layer ?? "popover";
-  const slot = document.createElement("div");
-  slot.style.pointerEvents = "auto";
-  slot.setAttribute(REGION_ATTR, overlayRegion(kind, opts.region));
-  layerHost(kind).append(slot);
-  litRender(template, slot);
-
-  let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
-  if (opts.dismissOnOutsideClick !== false) {
-    outsideClickHandler = (e: MouseEvent) => {
-      if (!slot.contains(e.target as Node)) {
-        handle.dismiss();
-        opts.onDismiss?.();
-      }
+      settled = true;
+      handle.close();
+      resolve(result);
     };
-    requestAnimationFrame(() => {
-      if (outsideClickHandler) {
-        document.addEventListener("mousedown", outsideClickHandler, true);
-      }
+    const showError = (next: string) => {
+      error = next;
+      handle.update({ error, invalid: error !== "" });
+    };
+    const handle = openDialogSurface({
+      cancelLabel,
+      confirmLabel,
+      headline,
+      layer: layerHost("dialog"),
+      ...(message === undefined ? {} : messageOptions(message)),
+      ...(choice ? { choice: { chosen, label: choice.label, options: optionsNow() } } : {}),
+      field: { mono, multiline, placeholder: placeholderNow(), rows, select, value },
+      ...(size === undefined ? {} : { size }),
+      onCancel: () => done(null),
+      onClosed: () => done(null),
+      onConfirm: () => {
+        const refused = check(value);
+        if (refused) {
+          showError(refused);
+          return;
+        }
+        done(value.trim());
+      },
+      onInput: (next) => {
+        touched = true;
+        value = next;
+        const candidate = check(value);
+        // Only a CHANGED verdict repaints the message; a keystroke inside a valid value is silent.
+        if (candidate !== error) {
+          showError(candidate);
+        }
+      },
+      /*
+       * A pick refreshes UNCONDITIONALLY: it can change the placeholder, the selected option, and
+       * — for the New File dialog — whether the composed filename is already taken, all with the
+       * error text unchanged.
+       */
+      onPick: (next) => {
+        chosen = next;
+        choice?.onChange?.(next);
+        const candidate = check(value);
+        error = touched || error ? candidate : "";
+        handle.update({
+          chosen,
+          error,
+          invalid: error !== "",
+          options: optionsNow(),
+          placeholder: placeholderNow(),
+        });
+      },
     });
-  }
-
-  const handle = {
-    dismiss() {
-      if (outsideClickHandler) {
-        document.removeEventListener("mousedown", outsideClickHandler, true);
-        /* Disarm the PENDING arming too, not just the armed listener. The `addEventListener` above
-           is deferred a frame so the click that opened this popover cannot immediately close it —
-           so a popover dismissed within that frame (open the same menu twice in one frame, which a
-           double-click does) would otherwise be armed AFTER its own death: a document-wide capture
-           listener on a detached slot, never removed, that answers the next mousedown by calling
-           its owner's `onDismiss`. Owners null their handle field there, so the corpse's callback
-           cleared the pointer to the LIVE popover and stranded it on screen, un-dismissable. The
-           `if` in the rAF was always written for this; nothing had ever nulled the variable. */
-        outsideClickHandler = null;
-      }
-      litRender(nothing, slot);
-      slot.remove();
-    },
-    host: slot,
-    /** @param {import("lit-html").TemplateResult} tpl */
-    update(tpl: TemplateResult) {
-      litRender(tpl, slot);
-    },
-  };
-  return handle;
+  });
 }
 
 const _namedSlots = new Map<string, HTMLElement>();
@@ -730,26 +425,6 @@ const _namedSlots = new Map<string, HTMLElement>();
  * @param {string} id
  * @returns {HTMLElement}
  */
-/**
- * The layer a transient popover must use to appear ABOVE the surface that opened it.
- *
- * The four layer hosts are sibling stacking contexts (`index.html`): popover 1000, modal 2000,
- * dialog 3000, toast 4000. So a popover anchored to a control INSIDE a modal — the media picker's
- * Browse button in Search appearance, say — renders into a layer that paints entirely beneath the
- * modal body, and the author clicks Browse and sees nothing happen. Putting it in the modal's own
- * layer makes it a later sibling of the modal body instead, which is exactly the relationship it
- * should have: above the surface that opened it, below any dialog.
- *
- * @param {Element | null} anchor The control the popover is anchored to.
- * @returns {LayerKind}
- */
-export function popoverLayerFor(anchor: Element | null): LayerKind {
-  if (anchor?.closest("#layer-dialog")) {
-    return "dialog";
-  }
-  return anchor?.closest("#layer-modal") ? "modal" : "popover";
-}
-
 export function getLayerSlot(layer: LayerKind, id: string) {
   const key = `${layer}:${id}`;
   let slot = _namedSlots.get(key);
@@ -888,67 +563,85 @@ function scheduleToast(record: Notification): void {
   );
 }
 
-/** The recovery button, or `nothing` when the record named no command or the command is hidden. */
-function toastActionTpl(record: Notification) {
-  const registry = record.action === undefined ? null : activeRegistry();
-  const id = record.action;
-  if (!registry || id === undefined || !registry.get(id) || !registry.isVisible(id)) {
-    return nothing;
-  }
-  const command = registry.get(id)!;
-  const reason = registry.disabledReason(id);
-  return html`
-    <button
-      class="toast-action"
-      ?disabled=${reason !== undefined}
-      title=${reason === undefined ? command.title : `${command.title} — requires ${reason}`}
-      @click=${() => {
-        retireToast(record.id);
-        void registry.run(id, record.actionArgs);
-      }}
-    >
-      ${command.title}
-    </button>
-  `;
+/** One toast, as `surfaces/toasts.json` draws it. */
+export interface ToastProjection {
+  id: string;
+  severity: Severity;
+  icon: string;
+  message: string;
+  hasAction: boolean;
+  /** The recovery command's title, so the button says what it does rather than "Retry". */
+  actionLabel: string;
+  actionDisabled: boolean;
+  /** The command's tooltip: its title, or its title with the reason it is off. */
+  actionTitle: string;
 }
 
-/** One toast. `role="status"` lives on the HOST, so a stack of them is announced as one region. */
-function toastTpl(record: Notification) {
-  return html`
-    <div class="toast toast--${record.severity}">
-      <span class="toast-icon" aria-hidden="true">${TOAST_ICON[record.severity]}</span>
-      <span class="toast-message">${record.message}</span>
-      ${toastActionTpl(record)}
-      <button
-        class="toast-dismiss"
-        title="Dismiss"
-        aria-label="Dismiss notification"
-        @click=${() => retireToast(record.id)}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </div>
-  `;
+interface ToastScope extends Record<string, unknown> {
+  toasts: ToastProjection[];
+  runAction: (id: string) => void;
+  dismissToast: (id: string) => void;
 }
 
-/** The whole stack, newest at the bottom — the reading order of a log, not of a menu. */
-export function toastStackTemplate() {
-  return html`
-    <div class="toast-stack">
-      ${repeat(
-        toasts,
-        (record) => record.id,
-        (record) => toastTpl(record),
-      )}
-    </div>
-  `;
+registerSurface("toasts", toastsDoc as unknown as JxDocument);
+
+let _toastState: ToastScope | null = null;
+let _toastMount: Promise<SurfaceHandle> | null = null;
+let _toastHandle: SurfaceHandle | null = null;
+
+/** The toast surface's scope: the projected rows, and the two things a row can ask the host to do. */
+function toastScope(): ToastScope {
+  _toastState ??= reactive<ToastScope>({
+    dismissToast: (id) => {
+      retireToast(id);
+    },
+    runAction: (id) => {
+      const record = toasts.find((candidate) => candidate.id === id);
+      const registry = activeRegistry();
+      if (!record?.action || !registry) {
+        return;
+      }
+      retireToast(id);
+      void registry.run(record.action, record.actionArgs);
+    },
+    toasts: [],
+  }) as ToastScope;
+  return _toastState;
 }
 
 /**
- * Subscribe the toast layer to `notify`'s store.
- *
- * Called by {@link initLayers}, so no bootstrap has to remember it, and idempotent so a second call
- * replaces the effect rather than stacking a second renderer on the same host.
+ * Project one record: the recovery button is a COMMAND, so its label, its gate and its reason all
+ * come off the record — an unregistered or hidden command renders no button, which is what lets a
+ * call site name a capability that lands next phase without shipping a dead control meanwhile.
+ */
+function projectToast(record: Notification): ToastProjection {
+  const registry = record.action === undefined ? null : activeRegistry();
+  const id = record.action;
+  // `get` before `isVisible`: an id the registry has never seen is a button that never was, not
+  // A question it can answer.
+  const known = registry && id !== undefined ? registry.get(id) : undefined;
+  const command = known && id !== undefined && registry!.isVisible(id) ? known : null;
+  const reason = command && id !== undefined ? registry!.disabledReason(id) : undefined;
+  return {
+    actionDisabled: reason !== undefined,
+    actionLabel: command?.title ?? "",
+    actionTitle:
+      command === null || command === undefined
+        ? ""
+        : reason === undefined
+          ? command.title
+          : `${command.title} — requires ${reason}`,
+    hasAction: command !== null && command !== undefined,
+    icon: TOAST_ICON[record.severity],
+    id: record.id,
+    message: record.message,
+    severity: record.severity,
+  };
+}
+
+/**
+ * Mount the toast host: the surface into the toast layer, and one effect that keeps its rows and
+ * the records' timers in step with `notify()`'s list.
  */
 export function mountToastHost(): void {
   unmountToastHost();
@@ -958,19 +651,20 @@ export function mountToastHost(): void {
   _toastScope = effectScope();
   _toastScope.run(() => {
     effect(() => {
-      // Tracked: the array itself (arrivals and retirements) and the registry holder, so a toast
-      // Raised before the bootstrap composed the registry grows its Retry button when it lands.
       void toasts.length;
       void activeRegistry();
       for (const record of toasts) {
         scheduleToast(record);
       }
-      litRender(toastStackTemplate(), _toastLayer);
+      toastScope().toasts = toasts.map((record) => projectToast(record));
     });
+  });
+  _toastMount = mountSurface("toasts", toastScope(), _toastLayer);
+  void _toastMount.then((handle) => {
+    _toastHandle = handle;
   });
 }
 
-/** Release the effect and every pending timer. Tests and a window teardown both need this. */
 export function unmountToastHost(): void {
   _toastScope?.stop();
   _toastScope = null;
@@ -979,7 +673,13 @@ export function unmountToastHost(): void {
   }
   _toastTimers.clear();
   _toastEntering.clear();
-  if (_toastLayer) {
-    litRender(nothing, _toastLayer);
+  const pending = _toastMount;
+  _toastMount = null;
+  if (_toastHandle) {
+    _toastHandle.dispose();
+    _toastHandle = null;
+  } else if (pending) {
+    void pending.then((handle) => handle.dispose());
   }
+  _toastState = null;
 }

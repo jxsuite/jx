@@ -2,8 +2,9 @@
 /**
  * The one empty-state pattern.
  *
- * Every region in the shell that can be empty renders through {@link renderEmptyState} instead of
- * hand-writing its own block, so the copy rules below are inherited rather than re-decided:
+ * Every region in the shell that can be empty says its piece through {@link EmptyStateSpec} — drawn
+ * by `surfaces/empty-state.json`, or by a converted panel's own `[part="empty"]` block — instead of
+ * hand-writing one, so the copy rules below are inherited rather than re-decided:
  *
  * 1. **One sentence saying what the region is _for_.** Not what is absent — "No state defined" is a
  *    dead end, "Data this page can read, compute or fetch lives here" tells you what it is.
@@ -17,16 +18,19 @@
  * container.
  */
 
-import { html, nothing } from "lit-html";
-import { classMap } from "lit-html/directives/class-map.js";
-import type { TemplateResult } from "lit-html";
-
-/** A button offered by an empty state. */
+/**
+ * A button offered by an empty state.
+ *
+ * There is no `icon` here any more, and its absence is the point rather than an omission: it was
+ * typed `TemplateResult` and every value passed to it was an `sp-icon-*`, which is a Spectrum
+ * element smuggled through a shared vocabulary into surfaces that have no other Spectrum in them.
+ * `panels/git-panel.ts` was the last caller and it is a document now, so the field went with it —
+ * `surfaces/empty-state.json` draws a word, and a region that needs a glyph beside one is asking
+ * for a control the kit declares rather than for a hole in this type.
+ */
 export interface EmptyStateAction {
   /** Imperative naming what happens — "Add a value", not "Go to the Data panel". */
   label: string;
-  /** Optional Spectrum icon. Must carry `slot="icon"`. */
-  icon?: TemplateResult;
   run: () => void;
   disabled?: boolean;
 }
@@ -77,36 +81,16 @@ export function openPageAction(label = "Open a page…"): EmptyStateAction {
   };
 }
 
-/** Render an empty state. */
-export function renderEmptyState(spec: EmptyStateSpec): TemplateResult {
-  const actions = spec.actions ?? [];
-  return html`
-    <div
-      class=${classMap({
-        "empty-state": true,
-        "empty-state--compact": Boolean(spec.compact),
-        "empty-state--teach": true,
-      })}
-    >
-      <p class="empty-state-message">${spec.message}</p>
-      ${spec.detail ? html`<p class="empty-state-detail">${spec.detail}</p>` : nothing}
-      ${
-        actions.length > 0
-          ? html`<div class="empty-state-actions">
-              ${actions.map(
-                (action) => html`
-                  <sp-action-button
-                    size="s"
-                    class="empty-state-action"
-                    ?disabled=${Boolean(action.disabled)}
-                    @click=${() => action.run()}
-                    >${action.icon ?? nothing}${action.label}</sp-action-button
-                  >
-                `,
-              )}
-            </div>`
-          : nothing
-      }
-    </div>
-  `;
-}
+/*
+ * `renderEmptyState` was here, and it is GONE rather than kept beside the document.
+ *
+ * It drew the pattern as a lit template over an `sp-action-button`, and by the end of this batch it
+ * had no caller: the Navigator's bodies, the Bottom dock and a derived stage hand their box to
+ * `surfaces/empty-state.ts`'s `emptyState()`, the nine panels that are documents draw a
+ * `[part="empty"]` of their own, and `ui/expression-editor.ts` — the last lit caller — converted
+ * alongside them.
+ *
+ * What is left here is the half that was never about drawing: {@link EmptyStateSpec}, which the
+ * document reads verbatim, and the copy rules at the top of this file, which are the reason a
+ * region says what it is FOR rather than what is absent. One vocabulary, one renderer.
+ */

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioJxsuiteUpdate",
+  "$description": "The on-open offer to bring a project's `@jxsuite/*` dependencies up to their newest published versions: one sentence, and the packages that would move. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop, and the kit draws both answers. Nothing here asks the registry or writes a manifest: `packages/jxsuite-update.ts` keeps the lookup, the dismissal key and the install, and this document only says what is on offer.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Update @jxsuite packages?",
+    "confirmLabel": "Update",
+    "cancelLabel": "Not now",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "jxsuite-update"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/cancel"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "The old body was a lit template with no stylesheet at all, which is why the conversion is mostly a deletion. Two `<br />`s stood in for a paragraph break, and one `<span style=\"white-space: pre-line\">` held every package as a single `\\n`-joined string — a list spelled as whitespace. Neither is addressable and neither announces as what it is, so a screen reader read one run-on line and a test could only match a substring of it. It is a `<ul>` of keyed rows now: the list says how many packages there are, and each row is `[data-package]`. The one token repair travels with it — that span asked for `--spectrum-font-size-75`, which resolves only inside `<sp-theme>`, and a document mounted in the dialog layer is outside it, so the size silently fell back to the hard-coded `12px` written beside it.",
+    "& [part=\"offer\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"lede\"]": {
+      "margin": "0"
+    },
+    "& [part=\"list\"]": {
+      "$description": "Capped and scrolling, because the count is the registry's rather than this dialog's: a project that has not been opened in a year can have every `@jxsuite/*` package behind at once, and a dialog that grows past the viewport puts its own Update button off screen.",
+      "listStyle": "none",
+      "margin": "0",
+      "padding": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "maxHeight": "240px",
+      "overflowY": "auto"
+    },
+    "& [part=\"package\"]": {
+      "display": "flex",
+      "justifyContent": "space-between",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"package-name\"]": {
+      "color": "var(--fg)"
+    },
+    "& [part=\"package-move\"]": {
+      "$description": "Tabular figures, so a column of versions does not jitter between rows of different widths.",
+      "color": "var(--fg-dim)",
+      "fontVariantNumeric": "tabular-nums",
+      "whiteSpace": "nowrap"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "offer"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "lede"
+          },
+          "textContent": "Newer versions of these packages have been published. Update the project to them?"
+        },
+        {
+          "tagName": "ul",
+          "attributes": {
+            "part": "list"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/packages"
+              },
+              "key": {
+                "$ref": "$map/item/name"
+              },
+              "map": {
+                "tagName": "li",
+                "attributes": {
+                  "part": "package",
+                  "data-package": "${$map.item.name}"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "package-name"
+                    },
+                    "textContent": "${$map.item.name}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "package-move"
+                    },
+                    "textContent": "${$map.item.current} → ${$map.item.target}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
