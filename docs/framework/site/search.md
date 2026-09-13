@@ -6,6 +6,7 @@ spec:
   - site-architecture.md#12
 code:
   - extensions/search/src/client.ts
+  - extensions/search/src/search-index.ts
   - extensions/search/src/search-state.ts
   - extensions/search/schemas/project.fragment.schema.json
   - sites/jxsuite.com/components/site-search.json
@@ -47,6 +48,8 @@ Top-level: `output` (default `/search-index.json`) sets where the index is writt
 With `sections` on, the page document carries only the text **before** the first heading. The sections cover the rest, and storing both put the entire corpus in the index twice, doubling the download and the work the browser does to index it. Nothing becomes unsearchable: a body-text match now surfaces the section that contains it, deep-linked, instead of competing with it. An entry with no headings keeps its full text, because nothing else would index it.
 
 Set `sections: false` for a collection whose entries are short enough that a deep link adds nothing; the page documents then carry their full text again.
+
+To keep one entry out of the index, put `search: false` in its frontmatter. The entry then contributes no documents at all, page or sections, and nothing else about it changes: it still builds and still routes. Only the boolean opts out; a value such as `"false"` is indexed and the build warns about it once. Use it for a page worth publishing but not worth finding, such as a generated changelog.
 
 ## Querying from page state
 

@@ -2,9 +2,9 @@
 
 ## Extension Packages, Schema Composition, and the Capability Contract
 
-**Version:** 0.4.4-draft\
+**Version:** 0.4.5-draft\
 **Status:** Partial\
-**Updated:** 2026-09-10\
+**Updated:** 2026-09-13\
 **License:** MIT
 
 Supersedes v1 ("Format-Extension Classes and the Capability Contract"). The format-class contract from v1 survives unchanged (§6–§8); v2 adds the package layer around it: extension packages, manifest-driven registration, JSON-Schema composition, project sections, server mounts, and the studio settings vocabulary. The relationships vocabulary has a companion spec: [relationships.md](./relationships.md).
@@ -352,6 +352,10 @@ emit(sectionValue, { projectConfig, root, sections, routes })
 - **An emitted artifact is downloaded and parsed by a visitor**, so an emitter owes it the same care as any other output — and above all must not emit the same content twice. `@jxsuite/search` did: it wrote one document per page carrying the full page text **and** one per heading section carrying its own slice of that same text. On jxsuite.com that was 922,007 characters of page text against 899,502 of section text, of which only ~22,505 (2.4%) was preamble no section already covered — an index twice the size it needed to be, and twice the tokenising cost on every visitor's main thread.
 
   With sections on, the page document now carries only the text **before** the first section-starting heading; the sections partition the rest. An entry that yielded no sections keeps its full text, because nothing else would index it. No word leaves the index, and a body-text match now surfaces the section that contains it rather than competing with it.
+
+- **An entry may opt out of an emitted artifact, and the opt-out is per entry.** The index is otherwise a pure function of the collection, and a corpus has pages worth publishing that are not worth finding: a generated reference page — a spec changelog, a standards table — is a projection of data that lives elsewhere, regenerated on every release, so it grows on its own and pays into the index (6.4% of jxsuite.com's, for the changelog alone) without a reader ever searching for it. `@jxsuite/search` reads `search: false` from an entry's frontmatter and emits nothing for that entry — the page document and every section document alike, because a page that should not be found by its title should not be found by its headings either. The key removes the entry from the INDEX and nothing else: the page still builds, still routes, and still sits in whatever navigation the site derives from the same collection.
+
+  Only the boolean `false` opts out. A `"false"`, a `0` or a `"no"` reads like an opt-out to whoever wrote it and like nothing to a strict reader, and honouring the looser reading would make the index depend on YAML's coercion rules; so a non-boolean value is **indexed** — the safe failure, since a page that is present can be found and a page that is absent cannot say why — and reported once per entry rather than once per document it yields. `search: true` and an absent key are the same thing.
 
 ### 8.5 `assets`
 
@@ -739,6 +743,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.5-draft** (2026-09-13) — §8.4: an entry's frontmatter may say search: false, and @jxsuite/search emits nothing for it — page and sections alike; only the boolean opts out, a non-boolean value is indexed and reported once.
 - **0.4.4-draft** (2026-09-10) — A settings section's icon is a key in the Jx UI kit's glyph manifest, never an element tag; the §9.1 example named a Spectrum element, which resolved to nothing.
 - **0.4.3-draft** (2026-08-31) — The extension catalogue (§9.2): a host answers for what it can run, with bundled and installed probed rather than declared; §2 lists feed.
 - **0.4.2-draft** (2026-08-29) — A format may declare rewrite: replace authored values in its own source text, for a format that is read but never round-tripped.
@@ -770,4 +775,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Extensions Specification v0.4.4-draft_
+_Jx Extensions Specification v0.4.5-draft_

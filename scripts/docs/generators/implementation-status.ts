@@ -15,11 +15,15 @@ export function generateImplementationStatus(): string {
   const specs = parseSpecStatuses(SPECS_DIR);
 
   const lines: string[] = [
-    frontmatter({
-      title: "Implementation status",
-      description:
-        "Generated from the specs' status markers: which spec sections are implemented, partial, pending, future, or removed.",
-    }),
+    frontmatter(
+      {
+        title: "Implementation status",
+        description:
+          "Generated from the specs' status markers: which spec sections are implemented, partial, pending, future, or removed.",
+      },
+      // A projection of the specs, read from its page and not searched for by name (#305).
+      { search: false },
+    ),
     "",
     BANNER,
     "",
