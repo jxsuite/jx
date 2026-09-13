@@ -395,9 +395,11 @@ export function describeShape(property: object): CoercionRow {
       return "typed";
     }
     default: {
-      return "pass-through";
+      break;
     }
   }
+  // No `type` at all (a description alone), or one no reader exists for: the sweep names it.
+  return "pass-through";
 }
 
 /** Whether a value is of one JSON type. `number` means FINITE, as {@link numberArg} already insists. */
@@ -425,9 +427,11 @@ function isJsonType(type: string, value: unknown): boolean {
       return typeof value === "object" && value !== null && !Array.isArray(value);
     }
     default: {
-      return false;
+      break;
     }
   }
+  // A type name JSON Schema does not define admits nothing, and the sentence prints it back.
+  return false;
 }
 
 /** `number or null`, `string, number, boolean, array, object or null` — a type list as prose. */
@@ -492,6 +496,9 @@ function shapeOf(property: PropertySchema): string {
       return "a list of document paths";
     }
     default: {
+      // The pass-through row. A branch with NO shape admits every value, so this is composed only
+      // For a shaped branch no reader exists for — an array of strings, say — whose pre-check
+      // Skipped it without a refusal of its own to print.
       return "anything";
     }
   }

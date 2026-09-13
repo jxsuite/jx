@@ -573,6 +573,22 @@ describe("coerceArgs — the pass registry.run makes before run", () => {
     );
   });
 
+  test("a shaped branch no reader exists for prints as 'anything' in the listing", () => {
+    // A `type: "array"` branch whose items are strings is not a path, so it is the pass-through
+    // Row; it has a type, so the pre-check skips it for a number, and with no branch admitting the
+    // Value and none refusing it in its own words, the listing is composed and names it.
+    const schema = argsSchema({
+      v: {
+        description: "d",
+        oneOf: [{ type: "string" }, { items: { type: "string" }, type: "array" }],
+      },
+    });
+    expect(coerceArgs("x.y", schema, { v: ["a"] })).toEqual({ v: ["a"] });
+    expect(() => coerceArgs("x.y", schema, { v: 42 })).toThrow(
+      'command "x.y" argument "v": expected a non-empty string or anything, got number 42',
+    );
+  });
+
   test("the listing names every row's shape in one line, and 'anything' for the pass-through", () => {
     // No typed branch admits a plain object, so the sentence has to print each shape.
     const schema = argsSchema({
