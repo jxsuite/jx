@@ -188,7 +188,12 @@ describe("what the toolbar says", () => {
   test("offers Visual and Code when there is a visual half", async () => {
     setDiffChangeMap("primary", mapOf([modified(0)]));
     const el = await draw("primary");
-    expect(radios(el).map((b) => b.textContent?.trim())).toEqual(["Visual", "Code"]);
+    // What each radio PRINTS — its label part — rather than the host's text, which now also
+    // Carries the tip an enabled hint renders as a child (ui.md §5.1).
+    expect(radios(el).map((b) => b.querySelector('[part="label"]')?.textContent?.trim())).toEqual([
+      "Visual",
+      "Code",
+    ]);
   });
 
   test("draws Code as static text when the comparison has no visual half", async () => {

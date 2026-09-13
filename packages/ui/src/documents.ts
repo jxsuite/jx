@@ -48,12 +48,13 @@ import jxToolbar from "../components/jx-toolbar.json";
 export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-icon": jxIcon as unknown as JxDocument,
   "jx-spinner": jxSpinner as unknown as JxDocument,
+  // Before the buttons: each renders a `jx-tooltip` for its `hint`.
+  "jx-tooltip": jxTooltip as unknown as JxDocument,
   "jx-button": jxButton as unknown as JxDocument,
   "jx-action-button": jxActionButton as unknown as JxDocument,
   "jx-menu-item": jxMenuItem as unknown as JxDocument,
   "jx-menu": jxMenu as unknown as JxDocument,
   "jx-popover": jxPopover as unknown as JxDocument,
-  "jx-tooltip": jxTooltip as unknown as JxDocument,
   "jx-textfield": jxTextfield as unknown as JxDocument,
   "jx-checkbox": jxCheckbox as unknown as JxDocument,
   "jx-switch": jxSwitch as unknown as JxDocument,

@@ -75,8 +75,9 @@ function selectedNode(): JxMutableNode {
 const tagRow = (c: HTMLElement) => c.querySelector('[data-prop="tagName"]') as HTMLElement;
 
 /** The rung the Tag row is currently at, in the ladder's own words. */
+/** The rung the chip PRINTS: its label part, since an enabled hint is a tip child of the host. */
 const rungLabel = (c: HTMLElement) =>
-  tagRow(c).querySelector('[part="source"]')!.textContent!.trim();
+  tagRow(c).querySelector('[part="source"] [part="label"]')!.textContent!.trim();
 
 /**
  * Pick a rung on the Tag row's Value Source picker — `elementTag` offers exactly these two.

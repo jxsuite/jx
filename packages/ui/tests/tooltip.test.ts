@@ -66,9 +66,22 @@ const baseRule = (el: Element) => {
   return rules(el).find((line) => line.startsWith(`${scope} {`)) ?? "";
 };
 
-/** A pointer or focus event of the kind the behaviour listens for. */
-const fire = (el: EventTarget, type: string) =>
-  el.dispatchEvent(new Event(type, { bubbles: false }));
+/**
+ * A pointer or focus event of the kind the behaviour listens for.
+ *
+ * A `focusin` FOCUSES instead, because the platform never dispatches one without moving focus and
+ * the behaviour asks the focused element whether its focus is keyboard focus (`:focus-visible`,
+ * which happy-dom answers as `:focus`): a bare event on an unfocused control is the shape of
+ * nothing real, and the behaviour rightly ignores it. happy-dom's `focus()` dispatches the
+ * `focusin` itself; only a control that already holds the focus gets the event by hand.
+ */
+const fire = (el: EventTarget, type: string) => {
+  if (type === "focusin" && el instanceof HTMLElement && document.activeElement !== el) {
+    el.focus();
+    return true;
+  }
+  return el.dispatchEvent(new Event(type, { bubbles: false }));
+};
 
 /** An icon-only control and the tip that describes it, wired the way a consumer would. */
 async function scene(
@@ -309,9 +322,10 @@ describe("the fallback path", () => {
     dispose();
   });
 
-  test("the disposer takes the tip's and the document's listeners off as well", async () => {
-    // Two of the seven bindings are on the tip and one is on the document; a disposer that walks
-    // Only the trigger leaves a keydown listener per tip alive forever, holding both elements.
+  test("the disposer takes the tip's and the root's listeners off as well", async () => {
+    // Two of the bindings are on the tip and the Escape dismisser is registered with the root; a
+    // Disposer that walks only the trigger leaves a tip answering Escape forever, holding both
+    // Elements.
     const button = document.createElement("button");
     const tip = document.createElement("div");
     tip.setAttribute("popover", "manual");
@@ -360,9 +374,37 @@ describe("the fallback path", () => {
     expect(shown(tip)).toBe(false);
   });
 
-  test("removing the tip takes its listeners off the control again", async () => {
+  test("removing the tip takes its listeners off the control again, one tick later", async () => {
+    // One tick, because a removal and a move look the same to the element until the microtask
+    // Runs — see the move test below — and a tip that is still out by then is gone for good.
     const { button, tip } = await scene({ delay: 0, for: "trigger" });
     tip.remove();
+    await after(0);
+    fire(button, "focusin");
+    expect(shown(tip)).toBe(false);
+  });
+
+  test("a MOVED tip keeps its binding: a move is not a removal", async () => {
+    /*
+     * The runtime's keyed `$map` reorders kept rows with `before()`, and a host re-parents a
+     * button into a toolbar the same way: `disconnectedCallback`, then `connectedCallback`, which
+     * is a no-op for an element that has already mounted — `jx-ready` never fires again, so
+     * nothing would rebind. An unmount that disposed at once stripped every reordered row of its
+     * tooltip for good, on every engine without interest invokers (the desktop app's Chromium 147
+     * among them).
+     */
+    const { button, tip } = await scene({ delay: 0, for: "trigger" });
+    const wrapper = document.createElement("div");
+    document.body.append(wrapper);
+    wrapper.append(button, tip);
+    await after(0);
+    fire(button, "focusin");
+    expect(shown(tip)).toBe(true);
+    fire(button, "focusout");
+    expect(shown(tip)).toBe(false);
+    // And a tip taken out for good after a move is still disposed, not held by the move.
+    tip.remove();
+    await after(0);
     fire(button, "focusin");
     expect(shown(tip)).toBe(false);
   });
@@ -471,6 +513,122 @@ describe("the declarative path", () => {
     expect(shown(tip)).toBe(true);
     fire(button, "focusout");
     expect(shown(tip)).toBe(false);
+  });
+
+  test("Escape is one listener per root, shared by every bound tip", async () => {
+    /*
+     * The listener has to be on an ancestor that sees the keystroke wherever focus is, and one
+     * capture listener on the document PER tip is one handler per hinted button on every keystroke
+     * in a chrome of several hundred of them. So the root carries one, added with the first
+     * binding and removed with the last, and Escape walks the dismissers instead — hiding only the
+     * tip that is showing.
+     */
+    const added: string[] = [];
+    const removed: string[] = [];
+    const originalAdd = document.addEventListener.bind(document);
+    const originalRemove = document.removeEventListener.bind(document);
+    document.addEventListener = ((type: string, ...rest: unknown[]) => {
+      added.push(type);
+      (originalAdd as (...args: unknown[]) => void)(type, ...rest);
+    }) as typeof document.addEventListener;
+    document.removeEventListener = ((type: string, ...rest: unknown[]) => {
+      removed.push(type);
+      (originalRemove as (...args: unknown[]) => void)(type, ...rest);
+    }) as typeof document.removeEventListener;
+    try {
+      const pairs = [0, 1, 2].map((n) => {
+        const button = document.createElement("button");
+        const tip = document.createElement("div");
+        tip.setAttribute("popover", "manual");
+        tip.id = `shared-tip-${n}`;
+        document.body.append(button, tip);
+        return { button, dispose: bindTooltip(tip, button), tip };
+      });
+      expect(added.filter((type) => type === "keydown")).toHaveLength(1);
+      // Only the showing tip hears the Escape; the other two were never shown and are not touched.
+      const hides = pairs.map((pair) => {
+        let count = 0;
+        const { hidePopover } = pair.tip;
+        pair.tip.hidePopover = () => {
+          count += 1;
+          hidePopover.call(pair.tip);
+        };
+        return () => count;
+      });
+      fire(pairs[1]!.button, "focusin");
+      expect(shown(pairs[1]!.tip)).toBe(true);
+      document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+      expect(shown(pairs[1]!.tip)).toBe(false);
+      expect(hides.map((count) => count())).toEqual([0, 1, 0]);
+      // The listener outlives every binding but the last.
+      pairs[0]!.dispose();
+      pairs[1]!.dispose();
+      expect(removed.filter((type) => type === "keydown")).toHaveLength(0);
+      pairs[2]!.dispose();
+      expect(removed.filter((type) => type === "keydown")).toHaveLength(1);
+    } finally {
+      document.addEventListener = originalAdd;
+      document.removeEventListener = originalRemove;
+    }
+  });
+
+  test("a click's focus neither shows the tip nor pins it open", async () => {
+    /*
+     * The platform's interest-on-focus is keyboard focus only. A click gives the control focus
+     * too, and a binding that showed on every `focusin` and then held the tip up while `focused`
+     * pinned a tip to every clicked button in Studio's chrome for as long as it kept the focus —
+     * on the desktop app, which has no interest invokers. The hover is what shows it, after the
+     * delay, and the hover leaving is what hides it.
+     */
+    const { button, tip } = await scene({ delay: 20 });
+    const dispose = bindTooltip(tip, button);
+    fire(button, "pointerenter");
+    fire(button, "pointerdown");
+    fire(button, "focusin");
+    fire(button, "pointerup");
+    fire(button, "click");
+    expect(shown(tip)).toBe(false);
+    // The hover still shows it after `delay`, and the hover leaving still hides it, focus or not.
+    await after(40);
+    expect(shown(tip)).toBe(true);
+    fire(button, "pointerleave");
+    await after(TOOLTIP_HIDE_GRACE_MS * 2);
+    expect(shown(tip)).toBe(false);
+    expect(document.activeElement === button).toBe(true);
+    // A pointer that went down and was dragged off releases the flag with the hover; the next
+    // Focus is the keyboard's again.
+    fire(button, "pointerdown");
+    fire(button, "pointerleave");
+    button.blur();
+    fire(button, "focusin");
+    expect(shown(tip)).toBe(true);
+    fire(button, "focusout");
+    dispose();
+  });
+
+  test("an engine whose selectors know neither :focus-visible nor :popover-open still works", async () => {
+    // Both probes are guarded: a selector that is a parse error there must not take the focus
+    // Path or Escape down with it. Focus is then taken to be the keyboard's, and Escape trusts the
+    // Binding's own account of what it showed.
+    const { button, tip } = await scene({ delay: 0 });
+    // Manual, as such an engine renders `popover="hint"`, so the shim's own Escape stays out of it.
+    tip.setAttribute("popover", "manual");
+    const refuse = (): never => {
+      throw new SyntaxError("unknown pseudo-class");
+    };
+    (button as unknown as { matches: () => boolean }).matches = refuse;
+    (tip as unknown as { matches: () => boolean }).matches = refuse;
+    const dispose = bindTooltip(tip, button);
+    fire(button, "focusin");
+    expect(shown(tip)).toBe(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+    expect(shown(tip)).toBe(false);
+    // A tip a HOST showed is not something the binding can see there, and it is left alone.
+    tip.showPopover();
+    document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+    expect(shown(tip)).toBe(true);
+    tip.hidePopover();
+    dispose();
   });
 
   test("Escape reaches a declaratively wired tip the engine downgraded to manual", async () => {
