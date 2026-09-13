@@ -11,17 +11,23 @@
  * both. Every surface that removes or moves a file routes its confirmation through them, so no
  * caller can ship a destructive dialog that grades only by reversibility again.
  *
+ * Both answer in SENTENCES rather than in markup. The dialog is `surfaces/dialog.json` now, and a
+ * `TemplateResult` reaches it only through the island seam — which is the right shape for a body
+ * that is genuinely rich, and the wrong shape for one paragraph of prose: it put a `<strong>` and a
+ * `<p class="dialog-consequence">` on this module's side of a boundary whose whole point is that
+ * the document owns the markup. What the copy loses is the visual set-apart of the consequence
+ * line; what it keeps is the consequence itself, in the same words, in the same dialog.
+ *
  * @docs studio/projects/pages-layouts-components
  */
 
-import { html, nothing } from "lit-html";
 import { loadUsages, usageWarning } from "../services/references";
 import { isMediaFile } from "./media-upload";
 import { loadMediaUsages } from "./media-usage";
 import { showConfirmDialog } from "../ui/layers";
 import { locateDocument } from "../services/code-services";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { noteDocumentSaved } from "../panels/statusbar";
+import { noteDocumentSaved } from "../surfaces/statusbar";
 import { notify } from "../services/notify";
 import { validateComponentSlots } from "../services/cem-export";
 import { reportPopoverProblems } from "../services/popover-report";
@@ -45,6 +51,7 @@ import {
 import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /**
  * Parse a format-class source string into document + frontmatter + mode per the format's
@@ -176,18 +183,25 @@ export async function openFile() {
  * save on its own, and the file an author is most likely to save is the one they are reviewing. A
  * direct import would put `panels/git-panel.ts` into this module's graph, which is a load error for
  * every suite that mocks the canvas host out from under it.
+ *
+ * The listener is handed the document as well as the path, for the second listener: the live chrome
+ * lane (`services/live-surfaces.ts`) re-mounts a saved surface from the document the tab just wrote
+ * rather than reading the file back, which is what keeps the shipped app from ever reading its
+ * chrome from disk.
  */
-let _onDocumentSaved: (path: string | null) => void = () => {};
+let _onDocumentSaved: (path: string | null, doc: JxMutableNode) => void = () => {};
 
 /** Register the save listener. Called once, from the bootstrap. */
-export function setDocumentSavedListener(listener: (path: string | null) => void): void {
+export function setDocumentSavedListener(
+  listener: (path: string | null, doc: JxMutableNode) => void,
+): void {
   _onDocumentSaved = listener;
 }
 
 function reportSaved(tab: Tab) {
   noteDocumentSaved(tab.documentPath);
-  _onDocumentSaved(tab.documentPath);
   const doc = tab.doc.document;
+  _onDocumentSaved(tab.documentPath, doc);
   const warning =
     typeof doc.tagName === "string" && doc.tagName.includes("-")
       ? validateComponentSlots(doc)
@@ -210,18 +224,19 @@ function reportSaved(tab: Tab) {
 /**
  * Whether this tab holds a document {@link serializeDocument} can honestly produce bytes for.
  *
- * A media tab does not. `openMediaTab` gives it a STUB — `{ children: [], tagName: "div" }` — because
- * the tab model wants A DOCUMENT and a PNG is not one, and the viewer never reads it. Nothing
- * downstream knew that: `file.save` is gated on `documentOpen` alone (`commands/defaults.ts`), a media
- * tab satisfies it, and `serializeDocument`'s tail is `JSON.stringify(tab.doc.document)`. So the whole
- * of the ordinary save path ran and wrote `{"children":[],"tagName":"div"}` OVER the image, through
- * `writeFile`, with no dirty flag, no confirmation and nothing to undo. The bytes were simply gone.
+ * A media tab does not. `openMediaTab` gives it a STUB — `{ children: [], tagName: "div" }` —
+ * because the tab model wants A DOCUMENT and a PNG is not one, and the viewer never reads it.
+ * Nothing downstream knew that: `file.save` is gated on `documentOpen` alone
+ * (`commands/defaults.ts`), a media tab satisfies it, and `serializeDocument`'s tail is
+ * `JSON.stringify(tab.doc.document)`. So the whole of the ordinary save path ran and wrote
+ * `{"children":[],"tagName":"div"}` OVER the image, through `writeFile`, with no dirty flag, no
+ * confirmation and nothing to undo. The bytes were simply gone.
  *
  * **Keyed on the FILE, not on the mode**, because the mode is not the hazard. An `.svg` in its
- * `source` alternate has the same stub behind it — `canvas-render.ts`'s `sourceContent` falls through
- * to the same `JSON.stringify` when no format class claims the path — so a guard reading
- * `canvasMode === "media"` would have left the one media type that offers a text editor still able to
- * overwrite itself with a placeholder it never showed anyone.
+ * `source` alternate has the same stub behind it — `canvas-render.ts`'s `sourceContent` falls
+ * through to the same `JSON.stringify` when no format class claims the path — so a guard reading
+ * `canvasMode === "media"` would have left the one media type that offers a text editor still able
+ * to overwrite itself with a placeholder it never showed anyone.
  */
 function hasSerializableDocument(tab: Tab): boolean {
   return !isMediaFile(tab.documentPath ?? "");
@@ -418,7 +433,7 @@ export async function exportFile() {
 // ─── Destructive confirmations ───────────────────────────────────────────────
 
 /**
- * The reference sentence a destructive dialog carries, or `nothing` when the host cannot count.
+ * The reference sentence a destructive dialog carries, or `""` when there is nothing to say.
  *
  * The query is awaited BEFORE the dialog opens rather than rendered into it and filled in later: a
  * confirm button that becomes truthful two frames after the user has already pressed it is the same
@@ -437,10 +452,9 @@ export async function exportFile() {
  * @param path — the file about to be deleted or renamed.
  * @param verb — which way the references go. A rename repairs them; a delete breaks them.
  */
-async function usageLine(path: string, verb: "delete" | "rename" | "convert") {
+async function usageLine(path: string, verb: "delete" | "rename" | "convert"): Promise<string> {
   const state = isMediaFile(path) ? await loadMediaUsages(path) : await loadUsages({ path });
-  const sentence = usageWarning(state, verb);
-  return sentence === null ? nothing : html`<p class="dialog-consequence">${sentence}</p>`;
+  return usageWarning(state, verb) ?? "";
 }
 
 /**
@@ -451,12 +465,13 @@ async function usageLine(path: string, verb: "delete" | "rename" | "convert") {
  */
 export async function confirmFileDelete(file: { name: string; path: string }): Promise<boolean> {
   const consequence = await usageLine(file.path, "delete");
+  const question = `Delete ${file.name}? This cannot be undone.`;
   // `showDialog`'s generic widens to unknown through the confirm wrapper; the dialog only ever
   // Resolves true/false, and Boolean() is the narrowing that says so without a cast.
   return Boolean(
     await showConfirmDialog(
       "Delete File",
-      html`<span>Delete <strong>${file.name}</strong>? This cannot be undone.</span>${consequence}`,
+      consequence === "" ? question : `${question} ${consequence}`,
       { confirmLabel: "Delete", destructive: true },
     ),
   );
@@ -472,7 +487,10 @@ export async function confirmFileDelete(file: { name: string; path: string }): P
  * @param path — the file about to be renamed.
  * @param verb — `"rename"`, or `"convert"` when the bytes change with the name.
  */
-export async function renamePromptMessage(path: string, verb: "rename" | "convert" = "rename") {
+export async function renamePromptMessage(
+  path: string,
+  verb: "rename" | "convert" = "rename",
+): Promise<string | undefined> {
   const consequence = await usageLine(path, verb);
-  return consequence === nothing ? undefined : html`${consequence}`;
+  return consequence === "" ? undefined : consequence;
 }

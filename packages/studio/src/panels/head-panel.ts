@@ -1,45 +1,61 @@
 /// <reference lib="dom" />
 /**
- * Head panel — Page meta, OpenGraph, Frontmatter, and custom `$head` entries.
+ * The Navigator's Page panel — everything the open document says about itself before anybody reads
+ * its body: its frontmatter, the layout it is poured into, its title, description, viewport and
+ * icon, its OpenGraph card, and the raw `$head` tags no structured control owns.
  *
- * Uses `renderFieldRow()` for consistent indicator-dot fields and `renderMediaPicker()` for image
- * selection (icon, og:image).
+ * This is the FLOW. The markup is `surfaces/panel-page.json` and the scope that feeds it is
+ * `surfaces/panel-page.ts`; what stays here is every decision — what a `$head` entry means, which
+ * of them a structured control already owns, which realm a title lives in, what the layout cascade
+ * resolves to, and what each row commits into.
+ *
+ * **The drafts live here, not in the DOM.** The add-a-tag form used to be three `ref()` handles
+ * read at submit time, which is a spelling a document does not have: a binding writes only when the
+ * SCOPE moves, so every field's setter states what the control now holds before anything is decided
+ * about it, and clearing one after a successful add is then a real change the runtime carries back.
+ * `sync()` — not `renderLeftPanel()` — is what an echo calls: it assigns into the standing scope in
+ * the same turn, where a Navigator repaint is a frame away and would rebuild far more than one
+ * field.
+ *
+ * **What a frontmatter row looks like is `panels/frontmatter-fields.ts`'s answer.** The Document
+ * Header card draws the same field set from the same schemas; the two surfaces deciding
+ * independently that a `$ref` is a picker or that an array is a comma-separated line is how they
+ * came to disagree about `title` in the first place.
+ *
+ * The other half of this module has no surface at all: the merged-`$head` preview model that
+ * `panels/seo-modal.ts` and the Document Header card both read. It is pure, and pinned against
+ * `packages/compiler/src/site/head-merger.ts` by `tests/head-panel.test.ts`.
  */
 
-import { html, nothing } from "lit-html";
-import { createRef, ref } from "lit-html/directives/ref.js";
-import { renderFieldRow } from "../ui/field-row";
-import { spTextArea, spTextField } from "../ui/field-input";
-import { renderMediaPicker } from "../ui/media-picker";
+import { nothing } from "lit-html";
 import { projectState, renderOnly } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
 import { clearProblems, notify } from "../services/notify";
-import { renderEmptyState } from "./empty-state";
 import { registerPanel } from "./panel-registry";
-import { mutateUpdateFrontmatter, transact } from "../tabs/transact";
-import { collectFmFields, renderFmField } from "./frontmatter-fields";
+import { mutateUpdateFrontmatter, transact, transactDoc } from "../tabs/transact";
+import { collectFmFields, projectFmField } from "./frontmatter-fields";
 import { isGoogleFontEntry, isGoogleFontPreconnect } from "../utils/google-fonts";
 import { getEffectiveLayoutPath, invalidateLayoutCache, resolveLayoutDoc } from "../site-context";
 import { getPlatform } from "../platform";
 import { pageRoute } from "./tab-strip";
+import { LIVE_PREVIEW } from "../ui/timing";
+import { previewAssetSrc } from "../canvas/asset-refs";
+import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
+import { renderPagePanelSurface } from "../surfaces/panel-page";
 
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
-import type { TemplateResult } from "lit-html";
-
-/**
- * The add-a-tag draft fields.
- *
- * Uncontrolled by design — the draft is not state anything else reads, and rendering it back on
- * every keystroke would fight the typist. Held as refs rather than re-found by selector: the row is
- * rebuilt on every Head repaint, so a node resolved once is detached by the time it is used, and
- * with a second pane open a document-wide query can return the other pane's field.
- */
-const _addTag = createRef<HTMLInputElement>();
-const _addAttr = createRef<HTMLInputElement>();
-const _addVal = createRef<HTMLInputElement>();
+import type * as MediaPickerModule from "../ui/media-picker";
+import type {
+  PageChoice,
+  PagePanelActions,
+  PagePanelView,
+  PageRow,
+  PageSection,
+  PageTagRow,
+} from "../surfaces/panel-page";
 
 interface MetaField {
   label: string;
@@ -82,6 +98,24 @@ async function loadLayoutEntries() {
 export function invalidateLayoutPickerCache() {
   layoutEntries = null;
   invalidateLayoutHeadCache();
+}
+
+/**
+ * The layouts the picker offers, or `null` while the directory is still being listed.
+ *
+ * The listing BOTH surfaces draw their Layout picker from, handed over as DATA. The Page panel
+ * (`src/surfaces/panel-page.json`) and the Document Header card (`src/surfaces/doc-header.json`)
+ * are documents and neither can interpolate the other's markup — but a second LISTING would be a
+ * second cache with a second lifetime, and {@link invalidateLayoutPickerCache} would then forget
+ * only one of them. Asking starts the read; it repaints both surfaces when it lands.
+ *
+ * @returns {{ name: string; path: string }[] | null}
+ */
+export function layoutPickerEntries(): { name: string; path: string }[] | null {
+  if (layoutEntries === null) {
+    void loadLayoutEntries();
+  }
+  return layoutEntries;
 }
 
 // ─── Field definitions ───────────────────────────────────────────────────
@@ -128,7 +162,7 @@ export const RESERVED_FM_KEYS = new Set(["title"]);
  * @param {string} key
  * @returns {JxHeadEntry | undefined}
  */
-function findMetaEntry(head: JxHeadEntry[], attr: "name" | "property", key: string) {
+export function findMetaEntry(head: JxHeadEntry[], attr: "name" | "property", key: string) {
   if (!head) {
     return;
   }
@@ -182,7 +216,12 @@ export function isManagedEntry(entry: JxHeadEntry) {
  * @param {string} key
  * @param {string} content
  */
-function upsertMeta(doc: JxMutableNode, attr: "name" | "property", key: string, content: string) {
+export function upsertMeta(
+  doc: JxMutableNode,
+  attr: "name" | "property",
+  key: string,
+  content: string,
+) {
   if (!doc.$head) {
     doc.$head = [];
   }
@@ -784,281 +823,6 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
   );
 }
 
-// ─── Field renderers ─────────────────────────────────────────────────────
-
-/**
- * Render a meta field row using renderFieldRow.
- *
- * @param {MetaField} field
- * @param {JxHeadEntry[]} head
- * @param {(fn: (doc: JxMutableNode) => void) => void} applyMutation
- * @returns {import("lit-html").TemplateResult}
- */
-export function renderMetaFieldRow(
-  field: MetaField,
-  head: JxHeadEntry[],
-  applyMutation: (fn: (doc: JxMutableNode) => void) => void,
-) {
-  const entry = findMetaEntry(head, field.attr, field.key);
-  const val = String(entry?.attributes?.content ?? "");
-
-  if (field.media) {
-    return renderFieldRow({
-      hasValue: Boolean(val),
-      label: field.label,
-      onClear: () => applyMutation((d: JxMutableNode) => upsertMeta(d, field.attr, field.key, "")),
-      prop: field.key,
-      widget: renderMediaPicker(field.key, val, (v: string) => {
-        applyMutation((d: JxMutableNode) => upsertMeta(d, field.attr, field.key, v || ""));
-      }),
-    });
-  }
-
-  const commit = (v: string) =>
-    applyMutation((d: JxMutableNode) => upsertMeta(d, field.attr, field.key, v.trim()));
-  const placeholder =
-    field.key === "viewport" ? "width=device-width, initial-scale=1" : `${field.label}…`;
-  const widget = field.multiline
-    ? spTextArea(`head:${field.key}`, val, commit, {
-        placeholder: `${field.label}…`,
-      })
-    : spTextField(`head:${field.key}`, val, commit, { placeholder });
-
-  return renderFieldRow({
-    hasValue: Boolean(val),
-    label: field.label,
-    onClear: () => applyMutation((d: JxMutableNode) => upsertMeta(d, field.attr, field.key, "")),
-    prop: field.key,
-    widget,
-  });
-}
-
-// ─── Template ────────────────────────────────────────────────────────────
-
-/**
- * @param {{
- *   document: JxMutableNode;
- *   applyMutation: (fn: (doc: JxMutableNode) => void) => void;
- *   renderLeftPanel: () => void;
- * }} ctx
- * @returns {import("lit-html").TemplateResult}
- */
-export function renderHeadTemplate({
-  document: doc,
-  applyMutation,
-  renderLeftPanel,
-}: {
-  document: JxMutableNode;
-  applyMutation: (fn: (doc: JxMutableNode) => void) => void;
-  renderLeftPanel: () => void;
-}) {
-  const head = doc.$head ?? [];
-  const title = doc.title ?? "";
-
-  // Icon (favicon) link
-  const iconEntry = findLinkEntry(head, "icon");
-  const iconHref = String(iconEntry?.attributes?.href ?? "");
-
-  // Custom entries not managed by structured forms, fonts, or preconnects
-  const customEntries = head.filter(
-    (e: JxHeadEntry) => !isManagedEntry(e) && !isGoogleFontEntry(e) && !isGoogleFontPreconnect(e),
-  );
-
-  // Frontmatter section (content mode only)
-  const tab = activeTab.value;
-  const isContent = tab?.doc.mode === "content";
-  const frontmatterSection = isContent ? renderFrontmatterSection() : nothing;
-
-  // `tab` is the FOCUSED tab, and legitimately so: this template is the Navigator's Page panel,
-  // Which is drawn once for the shell and follows the focus by design. Spelling it here is what
-  // Lets `renderLayoutSection` and everything under it take a tab instead of asking.
-  const layoutSection = renderLayoutSection(tab, doc, applyMutation);
-
-  return html`
-    <div class="imports-panel">
-      ${frontmatterSection} ${layoutSection}
-
-      <!-- Page section -->
-      <div class="imports-section">
-        <div class="imports-section-header">
-          <span class="imports-section-title">Page</span>
-          <!-- The SECOND door to Search appearance; the Document Header card has the other. Two
-               moments, one capability — both run document.openSeo, so neither surface owns it and
-               the palette has it by name. -->
-          <sp-action-button
-            quiet
-            size="xs"
-            class="head-seo-btn"
-            title="Preview how this page appears in search and when shared"
-            @click=${() => {
-              void activeRegistry()?.run("document.openSeo");
-            }}
-          >
-            Search appearance…
-          </sp-action-button>
-        </div>
-        <div class="head-section-body">
-          ${renderFieldRow({
-            hasValue: Boolean(title),
-            label: "Title",
-            onClear: () =>
-              applyMutation((d: JxMutableNode) => {
-                delete d.title;
-              }),
-            prop: "title",
-            widget: spTextField(
-              "head:title",
-              title,
-              (v: string) =>
-                applyMutation((d: JxMutableNode) => {
-                  const val = v.trim();
-                  if (val) {
-                    d.title = val;
-                  } else {
-                    delete d.title;
-                  }
-                }),
-              { placeholder: "Page title…" },
-            ),
-          })}
-          ${PAGE_FIELDS.map((field) => renderMetaFieldRow(field, head, applyMutation))}
-          ${renderFieldRow({
-            hasValue: Boolean(iconHref),
-            label: "Icon",
-            onClear: () => applyMutation((d: JxMutableNode) => upsertLink(d, "icon", "")),
-            prop: "icon",
-            widget: renderMediaPicker("icon", iconHref, (v: string) => {
-              applyMutation((d: JxMutableNode) => upsertLink(d, "icon", v || ""));
-            }),
-          })}
-        </div>
-      </div>
-
-      <!-- OpenGraph section -->
-      <div class="imports-section">
-        <div class="imports-section-header">
-          <span class="imports-section-title">OpenGraph</span>
-        </div>
-        <div class="head-section-body">
-          ${OG_FIELDS.map((field) => renderMetaFieldRow(field, head, applyMutation))}
-        </div>
-      </div>
-
-      <!-- Custom $head entries -->
-      <div class="imports-section">
-        <div class="imports-section-header">
-          <span class="imports-section-title">Custom Tags</span>
-          <span class="imports-count">${customEntries.length}</span>
-        </div>
-        ${
-          customEntries.length > 0
-            ? html`
-                <div class="imports-list">
-                  ${customEntries.map((entry: JxHeadEntry) => {
-                    const label = entryLabel(entry);
-                    const value = entryValue(entry);
-                    return html`
-                      <div class="import-row">
-                        <span class="import-name" title=${value}>${label}</span>
-                        <span class="import-path">${value}</span>
-                        <sp-action-button
-                          quiet
-                          size="xs"
-                          title="Remove"
-                          @click=${() => {
-                            applyMutation((d: JxMutableNode) => {
-                              if (!d.$head) {
-                                return;
-                              }
-                              const idx = d.$head.indexOf(entry);
-                              if (idx !== -1) {
-                                d.$head.splice(idx, 1);
-                              }
-                            });
-                            renderLeftPanel();
-                          }}
-                        >
-                          <sp-icon-close slot="icon" size="xs"></sp-icon-close>
-                        </sp-action-button>
-                      </div>
-                    `;
-                  })}
-                </div>
-              `
-            : renderEmptyState({
-                compact: true,
-                message:
-                  "Custom tags add your own meta, link and script elements to this page — " +
-                  "analytics, verification, a webfont. Add one below.",
-              })
-        }
-
-        <!-- Add custom tag form -->
-        <div class="head-add-form">
-          <sp-picker size="s" label="Tag" class="head-add-tag" ${ref(_addTag)}>
-            <sp-menu-item value="meta">meta</sp-menu-item>
-            <sp-menu-item value="link">link</sp-menu-item>
-            <sp-menu-item value="script">script</sp-menu-item>
-          </sp-picker>
-          <sp-textfield
-            placeholder="Attribute (e.g. name)"
-            size="s"
-            class="head-add-attr"
-            ${ref(_addAttr)}
-          ></sp-textfield>
-          <sp-textfield
-            placeholder="Value"
-            size="s"
-            class="head-add-val"
-            ${ref(_addVal)}
-          ></sp-textfield>
-          <sp-action-button
-            quiet
-            size="xs"
-            title="Add tag"
-            @click=${() => {
-              /* Handles, not a closest() walk back up to a form this same template drew three lines
-                 above. The fields are uncontrolled on purpose — the draft is not state anything
-                 else reads — so a ref is exactly what reading and clearing them needs. */
-              const tagName = _addTag.value?.value || "meta";
-              const attrKey = _addAttr.value?.value?.trim();
-              const attrVal = _addVal.value?.value?.trim();
-              if (!attrKey || !attrVal) {
-                return;
-              }
-              if (_addAttr.value) {
-                _addAttr.value.value = "";
-              }
-              if (_addVal.value) {
-                _addVal.value.value = "";
-              }
-
-              const entry: JxHeadEntry = { attributes: {}, tagName };
-              if (tagName === "meta") {
-                entry.attributes = { content: attrVal, name: attrKey };
-              } else if (tagName === "link") {
-                entry.attributes = { href: attrVal, rel: attrKey };
-              } else if (tagName === "script") {
-                entry.attributes = { [attrKey]: attrVal };
-              }
-
-              applyMutation((d: JxMutableNode) => {
-                if (!d.$head) {
-                  d.$head = [];
-                }
-                d.$head.push(entry);
-              });
-              renderLeftPanel();
-            }}
-          >
-            <sp-icon-add slot="icon" size="xs"></sp-icon-add>
-          </sp-action-button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 // ─── Layout picker ───────────────────────────────────────────────────────
 
 /**
@@ -1088,131 +852,6 @@ export function isPageDocument(tab: Tab | null): boolean {
   );
 }
 
-/**
- * The layout picker as ONE field row, so the Page panel and the Document Header card render the
- * same control rather than two that drift.
- *
- * Returns `nothing` while the layouts directory is still being listed; the listing schedules a
- * re-render of both surfaces when it lands.
- *
- * @param {JxMutableNode} doc
- * @param {(fn: (doc: JxMutableNode) => void) => void} applyMutation
- * @returns {TemplateResult | typeof nothing}
- */
-export function renderLayoutPickerRow(
-  doc: JxMutableNode,
-  applyMutation: (fn: (doc: JxMutableNode) => void) => void,
-): TemplateResult | typeof nothing {
-  if (layoutEntries === null) {
-    void loadLayoutEntries();
-    return nothing;
-  }
-  const currentLayout = doc.$layout;
-  const defaultLayout = projectState?.projectConfig?.defaults?.layout;
-  const displayValue = currentLayout === false ? "__none__" : currentLayout || "__default__";
-  const defaultLabel = defaultLayout
-    ? defaultLayout
-        .replace(/^\.\/layouts\//, "")
-        .replace(/\.json$/, "")
-        .replaceAll(/[-_]+/g, " ")
-        .replaceAll(/\b\w/g, (c: string) => c.toUpperCase())
-    : "";
-  const entries = layoutEntries;
-  return renderFieldRow({
-    hasValue: currentLayout !== undefined,
-    label: "Layout",
-    onClear: () =>
-      applyMutation((d: JxMutableNode) => {
-        delete d.$layout;
-      }),
-    prop: "layout",
-    widget: html`
-      <sp-picker
-        size="s"
-        value=${displayValue}
-        @change=${(e: Event) => {
-          const val = (e.target as HTMLInputElement).value;
-          applyMutation((d: JxMutableNode) => {
-            if (val === "__default__") {
-              delete d.$layout;
-            } else if (val === "__none__") {
-              d.$layout = false;
-            } else {
-              d.$layout = val;
-            }
-          });
-          invalidateLayoutCache();
-        }}
-      >
-        <sp-menu-item value="__default__"
-          >Default${defaultLabel ? ` (${defaultLabel})` : ""}</sp-menu-item
-        >
-        <sp-menu-item value="__none__">None</sp-menu-item>
-        <sp-menu-divider></sp-menu-divider>
-        ${entries.map(
-          (l: { name: string; path: string }) =>
-            html`<sp-menu-item value=${l.path}>${l.name}</sp-menu-item>`,
-        )}
-      </sp-picker>
-    `,
-  });
-}
-
-/** The Page panel's boxed wrapper around {@link renderLayoutPickerRow}. */
-function renderLayoutSection(
-  tab: Tab | null,
-  doc: JxMutableNode,
-  applyMutation: (fn: (doc: JxMutableNode) => void) => void,
-): TemplateResult | typeof nothing {
-  if (!isPageDocument(tab)) {
-    return nothing;
-  }
-  const row = renderLayoutPickerRow(doc, applyMutation);
-  if (row === nothing) {
-    return nothing;
-  }
-  return html`
-    <div class="imports-section">
-      <div class="imports-section-header">
-        <span class="imports-section-title">Layout</span>
-      </div>
-      <div class="head-section-body">${row}</div>
-    </div>
-  `;
-}
-
-// ─── Frontmatter section ────────────────────────────────────────────────
-
-function renderFrontmatterSection() {
-  const tab = activeTab.value;
-  if (!tab) {
-    return nothing;
-  }
-
-  const { collection, fields, hasSchema, requiredFields } = collectFmFields(
-    tab,
-    projectState?.projectConfig,
-    RESERVED_FM_KEYS,
-  );
-
-  if (fields.length === 0 && !hasSchema) {
-    return nothing;
-  }
-
-  return html`
-    <div class="imports-section">
-      <div class="imports-section-header">
-        <span class="imports-section-title"
-          >${collection ? `Frontmatter (${collection.name})` : "Frontmatter"}</span
-        >
-      </div>
-      <div class="head-section-body">
-        ${fields.map((f) => renderFmField(tab, f.field, f.entry, f.value, requiredFields))}
-      </div>
-    </div>
-  `;
-}
-
 /** Overlay content-mode frontmatter title/`$head` onto the document the panel edits. */
 export function buildHeadDoc(doc: JxMutableNode, fm: Record<string, unknown>): JxMutableNode {
   const title = fm.title as string | undefined;
@@ -1231,7 +870,7 @@ export function buildHeadDoc(doc: JxMutableNode, fm: Record<string, unknown>): J
  * adapts one to the other in the module that owns both, instead of in the Navigator orchestrator
  * that owns neither.
  *
- * **`tab` is a parameter for the same reason {@link renderFmField}'s is.** It resolved
+ * **`tab` is a parameter for the same reason every other frontmatter helper's is.** It resolved
  * `activeTab.value` itself, and the Document Header card calls it for the CONTENT branch of every
  * mutation it makes — Title, Clear title, the Layout picker — as does Search appearance, which is
  * where the head fields went and which takes its tab the same way. The card is drawn per pane, so
@@ -1267,6 +906,550 @@ export function applyContentMutation(
   rerender();
 }
 
+// ─── The Page panel's flow ───────────────────────────────────────────────
+
+/** What one row of the panel writes. The document knows the control; this knows the document. */
+interface RowCommit {
+  /** Remove the value this row shows. */
+  clear: () => void;
+  /** Commit what the control settled on — a string from every kind but the checkbox. */
+  commit: (raw: string | boolean) => void;
+}
+
+/** What the panel is drawn against. `left-panel.ts`'s context, reduced to what this reads. */
+export interface PagePanelContext {
+  /** The head-bearing view of the open document — `buildHeadDoc` for a content page. */
+  document: JxMutableNode;
+  /** How a change to that view is written back into whichever realm it belongs to. */
+  applyMutation: (fn: (doc: JxMutableNode) => void) => void;
+  renderLeftPanel: () => void;
+}
+
+/** Where the surface is mounted, and the context it was last drawn against. */
+let _host: HTMLElement | null = null;
+let _ctx: PagePanelContext | null = null;
+
+/**
+ * The add-a-tag draft — three parts of one entry, so none of them is submitted alone.
+ *
+ * State rather than `ref()` handles read at submit time: a document binding writes only when the
+ * scope moves, so emptying a field after a successful add has to BE a scope change or the added
+ * text is left sitting in the control.
+ */
+let _addTag = "meta";
+let _addAttr = "";
+let _addValue = "";
+
+/** This projection's rows, by key. Rebuilt with each projection. */
+const _commits = new Map<string, RowCommit>();
+
+/**
+ * This projection's custom `$head` entries, by the key they were drawn with.
+ *
+ * A Remove hands back a key and nothing else, because the rows are a NESTED map and a row inside
+ * the inner one cannot reach the section it is under. This is where that key is spent — on the
+ * ENTRY OBJECT, so the splice is still an `indexOf` against the document's own array rather than a
+ * position that a concurrent edit could have moved.
+ */
+const _entries = new Map<string, JxHeadEntry>();
+
+/** Text edits waiting out {@link LIVE_PREVIEW}, one per row key. */
+const _pending = new Map<string, { commit: () => void; timer: ReturnType<typeof setTimeout> }>();
+
+/** The elements the add form offers, in the order a reader meets them. */
+const TAG_OPTIONS: PageChoice[] = [
+  { label: "meta", value: "meta" },
+  { label: "link", value: "link" },
+  { label: "script", value: "script" },
+];
+
+/** A blank row, so every kind carries every field the document's bindings read. */
+function blankRow(key: string, prop: string, label: string): PageRow {
+  return {
+    checked: false,
+    clearLabel: `Clear ${prop}`,
+    hasNote: false,
+    hasThumb: false,
+    isSet: false,
+    key,
+    kind: "text",
+    label,
+    note: "",
+    options: [],
+    placeholder: "",
+    prop,
+    thumb: "",
+    value: "",
+  };
+}
+
+/** A media row's thumbnail, or the honest absence of one. */
+function thumbFor(row: PageRow, value: string): void {
+  row.hasThumb = value !== "" && IMAGE_EXTENSIONS.has(extensionOf(value));
+  row.thumb = row.hasThumb ? previewAssetSrc(value) : "";
+}
+
+/** The one head value you type while writing, in both realms. */
+function titleRow(doc: JxMutableNode, apply: PagePanelContext["applyMutation"]): PageRow {
+  const title = typeof doc.title === "string" ? doc.title : "";
+  _commits.set("title", {
+    clear: () =>
+      apply((d) => {
+        delete d.title;
+      }),
+    commit: (raw) =>
+      apply((d) => {
+        const val = String(raw).trim();
+        if (val) {
+          d.title = val;
+        } else {
+          delete d.title;
+        }
+      }),
+  });
+  return {
+    ...blankRow("title", "title", "Title"),
+    clearLabel: "Clear title",
+    isSet: Boolean(title),
+    placeholder: "Page title…",
+    value: title,
+  };
+}
+
+/** One structured `<meta>` field — the four OpenGraph keys, plus description and viewport. */
+function metaRow(
+  field: MetaField,
+  head: JxHeadEntry[],
+  apply: PagePanelContext["applyMutation"],
+): PageRow {
+  const value = String(findMetaEntry(head, field.attr, field.key)?.attributes?.content ?? "");
+  const key = `meta:${field.attr}:${field.key}`;
+  _commits.set(key, {
+    clear: () => apply((d) => upsertMeta(d, field.attr, field.key, "")),
+    /* A media field is not trimmed: a path is committed exactly as it was chosen, and the browser
+       and the upload both hand one back already clean. */
+    commit: (raw) =>
+      apply((d) =>
+        upsertMeta(d, field.attr, field.key, field.media ? String(raw) : String(raw).trim()),
+      ),
+  });
+  const row = blankRow(key, field.key, field.label);
+  row.isSet = Boolean(value);
+  row.value = value;
+  if (field.media) {
+    row.kind = "media";
+    thumbFor(row, value);
+    return row;
+  }
+  row.kind = field.multiline ? "textarea" : "text";
+  row.placeholder =
+    field.key === "viewport" ? "width=device-width, initial-scale=1" : `${field.label}…`;
+  return row;
+}
+
+/** The favicon, which is a `<link rel="icon">` rather than a `<meta>`. */
+function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]): PageRow {
+  const value = String(findLinkEntry(head, "icon")?.attributes?.href ?? "");
+  _commits.set("link:icon", {
+    clear: () => apply((d) => upsertLink(d, "icon", "")),
+    commit: (raw) => apply((d) => upsertLink(d, "icon", String(raw))),
+  });
+  const row = blankRow("link:icon", "icon", "Icon");
+  row.isSet = Boolean(value);
+  row.kind = "media";
+  row.value = value;
+  thumbFor(row, value);
+  return row;
+}
+
+/**
+ * The Layout picker, or `null` when this document takes none — a component has no layout, and a
+ * page whose layouts directory is still being listed has nothing to offer yet.
+ *
+ * The listing is {@link layoutPickerEntries}', which the Document Header card reads too: creating a
+ * layout invalidates one cache rather than two.
+ */
+function layoutSection(
+  tab: Tab | null,
+  doc: JxMutableNode,
+  apply: PagePanelContext["applyMutation"],
+): PageSection | null {
+  if (!isPageDocument(tab)) {
+    return null;
+  }
+  const entries = layoutPickerEntries();
+  if (entries === null) {
+    return null;
+  }
+  const current = doc.$layout;
+  const defaultPath = projectState?.projectConfig?.defaults?.layout;
+  const defaultLabel = defaultPath ? layoutDisplayName(defaultPath) : "";
+  _commits.set("__layout", {
+    clear: () =>
+      apply((d) => {
+        delete d.$layout;
+      }),
+    commit: (raw) => {
+      const val = String(raw);
+      apply((d) => {
+        if (val === "__default__") {
+          delete d.$layout;
+        } else if (val === "__none__") {
+          d.$layout = false;
+        } else {
+          d.$layout = val;
+        }
+      });
+      invalidateLayoutCache();
+    },
+  });
+  const row = blankRow("__layout", "layout", "Layout");
+  row.kind = "select";
+  row.isSet = current !== undefined;
+  row.options = [
+    { label: defaultLabel ? `Default (${defaultLabel})` : "Default", value: "__default__" },
+    { label: "None", value: "__none__" },
+    ...entries.map((l) => ({ label: l.name, value: l.path })),
+  ];
+  row.value = current === false ? "__none__" : current || "__default__";
+  return { hasSeo: false, key: "layout", rows: [row], title: "Layout" };
+}
+
+/**
+ * The schema-and-frontmatter field list, or `null` when this document has none to show.
+ *
+ * Content documents only: a JSON page's head material lives on the root node, and the section that
+ * would draw it is Page.
+ */
+function frontmatterSection(tab: Tab | null): PageSection | null {
+  if (!tab || tab.doc.mode !== "content") {
+    return null;
+  }
+  const { collection, fields, hasSchema, requiredFields } = collectFmFields(
+    tab,
+    projectState?.projectConfig,
+    RESERVED_FM_KEYS,
+  );
+  if (fields.length === 0 && !hasSchema) {
+    return null;
+  }
+  const rows = fields.map((f) => {
+    const key = `fm:${f.field}`;
+    const { parse, row } = projectFmField(f.field, f.entry, f.value, requiredFields, {
+      rerender: sync,
+    });
+    _commits.set(key, {
+      clear: () => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field)),
+      commit: (raw) =>
+        transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field, parse(raw) as JsonValue)),
+    });
+    return Object.assign(blankRow(key, f.field, row.label), row, {
+      clearLabel: `Clear ${f.field}`,
+    });
+  });
+  return {
+    hasSeo: false,
+    key: "frontmatter",
+    rows,
+    title: collection ? `Frontmatter (${collection.name})` : "Frontmatter",
+  };
+}
+
+/** The `$head` entries no structured control owns, and the keys a Remove hands back. */
+function customEntries(head: JxHeadEntry[]): PageTagRow[] {
+  _entries.clear();
+  return head
+    .filter(
+      (e: JxHeadEntry) => !isManagedEntry(e) && !isGoogleFontEntry(e) && !isGoogleFontPreconnect(e),
+    )
+    .map((entry, index) => {
+      const key = `tag:${index}`;
+      _entries.set(key, entry);
+      const label = entryLabel(entry);
+      return { key, label, removeLabel: `Remove ${label}`, value: entryValue(entry) };
+    });
+}
+
+/**
+ * Everything the panel says about one document, and the commit table behind it.
+ *
+ * `activeTab.value` is read HERE and nowhere below it: the Navigator's Page panel is an app-level
+ * surface that shows the focused document by definition (§3.2), and spelling that out once at the
+ * top is what lets every helper under it take a tab instead of asking for one.
+ */
+function view(ctx: PagePanelContext): PagePanelView {
+  _commits.clear();
+  const tab = activeTab.value;
+  const doc = ctx.document;
+  const head = doc.$head ?? [];
+  const sections: PageSection[] = [];
+
+  const frontmatter = frontmatterSection(tab);
+  if (frontmatter) {
+    sections.push(frontmatter);
+  }
+  const layout = layoutSection(tab, doc, ctx.applyMutation);
+  if (layout) {
+    sections.push(layout);
+  }
+  sections.push(
+    {
+      hasSeo: true,
+      key: "page",
+      rows: [
+        titleRow(doc, ctx.applyMutation),
+        ...PAGE_FIELDS.map((field) => metaRow(field, head, ctx.applyMutation)),
+        iconRow(head, ctx.applyMutation),
+      ],
+      title: "Page",
+    },
+    {
+      hasSeo: false,
+      key: "opengraph",
+      rows: OG_FIELDS.map((field) => metaRow(field, head, ctx.applyMutation)),
+      title: "OpenGraph",
+    },
+  );
+
+  const entries = customEntries(head);
+  return {
+    addAttr: _addAttr,
+    addTag: _addTag,
+    addValue: _addValue,
+    customCount: String(entries.length),
+    customEntries: entries,
+    customState: entries.length === 0 ? "empty" : "listed",
+    sections,
+    tagOptions: TAG_OPTIONS,
+  };
+}
+
+/** Push the current projection into the standing surface, in this turn. */
+function sync(): void {
+  if (!_host || !_ctx) {
+    return;
+  }
+  renderPagePanelSurface(_host, view(_ctx), ACTIONS);
+}
+
+// ─── The verbs ───────────────────────────────────────────────────────────
+
+/** Cancel every waiting text edit, without committing any of them. */
+function dropPending(): void {
+  for (const { timer } of _pending.values()) {
+    clearTimeout(timer);
+  }
+  _pending.clear();
+}
+
+/** Drop a text edit that was still waiting out its debounce. */
+function flushPending(key: string): void {
+  const waiting = _pending.get(key);
+  if (waiting) {
+    clearTimeout(waiting.timer);
+    _pending.delete(key);
+  }
+}
+
+/** Commit now, cancelling whatever was waiting for the same row. */
+function commitNow(key: string, raw: string | boolean): void {
+  flushPending(key);
+  _commits.get(key)?.commit(raw);
+}
+
+/**
+ * Add the drafted tag to `$head`.
+ *
+ * The three parts are validated together and the two typed ones are cleared BEFORE the write, so a
+ * repaint caused by the mutation finds an empty form rather than the text that has just been
+ * committed. The tag picker keeps its choice: adding two `<link>`s in a row is the common case.
+ */
+function addEntry(): void {
+  const ctx = _ctx;
+  const attrKey = _addAttr.trim();
+  const attrVal = _addValue.trim();
+  if (!ctx || !attrKey || !attrVal) {
+    return;
+  }
+  const tagName = _addTag || "meta";
+  _addAttr = "";
+  _addValue = "";
+  sync();
+
+  const entry: JxHeadEntry = { attributes: {}, tagName };
+  if (tagName === "meta") {
+    entry.attributes = { content: attrVal, name: attrKey };
+  } else if (tagName === "link") {
+    entry.attributes = { href: attrVal, rel: attrKey };
+  } else if (tagName === "script") {
+    entry.attributes = { [attrKey]: attrVal };
+  }
+  ctx.applyMutation((d: JxMutableNode) => {
+    if (!d.$head) {
+      d.$head = [];
+    }
+    d.$head.push(entry);
+  });
+  ctx.renderLeftPanel();
+}
+
+/** Take one custom `$head` entry away, by the entry the key was drawn for. */
+function removeEntry(key: string): void {
+  const ctx = _ctx;
+  const entry = _entries.get(key);
+  if (!ctx || !entry) {
+    return;
+  }
+  ctx.applyMutation((d: JxMutableNode) => {
+    if (!d.$head) {
+      return;
+    }
+    const idx = d.$head.indexOf(entry);
+    if (idx !== -1) {
+      d.$head.splice(idx, 1);
+    }
+  });
+  ctx.renderLeftPanel();
+}
+
+/**
+ * The media picker's two behaviours, imported on the first press.
+ *
+ * ONE cached promise, deliberately: two dynamic imports of a module in flight at once is the shape
+ * that loses its coverage record (see the note in the repository's agent guide), and the file also
+ * pulls in the upload pipeline and the media metadata cache — neither of which a panel nobody has
+ * pressed Browse in should ever load.
+ */
+let _mediaPicker: Promise<typeof MediaPickerModule> | null = null;
+
+function mediaPicker(): Promise<typeof MediaPickerModule> {
+  _mediaPicker ??= import("../ui/media-picker");
+  return _mediaPicker;
+}
+
+/**
+ * What the reader may do. One set for the module, because the panel's whole state is the module's —
+ * one focused document, and one draft of each field across every section.
+ *
+ * The three `edit*` entries are ECHOES: the scope has to be told what a field now holds even though
+ * nothing else about the panel changes, because emptying it afterwards is otherwise a write of `""`
+ * over a scope that already said `""` — no change, no binding, and the submitted text left sitting
+ * in the field.
+ */
+const ACTIONS: PagePanelActions = {
+  addEntry,
+  browse: (key, anchor) => {
+    flushPending(key);
+    void mediaPicker().then((m) => {
+      if (anchor instanceof HTMLElement) {
+        m.showMediaPickerPopover(anchor, (val: string) => {
+          _commits.get(key)?.commit(val);
+        });
+      }
+    });
+  },
+  clear: (key) => {
+    flushPending(key);
+    _commits.get(key)?.clear();
+  },
+  commitText: (key, value) => commitNow(key, value),
+  editAttr: (value) => {
+    _addAttr = value;
+    sync();
+  },
+  /* Debounced, so the canvas follows the typing without a document write per keystroke. The control
+     is NOT reset in the meantime: the projection this commit causes resolves to the text already in
+     the field, and a document binding skips a write equal to what the element holds. */
+  editText: (key, value) => {
+    flushPending(key);
+    const commit = () => {
+      _pending.delete(key);
+      _commits.get(key)?.commit(value);
+    };
+    _pending.set(key, { commit, timer: setTimeout(commit, LIVE_PREVIEW) });
+  },
+  editTag: (value) => {
+    _addTag = value;
+    sync();
+  },
+  editValue: (value) => {
+    _addValue = value;
+    sync();
+  },
+  openSeo: () => {
+    /* The COMMAND, not a local open() — the Document Header card offers the same door and neither
+       of them owns it, so the palette has it by name. */
+    void activeRegistry()?.run("document.openSeo");
+  },
+  removeEntry,
+  setBoolean: (key, checked) => commitNow(key, checked),
+  setChoice: (key, value) => commitNow(key, value),
+  setNumber: (key, value) => commitNow(key, value),
+  upload: (key) => {
+    flushPending(key);
+    void mediaPicker().then((m) => {
+      m.pickAndUpload((val: string) => {
+        _commits.get(key)?.commit(val);
+      });
+    });
+  },
+};
+
+/**
+ * Draw the panel into `host`, or bring the one already there up to date.
+ *
+ * @param {HTMLElement} host The panel's content area.
+ * @param {PagePanelContext} ctx What the panel is drawn against.
+ */
+export function renderPagePanel(host: HTMLElement, ctx: PagePanelContext): void {
+  if (host !== _host) {
+    /* A new content area is a new panel, and a half-typed tag belongs to the surface that was
+       showing it. Switching panels and back is NOT this — lit reuses the same `.panel-content`, so
+       the draft survives exactly as the `ref()` handles it replaced used to. */
+    _addTag = "meta";
+    _addAttr = "";
+    _addValue = "";
+    dropPending();
+  }
+  if (ctx.document !== _ctx?.document) {
+    /* A debounced edit belongs to the DOCUMENT it was typed into, and the host does not change when
+       the reader switches tabs — so cancelling only on a new host let a queued commit outlive its
+       subject and land, `LIVE_PREVIEW` later, on whatever document was open by then. It surfaced as
+       a test that received another test's half-typed `content`, which is the same event with the
+       tabs replaced by test cases. */
+    dropPending();
+  }
+  _host = host;
+  _ctx = ctx;
+  sync();
+}
+
+/**
+ * The Navigator's content area inside a panel body.
+ *
+ * `afterRender` is handed the `.panel-body`, and the panel's own content goes one level in — which
+ * is where the document must be mounted rather than beside it, because that child is lit's part and
+ * clearing it is how switching to another panel takes this surface down. A body drawn by the
+ * fallback path has no content area; mounting into the body itself is then still correct.
+ */
+function contentArea(body: HTMLElement): HTMLElement {
+  return body.querySelector<HTMLElement>(".panel-content") ?? body;
+}
+
+/**
+ * The Navigator no longer draws this panel with lit.
+ *
+ * The record below returns `nothing` and mounts its document in `afterRender`, so this is a stub:
+ * it survives only because `NavigatorPanelDeps` still declares the injection and `studio.ts` still
+ * passes it. Both go in the change that deletes this.
+ *
+ * @deprecated The panel is `surfaces/panel-page.json`; call {@link renderPagePanel}.
+ * @returns {typeof nothing}
+ */
+export function renderHeadTemplate(_against: PagePanelContext): typeof nothing {
+  return nothing;
+}
+
 /**
  * Contribute the Page panel.
  *
@@ -1281,18 +1464,17 @@ export function registerPagePanel(): void {
     title: "Page",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-view-all-tags",
+    icon: "file",
     requiresDocument: "Open a page to edit its title, description and social preview.",
-    render: (ctx) => {
+    render: () => nothing,
+    afterRender: (ctx, host) => {
       const doc = ctx.doc!;
       const isContent = doc.mode === "content";
       const fm = doc.content?.frontmatter ?? {};
-      // Through `deps`, not the local binding: `studio.ts` owns the wiring, and the Navigator has
-      // Injected these renderers since before the registry existed.
-      return ctx.deps.renderHeadTemplate({
-        // The Navigator's Page panel IS an app-level surface: it shows the focused document by
-        // Definition, so it spells that out at the call site now instead of leaving it to a helper
-        // Two other surfaces share.
+      renderPagePanel(contentArea(host), {
+        /* The Navigator's Page panel IS an app-level surface: it shows the focused document by
+           definition, so it spells that out at the call site instead of leaving it to a helper two
+           other surfaces share. */
         applyMutation: isContent
           ? (fn) => applyContentMutation(activeTab.value, ctx.rerender, fn)
           : (fn) => {

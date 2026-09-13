@@ -24,11 +24,10 @@
  * @docs studio/projects/settings
  */
 
-import { html } from "lit-html";
 import { getPlatform } from "../platform";
 import { projectState } from "../store";
 import { clearProblems, notify } from "../services/notify";
-import { showDialog } from "../ui/layers";
+import { showPromptDialog } from "../ui/layers";
 import { activateTab, openTab, workspace } from "../workspace/workspace";
 import { PROJECT_CONFIG_PATH, commitProjectConfig } from "../tabs/project-config";
 import { pageRoute } from "../panels/tab-strip";
@@ -400,37 +399,26 @@ export async function openRedirectsGrid(): Promise<GridController> {
 
 // ─── Import ───────────────────────────────────────────────────────────────────
 
-/** The paste box. One textarea, because both formats are things an author copies out of a file. */
+/**
+ * The paste box.
+ *
+ * It is `showPromptDialog` with a multiline field, not a dialog of its own. An import is one value
+ * the author pastes and one answer they give, which is what that flow already is (§12.5); what it
+ * needed was a field tall enough to read the value back in, and a monospaced one, because both
+ * formats are column-aligned in the file they were copied out of.
+ */
 export function promptRedirectImport(): Promise<string | null> {
-  let text = "";
-  return showDialog<string | null>(
-    (done) => html`
-      <sp-dialog-wrapper
-        open
-        dismissable
-        underlay
-        headline="Import Redirects"
-        confirm-label="Import"
-        cancel-label="Cancel"
-        @confirm=${() => done(text)}
-        @cancel=${() => done(null)}
-        @close=${() => done(null)}
-      >
-        <p>
-          Paste a Netlify/Cloudflare <code>_redirects</code> file, or CSV with
-          <code>source,destination,status</code> columns. Rows are staged for review — nothing is
-          written until you save.
-        </p>
-        <textarea
-          class="jx-grid-input jx-redirect-import"
-          rows="10"
-          placeholder="/old-page  /new-page  301"
-          @input=${(e: Event) => (text = (e.target as HTMLTextAreaElement).value)}
-        ></textarea>
-      </sp-dialog-wrapper>
-    `,
-    { region: "redirects/import" },
-  );
+  return showPromptDialog("Import Redirects", {
+    confirmLabel: "Import",
+    message:
+      "Paste a Netlify/Cloudflare _redirects file, or CSV with source,destination,status columns. " +
+      "Rows are staged for review — nothing is written until you save.",
+    mono: true,
+    multiline: true,
+    placeholder: "/old-page  /new-page  301",
+    rows: "10",
+    size: "md",
+  });
 }
 
 /**

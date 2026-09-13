@@ -1,6 +1,5 @@
 import {
   registerPrimaryStage,
-  renderInto,
   resetStudioState,
   resetWorkspaceWithTab,
   standUpPaneGrid,
@@ -8,9 +7,11 @@ import {
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  activateCanvasPanel,
   applyEditZoom,
   applyTransform,
-  canvasPanelTemplate,
+  bindCanvasPanels,
+  canvasPanelEntry,
   centerCanvas,
   clampEditZoom,
   clampPanZoom,
@@ -54,6 +55,8 @@ import {
   SECONDARY_PANE,
   workspace,
 } from "../src/workspace/workspace";
+import { mountCanvasStage } from "../src/surfaces/canvas-stage";
+import type { CanvasPanelEntry } from "../src/canvas/canvas-utils";
 import type { CanvasPanel } from "../src/types";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
@@ -155,44 +158,100 @@ afterEach(() => {
   globalThis.ResizeObserver = OriginalResizeObserver;
 });
 
-// ─── canvasPanelTemplate ──────────────────────────────────────────────────────
+// ─── canvasPanelEntry ─────────────────────────────────────────────────────────
 
-describe("canvasPanelTemplate", () => {
-  test("wires all panel DOM refs during render", async () => {
-    const { tpl, panel } = canvasPanelTemplate("md", "Tablet (768px)", false, 768);
-    await renderInto(tpl);
-    expect(panel.element?.classList.contains("canvas-panel")).toBe(true);
-    expect(panel.viewport?.classList.contains("canvas-panel-viewport")).toBe(true);
-    expect(panel.canvas?.classList.contains("canvas-panel-canvas")).toBe(true);
+/**
+ * Draw artboards the way a render does — through the stage document, which is the only thing that
+ * draws one now, and then fill the records from it.
+ *
+ * The two used to be one call: a `TemplateResult` whose `ref()` directives filled the record while
+ * lit committed it. A mapped array reconciles on a microtask, so the mount is awaited and the
+ * records are bound after — which is exactly the sequence `canvas-render.ts` performs.
+ */
+async function drawBoards(entries: CanvasPanelEntry[]) {
+  /* Detached on purpose. The stage document is plain elements — every kit element in the canvas's
+     chrome is inside a surface of its own — so nothing here needs a connected root to upgrade, and
+     a board appended to the live document drags happy-dom's iframe loader in with it. */
+  const host = document.createElement("div");
+  const stage = mountCanvasStage(
+    host,
+    {
+      columnHeader: "hidden",
+      frame: "boards",
+      framePart: "panzoom",
+      frameVars: "",
+      handles: "hidden",
+      hug: false,
+      innerPart: "boards",
+      lead: "none",
+      panels: entries.map((entry) => entry.item),
+    },
+    {
+      host: () => {},
+      pickPanel: (key) => activateCanvasPanel(entries, key),
+    },
+  );
+  await stage.ready;
+  bindCanvasPanels(entries, stage);
+  return host;
+}
+
+/** One board, drawn. */
+async function drawBoard(
+  media: string | null,
+  label: string | null,
+  fullWidth = false,
+  width: number | null = 768,
+): Promise<CanvasPanelEntry> {
+  const entry = canvasPanelEntry(media, label, fullWidth, width);
+  await drawBoards([entry]);
+  return entry;
+}
+
+describe("canvasPanelEntry", () => {
+  test("binds all panel DOM nodes once the stage has drawn", async () => {
+    const { panel } = await drawBoard("md", "Tablet (768px)");
+    expect(panel.element?.getAttribute("part")).toBe("panel");
+    expect(panel.viewport?.getAttribute("part")).toBe("panel-viewport");
+    expect(panel.canvas?.getAttribute("part")).toBe("panel-canvas");
     expect(panel.mediaName).toBe("md");
     expect(panel._width).toBe(768);
     expect(panel.ready).toBe(false);
   });
 
   test("sets data-media attribute and label header", async () => {
-    const { tpl, panel } = canvasPanelTemplate("md", "Tablet (768px)", false, 768);
-    await renderInto(tpl);
+    const { panel } = await drawBoard("md", "Tablet (768px)");
     expect(panel.element?.dataset.media).toBe("md");
-    const header = panel.element?.querySelector(".canvas-panel-header");
+    const header = panel.element?.querySelector('[part="panel-header"]');
     expect(header?.textContent?.trim()).toBe("Tablet (768px)");
   });
 
   test("applies pixel widths to viewport and canvas when not full-width", async () => {
-    const { tpl, panel } = canvasPanelTemplate("md", "Tablet", false, 768);
-    await renderInto(tpl);
-    expect(panel.viewport?.style.width).toBe("768px");
-    expect(panel.canvas?.style.width).toBe("768px");
+    /* The two widths are custom properties on the BOARD rather than `width:` on the two nodes, and
+       that is load-bearing: `applyEditZoom` writes `canvas.style.width` imperatively for the
+       content zoom, and an inline write beats a declaration by construction. The lit shell needed a
+       comment promising nobody would bind that property; this needs none. */
+    const { panel } = await drawBoard("md", "Tablet");
+    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("768px");
+    expect(panel.element?.style.getPropertyValue("--panel-canvas-w")).toBe("768px");
   });
 
   test("full-width panel omits viewport width and header", async () => {
-    const { tpl, panel } = canvasPanelTemplate(null, null, true);
-    await renderInto(tpl);
-    expect(panel.element?.classList.contains("full-width")).toBe(true);
-    expect(panel.element?.querySelector(".canvas-panel-header")).toBeNull();
+    const { panel } = await drawBoard(null, null, true, null);
+    expect(panel.element?.dataset.fullWidth).toBe("");
+    expect(panel.element?.querySelector('[part="panel-header"]')).toBeNull();
     expect(panel.element?.dataset.media).toBeUndefined();
-    expect(panel.viewport?.style.width).toBe("");
+    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("");
     expect(panel.mediaName).toBe("");
     expect(panel._width).toBeNull();
+  });
+
+  test("a full-width board at a declared width sizes the canvas but not the viewport", async () => {
+    // "Full width" means "as wide as the box you are in": the viewport fills it and the DOCUMENT
+    // Inside still renders at the declared width, which is what Edit's column is.
+    const { panel } = await drawBoard("base", null, true, 640);
+    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("");
+    expect(panel.element?.style.getPropertyValue("--panel-canvas-w")).toBe("640px");
   });
 
   /** Mount a panel the way a render does — into a pane's stage, which is what addresses it. */
@@ -201,14 +260,13 @@ describe("canvasPanelTemplate", () => {
     label: string,
     paneId: string = PRIMARY_PANE,
   ): Promise<CanvasPanel> {
-    const { tpl, panel } = canvasPanelTemplate(media, label, false, 768);
-    await renderInto(tpl);
+    const { panel } = await drawBoard(media, label);
     surfaceForPane(paneId).panels.push(panel);
     return panel;
   }
 
   function clickHeader(panel: CanvasPanel) {
-    const header = panel.element!.querySelector(".canvas-panel-header") as HTMLElement;
+    const header = panel.element!.querySelector('[part="panel-header"]') as HTMLElement;
     header.click();
   }
 
@@ -526,13 +584,13 @@ describe("resetZoom", () => {
 /** Build the edit-mode panel DOM applyEditZoom operates on, with stubbed layout metrics. */
 function makeEditPanel(columnWidth = 800) {
   const sc = document.createElement("div");
-  sc.className = "content-edit-canvas";
+  sc.setAttribute("part", "edit-canvas");
   const column = document.createElement("div");
-  column.className = "content-edit-column";
+  column.setAttribute("part", "edit-column");
   const viewport = document.createElement("div");
-  viewport.className = "canvas-panel-viewport";
+  viewport.setAttribute("part", "panel-viewport");
   const canvas = document.createElement("div");
-  canvas.className = "canvas-panel-canvas";
+  canvas.setAttribute("part", "panel-canvas");
   const iframe = document.createElement("iframe");
   canvas.append(iframe);
   viewport.append(canvas);
@@ -861,24 +919,26 @@ describe("revealScroller", () => {
 
 describe("updateActivePanelHeaders", () => {
   async function renderPanels() {
-    const base = canvasPanelTemplate("base", "Base (320px)", false, 320);
-    const md = canvasPanelTemplate("md", "Tablet (768px)", false, 768);
-    await renderInto(base.tpl);
-    await renderInto(md.tpl);
+    const base = canvasPanelEntry("base", "Base (320px)", false, 320);
+    const md = canvasPanelEntry("md", "Tablet (768px)", false, 768);
+    await drawBoards([base, md]);
     canvasPanels.push(base.panel as never, md.panel as never);
     return { base: base.panel, md: md.panel };
   }
+
+  /* `data-active`, not a class — and read as the ATTRIBUTE it now is. Which board is current is a
+     fact about the pane's session that changes without the stage being rebuilt, so it is written
+     from outside the document, exactly as the pan transform is. */
+  const active = (panel: { element?: Element | null }) =>
+    (panel.element?.querySelector('[part="panel-header"]') as HTMLElement | null)?.dataset
+      .active !== undefined;
 
   test("marks the base header active when activeMedia is null", async () => {
     resetWorkspaceWithTab();
     const { base, md } = await renderPanels();
     updateActivePanelHeaders();
-    expect(base.element?.querySelector(".canvas-panel-header")?.classList.contains("active")).toBe(
-      true,
-    );
-    expect(md.element?.querySelector(".canvas-panel-header")?.classList.contains("active")).toBe(
-      false,
-    );
+    expect(active(base)).toBe(true);
+    expect(active(md)).toBe(false);
   });
 
   test("marks the matching breakpoint header active", async () => {
@@ -886,18 +946,28 @@ describe("updateActivePanelHeaders", () => {
     tab.session.ui.activeMedia = "md";
     const { base, md } = await renderPanels();
     updateActivePanelHeaders();
-    expect(base.element?.querySelector(".canvas-panel-header")?.classList.contains("active")).toBe(
-      false,
-    );
-    expect(md.element?.querySelector(".canvas-panel-header")?.classList.contains("active")).toBe(
-      true,
-    );
+    expect(active(base)).toBe(false);
+    expect(active(md)).toBe(true);
+  });
+
+  test("clears the mark from a board that is no longer current", async () => {
+    /* The toggle has to go BOTH ways. A one-way mark leaves every board the breakpoint switcher
+       has ever visited looking current, which reads as several breakpoints being edited at once. */
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.activeMedia = "md";
+    const { base, md } = await renderPanels();
+    updateActivePanelHeaders();
+    expect(active(md)).toBe(true);
+    tab.session.ui.activeMedia = null;
+    updateActivePanelHeaders();
+    expect(active(md)).toBe(false);
+    expect(active(base)).toBe(true);
   });
 
   test("tolerates panels without headers or elements", async () => {
     resetWorkspaceWithTab();
-    const noLabel = canvasPanelTemplate(null, null, true);
-    await renderInto(noLabel.tpl);
+    const noLabel = canvasPanelEntry(null, null, true);
+    await drawBoards([noLabel]);
     canvasPanels.push(noLabel.panel as never, { element: null, mediaName: "md" } as never);
     expect(() => updateActivePanelHeaders()).not.toThrow();
   });
@@ -994,16 +1064,16 @@ describe("a lens shares the tab and none of its geometry", () => {
     const { a, side } = lensBeside("breakpoint", "md");
     // The tab the lens shares is on the base artboard. The lens is a lens of `md`.
     a.session.ui.activeMedia = null;
-    const base = canvasPanelTemplate("base", "Base (320px)", false, 320);
-    const md = canvasPanelTemplate("md", "Tablet (768px)", false, 768);
-    await renderInto(base.tpl);
-    await renderInto(md.tpl);
+    const base = canvasPanelEntry("base", "Base (320px)", false, 320);
+    const md = canvasPanelEntry("md", "Tablet (768px)", false, 768);
+    await drawBoards([base, md]);
     side.panels.push(base.panel as never, md.panel as never);
 
     updateActivePanelHeaders(side);
 
     const active = (panel: { element?: Element | null }) =>
-      panel.element?.querySelector(".canvas-panel-header")?.classList.contains("active");
+      (panel.element?.querySelector('[part="panel-header"]') as HTMLElement | null)?.dataset
+        .active !== undefined;
     expect(active(md.panel)).toBe(true);
     expect(active(base.panel)).toBe(false);
   });
@@ -1162,6 +1232,7 @@ describe("i18n.switchLocale", () => {
         renderPane: (paneId: string) => rendered.push(paneId),
         setCanvasMode: () => {},
         setOpenPopover: () => {},
+        setOpenDialog: () => {},
 
         setResolvingOpen: () => {},
       }),

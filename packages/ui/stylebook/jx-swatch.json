@@ -1,0 +1,249 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSwatch",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-swatch.json"
+    }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-swatch"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A colour chip that is a real button. Its name is the label rather than the colour, because a hex code read one character at a time is not a name. The chip's boundary and its tick are drawn in whichever of black or white can be seen on the colour, which the element works out from its own colour with no host involved."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Sizes"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "size": "sm",
+            "color": "#3b82f6",
+            "label": "Blue"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#3b82f6",
+            "label": "Blue"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "size": "lg",
+            "color": "#3b82f6",
+            "label": "Blue"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Ink against the colour"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Chosen swatches across the range"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#ffffff",
+            "label": "Paper",
+            "selected": true
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#f5d90a",
+            "label": "Lemon",
+            "selected": true
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#8b8b8b",
+            "label": "Slate",
+            "selected": true
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#1d4ed8",
+            "label": "Ink",
+            "selected": true
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#000000",
+            "label": "Black",
+            "selected": true
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "States"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#22c55e",
+            "label": "Green"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#22c55e",
+            "label": "Green, chosen",
+            "checked": "true"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#22c55e",
+            "label": "Green, one of a set",
+            "checked": "false"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#22c55e",
+            "label": "Green, not yours to choose",
+            "disabled": true
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "label": "No colour"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "rgb(59 130 246 / 35%)",
+            "label": "Blue, a third opaque"
+          }
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "var(--jx-accent-solid)",
+            "value": "accent",
+            "label": "Accent token"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "With a caption"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Slotted text sits beside the chip. The label still names the swatch, so the two must agree: aria-label wins over anything slotted, and a caption that said something else would be a name nobody can see."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Captioned"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#f97316",
+            "value": "brand.warm",
+            "label": "Warm"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Warm"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-swatch",
+          "$props": {
+            "color": "#0ea5e9",
+            "value": "brand.cool",
+            "label": "Cool",
+            "checked": "true"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Cool"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

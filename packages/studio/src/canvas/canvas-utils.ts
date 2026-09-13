@@ -4,12 +4,7 @@
  * template creation, centering, transform application, zoom indicator, and fit-to-screen.
  */
 
-import { html, nothing } from "lit-html";
 import type { CanvasPanel, JsonValue } from "../types";
-import { ref } from "lit-html/directives/ref.js";
-import { classMap } from "lit-html/directives/class-map.js";
-import { styleMap } from "lit-html/directives/style-map.js";
-import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import { renderOnly } from "../store";
 import {
@@ -26,6 +21,7 @@ import { panelMediaToActiveMedia, panelOfSurface } from "./canvas-helpers";
 import { rectOf } from "../utils/geometry";
 import { EDIT_WIDTH_MIN, clearEditWidth, setEditWidth } from "./edit-width";
 import { activeDocumentHasPopover, popoverPathFor } from "./popover-path";
+import { activeDocumentHasDialog, dialogPathFor } from "./dialog-path";
 import { getEffectiveLocales, getEffectiveMedia } from "../site-context";
 import type { JxPath } from "../state";
 import { dynamicRouteParams } from "../page-params";
@@ -40,7 +36,7 @@ import {
   stringArg,
   stringProperty,
 } from "../commands/command-args";
-import type { TemplateResult } from "lit-html";
+import type { CanvasStageHandle, CanvasStagePanelItem } from "../surfaces/canvas-stage";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
 import type { Tab } from "../tabs/tab";
@@ -111,21 +107,38 @@ function setZoomOf(surface: CanvasSurface, zoom: number): void {
 }
 
 /**
- * Create the DOM structure for a single canvas panel.
+ * One artboard: the record the geometry reads, and the item the stage document draws.
+ *
+ * The two used to be one thing — a `TemplateResult` whose `ref()` directives filled the record
+ * synchronously, which is why every call site could read `panel.canvas` on the next line. A
+ * document's mapped array reconciles on a microtask (deliberately: see `surfaces/canvas-stage.ts`),
+ * so the record is filled by {@link bindCanvasPanels} once that has settled instead.
+ */
+export interface CanvasPanelEntry {
+  /** The panel record: the pan/zoom geometry's handle on this board, and the iframe's. */
+  panel: CanvasPanel;
+  /** The same board as the stage document reads it — already formatted, all strings. */
+  item: CanvasStagePanelItem;
+}
+
+/**
+ * Describe a single artboard.
+ *
+ * The DOM fields start null and are wired by {@link bindCanvasPanels} after the stage has drawn;
+ * nothing may read them before that.
  *
  * @param {string | null} mediaName
  * @param {string | null} label
  * @param {boolean} fullWidth
  * @param {number | null} width
+ * @returns {CanvasPanelEntry}
  */
-export function canvasPanelTemplate(
+export function canvasPanelEntry(
   mediaName: string | null,
   label: string | null,
   fullWidth: boolean,
   width: number | null = null,
-): { tpl: TemplateResult; panel: CanvasPanel } {
-  // The DOM fields start null and are wired by the template's ref() directives,
-  // Which lit runs synchronously during render — before any consumer reads them.
+): CanvasPanelEntry {
   const panel = {
     _width: width || null,
     canvas: null,
@@ -136,60 +149,69 @@ export function canvasPanelTemplate(
     scrollContainer: null,
     viewport: null,
   } as unknown as CanvasPanel;
-  const tpl = html`
-    <div
-      class=${classMap({ "canvas-panel": true, "full-width": fullWidth })}
-      data-media=${ifDefined(mediaName !== null ? mediaName : undefined)}
-      ${ref((el) => {
-        if (el) {
-          panel.element = el as HTMLElement;
-        }
-      })}
-    >
-      ${
-        label
-          ? html`
-              <div
-                class="canvas-panel-header"
-                @click=${() => {
-                  // The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the
-                  // Parent-side twin of the iframe's `hit` message, resolved the same way.
-                  // `updateUi` writes to `activeTab`, which is the FOCUSED pane's tab, so clicking
-                  // A header in an unfocused pane set another document's breakpoint and the Style
-                  // Panel then edited a compound block the person never opened.
-                  const tab = tabOfMountedPanel(panel);
-                  if (tab) {
-                    tab.session.ui.activeMedia = panelMediaToActiveMedia(mediaName);
-                  }
-                }}
-              >
-                ${label}
-              </div>
-            `
-          : nothing
-      }
-      <div
-        class="canvas-panel-viewport"
-        style=${styleMap({ width: width && !fullWidth ? `${width}px` : "" })}
-        ${ref((el) => {
-          if (el) {
-            panel.viewport = el as HTMLElement;
-          }
-        })}
-      >
-        <div
-          class="canvas-panel-canvas"
-          style=${styleMap({ width: width ? `${width}px` : "" })}
-          ${ref((el) => {
-            if (el) {
-              panel.canvas = el as HTMLElement;
-            }
-          })}
-        ></div>
-      </div>
-    </div>
-  `;
-  return { panel, tpl };
+  /* The viewport takes the declared width, the canvas takes it too — but a FULL-WIDTH board's
+     viewport does not, because "full width" means "as wide as the box you are in". Carried as two
+     custom properties rather than as `width:` so `applyEditZoom`'s inline write on the canvas still
+     wins by construction, which is the one thing the lit shell needed a comment to guarantee. */
+  const declarations = [];
+  if (width && !fullWidth) {
+    declarations.push(`--panel-viewport-w:${width}px`);
+  }
+  if (width) {
+    declarations.push(`--panel-canvas-w:${width}px`);
+  }
+  return {
+    item: {
+      fullWidth,
+      header: label ? "shown" : "hidden",
+      key: mediaName ?? "",
+      label: label ?? "",
+      mediaAttr: mediaName,
+      widthVars: declarations.join(";"),
+    },
+    panel,
+  };
+}
+
+/**
+ * Fill each entry's record from the nodes the stage drew.
+ *
+ * Every render builds fresh records — they are cheap, and the alternative is a cache keyed on
+ * something that changes with the document — while the NODES survive a repaint, because a keyed row
+ * that is reused is never re-announced. So this reads the stage's own map rather than a callback
+ * that fires once per node's lifetime.
+ *
+ * @param {CanvasPanelEntry[]} entries
+ * @param {CanvasStageHandle} stage
+ */
+export function bindCanvasPanels(entries: CanvasPanelEntry[], stage: CanvasStageHandle): void {
+  for (const { item, panel } of entries) {
+    panel.element = stage.panelNode(item.key, "panel") as HTMLElement;
+    panel.viewport = stage.panelNode(item.key, "panel-viewport") as HTMLElement;
+    panel.canvas = stage.panelNode(item.key, "panel-canvas") as HTMLElement;
+  }
+}
+
+/**
+ * A breakpoint header was clicked: make that artboard's breakpoint this pane's.
+ *
+ * The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the parent-side twin
+ * of the iframe's `hit` message, resolved the same way. `updateUi` writes to `activeTab`, which is
+ * the FOCUSED pane's tab, so clicking a header in an unfocused pane set another document's
+ * breakpoint and the Style panel then edited a compound block the person never opened.
+ *
+ * @param {CanvasPanelEntry[]} entries
+ * @param {string} key
+ */
+export function activateCanvasPanel(entries: CanvasPanelEntry[], key: string): void {
+  const entry = entries.find((candidate) => candidate.item.key === key);
+  if (!entry) {
+    return;
+  }
+  const tab = tabOfMountedPanel(entry.panel);
+  if (tab) {
+    tab.session.ui.activeMedia = panelMediaToActiveMedia(entry.item.mediaAttr);
+  }
 }
 
 /*
@@ -311,7 +333,7 @@ export function applyEditZoom(surface: CanvasSurface = activeCanvasSurface()) {
     }
     panel.viewport.style.height = "";
   } else {
-    const column = surface.wrap.querySelector<HTMLElement>(".content-edit-column");
+    const column = surface.wrap.querySelector<HTMLElement>('[part="edit-column"]');
     if (!column) {
       return;
     }
@@ -892,6 +914,8 @@ export interface CanvasCommandDeps {
    * this one, so reaching for it directly would close a cycle.
    */
   setOpenPopover: (tab: Tab, path: JxPath | null) => void;
+  /** The dialog twin: `dialog-state.ts`'s single writer. */
+  setOpenDialog: (tab: Tab, path: JxPath | null) => void;
 }
 
 /** A document is open in a pane — every verb here writes that pane's own view state. */
@@ -1367,6 +1391,60 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       when: documentOpen,
     },
     {
+      /**
+       * Draw a `<dialog>` open on the canvas so it can be selected, edited and styled — the dialog
+       * twin of `canvas.setDialogOpen`, with the same one-record, setter-only shape and for the
+       * same reasons.
+       *
+       * ONE record covers open, close and switch. `open` defaults to true, and `open: false` with
+       * no path closes whatever is open — because a `toggle` cannot say which state it ends in,
+       * which `scripts/check-shot-contract.ts` rejects outright (`/\.toggle[A-Z]/`) and
+       * `services/automation.ts` throws on. A documentation screenshot of an open popover is only
+       * possible through an idempotent setter.
+       *
+       * A VIEW state: `undo: "none"`, because it writes `session.ui` and never the document.
+       */
+      args: argsSchema({
+        ...paneArg,
+        open: booleanProperty("True to draw the dialog open, false to close it."),
+        path: {
+          description:
+            "Document path of the dialog. Defaults to the dialog the selection is in or at.",
+          items: { type: ["string", "number"] },
+          type: "array",
+        },
+      }),
+      category: "View",
+      enablement: () => activeDocumentHasDialog(),
+      group: "3_canvas",
+      id: "canvas.setDialogOpen",
+      level: "document",
+      menus: ["palette"],
+      requires: "a dialog in the open document",
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setDialogOpen", args);
+        const raw = (args ?? {}) as { open?: unknown; path?: JxPath };
+        const open =
+          raw.open === undefined ? true : booleanArg("canvas.setDialogOpen", args, "open");
+        if (!open && raw.path === undefined) {
+          deps.setOpenDialog(tab, null);
+          return;
+        }
+        const path = dialogPathFor(tab, raw.path);
+        /* REFUSES a path that is not a dialog, for the same reason its twin refuses a non-popover:
+           the canvas would draw it under the wrong rule and with the wrong name. */
+        if (path === null) {
+          throw new RangeError(
+            'command "canvas.setDialogOpen" argument "path": names no dialog in this document — ' +
+              "a dialog is a <dialog> element, and a popover is not one",
+          );
+        }
+        deps.setOpenDialog(tab, open ? path : null);
+      },
+      title: "Show Dialog",
+      when: documentOpen,
+    },
+    {
       args: {
         additionalProperties: false,
         properties: {
@@ -1531,13 +1609,17 @@ export function registerCanvasViewCommands(
 export function updateActivePanelHeaders(surface: CanvasSurface = activeCanvasSurface()) {
   const activeMedia = activeMediaOfPane(surface.paneId);
   for (const p of surface.panels) {
-    const header = p.element?.querySelector(".canvas-panel-header");
+    const header = p.element?.querySelector('[part="panel-header"]');
     if (header) {
       const isActive =
         (activeMedia === null && p.mediaName === "base") ||
         (activeMedia === null && p.mediaName === null) ||
         activeMedia === p.mediaName;
-      header.classList.toggle("active", isActive);
+      /* An ATTRIBUTE the document does not bind, written from outside it. Which board is current is
+         a fact about the pane's session that changes without the stage being rebuilt — the same
+         reason the pan transform is written rather than bound — so a reconcile can never disagree
+         with this, because a reconcile has no opinion about it. */
+      header.toggleAttribute("data-active", isActive);
     }
   }
 }

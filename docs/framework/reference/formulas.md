@@ -149,9 +149,9 @@ A copy of an array with the falsy elements removed (Array.prototype.filter on tr
 
 The length of an array or string, or 0 when the value is missing.
 
-| Parameter | Type      | Description |
-| --------- | --------- | ----------- |
-| `values`  | unknown[] | string      | —   |
+| Parameter | Type                | Description |
+| --------- | ------------------- | ----------- |
+| `values`  | unknown[] \| string | —           |
 
 ```json
 {
@@ -220,9 +220,9 @@ The uppercase first letters of each whitespace-separated word, joined (e.g. "ada
 
 True when an array or string has no elements (length 0 — a missing value counts as empty).
 
-| Parameter | Type      | Description |
-| --------- | --------- | ----------- |
-| `value`   | unknown[] | string      | —   |
+| Parameter | Type                | Description |
+| --------- | ------------------- | ----------- |
+| `value`   | unknown[] \| string | —           |
 
 ```json
 {

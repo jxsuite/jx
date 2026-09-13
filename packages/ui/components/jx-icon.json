@@ -1,0 +1,81 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxIcon",
+  "tagName": "jx-icon",
+  "observedAttributes": ["name", "weight", "label", "mirror"],
+  "state": {
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The glyph to draw, by its Phosphor name. Every name the kit ships is in icons/list.json."
+    },
+    "weight": {
+      "type": "string",
+      "default": "regular",
+      "attribute": "weight",
+      "description": "regular, bold, or fill. fill is the active drawing of the same glyph; a weight the manifest lacks falls back to regular."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name. Empty hides the icon from assistive technology, which is right whenever visible text already names the control."
+    },
+    "mirror": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "mirror",
+      "description": "Flip horizontally: a directional glyph in a right-to-left layout, or its opposite."
+    },
+    "lookup": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/icons.ts",
+      "$export": "iconPath",
+      "parameters": ["name", "weight"],
+      "description": "Path data for a name and weight, from the committed manifest."
+    },
+    "path": "${state.lookup(state.name, state.weight)}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "flex": "none",
+    "width": "var(--jx-icon-size, 16px)",
+    "height": "var(--jx-icon-size, 16px)",
+    "verticalAlign": "middle",
+    "& > svg": {
+      "display": "block",
+      "width": "100%",
+      "height": "100%"
+    }
+  },
+  "children": [
+    {
+      "tagName": "svg",
+      "attributes": {
+        "part": "svg",
+        "viewBox": "0 0 256 256",
+        "fill": "currentColor",
+        "focusable": "false",
+        "role": "img",
+        "aria-label": "${state.label}",
+        "aria-hidden": "${state.label ? 'false' : 'true'}"
+      },
+      "style": {
+        "transform": "${state.mirror ? 'scale(-1, 1)' : 'none'}"
+      },
+      "children": [
+        {
+          "tagName": "path",
+          "attributes": {
+            "part": "path",
+            "d": "${state.path}"
+          }
+        }
+      ]
+    }
+  ]
+}

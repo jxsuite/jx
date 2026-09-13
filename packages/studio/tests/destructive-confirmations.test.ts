@@ -20,9 +20,8 @@
  * `packages/server/tests/refactor-find-refs.test.ts` and `refactor-parity.test.ts`.
  */
 
-import { resetStudioState, mountOverlayLayers } from "./harness";
+import { mountOverlayLayers, resetStudioState, topDialog } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { render } from "lit-html";
 import { registerPlatform } from "../src/platform";
 import { confirmFileDelete, renamePromptMessage } from "../src/files/file-ops";
 import { initLayers } from "../src/ui/layers";
@@ -62,8 +61,7 @@ function dialogText(): string {
 
 /** Click the dialog's confirm or cancel button, whichever is asked for. */
 function settle(kind: "confirm" | "cancel"): void {
-  const dialog = document.querySelector("sp-dialog-wrapper");
-  dialog?.dispatchEvent(new Event(kind));
+  topDialog()?.dispatchEvent(new Event(kind));
 }
 
 /** Let the usage query settle and the dialog mount (macrotask turns, as the harness does). */
@@ -75,11 +73,16 @@ async function tick(turns = 3): Promise<void> {
   }
 }
 
-/** Render a prompt message template into a detached node and read its text. */
-function textOf(template: unknown): string {
-  const host = document.createElement("div");
-  render(template as never, host);
-  return host.textContent ?? "";
+/**
+ * The sentence a prompt message carries.
+ *
+ * It used to be a `TemplateResult` this helper rendered into a detached node. The dialog is a
+ * document now, so `message` is a string the surface puts in its own `<p>` — the markup belongs to
+ * `surfaces/dialog.json` and the copy belongs here, which is the whole point of the seam. An absent
+ * message is the empty string, exactly as the "nothing to say" case means.
+ */
+function textOf(message: string | undefined): string {
+  return message ?? "";
 }
 
 beforeEach(() => {

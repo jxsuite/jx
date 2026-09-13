@@ -1,0 +1,147 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsPane",
+  "$description": "The Project Settings editor's two columns, drawn inside the pane: the section list and the section body. It draws no section — `panels/settings-pane.ts` keeps the registry, decides which section is current, and renders whichever one that is into the one empty `[part=\"body\"]` island this document leaves for it (studio-ui-guidelines.md §9.4), because a section renderer may be a lit template or a mounted document and neither can share a container with this one. The list is a real vertical `tablist` rather than the column of `<button aria-current=\"page\">` it replaces: a settings section is not a page and choosing one moves no location, so what the reader was owed was one tab stop, arrow keys down the column, and a body named by the entry that selected it.",
+  "tagName": "div",
+  "attributes": {
+    "part": "doc"
+  },
+  "style": {
+    "$description": "`.settings-doc`, `.settings-doc-nav`, `.settings-doc-content` (styles/panels.css) and `.settings-nav-item`, `.settings-nav-item:hover`, `.settings-nav-item.active`, `.settings-empty-state` (styles/overlays.css) — all seven go dead with this conversion and none is shared with a surface that is still lit. Four of them are DELETED rather than moved: the nav's own right rule and each row's hover fill, selected fill and weight are `jx-tabs[aria-orientation=\"vertical\"]` and `jx-tab` respectively, and the two Spectrum greys they reached for (`--spectrum-gray-200`, `--spectrum-gray-300`) resolved only inside an `<sp-theme>` this pane never had — so both rows had been taking their hard-coded fallback since the editor moved out of the modal.",
+    "display": "flex",
+    "height": "100%",
+    "minHeight": "0",
+    "background": "var(--bg)",
+    "color": "var(--fg)",
+    "fontFamily": "var(--jx-font-sans)",
+    "textAlign": "initial",
+    "& [part=\"nav\"]": {
+      "width": "180px",
+      "minWidth": "180px",
+      "flexShrink": "0",
+      "padding": "var(--jx-space-2) 0",
+      "overflowY": "auto",
+      "fontSize": "13px"
+    },
+    "& [part=\"nav-item\"]": {
+      "$description": "Full-bleed rows, which a tab is not by default: `jx-tab` centres its label and caps itself at 220px because a horizontal strip is a row of chips. In a 180px column the row IS the target, so the label goes to the leading edge and the cap comes off.",
+      "maxWidth": "none",
+      "justifyContent": "flex-start",
+      "padding": "var(--jx-space-2) var(--jx-space-4)"
+    },
+    "& [part=\"content\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflowY": "auto",
+      "padding": "24px"
+    },
+    "& [part=\"body\"]": {
+      "display": "block",
+      "minWidth": "0"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "What the body says when the active section is registered by nobody — every section unregistering at once, which is a project closing while the editor is open. A blank column beside a list reads as a broken pane, so it says which it is.",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minHeight": "120px",
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "13px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "part": "nav",
+        "selected": "${state.active}",
+        "orientation": "vertical"
+      },
+      "$props": {
+        "label": {
+          "$ref": "#/state/navLabel"
+        }
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/selectSection"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail"
+              }
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/sections"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "jx-tab",
+            "attributes": {
+              "part": "nav-item",
+              "id": "${$map.item.tabId}",
+              "data-section": "${$map.item.key}",
+              "value": "${$map.item.key}",
+              "label": "${$map.item.label}",
+              "panel": "settings-pane-panel"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tab-panel",
+      "attributes": {
+        "part": "content",
+        "id": "settings-pane-panel"
+      },
+      "$props": {
+        "active": true,
+        "labelledby": {
+          "$ref": "#/state/activeTabId"
+        }
+      },
+      "children": [
+        {
+          "$description": "The island, and it stays empty: a settings section renders itself, into a host this document never writes into and never reads back (studio-ui-guidelines.md §9.4).",
+          "tagName": "div",
+          "attributes": {
+            "part": "body"
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/hasSection"
+          },
+          "cases": {
+            "false": {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty"
+              },
+              "textContent": "${state.empty}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

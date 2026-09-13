@@ -45,6 +45,8 @@ import { setLayoutSelection, shell } from "../shell";
 import { formatEditableVerdicts } from "../format/constraints";
 import { formatByName } from "../format/format-host";
 import { collabState } from "../collab/collab-state";
+import { DIALOG_COMMANDS, isDialog, POPOVER_COMMANDS } from "@jxsuite/schema/dialogs";
+import { isPopover } from "@jxsuite/schema/overlays";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
 import type {
@@ -128,6 +130,8 @@ interface HostState {
    * the `render` message — a render replaces the DOM, so a re-mount would otherwise lose it.
    */
   popoverOpen: JxPath | null;
+  /** The dialog this host is drawing open, kept for the same reason. */
+  dialogOpen: JxPath | null;
   /**
    * Paths the frame resolved but could not measure, as serialized keys.
    *
@@ -960,7 +964,7 @@ export const INSERT_HIDE_DELAY = 300;
  * The parent-realm insertion handler: open the slash menu anchored at the "+" `btn` and, on select,
  * run `transactDoc → mutateInsertNode` for the captured `zone`. Injected from studio.ts (which owns
  * the slash-menu / transact / defaultDef wiring) so this host module — and its tests — stay free of
- * the lit/Spectrum slash-menu and the mutation pipeline, mirroring the native-drag handler.
+ * the slash-menu and the mutation pipeline, mirroring the native-drag handler.
  */
 let insertZoneClickHandler: ((btn: HTMLElement, zone: InsertZone) => void) | null = null;
 
@@ -1078,8 +1082,8 @@ export interface CanvasSlashRequest {
 
 /**
  * The parent-realm slash-menu surface the canvas iframe drives (show at a rect, navigate by key,
- * dismiss). Injected from studio.ts (which owns the lit/Spectrum menu) so this host module — and
- * its tests — stay free of it, mirroring {@link insertZoneClickHandler}.
+ * dismiss). Injected from studio.ts (which owns the menu) so this host module — and its tests —
+ * stay free of it, mirroring {@link insertZoneClickHandler}.
  */
 export interface CanvasSlashHandler {
   show: (req: CanvasSlashRequest) => void;
@@ -1232,6 +1236,23 @@ export function postPopoverOpen(tab: { id: string }, path: JxPath | null): void 
     if (host.ready && host.tabId === tab.id && !host.preview) {
       host.popoverOpen = path;
       host.channel.post({ kind: "setPopoverOpen", path });
+    }
+  }
+}
+
+/**
+ * The dialog twin of {@link postPopoverOpen}: tell every editable frame showing `tab` which dialog
+ * to draw open.
+ */
+export function postDialogOpen(tab: { id: string }, path: JxPath | null): void {
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready && host.tabId === tab.id && !host.preview) {
+      host.dialogOpen = path;
+      host.channel.post({ kind: "setDialogOpen", path });
     }
   }
 }
@@ -1806,6 +1827,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     contentHeight: null,
     hiddenPaths: new Set<string>(),
     popoverOpen: null,
+    dialogOpen: null,
     editing: false,
     editingProp: null,
     iframe,
@@ -1996,14 +2018,63 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       if (!tab || state.preview) {
         return;
       }
-      const open =
-        msg.action === "show" ||
-        (msg.action === "toggle" &&
-          JSON.stringify(tab.session.ui.openPopover) !== JSON.stringify(msg.targetPath));
-      void activeRegistry()?.run("canvas.setPopoverOpen", {
-        open,
-        path: msg.targetPath,
-      });
+      const targeted =
+        JSON.stringify(tab.session.ui.openPopover) === JSON.stringify(msg.targetPath);
+      const open = msg.action === "show" || (msg.action === "toggle" && !targeted);
+      /* A `hide` closes ITS OWN target and no other: `hidePopover()` on a popover that is not
+         showing does nothing, so an invoker for A must leave B alone. `show` and `toggle` still
+         always run — a toggle either opens the one it names or closes the one it names. */
+      if (open || targeted) {
+        void activeRegistry()?.run("canvas.setPopoverOpen", {
+          open,
+          path: msg.targetPath,
+        });
+      }
+      return;
+    }
+    case "commandTargetClick": {
+      /* An invoker's click, answered the way `popoverTargetClick` is: through the record, with a
+         toggle resolved HERE against the model. A popover command lands on the popover verb, a
+         dialog command on the dialog verb; `hide-popover`, `close` and `request-close` close only
+         the overlay they name when it is the open one, and a custom command is the document's own
+         business. */
+      const tab = hostTab(state);
+      if (!tab || state.preview) {
+        return;
+      }
+      const targeted = (open: JxPath | null) =>
+        JSON.stringify(open) === JSON.stringify(msg.targetPath);
+      /* The command's FAMILY is not the target's KIND, and the dispatch needs both. A
+         `show-popover` aimed at a `<dialog>`, or a `show-modal` at a popover, is an authoring
+         mistake Problems already reports as `command-target-mismatch`, and the platform's answer to
+         it is to ignore the click (spec.md §8.7) — so the canvas ignores it too. Routing on the
+         family alone handed the popover verb a dialog's path, and the record REFUSES one: the
+         `RangeError` came straight back out of this message listener, taking every handler queued
+         behind that message with it. The null check is the same guard for a `targetPath` an edit
+         has since invalidated, which threw for the same reason. */
+      const target = getNodeAtPath(tab.doc.document, msg.targetPath);
+      if (!target || typeof target !== "object") {
+        return;
+      }
+      if (POPOVER_COMMANDS.has(msg.command)) {
+        if (!isPopover(target)) {
+          return;
+        }
+        const open =
+          msg.command === "show-popover" ||
+          (msg.command === "toggle-popover" && !targeted(tab.session.ui.openPopover));
+        if (open || targeted(tab.session.ui.openPopover)) {
+          void activeRegistry()?.run("canvas.setPopoverOpen", { open, path: msg.targetPath });
+        }
+      } else if (DIALOG_COMMANDS.has(msg.command)) {
+        if (!isDialog(target)) {
+          return;
+        }
+        const open = msg.command === "show-modal";
+        if (open || targeted(tab.session.ui.openDialog)) {
+          void activeRegistry()?.run("canvas.setDialogOpen", { open, path: msg.targetPath });
+        }
+      }
       return;
     }
     case "hit": {
@@ -2996,8 +3067,10 @@ export async function mountIframeCanvas(
     // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
     // The author opened before this pass would close under them without it.
     popoverOpen: viewTab?.session.ui.openPopover ?? null,
+    dialogOpen: viewTab?.session.ui.openDialog ?? null,
   };
   state.popoverOpen = message.popoverOpen ?? null;
+  state.dialogOpen = message.dialogOpen ?? null;
   // Preview is the fidelity view: no editing messages are honoured from it, no overlay is painted
   // Over it, and the frame stays viewport-sized so it scrolls for real. A mode switch to preview
   // Mid-split must likewise not start an edit session in the preview render. The flag and the frame
@@ -3152,6 +3225,35 @@ export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement 
       host.channel.post({ dir, kind: "setLocale", locale });
     }
   }
+}
+
+/**
+ * Replace an element's definition in every live frame (embedding.md §7's canvas half).
+ *
+ * Unscoped on purpose, where the locale and colour-scheme posts take a stage: a definition is a
+ * fact about the REALM, not about a pane, and a frame that kept the old one would draw a different
+ * element from the one beside it. Instances already on a canvas keep the definition they rendered
+ * until their host renders again, which is why {@link redefineElementOnCanvases} follows this with a
+ * render of every pane rather than trusting the message alone.
+ *
+ * The document crosses `postMessage`, so it is cloned to plain data first: a definition that came
+ * off a tab's reactive record is a proxy, and a proxy cannot be structured-cloned.
+ */
+export function postRedefineElementToLiveHosts(doc: JxMutableNode, base: string): number {
+  // oxlint-disable-next-line unicorn/prefer-structured-clone
+  const plain = JSON.parse(JSON.stringify(doc)) as JxMutableNode;
+  let posted = 0;
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready) {
+      host.channel.post({ base, doc: plain, kind: "redefineElement" });
+      posted += 1;
+    }
+  }
+  return posted;
 }
 
 /**

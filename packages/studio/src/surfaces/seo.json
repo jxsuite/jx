@@ -1,0 +1,932 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSeo",
+  "$description": "Search appearance: two rendered previews of the merged site → layout → page `$head`, the resolved fields with their counters and provenance chips, the named warnings, and the page and Open Graph meta rows that change them. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop — which is what retired the fixed card, its `z-index: 1000` and the hand-drawn close button the old `.seo-modal` needed to be a modal at all. There is deliberately no score anywhere in this document: a number out of a hundred aggregates unrelated facts into a verdict, and a verdict is what gets optimised (studio-ui-guidelines.md §9.2, §14). Nothing here knows what a donor is, which head layer supplied a value or when a field is over budget — `panels/seo-modal.ts` resolves all of that and hands over strings, flags and one discriminant per branch.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Search appearance",
+    "confirmLabel": "",
+    "cancelLabel": "Close",
+    "dismissible": true,
+    "size": "lg"
+  },
+  "attributes": {
+    "part": "seo"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "Thirty-one rules become the parts below — the seven `.seo-modal*` in `styles/overlays.css` and the twenty-four `.seo-*` in `styles/panels.css` — and three of them do not travel. `.seo-modal` was a fixed card with its own width, backdrop shadow, radius, border and `z-index: 1000`, and a modal `<dialog>` is every one of those; `.seo-modal-body` was a scroll box `jx-dialog` already provides; and `.seo-modal-body .seo-previews` existed only to cancel the padding that box added. The header the surface drew by hand goes with them, but its two rules stay in the stylesheet rather than moving here: `.settings-modal-header` and `.settings-modal-title` have another writer in `panels/data-grid.ts`, and what draws the heading now is the kit's `[part=\"headline\"]`. Every `--spectrum-font-size-*` reference is gone, and that is a repair rather than a rename: those names resolve only inside `<sp-theme>`, and a document mounted in the dialog layer is outside it, so all fourteen would silently have taken their hard-coded fallback. The one size left in pixels is the search-result title, which is above the chrome scale on purpose — it is a picture of what a search engine prints, not a label in this application.",
+    "& [part=\"doc\"]": {
+      "$description": "WHICH document this is about. A modal covers the tab strip, so it has to say so itself, and every field below resolves through this document's layout and site head. `direction: rtl` truncates a long path from the LEFT, because the file name is the half that identifies it.",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "direction": "rtl",
+      "textAlign": "left",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"previews\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3) 0"
+    },
+    "& [part=\"card\"]": {
+      "$description": "The two cards want different floors before they wrap: the result row is text and reads badly narrow, the social card is a fixed-height image with two lines under it. Below ~700px they wrap and the dialog is a tall column.",
+      "flex": "1 1 220px",
+      "minWidth": "0",
+      "margin": "0",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg)"
+    },
+    "& [part=\"card\"][data-card=\"serp\"]": {
+      "flexBasis": "260px"
+    },
+    "& [part=\"card\"][data-card=\"social\"]": {
+      "flexBasis": "200px"
+    },
+    "& [part=\"card-label\"]": {
+      "display": "block",
+      "paddingBottom": "var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"serp-url\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"serp-title\"]": {
+      "$description": "The largest thing in the card, and the one size here that is not on the chrome's scale: a search result's headline is drawn at the proportions a search engine draws it, because the card is a picture rather than a form. Clamped to two lines rather than truncated at a character count — where a given engine cuts is its business, and the counter beside the field is what states the budget.",
+      "overflow": "hidden",
+      "display": "-webkit-box",
+      "-webkit-box-orient": "vertical",
+      "-webkit-line-clamp": "2",
+      "lineClamp": "2",
+      "padding": "var(--jx-space-1) 0",
+      "fontSize": "16px",
+      "color": "var(--accent)"
+    },
+    "& [part=\"serp-desc\"]": {
+      "overflow": "hidden",
+      "display": "-webkit-box",
+      "-webkit-box-orient": "vertical",
+      "-webkit-line-clamp": "2",
+      "lineClamp": "2",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"social-media\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "height": "96px",
+      "overflow": "hidden",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"social-image\"]": {
+      "width": "100%",
+      "height": "100%",
+      "objectFit": "cover"
+    },
+    "& [part=\"social-text\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "1px",
+      "paddingTop": "var(--jx-space-3)"
+    },
+    "& [part=\"social-domain\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.04em",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"social-title\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "700",
+      "color": "var(--fg)"
+    },
+    "& [part=\"social-desc\"]": {
+      "overflow": "hidden",
+      "display": "-webkit-box",
+      "-webkit-box-orient": "vertical",
+      "-webkit-line-clamp": "2",
+      "lineClamp": "2",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"unset\"]": {
+      "$description": "Absence, said once and in one colour, wherever a preview has nothing to draw.",
+      "fontStyle": "italic",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"fields\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "margin": "0",
+      "padding": "0 0 var(--jx-space-3)",
+      "listStyle": "none"
+    },
+    "& [part=\"field\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-3)",
+      "minWidth": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"field-label\"]": {
+      "flex": "0 0 96px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"field-value\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "color": "var(--fg)"
+    },
+    "& [part=\"count\"]": {
+      "$description": "The counter is a reference line, not a verdict — over budget is stated, never scored, and `data-over` is the whole of what the `.seo-field-count--over` modifier used to say.",
+      "flex": "0 0 auto",
+      "fontFamily": "var(--font-mono)",
+      "fontVariantNumeric": "tabular-nums",
+      "color": "var(--fg-dim)",
+      "&[data-over]": {
+        "color": "var(--warning)"
+      }
+    },
+    "& [part=\"chip\"]": {
+      "$description": "The provenance vocabulary of `panels/provenance.ts` §6.2, drawn by this document rather than borrowed as a class: `set` keeps the accent dot it has always been, `inherited` is an amber pill naming its donor, and a field nothing supplies gets no chip at all — because a ghost dot on every unset row says less than silence. The two chips that can go somewhere are `<button>`s; the ones with nowhere to go are not, which is §6.2's rule that a control which looks pressable and does nothing is a defect.",
+      "flexShrink": "0"
+    },
+    "& jx-dot[part=\"chip\"][data-state=\"set\"]": {
+      "background": "var(--accent)"
+    },
+    "& [part=\"chip\"][data-state=\"inherited\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "maxWidth": "14ch",
+      "overflow": "hidden",
+      "padding": "0 5px",
+      "border": "1px solid currentcolor",
+      "borderRadius": "var(--radius)",
+      "background": "transparent",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "14px",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis",
+      "cursor": "default",
+      "color": "var(--warning)"
+    },
+    "& button[part=\"chip\"]": {
+      "cursor": "pointer",
+      "&:hover, &:focus-visible": {
+        "background": "var(--hover-bg)"
+      }
+    },
+    "& [part=\"warnings\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "margin": "0",
+      "padding": "0 0 var(--jx-space-3)",
+      "listStyle": "none"
+    },
+    "& [part=\"warning\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-3)",
+      "minWidth": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"warning-field\"]": {
+      "flex": "0 0 auto",
+      "fontFamily": "var(--font-mono)",
+      "color": "var(--warning)"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "A fully-described page says so rather than printing an empty list. It borrowed `.doc-header-empty` from the card this block used to live in; the card still writes that class, so the rule stays where it is and this surface stops reaching across for it.",
+      "margin": "0",
+      "padding": "0 0 var(--jx-space-3)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"group\"]": {
+      "$description": "GROUPED, because the two sets collide by name: Open Graph has its own Title, Description and Image, and eight unlabelled rows in one column made \"Description\" mean two things. Each group is headed by the preview card it feeds, so a row and the picture it changes are nameable together.",
+      "marginTop": "var(--jx-space-4)",
+      "paddingTop": "var(--jx-space-3)",
+      "borderTop": "1px solid var(--border)"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0 0 var(--jx-space-1)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.06em",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"group-note\"]": {
+      "margin": "0 0 var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"row\"]": {
+      "padding": "var(--jx-space-2) 0"
+    },
+    "& [part=\"row-body\"]": {
+      "$description": "Every row wraps its control in one box, media row or not, so the thumbnail and the two media buttons have somewhere to sit and a text row is laid out by the same rule. It is also what keeps `jx-field` from naming the control: the row names a `div`, which observes no naming, and each `jx-textfield` carries the label as its own accessible name instead.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"entry\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"thumb\"]": {
+      "flex": "none",
+      "width": "24px",
+      "height": "24px",
+      "objectFit": "cover",
+      "borderRadius": "var(--jx-radius-xs)",
+      "border": "1px solid var(--border)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "doc",
+        "title": "${state.documentLabel}"
+      },
+      "textContent": "${state.documentLabel}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "previews"
+      },
+      "children": [
+        {
+          "tagName": "figure",
+          "attributes": {
+            "part": "card",
+            "data-card": "serp",
+            "aria-label": "Search result preview"
+          },
+          "children": [
+            {
+              "tagName": "figcaption",
+              "attributes": {
+                "part": "card-label"
+              },
+              "textContent": "Search result"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "serp-url"
+              },
+              "textContent": "${state.serpCrumb}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "serp-title"
+              },
+              "textContent": "${state.serpTitle}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "serp-desc"
+              },
+              "$switch": {
+                "$ref": "#/state/serpDescState"
+              },
+              "cases": {
+                "text": {
+                  "tagName": "span",
+                  "textContent": "${state.serpDesc}"
+                },
+                "unset": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "unset"
+                  },
+                  "textContent": "${state.serpDescUnset}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "figure",
+          "attributes": {
+            "part": "card",
+            "data-card": "social",
+            "aria-label": "Social card preview"
+          },
+          "children": [
+            {
+              "tagName": "figcaption",
+              "attributes": {
+                "part": "card-label"
+              },
+              "textContent": "Social card"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "social-media"
+              },
+              "$switch": {
+                "$ref": "#/state/socialImageState"
+              },
+              "cases": {
+                "image": {
+                  "tagName": "img",
+                  "attributes": {
+                    "part": "social-image",
+                    "src": "${state.socialImage}",
+                    "alt": ""
+                  }
+                },
+                "unset": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "unset"
+                  },
+                  "textContent": "No image"
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "social-text"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "social-domain"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/socialDomainState"
+                  },
+                  "cases": {
+                    "text": {
+                      "tagName": "span",
+                      "textContent": "${state.socialDomain}"
+                    },
+                    "unset": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "unset"
+                      },
+                      "textContent": "No site URL"
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "social-title"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/socialTitleState"
+                  },
+                  "cases": {
+                    "text": {
+                      "tagName": "span",
+                      "textContent": "${state.socialTitle}"
+                    },
+                    "unset": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "unset"
+                      },
+                      "textContent": "${state.socialTitleUnset}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "social-desc"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/socialDescState"
+                  },
+                  "cases": {
+                    "text": {
+                      "tagName": "span",
+                      "textContent": "${state.socialDesc}"
+                    },
+                    "unset": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "unset"
+                      },
+                      "textContent": "${state.socialDescUnset}"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "ul",
+      "attributes": {
+        "part": "fields",
+        "aria-label": "Resolved head fields"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/fields"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "li",
+            "attributes": {
+              "part": "field",
+              "data-seo-field": "${$map.item.key}"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "field-label"
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "field-value",
+                  "title": "${$map.item.value}"
+                },
+                "$switch": {
+                  "$ref": "$map/item/valueState"
+                },
+                "cases": {
+                  "text": {
+                    "tagName": "span",
+                    "textContent": "${$map.item.value}"
+                  },
+                  "unset": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "unset"
+                    },
+                    "textContent": "${$map.item.unsetLabel}"
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "count-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/counted"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "count",
+                      "data-over": "${$map.item.over ? '' : null}"
+                    },
+                    "textContent": "${$map.item.count}"
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "chip-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/chipKind"
+                },
+                "cases": {
+                  "dot": {
+                    "tagName": "jx-dot",
+                    "attributes": {
+                      "part": "chip",
+                      "data-state": "set",
+                      "title": "${$map.item.chipTitle}"
+                    }
+                  },
+                  "static": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "chip",
+                      "data-state": "inherited",
+                      "title": "${$map.item.chipTitle}"
+                    },
+                    "textContent": "${$map.item.chipText}"
+                  },
+                  "link": {
+                    "tagName": "button",
+                    "attributes": {
+                      "part": "chip",
+                      "data-state": "inherited",
+                      "type": "button",
+                      "title": "${$map.item.chipTitle}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/openDonor"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "textContent": "${$map.item.chipText}"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "warnings-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/warningsState"
+      },
+      "cases": {
+        "none": {
+          "tagName": "p",
+          "attributes": {
+            "part": "empty"
+          },
+          "textContent": "Nothing to flag — every previewed field resolves to a value."
+        },
+        "list": {
+          "tagName": "ul",
+          "attributes": {
+            "part": "warnings",
+            "aria-label": "Search appearance warnings"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/warnings"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "li",
+                "attributes": {
+                  "part": "warning",
+                  "data-seo-warning": "${$map.item.id}"
+                },
+                "children": [
+                  {
+                    "tagName": "code",
+                    "attributes": {
+                      "part": "warning-field"
+                    },
+                    "textContent": "${$map.item.field}"
+                  },
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.message}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "$prototype": "Array",
+      "$description": "The form, split by the preview card each half feeds. GROUPED, because the two sets collide by name: Open Graph has its own Title, Description and Image, and eight unlabelled rows in one column made \"Description\" mean two things. The groups are a projection like everything else here, so the two headings and the one note are data rather than a second copy of the row template — the row below is written once and both groups render it.",
+      "items": {
+        "$ref": "#/state/groups"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "group",
+          "data-group": "${$map.item.key}"
+        },
+        "children": [
+          {
+            "tagName": "h3",
+            "attributes": {
+              "part": "group-title"
+            },
+            "textContent": "${$map.item.title}"
+          },
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "note-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$description": "No fallback is promised in the Social card's note, because the build emits none: the warning list above says an unset og:title means \"a shared link carries no headline of its own\", and a note claiming otherwise would contradict the app two inches higher.",
+            "$switch": {
+              "$ref": "$map/item/hasNote"
+            },
+            "cases": {
+              "true": {
+                "tagName": "p",
+                "attributes": {
+                  "part": "group-note"
+                },
+                "textContent": "${$map.item.note}"
+              }
+            }
+          },
+          {
+            "$prototype": "Array",
+            "items": {
+              "$ref": "$map/item/rows"
+            },
+            "key": {
+              "$ref": "$map/item/key"
+            },
+            "map": {
+              "$description": "One editable head field, whatever kind it is. The label, the naming of the control and the announced refusal are the kit's; the clear affordance is `jx-textfield`'s own `clearable`, which is what the row's set dot used to be — a control that empties the field, drawn only while there is something to empty. Committing an empty value is what removes the `$head` entry, so clearing and typing nothing are one path rather than two.",
+              "tagName": "jx-field",
+              "attributes": {
+                "part": "row",
+                "data-prop": "${$map.item.key}"
+              },
+              "$props": {
+                "label": {
+                  "$ref": "$map/item/label"
+                },
+                "span": true
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "row-body"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "thumb-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/hasThumb"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "img",
+                          "attributes": {
+                            "part": "thumb",
+                            "src": "${$map.item.thumb}",
+                            "alt": ""
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "entry"
+                      },
+                      "$props": {
+                        "label": {
+                          "$ref": "$map/item/label"
+                        },
+                        "value": {
+                          "$ref": "$map/item/value"
+                        },
+                        "placeholder": {
+                          "$ref": "$map/item/placeholder"
+                        },
+                        "multiline": {
+                          "$ref": "$map/item/multiline"
+                        },
+                        "clearable": true,
+                        "size": "sm"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/edit"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/key"
+                              },
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/commit"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/key"
+                              },
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "media-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/isMedia"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "media-actions",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "upload"
+                              },
+                              "$props": {
+                                "icon": "upload-simple",
+                                "label": "Upload media",
+                                "size": "sm"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/upload"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "browse"
+                              },
+                              "$description": "Browse opens a kit menu of the project's media, and it has to be a kit one: a modal `<dialog>` is in the top layer, so an overlay drawn into a layer div — which is what `ui/media-picker.ts`'s Spectrum popover is — paints underneath the dialog that opened it and is inert besides. `specs/ui.md` §7 is the rule this follows.",
+                              "$props": {
+                                "icon": "image",
+                                "label": "Browse media",
+                                "size": "sm",
+                                "haspopup": "menu"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/browse"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      {
+                                        "$ref": "event#/currentTarget"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

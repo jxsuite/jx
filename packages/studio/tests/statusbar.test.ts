@@ -6,7 +6,6 @@
  * have.
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
-import { nothing, render as litRender } from "lit-html";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { initShellRefs, setProjectState, statusbarEl } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
@@ -18,7 +17,7 @@ import {
   renderStatusbar,
   unmountStatusbar,
   viewLabel,
-} from "../src/panels/statusbar";
+} from "../src/surfaces/statusbar";
 import { resetProjectShell, shell } from "../src/shell";
 import { readFileSync } from "node:fs";
 import { setActiveRegistry } from "../src/commands/active-registry";
@@ -82,20 +81,29 @@ beforeEach(() => {
   forgetSavedTimes();
   ran.length = 0;
   ctx = makeContext();
-  // Cleared THROUGH lit: assigning innerHTML behind its back strands the part markers and the
-  // Next render walks a detached tree.
-  litRender(nothing, statusbarEl);
   setActiveRegistry(buildRegistry());
 });
 
-afterEach(() => {
+afterEach(async () => {
   unmountStatusbar();
   setActiveRegistry(null);
   resetNotifications();
   unpinClock();
+  await flush();
 });
 
-const items = () => [...statusbarEl.querySelectorAll(".sb-item")].map((e) => e.textContent?.trim());
+/** Recompute the projection and let the surface follow: mount, reconcile, connect. */
+async function render(): Promise<void> {
+  renderStatusbar();
+  await flush();
+  await flush();
+}
+
+/** Every item the bar shows — buttons and readouts — in order. */
+const items = () =>
+  [...statusbarEl.querySelectorAll('[part="item"], [part="state"]')].map((e) =>
+    e.textContent?.trim(),
+  );
 const field = (name: string) => statusbarEl.querySelector(`[data-jx-region="statusbar/${name}"]`);
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -137,14 +145,14 @@ describe("viewLabel", () => {
 // ─── ⑫a PROJECT ──────────────────────────────────────────────────────────────
 
 describe("the PROJECT field", () => {
-  test("with no project it offers the one command that fixes that", () => {
-    renderStatusbar();
+  test("with no project it offers the one command that fixes that", async () => {
+    await render();
     expect(field("project")?.textContent?.trim()).toBe("No project");
   });
 
-  test("names the project, and the name is Open Recent…", () => {
+  test("names the project, and the name is Open Recent…", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
-    renderStatusbar();
+    await render();
     const button = field("project")?.querySelector("button") as HTMLButtonElement;
     expect(button.textContent?.trim()).toBe("My Site");
     expect(button.title).toContain("Open Recent…");
@@ -152,12 +160,12 @@ describe("the PROJECT field", () => {
     expect(ran).toEqual([{ args: {}, id: "project.openRecent" }]);
   });
 
-  test("the branch item appears only for a repo, and carries ahead/behind", () => {
+  test("the branch item appears only for a repo, and carries ahead/behind", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
-    renderStatusbar();
+    await render();
     expect(items()).not.toContain("⑂ main");
     shell.git.status = { ahead: 1, behind: 2, branch: "main", files: [], isRepo: true } as never;
-    renderStatusbar();
+    await render();
     expect(items()).toContain("⑂ main ↑1 ↓2");
   });
 
@@ -173,10 +181,10 @@ describe("the PROJECT field", () => {
    * item names `git.init`, and it is there at all. Deleting the checklist's repo step takes the
    * state off the bar and fails here; adding a second one fails here too.
    */
-  test("an untracked project is stated ONCE, by the item whose command initializes the repo", () => {
+  test("an untracked project is stated ONCE, by the item whose command initializes the repo", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     shell.git.status = { ahead: 0, behind: 0, files: [], isRepo: false, remotes: [] } as never;
-    renderStatusbar();
+    await render();
     // No branch to name, so the branch item is absent — and the state is said anyway.
     expect(items().some((t) => t?.startsWith("⑂"))).toBe(false);
     expect(items()).toContain("Track this project with git");
@@ -188,7 +196,7 @@ describe("the PROJECT field", () => {
     expect(ran.filter((r) => r.id === "git.init")).toHaveLength(1);
   });
 
-  test("once tracked, the field stops offering to track it and names the branch instead", () => {
+  test("once tracked, the field stops offering to track it and names the branch instead", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     shell.git.status = {
       ahead: 0,
@@ -198,18 +206,18 @@ describe("the PROJECT field", () => {
       isRepo: true,
       remotes: [],
     } as never;
-    renderStatusbar();
+    await render();
     expect(items()).toContain("⑂ main");
     expect(items()).not.toContain("Track this project with git");
   });
 
-  test("the problems item counts `notify`'s Problems store, and appears only when non-zero", () => {
+  test("the problems item counts `notify`'s Problems store, and appears only when non-zero", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
-    renderStatusbar();
+    await render();
     expect(items().some((t) => t?.startsWith("⚠"))).toBe(false);
     notify.error("Could not save.");
     notify.warn("Slots", { tier: "problem" });
-    renderStatusbar();
+    await render();
     expect(items()).toContain("⚠ 2");
     // By LABEL, not by index: the field's item count moves with the deploy checklist and the peer
     // Count, and a positional lookup here would silently start clicking whichever item grew in
@@ -223,21 +231,21 @@ describe("the PROJECT field", () => {
     expect(ran.at(-1)!.args).toEqual({ tab: "problems" });
   });
 
-  test("the peers item counts them, and opens what is happening in this document", () => {
+  test("the peers item counts them, and opens what is happening in this document", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab();
     collabState(tab).peers = [{ color: "#f00", name: "Ada" }] as never;
-    renderStatusbar();
+    await render();
     expect(items()).toContain("1 peer");
     const buttons = [...field("project")!.querySelectorAll("button")];
     (buttons.at(-1) as HTMLElement).click();
     expect(ran.at(-1)!.id).toBe("collab.showStatus");
   });
 
-  test("it stays silent with nobody there", () => {
+  test("it stays silent with nobody there", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
-    renderStatusbar();
+    await render();
     expect(items().some((t) => t?.includes("peer"))).toBe(false);
   });
 
@@ -254,7 +262,7 @@ describe("the PROJECT field", () => {
   test("every command the bar names is one the real app declares", async () => {
     const { appCommandSet } = await import("../src/commands/app-commands");
     const declared = new Set(appCommandSet().map((c) => c.id));
-    const source = readFileSync(new URL("../src/panels/statusbar.ts", import.meta.url), "utf8");
+    const source = readFileSync(new URL("../src/surfaces/statusbar.ts", import.meta.url), "utf8");
     const named = [...source.matchAll(/command:\s*"([\w.]+)"/g)].map((m) => m[1] as string);
     expect(named.length).toBeGreaterThan(3);
     expect(named.filter((id) => !declared.has(id))).toEqual([]);
@@ -264,34 +272,34 @@ describe("the PROJECT field", () => {
 // ─── ⑫b DOCUMENT ─────────────────────────────────────────────────────────────
 
 describe("the DOCUMENT field", () => {
-  test("does not exist with no document open", () => {
-    renderStatusbar();
+  test("does not exist with no document open", async () => {
+    await render();
     expect(field("document")).toBeNull();
   });
 
-  test("names the path, and the path is Go to File…", () => {
+  test("names the path, and the path is Go to File…", async () => {
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/pages/index.json" });
-    renderStatusbar();
+    await render();
     const button = field("document")?.querySelector("button") as HTMLButtonElement;
     expect(button.textContent?.trim()).toBe("pages/index.json");
     button.click();
     expect(ran.at(-1)!.id).toBe("palette.openFiles");
   });
 
-  test("reports the EFFECTIVE view, so it cannot disagree with the Command Bar again", () => {
+  test("reports the EFFECTIVE view, so it cannot disagree with the Command Bar again", async () => {
     resetWorkspaceWithTab();
     ctx = makeContext({ canvas: { view: "preview" }, editor: { kind: "canvas" } });
-    renderStatusbar();
+    await render();
     expect(items()).toContain("Preview");
     // The old bar printed "Content Mode" off `tab.doc.mode` while the toolbar printed "Design".
     expect(items()).not.toContain("Content Mode");
   });
 
-  test("the save state is worded, and while dirty it IS the save command", () => {
+  test("the save state is worded, and while dirty it IS the save command", async () => {
     const tab = resetWorkspaceWithTab();
     tab.doc.dirty = true;
-    renderStatusbar();
+    await render();
     expect(items()).toContain("Unsaved changes");
     const save = [...statusbarEl.querySelectorAll("button")].find(
       (b) => b.textContent?.trim() === "Unsaved changes",
@@ -300,38 +308,38 @@ describe("the DOCUMENT field", () => {
     expect(ran.at(-1)!.id).toBe("file.save");
   });
 
-  test("a clean document with no recorded write says only Saved", () => {
+  test("a clean document with no recorded write says only Saved", async () => {
     resetWorkspaceWithTab();
-    renderStatusbar();
+    await render();
     expect(items()).toContain("Saved");
   });
 
-  test("a recorded write is worded relative to the clock seam", () => {
+  test("a recorded write is worded relative to the clock seam", async () => {
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
     pinClock(1_000_000);
     noteDocumentSaved("/p/index.json");
     pinClock(1_000_000 + 120_000);
-    renderStatusbar();
+    await render();
     expect(items()).toContain("Saved 2m ago");
   });
 
-  test("noteDocumentSaved ignores an absent path, and forgetSavedTimes clears the record", () => {
+  test("noteDocumentSaved ignores an absent path, and forgetSavedTimes clears the record", async () => {
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
     noteDocumentSaved(null);
     pinClock(2_000_000);
     noteDocumentSaved("/p/index.json");
     forgetSavedTimes();
-    renderStatusbar();
+    await render();
     expect(items()).toContain("Saved");
   });
 
-  test("a read-only collab guest is told so, in words", () => {
+  test("a read-only collab guest is told so, in words", async () => {
     const tab = resetWorkspaceWithTab();
     tab.doc.dirty = true;
     collabState(tab).readOnly = true;
-    renderStatusbar();
+    await render();
     expect(items()).toContain("Read-only");
     expect(items()).not.toContain("Unsaved changes");
   });
@@ -340,20 +348,20 @@ describe("the DOCUMENT field", () => {
 // ─── ⑫c SELECTION ────────────────────────────────────────────────────────────
 
 describe("the SELECTION field", () => {
-  test("is absent with nothing selected", () => {
+  test("is absent with nothing selected", async () => {
     resetWorkspaceWithTab();
-    renderStatusbar();
+    await render();
     expect(field("selection")).toBeNull();
   });
 
-  test("holds NO ancestor trail — the address is the jump bar's, and one copy is the point", () => {
+  test("holds NO ancestor trail — the address is the jump bar's, and one copy is the point", async () => {
     const tab = resetWorkspaceWithTab({
       children: [{ children: [{ tagName: "li", textContent: "Item" }], tagName: "ul" }],
       tagName: "div",
     });
     ctx = makeContext({ document: { open: true } });
     tab.session.selection = [["children", 0, "children", 0]];
-    renderStatusbar();
+    await render();
     // A single selection leaves the field empty: the jump bar's leaf segment states it, with its
     // Ancestors, and the bar that carries ambient state has nothing left to add.
     expect(field("selection")).toBeNull();
@@ -362,7 +370,7 @@ describe("the SELECTION field", () => {
     expect(items()).not.toContain("li");
   });
 
-  test("a batch says its SIZE, which is the one selection fact an address cannot state", () => {
+  test("a batch says its SIZE, which is the one selection fact an address cannot state", async () => {
     const tab = resetWorkspaceWithTab({
       children: [{ tagName: "p" }, { tagName: "p" }, { tagName: "p" }],
       tagName: "div",
@@ -371,24 +379,24 @@ describe("the SELECTION field", () => {
       ["children", 0],
       ["children", 2],
     ];
-    renderStatusbar();
+    await render();
     expect(field("selection")?.textContent?.trim()).toBe("2 selected");
     // A count is a readout, not a control: there is no command that "selects two things".
     expect(field("selection")?.querySelectorAll("button")).toHaveLength(0);
   });
 
-  test("the stylebook selector is the field's content when no node is picked", () => {
+  test("the stylebook selector is the field's content when no node is picked", async () => {
     resetWorkspaceWithTab();
     shell.stylebook.selection = "ul li";
-    renderStatusbar();
+    await render();
     expect(field("selection")?.textContent?.trim()).toBe("ul › li");
   });
 
-  test("a node selection wins over the stylebook selector, even printing nothing", () => {
+  test("a node selection wins over the stylebook selector, even printing nothing", async () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
     shell.stylebook.selection = "h1";
     tab.session.selection = [["children", 0]];
-    renderStatusbar();
+    await render();
     // Two answers to "what is selected" is the defect; the document's answer wins, and when it has
     // Nothing ambient to add the field is absent rather than falling through to the other one.
     expect(field("selection")).toBeNull();
@@ -398,23 +406,23 @@ describe("the SELECTION field", () => {
 // ─── The registry is the source of truth ─────────────────────────────────────
 
 describe("items are a rendering of the registry", () => {
-  test("no registry at all paints an empty bar rather than crashing", () => {
+  test("no registry at all paints an empty bar rather than crashing", async () => {
     setActiveRegistry(null);
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
-    renderStatusbar();
+    await render();
     expect(statusbarEl.querySelectorAll("button")).toHaveLength(0);
   });
 
-  test("an item whose command is unregistered disappears; the field survives", () => {
+  test("an item whose command is unregistered disappears; the field survives", async () => {
     setActiveRegistry(buildRegistry(["project.openRecent"]));
     resetStudioState({ name: "Site", projectRoot: "/p" });
     shell.git.status = { ahead: 0, behind: 0, branch: "main", files: [], isRepo: true } as never;
-    renderStatusbar();
+    await render();
     expect(items()).toEqual(["Site"]);
   });
 
-  test("a hidden command hides its item", () => {
+  test("a hidden command hides its item", async () => {
     const registry = createCommandRegistry({ getContext: () => ctx });
     registry.register({
       ...stub("project.openRecent", "Open Recent…", "project"),
@@ -422,11 +430,11 @@ describe("items are a rendering of the registry", () => {
     });
     setActiveRegistry(registry);
     resetStudioState({ name: "Site", projectRoot: "/p" });
-    renderStatusbar();
+    await render();
     expect(field("project")).toBeNull();
   });
 
-  test("a disabled command renders disabled, with its own requires sentence", () => {
+  test("a disabled command renders disabled, with its own requires sentence", async () => {
     const registry = createCommandRegistry({ getContext: () => ctx });
     registry.register({
       ...stub("file.save", "Save", "document"),
@@ -436,7 +444,7 @@ describe("items are a rendering of the registry", () => {
     setActiveRegistry(registry);
     const tab = resetWorkspaceWithTab();
     tab.doc.dirty = true;
-    renderStatusbar();
+    await render();
     const save = statusbarEl.querySelector("button") as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     expect(save.title).toContain("a writable target");

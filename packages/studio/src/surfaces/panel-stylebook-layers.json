@@ -1,0 +1,317 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelStylebookLayers",
+  "$description": "The Outline panel while the pane is showing Project Styles: the element catalogue as a list of selectable tags, and the document's own custom properties under the other tab. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, whether the open file has already styled it and whether it is the selected one — so nothing here walks the catalogue tree, reads the component registry or knows what a `& tag` style key is. A row asks the host to select the compound path it was given, by that path.",
+  "tagName": "div",
+  "attributes": {
+    "part": "stylebook-layers"
+  },
+  "style": {
+    "$description": "What `.layer-row`, `.layer-tag`, `.layer-label` and `.component-tag` said in `styles/panels.css`, keyed on `part` and carried here rather than moved: three of those four are SHARED with the Outline's own rows (`panels/layers-panel.ts`), so the stylesheet rule can only go when that surface moves too. `.component-tag` is the exception — nothing else emits it once this lands. Three Spectrum names could not come with the declarations and are the kit's instead, at the same values: `--spectrum-corner-radius-75` (2px) is `--jx-radius-xs`, `--spectrum-font-size-50` (11px) is `--jx-text-sm` and `--spectrum-font-size-75` (12px) is `--jx-text-md`. Two things changed on purpose. A ROW IS A BUTTON: it was a `<div>` with a click handler and no role, so the catalogue could not be reached from the keyboard at all, and `cursor: grab` promised a drag that has never existed here. AND THE INDENT IS A VARIABLE, for the reason `panel-data.json` gives: a per-row `padding-left` declaration interns one rule per row, while `--row-indent` is written inline under its own name and read by one shared rule.",
+    "display": "block",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"row\"]": {
+      "$description": "The 24px row the Outline declares, so the two lists line up when the pane switches between them. `block-size` rather than a height, and `box-sizing: border-box`, because the indent is padding.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "width": "100%",
+      "blockSize": "24px",
+      "boxSizing": "border-box",
+      "margin": "0",
+      "padding": "3px var(--jx-space-3)",
+      "paddingLeft": "var(--row-indent, var(--jx-space-3))",
+      "border": "none",
+      "borderLeft": "2px solid transparent",
+      "background": "none",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "left",
+      "whiteSpace": "nowrap",
+      "userSelect": "none"
+    },
+    "& button[part=\"row\"]": {
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"row\"][aria-current=\"true\"]": {
+      "background": "var(--accent-20)",
+      "borderLeftColor": "var(--accent)"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "A long custom-element tag is a badge, not a paragraph: it truncates rather than pushing the label out of a 240px column.",
+      "flex": "none",
+      "maxWidth": "12ch",
+      "overflow": "hidden",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--tag)",
+      "color": "var(--accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"badge\"][data-kind=\"component\"]": {
+      "$description": "A component has no tag to show that a reader would recognise from the page, so the badge is the glyph and the tag name is the label. Fixed width, so a column of them has one left edge.",
+      "width": "18px",
+      "padding": "0",
+      "background": "var(--accent)",
+      "fontSize": "9px",
+      "textAlign": "center"
+    },
+    "& [part=\"badge\"][data-kind=\"variable\"]": {
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"label\"]": {
+      "flex": "1",
+      "minWidth": "24px",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"dot\"]": {
+      "$description": "The file has already styled this tag. The kit's neutral disc in the accent, which is the one thing about it that was ever this surface's own.",
+      "background": "var(--accent)"
+    },
+    "& [part=\"value\"]": {
+      "maxWidth": "80px",
+      "overflow": "hidden",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (§11): one sentence saying what the region is for, then where its content comes from.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-5)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"empty-message\"], & [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "28ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-detail\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "opacity": "0.8"
+    },
+    "@(forced-colors: active)": {
+      "& [part=\"row\"][aria-current=\"true\"]": {
+        "$description": "The selected row, redrawn. Every author colour is replaced by one from the user's palette in forced colours, so the accent wash behind the row collapses into the page and the left edge is the only marker left.",
+        "borderLeftColor": "Highlight"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "tab-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/tab"
+      },
+      "cases": {
+        "elements": {
+          "tagName": "div",
+          "attributes": {
+            "part": "list",
+            "data-tab": "elements"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/rows"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "button",
+                "attributes": {
+                  "part": "row",
+                  "type": "button",
+                  "data-path": "${$map.item.key}",
+                  "data-kind": "${$map.item.kind}",
+                  "aria-current": "${$map.item.selected ? 'true' : null}"
+                },
+                "style": {
+                  "--row-indent": {
+                    "$ref": "$map/item/indent"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/selectRow"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "badge",
+                      "data-kind": "${$map.item.kind}"
+                    },
+                    "textContent": "${$map.item.tag}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "label"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "dot-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/customized"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "jx-dot",
+                        "attributes": {
+                          "part": "dot",
+                          "role": "img",
+                          "aria-label": "Styled in this file"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "variables": {
+          "tagName": "div",
+          "attributes": {
+            "part": "variables-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasVariables"
+          },
+          "cases": {
+            "true": {
+              "tagName": "ul",
+              "attributes": {
+                "part": "list",
+                "data-tab": "variables"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/variables"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "li",
+                    "attributes": {
+                      "part": "row",
+                      "data-kind": "variable",
+                      "data-path": "${$map.item.name}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "badge",
+                          "data-kind": "variable"
+                        },
+                        "textContent": "var"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "label"
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "value"
+                        },
+                        "textContent": "${$map.item.value}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "false": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-message"
+                  },
+                  "textContent": "No variables defined."
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-detail"
+                  },
+                  "textContent": "A custom property declared on this file's own style block is listed here."
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

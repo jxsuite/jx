@@ -4,8 +4,7 @@
  * dispatches to manage/settings/source/edit/design/preview rendering paths.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
+import { render as litRender, nothing } from "lit-html";
 import type * as monaco from "monaco-editor";
 import type { WireDiffMarks } from "./iframe-protocol";
 import type * as Y from "yjs";
@@ -63,18 +62,23 @@ import {
   commitBufferWrites,
 } from "../services/monaco-buffer";
 import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/model-uri";
-import { renderWelcome } from "../panels/welcome-screen";
-import { renderEmptyState } from "../panels/empty-state";
-import {
-  attachDocumentHeaderHost,
-  documentHeaderHost,
-  hasDocumentHeader,
-} from "../panels/frontmatter-panel";
+import { renderWelcome } from "../surfaces/welcome";
+import { emptyState } from "../surfaces/empty-state";
+import { attachDocumentHeaderHost, hasDocumentHeader } from "../panels/frontmatter-panel";
+import { mountCanvasStage } from "../surfaces/canvas-stage";
+import type {
+  CanvasStageActions,
+  CanvasStageHandle,
+  CanvasStageView,
+} from "../surfaces/canvas-stage";
+import type { CanvasPanelEntry } from "./canvas-utils";
 import { projectState } from "../state";
 import {
+  activateCanvasPanel,
   applyEditZoom,
   applyTransform,
-  canvasPanelTemplate,
+  bindCanvasPanels,
+  canvasPanelEntry,
   fitOnCanvasEntry,
   observeCenterUntilStable,
   updateActivePanelHeaders,
@@ -90,6 +94,7 @@ import {
   mountIframeCanvas,
   postApplyFormat,
   postOpenSlash,
+  postRedefineElementToLiveHosts,
   postStyleUpdateToStylebookHosts,
   releaseCanvasHosts,
 } from "./iframe-host";
@@ -112,7 +117,6 @@ import { activeRegistry } from "../commands/active-registry";
 import { notify } from "../services/notify";
 import * as overlaysPanel from "../panels/overlays";
 
-import type { TemplateResult } from "lit-html";
 import type { CanvasPanel, GitDiffState } from "../types";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -166,8 +170,8 @@ async function sourceContent(tab: Tab) {
 // Single-RAF scheduling; concurrent schedule requests within the same frame are deduped.
 //
 /* Two nested rAFs used to make the canvas render "yield to higher-priority panel paints first".
-   Panels have since grown their own rAF scheduler (see panel-scheduler.ts), so the second frame
-   bought nothing and put a hard ~32 ms floor under every escalated edit — canvas-patcher's
+   Panels have since stopped repainting their own chrome at all (the docks are Jx documents), so
+   the second frame bought nothing and put a hard ~32 ms floor under every escalated edit — canvas-patcher's
    escalateToFullRender routes through here. */
 /*
  * One pending frame PER PANE. A shared id would have let the pane that scheduled first swallow the
@@ -223,45 +227,153 @@ function hardClearCanvasWrap(canvasWrap: HTMLElement) {
 }
 
 /**
- * Hand the Document Header card the node the stage just made for it.
+ * Where each stage's non-artboard hosts landed, keyed by part (and by the static mark that tells
+ * two of one part apart: a handle's side, a card's placement).
  *
- * One stable callback, so Lit invokes it once per host element rather than on every render. The
- * `undefined` branch is Lit reporting a removal WITHOUT saying which node — and the two placements
- * share this callback, so an Edit→Design swap can report the outgoing host after the incoming one
- * has already been bound. Connectivity is the fact that settles it: only a host that really left
- * the document releases the card.
+ * Per STAGE rather than per module, for the reason every other field on `CanvasSurface` is: two
+ * panes each have a Monaco host and a card slot, and one slot would hand the second pane's stage
+ * the first pane's editor.
  */
-const _docHeaderRefs = new Map<string, (el: Element | undefined) => void>();
+const _stageHosts = new WeakMap<CanvasSurface, Map<string, HTMLElement>>();
 
-function docHeaderRef(paneId: string): (el: Element | undefined) => void {
-  let bind = _docHeaderRefs.get(paneId);
-  if (!bind) {
-    bind = (el: Element | undefined) => {
-      if (el) {
-        attachDocumentHeaderHost(paneId, el as HTMLElement);
-        return;
-      }
-      if (!documentHeaderHost(paneId)?.isConnected) {
-        attachDocumentHeaderHost(paneId, null);
-      }
-    };
-    _docHeaderRefs.set(paneId, bind);
+/** The artboards the last pass described, so a header's click can resolve one. */
+const _stageEntries = new WeakMap<CanvasSurface, CanvasPanelEntry[]>();
+
+/**
+ * One stable action record per stage.
+ *
+ * Stable because the document reads it ONCE, when it mounts, and the mount outlives every repaint:
+ * a record rebuilt per pass would leave the header clicking through to the first pass's artboards
+ * for the life of the stage. Both members close over the surface and read the pass's state through
+ * the two maps above, which is what makes one record correct forever.
+ */
+const _stageActions = new WeakMap<CanvasSurface, CanvasStageActions>();
+
+/** This stage's host map, created on first use. */
+function stageHosts(surface: CanvasSurface): Map<string, HTMLElement> {
+  let hosts = _stageHosts.get(surface);
+  if (!hosts) {
+    hosts = new Map();
+    _stageHosts.set(surface, hosts);
   }
-  return bind;
+  return hosts;
+}
+
+/** The node this stage drew for a part, or null when this frame draws none. */
+function stageHost(surface: CanvasSurface, part: string): HTMLElement | null {
+  return _stageHosts.get(surface)?.get(part) ?? null;
+}
+
+/** This stage's action record — see {@link _stageActions}. */
+function stageActions(surface: CanvasSurface): CanvasStageActions {
+  let actions = _stageActions.get(surface);
+  if (actions) {
+    return actions;
+  }
+  actions = {
+    host: (part, element, detail) => {
+      stageHosts(surface).set(detail ? `${part}:${detail}` : part, element);
+      if (part === "panzoom") {
+        surface.panzoomWrap = element;
+      } else if (part === "doc-header") {
+        attachDocumentHeaderHost(surface.paneId, element);
+      } else if (part === "diff-toolbar") {
+        setDiffToolbarHost(surface.paneId, element);
+      }
+    },
+    pickPanel: (key) => activateCanvasPanel(_stageEntries.get(surface) ?? [], key),
+  };
+  _stageActions.set(surface, actions);
+  return actions;
 }
 
 /**
- * The stage's slot for the Document Header card.
+ * Draw this pane's stage, and settle once its artboards are in the page.
  *
- * `in-column` is Edit: the card is a block of the artefact's own column and scrolls with it.
- * `pinned` is Design: the artboards are drawn under a pan/zoom transform, so the card sits above
- * the surface at 1:1 and keeps its own scroll.
+ * **The mount is kept, and the view is written into it.** Every artboard owns a live iframe holding
+ * a rendered document, so keeping the stage across a content-only repaint is the difference between
+ * a repaint and a reload — the same guarantee lit's positional diffing gave, from a keyed array
+ * that follows a breakpoint's NAME rather than its index. {@link detachCanvasStage} is what ends a
+ * mount, and it runs on a real mode transition, which is exactly when the structure on the stage
+ * stops being the stage's.
  *
- * @param {"in-column" | "pinned"} placement
- * @returns {TemplateResult}
+ * **Nothing may read an artboard's DOM on the next line.** A mapped array reconciles on a microtask
+ * (`surfaces/canvas-stage.ts` says why), so the records are filled here, behind the promise, and
+ * every caller's geometry hangs off it.
+ *
+ * @param {CanvasSurface} surface
+ * @param {CanvasStageView} view
+ * @param {CanvasPanelEntry[]} entries - The artboards `view.panels` describes, in the same order
+ * @returns {Promise<void>}
  */
-function docHeaderSlot(placement: "in-column" | "pinned", paneId: string): TemplateResult {
-  return html`<div class="doc-header-host ${placement}" ${ref(docHeaderRef(paneId))}></div>`;
+function drawStage(
+  surface: CanvasSurface,
+  view: CanvasStageView,
+  entries: CanvasPanelEntry[],
+): Promise<CanvasStageHandle | null> {
+  _stageEntries.set(surface, entries);
+  /* There is no card-host release here, and there must not be one: `renderCanvasImpl` already
+     releases it for EVERY mode that draws no header, one branch above this one. A second answer to
+     the same question is how the two drift — and this one would answer only for the frames that
+     reach a stage, leaving grid, library, entry, media and settings to the first. */
+  const standing = surface.stage;
+  const stage = standing ?? mountCanvasStage(surface.wrap, view, stageActions(surface));
+  surface.stage = stage;
+  return (standing ? stage.update(view) : stage.ready).then(() => {
+    /* NULL means "this stage is gone", and it is the ONLY staleness this seam answers. A second
+       pass in the same mode shares the handle and passes here, which is deliberate: its artboards
+       still mount, under their own (now stale) generation, and the FRAME drops them — the contract
+       `passGen` exists for. What must never run is work against a stage a mode transition has
+       already disposed, whose hosts are released and whose records would bind to nothing. */
+    if (surface.stage !== stage) {
+      return null;
+    }
+    bindCanvasPanels(entries, stage);
+    return stage;
+  });
+}
+
+/**
+ * The two frames that hold no artboards: one Monaco filling the stage, with or without the Compare
+ * bar over it. Written once because the difference between them is a lead and a part.
+ *
+ * @param {"source" | "code"} frame
+ * @returns {CanvasStageView}
+ */
+function editorStageView(frame: "source" | "code"): CanvasStageView {
+  return {
+    columnHeader: "hidden",
+    frame,
+    framePart: "panzoom",
+    frameVars: "",
+    handles: "hidden",
+    hug: false,
+    innerPart: "boards",
+    lead: frame === "code" ? "toolbar" : "none",
+    panels: [],
+  };
+}
+
+/**
+ * Release this pane's stage document.
+ *
+ * Called on a real mode transition and on a full reset — the two moments the structure standing on
+ * the stage stops being the stage's. The two hosts that are handed to another module go WITH it: a
+ * card slot or a Compare bar pointing at a detached node is a surface that draws into nothing and
+ * never says so.
+ *
+ * @param {CanvasSurface} surface
+ */
+function detachCanvasStage(surface: CanvasSurface): void {
+  if (!surface.stage) {
+    return;
+  }
+  surface.stage.dispose();
+  surface.stage = null;
+  _stageHosts.delete(surface);
+  _stageEntries.delete(surface);
+  attachDocumentHeaderHost(surface.paneId, null);
+  setDiffToolbarHost(surface.paneId, null);
 }
 
 /**
@@ -762,6 +874,25 @@ export function renderCanvas(paneId: string = workspace.activePaneId) {
 }
 
 /**
+ * A kit component was saved: redefine it in every live frame, then render every pane, because a
+ * frame's instances keep the definition they rendered until something renders them again
+ * (embedding.md §7). The render is what makes the redefinition visible; the message alone would
+ * leave every open canvas drawing the old element beside a shell drawing the new one.
+ *
+ * @param {JxMutableNode} doc The component document, as saved.
+ * @param {string} base The URL the frame resolves the document's own references against — the
+ *   file's URL under the project, so `$elements` siblings resolve to the project's copies.
+ * @returns {number} How many frames were told.
+ */
+export function redefineElementOnCanvases(doc: JxMutableNode, base: string): number {
+  const posted = postRedefineElementToLiveHosts(doc, base);
+  for (const pane of workspace.panes) {
+    renderCanvas(pane.id);
+  }
+  return posted;
+}
+
+/**
  * Say, on this stage, why a derived pane has nothing to draw.
  *
  * **`derived.reason` had a writer, a render-input tracker and no reader at all.** It is written by
@@ -770,8 +901,11 @@ export function renderCanvas(paneId: string = workspace.activePaneId) {
  * derivation, no tabs, no strip chip, no context bar and a blank stage that `paneIsEmpty` would not
  * collapse. The sentence written for the honest empty state was dead code.
  *
- * Through {@link renderEmptyState} rather than a block of its own: the copy rules are inherited,
- * and a derived pane with nothing to show is the same kind of region as any other.
+ * Through {@link emptyState} rather than a block of its own: the copy rules are inherited, and a
+ * derived pane with nothing to show is the same kind of region as any other. The stage stays a lit
+ * render root and the notice is a NODE it interpolates — `surfaces/empty-state.ts` owns a `display:
+ * contents` host, mounts the document into it once, and assigns after that, so the stage flipping
+ * between an artboard and this neither rebuilds the document nor strands it.
  *
  * **`held` is the document this pane still OWNS, and it is the difference between a notice and a
  * riddle.** A companion that resolved once has a real tab, so `panels/tab-strip.ts` draws a real
@@ -795,7 +929,7 @@ function renderDerivationNotice(
   const registry = activeRegistry();
   const pin = registry?.get("pane.pin");
   litRender(
-    renderEmptyState({
+    emptyState(surface.wrap, {
       message,
       ...(held && { detail: `${tabLabel(held)} is still open here.` }),
       ...(held &&
@@ -1115,9 +1249,12 @@ function renderCanvasImpl(surface: CanvasSurface) {
     disposeSourceCollab(surface);
     disposeSourceEditor(surface);
 
-    // Same reason as `hardClearCanvasWrap`: lit is about to detach every artboard's iframe, and a
-    // Detached host is otherwise only noticed by whichever lazy `liveHosts` walk runs next.
+    /* Same reason as `hardClearCanvasWrap`: the stage is about to detach every artboard's iframe,
+       and a detached host is otherwise only noticed by whichever lazy `liveHosts` walk runs next.
+       Both writers are ended here — the stage document, whose structure belongs to the mode that is
+       leaving, and lit's part, which the empty-state and welcome paths own. */
     releaseCanvasHosts(canvasWrap);
+    detachCanvasStage(surface);
     litRender(nothing, canvasWrap);
     surface.panzoomWrap = null;
     // Reset inline style overrides from other modes
@@ -1139,15 +1276,19 @@ function renderCanvasImpl(surface: CanvasSurface) {
   if (canvasMode === "stylebook") {
     surface.prevStylebookFilter = shell.stylebook.filter;
     surface.prevStylebookCustomizedOnly = shell.stylebook.customizedOnly;
-    renderStylebookMode(surface, {
+    void renderStylebookMode(surface, {
       applyTransform,
-      canvasPanelTemplate,
+      canvasPanelEntry,
+      drawStage,
       observeCenterUntilStable,
+      stageHost,
       updateActivePanelHeaders,
+    }).then(() => {
+      // After the catalogue's artboards are in the page: the fit measures them.
+      if (modeChanged) {
+        fitOnCanvasEntry(surface);
+      }
     });
-    if (modeChanged) {
-      fitOnCanvasEntry(surface);
-    }
     return;
   }
 
@@ -1188,13 +1329,29 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const previewMedia = activeMediaOfPane(surface.paneId);
     const previewWidth =
       previewBreakpoints.find((bp) => bp.name === previewMedia)?.width ?? previewBase;
-    const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
-    litRender(
-      html`<div class="preview-stage" style="max-width:${previewWidth}px">${panelTpl}</div>`,
-      canvasWrap,
-    );
-    canvasPanels.push(panel as unknown as CanvasPanel);
-    renderCanvasIntoPanel(surface, panel as unknown as CanvasPanel, S.ui.featureToggles);
+    const entry = canvasPanelEntry(null, null, true);
+    canvasPanels.push(entry.panel);
+    const { featureToggles: previewToggles } = S.ui;
+    void drawStage(
+      surface,
+      {
+        columnHeader: "hidden",
+        frame: "boards",
+        framePart: "preview-stage",
+        frameVars: `--preview-w:${previewWidth}px`,
+        handles: "hidden",
+        hug: false,
+        innerPart: "boards",
+        lead: "none",
+        panels: [entry.item],
+      },
+      [entry],
+    ).then((stage) => {
+      if (!stage) {
+        return;
+      }
+      renderCanvasIntoPanel(surface, entry.panel, previewToggles);
+    });
     return;
   }
 
@@ -1252,24 +1409,17 @@ function renderCanvasImpl(surface: CanvasSurface) {
   if (canvasMode === "source") {
     canvasWrap.style.padding = "0";
     canvasWrap.style.display = "block";
-    let editorContainer: HTMLDivElement | null = null;
-    litRender(
-      html`<div class="source-wrap">
-        <div
-          class="source-editor"
-          ${ref((el) => {
-            if (el) {
-              editorContainer = el as HTMLDivElement;
-            }
-          })}
-        ></div>
-      </div>`,
-      canvasWrap,
-    );
-
     const filePath = tab.documentPath || "document.json";
     const lang = sourceLang(tab);
-    void mountSourceEditor(tab, surface, editorContainer as unknown as Element, filePath, lang);
+    void drawStage(surface, editorStageView("source"), []).then((stage) => {
+      if (!stage) {
+        return;
+      }
+      const editorContainer = stageHost(surface, "source-editor");
+      if (editorContainer) {
+        void mountSourceEditor(tab, surface, editorContainer, filePath, lang);
+      }
+    });
     return;
   }
 
@@ -1320,78 +1470,47 @@ function renderCanvasImpl(surface: CanvasSurface) {
         setDiffChangeMap(surface.paneId, null);
       }
       disposeSourceEditor(surface);
-      let toolbarEl: HTMLElement | null = null;
-      let editorEl: HTMLElement | null = null;
-      litRender(
-        html`
-          <div
-            class="diff-toolbar"
-            ${ref((el) => {
-              toolbarEl = (el as HTMLElement | undefined) ?? null;
-              setDiffToolbarHost(surface.paneId, toolbarEl);
-            })}
-          ></div>
-          <div class="diff-code-wrap">
-            <div
-              class="diff-code-editor"
-              ${ref((el) => {
-                editorEl = (el as HTMLElement | undefined) ?? null;
-              })}
-            ></div>
-          </div>
-        `,
-        canvasWrap,
-      );
-      renderDiffToolbar(surface.paneId);
-      if (editorEl) {
-        void mountDiffEditor(surface, editorEl, gitDiffState);
-      }
+      void drawStage(surface, editorStageView("code"), []).then((stage) => {
+        if (!stage) {
+          return;
+        }
+        // After the stage, because the bar's host is one of the nodes it draws.
+        renderDiffToolbar(surface.paneId);
+        const editorEl = stageHost(surface, "diff-code-editor");
+        if (editorEl) {
+          void mountDiffEditor(surface, editorEl, gitDiffState);
+        }
+      });
       return;
     }
     disposeDiffEditor(surface);
 
     const panelWidth = 800;
 
-    const { tpl: origTpl, panel: origPanel } = canvasPanelTemplate(
-      "git-diff-original",
-      "Original",
-      false,
-      panelWidth,
-    );
-    const { tpl: currTpl, panel: currPanel } = canvasPanelTemplate(
-      "git-diff-current",
-      "Current",
-      false,
-      panelWidth,
+    const origEntry = canvasPanelEntry("git-diff-original", "Original", false, panelWidth);
+    const currEntry = canvasPanelEntry("git-diff-current", "Current", false, panelWidth);
+
+    /* The Compare bar leads the frame: it is absolutely positioned OVER the stage and a SIBLING of
+       the pan/zoom surface, never a child. A child would be panned and scaled with the artboards,
+       and a flow sibling would move the origin the pan transform and the centering observer both
+       compute against. */
+    const diffStage = drawStage(
+      surface,
+      {
+        columnHeader: "hidden",
+        frame: "boards",
+        framePart: "panzoom",
+        frameVars: "",
+        handles: "hidden",
+        hug: false,
+        innerPart: "boards",
+        lead: "toolbar",
+        panels: [origEntry.item, currEntry.item],
+      },
+      [origEntry, currEntry],
     );
 
-    litRender(
-      html`
-        <!-- Absolutely positioned, and a SIBLING: a child of the wrap would be panned and scaled
-             with the artboards, and a flow sibling would move the origin the pan transform and the
-             centering observer both compute against. -->
-        <div
-          class="diff-toolbar"
-          ${ref((el) => {
-            setDiffToolbarHost(surface.paneId, (el as HTMLElement | undefined) ?? null);
-          })}
-        ></div>
-        <div
-          class="panzoom-wrap"
-          style="transform-origin:0 0"
-          ${ref((el) => {
-            if (el) {
-              surface.panzoomWrap = el as HTMLDivElement;
-            }
-          })}
-        >
-          ${origTpl} ${currTpl}
-        </div>
-      `,
-      canvasWrap,
-    );
-
-    canvasPanels.push(origPanel as unknown as CanvasPanel, currPanel as unknown as CanvasPanel);
+    canvasPanels.push(origEntry.panel, currEntry.panel);
 
     /** @param {string} content */
     const parseContent = (content: string): Promise<JxMutableNode> => {
@@ -1416,9 +1535,10 @@ function renderCanvasImpl(surface: CanvasSurface) {
     // `passGen` at the design-mode artboard loop.
     const diffGen = surface.renderGeneration;
     void Promise.all([
+      diffStage,
       parseContent(gitDiffState.originalContent || ""),
       parseContent(gitDiffState.currentContent || ""),
-    ]).then(([originalDoc, currentDoc]) => {
+    ]).then(([stage, originalDoc, currentDoc]) => {
       /* THE COMPARISON, computed once for both artboards and split by side.
          Structural rather than textual: the artboards render documents, so "what changed" has to be
          answered in document paths that `data-jx-path` can resolve. A failure here must not cost
@@ -1433,11 +1553,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
         // Readable, so this degrades rather than surfacing: no toast, no empty stage.
         console.warn("buildChangeMap:", error);
       }
+      if (!stage) {
+        return;
+      }
       setDiffChangeMap(surface.paneId, changeMap);
       renderDiffToolbar(surface.paneId);
       renderCanvasIntoPanel(
         surface,
-        origPanel as unknown as CanvasPanel,
+        origEntry.panel,
         featureToggles,
         originalDoc,
         sideMarks(changeMap?.original, "modified-before"),
@@ -1445,7 +1568,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
       );
       renderCanvasIntoPanel(
         surface,
-        currPanel as unknown as CanvasPanel,
+        currEntry.panel,
         featureToggles,
         currentDoc,
         sideMarks(changeMap?.current, "modified-after"),
@@ -1453,10 +1576,15 @@ function renderCanvasImpl(surface: CanvasSurface) {
       );
     });
 
-    applyTransform(surface);
-    if (modeChanged) {
-      observeCenterUntilStable(surface);
-    }
+    void diffStage.then((stage) => {
+      if (!stage) {
+        return;
+      }
+      applyTransform(surface);
+      if (modeChanged) {
+        observeCenterUntilStable(surface);
+      }
+    });
     return;
   }
 
@@ -1500,55 +1628,59 @@ function renderCanvasImpl(surface: CanvasSurface) {
      * wrote neither. One writer, applied after the render, is the fix (§9.4 of the UI guidelines);
      * `applyEditZoom` below already has exactly this shape for exactly this reason.
      */
-    let editColumn: HTMLElement | null = null;
-    const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
+    const entry = canvasPanelEntry(null, null, true);
     // A component-definition doc (root tag is a custom element) is a fragment, not a page: it should
     // Hug its content rather than have the column fill+stretch to the viewport (dead scroll space).
     const rootTag = (S.document as { tagName?: unknown }).tagName;
     const isComponentDoc = typeof rootTag === "string" && rootTag.includes("-");
-    const columnClass = isComponentDoc ? "content-edit-column is-component" : "content-edit-column";
-    const editTpl = html`
-      <div
-        class="content-edit-canvas"
-        ${ref((el: Element | undefined) => {
-          panel.scrollContainer = (el as HTMLElement) || null;
-        })}
-      >
-        <div
-          class=${columnClass}
-          ${ref((el: Element | undefined) => {
-            editColumn = (el as HTMLElement) || null;
-          })}
-        >
-          ${wantsDocHeader ? docHeaderSlot("in-column", surface.paneId) : nothing}${panelTpl}
-          <!-- LAST, not first. The handles are \`position: absolute\`, so DOM order costs them
-               nothing — but the Document Header card is the column's FIRST child by contract
-               (\`tests/canvas-render.test.ts\`, "Edit puts it INSIDE the document column"), and a
-               handle in front of it would be a layout claim nobody made. -->
-          <div
-            class="edit-width-handle start"
-            title="Drag to resize the page — hold Alt to ignore the breakpoints"
-            ${ref((el) => mountEditWidthHandle(surface, el as HTMLElement | undefined, -1))}
-          ></div>
-          <div
-            class="edit-width-handle end"
-            title="Drag to resize the page — hold Alt to ignore the breakpoints"
-            ${ref((el) => mountEditWidthHandle(surface, el as HTMLElement | undefined, 1))}
-          ></div>
-        </div>
-      </div>
-    `;
-    litRender(editTpl, canvasWrap);
-    // The one writer of the column's width — see the note above. `ref` has run by now.
-    if (editColumn) {
-      (editColumn as HTMLElement).style.maxWidth = `${Math.round(columnWidth)}px`;
-    }
-    canvasPanels.push(panel as unknown as CanvasPanel);
-    renderCanvasIntoPanel(surface, panel as unknown as CanvasPanel, S.ui.featureToggles);
-    // The column must exist in the DOM before the zoom's live width measurement — so the zoom is
-    // Applied after the render rather than baked into the template (the panel mounts fluid and is
-    // Immediately re-fitted; the iframe hasn't painted yet, so nothing visibly jumps).
-    applyEditZoom(surface);
+    const { featureToggles: editToggles } = S.ui;
+    void drawStage(
+      surface,
+      {
+        /* The card is the column's FIRST child by contract (`tests/canvas-render.test.ts`, "Edit
+           puts it INSIDE the document column"). The two handles are not in the column at all: they
+           are `jx-split`s standing beside it in the canvas's row, because the canvas is the track
+           a splitter has to measure and the column is the thing being resized. */
+        columnHeader: wantsDocHeader ? "shown" : "hidden",
+        frame: "boards",
+        framePart: "edit-canvas",
+        frameVars: "",
+        handles: "shown",
+        hug: isComponentDoc,
+        innerPart: "edit-column",
+        lead: "none",
+        panels: [entry.item],
+      },
+      [entry],
+    ).then((stage) => {
+      if (!stage) {
+        return;
+      }
+      const editColumn = stageHost(surface, "edit-column");
+      entry.panel.scrollContainer = stageHost(surface, "edit-canvas") as HTMLElement;
+      // The one writer of the column's width — see the note above.
+      if (editColumn) {
+        editColumn.style.maxWidth = `${Math.round(columnWidth)}px`;
+        mountEditWidthHandle(
+          surface,
+          stageHost(surface, "edit-handle:start") ?? undefined,
+          editColumn,
+          -1,
+        );
+        mountEditWidthHandle(
+          surface,
+          stageHost(surface, "edit-handle:end") ?? undefined,
+          editColumn,
+          1,
+        );
+      }
+      renderCanvasIntoPanel(surface, entry.panel, editToggles);
+      // The column must exist in the DOM before the zoom's live width measurement — so the zoom is
+      // Applied after the render rather than baked into the stage (the panel mounts fluid and is
+      // Immediately re-fitted; the iframe hasn't painted yet, so nothing visibly jumps).
+      applyEditZoom(surface);
+    });
+    canvasPanels.push(entry.panel);
     return;
   }
 
@@ -1563,7 +1695,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
      `#canvas-wrap` is a row by default and each surface states its own axis. */
   canvasWrap.style.flexDirection = wantsDocHeader ? "column" : "";
   canvasWrap.style.alignItems = wantsDocHeader ? "stretch" : "";
-  const designHeaderTpl = wantsDocHeader ? docHeaderSlot("pinned", surface.paneId) : nothing;
+  const designLead = wantsDocHeader ? "header" : "none";
 
   const {
     sizeBreakpoints,
@@ -1579,39 +1711,41 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const effectiveMedia = getEffectiveMedia(S.document.$media);
     const hasBaseWidth = effectiveMedia && effectiveMedia["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
-    const { tpl: panelTpl, panel } = canvasPanelTemplate(
+    const entry = canvasPanelEntry(
       hasBaseWidth ? "base" : null,
       label,
       !hasBaseWidth,
       hasBaseWidth ? baseWidth : undefined,
     );
-    litRender(
-      html`
-        ${designHeaderTpl}
-        <div
-          class="panzoom-wrap"
-          style="transform-origin:0 0"
-          ${ref((el) => {
-            if (el) {
-              surface.panzoomWrap = el as HTMLDivElement;
-            }
-          })}
-        >
-          ${panelTpl}
-        </div>
-      `,
-      canvasWrap,
-    );
-    canvasPanels.push(panel as unknown as CanvasPanel);
-    renderCanvasIntoPanel(surface, panel as unknown as CanvasPanel, featureToggles);
-    applyTransform(surface);
-    if (modeChanged) {
-      // Fit BEFORE centering: the fit picks the zoom, centerCanvas then places the artboard at that
-      // Zoom (and top-aligns it, which beats fit's vertical centering for a page taller than the
-      // Viewport).
-      fitOnCanvasEntry(surface);
-      observeCenterUntilStable(surface);
-    }
+    void drawStage(
+      surface,
+      {
+        columnHeader: "hidden",
+        frame: "boards",
+        framePart: "panzoom",
+        frameVars: "",
+        handles: "hidden",
+        hug: false,
+        innerPart: "boards",
+        lead: designLead,
+        panels: [entry.item],
+      },
+      [entry],
+    ).then((stage) => {
+      if (!stage) {
+        return;
+      }
+      renderCanvasIntoPanel(surface, entry.panel, featureToggles);
+      applyTransform(surface);
+      if (modeChanged) {
+        // Fit BEFORE centering: the fit picks the zoom, centerCanvas then places the artboard at
+        // That zoom (and top-aligns it, which beats fit's vertical centering for a page taller
+        // Than the viewport).
+        fitOnCanvasEntry(surface);
+        observeCenterUntilStable(surface);
+      }
+    });
+    canvasPanels.push(entry.panel);
     return;
   }
 
@@ -1645,28 +1779,24 @@ function renderCanvasImpl(surface: CanvasSurface) {
     lensMedia === null ? allPanelDefs : allPanelDefs.filter((d) => d.name === lensMedia);
   const panelDefs = chosen.length > 0 ? chosen : allPanelDefs;
 
-  const panelEntries = panelDefs.map((def) => {
-    const label = `${def.displayName} (${def.width}px)`;
-    const { tpl, panel } = canvasPanelTemplate(def.name, label, false, def.width);
-    return { panel, tpl };
-  });
+  const panelEntries = panelDefs.map((def) =>
+    canvasPanelEntry(def.name, `${def.displayName} (${def.width}px)`, false, def.width),
+  );
 
-  litRender(
-    html`
-      ${designHeaderTpl}
-      <div
-        class="panzoom-wrap"
-        style="transform-origin:0 0"
-        ${ref((el) => {
-          if (el) {
-            surface.panzoomWrap = el as HTMLDivElement;
-          }
-        })}
-      >
-        ${panelEntries.map((e) => e.tpl)}
-      </div>
-    `,
-    canvasWrap,
+  const stageDrawn = drawStage(
+    surface,
+    {
+      columnHeader: "hidden",
+      frame: "boards",
+      framePart: "panzoom",
+      frameVars: "",
+      handles: "hidden",
+      hug: false,
+      innerPart: "boards",
+      lead: designLead,
+      panels: panelEntries.map((e) => e.item),
+    },
+    panelEntries,
   );
 
   /* Every artboard of this pass mounts under the generation the pass opened with, captured HERE
@@ -1676,29 +1806,44 @@ function renderCanvasImpl(surface: CanvasSurface) {
      render under the NEW pass's number. And the host resolves the document once per generation
      (`preparePassRender`), which only fans out if the pass has one. */
   const passGen = surface.renderGeneration;
-  for (let i = 0; i < panelEntries.length; i++) {
-    const { panel } = panelEntries[i]!;
-    const p = panel as CanvasPanel;
-    canvasPanels.push(p);
-    if (i === 0) {
-      renderCanvasIntoPanel(surface, p, featureToggles);
-    } else {
-      // Yield between artboards so the first one paints before the rest mount. They no longer pay
-      // For the document — the pass already resolved it — but each is still a live iframe render.
-      setTimeout(() => renderCanvasIntoPanel(surface, p, featureToggles, null, null, passGen), 0);
+  for (const { panel } of panelEntries) {
+    canvasPanels.push(panel);
+  }
+  void stageDrawn.then((stage) => {
+    if (!stage) {
+      return;
     }
-  }
+    for (let i = 0; i < panelEntries.length; i++) {
+      const { panel } = panelEntries[i]!;
+      if (i === 0) {
+        /* `passGen` EXPLICITLY, including for the first board. It used to be left to the default —
+           "whatever generation the surface is on" — which was the pass's own only because this
+           board mounted synchronously inside the pass. It does not any more: the stage settles a
+           microtask later, by which time a second pass may already have opened, and reading the
+           live number there would stamp this pass's artboard with the NEXT pass's — a duplicate
+           render the frame cannot recognise as superseded. */
+        renderCanvasIntoPanel(surface, panel, featureToggles, null, null, passGen);
+      } else {
+        // Yield between artboards so the first one paints before the rest mount. They no longer pay
+        // For the document — the pass already resolved it — but each is still a live iframe render.
+        setTimeout(
+          () => renderCanvasIntoPanel(surface, panel, featureToggles, null, null, passGen),
+          0,
+        );
+      }
+    }
 
-  // Highlight active panel header — this pass's stage, not the focused pane's.
-  updateActivePanelHeaders(surface);
+    // Highlight active panel header — this pass's stage, not the focused pane's.
+    updateActivePanelHeaders(surface);
 
-  // Apply current zoom + pan transform
-  applyTransform(surface);
-  if (modeChanged) {
-    // See the single-panel path: fit picks the zoom, centerCanvas then places the artboards.
-    fitOnCanvasEntry(surface);
-    observeCenterUntilStable(surface);
-  }
+    // Apply current zoom + pan transform
+    applyTransform(surface);
+    if (modeChanged) {
+      // See the single-panel path: fit picks the zoom, centerCanvas then places the artboards.
+      fitOnCanvasEntry(surface);
+      observeCenterUntilStable(surface);
+    }
+  });
 }
 
 /**
@@ -1817,7 +1962,7 @@ setSurfaceTeardown((surface) => {
   surface.centerObserver?.disconnect();
   surface.centerObserver = null;
   surface.panzoomWrap = null;
-  _docHeaderRefs.delete(surface.paneId);
+  detachCanvasStage(surface);
 });
 
 export function renderOverlays() {

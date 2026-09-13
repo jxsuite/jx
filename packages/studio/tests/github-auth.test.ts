@@ -42,11 +42,47 @@ function setupFetch(responses: { ok?: boolean; json: unknown; status?: number }[
 }
 
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   showConfirmDialog: async () => true,
-  showDialog: (fn: any) =>
-    new Promise((resolve) => {
-      fn((val: any) => resolve(val));
-    }),
+}));
+
+/** What the flow asked the waiting room to say, once per sign-in it started. */
+interface AuthDialogOptions {
+  userCode: string;
+  verificationUri: string;
+  onCancel: () => void;
+  onClosed: () => void;
+}
+const authDialogs: AuthDialogOptions[] = [];
+
+/*
+ * The waiting room is a document now (`src/surfaces/github-auth.json`), and this file is about the
+ * FLOW: the two requests, the poll loop's budget and the three reports its outcomes raise. So the
+ * surface is doubled with one that renders nothing and reports its own closure — which is what the
+ * real handle does, and what the flow's cancel path settles on.
+ * `tests/github-auth-gaps.test.ts` mounts the real one.
+ */
+void mock.module("../src/surfaces/github-auth.js", () => ({
+  openGithubAuthSurface: (options: AuthDialogOptions) => {
+    authDialogs.push(options);
+    const host = document.createElement("div");
+    // Idempotent, exactly as the real handle is: `close()` reports the closure ONCE, and the flow
+    // Answers that report by closing again. A double that said it twice would recur forever.
+    let closed = false;
+    return {
+      close: () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        options.onClosed();
+      },
+      host,
+      ready: Promise.resolve(host),
+    };
+  },
 }));
 
 /** Every outcome the module reports, in order — the device flow's whole job is now to report. */
@@ -83,6 +119,7 @@ describe("authenticateGithub", () => {
   beforeEach(() => {
     localStorage.removeItem(STORAGE_KEY);
     notifications.length = 0;
+    authDialogs.length = 0;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -148,6 +185,35 @@ describe("authenticateGithub", () => {
     expect(body.scope).toBe("repo");
     expect(result).toBe("ghp_new_token");
     expect(localStorage.getItem(STORAGE_KEY)).toBe("ghp_new_token");
+  });
+
+  test("the waiting room is handed the code and the page, and nothing it could derive", async () => {
+    /*
+     * The whole projection: two strings GitHub minted. The document composes "Open <uri>" and the
+     * arrow-free wording around them, and it never sees the device code, the client id or the poll
+     * — a surface that could reach any of those could also outlive the flow that owns them.
+     */
+    setupFetch([
+      {
+        json: {
+          device_code: "dc_projection",
+          interval: 1,
+          user_code: "PROJ-0001",
+          verification_uri: "https://github.com/login/device",
+        },
+      },
+    ]);
+    const promise = authenticateGithub();
+    await Bun.sleep(5);
+    expect(authDialogs).toHaveLength(1);
+    expect(authDialogs[0]!.userCode).toBe("PROJ-0001");
+    expect(authDialogs[0]!.verificationUri).toBe("https://github.com/login/device");
+
+    // The reader dismissed it: null, and the pending poll never fires.
+    authDialogs[0]!.onCancel();
+    expect(await promise).toBeNull();
+    await Bun.sleep(1200);
+    expect(mockFetchCalls).toHaveLength(1);
   });
 
   test("polls token endpoint with correct grant_type", async () => {

@@ -1,0 +1,1949 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioLogicPanel",
+  "$description": "The Inspector's **Logic** tab — everything about how the selected element BEHAVES, as a Jx document over the kit. Plan §6.5 re-split the inspector by task rather than by data type: wiring a `$switch`, wiring a repeater to a collection and wiring a click handler are one job, and they were three, split across two tabs because a `$switch` is stored as a property and a click handler as a property-shaped function. So there are four sections here — Repeating list, Condition, Events, and a custom element's outward contract (Observed Attributes · CSS Properties · CSS Parts) — and each of them is a projection. The adapter (`panels/events-panel.ts`) keeps every decision: what the selection is, which rungs a position permits, what a handler currently holds, which elements of a multi-selection disagree about a key, and what a commit writes. Nothing here reads the document, asks the schema a question or knows what a Value Source is. Two islands, both through `onNodeCreated` (studio-ui-guidelines.md §9.4): `[part=\"control-host\"]` receives the expression editor, which is a lit surface of its own, and `[part=\"statements-host\"]` receives the `statements` surface, which is a mounted document of its own. Every bindable row carries `data-prop`, which is what `inspector/field:<prop>` addresses.",
+  "tagName": "div",
+  "attributes": {
+    "part": "logic"
+  },
+  "style": {
+    "$description": "The tab's own layout, and nothing else. `.style-sidebar` and `.style-section-body` are NOT transcribed: the first was a scroll container the dock already provides, and the second existed to put padding inside a Spectrum accordion item, which `jx-accordion-item` does itself. What is left is the two vocabularies this tab has that no other surface does — a declared event, and an event binding — plus the one empty state a document cannot borrow from `panels/empty-state.ts`.",
+    "display": "block",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"empty\"]": {
+      "$description": "The one empty-state pattern (§11.2), drawn here because a document cannot render a lit helper. It is a copy rather than a move — every panel still lit renders through that helper — and it goes when the last of them converts.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-6)",
+      "textAlign": "center",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"section-body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"field\"]": {
+      "minWidth": "0"
+    },
+    "& [part=\"field\"] > [part=\"label\"]:empty": {
+      "$description": "A row whose control names itself — an expression editor draws its own Operator / Target / Value rows — has no second label to draw. `jx-field` takes the empty label out of the accessible name by leaving it empty; this takes it out of the layout.",
+      "display": "none"
+    },
+    "& [part=\"value\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"widget\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"control-host\"]": {
+      "display": "block",
+      "minWidth": "0"
+    },
+    "& [part=\"subhead\"]": {
+      "margin": "var(--jx-space-2) 0 0",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"case\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"case-name\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"declared\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "minWidth": "0"
+    },
+    "& [part=\"declared-row\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"event-code\"]": {
+      "fontFamily": "var(--font-mono, monospace)",
+      "color": "var(--accent)"
+    },
+    "& [part=\"declared-from\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"event-type\"]": {
+      "marginInlineStart": "auto",
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"binding\"]": {
+      "$description": "One `on*` key and whatever produces it. A box, for the reason a statement card is one: a handler CONTAINS a body, and the border is what says where one binding stops and the next begins.",
+      "boxSizing": "border-box",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "padding": "var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)"
+    },
+    "& [part=\"binding-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"event-name\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"binding-body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"body-toggle\"]": {
+      "display": "flex",
+      "justifyContent": "flex-end",
+      "minWidth": "0"
+    },
+    "& [part=\"body-row\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"body-field\"], & [part=\"expression-host\"], & [part=\"statements-host\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"kv\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"kv-name\"]": {
+      "fontFamily": "var(--font-mono, monospace)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"kv-detail\"], & [part=\"kv-value\"], & [part=\"kv-tags\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"kv-value\"]": {
+      "marginInlineStart": "auto",
+      "fontFamily": "var(--font-mono, monospace)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"empty-actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/state"
+      },
+      "cases": {
+        "empty": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "${state.emptyMessage}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-actions-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasEmptyActions"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty-actions"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/emptyActions"
+                      },
+                      "key": {
+                        "$ref": "$map/item/id"
+                      },
+                      "map": {
+                        "tagName": "jx-button",
+                        "attributes": {
+                          "part": "empty-action"
+                        },
+                        "$props": {
+                          "size": "sm"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/runEmptyAction"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/id"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "textContent": "${$map.item.label}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "ready": {
+          "tagName": "jx-accordion",
+          "attributes": {
+            "part": "sections"
+          },
+          "$props": {
+            "multiple": true
+          },
+          "children": [
+            {
+              "$description": "Repeating list. Filter and Sort are always drawn: they used to hide behind `+ Add filter`, which seeded `{ $ref: \"#/state/\" }` — a binding to the empty pointer, which is not a signal — so the row opened already bound to nothing and the only way to type a literal was to cycle the mode ring twice (§11.4). A repeater has exactly three inputs, and an empty row states that better than a button does.",
+              "tagName": "div",
+              "attributes": {
+                "part": "repeater-slot",
+                "role": "none",
+                "hidden": "${state.hasRepeater ? null : ''}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasRepeater"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-accordion-item",
+                  "attributes": {
+                    "data-section": "repeater"
+                  },
+                  "$props": {
+                    "label": "Repeating list",
+                    "open": {
+                      "$ref": "#/state/repeaterOpen"
+                    }
+                  },
+                  "ontoggle": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setSection"
+                        },
+                        "value": [
+                          "repeater",
+                          {
+                            "$ref": "event#/detail"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-body"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/repeaterFields"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "A bindable value as a first-class field row. Every position it serves is a single-line expression — a collection, a filter, a sort key, a `$switch` — so it draws one widget rather than dispatching over a widget type: the textarea and checkbox arms the lit version carried had no caller in either tab. The set dot clears the position outright and is disabled where the position is mandatory; the source chip opens the rung picker rather than cycling, so any rung the position permits is one action away (§6.3).",
+                            "tagName": "jx-field",
+                            "attributes": {
+                              "part": "field",
+                              "data-prop": "${$map.item.prop}"
+                            },
+                            "$props": {
+                              "label": {
+                                "$ref": "$map/item/label"
+                              },
+                              "span": true
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "value"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "source",
+                                      "data-source": "${$map.item.source}"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "haspopup": "menu",
+                                      "label": "${$map.item.sourceHint}",
+                                      "disabled": {
+                                        "$ref": "$map/item/sourceLocked"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/pickSource"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/currentTarget"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "textContent": "${$map.item.sourceLabel}"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "widget",
+                                      "role": "none"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/kind"
+                                    },
+                                    "cases": {
+                                      "control": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "control-host",
+                                          "data-field": "${$map.item.key}"
+                                        }
+                                      },
+                                      "text": {
+                                        "tagName": "jx-textfield",
+                                        "attributes": {
+                                          "part": "text"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "label": {
+                                            "$ref": "$map/item/label"
+                                          },
+                                          "value": {
+                                            "$ref": "$map/item/value"
+                                          },
+                                          "placeholder": {
+                                            "$ref": "$map/item/placeholder"
+                                          },
+                                          "mono": {
+                                            "$ref": "$map/item/mono"
+                                          }
+                                        },
+                                        "oninput": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setField"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                },
+                                                {
+                                                  "$ref": "event#/target/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "select": {
+                                        "tagName": "jx-select",
+                                        "attributes": {
+                                          "part": "select"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "label": {
+                                            "$ref": "$map/item/label"
+                                          },
+                                          "value": {
+                                            "$ref": "$map/item/value"
+                                          },
+                                          "options": {
+                                            "$ref": "$map/item/options"
+                                          }
+                                        },
+                                        "onchange": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setField"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                },
+                                                {
+                                                  "$ref": "event#/target/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "set"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "label": "${$map.item.clearTitle}",
+                                      "disabled": {
+                                        "$ref": "$map/item/clearLocked"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/clearField"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "jx-dot",
+                                        "attributes": {
+                                          "part": "dot",
+                                          "data-state": "${$map.item.dotState}"
+                                        },
+                                        "$props": {
+                                          "tone": {
+                                            "$ref": "$map/item/tone"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "template-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasTemplate"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "edit-template"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Edit template"
+                              },
+                              "onclick": {
+                                "$ref": "#/state/editTemplate"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Edit template →"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "$description": "Condition. A `$switch` discriminant is a `$ref` and nothing else, so From data… is its only rung — de-escalating it would delete the key and demote the node — and the adapter says so by locking the row's source chip rather than by this document knowing what a `SwitchDef` is.",
+              "tagName": "div",
+              "attributes": {
+                "part": "condition-slot",
+                "role": "none",
+                "hidden": "${state.hasCondition ? null : ''}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasCondition"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-accordion-item",
+                  "attributes": {
+                    "data-section": "condition"
+                  },
+                  "$props": {
+                    "label": "Condition",
+                    "open": {
+                      "$ref": "#/state/conditionOpen"
+                    }
+                  },
+                  "ontoggle": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setSection"
+                        },
+                        "value": [
+                          "condition",
+                          {
+                            "$ref": "event#/detail"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-body"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/conditionFields"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "A bindable value as a first-class field row. Every position it serves is a single-line expression — a collection, a filter, a sort key, a `$switch` — so it draws one widget rather than dispatching over a widget type: the textarea and checkbox arms the lit version carried had no caller in either tab. The set dot clears the position outright and is disabled where the position is mandatory; the source chip opens the rung picker rather than cycling, so any rung the position permits is one action away (§6.3).",
+                            "tagName": "jx-field",
+                            "attributes": {
+                              "part": "field",
+                              "data-prop": "${$map.item.prop}"
+                            },
+                            "$props": {
+                              "label": {
+                                "$ref": "$map/item/label"
+                              },
+                              "span": true
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "value"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "source",
+                                      "data-source": "${$map.item.source}"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "haspopup": "menu",
+                                      "label": "${$map.item.sourceHint}",
+                                      "disabled": {
+                                        "$ref": "$map/item/sourceLocked"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/pickSource"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/currentTarget"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "textContent": "${$map.item.sourceLabel}"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "widget",
+                                      "role": "none"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/kind"
+                                    },
+                                    "cases": {
+                                      "control": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "control-host",
+                                          "data-field": "${$map.item.key}"
+                                        }
+                                      },
+                                      "text": {
+                                        "tagName": "jx-textfield",
+                                        "attributes": {
+                                          "part": "text"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "label": {
+                                            "$ref": "$map/item/label"
+                                          },
+                                          "value": {
+                                            "$ref": "$map/item/value"
+                                          },
+                                          "placeholder": {
+                                            "$ref": "$map/item/placeholder"
+                                          },
+                                          "mono": {
+                                            "$ref": "$map/item/mono"
+                                          }
+                                        },
+                                        "oninput": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setField"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                },
+                                                {
+                                                  "$ref": "event#/target/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "select": {
+                                        "tagName": "jx-select",
+                                        "attributes": {
+                                          "part": "select"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "label": {
+                                            "$ref": "$map/item/label"
+                                          },
+                                          "value": {
+                                            "$ref": "$map/item/value"
+                                          },
+                                          "options": {
+                                            "$ref": "$map/item/options"
+                                          }
+                                        },
+                                        "onchange": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setField"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                },
+                                                {
+                                                  "$ref": "event#/target/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "set"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "label": "${$map.item.clearTitle}",
+                                      "disabled": {
+                                        "$ref": "$map/item/clearLocked"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/clearField"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "jx-dot",
+                                        "attributes": {
+                                          "part": "dot",
+                                          "data-state": "${$map.item.dotState}"
+                                        },
+                                        "$props": {
+                                          "tone": {
+                                            "$ref": "$map/item/tone"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "subhead"
+                          },
+                          "textContent": "Cases"
+                        },
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/cases"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "jx-field",
+                            "attributes": {
+                              "part": "field",
+                              "data-prop": "${$map.item.prop}"
+                            },
+                            "$props": {
+                              "label": "Case",
+                              "span": true
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "case"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "jx-textfield",
+                                    "attributes": {
+                                      "part": "case-name"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": "Case value",
+                                      "value": {
+                                        "$ref": "$map/item/name"
+                                      }
+                                    },
+                                    "onchange": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/renameCase"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "case-open"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "icon": "arrow-right",
+                                      "label": "${$map.item.openTitle}"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openCase"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "case-remove"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "icon": "trash",
+                                      "label": "${$map.item.removeTitle}"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/removeCase"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "add-case"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "icon": "plus",
+                            "label": "Add case"
+                          },
+                          "onclick": {
+                            "$ref": "#/state/addCase"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Add case"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "$description": "Events. A repeater is not an element — it has no `on*` position to bind, and offering Add Event on one writes a handler onto a node the renderer never mounts — so the adapter withholds the whole section rather than this document asking what a repeater is.",
+              "tagName": "div",
+              "attributes": {
+                "part": "events-slot",
+                "role": "none",
+                "hidden": "${state.hasEvents ? null : ''}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasEvents"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-accordion-item",
+                  "attributes": {
+                    "data-section": "events"
+                  },
+                  "$props": {
+                    "label": "Events",
+                    "open": {
+                      "$ref": "#/state/eventsOpen"
+                    }
+                  },
+                  "ontoggle": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setSection"
+                        },
+                        "value": [
+                          "events",
+                          {
+                            "$ref": "event#/detail"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-body"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "declared-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasDeclared"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "declared"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "subhead"
+                                  },
+                                  "textContent": "Declared Events"
+                                },
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/declared"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "declared-row",
+                                      "title": "${$map.item.title}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "code",
+                                        "attributes": {
+                                          "part": "event-code"
+                                        },
+                                        "textContent": "${$map.item.name}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "declared-from"
+                                        },
+                                        "textContent": "${$map.item.source}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "event-type",
+                                          "hidden": "${$map.item.type ? null : ''}"
+                                        },
+                                        "textContent": "${$map.item.type}"
+                                      }
+                                    ]
+                                  }
+                                },
+                                {
+                                  "tagName": "jx-divider"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "bindings-head-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasBindings"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "subhead"
+                              },
+                              "textContent": "Event Bindings"
+                            }
+                          }
+                        },
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/bindings"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "One `on*` key. The Mixed contract (§6.5) splits in two and this row shows both halves: which events exist, how each is produced, and its removal are properties of the BATCH — binding one handler to six buttons is a single decision, so those three controls write to every selected element in one transaction — while what a handler CONTAINS is the PRIMARY's, because six elements do not share one body and broadcasting a keystroke into six of them would destroy five. The dot says `mixed` when the selected elements disagree; the body below it stays the primary's.",
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "binding",
+                              "data-event": "${$map.item.key}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "binding-head"
+                                },
+                                "children": [
+                                  {
+                                    "$description": "The event NAME, and it is free-form rather than a list of ten. The menu offers what this element already binds plus the ten worth suggesting, and its last row asks for any other name through the one prompt dialog Studio has — so `ondragover`, `onpointerdown` and every custom event a component emits are bindable, which is exactly what §6.5 asks for and what the closed picker refused.",
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "event-name"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "haspopup": "menu",
+                                      "label": "${$map.item.nameTitle}"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/pickEventName"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/currentTarget"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "textContent": "${$map.item.name}"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "$description": "The same ladder every other bindable position in Studio offers, in the same four words. It used to read Inline code / Expression / Existing function — a fourth private dialect for the one ladder §6.6 collapses, so a user who learned \"Formula\" on a property row met \"Expression\" here and had no reason to think they were the same thing.",
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "event-source",
+                                      "data-source": "${$map.item.source}"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "haspopup": "menu",
+                                      "label": "${$map.item.sourceHint}"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/pickHandler"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/currentTarget"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "textContent": "${$map.item.sourceLabel}"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "event-clear"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "icon": "trash",
+                                      "label": "${$map.item.clearTitle}"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/clearEvent"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "jx-dot",
+                                        "attributes": {
+                                          "part": "dot",
+                                          "data-state": "${$map.item.dotState}"
+                                        },
+                                        "$props": {
+                                          "tone": {
+                                            "$ref": "$map/item/tone"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "binding-body"
+                                },
+                                "children": [
+                                  {
+                                    "$description": "Statements or Code, for an inline function only. A structured body is a `JxStatement[]` and a code body is a string, so the toggle is a change of REPRESENTATION rather than of view — which is why it is drawn beside the body it rewrites rather than in the source ladder above it.",
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "toggle-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/showToggle"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "body-toggle"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "jx-action-group",
+                                            "$props": {
+                                              "compact": true,
+                                              "selects": "single",
+                                              "label": "Handler body"
+                                            },
+                                            "children": [
+                                              {
+                                                "tagName": "jx-action-button",
+                                                "attributes": {
+                                                  "part": "body-statements"
+                                                },
+                                                "$props": {
+                                                  "size": "sm",
+                                                  "label": "Statements",
+                                                  "checked": {
+                                                    "$ref": "$map/item/statementsChecked"
+                                                  }
+                                                },
+                                                "onclick": {
+                                                  "$prototype": "Function",
+                                                  "body": [
+                                                    {
+                                                      "operator": "call",
+                                                      "target": {
+                                                        "$ref": "#/state/setBodyMode"
+                                                      },
+                                                      "value": [
+                                                        {
+                                                          "$ref": "$map/item/key"
+                                                        },
+                                                        "statements"
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                "children": [
+                                                  {
+                                                    "tagName": "span",
+                                                    "textContent": "Statements"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "tagName": "jx-action-button",
+                                                "attributes": {
+                                                  "part": "body-code"
+                                                },
+                                                "$props": {
+                                                  "size": "sm",
+                                                  "label": "Code",
+                                                  "checked": {
+                                                    "$ref": "$map/item/codeChecked"
+                                                  }
+                                                },
+                                                "onclick": {
+                                                  "$prototype": "Function",
+                                                  "body": [
+                                                    {
+                                                      "operator": "call",
+                                                      "target": {
+                                                        "$ref": "#/state/setBodyMode"
+                                                      },
+                                                      "value": [
+                                                        {
+                                                          "$ref": "$map/item/key"
+                                                        },
+                                                        "code"
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                "children": [
+                                                  {
+                                                    "tagName": "span",
+                                                    "textContent": "Code"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "body-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/body"
+                                    },
+                                    "cases": {
+                                      "statements": {
+                                        "$description": "An island: `surfaces/statements.ts` mounts its own document in here, named by the handler it edits (`inspector/statements:<key>`), because a node with two structured handlers stamped one id on two elements and `resolveRegion` took the second.",
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "statements-host",
+                                          "data-event": "${$map.item.key}"
+                                        }
+                                      },
+                                      "code": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "body-row"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "jx-textfield",
+                                            "attributes": {
+                                              "part": "body-field"
+                                            },
+                                            "$props": {
+                                              "size": "sm",
+                                              "multiline": true,
+                                              "grows": true,
+                                              "mono": true,
+                                              "label": "Handler body",
+                                              "placeholder": "// handler body",
+                                              "value": {
+                                                "$ref": "$map/item/code"
+                                              }
+                                            },
+                                            "oninput": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/setCode"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/key"
+                                                    },
+                                                    {
+                                                      "$ref": "event#/target/value"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          {
+                                            "tagName": "jx-action-button",
+                                            "attributes": {
+                                              "part": "open-editor"
+                                            },
+                                            "$props": {
+                                              "size": "sm",
+                                              "quiet": true,
+                                              "icon": "code",
+                                              "label": "${$map.item.openTitle}"
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/openEditor"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/key"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "expression": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "body-row"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "expression-host",
+                                              "data-event": "${$map.item.key}"
+                                            }
+                                          },
+                                          {
+                                            "tagName": "jx-action-button",
+                                            "attributes": {
+                                              "part": "open-editor"
+                                            },
+                                            "$props": {
+                                              "size": "sm",
+                                              "quiet": true,
+                                              "icon": "align-bottom",
+                                              "label": "${$map.item.openTitle}"
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/openEditor"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/key"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "ref": {
+                                        "tagName": "jx-select",
+                                        "attributes": {
+                                          "part": "event-handler"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "label": "Handler",
+                                          "value": {
+                                            "$ref": "$map/item/refValue"
+                                          },
+                                          "options": {
+                                            "$ref": "$map/item/refOptions"
+                                          }
+                                        },
+                                        "onchange": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setHandlerRef"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                },
+                                                {
+                                                  "$ref": "event#/target/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "add-event"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "icon": "plus",
+                            "label": "Add Event"
+                          },
+                          "onclick": {
+                            "$ref": "#/state/addEvent"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Add Event"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "$description": "The custom element's outward contract: what a page may set from markup, what it may override, and what it may reach into. Three read-only lists — this is a report, not a form — drawn only on a component's root.",
+              "tagName": "div",
+              "attributes": {
+                "part": "observed-slot",
+                "role": "none",
+                "hidden": "${state.hasObserved ? null : ''}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasObserved"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-accordion-item",
+                  "attributes": {
+                    "data-section": "observed"
+                  },
+                  "$props": {
+                    "label": "Observed Attributes",
+                    "open": {
+                      "$ref": "#/state/observedOpen"
+                    }
+                  },
+                  "ontoggle": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setSection"
+                        },
+                        "value": [
+                          "observed",
+                          {
+                            "$ref": "event#/detail"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-body"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "observed-empty-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/observedEmpty"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "empty"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "empty-message"
+                                  },
+                                  "textContent": "Attributes let a page set this component from markup. Name an \"attribute\" on a data entry to expose it here."
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/observed"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "A read-only name and what it maps to. The Content tab had three near-identical hand-written flex rows for these; they are one shape now, and this is it.",
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "kv",
+                              "data-prop": "${$map.item.prop}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-name"
+                                },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-detail",
+                                  "hidden": "${$map.item.detail ? null : ''}"
+                                },
+                                "textContent": "${$map.item.detail}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-tags",
+                                  "hidden": "${$map.item.tags ? null : ''}"
+                                },
+                                "textContent": "${$map.item.tags}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-value",
+                                  "hidden": "${$map.item.value ? null : ''}"
+                                },
+                                "textContent": "${$map.item.value}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "cssprops-slot",
+                "role": "none",
+                "hidden": "${state.hasCssProps ? null : ''}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasCssProps"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-accordion-item",
+                  "attributes": {
+                    "data-section": "cssprops"
+                  },
+                  "$props": {
+                    "label": "CSS Properties",
+                    "open": {
+                      "$ref": "#/state/cssPropsOpen"
+                    }
+                  },
+                  "ontoggle": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setSection"
+                        },
+                        "value": [
+                          "cssprops",
+                          {
+                            "$ref": "event#/detail"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-body"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/cssProps"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "A read-only name and what it maps to. The Content tab had three near-identical hand-written flex rows for these; they are one shape now, and this is it.",
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "kv",
+                              "data-prop": "${$map.item.prop}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-name"
+                                },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-detail",
+                                  "hidden": "${$map.item.detail ? null : ''}"
+                                },
+                                "textContent": "${$map.item.detail}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-tags",
+                                  "hidden": "${$map.item.tags ? null : ''}"
+                                },
+                                "textContent": "${$map.item.tags}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-value",
+                                  "hidden": "${$map.item.value ? null : ''}"
+                                },
+                                "textContent": "${$map.item.value}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "cssparts-slot",
+                "role": "none",
+                "hidden": "${state.hasCssParts ? null : ''}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasCssParts"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-accordion-item",
+                  "attributes": {
+                    "data-section": "cssparts"
+                  },
+                  "$props": {
+                    "label": "CSS Parts",
+                    "open": {
+                      "$ref": "#/state/cssPartsOpen"
+                    }
+                  },
+                  "ontoggle": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setSection"
+                        },
+                        "value": [
+                          "cssparts",
+                          {
+                            "$ref": "event#/detail"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-body"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/cssParts"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "A read-only name and what it maps to. The Content tab had three near-identical hand-written flex rows for these; they are one shape now, and this is it.",
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "kv",
+                              "data-prop": "${$map.item.prop}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-name"
+                                },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-detail",
+                                  "hidden": "${$map.item.detail ? null : ''}"
+                                },
+                                "textContent": "${$map.item.detail}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-tags",
+                                  "hidden": "${$map.item.tags ? null : ''}"
+                                },
+                                "textContent": "${$map.item.tags}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "kv-value",
+                                  "hidden": "${$map.item.value ? null : ''}"
+                                },
+                                "textContent": "${$map.item.value}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

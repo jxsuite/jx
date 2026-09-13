@@ -2,7 +2,17 @@ import "./with-dom.js";
 import { describe, expect, mock, test } from "bun:test";
 
 import { ancestorPopoverPath, popoverPathFor } from "../src/canvas/popover-path";
+import { reactive, shallowRef } from "../src/reactivity";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/**
+ * The tab the standing reveal watch observes.
+ *
+ * The rule's own effect reads `activeTab.value`, so the tests that drive the WATCH (rather than
+ * calling `reconcileOpenPopover` directly) need a tab they can put there. Held here because
+ * `mock.module` is evaluated once for the file.
+ */
+const activeTab = shallowRef<unknown>(null);
 
 /** A document whose only child is a popover holding a link. */
 const DOC = {
@@ -124,9 +134,13 @@ describe("the reveal rule", () => {
    */
   async function loadWithDoubles() {
     const posted: { path: unknown }[] = [];
+    const postedDialogs: { path: unknown }[] = [];
     const revealed: unknown[] = [];
     // `void`: mock.module returns a promise, and the type-aware lint rule wants it acknowledged.
     void mock.module("../src/canvas/iframe-host", () => ({
+      postDialogOpen: (_tab: unknown, path: unknown) => {
+        postedDialogs.push({ path });
+      },
       postPopoverOpen: (_tab: unknown, path: unknown) => {
         posted.push({ path });
       },
@@ -135,17 +149,38 @@ describe("the reveal rule", () => {
         return Promise.resolve();
       },
     }));
+    // The watch observes the active tab, so the tests that drive it need one they control.
+    void mock.module("../src/workspace/workspace", () => ({ activeTab }));
     const mod = await import("../src/canvas/popover-state");
-    return { mod, posted, revealed };
+    return { mod, posted, postedDialogs, revealed };
   }
 
-  /** A tab-shaped double: the document, a selection and the `ui` slot the rule writes. */
+  /** The shape the rule writes into, for the assertions that read it back. */
+  interface UiTab {
+    session: {
+      selection: (string | number)[][];
+      ui: { openPopover: unknown; openDialog: unknown };
+    };
+  }
+
+  /**
+   * A tab-shaped double: the document, a selection and the `ui` slot the rule writes.
+   *
+   * REACTIVE, because the tests that drive the standing effect need a write to re-trigger it — and
+   * one of them is about a write that must NOT.
+   */
   function fakeTab(selection: (string | number)[][], openPopover: unknown = null) {
-    return {
+    return reactive({
       doc: { document: DOC },
       id: "t1",
-      session: { selection, ui: { openPopover } },
-    } as never;
+      session: { selection, ui: { openDialog: null, openPopover } },
+    }) as never;
+  }
+
+  /** Vue batches effect re-runs into a microtask; two turns settle a write and its cascade. */
+  async function flushEffects(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
   }
 
   test("selecting inside a popover opens it, and tells the frames once", async () => {
@@ -185,6 +220,48 @@ describe("the reveal rule", () => {
       (tab as unknown as { session: { ui: { openPopover: unknown } } }).session.ui.openPopover,
     ).toEqual(["children", 1]);
     expect(posted[0]!.path).toEqual(["children", 1]);
+  });
+
+  test("closing the open panel STAYS closed, with the selection still inside it", async () => {
+    /*
+     * The rule reads `ui.openPopover` to decide whether anything changed, and it writes it. Read
+     * inside the effect's tracked scope, that made the effect depend on the value it writes: the
+     * close re-ran the rule, which found the selection still inside the panel and opened it
+     * straight back. So the action-bar control could not close a popover the reader had selected
+     * into, and a Close button INSIDE a dialog — the ordinary shape of one — could not close its
+     * dialog at all, though §4.2.2 and §4.2.3 name both as the explicit way to close.
+     */
+    const { mod, posted, postedDialogs } = await loadWithDoubles();
+    const tab = fakeTab([["children", 1, "children", 0]]);
+    activeTab.value = tab;
+    const stop = mod.ensurePopoverRevealWatch();
+    await flushEffects();
+    const { ui } = (tab as unknown as UiTab).session;
+    expect(ui.openPopover).toEqual(["children", 1]);
+    // Opening also tells the frames exactly once, rather than twice on the effect's first pass.
+    expect(posted).toHaveLength(1);
+
+    mod.setOpenPopover(tab, null);
+    await flushEffects();
+    expect(ui.openPopover).toBeNull();
+    expect(posted.at(-1)!.path).toBeNull();
+    expect(postedDialogs).toHaveLength(0);
+    stop();
+  });
+
+  test("a selection move still reveals — the rule tracks the selection, and only that", async () => {
+    const { mod } = await loadWithDoubles();
+    const tab = fakeTab([]);
+    activeTab.value = tab;
+    const stop = mod.ensurePopoverRevealWatch();
+    await flushEffects();
+    const { ui } = (tab as unknown as UiTab).session;
+    expect(ui.openPopover).toBeNull();
+
+    (tab as unknown as UiTab).session.selection = [["children", 1, "children", 0]];
+    await flushEffects();
+    expect(ui.openPopover).toEqual(["children", 1]);
+    stop();
   });
 
   test("the watch is idempotent and stops cleanly", async () => {

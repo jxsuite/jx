@@ -1,5 +1,5 @@
 /**
- * The destination section of the New Project Parameters step — where the project is written.
+ * The destination half of the New Project wizard's second step — where the project is written.
  *
  * Two shapes, chosen by the platform's `createDestination` (specs/desktop.md §4.5):
  *
@@ -10,15 +10,18 @@
  * - `"repo"` (cloud): the repository location — owner (personal account or organization), the
  *   repository name, and its visibility.
  *
- * This module owns the destination fields AND the name-derived slug they share, so the field order
+ * This module owns the destination state AND the name-derived slug's label, so the field order
  * reads naturally in both shapes (Location → Directory, versus Owner → Repository → Visibility).
+ *
+ * **It draws nothing.** `surfaces/new-project.json` renders both shapes and branches on
+ * {@link LocationView.destination}; what is left here is the state, the validation, and one
+ * projection of both. The four `sp-*` controls it used to build — and the five property bindings
+ * that had to be `live()` to survive a repaint — went with the template.
  *
  * @docs studio/projects/create
  */
 
-import { html, nothing } from "lit-html";
 import { getPlatform } from "../platform";
-import type { TemplateResult } from "lit-html";
 import type { CreateProjectDestination, RepoInfo } from "../types";
 
 /** Absolute POSIX (`/…`) or Windows (`C:\…` / `C:/…`) path. */
@@ -170,173 +173,103 @@ function repoExists(slug: string): boolean {
   return (_repos ?? []).some((r) => r.fullName.toLowerCase() === full);
 }
 
-function slugFieldTpl(slug: string, onSlugInput: (e: Event) => void): TemplateResult {
-  return html`
-    <label class="new-project-field">
-      <span class="new-project-label">${slugFieldLabel()}</span>
-      <sp-textfield
-        class="new-project-slug"
-        placeholder="my-site"
-        .value=${slug}
-        @input=${onSlugInput}
-        style="width: 100%"
-      ></sp-textfield>
-    </label>
-  `;
-}
-
-function pathFieldsTpl(ctx: {
-  rerender: () => void;
-  slug: string;
-  onSlugInput: (e: Event) => void;
-}): TemplateResult {
-  const platform = getPlatform();
-
-  const browse = async () => {
-    if (!platform.pickDirectory || _browsing) {
-      return;
-    }
-    _browsing = true;
-    ctx.rerender();
-    try {
-      const picked = await platform.pickDirectory();
-      if (picked) {
-        _parent = picked;
-        _error = "";
-      }
-    } finally {
-      _browsing = false;
-      ctx.rerender();
-    }
-  };
-
-  return html`
-    <label class="new-project-field">
-      <span class="new-project-label">Location *</span>
-      <div class="new-project-location-row">
-        <sp-textfield
-          class="new-project-location"
-          placeholder=${
-            platform.pickDirectory
-              ? "Choose a folder to create the project in"
-              : "/absolute/path/to/your/projects"
-          }
-          .value=${_parent}
-          @input=${(e: Event) => {
-            _parent = (e.target as HTMLInputElement).value;
-            _error = "";
-            ctx.rerender();
-          }}
-          style="width: 100%"
-        ></sp-textfield>
-        ${
-          platform.pickDirectory
-            ? html`
-                <sp-button
-                  variant="secondary"
-                  ?disabled=${_browsing}
-                  @click=${() => {
-                    // `void`, as a STATEMENT: `browse()` is async and nothing here awaits it, so
-                    // Dropping the marker turns a deliberate discard into a floating promise.
-                    void browse();
-                  }}
-                >
-                  ${_browsing ? "Choosing…" : "Browse…"}
-                </sp-button>
-              `
-            : nothing
-        }
-      </div>
-    </label>
-    ${slugFieldTpl(ctx.slug, ctx.onSlugInput)}
-  `;
-}
-
-function repoFieldsTpl(ctx: {
-  rerender: () => void;
-  slug: string;
-  onSlugInput: (e: Event) => void;
-}): TemplateResult {
-  const ownerField =
-    _owners.length > 0
-      ? html`
-          <sp-picker
-            class="new-project-owner"
-            .value=${_owner}
-            @change=${(e: Event) => {
-              _owner = (e.target as HTMLElement & { value: string }).value;
-              _error = "";
-              ctx.rerender();
-            }}
-            style="width: 100%"
-          >
-            ${_owners.map((owner) => html`<sp-menu-item value=${owner}>${owner}</sp-menu-item>`)}
-          </sp-picker>
-        `
-      : html`
-          <sp-textfield
-            class="new-project-owner"
-            placeholder="your-account-or-org"
-            .value=${_owner}
-            @input=${(e: Event) => {
-              _owner = (e.target as HTMLInputElement).value;
-              _error = "";
-              ctx.rerender();
-            }}
-            style="width: 100%"
-          ></sp-textfield>
-        `;
-
-  return html`
-    <label class="new-project-field">
-      <span class="new-project-label">Owner *</span>
-      ${ownerField}
-    </label>
-    ${slugFieldTpl(ctx.slug, ctx.onSlugInput)}
-    ${
-      repoExists(ctx.slug)
-        ? html`<div class="new-project-error new-project-error--destination">
-            ${_owner}/${ctx.slug} already exists — choose another name.
-          </div>`
-        : nothing
-    }
-    <label class="new-project-field">
-      <span class="new-project-label">Visibility</span>
-      <sp-picker
-        class="new-project-visibility"
-        .value=${_private ? "private" : "public"}
-        @change=${(e: Event) => {
-          _private = (e.target as HTMLElement & { value: string }).value !== "public";
-          ctx.rerender();
-        }}
-        style="width: 100%"
-      >
-        <sp-menu-item value="private">Private</sp-menu-item>
-        <sp-menu-item value="public">Public</sp-menu-item>
-      </sp-picker>
-    </label>
-  `;
+/** The destination fields as the wizard's document draws them: strings, flags and rows. */
+export interface LocationView {
+  /** Which shape this platform writes. The document's one discriminant here. */
+  destination: "path" | "repo";
+  slugLabel: string;
+  parent: string;
+  parentPlaceholder: string;
+  canBrowse: boolean;
+  browsing: boolean;
+  browseLabel: string;
+  owner: string;
+  owners: { value: string; label: string }[];
+  /** `"private"` or `"public"`: a select holds a value, not a flag. */
+  visibility: string;
+  /** The collision hint, already a sentence. Empty says nothing. */
+  repoTaken: string;
+  previewLabel: string;
+  preview: string;
+  error: string;
 }
 
 /**
- * The destination fields (including the shared slug), branched on the platform's
- * `createDestination`, followed by a live preview of where the project will land.
+ * Everything the destination block draws, as one record.
+ *
+ * The error is read from module state rather than through {@link locationError}: the message is a
+ * fact about the last `collectDestination`, and this is the projection of it, so there is exactly
+ * one reader of the variable and one accessor for anyone outside.
+ *
+ * @param slug The shared directory/repository name, which the collision hint and the preview read.
+ * @returns The destination half of the wizard's view.
  */
-export function renderLocationFields(ctx: {
-  rerender: () => void;
-  slug: string;
-  onSlugInput: (e: Event) => void;
-}): TemplateResult {
-  const isRepo = getPlatform().createDestination === "repo";
-  return html`
-    ${isRepo ? repoFieldsTpl(ctx) : pathFieldsTpl(ctx)}
-    <div class="new-project-destination-preview">
-      ${isRepo ? "Repository" : "Creates"}: <code>${previewOf(ctx.slug)}</code>
-    </div>
-    ${
-      _error
-        ? html`<div class="new-project-error new-project-error--destination">${_error}</div>`
-        : nothing
+export function locationView(slug: string): LocationView {
+  const platform = getPlatform();
+  const isRepo = platform.createDestination === "repo";
+  return {
+    browseLabel: _browsing ? "Choosing…" : "Browse…",
+    browsing: _browsing,
+    canBrowse: typeof platform.pickDirectory === "function",
+    destination: isRepo ? "repo" : "path",
+    error: _error,
+    owner: _owner,
+    owners: _owners.map((owner) => ({ label: owner, value: owner })),
+    parent: _parent,
+    parentPlaceholder: platform.pickDirectory
+      ? "Choose a folder to create the project in"
+      : "/absolute/path/to/your/projects",
+    preview: previewOf(slug),
+    previewLabel: isRepo ? "Repository" : "Creates",
+    repoTaken:
+      isRepo && repoExists(slug)
+        ? `${_owner}/${slug.trim()} already exists — choose another name.`
+        : "",
+    slugLabel: slugFieldLabel(),
+    visibility: _private ? "private" : "public",
+  };
+}
+
+/** The Location field moved. A typed path is a fix, so the standing refusal goes with it. */
+export function setLocationParent(value: string): void {
+  _parent = value;
+  _error = "";
+}
+
+/** The Owner field moved, from either shape of the control. */
+export function setLocationOwner(value: string): void {
+  _owner = value;
+  _error = "";
+}
+
+/** The Visibility picker moved. Anything that is not `"public"` is private. */
+export function setLocationVisibility(value: string): void {
+  _private = value !== "public";
+}
+
+/**
+ * Open the platform's own directory dialog and take the answer as the Location.
+ *
+ * Re-entrant by refusal rather than by disabling alone: the button is drawn disabled while the
+ * native dialog is up, and a synthetic click does not consult that.
+ *
+ * @param rerender Repaint the wizard — once for the busy label, once for the answer.
+ */
+export async function browseLocation(rerender: () => void): Promise<void> {
+  const platform = getPlatform();
+  if (!platform.pickDirectory || _browsing) {
+    return;
+  }
+  _browsing = true;
+  rerender();
+  try {
+    const picked = await platform.pickDirectory();
+    if (picked) {
+      _parent = picked;
+      _error = "";
     }
-  `;
+  } finally {
+    _browsing = false;
+    rerender();
+  }
 }

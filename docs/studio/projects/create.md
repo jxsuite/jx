@@ -5,6 +5,8 @@ code:
   - packages/studio/src/new-project/new-project-modal.ts
   - packages/studio/src/new-project/location-fields.ts
   - packages/studio/src/new-project/import-tab.ts
+  - packages/studio/src/surfaces/new-project.ts
+  - packages/studio/src/surfaces/add-repo.ts
   - packages/studio/src/services/ai-import-tools.ts
   - packages/studio/src/services/import-seed.ts
   - packages/import/src/strip-classes.ts

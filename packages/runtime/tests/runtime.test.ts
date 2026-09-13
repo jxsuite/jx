@@ -22,6 +22,7 @@ import {
   booleanAttrValue,
   enumeratedAttrNames,
   isDeclarationAtRule,
+  isKeyframesAtRule,
   releaseElementStyles,
   resetDocumentStyles,
 } from "../src/runtime";
@@ -1264,6 +1265,30 @@ describe("renderNode", () => {
    * element is re-used across renders, so a binding that flips back has to REMOVE the attribute.
    * Writing "false" leaves `<details open="false">`, which is an open `<details>`.
    */
+  test("a value that resolves to null or undefined removes the attribute", async () => {
+    const state = reactive({ haspopup: true, missing: undefined as string | undefined });
+    const el = renderNode(
+      {
+        attributes: {
+          "aria-haspopup": "${state.haspopup ? 'menu' : null}",
+          title: { $ref: "#/state/missing" },
+          lang: null as unknown as string,
+        },
+        tagName: "div",
+      },
+      state,
+    );
+    expect(el.getAttribute("aria-haspopup")).toBe("menu");
+    expect(el.hasAttribute("title")).toBe(false);
+    expect(el.hasAttribute("lang")).toBe(false);
+    state.haspopup = false;
+    await Promise.resolve();
+    expect(el.hasAttribute("aria-haspopup")).toBe(false);
+    state.missing = "Needs a selection";
+    await Promise.resolve();
+    expect(el.getAttribute("title")).toBe("Needs a selection");
+  });
+
   test("a boolean binding that flips to false removes the attribute", async () => {
     const state = reactive({ expanded: true });
     const el = renderNode({ attributes: { open: "${state.expanded}" }, tagName: "details" }, state);
@@ -2504,12 +2529,18 @@ describe("applyStyle — declaration-body at-rules", () => {
     expect(elementCSS(el)).toContain("@media (min-width: 40rem) { [data-jx=");
   });
 
-  test("isDeclarationAtRule knows the four, and rejects the rule-bodied ones", () => {
+  test("isDeclarationAtRule knows the four, and rejects every other body shape", () => {
     for (const key of ["@position-try --x", "@property --y", "@font-face", "@counter-style c"]) {
       expect(isDeclarationAtRule(key)).toBe(true);
     }
-    for (const key of ["@media screen", "@supports (x: y)", "@starting-style", "@keyframes spin"]) {
+    for (const key of ["@media screen", "@supports (x: y)", "@starting-style"]) {
       expect(isDeclarationAtRule(key)).toBe(false);
     }
+    /* `@keyframes` is a THIRD shape rather than a rule-bodied one — its children are keyframe
+       selectors, not element selectors — so it has its own predicate and its own serializer.
+       Adding it here instead would emit nothing at all: every child of the block is a block,
+       `declarationsOf` skips blocks, and a rule with no declarations is never written. */
+    expect(isDeclarationAtRule("@keyframes spin")).toBe(false);
+    expect(isKeyframesAtRule("@keyframes spin")).toBe(true);
   });
 });

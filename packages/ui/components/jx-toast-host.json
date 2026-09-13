@@ -1,0 +1,121 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxToastHost",
+  "tagName": "jx-toast-host",
+  "observedAttributes": ["label", "live", "placement", "hotkey"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "Notifications",
+      "attribute": "label",
+      "description": "The region's accessible name, so a reader who lands in it is told what it is rather than hearing a message with no provenance. It names the STACK and never a toast: the messages inside it change, and a region renamed on every arrival is a region announced on every arrival."
+    },
+    "live": {
+      "type": "string",
+      "default": "polite",
+      "attribute": "live",
+      "description": "polite, assertive or off: how the stack is announced. polite waits for a pause and is right for an outcome; assertive interrupts and is for the rare message that cannot wait. off is for a host that already says these things somewhere else — Jx Studio announces through its own single announcer, and a region here as well would say every notification twice. Role and attribute move together: polite writes role=status, assertive writes role=alert, off writes neither, so an assistive technology reading the role and one reading the attribute agree."
+    },
+    "placement": {
+      "type": "string",
+      "default": "bottom-end",
+      "attribute": "placement",
+      "description": "bottom-end, bottom-start, top-end or top-start: which corner the stack is pinned to. It moves the box and NOT the order — the toasts are drawn in the order they are written, whichever corner they are in, so the order a reader hears, the order they tab through and the order they see stay one order. A host that wants the stack in the flow of its own layout overrides position in its own stylesheet; nothing here depends on the fixed box."
+    },
+    "hotkey": {
+      "type": "string",
+      "default": "F8",
+      "attribute": "hotkey",
+      "description": "The key that moves focus to the first control in the stack. It is what makes a recovery control reachable at all: the stack is at the end of the document and a toast may expire before a reader could Tab to it, so the reader asks for it in one press instead — and arriving suspends every clock in the stack, so nothing then expires under their hand. Escape gives focus back to where it came from, and so does a toast closing while the reader is in it. A press carrying Ctrl, Alt or Meta is left alone. Empty turns the gesture off, for an application that owns a command of its own for this."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast-host.ts",
+      "$export": "onHostMount",
+      "description": "Registers the stack's key on the document. It has to be the document: a key that only worked once focus was already in the stack would answer the question it exists to answer with itself."
+    },
+    "onUnmount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast-host.ts",
+      "$export": "onHostUnmount",
+      "description": "Takes the key back when the stack leaves the document, so a removed host cannot go on answering a press for a stack it can no longer show."
+    },
+    "onHold": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast-host.ts",
+      "$export": "onStackHold",
+      "description": "Pointer or focus arrived anywhere in the stack: every toast in it is told to suspend its clock, not only the one underneath. An older toast retiring while the reader answers a newer one would move the very control they were reaching for."
+    },
+    "onRelease": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast-host.ts",
+      "$export": "onStackRelease",
+      "description": "The pointer or the focus left the stack for something outside it, so the clocks run again. A move between two toasts of one stack is not a departure and releases nothing."
+    },
+    "onClose": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast-host.ts",
+      "$export": "onStackClose",
+      "description": "A toast closed. If it took the reader's focus with it, focus goes back to where the hotkey found it; if the reader was somewhere else entirely, nothing moves."
+    }
+  },
+  "onpointerover": {
+    "$ref": "#/state/onHold"
+  },
+  "onpointerout": {
+    "$ref": "#/state/onRelease"
+  },
+  "onfocusin": {
+    "$ref": "#/state/onHold"
+  },
+  "onfocusout": {
+    "$ref": "#/state/onRelease"
+  },
+  "onclose": {
+    "$ref": "#/state/onClose"
+  },
+  "attributes": {
+    "role": "${state.live === 'off' ? null : state.live === 'assertive' ? 'alert' : 'status'}",
+    "aria-live": "${state.live}",
+    "aria-atomic": "false",
+    "aria-label": "${state.label || null}",
+    "data-placement": "${state.placement}"
+  },
+  "style": {
+    "$description": "aria-atomic is false and written out rather than left to the role, which supplies true: a stack re-read whole on every arrival would announce three old messages to deliver one new one. pointer-events is none on the box and auto on each toast, so the empty corner the stack reserves is not a hole the page cannot be clicked through.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-3)",
+    "position": "fixed",
+    "zIndex": "1000",
+    "insetBlockEnd": "var(--jx-space-4)",
+    "insetInlineEnd": "var(--jx-space-4)",
+    "alignItems": "flex-end",
+    "maxInlineSize": "min(420px, calc(100vw - 2 * var(--jx-space-4)))",
+    "pointerEvents": "none",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "&[data-placement=\"top-end\"]": {
+      "insetBlockStart": "var(--jx-space-4)",
+      "insetBlockEnd": "auto"
+    },
+    "&[data-placement=\"bottom-start\"]": {
+      "insetInlineStart": "var(--jx-space-4)",
+      "insetInlineEnd": "auto",
+      "alignItems": "flex-start"
+    },
+    "&[data-placement=\"top-start\"]": {
+      "insetBlockStart": "var(--jx-space-4)",
+      "insetBlockEnd": "auto",
+      "insetInlineStart": "var(--jx-space-4)",
+      "insetInlineEnd": "auto",
+      "alignItems": "flex-start"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

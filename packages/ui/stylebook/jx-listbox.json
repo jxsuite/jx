@@ -1,0 +1,337 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookListbox",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-option.json"
+    },
+    {
+      "$ref": "../components/jx-listbox.json"
+    }
+  ],
+  "state": {
+    "active": "owned-o0",
+    "picked": "",
+    "hover": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/active"
+          },
+          "value": {
+            "$ref": "event#/currentTarget/id"
+          }
+        }
+      ]
+    },
+    "note": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/picked"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [part=\"panel\"]": {
+      "width": "420px",
+      "maxWidth": "100%",
+      "display": "flex",
+      "flexDirection": "column",
+      "minHeight": "0",
+      "overflow": "hidden",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--jx-bg-overlay)"
+    },
+    "& [part=\"filter\"]": {
+      "display": "block",
+      "width": "100%",
+      "boxSizing": "border-box",
+      "flex": "0 0 auto",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "border": "none",
+      "borderBottom": "1px solid var(--jx-border)",
+      "background": "transparent",
+      "color": "inherit",
+      "font": "inherit",
+      "outline": "none",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& jx-listbox": {
+      "--jx-listbox-max-block-size": "220px",
+      "padding": "var(--jx-space-2)"
+    },
+    "& [part=\"picked\"]": {
+      "margin": "var(--jx-space-3) 0 0",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-listbox"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A named list of rows whose keyboard belongs to somebody else. It has no tab stop and never calls focus(): one of its two owners is a field that must keep the caret, and the other is nothing at all — a panel filtering for a caret that is somewhere else entirely. A consumer moves the highlight by writing ONE string, active, which is the same id its field points aria-activedescendant at."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Owned by a field"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The palette shape: a borderless field over the list, aria-controls naming it and aria-activedescendant naming the row. The field keeps the caret, so every character typed still lands in it. Hover the rows — the pointer writes the same id an arrow key would."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "panel"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "filter",
+            "type": "text",
+            "role": "combobox",
+            "autocomplete": "off",
+            "aria-autocomplete": "list",
+            "aria-controls": "owned",
+            "aria-expanded": "true",
+            "aria-activedescendant": "${state.active}",
+            "aria-label": "Filter commands",
+            "placeholder": "Filter…"
+          }
+        },
+        {
+          "tagName": "jx-listbox",
+          "attributes": {
+            "id": "owned"
+          },
+          "$props": {
+            "label": "Commands",
+            "active": "${state.active}"
+          },
+          "onselect": {
+            "$ref": "#/state/note"
+          },
+          "children": [
+            {
+              "tagName": "jx-option",
+              "attributes": {
+                "id": "owned-o0"
+              },
+              "$props": {
+                "value": "open",
+                "label": "Open file…",
+                "description": "workspace"
+              },
+              "onmouseenter": {
+                "$ref": "#/state/hover"
+              }
+            },
+            {
+              "tagName": "jx-option",
+              "attributes": {
+                "id": "owned-o1"
+              },
+              "$props": {
+                "value": "save",
+                "label": "Save",
+                "description": "document"
+              },
+              "onmouseenter": {
+                "$ref": "#/state/hover"
+              }
+            },
+            {
+              "tagName": "jx-option",
+              "attributes": {
+                "id": "owned-o2"
+              },
+              "$props": {
+                "value": "publish",
+                "label": "Publish site",
+                "description": "project"
+              },
+              "onmouseenter": {
+                "$ref": "#/state/hover"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "picked"
+      },
+      "textContent": "Active: ${state.active} · picked: ${state.picked}"
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Owned by nothing at all"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The slash-menu shape: no field, no focus, nothing in the panel a Tab can reach. The caret it is filtering for is in the canvas, often in another realm, so the panel marks its row and stays out of the way. Its heading and its empty sentence are nodes the consumer writes, carrying part=group-heading and part=empty, which this element draws because it owns the box they sit in."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "panel"
+      },
+      "children": [
+        {
+          "tagName": "jx-listbox",
+          "attributes": {
+            "id": "unowned"
+          },
+          "$props": {
+            "label": "Elements",
+            "active": "unowned-o1"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "role": "group",
+                "aria-label": "Text"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "group-heading",
+                    "aria-hidden": "true"
+                  },
+                  "textContent": "Text"
+                },
+                {
+                  "tagName": "jx-option",
+                  "attributes": {
+                    "id": "unowned-o0"
+                  },
+                  "$props": {
+                    "value": "h1",
+                    "label": "Heading",
+                    "description": "h1"
+                  }
+                },
+                {
+                  "tagName": "jx-option",
+                  "attributes": {
+                    "id": "unowned-o1"
+                  },
+                  "$props": {
+                    "value": "p",
+                    "label": "Paragraph",
+                    "description": "p"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "role": "group",
+                "aria-label": "Media"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "group-heading",
+                    "aria-hidden": "true"
+                  },
+                  "textContent": "Media"
+                },
+                {
+                  "tagName": "jx-option",
+                  "attributes": {
+                    "id": "unowned-o2"
+                  },
+                  "$props": {
+                    "value": "img",
+                    "label": "Image",
+                    "description": "img"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Nothing matched"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "panel"
+      },
+      "children": [
+        {
+          "tagName": "jx-listbox",
+          "attributes": {
+            "id": "nothing"
+          },
+          "$props": {
+            "label": "Results"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "textContent": "No matches"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

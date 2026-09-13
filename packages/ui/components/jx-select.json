@@ -1,0 +1,637 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSelect",
+  "tagName": "jx-select",
+  "observedAttributes": [
+    "label",
+    "labelledby",
+    "describedby",
+    "value",
+    "name",
+    "disabled",
+    "required",
+    "size",
+    "invalid",
+    "error",
+    "help"
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "The chosen row's value. The empty string is a LEGAL value here — it is the inherit row, an option a reader can arrow to — and never means unset, so nothing in this element treats it as absence. It is written into the control as a PROPERTY and re-asserted by the sidecar whenever the option list changes; the selected content attribute is never written, because the first real keyboard pick makes an option dirty and the attribute stops moving selectedness from that moment on."
+    },
+    "options": {
+      "type": "array",
+      "default": [],
+      "description": "Ungrouped rows, drawn above every group. A row is { value, label, description?, disabled?, face?, swatch?, line?, weight?, slant?, variant?, transform?, decoration? }: value and label are what the control is made of, and the rest are the drawing channels — a font face, a colour, a border style, and the five typographic axes the label can draw itself in (font weight, font style, font variant, text transform, text decoration), each arriving as a custom property on its own span so seventy rows still cost zero rules."
+    },
+    "groups": {
+      "type": "array",
+      "default": [],
+      "description": "Grouped rows, as { id, label, rows }. Each group draws BOTH halves of its delimiter: the optgroup's label is what names the group in the accessibility tree, and the legend inside it is what draws the heading. Neither half substitutes for the other — strip the legend and the group keeps its name with nothing to look at, an 18px empty band above its first row."
+    },
+    "unlisted": {
+      "type": "array",
+      "default": [],
+      "description": "Zero rows or one: the stand-in row for a value no group holds. A select whose value matches no option falls silently to index 0, so the sidecar synthesises the row rather than letting the element lie about what it holds. The sidecar computes it and this document renders it — the sidecar never builds DOM — and the row it renders carries part=\"unlisted\", which is how the same computation tells its own row apart from the listed ones and does not loop."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the control as aria-label. Required unless a visible label points at the control."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby, after the element's own error and help sentences."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The form field name, forwarded to the control. It is also the answer to the one HTML-validity issue a page carrying this element otherwise raises: a form field element should have an id or a name."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be opened or focused, and submits nothing."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "required",
+      "description": "Forwarded to the control, for the form it sits in."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The control height is the kit's, so a row of controls lines up."
+    },
+    "invalid": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "invalid",
+      "description": "The value is refused: the control says aria-invalid and draws in the danger colour."
+    },
+    "error": {
+      "type": "string",
+      "default": "",
+      "attribute": "error",
+      "description": "The sentence explaining a refused value, drawn under the control and announced as it changes. Its region is permanent and empty until there is something to say, so the first refusal is announced rather than only a later one."
+    },
+    "help": {
+      "type": "string",
+      "default": "",
+      "attribute": "help",
+      "description": "A sentence of guidance under the control."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This element's own id stem, minted on mount. The error and help sentences take their ids from it, and the control names those ids in aria-describedby."
+    },
+    "hasError": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/error"
+        },
+        "value": ""
+      }
+    },
+    "hasHelp": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/help"
+        },
+        "value": ""
+      }
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/select.ts",
+      "$export": "mountSelect",
+      "description": "Mints the id stem, then keeps the control's selectedness and its stand-in row in step with state.value as the option list changes. Both are things a document body cannot say: the value property binding runs before the first option exists, its write is refused, and it never re-runs because nothing it read changed."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/value"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        }
+      ],
+      "description": "Writes what the reader picked into value, and NOTHING else. The control's own input and change already bubble out of the element with e.target being the inner select, which is the contract jx-textfield has; a body that dispatched change as well would hear its own event and re-enter — one pick measured 43 change events before this said only the one thing."
+    }
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-invalid": "${state.invalid ? '' : null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "position": "relative",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "verticalAlign": "middle",
+    "minWidth": "0",
+    "--jx-select-h": "var(--jx-control-h)",
+    "--jx-select-pad": "var(--jx-space-3)",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "&[data-size=\"sm\"]": {
+      "--jx-select-h": "calc(var(--jx-control-h) - 4px)",
+      "--jx-select-pad": "var(--jx-space-2)"
+    },
+    "&[data-size=\"lg\"]": {
+      "--jx-select-h": "calc(var(--jx-control-h) + 8px)"
+    },
+    "& select": {
+      "appearance": "base-select",
+      "boxSizing": "border-box",
+      "display": "flex",
+      "alignItems": "center",
+      "width": "100%",
+      "minHeight": "var(--jx-select-h)",
+      "margin": "0",
+      "paddingBlock": "0",
+      "paddingInline": "var(--jx-select-pad)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "textAlign": "start",
+      "outline": "none",
+      "transition": "border-color var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": {
+        "borderColor": "var(--jx-fg-muted)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      },
+      "&::picker(select)": {
+        "appearance": "base-select",
+        "boxSizing": "border-box",
+        "margin": "0",
+        "padding": "var(--jx-space-1)",
+        "border": "0",
+        "borderRadius": "var(--jx-radius-md)",
+        "background": "var(--jx-bg-overlay)",
+        "color": "var(--jx-fg)",
+        "boxShadow": "var(--jx-shadow-popover)",
+        "maxHeight": "min(320px, 60vh)",
+        "overflowY": "auto",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)"
+      },
+      "&::picker-icon": {
+        "marginInlineStart": "auto",
+        "paddingInlineStart": "var(--jx-space-2)",
+        "color": "var(--jx-fg-muted)",
+        "transition": "rotate var(--jx-dur-1) var(--jx-ease-out)"
+      },
+      "&:open::picker-icon": {
+        "rotate": "180deg"
+      },
+      "& optgroup": {
+        "margin": "0",
+        "padding": "0",
+        "font": "inherit",
+        "color": "inherit",
+        "background": "none"
+      },
+      "& hr": {
+        "margin": "var(--jx-space-1) var(--jx-space-2)",
+        "border": "0",
+        "borderBlockStart": "1px solid var(--jx-border)"
+      },
+      "& option": {
+        "boxSizing": "border-box",
+        "display": "flex",
+        "alignItems": "center",
+        "gap": "var(--jx-space-3)",
+        "minHeight": "var(--jx-select-h)",
+        "paddingBlock": "var(--jx-space-1)",
+        "paddingInline": "var(--jx-space-2)",
+        "borderRadius": "var(--jx-radius-xs)",
+        "color": "var(--jx-fg)",
+        ":hover": {
+          "background": "var(--jx-hover-bg)"
+        },
+        ":disabled": {
+          "opacity": "0.45"
+        },
+        "&::checkmark": {
+          "order": "1",
+          "marginInlineStart": "auto",
+          "paddingInlineStart": "var(--jx-space-3)"
+        },
+        "&:checked::checkmark": {
+          "color": "var(--jx-accent)"
+        }
+      },
+      "& option[hidden]": {
+        "display": "none"
+      }
+    },
+    "&[data-invalid] select": {
+      "borderColor": "var(--jx-danger)"
+    },
+    "& [part=\"trigger\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "margin": "0",
+      "padding": "0",
+      "appearance": "none",
+      "border": "0",
+      "borderRadius": "0",
+      "background": "none",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "start",
+      "outline": "none"
+    },
+    "& [part=\"preview\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"preview\"] [part=\"description\"]": {
+      "display": "none"
+    },
+    "& [part=\"group-heading\"]": {
+      "display": "block",
+      "padding": "var(--jx-space-2) var(--jx-space-2) var(--jx-space-1)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-muted)"
+    },
+    "& [part=\"text\"]": {
+      "fontFamily": "var(--jx-row-face, inherit)",
+      "fontWeight": "var(--jx-row-weight, inherit)",
+      "fontStyle": "var(--jx-row-slant, inherit)",
+      "fontVariant": "var(--jx-row-variant, inherit)",
+      "textTransform": "var(--jx-row-transform, inherit)",
+      "textDecoration": "var(--jx-row-decoration, inherit)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"swatch\"]": {
+      "background": "var(--jx-row-swatch, transparent)",
+      "inlineSize": "16px",
+      "blockSize": "16px",
+      "flex": "0 0 auto",
+      "borderRadius": "var(--jx-radius-xs)",
+      "boxShadow": "inset 0 0 0 1px var(--jx-border)"
+    },
+    "& [part=\"line\"]": {
+      "borderBlockStart": "2px var(--jx-row-line, none) currentColor",
+      "inlineSize": "32px",
+      "blockSize": "0",
+      "flex": "0 0 auto"
+    },
+    "& [part=\"description\"]": {
+      "marginInlineStart": "auto",
+      "paddingInlineStart": "var(--jx-space-4)",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"swatch\"][hidden], & [part=\"line\"][hidden], & [part=\"description\"][hidden]": {
+      "display": "none"
+    },
+    "& [part=\"error\"], & [part=\"help\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"error\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "& [part=\"error\"]:empty": {
+      "position": "absolute"
+    },
+    "& > [part=\"help-slot\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "select",
+      "attributes": {
+        "part": "control",
+        "data-value": "${state.value}",
+        "aria-label": "${state.label || null}",
+        "aria-labelledby": "${state.labelledby || null}",
+        "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
+        "aria-invalid": "${state.invalid ? 'true' : null}",
+        "name": "${state.name || null}",
+        "disabled": {
+          "$ref": "#/state/disabled"
+        },
+        "required": {
+          "$ref": "#/state/required"
+        }
+      },
+      "value": {
+        "$ref": "#/state/value"
+      },
+      "onchange": {
+        "$ref": "#/state/onChange"
+      },
+      "children": [
+        {
+          "tagName": "button",
+          "attributes": {
+            "part": "trigger",
+            "type": "button",
+            "tabindex": "-1",
+            "role": "none"
+          },
+          "children": [
+            {
+              "tagName": "selectedcontent",
+              "attributes": {
+                "part": "preview"
+              }
+            }
+          ]
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/unlisted"
+          },
+          "key": {
+            "$ref": "$map/item/value"
+          },
+          "map": {
+            "tagName": "option",
+            "attributes": {
+              "part": "unlisted",
+              "value": "${$map.item.value}"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "text"
+                },
+                "textContent": "${$map.item.label}"
+              }
+            ]
+          }
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/options"
+          },
+          "key": {
+            "$ref": "$map/item/value"
+          },
+          "map": {
+            "tagName": "option",
+            "attributes": {
+              "part": "option",
+              "value": "${$map.item.value}",
+              "disabled": "${!!$map.item.disabled}"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "swatch",
+                  "hidden": "${!$map.item.swatch}"
+                },
+                "style": {
+                  "--jx-row-swatch": {
+                    "$ref": "$map/item/swatch"
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "line",
+                  "hidden": "${!$map.item.line}"
+                },
+                "style": {
+                  "--jx-row-line": {
+                    "$ref": "$map/item/line"
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "text"
+                },
+                "style": {
+                  "--jx-row-face": {
+                    "$ref": "$map/item/face"
+                  },
+                  "--jx-row-weight": {
+                    "$ref": "$map/item/weight"
+                  },
+                  "--jx-row-slant": {
+                    "$ref": "$map/item/slant"
+                  },
+                  "--jx-row-variant": {
+                    "$ref": "$map/item/variant"
+                  },
+                  "--jx-row-transform": {
+                    "$ref": "$map/item/transform"
+                  },
+                  "--jx-row-decoration": {
+                    "$ref": "$map/item/decoration"
+                  }
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "description",
+                  "hidden": "${!$map.item.description}"
+                },
+                "textContent": "${$map.item.description || ''}"
+              }
+            ]
+          }
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/groups"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "optgroup",
+            "attributes": {
+              "part": "group",
+              "label": "${$map.item.label}"
+            },
+            "children": [
+              {
+                "tagName": "legend",
+                "attributes": {
+                  "part": "group-heading"
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "$prototype": "Array",
+                "items": {
+                  "$ref": "$map/item/rows"
+                },
+                "key": {
+                  "$ref": "$map/item/value"
+                },
+                "map": {
+                  "tagName": "option",
+                  "attributes": {
+                    "part": "option",
+                    "value": "${$map.item.value}",
+                    "disabled": "${!!$map.item.disabled}"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "swatch",
+                        "hidden": "${!$map.item.swatch}"
+                      },
+                      "style": {
+                        "--jx-row-swatch": {
+                          "$ref": "$map/item/swatch"
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "line",
+                        "hidden": "${!$map.item.line}"
+                      },
+                      "style": {
+                        "--jx-row-line": {
+                          "$ref": "$map/item/line"
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "text"
+                      },
+                      "style": {
+                        "--jx-row-face": {
+                          "$ref": "$map/item/face"
+                        },
+                        "--jx-row-weight": {
+                          "$ref": "$map/item/weight"
+                        },
+                        "--jx-row-slant": {
+                          "$ref": "$map/item/slant"
+                        },
+                        "--jx-row-variant": {
+                          "$ref": "$map/item/variant"
+                        },
+                        "--jx-row-transform": {
+                          "$ref": "$map/item/transform"
+                        },
+                        "--jx-row-decoration": {
+                          "$ref": "$map/item/decoration"
+                        }
+                      },
+                      "textContent": "${$map.item.label}"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "description",
+                        "hidden": "${!$map.item.description}"
+                      },
+                      "textContent": "${$map.item.description || ''}"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "slot"
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "error",
+        "id": "${state.uid ? state.uid + '-error' : null}",
+        "role": "status",
+        "aria-live": "polite"
+      },
+      "textContent": "${state.error}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "none",
+        "part": "help-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/hasHelp"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "help",
+            "id": "${state.uid ? state.uid + '-help' : null}"
+          },
+          "textContent": "${state.help}"
+        }
+      }
+    }
+  ]
+}

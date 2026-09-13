@@ -11,9 +11,9 @@
  *    is the SAME basename for a `$map` template, so it read `index.json › index.json`), and knew
  *    nothing about the project above it or the selection below it. It is deleted, and so is the
  *    stack it walked: nothing ever pushed a frame, so it could only ever draw its empty branch.
- * 2. `panels/statusbar.ts`'s selection field — a clickable ancestor trail, `selection.set` per crumb.
- *    It appeared ONLY while something was selected, and knew nothing about the document it was
- *    inside.
+ * 2. `surfaces/statusbar.ts`'s selection field — a clickable ancestor trail, `selection.set` per
+ *    crumb. It appeared ONLY while something was selected, and knew nothing about the document it
+ *    was inside.
  *
  * Between them they never rendered at the same time as each other and never rendered the whole
  * address, so neither one was a place to look. **This bar is the whole chain**, always:
@@ -41,9 +41,15 @@
  * That is the one place this bar deliberately differs from the status bar, where an unavailable
  * item vanishes. An address with a hole in it is a lie about containment; a readout is merely a
  * step you cannot take.
+ *
+ * **This file is the FLOW; the markup is a document.** `surfaces/jump-bar.json` owns the bar's
+ * structure, its ARIA and every value in its style, and `surfaces/jump-bar.ts` mounts one per pane
+ * (studio-ui-guidelines.md §6, §9.3). What stays here is the part that is a decision: which pane
+ * this bar is about, what its address is, which of its steps the registry can run, and what a
+ * chevron opens — and the chevron opens the KIT MENU, `surfaces/menu.ts`, because a list of
+ * commands is what that surface already is (§12.5).
  */
 
-import { html, render as litRender, nothing } from "lit-html";
 import { displayTagName } from "@jxsuite/schema/guards";
 import { childList, getNodeAtPath, nodeLabel, pathsEqual, projectState } from "../store";
 import { effect, effectScope } from "../reactivity";
@@ -52,20 +58,22 @@ import { derivationOfPane, tabOfPane } from "../canvas/canvas-surface";
 import { paneRegion } from "../ui/regions";
 import { primarySelection } from "../tabs/selection";
 import { activeRegistry } from "../commands/active-registry";
-import { renderPopover } from "../ui/layers";
-import { rectOf } from "../utils/geometry";
+import { openMenu } from "../surfaces/menu";
+import { mountJumpBarSurface } from "../surfaces/jump-bar";
+import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import type { CommandArgs, CommandRegistry } from "../commands/registry";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { JxPath } from "../state";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
+import type { JumpBarSurface, ProjectedStep } from "../surfaces/jump-bar";
 import type { Tab } from "../tabs/tab";
 import type { PaneDerivation } from "../workspace/workspace";
 import type { EffectScope } from "@vue/reactivity";
-import type { TemplateResult } from "lit-html";
 
 /** The CSS variable the stage is offset by while the jump bar is on screen. */
 export const JUMP_BAR_VAR = "--jump-bar-h";
 
-/** The bar's height. Declared here because the offset projection and the stylesheet must agree. */
+/** The bar's height. Declared here because the offset projection and the document must agree. */
 const JUMP_BAR_HEIGHT = 24;
 
 // ─── The model ───────────────────────────────────────────────────────────────
@@ -105,7 +113,7 @@ export interface JumpSegment {
  *
  * Lives here rather than in `statusbar.ts`, where it started: the jump bar is the surface whose
  * whole job is naming the containment chain, and the status bar's DOCUMENT field is a second reader
- * of the same fact. Having the reader own it also kept `mock.module("panels/statusbar")` — which
+ * of the same fact. Having the reader own it also kept `mock.module("surfaces/statusbar")` — which
  * six bootstrap tests do — from deciding whether the jump bar can name a file.
  */
 export function documentLabel(path: string | null): string {
@@ -211,11 +219,12 @@ function choiceFor(document: unknown, path: JxPath, fallback: string, own: JxPat
 // ─── Building the address ────────────────────────────────────────────────────
 
 /**
- * The whole address, as data. Pure: no registry, no DOM — the template decides what is renderable.
+ * The whole address, as data. Pure: no registry, no DOM — the projection decides what is
+ * renderable.
  *
  * Order is containment order, outermost first, which is the same left-to-right order the status bar
  * puts its three fields in. Nothing here reads the registry, so a segment is produced whether or
- * not its command happens to be registered; {@link segmentTpl} is where that difference shows.
+ * not its command happens to be registered; {@link projectStep} is where that difference shows.
  */
 export function jumpSegments(
   tab: Tab | null,
@@ -244,7 +253,7 @@ export function jumpSegments(
      The address is still the document — a lens draws the source pane's, a companion its own — but
      the question an author has about a pane that is following something is "can I stop it
      following and just keep this open". `pane.pin` answers it, and answers it with a REFUSAL for a
-     lens: `segmentTpl` already renders a crumb whose command is disabled as a disabled button with
+     lens: `projectStep` already renders a step whose command is disabled as a disabled button with
      `disabledReason` in the tooltip, so the sentence explaining why Code, Diff and breakpoint views
      cannot be pinned arrives for free. */
   segments.push({
@@ -301,26 +310,20 @@ function editorSegment(sigil: string, def: FunctionEditDef | FormulaEditDef): Ju
   };
 }
 
-// ─── Rendering ───────────────────────────────────────────────────────────────
+// ─── The projection ──────────────────────────────────────────────────────────
 
 /**
- * Where each pane's bar renders. One entry per drawn cell.
+ * A step's identity across repaints — the repeater's key, and what `run` and `choose` are given.
  *
- * A Map rather than a `let _host`, because the bar addresses a PANE: it prints where you are, and
- * with two panes on screen there are two answers. `panels/pane-grid.ts` attaches a cell's
- * `.pane-jump` as the cell is built and detaches it as the cell is disposed, which is the same
- * hand-over `panels/frontmatter-panel.ts` takes from the stage.
+ * A NODE step is named by its path, so moving the selection one level up keeps every ancestor's
+ * node (and the chevron the reader is aiming at) exactly where it was. Every other kind is a
+ * singleton in the address, so its kind is name enough.
  */
-const _hosts = new Map<string, HTMLElement>();
-
-let _scope: EffectScope | null = null;
-
-let _menu: { dismiss: () => void } | null = null;
-
-/** Close the open segment menu, if any. Idempotent. */
-export function dismissJumpMenu(): void {
-  _menu?.dismiss();
-  _menu = null;
+function stepKey(segment: JumpSegment): string {
+  const path = segment.args?.path;
+  return segment.kind === "node" && Array.isArray(path)
+    ? `node:${(path as JxPath).join("/")}`
+    : segment.kind;
 }
 
 /** Whether the registry can actually run this id right now. */
@@ -342,117 +345,104 @@ function segmentTitle(registry: CommandRegistry, segment: JumpSegment, id: strin
 }
 
 /**
- * Open a segment's alternatives.
+ * One step, as the document reads it.
  *
- * The menu is built from the segment's choices, and every row runs a command — the same command the
- * segment itself names, with a different path. Nothing here decides what selecting means.
+ * An unregistered or invisible command makes the step a READOUT rather than removing it, and more
+ * than one alternative is what earns a chevron: one is not a choice, and a control that cannot move
+ * is chrome (§2 principle 9).
  */
-function openChoices(event: MouseEvent, registry: CommandRegistry, segment: JumpSegment): void {
-  event.preventDefault();
-  event.stopPropagation();
-  dismissJumpMenu();
-  const anchor = rectOf(event.currentTarget as HTMLElement);
-  const left = Math.round(Math.min(anchor.left, window.innerWidth - 4));
-  const top = Math.round(anchor.bottom);
-  _menu = renderPopover(
-    html`<sp-popover open style="position:fixed;z-index:10000;left:${left}px;top:${top}px">
-      <sp-menu role="menu" aria-label=${`Go to a sibling of ${segment.label}`}>
-        ${segment.choices.map(
-          (choice) => html`<sp-menu-item
-            role="menuitem"
-            aria-current=${choice.current === true ? "true" : nothing}
-            @click=${() => {
-              dismissJumpMenu();
-              void registry.run(choice.command, choice.args);
-            }}
-            >${choice.label}</sp-menu-item
-          >`,
-        )}
-      </sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      onDismiss: () => {
-        _menu = null;
-      },
-      region: "jump-bar",
-    },
-  );
-}
-
-/** One step of the address, plus its alternatives control when it has any. */
-function segmentTpl(
+function projectStep(
   registry: CommandRegistry | null,
   segment: JumpSegment,
+  first: boolean,
   last: boolean,
-): TemplateResult {
+): ProjectedStep {
   const id = segment.command;
   const live = runnable(registry, id);
-  const crumb = live
-    ? html`<button
-        class="jb-crumb"
-        ?disabled=${registry!.disabledReason(id!) !== undefined}
-        aria-current=${last ? "true" : nothing}
-        title=${segmentTitle(registry!, segment, id!)}
-        @click=${() => {
-          void registry!.run(id!, segment.args);
-        }}
-      >
-        ${segment.label}
-      </button>`
-    : html`<span
-        class="jb-crumb jb-crumb--static"
-        aria-current=${last ? "true" : nothing}
-        title=${segment.title ?? segment.label}
-        >${segment.label}</span
-      >`;
-  // One alternative is not a choice — the same judgement the pane context bar's editor-kind axis
-  // Makes. Rendering a chevron that opens a menu of one is a control that cannot move.
-  const alternatives =
-    registry && segment.choices.length > 1
-      ? html`<button
-          class="jb-alts"
-          aria-haspopup="menu"
-          aria-label=${`Siblings of ${segment.label}`}
-          title=${`Siblings of ${segment.label}`}
-          @click=${(event: MouseEvent) => {
-            openChoices(event, registry, segment);
-          }}
-        >
-          ⌄
-        </button>`
-      : nothing;
-  return html`<span class="jb-seg" data-jump-kind=${segment.kind}>${crumb}${alternatives}</span>`;
+  return {
+    altsLabel: `Siblings of ${segment.label}`,
+    control: live ? "button" : "readout",
+    current: last,
+    disabled: live && registry!.disabledReason(id!) !== undefined,
+    hasChoices: registry !== null && segment.choices.length > 1,
+    key: stepKey(segment),
+    kind: segment.kind,
+    label: segment.label,
+    leading: first,
+    title: live ? segmentTitle(registry!, segment, id!) : (segment.title ?? segment.label),
+  };
+}
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+
+/** One pane's bar: the document mounted in its cell, and the address it last drew. */
+interface PaneBar {
+  host: HTMLElement;
+  surface: JumpBarSurface;
+  /** The segments behind the projection, by key — what `run` and `choose` resolve against. */
+  segments: Map<string, JumpSegment>;
 }
 
 /**
- * The whole bar, as one template. There is no second variant for the empty states.
+ * Where each pane's bar is mounted. One entry per drawn cell.
  *
- * @param {string} [paneId] Whose address to print. Defaults to the focused pane, which is what the
- *   answer was when the shell had one bar.
+ * A Map rather than a `let _host`, because the bar addresses a PANE: it prints where you are, and
+ * with two panes on screen there are two answers. `panels/pane-grid.ts` attaches a cell's
+ * `.pane-jump` as the cell is built and detaches it as the cell is disposed, which is the same
+ * hand-over `panels/frontmatter-panel.ts` takes from the stage.
  */
-export function jumpBarTemplate(
-  paneId: string = workspace.activePaneId,
-): TemplateResult | typeof nothing {
-  const segments = jumpSegments(tabOfPane(paneId), derivationOfPane(paneId));
-  if (segments.length === 0) {
-    return nothing;
-  }
+const _bars = new Map<string, PaneBar>();
+
+let _scope: EffectScope | null = null;
+
+let _menu: MenuHandle | null = null;
+
+/** Close the open segment menu, if any. Idempotent. */
+export function dismissJumpMenu(): void {
+  const menu = _menu;
+  _menu = null;
+  menu?.close();
+}
+
+/**
+ * Open a segment's alternatives, as the kit menu.
+ *
+ * The rows are built from the segment's choices, and every row runs a command — the same command
+ * the segment itself names, with a different path. Nothing here decides what selecting means, and
+ * nothing here draws a panel: `surfaces/menu.ts` owns the roving caret, typeahead, Escape and light
+ * dismissal, because a list of commands is what that surface already is (§12.5).
+ */
+function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
   const registry = activeRegistry();
-  return html`<nav
-    class="jump-bar"
-    data-jx-region=${paneRegion(paneId, "jump")}
-    aria-label="Location"
-  >
-    ${segments.map(
-      (segment, i) =>
-        html`${i === 0 ? nothing : html`<span class="jb-sep" aria-hidden="true">›</span>`}${segmentTpl(
-          registry,
-          segment,
-          i === segments.length - 1,
-        )}`,
-    )}
-  </nav>`;
+  if (!registry) {
+    return;
+  }
+  dismissJumpMenu();
+  const rows: MenuRowProjection[] = segment.choices.map((choice, i) => ({
+    // The choice you are already on is MARKED rather than removed: a menu that omits your place
+    // Loses it. `checked` is the element's own spelling of that, so the row announces itself.
+    checked: choice.current === true ? "true" : "false",
+    destructive: false,
+    disabled: false,
+    dividerAbove: false,
+    id: String(i),
+    run: () => {
+      void registry.run(choice.command, choice.args);
+    },
+    title: choice.label,
+  }));
+  const handle = openMenu({
+    label: `Go to a sibling of ${segment.label}`,
+    onClosed: (closed) => {
+      if (_menu === closed) {
+        _menu = null;
+      }
+    },
+    opener: anchor,
+    region: "jump-bar",
+    rows,
+  });
+  _menu = handle;
 }
 
 /**
@@ -473,8 +463,24 @@ export function jumpBarTemplate(
  * @param {HTMLElement | null} [host] The bar's host. Its cell takes the variable when it has one.
  */
 export function applyJumpBarOffset(height: number, host?: HTMLElement | null): void {
-  const target = host?.closest<HTMLElement>(".pane") ?? document.documentElement;
+  const target = host?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
   target.style.setProperty(JUMP_BAR_VAR, `${height}px`);
+}
+
+/**
+ * The address one pane's document should be showing, and the segments behind it.
+ *
+ * @param {string} paneId
+ */
+function projectPane(paneId: string): { steps: ProjectedStep[]; segments: JumpSegment[] } {
+  const segments = jumpSegments(tabOfPane(paneId), derivationOfPane(paneId));
+  const registry = activeRegistry();
+  return {
+    segments,
+    steps: segments.map((segment, i) =>
+      projectStep(registry, segment, i === 0, i === segments.length - 1),
+    ),
+  };
 }
 
 /**
@@ -484,47 +490,67 @@ export function applyJumpBarOffset(height: number, host?: HTMLElement | null): v
  *   the caller is a lifecycle rather than a pane.
  */
 export function renderJumpBar(paneId?: string): void {
-  if (_hosts.size === 0) {
+  if (_bars.size === 0) {
     return;
   }
   // The address changed, so an open menu is describing a place that may no longer be on the bar.
   // Repaints happen only when tracked state moves, so this cannot close a menu you are reading.
   dismissJumpMenu();
-  for (const [id, host] of _hosts) {
+  for (const [id, bar] of _bars) {
     if (paneId !== undefined && id !== paneId) {
       continue;
     }
-    const template = jumpBarTemplate(id);
-    litRender(template, host);
-    applyJumpBarOffset(template === nothing ? 0 : JUMP_BAR_HEIGHT, host);
+    const { segments, steps } = projectPane(id);
+    bar.segments = new Map(steps.map((step, i) => [step.key, segments[i]!]));
+    bar.surface.update(steps);
+    applyJumpBarOffset(steps.length === 0 ? 0 : JUMP_BAR_HEIGHT, bar.host);
   }
 }
 
 /**
  * Give a pane's bar somewhere to paint, or take it away.
  *
- * Called by `panels/pane-grid.ts` as a cell is built and as it is disposed. Detaching blanks the
- * host first: a cell being removed still has this bar's DOM in it, and the lit part that owns that
- * DOM is about to be unreachable.
+ * Called by `panels/pane-grid.ts` as a cell is built and as it is disposed. Detaching disposes the
+ * mount first: a cell being removed still has this bar's document in it, and the runtime that owns
+ * that DOM is about to be unreachable.
  *
  * @param {string} paneId
  * @param {HTMLElement | null} host
  */
 export function attachJumpBarHost(paneId: string, host: HTMLElement | null): void {
-  const previous = _hosts.get(paneId);
-  if (previous === host) {
+  const previous = _bars.get(paneId);
+  if (previous?.host === host) {
     return;
   }
   if (previous) {
-    litRender(nothing, previous);
-    applyJumpBarOffset(0, previous);
+    previous.surface.dispose();
+    applyJumpBarOffset(0, previous.host);
+    _bars.delete(paneId);
   }
-  if (host) {
-    _hosts.set(paneId, host);
-    renderJumpBar(paneId);
-  } else {
-    _hosts.delete(paneId);
+  if (!host) {
+    return;
   }
+  const bar: PaneBar = {
+    host,
+    segments: new Map(),
+    surface: mountJumpBarSurface(host, paneRegion(paneId, "jump"), {
+      choose: (key, anchor) => {
+        const segment = _bars.get(paneId)?.segments.get(key);
+        if (segment) {
+          openChoices(segment, anchor);
+        }
+      },
+      run: (key) => {
+        const segment = _bars.get(paneId)?.segments.get(key);
+        const registry = activeRegistry();
+        if (segment?.command && registry) {
+          void registry.run(segment.command, segment.args);
+        }
+      },
+    }),
+  };
+  _bars.set(paneId, bar);
+  renderJumpBar(paneId);
 }
 
 /**
@@ -569,10 +595,11 @@ export function unmountJumpBar(): void {
   dismissJumpMenu();
   _scope?.stop();
   _scope = null;
-  for (const host of _hosts.values()) {
-    applyJumpBarOffset(0, host);
+  for (const bar of _bars.values()) {
+    bar.surface.dispose();
+    applyJumpBarOffset(0, bar.host);
   }
-  _hosts.clear();
+  _bars.clear();
   applyJumpBarOffset(0);
 }
 

@@ -163,6 +163,44 @@ function postPopoverInvoke(
   channel.post({ action, kind: "popoverTargetClick", targetPath: parseJxPath(serialized) });
 }
 
+/**
+ * Report a click on a `<button command commandfor>` the canvas de-linked.
+ *
+ * The runtime renamed `commandfor` to `data-jx-commandfor` (so the platform's invoker never runs
+ * `showModal()` or `togglePopover()` inside an editable frame); the frame reports the target's path
+ * and the command, and the host's single writer of open state decides what it means — for a popover
+ * command exactly as `popovertarget` is answered, for a dialog command through
+ * `canvas.setDialogOpen`. A custom `--command` is reported too, and the host ignores it.
+ *
+ * @param target The click's `e.target`.
+ * @param channel The frame's channel.
+ */
+function postCommandInvoke(
+  target: EventTarget | null,
+  channel: { post: (m: IframeToParent) => void },
+): void {
+  if (!(target instanceof Element)) {
+    return;
+  }
+  const invoker = target.closest<HTMLElement>("[data-jx-commandfor]");
+  const id = invoker?.dataset["jxCommandfor"];
+  const command = invoker?.getAttribute("command")?.trim().toLowerCase() ?? "";
+  if (!invoker || !id || !command) {
+    return;
+  }
+  // Scanned, not selected, for the reason `postPopoverInvoke` gives; the addressable overlays are
+  // The de-popovered panels and the stamped dialogs.
+  const overlays = invoker.ownerDocument.querySelectorAll(
+    "[data-jx-popover], dialog[data-jx-path]",
+  );
+  const overlay = [...overlays].find((el) => el.id === id) as HTMLElement | undefined;
+  const serialized = overlay?.dataset.jxPath;
+  if (!serialized) {
+    return;
+  }
+  channel.post({ command, kind: "commandTargetClick", targetPath: parseJxPath(serialized) });
+}
+
 export interface InteractionDeps {
   /**
    * The iframe's current non-reactive shadow doc (path coordinate space), or null before the first
@@ -254,7 +292,6 @@ export function startInteraction(
       // No hit post: a click in preview is a click on the page, never a selection.
       return;
     }
-    postPopoverInvoke(e.target, channel);
     const hit = nearestHit(e.target);
     if (hit) {
       // Ctrl/Cmd is the accumulate gesture (§6.5). The iframe reports the modifier and nothing
@@ -267,6 +304,12 @@ export function startInteraction(
         kind: "hit",
       });
     }
+    /* AFTER the hit, and the order is load-bearing. The host's reveal rule opens the overlay a
+       selection lands in, so a Close button INSIDE a dialog (the normal shape of one) selected
+       after its command would close the dialog and then reveal it again. Selected first, the
+       reveal is a no-op on an overlay that is already open, and the close lands. */
+    postPopoverInvoke(e.target, channel);
+    postCommandInvoke(e.target, channel);
   };
 
   /**

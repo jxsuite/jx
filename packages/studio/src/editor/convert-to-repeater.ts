@@ -1,16 +1,31 @@
 /// <reference lib="dom" />
 // ─── Convert to Repeater ──────────────────────────────────────────────────────
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
+/**
+ * Turn the selected element into an `$prototype: "Array"` template.
+ *
+ * This is the flow only. It decides which state definitions can be an items source (including the
+ * plugin ones, whose schema has to be fetched to find out), keeps the answer the reader is
+ * assembling, refuses a name it cannot mint, and replaces the element in place. The dialog is
+ * `src/surfaces/convert-repeater.json`, a `jx-dialog` over the kit, mounted by
+ * `src/surfaces/convert-repeater.ts` — so the markup, the labels, the keyboard and the styling are
+ * the document's, and nothing here re-renders anything: a refusal changes the one string it names.
+ *
+ * @docs studio/design/repeaters
+ */
 import { childIndex, childList, getNodeAtPath, parentElementPath } from "../store";
 import { primarySelection } from "../tabs/selection";
 import { activeTab } from "../workspace/workspace";
 import { transactDoc } from "../tabs/transact";
-import { showDialog } from "../ui/layers";
+import { layerHost } from "../ui/layers";
 import { defCategory } from "../panels/signals-panel";
 import { fetchPluginSchema } from "../services/code-services";
+import { CREATE_NEW_SOURCE, openConvertRepeaterSurface } from "../surfaces/convert-repeater";
 
+import type { ConvertRepeaterView } from "../surfaces/convert-repeater";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** What a name has to look like to become a state definition. */
+const IDENTIFIER = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
 
 interface RepeaterConfig {
   items: { $ref: string } | unknown[];
@@ -76,25 +91,28 @@ export async function convertToRepeater() {
 }
 
 /**
- * @param {Record<string, unknown>} defs
- * @returns {Promise<RepeaterConfig | null>}
+ * Every state definition that can be the items of a repeater.
+ *
+ * Three of the four answers are free: a declared `type: "array"`, an array `default`, or the
+ * `Array` prototype itself. The fourth costs a round trip — a plugin definition only says what it
+ * returns in its schema — so it is asked for once per definition, and only for the ones the first
+ * three did not already claim.
  */
-async function promptRepeaterConfig(defs: Record<string, unknown>) {
-  const arrayDefs = Object.entries(defs).filter(
-    ([, d]) =>
-      (d as Record<string, unknown> | null)?.type === "array" ||
-      Array.isArray((d as Record<string, unknown> | null)?.default) ||
-      (d as Record<string, unknown> | null)?.$prototype === "Array",
-  );
+async function arraySourceNames(defs: Record<string, unknown>): Promise<string[]> {
+  const named = Object.entries(defs)
+    .filter(([, d]) => {
+      const def = d as Record<string, unknown> | null;
+      return def?.type === "array" || Array.isArray(def?.default) || def?.$prototype === "Array";
+    })
+    .map(([name]) => name);
 
-  const tab = activeTab.value;
-  const docPath = tab?.documentPath;
+  const docPath = activeTab.value?.documentPath;
   for (const [name, d] of Object.entries(defs)) {
     const def = d as Record<string, unknown> | null;
     if (!def?.$prototype || def.$prototype === "Function" || def.$prototype === "Array") {
       continue;
     }
-    if (arrayDefs.some(([n]) => n === name)) {
+    if (named.includes(name)) {
       continue;
     }
     const schema = await fetchPluginSchema(
@@ -105,171 +123,112 @@ async function promptRepeaterConfig(defs: Record<string, unknown>) {
       { ...(docPath != null && { documentPath: docPath }) },
     );
     if (schema?.returns?.type === "array") {
-      arrayDefs.push([name, d]);
+      named.push(name);
     }
   }
+  return named;
+}
 
-  const fnDefs = Object.entries(defs).filter(([, d]) => defCategory(d) === "function");
+/**
+ * Ask which definition the repeater reads, and optionally which function filters and which sorts.
+ *
+ * Resolves the configuration, or `null` when the dialog was dismissed. Confirming an unusable new
+ * name keeps the dialog open with the reason under the field — the flow's state machine, which is
+ * the half the surface deliberately does not have.
+ *
+ * @param {Record<string, unknown>} defs
+ * @returns {Promise<RepeaterConfig | null>}
+ */
+async function promptRepeaterConfig(defs: Record<string, unknown>): Promise<RepeaterConfig | null> {
+  const sources = await arraySourceNames(defs);
+  const functions = Object.entries(defs)
+    .filter(([, d]) => defCategory(d) === "function")
+    .map(([name]) => name);
 
-  let source = arrayDefs.length > 0 ? arrayDefs[0]![0] : "__new__";
-  let newDefName = "";
-  let filterDef = "";
-  let sortDef = "";
-  let error = "";
+  return new Promise<RepeaterConfig | null>((resolve) => {
+    const view: ConvertRepeaterView = {
+      error: "",
+      filter: "",
+      functions,
+      newName: "",
+      sort: "",
+      source: sources[0] ?? CREATE_NEW_SOURCE,
+      sources,
+    };
 
-  return showDialog<RepeaterConfig | null>((done) => {
-    function confirm() {
-      if (source === "__new__") {
-        const name = newDefName.trim();
-        if (!name) {
-          error = "Enter a name for the new state definition.";
-          rerender();
-          return;
-        }
-        if (defs[name]) {
-          error = `"${name}" already exists.`;
-          rerender();
-          return;
-        }
-        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
-          error = "Invalid identifier name.";
-          rerender();
-          return;
-        }
-        done({
-          items: { $ref: `#/state/${name}` },
-          ...(filterDef && { filter: { $ref: `#/state/${filterDef}` } }),
-          ...(sortDef && { sort: { $ref: `#/state/${sortDef}` } }),
-          newDef: { name },
-        });
-      } else {
-        done({
-          items: { $ref: `#/state/${source}` },
-          ...(filterDef && { filter: { $ref: `#/state/${filterDef}` } }),
-          ...(sortDef && { sort: { $ref: `#/state/${sortDef}` } }),
-        });
+    let settled = false;
+    /* Resolve once, and take the dialog down with it. `close()` provokes the platform's own
+       `close`, which comes back as `onClosed` — so the guard is what keeps a confirmed answer from
+       being overwritten by the dismissal its own commit caused. */
+    const finish = (config: RepeaterConfig | null): void => {
+      if (settled) {
+        return;
       }
-    }
+      settled = true;
+      handle.close();
+      resolve(config);
+    };
 
-    function rerender() {
-      const layer = document.querySelector("#layer-dialog");
-      const slot = layer?.lastElementChild;
-      if (slot) {
-        litRender(buildTpl(), slot as HTMLElement);
+    const refuse = (message: string): void => {
+      view.error = message;
+      handle.update(view);
+    };
+
+    /** The optional halves, which are the same two lines whichever source was chosen. */
+    const optional = () => ({
+      ...(view.filter && { filter: { $ref: `#/state/${view.filter}` } }),
+      ...(view.sort && { sort: { $ref: `#/state/${view.sort}` } }),
+    });
+
+    const confirm = (): void => {
+      if (view.source !== CREATE_NEW_SOURCE) {
+        finish({ items: { $ref: `#/state/${view.source}` }, ...optional() });
+        return;
       }
-    }
+      const name = view.newName.trim();
+      if (!name) {
+        refuse("Enter a name for the new state definition.");
+        return;
+      }
+      if (defs[name]) {
+        refuse(`"${name}" already exists.`);
+        return;
+      }
+      if (!IDENTIFIER.test(name)) {
+        refuse("Invalid identifier name.");
+        return;
+      }
+      finish({
+        items: { $ref: `#/state/${name}` },
+        ...optional(),
+        newDef: { name },
+      });
+    };
 
-    function buildTpl() {
-      return html`
-        <sp-dialog-wrapper
-          open
-          underlay
-          headline="Repeat..."
-          confirm-label="Create Repeater"
-          cancel-label="Cancel"
-          size="s"
-          @confirm=${confirm}
-          @cancel=${() => done(null)}
-          @close=${() => done(null)}
-        >
-          <div style="display:flex;flex-direction:column;gap:12px">
-            <label>
-              <sp-field-label size="s">Items source</sp-field-label>
-              <sp-picker
-                label="Items source"
-                size="s"
-                .value=${source}
-                @change=${(e: Event) => {
-                  source = (e.target as HTMLInputElement).value;
-                  error = "";
-                  rerender();
-                }}
-              >
-                ${arrayDefs.map(
-                  ([name]) => html`<sp-menu-item value=${name}>${name}</sp-menu-item>`,
-                )}
-                <sp-menu-divider></sp-menu-divider>
-                <sp-menu-item value="__new__">Create new...</sp-menu-item>
-              </sp-picker>
-            </label>
-
-            ${
-              source === "__new__"
-                ? html`
-                    <label>
-                      <sp-field-label size="s">New definition name</sp-field-label>
-                      <sp-textfield
-                        size="s"
-                        placeholder="myItems"
-                        .value=${newDefName}
-                        ?invalid=${Boolean(error)}
-                        @input=${(e: Event) => {
-                          newDefName = (e.target as HTMLInputElement).value || "";
-                          error = "";
-                          rerender();
-                        }}
-                        @keydown=${(e: KeyboardEvent) => {
-                          if (e.key === "Enter") {
-                            confirm();
-                          }
-                        }}
-                        ${ref((el) => {
-                          if (el && source === "__new__") {
-                            requestAnimationFrame(() => (el as HTMLElement).focus());
-                          }
-                        })}
-                      >
-                        <sp-help-text slot="negative-help-text">${error}</sp-help-text>
-                      </sp-textfield>
-                    </label>
-                  `
-                : nothing
-            }
-            ${
-              fnDefs.length > 0
-                ? html`
-                    <label>
-                      <sp-field-label size="s">Filter (optional)</sp-field-label>
-                      <sp-picker
-                        label="Filter"
-                        size="s"
-                        .value=${filterDef}
-                        @change=${(e: Event) => {
-                          filterDef = (e.target as HTMLInputElement).value;
-                          rerender();
-                        }}
-                      >
-                        <sp-menu-item value="">None</sp-menu-item>
-                        ${fnDefs.map(
-                          ([name]) => html`<sp-menu-item value=${name}>${name}</sp-menu-item>`,
-                        )}
-                      </sp-picker>
-                    </label>
-                    <label>
-                      <sp-field-label size="s">Sort (optional)</sp-field-label>
-                      <sp-picker
-                        label="Sort"
-                        size="s"
-                        .value=${sortDef}
-                        @change=${(e: Event) => {
-                          sortDef = (e.target as HTMLInputElement).value;
-                          rerender();
-                        }}
-                      >
-                        <sp-menu-item value="">None</sp-menu-item>
-                        ${fnDefs.map(
-                          ([name]) => html`<sp-menu-item value=${name}>${name}</sp-menu-item>`,
-                        )}
-                      </sp-picker>
-                    </label>
-                  `
-                : nothing
-            }
-          </div>
-        </sp-dialog-wrapper>
-      `;
-    }
-
-    return buildTpl();
+    const handle = openConvertRepeaterSurface({
+      layer: layerHost("dialog"),
+      onClosed: () => finish(null),
+      onConfirm: confirm,
+      onName: (value) => {
+        view.newName = value;
+        // A keystroke retires the refusal it is answering; the confirm mints the next one.
+        view.error = "";
+        handle.update(view);
+      },
+      onPickFilter: (value) => {
+        view.filter = value;
+        handle.update(view);
+      },
+      onPickSort: (value) => {
+        view.sort = value;
+        handle.update(view);
+      },
+      onPickSource: (value) => {
+        view.source = value;
+        view.error = "";
+        handle.update(view);
+      },
+      view,
+    });
   });
 }

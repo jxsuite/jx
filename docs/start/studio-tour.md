@@ -4,12 +4,13 @@ description: "A guided map of the Jx Studio window: the Command Bar, the Navigat
 spec:
   - studio.md#3.1
 code:
-  - packages/studio/src/panels/toolbar.ts
-  - packages/studio/src/panels/activity-bar.ts
+  - packages/studio/src/surfaces/commandbar.json
+  - packages/studio/src/surfaces/commandbar.ts
+  - packages/studio/src/surfaces/rail.ts
   - packages/studio/src/panels/right-panel.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/bottom-dock.ts
-  - packages/studio/src/panels/statusbar.ts
+  - packages/studio/src/surfaces/statusbar.ts
 ---
 
 # A tour of Jx Studio
@@ -20,7 +21,7 @@ Everything in Jx Studio happens in one window. This page is your map: what each 
 
 ## The Command Bar
 
-The top row. It holds the **⬢ menu** (opening and creating projects, Preferences, and everything else without a permanent button), the **layout tabs** (**Write · Design · Build · Ship**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Read more in **[The workspace](/docs/studio/interface)**.
+The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **layout tabs** (**Write · Design · Build · Ship**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Read more in **[The workspace](/docs/studio/interface)**.
 
 ## The Command Center
 

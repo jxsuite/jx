@@ -6,6 +6,7 @@ code:
   - packages/studio/src/settings/schema-field-ui.ts
   - packages/studio/src/content/entry-model.ts
   - packages/studio/src/content/entry-editor.ts
+  - packages/studio/src/surfaces/entry-editor.ts
   - packages/studio/src/content/entry-fields.ts
   - packages/studio/src/content/entry-commands.ts
   - packages/studio/src/content/collection-match.ts

@@ -114,11 +114,60 @@ describe("reportPopoverProblems", () => {
     expect(forRule("base-display")).toHaveLength(2);
   });
 
+  test("one panel that sets display in two breakpoints files two records, not one", () => {
+    /*
+     * The other half of the same key. Two popovers with one rule was already covered; this is ONE
+     * popover with the same rule twice, which rule and path alone cannot tell apart either.
+     */
+    const count = reportPopoverProblems(
+      docWith({
+        ...GOOD,
+        "@--md": { display: "flex" },
+        "@--lg": { display: "block" },
+      }),
+    );
+    const rows = forRule("breakpoint-display");
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((p) => p.key)).size).toBe(2);
+    expect(rows.map((p) => p.message).join(" ")).toContain("@--md");
+    expect(rows.map((p) => p.message).join(" ")).toContain("@--lg");
+    // The count the command's toast reports agrees with the panel.
+    expect(count).toBe(filed().length);
+  });
+
   test("a re-run replaces what it filed before rather than accumulating", () => {
     reportPopoverProblems(docWith({ ...GOOD, display: "flex" }));
     expect(filed().length).toBeGreaterThan(0);
     reportPopoverProblems(docWith(GOOD));
     expect(filed()).toHaveLength(0);
+  });
+});
+
+describe("reportPopoverProblems — dialogs and invoker commands", () => {
+  test("a dialog defect files under the same source, without a repair button", () => {
+    openTab({
+      children: [
+        { attributes: { command: "show-modal", commandfor: "confirm" }, tagName: "button" },
+        {
+          attributes: { closedby: "none" },
+          children: [],
+          id: "confirm",
+          style: { display: "grid" },
+          tagName: "dialog",
+        },
+      ],
+      tagName: "div",
+    } as JxElement);
+    const count = reportPopoverProblems(activeTab.value!.doc.document as unknown as JxElement);
+    const records = problems.filter((p) => p.source === POPOVER_PROBLEM_SOURCE);
+    expect(count).toBe(records.length);
+    expect(records.map((p) => p.key)).toContain("dialog.dialog-display.children/1");
+    expect(records.map((p) => p.key)).toContain("dialog.modal-without-close.children/1");
+    for (const record of records) {
+      if (record.key?.startsWith("dialog.")) {
+        expect(record.action).toBeUndefined();
+      }
+    }
   });
 });
 

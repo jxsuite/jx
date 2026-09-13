@@ -8,6 +8,12 @@
  * so the catalogue, the canvas and this form all read the same vocabulary; this module is the form
  * over it.
  *
+ * **The markup left.** The section is the `settings-css-vars` surface
+ * (`surfaces/settings-css-vars.json`), mounted by `surfaces/settings-css-vars.ts`; what is here is
+ * the part that was always this module's — what a row shows, what an edit writes, and what a failed
+ * write says. `renderCssVarsEditor` is unchanged as a contract: the registry hands a container to a
+ * `render`, and this one mounts a document into it instead of rendering lit.
+ *
  * Three things it does NOT do, each on purpose:
  *
  * - **It does not define a context.** Breakpoints and colour schemes are declared once, in Project
@@ -20,27 +26,33 @@
  *   change" true of the specimen canvas as well as the page one.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
-import { classMap } from "lit-html/directives/class-map.js";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import { projectState } from "../store";
 import { getEffectiveMedia, updateSiteConfig } from "../site-context";
 import {
+  TOKEN_GROUPS,
   addableContexts,
   groupTokens,
   listTokenContexts,
   readTokenOverride,
+  tokenLabel,
   writeTokenOverride,
 } from "../style/project-styles";
-import { renderTokenChip, resolveTokenValue, tokenRefName } from "../style/token-ref";
+import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { pushProjectStylesToCanvas } from "../style/live-preview";
+import { renderCssVarsSurface } from "../surfaces/settings-css-vars";
 import { friendlyNameToVar } from "../utils/studio-utils";
 
-import type { JxStyle } from "@jxsuite/schema/types";
+import type { JxStyle, ProjectConfig } from "@jxsuite/schema/types";
 import type { ProjectToken, TokenContext, TokenGroup, TokenGroupId } from "../style/project-styles";
-import type { TemplateResult } from "lit-html";
+import type {
+  CssVarsActions,
+  CssVarsView,
+  GroupView,
+  OverrideRowView,
+  TokenRowView,
+} from "../surfaces/settings-css-vars";
 
 /**
  * What each group's add row hints with — an example friendly name and an example value. These are
@@ -60,379 +72,362 @@ const COLOR_INPUT_FALLBACK = "#3b82f6";
 /** The same, for an override row: a scheme override is usually a darker value than the base. */
 const OVERRIDE_INPUT_FALLBACK = "#111111";
 
-/** What one token row needs from the surrounding form — bound once per render, not per row. */
-interface TokenFormCtx {
-  /** The project's root style, mutated in place and persisted through {@link updateSiteConfig}. */
-  rootStyle: JxStyle;
-  /** Every declared rendering context, schemes first ({@link listTokenContexts}). */
-  contexts: TokenContext[];
-  /** Commit the current style without re-rendering the form. */
-  save: () => void;
-  /** Commit and re-render — for anything that changes which rows exist. */
-  commit: () => void;
+/** The picker's own first row: what it reads while nothing has been picked. */
+const ADD_OVERRIDE_ROW = { label: "Add override…", value: "" };
+
+/**
+ * The add row being typed into, per group, and the last write that failed.
+ *
+ * Keyed by container so two mounted copies (and two tests) never share either — the same shape
+ * `general-settings.ts` and `locales-section.ts` use, and for the same reason: this section saves
+ * on change, so a silent rejection reads as "my edit just vanished". The pending add row is here
+ * rather than in the document because typing must survive the section being redrawn from outside;
+ * its predecessor held the two values in the DOM through `ref()`, which meant every redraw emptied
+ * them and the reader lost half a token name to a nav click they did not make.
+ */
+interface Form {
+  add: Partial<Record<TokenGroupId, { name: string; value: string }>>;
+  error: string;
+}
+
+const forms = new WeakMap<HTMLElement, Form>();
+
+/** This container's form, minted on first sight. */
+function form(container: HTMLElement): Form {
+  let state = forms.get(container);
+  if (!state) {
+    state = { add: {}, error: "" };
+    forms.set(container, state);
+  }
+  return state;
+}
+
+/** This container's pending add row for one group, minted on first sight. */
+function pending(container: HTMLElement, group: TokenGroupId): { name: string; value: string } {
+  const { add } = form(container);
+  return (add[group] ??= { name: "", value: "" });
+}
+
+/** The live project configuration, or an empty one before a project is open. */
+function config(): ProjectConfig {
+  return (projectState?.projectConfig || {}) as ProjectConfig;
 }
 
 /**
- * Render the token editor into a container.
+ * The project's root style block, mutated IN PLACE and then persisted whole.
+ *
+ * The `{}` fallback is a throwaway for a project that declares no styles at all: the first token
+ * added to one reaches disk through the patch below and comes back on the refresh that follows the
+ * write, because there is no object here for it to have been written into.
+ */
+function style(): JxStyle {
+  return (config().style || {}) as JxStyle;
+}
+
+/** Every rendering context this project declares, schemes first. */
+function contexts(): TokenContext[] {
+  return listTokenContexts(getEffectiveMedia(config().$media));
+}
+
+/**
+ * Push the mutated style at the canvases, show it, and write it — in that order.
+ *
+ * The canvas and the form are updated synchronously because the edit is already true of the model;
+ * the write is awaited only so that its REJECTION has somewhere to land. The predecessor dropped it
+ * with a bare `void`, so a read-only `project.json` took every edit and kept none of them without
+ * ever saying so.
  *
  * @param {HTMLElement} container
  */
-export function renderCssVarsEditor(container: HTMLElement) {
-  const config = projectState?.projectConfig || {};
-  const rootStyle = (config.style || {}) as JxStyle;
-  const contexts = listTokenContexts(getEffectiveMedia(config.$media));
-  const hasScheme = contexts.some((c) => c.kind === "scheme");
-
-  const save = () => {
-    void updateSiteConfig({ style: { ...rootStyle } });
-    pushProjectStylesToCanvas();
-  };
-
-  const commit = () => {
-    save();
-    renderCssVarsEditor(container);
-  };
-
-  const ctx: TokenFormCtx = { commit, contexts, rootStyle, save };
-
-  const addVar = (prefix: string, friendlyName: string, val: string) => {
-    const varName = friendlyNameToVar(friendlyName, prefix);
-    if (!varName || !val) {
-      return;
-    }
-    rootStyle[varName] = val;
-    commit();
-  };
-
-  /*
-   * Without a declared scheme query there is nothing to override, so this section can only point at
-   * the place a scheme is DEFINED. It used to define one itself — a button here appended
-   * `'--dark': '(prefers-color-scheme: dark)'` to `$media` without ever using the word breakpoint,
-   * which made this form the fourth and least discoverable definition site for a map whose other
-   * three lived in the wizard, Overview and Properties › Media. The lazy import breaks the
-   * css-vars-editor ↔ section-registry cycle.
-   */
-  const manageContexts = () => {
-    void import("./section-registry")
-      .then(({ setSettingsSection }) => setSettingsSection("contexts"))
-      .catch((error: unknown) => {
-        notify.error(`Could not open Settings › Contexts — ${errorMessage(error)}`, {
-          source: "Settings",
-        });
-      });
-  };
-
-  const tpl = html`
-    <div class="settings-section">
-      <h3 class="settings-section-title">CSS Variables</h3>
-      ${groupTokens(rootStyle).map(({ group, tokens }) =>
-        group.id === "other" && tokens.length === 0
-          ? nothing
-          : renderGroup(group, tokens, ctx, hasScheme, addVar, manageContexts),
-      )}
-    </div>
-  `;
-
-  litRender(tpl, container);
+function commit(container: HTMLElement): void {
+  pushProjectStylesToCanvas();
+  refresh(container);
+  void persist(container);
 }
 
-/**
- * One group: its heading, its token rows, its add row, and — for Colors with no scheme declared —
- * the sentence that says where a scheme comes from.
- *
- * @param {TokenGroup} group
- * @param {ProjectToken[]} tokens
- * @param {TokenFormCtx} ctx
- * @param {boolean} hasScheme
- * @param {(prefix: string, friendlyName: string, val: string) => void} addVar
- * @param {() => void} manageContexts
- */
-function renderGroup(
-  group: TokenGroup,
-  tokens: ProjectToken[],
-  ctx: TokenFormCtx,
-  hasScheme: boolean,
-  addVar: (prefix: string, friendlyName: string, val: string) => void,
-  manageContexts: () => void,
-): TemplateResult {
-  return html`
-    <div class="css-vars-group">
-      <h4 class="css-vars-group-title">${group.title}</h4>
-      ${tokens.map((token) => renderTokenRow(token, group, ctx))} ${renderAddRow(group, addVar)}
-      ${
-        group.id === "color" && !hasScheme
-          ? html`
-              <p class="settings-field-desc">
-                No colour scheme is defined yet, so these tokens have one value each.
-                <sp-action-button
-                  size="s"
-                  quiet
-                  title="Define a colour scheme in Project Settings › Contexts"
-                  @click=${manageContexts}
-                >
-                  Manage contexts…
-                </sp-action-button>
-              </p>
-            `
-          : nothing
-      }
-    </div>
-  `;
-}
-
-/**
- * One token: its swatch (colours only), its name, its value field, the chip it wears when that
- * value follows another token, its delete button — then its font preview and its overrides.
- *
- * @param {ProjectToken} token
- * @param {TokenGroup} group
- * @param {TokenFormCtx} ctx
- */
-function renderTokenRow(token: ProjectToken, group: TokenGroup, ctx: TokenFormCtx): TemplateResult {
-  const { rootStyle } = ctx;
-  const isColor = group.id === "color";
-  const refName = tokenRefName(token.value);
-  const resolved = resolveTokenValue(rootStyle, token.value);
-
-  const updateVar = (val: string) => {
-    rootStyle[token.name] = val;
-    ctx.save();
-  };
-  const deleteVar = () => {
-    delete rootStyle[token.name];
-    ctx.commit();
-  };
-
-  return html`
-    <div class="css-var-row">
-      ${isColor ? renderSwatch(resolved, COLOR_INPUT_FALLBACK, updateVar) : nothing}
-      <span class="css-var-name">${token.label}</span>
-      <sp-textfield
-        size="s"
-        .value=${String(token.value)}
-        @change=${(e: Event) => updateVar((e.target as HTMLInputElement).value)}
-        style=${valueFieldStyle(group)}
-      ></sp-textfield>
-      ${refName ? renderTokenChip(refName, resolved, { swatch: isColor }) : nothing}
-      <sp-action-button quiet size="s" title="Delete ${token.label}" @click=${deleteVar}>
-        <sp-icon-delete slot="icon"></sp-icon-delete>
-      </sp-action-button>
-    </div>
-    ${
-      group.id === "font"
-        ? html`<div class="css-var-font-preview" style="font-family:${String(token.value)}">
-            The quick brown fox jumps over the lazy dog
-          </div>`
-        : nothing
-    }
-    ${renderOverrides(token, group, ctx)}
-  `;
-}
-
-/**
- * How wide the value field is — colours and sizes are short values beside a swatch or a unit, fonts
- * and free-form tokens are long ones. The predecessor said the same thing four times.
- *
- * @param {TokenGroup} group
- */
-function valueFieldStyle(group: TokenGroup): string {
-  if (group.id === "color") {
-    return "flex:1;max-width:160px";
+/** @param {HTMLElement} container */
+async function persist(container: HTMLElement): Promise<void> {
+  try {
+    await updateSiteConfig({ style: { ...style() } });
+    form(container).error = "";
+  } catch (error) {
+    form(container).error = `Could not save project.json — ${errorMessage(error)}`;
   }
-  if (group.id === "size") {
-    return "max-width:120px";
-  }
-  return "flex:1";
+  refresh(container);
 }
 
-/**
- * The colour well: a background showing the value the token RESOLVES to (so an alias token is not a
- * blank square) over a native colour input.
- *
- * @param {string | number | undefined} resolved
- * @param {string} fallback — what the native input shows when the value is not a hex literal
- * @param {(val: string) => void} onInput
- */
-function renderSwatch(
+// ─── Projection ──────────────────────────────────────────────────────────────
+
+/** The colour a well is painted, and the colour the native input under it opens on. */
+function well(
   resolved: string | number | undefined,
   fallback: string,
-  onInput: (val: string) => void,
-): TemplateResult {
-  const shown = resolved === undefined ? "transparent" : String(resolved);
-  return html`
-    <div class="css-var-swatch" style="background:${shown}">
-      <input
-        type="color"
-        .value=${shown.startsWith("#") ? shown : fallback}
-        @input=${(e: Event) => onInput((e.target as HTMLInputElement).value)}
-      />
-    </div>
-  `;
+): { swatchBg: string; swatchInput: string } {
+  const swatchBg = resolved === undefined ? "transparent" : String(resolved);
+  return { swatchBg, swatchInput: swatchBg.startsWith("#") ? swatchBg : fallback };
 }
 
 /**
- * A token's per-context values: one row per context it is overridden in, plus — for a colour, once
- * a scheme exists — a row per scheme whether or not it carries a value, because "what is this
- * colour in dark mode" is a question a palette is always answering. Then the add affordance.
+ * One override row: what this token is in one context, and what an edit to it names.
  *
- * The add affordance is the change. Before it, a row appeared only for a token that already had an
- * `@media` block, so the first override for any token could only be written by hand in
- * `project.json` — the form could edit an override it could not create.
- *
- * @param {ProjectToken} token
- * @param {TokenGroup} group
- * @param {TokenFormCtx} ctx
- */
-function renderOverrides(
-  token: ProjectToken,
-  group: TokenGroup,
-  ctx: TokenFormCtx,
-): TemplateResult | typeof nothing {
-  const { contexts, rootStyle } = ctx;
-  const isColor = group.id === "color";
-  const shown = contexts.filter(
-    (context) =>
-      (isColor && context.kind === "scheme") ||
-      readTokenOverride(rootStyle, context, token.name) !== undefined,
-  );
-  /*
-   * A token with no value has nothing to give a context, so the picker is not offered rather than
-   * offered and silently inert — writing an empty override is how one is CLEARED.
-   */
-  const addable =
-    String(token.value) === "" ? [] : addableContexts(rootStyle, contexts, token.name, shown);
-
-  if (shown.length === 0 && addable.length === 0) {
-    return nothing;
-  }
-
-  const setOverride = (context: TokenContext, val: string) => {
-    writeTokenOverride(rootStyle, context, token.name, val);
-    ctx.commit();
-  };
-
-  return html`
-    <div class="css-var-media-overrides">
-      ${shown.map((context) => renderOverrideRow(token, context, isColor, rootStyle, setOverride))}
-      ${
-        addable.length === 0
-          ? nothing
-          : html`
-              <div class="css-var-override-add">
-                <sp-picker
-                  size="s"
-                  quiet
-                  label="Add override"
-                  placeholder="Add override…"
-                  title="Give ${token.label} a different value in one rendering context"
-                  @change=${(e: Event) => {
-                    const name = (e.target as HTMLInputElement).value;
-                    const context = addable.find((c) => c.name === name);
-                    if (context) {
-                      setOverride(context, String(token.value));
-                    }
-                  }}
-                >
-                  ${addable.map(
-                    (context) =>
-                      html`<sp-menu-item value=${context.name}>${context.label}</sp-menu-item>`,
-                  )}
-                </sp-picker>
-              </div>
-            `
-      }
-    </div>
-  `;
-}
-
-/**
- * One override row. Empty means "inherits the base value", and clearing a row removes the override
- * (and the block, once it empties) — one write path for a scheme and a breakpoint alike.
+ * The row carries its token AND its context because the document's inner `$map` shadows the outer
+ * one — a row cannot ask which token it hangs under, so it is told.
  *
  * @param {ProjectToken} token
  * @param {TokenContext} context
  * @param {boolean} isColor
  * @param {JxStyle} rootStyle
- * @param {(context: TokenContext, val: string) => void} setOverride
+ * @returns {OverrideRowView}
  */
-function renderOverrideRow(
+function overrideRow(
   token: ProjectToken,
   context: TokenContext,
   isColor: boolean,
   rootStyle: JxStyle,
-  setOverride: (context: TokenContext, val: string) => void,
-): TemplateResult {
+): OverrideRowView {
   const current = readTokenOverride(rootStyle, context, token.name);
-  return html`
-    <div
-      class=${classMap({
-        "css-var-media-row": true,
-        "css-var-scheme-row": context.kind === "scheme",
-      })}
-    >
-      <span class="css-var-media-label">${context.label}</span>
-      ${
-        isColor
-          ? renderSwatch(resolveTokenValue(rootStyle, current), OVERRIDE_INPUT_FALLBACK, (val) =>
-              setOverride(context, val),
-            )
-          : nothing
-      }
-      <sp-textfield
-        size="s"
-        placeholder="inherits"
-        .value=${current === undefined ? "" : String(current)}
-        @change=${(e: Event) => setOverride(context, (e.target as HTMLInputElement).value)}
-        style=${isColor ? "flex:1;max-width:160px" : "max-width:120px"}
-      ></sp-textfield>
-    </div>
-  `;
+  return {
+    ctx: context.name,
+    fieldLabel: `${token.label} in ${context.label}`,
+    id: `${token.name} ${context.name}`,
+    kind: context.kind,
+    label: context.label,
+    swatchLabel: `${token.label} in ${context.label}`,
+    swatchState: isColor ? "swatch" : "none",
+    token: token.name,
+    value: current === undefined ? "" : String(current),
+    ...well(resolveTokenValue(rootStyle, current), OVERRIDE_INPUT_FALLBACK),
+  };
 }
 
 /**
- * The group's "add a token" row: a friendly name, a value, and the button that slugs the one into a
- * variable name under the group's prefix.
+ * One token row: its value, the chip it wears when that value follows another token, its font
+ * preview, its per-context values and the contexts it could still be given one in.
  *
+ * A colour's scheme rows are shown whether or not they carry a value, because "what is this colour
+ * in dark mode" is a question a palette is always answering. A token with no value is offered no
+ * picker: writing an empty override is how one is CLEARED, so the affordance would be inert.
+ *
+ * @param {ProjectToken} token
  * @param {TokenGroup} group
- * @param {(prefix: string, friendlyName: string, val: string) => void} addVar
+ * @param {JxStyle} rootStyle
+ * @param {TokenContext[]} declared
+ * @returns {TokenRowView}
  */
-function renderAddRow(
+function tokenRow(
+  token: ProjectToken,
   group: TokenGroup,
-  addVar: (prefix: string, friendlyName: string, val: string) => void,
-): TemplateResult {
-  let nameEl: HTMLInputElement | null = null;
-  let valEl: HTMLInputElement | null = null;
-  const hint = ADD_ROW_HINTS[group.id];
+  rootStyle: JxStyle,
+  declared: TokenContext[],
+): TokenRowView {
+  const isColor = group.id === "color";
+  const value = String(token.value);
+  const resolved = resolveTokenValue(rootStyle, token.value);
+  const refName = tokenRefName(token.value);
+  const shown = declared.filter(
+    (context) =>
+      (isColor && context.kind === "scheme") ||
+      readTokenOverride(rootStyle, context, token.name) !== undefined,
+  );
+  const addable = value === "" ? [] : addableContexts(rootStyle, declared, token.name, shown);
+  return {
+    addLabel: `Add an override for ${token.label}`,
+    addOptions: [ADD_OVERRIDE_ROW, ...addable.map((c) => ({ label: c.label, value: c.name }))],
+    addPick: "",
+    addState: addable.length === 0 ? "none" : "shown",
+    chipLabel: refName === null ? "" : tokenLabel(refName),
+    chipState: refName === null ? "none" : isColor && resolved !== undefined ? "swatch" : "plain",
+    chipSwatch: resolved === undefined ? "" : String(resolved),
+    chipTitle:
+      refName === null
+        ? ""
+        : `${toTokenRef(refName)} → ${resolved === undefined ? "unresolved" : String(resolved)}`,
+    label: token.label,
+    name: token.name,
+    overrides: shown.map((context) => overrideRow(token, context, isColor, rootStyle)),
+    overrideState: shown.length === 0 && addable.length === 0 ? "none" : "shown",
+    previewFont: group.id === "font" ? value : "",
+    previewState: group.id === "font" ? "font" : "none",
+    removeLabel: `Delete ${token.label}`,
+    swatchLabel: `${token.label} colour`,
+    swatchState: isColor ? "swatch" : "none",
+    value,
+    ...well(isColor ? resolved : undefined, COLOR_INPUT_FALLBACK),
+  };
+}
 
-  return html`
-    <div class="css-var-add-row">
-      <sp-textfield
-        size="s"
-        placeholder=${hint.name}
-        ${ref((el) => {
-          if (el) {
-            nameEl = el as HTMLInputElement;
-          }
-        })}
-      ></sp-textfield>
-      <sp-textfield
-        size="s"
-        placeholder=${hint.value}
-        ${ref((el) => {
-          if (el) {
-            valEl = el as HTMLInputElement;
-          }
-        })}
-      ></sp-textfield>
-      <sp-action-button
-        size="s"
-        @click=${() => {
-          if (nameEl && valEl) {
-            addVar(group.prefix, nameEl.value, valEl.value);
-          }
-        }}
-        >Add</sp-action-button
-      >
-    </div>
-  `;
+/**
+ * What the section shows right now.
+ *
+ * Read from `config()` at the moment of drawing rather than carried from the last one:
+ * `projectState` is a plain module binding replaced wholesale on a project switch, and an extension
+ * or the raw JSON editor can write `style` between two of these.
+ *
+ * @param {HTMLElement} container
+ * @returns {CssVarsView}
+ */
+function view(container: HTMLElement): CssVarsView {
+  const rootStyle = style();
+  const declared = contexts();
+  const hasScheme = declared.some((context) => context.kind === "scheme");
+  const groups: GroupView[] = [];
+  for (const { group, tokens } of groupTokens(rootStyle)) {
+    /* A bucket named "Other" over an empty list teaches nothing (§2 principle 6). Every other
+       group keeps its heading and its add row, because an empty one is where a palette starts. */
+    if (group.id === "other" && tokens.length === 0) {
+      continue;
+    }
+    const draft = pending(container, group.id);
+    groups.push({
+      addLabel: `Add a ${group.title} variable`,
+      addName: draft.name,
+      addValue: draft.value,
+      id: group.id,
+      nameHint: ADD_ROW_HINTS[group.id].name,
+      nameLabel: `New ${group.title} name`,
+      noticeState: group.id === "color" && !hasScheme ? "shown" : "none",
+      title: group.title,
+      tokens: tokens.map((token) => tokenRow(token, group, rootStyle, declared)),
+      valueHint: ADD_ROW_HINTS[group.id].value,
+      valueLabel: `New ${group.title} value`,
+    });
+  }
+  return { error: form(container).error, groups };
+}
+
+/** Re-read the file and the form, and let the surface reconcile. */
+function refresh(container: HTMLElement): void {
+  renderCssVarsSurface(container, view(container), actions(container));
+}
+
+// ─── Writes ──────────────────────────────────────────────────────────────────
+
+/** The group a token can be added to, by id. */
+function groupOf(id: string): TokenGroup | undefined {
+  return TOKEN_GROUPS.find((group) => group.id === id);
+}
+
+/** Add the group's pending token, if it names one this project can take. */
+function addToken(container: HTMLElement, groupId: string): void {
+  const group = groupOf(groupId);
+  if (!group) {
+    return;
+  }
+  const draft = pending(container, group.id);
+  const varName = friendlyNameToVar(draft.name, group.prefix);
+  if (!varName || !draft.value) {
+    return;
+  }
+  style()[varName] = draft.value;
+  draft.name = "";
+  draft.value = "";
+  commit(container);
+}
+
+/**
+ * Give a token a value in a context it has none in, seeded from its base value.
+ *
+ * A name the picker did not offer is ignored rather than written: the control's first row is the
+ * placeholder, whose value is the empty string, and a context that already carries an override is
+ * not a context this can create one in.
+ *
+ * @param {HTMLElement} container
+ * @param {string} token
+ * @param {string} ctx
+ */
+function addOverride(container: HTMLElement, token: string, ctx: string): void {
+  const rootStyle = style();
+  const context = contexts().find((c) => c.name === ctx);
+  if (!context || readTokenOverride(rootStyle, context, token) !== undefined) {
+    refresh(container);
+    return;
+  }
+  const base = rootStyle[token];
+  if (typeof base !== "string" && typeof base !== "number") {
+    return;
+  }
+  writeTokenOverride(rootStyle, context, token, String(base));
+  commit(container);
+}
+
+/**
+ * What the reader may do, bound to one container.
+ *
+ * Memoized per container so the surface is handed the same functions every time: they are read
+ * once, when it mounts, and a fresh set on every refresh would be a scope write that says nothing.
+ */
+const bound = new WeakMap<HTMLElement, CssVarsActions>();
+
+function actions(container: HTMLElement): CssVarsActions {
+  let acts = bound.get(container);
+  if (!acts) {
+    acts = {
+      addOverride: (token: string, ctx: string) => {
+        addOverride(container, token, ctx);
+      },
+      addToken: (groupId: string) => {
+        addToken(container, groupId);
+      },
+      /*
+       * Without a declared scheme query there is nothing to override, so this section can only
+       * point at the place a scheme is DEFINED. It used to define one itself — a button here
+       * appended `'--dark': '(prefers-color-scheme: dark)'` to `$media` without ever using the word
+       * breakpoint, which made this form the fourth and least discoverable definition site for a
+       * map whose other three lived in the wizard, Overview and Properties › Media. The lazy import
+       * breaks the css-vars-editor ↔ section-registry cycle.
+       */
+      manageContexts: () => {
+        void import("./section-registry")
+          .then(({ setSettingsSection }) => setSettingsSection("contexts"))
+          .catch((error: unknown) => {
+            notify.error(`Could not open Settings › Contexts — ${errorMessage(error)}`, {
+              source: "Settings",
+            });
+          });
+      },
+      removeToken: (name: string) => {
+        delete style()[name];
+        commit(container);
+      },
+      /*
+       * Recorded, and nothing redrawn. The field already holds what the reader typed — a refresh
+       * here would re-derive every group, every token and every override row to write each control
+       * the value it already has, once per keystroke. What the record buys is the redraw the reader
+       * did NOT ask for: a nav click, an extension registering, a write landing. The projection
+       * reads it, so the half-typed name comes back rather than being emptied, which is what the
+       * predecessor's `ref()` into the DOM could never do.
+       */
+      setAddName: (groupId: string, value: string) => {
+        pending(container, groupId as TokenGroupId).name = value;
+      },
+      setAddValue: (groupId: string, value: string) => {
+        pending(container, groupId as TokenGroupId).value = value;
+      },
+      setOverride: (token: string, ctx: string, value: string) => {
+        const context = contexts().find((c) => c.name === ctx);
+        if (!context) {
+          return;
+        }
+        /* The block is recreated on demand, so a caller holding a stale row still writes to the
+           right place — and an emptied block is removed rather than left as `"@--dark": {}`. */
+        writeTokenOverride(style(), context, token, value);
+        commit(container);
+      },
+      setToken: (name: string, value: string) => {
+        style()[name] = value;
+        commit(container);
+      },
+    };
+    bound.set(container, acts);
+  }
+  return acts;
+}
+
+/**
+ * The project's design tokens, grouped, with their per-context values.
+ *
+ * @param {HTMLElement} container
+ */
+export function renderCssVarsEditor(container: HTMLElement): void {
+  refresh(container);
 }

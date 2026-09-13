@@ -4,9 +4,11 @@ description: "The assistant's chat: open it, attach context, watch edits land, a
 code:
   - packages/studio/src/services/ai-ask.ts
   - packages/studio/src/services/import-run.ts
+  - packages/studio/src/panels/ai-panel.ts
   - packages/studio/src/panels/ai-chat/composer.ts
   - packages/studio/src/panels/ai-chat/chat-view.ts
   - packages/studio/src/panels/ai-chat/sessions-view.ts
+  - packages/studio/src/surfaces/ai-chat.ts
   - packages/studio/src/services/ai-session-store.ts
   - packages/studio/src/services/import-client.ts
 ---
@@ -21,7 +23,7 @@ The assistant lives in the Inspector, as its fourth tab beside Content, Style an
 
 Press :kbd[⌘⇧4] (macOS) / :kbd[Ctrl+Shift+4] (Windows/Linux), or click the **Assistant** tab at the top of the Inspector. :kbd[⌘⇧A] / :kbd[Ctrl+Shift+A] does the same and puts the cursor in the message box, ready to type. That works on the welcome screen too, before any project is open. Drag the Inspector's inner edge to resize it; the width and which tab you left selected are both remembered across sessions.
 
-If no AI provider is set up yet, the tab still opens on a chat, with one line under it (_No AI provider is connected yet_) and an **Assistant: Settings…** button that opens the setup dialog. See **[Connect a provider](/docs/studio/ai#connect-a-provider)**.
+If no AI provider is set up yet, the tab still opens on a chat, with one line under it (_No AI provider is connected yet_) and an **Open Preferences…** button that opens Preferences on its Assistant page. See **[Connect a provider](/docs/studio/ai#connect-a-provider)**.
 
 ## Send a message
 

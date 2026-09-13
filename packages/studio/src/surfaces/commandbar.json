@@ -1,0 +1,984 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioCommandBar",
+  "$description": "The Command Bar: a rendering of the command registry. The adapter hands in `primary` (what declared commandbar/primary), `docks` (the three dock toggles), `layouts`, the Command Center's `segments`, the collaboration `presence` and `csd` (which window-control layout, if any). Nothing here decides what an action is called.",
+  "tagName": "div",
+  "attributes": {
+    "part": "bar"
+  },
+  "style": {
+    "display": "flex",
+    "alignItems": "center",
+    "flex": "1",
+    "minWidth": "0",
+    "height": "100%",
+    "gap": "var(--jx-space-2)",
+    "& > *": {
+      "minWidth": "0",
+      "flexShrink": "1"
+    },
+    "& > [part=\"spacer\"]": {
+      "flex": "1",
+      "flexShrink": "999"
+    },
+    "& jx-button, & jx-action-button, & button": {
+      "WebkitAppRegion": "no-drag"
+    },
+    "& [part=\"csd-lead\"], & [part=\"csd-trail\"], & [part=\"menu-slot\"], & [part=\"layouts-slot\"], & [part=\"presence-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"window-controls\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexShrink": "0",
+      "marginLeft": "var(--jx-space-2)"
+    },
+    "& [part=\"window-controls\"] [data-control=\"close\"]:hover > [part=\"control\"]": {
+      "background": "var(--jx-danger)",
+      "color": "var(--jx-accent-fg)"
+    },
+    "& [part=\"window-controls\"][data-mac]": {
+      "marginLeft": "0",
+      "marginRight": "var(--jx-space-3)",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"window-controls\"][data-mac] jx-action-button > [part=\"control\"]": {
+      "width": "12px",
+      "minWidth": "12px",
+      "height": "12px",
+      "minHeight": "12px",
+      "padding": "0",
+      "border": "none",
+      "borderRadius": "50%",
+      "overflow": "hidden",
+      ":hover": {
+        "filter": "brightness(0.85)"
+      }
+    },
+    "& [part=\"window-controls\"][data-mac] [data-control=\"close\"] > [part=\"control\"]": {
+      "background": "#ff5f57"
+    },
+    "& [part=\"window-controls\"][data-mac] [data-control=\"minimize\"] > [part=\"control\"]": {
+      "background": "#febc2e"
+    },
+    "& [part=\"window-controls\"][data-mac] [data-control=\"maximize\"] > [part=\"control\"]": {
+      "background": "#28c840"
+    },
+    "& [part=\"window-controls\"][data-mac] [part=\"icon\"]": {
+      "display": "none"
+    },
+    "& [part=\"window-controls\"][data-mac]:hover [part=\"icon\"]": {
+      "display": "inline-flex",
+      "color": "rgba(0, 0, 0, 0.5)",
+      "--jx-icon-size": "8px"
+    },
+    "& [part=\"layouts\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "2px",
+      "flexShrink": "0"
+    },
+    "& [part=\"layout\"], & [part=\"layout-add\"]": {
+      "padding": "2px var(--jx-space-3)",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "none",
+      "color": "var(--jx-fg-dim)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-sm)",
+      "cursor": "pointer",
+      "whiteSpace": "nowrap",
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"layout\"][data-active]": {
+      "color": "var(--jx-fg)",
+      "background": "var(--jx-hover-bg)"
+    },
+    "& [part=\"layout-add\"]": {
+      "padding": "2px var(--jx-space-2)"
+    },
+    "& [part=\"center\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "flex": "0 1 520px",
+      "minWidth": "0",
+      "padding": "0 var(--jx-space-3)",
+      "height": "var(--jx-control-h)",
+      "boxSizing": "border-box",
+      "cursor": "pointer",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "fontSize": "var(--jx-text-sm)",
+      ":hover": {
+        "borderColor": "var(--jx-fg-muted)"
+      }
+    },
+    "& [part=\"mark\"]": {
+      "color": "var(--jx-accent)",
+      "flexShrink": "0"
+    },
+    "& [part=\"sep-slot\"], & [part=\"chord-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"sep\"]": {
+      "color": "var(--jx-fg-muted)",
+      "flexShrink": "0"
+    },
+    "& [part=\"segment\"]": {
+      "appearance": "none",
+      "border": "none",
+      "background": "none",
+      "padding": "2px var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "color": "var(--jx-fg-dim)",
+      "font": "inherit",
+      "cursor": "pointer",
+      "maxWidth": "220px",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"chord\"]": {
+      "marginLeft": "auto",
+      "paddingLeft": "var(--jx-space-3)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--jx-fg-muted)",
+      "flexShrink": "0"
+    },
+    "& [part=\"primary\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "2px",
+      "flexShrink": "0"
+    },
+    "& [part=\"primary\"] [part=\"icon-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"presence\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"status\"]": {
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--jx-fg-dim)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"status\"][data-status=\"synced\"]": {
+      "color": "var(--jx-success)"
+    },
+    "& [part=\"status\"][data-status=\"offline\"]": {
+      "color": "var(--jx-warning)"
+    },
+    "& [part=\"status\"][data-status=\"failed\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "& [part=\"flag-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"flag\"]": {
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "1px var(--jx-space-2)",
+      "fontSize": "var(--jx-text-xs)",
+      "whiteSpace": "nowrap",
+      "border": "1px solid currentcolor",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"flag\"][data-flag=\"frozen\"]": {
+      "color": "var(--jx-warning)"
+    },
+    "& [part=\"chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "20px",
+      "height": "20px",
+      "borderRadius": "50%",
+      "overflow": "hidden",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "600",
+      "flexShrink": "0"
+    },
+    "& [part=\"chip\"] img": {
+      "width": "100%",
+      "height": "100%",
+      "objectFit": "cover"
+    },
+    "& [part=\"docks\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexShrink": "0"
+    },
+    "@container toolbar (max-width: 1140px)": {
+      "& [part=\"primary\"] [part=\"text\"], & [part=\"primary\"] jx-button > [part=\"control\"] > [part=\"label\"]": {
+        "display": "none"
+      },
+      "& [part=\"primary\"] jx-button > [part=\"control\"]": {
+        "gap": "0"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "csd-lead",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/csd"
+      },
+      "cases": {
+        "mac": {
+          "tagName": "div",
+          "attributes": {
+            "part": "window-controls",
+            "role": "group",
+            "aria-label": "Window",
+            "data-mac": ""
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Close",
+                "hint": "Close",
+                "icon": "x",
+                "size": "sm"
+              },
+              "attributes": {
+                "data-control": "close"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/windowControl"
+                    },
+                    "value": ["close"]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Minimize",
+                "hint": "Minimize",
+                "icon": "minus",
+                "size": "sm"
+              },
+              "attributes": {
+                "data-control": "minimize"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/windowControl"
+                    },
+                    "value": ["minimize"]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Maximize",
+                "hint": "Maximize",
+                "icon": "square",
+                "size": "sm"
+              },
+              "attributes": {
+                "data-control": "maximize"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/windowControl"
+                    },
+                    "value": ["maximize"]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "menu-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/menuVisible"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Studio menu",
+            "hint": "Studio menu",
+            "icon": "list",
+            "size": "sm",
+            "haspopup": "menu",
+            "expanded": {
+              "$ref": "#/state/menuOpen"
+            }
+          },
+          "attributes": {
+            "data-menu": "studio"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/openStudioMenu"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/currentTarget"
+                  }
+                ]
+              }
+            ]
+          },
+          "onkeydown": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "$switch": {
+                  "$ref": "event#/key"
+                },
+                "cases": {
+                  "ArrowDown": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/openStudioMenu"
+                      },
+                      "value": [
+                        {
+                          "$ref": "event#/currentTarget"
+                        }
+                      ]
+                    },
+                    {
+                      "preventDefault": true
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "layouts-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/layoutsVisible"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "layouts",
+            "role": "tablist",
+            "aria-label": "Layouts"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/layouts"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "button",
+                "attributes": {
+                  "part": "layout",
+                  "type": "button",
+                  "role": "tab",
+                  "aria-selected": "${$map.item.active ? 'true' : 'false'}",
+                  "data-layout": "${$map.item.id}",
+                  "data-active": "${$map.item.active ? '' : null}",
+                  "title": "${$map.item.title}"
+                },
+                "textContent": "${$map.item.name}",
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/setLayout"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "ondblclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/renameLayout"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "button",
+              "attributes": {
+                "part": "layout-add",
+                "type": "button",
+                "title": "Save the current arrangement as a layout",
+                "aria-label": "Save layout"
+              },
+              "textContent": "+",
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/saveLayout"
+                    },
+                    "value": []
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "spacer"
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "center",
+        "role": "group",
+        "aria-label": "Command Center"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/openPicker"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "mark",
+            "aria-hidden": "true"
+          },
+          "textContent": "◈"
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/segments"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "span",
+            "attributes": {
+              "part": "segment-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "sep-slot",
+                  "role": "none"
+                },
+                "$switch": {
+                  "$ref": "$map/item/sepBefore"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "sep",
+                      "aria-hidden": "true"
+                    },
+                    "textContent": "›"
+                  }
+                }
+              },
+              {
+                "tagName": "button",
+                "attributes": {
+                  "part": "segment",
+                  "type": "button",
+                  "data-segment": "${$map.item.key}",
+                  "title": "${$map.item.title}"
+                },
+                "textContent": "${$map.item.label}",
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "stopPropagation": true
+                    },
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/openSegment"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "chord-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/hasChord"
+          },
+          "cases": {
+            "true": {
+              "tagName": "kbd",
+              "attributes": {
+                "part": "chord"
+              },
+              "textContent": "${state.chord}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "spacer"
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "primary",
+        "role": "group",
+        "aria-label": "Actions"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/primary"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "jx-button",
+            "$props": {
+              "label": {
+                "$ref": "$map/item/title"
+              },
+              "disabled": {
+                "$ref": "$map/item/disabled"
+              },
+              "size": "sm",
+              "quiet": true
+            },
+            "attributes": {
+              "data-command-id": "${$map.item.id}",
+              "title": "${$map.item.tooltip}"
+            },
+            "onclick": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/run"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/id"
+                    }
+                  ]
+                }
+              ]
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "icon-slot",
+                  "slot": "icon"
+                },
+                "$switch": {
+                  "$ref": "$map/item/hasIcon"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "jx-icon",
+                    "$props": {
+                      "name": {
+                        "$ref": "$map/item/icon"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "text"
+                },
+                "textContent": "${$map.item.title}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "presence-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/presenceVisible"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "presence",
+            "title": "${state.presence.title}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "status",
+                "data-status": "${state.presence.status}"
+              },
+              "textContent": "${state.presence.label}"
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "flag-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/presence/readOnly"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "flag",
+                    "data-flag": "read-only",
+                    "title": "You have read access to this session. Your edits show here but are not published to the others."
+                  },
+                  "textContent": "Read-only"
+                }
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "flag-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/presence/frozen"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "flag",
+                    "data-flag": "frozen",
+                    "title": "Someone is editing the code view. Structural edits are paused until they stop. This is not an error."
+                  },
+                  "textContent": "Code view held"
+                }
+              }
+            },
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/presence/peers"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "span",
+                "attributes": {
+                  "part": "chip",
+                  "style": "background: ${$map.item.color}",
+                  "title": "${$map.item.title}"
+                },
+                "$switch": {
+                  "$ref": "$map/item/hasAvatar"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "img",
+                    "attributes": {
+                      "src": "${$map.item.avatarUrl}",
+                      "alt": "${$map.item.initial}"
+                    }
+                  },
+                  "false": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "initial"
+                    },
+                    "textContent": "${$map.item.initial}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "docks",
+        "role": "group",
+        "aria-label": "Docks"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/docks"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "jx-action-button",
+            "$props": {
+              "label": {
+                "$ref": "$map/item/title"
+              },
+              "hint": {
+                "$ref": "$map/item/tooltip"
+              },
+              "icon": {
+                "$ref": "$map/item/icon"
+              },
+              "mirror": {
+                "$ref": "$map/item/mirror"
+              },
+              "toggles": true,
+              "selected": {
+                "$ref": "$map/item/selected"
+              },
+              "disabled": {
+                "$ref": "$map/item/disabled"
+              },
+              "size": "sm"
+            },
+            "attributes": {
+              "data-command-id": "${$map.item.id}"
+            },
+            "onchange": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/run"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/id"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "csd-trail",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/csd"
+      },
+      "cases": {
+        "other": {
+          "tagName": "div",
+          "attributes": {
+            "part": "window-controls",
+            "role": "group",
+            "aria-label": "Window"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Minimize",
+                "hint": "Minimize",
+                "icon": "minus",
+                "size": "sm"
+              },
+              "attributes": {
+                "data-control": "minimize"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/windowControl"
+                    },
+                    "value": ["minimize"]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Maximize",
+                "hint": "Maximize",
+                "icon": "square",
+                "size": "sm"
+              },
+              "attributes": {
+                "data-control": "maximize"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/windowControl"
+                    },
+                    "value": ["maximize"]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Close",
+                "hint": "Close",
+                "icon": "x",
+                "size": "sm"
+              },
+              "attributes": {
+                "data-control": "close"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/windowControl"
+                    },
+                    "value": ["close"]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

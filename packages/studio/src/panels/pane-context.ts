@@ -8,10 +8,8 @@
  * colour-scheme switch and feature toggles (rendering state), and Export (a mode action). Plan §3.2
  * ⑦ replaces them with three axes that each say what they are:
  *
- * - **Editor kind** — `Canvas ⌄`, offering only the kinds this document declares AND its pane can
- *   host ({@link hostableKindsOf}), so the control can never contain a permanently dead entry. A
- *   document with one kind renders the name as text rather than as a dropdown that cannot go
- *   anywhere.
+ * - **Editor kind** — `Canvas ⌄`, offering only the kinds this document declares. A document with one
+ *   kind renders the name as text rather than as a dropdown that cannot go anywhere.
  * - **Canvas view** — `Edit │ Design` as a radio ({@link canvasBaseViewsFor}) with a **Preview**
  *   toggle beside it ({@link previewStateOf}), and none at all in a pane that may not host the
  *   Canvas. The two are drawn apart because they are two axes: preview is a flag over an edit or
@@ -27,23 +25,25 @@
  *   because these are values you type and everything in the rendering-context popover is something
  *   you pick — and because a row of text fields is what made the 28px band unreadable.
  *
+ * **This module is the FLOW; `surfaces/pane-context.json` is the markup.** Everything below decides
+ * — which kinds a document declares, what a lens may never write, which pane's stage a zoom verb
+ * lands on, what a route param's candidates are, what a typed test prop parses as — and hands one
+ * projection of words and keyed rows to `surfaces/pane-context.ts`, one mount per pane. Nothing
+ * here renders.
+ *
  * **The bar is not a grid row.** It renders inside the pane's own cell (`#pane-chrome`, stacked
  * over `#canvas-wrap`), because a per-pane surface cannot be a row of the application grid — the
  * second pane would have no way to have one. The stage is offset by {@link PANE_CONTEXT_VAR} rather
  * than by a track, and the zoom pod floats bottom-right over the canvas exactly as §3.2 ⑩ asks.
  *
- * **The read-only banner rides with the bar.** `collab/presence-chips.ts` wrote the sentence a
- * read-only guest needs before their first keystroke (§7.4); the surface that owes it a home is
- * this one, because it is the per-pane, per-document chrome that sits directly above the editing
- * surface. It is stacked under the bar inside `.pc-band` and the offset is MEASURED from that band
+ * **The read-only banner rides with the bar.** `collab/collab-state.ts` says whether a guest may
+ * write (§7.4); the surface that owes them the sentence is this one, because it is the per-pane,
+ * per-document chrome that sits directly above the editing surface. It is stacked under the bar
+ * inside the document's `[part="band"]` and the offset is MEASURED from that band
  * ({@link applyPaneContextOffset}), so a two-line banner pushes the stage down instead of covering
  * the document it is warning you about.
- *
- * Module shape follows `tab-strip.ts`: mount(host, ctx) → effectScope/effect → render().
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
 import { projectState, updateUi } from "../store";
 import { effect, effectScope } from "../reactivity";
 import { PRIMARY_PANE, focusPane, workspace } from "../workspace/workspace";
@@ -63,8 +63,9 @@ import {
   pinRefusal,
   presetRefusal,
 } from "../workspace/pane-derive";
-import { renderPopover } from "../ui/layers";
-import { rectOf } from "../utils/geometry";
+import { openMenu } from "../surfaces/menu";
+import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-context";
+import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import { paneRegion } from "../ui/regions";
 import {
   fitToScreen,
@@ -81,7 +82,6 @@ import {
 } from "../canvas/canvas-utils";
 import { editorKindOf, editorKindsOf, modeForEditorKind } from "../tabs/tab";
 import { collabState } from "../collab/collab-state";
-import { readOnlyBannerTemplate } from "../collab/presence-chips";
 import { activeRegistry } from "../commands/active-registry";
 import { getEffectiveLayoutPath, getEffectiveLocales, getEffectiveMedia } from "../site-context";
 import { localeLabel, localeOfPath } from "@jxsuite/schema/locale";
@@ -97,7 +97,15 @@ import type { Tab } from "../tabs/tab";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type { JsonValue } from "../types";
 import type { EffectScope } from "@vue/reactivity";
-import type { TemplateResult } from "lit-html";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
+import { rectOf } from "../utils/geometry";
+import type {
+  PaneContextActions,
+  PaneContextChoice,
+  PaneContextSurfaceHandle,
+  PaneContextToggle,
+  PaneContextView,
+} from "../surfaces/pane-context";
 
 /**
  * The CSS variable the stage is offset by while a context bar is on screen.
@@ -117,10 +125,10 @@ export interface PaneContextCtx {
    * There is no `getCanvasMode` here, and there cannot be one.
    *
    * It answered for the FOCUSED pane — `studio.ts` composes it from `workspace.activePaneId` — and
-   * this bar is drawn once per pane, from `tabOfPane(paneId)`. One reader was left: `exportTpl`,
-   * which is why entering Code in EITHER pane put an Export button in BOTH bars. Every mode
-   * question this module asks is now asked of the pane it is drawing: `canvasModeOfTab(tab)` for
-   * the tab's own effective mode, `canvasModeOfPane(paneId)` for the stage's.
+   * this bar is drawn once per pane, from `tabOfPane(paneId)`. One reader was left: the Export
+   * control, which is why entering Code in EITHER pane put an Export button in BOTH bars. Every
+   * mode question this module asks is now asked of the pane it is drawing: `canvasModeOfTab(tab)`
+   * for the tab's own effective mode, `canvasModeOfPane(paneId)` for the stage's.
    */
   /**
    * Write the BASE mode of the tab it is GIVEN. The editor-kind dropdown and the view control both
@@ -149,6 +157,16 @@ export interface PaneContextCtx {
  * `panels/pane-grid.ts` attaches a cell's `.pane-chrome` as the cell is built.
  */
 const _hosts = new Map<string, HTMLElement>();
+
+/**
+ * Each pane's mounted document, keyed the same way and for the same reason.
+ *
+ * A surface handle is per-pane state as much as a host is: it holds that pane's scope, its two
+ * popovers and whether the "resolving with" one is showing. A module-level `let` here would give
+ * the second pane's `canvas.setResolvingOpen` the first pane's panel — the exact shape
+ * `scripts/check-pane-singletons.ts` exists to refuse.
+ */
+const _surfaces = new Map<string, PaneContextSurfaceHandle>();
 
 let _ctx: PaneContextCtx | null = null;
 
@@ -182,7 +200,7 @@ export function attachPaneChromeHost(paneId: string, host: HTMLElement | null): 
     return;
   }
   if (previous) {
-    litRender(nothing, previous);
+    disposePane(paneId);
     applyPaneContextOffset(0, previous);
   }
   if (host) {
@@ -191,6 +209,12 @@ export function attachPaneChromeHost(paneId: string, host: HTMLElement | null): 
   } else {
     _hosts.delete(paneId);
   }
+}
+
+/** Take one pane's document down and forget it. Idempotent. */
+function disposePane(paneId: string): void {
+  _surfaces.get(paneId)?.dispose();
+  _surfaces.delete(paneId);
 }
 
 /**
@@ -214,17 +238,15 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
          `activeTab` alone left the side pane's bar frozen describing whatever it last drew. */
       for (const pane of workspace.panes) {
         /* NO DERIVATION READS HERE, and the reason is one rule rather than a tally. `render()`
-           runs inside this effect and draws EVERY attached pane, so whatever a template here reads
-           is ALREADY a dependency and restating it as a `void` line chooses nothing: `derived.kind`
-           picks the bar's shape, `activeMediaOfPane` reads `kind`/`preset`/`media` for the Context
-           axis, `zoomOf` reads `derived.zoom` for the pod, and {@link zoomPodTpl} asks
+           runs inside this effect and projects EVERY attached pane, so whatever the projection
+           reads is ALREADY a dependency and restating it as a `void` line chooses nothing:
+           `derived.kind` picks the bar's shape, `activeMediaOfPane` reads `kind`/`preset`/`media`
+           for the Context axis, `zoomOf` reads `derived.zoom` for the pod, and {@link podFor} asks
            `canvasModeOfPane`, which for a lens answers `derived.mode` and decides whether the pod
            is drawn at all — pinned by lens-chrome's "the pod is drawn from the LENS's mode".
-           An earlier version of this comment listed `mode` among the fields no template reads,
-           which was wrong about the fact and right about the deletion. `status` and `reason` really
-           are unread here, so tracking them only repainted this bar for a change it does not draw.
-           The stage is the surface that needs those two declared, because `renderCanvasImpl` runs
-           in a rAF rather than in an effect — see `studio.ts`. */
+           `status` and `reason` really are unread here, so tracking them only repainted this bar
+           for a change it does not draw. The stage is the surface that needs those two declared,
+           because `renderCanvasImpl` runs in a rAF rather than in an effect — see `studio.ts`. */
         const tab = tabOfPane(pane.id);
         if (!tab) {
           continue;
@@ -260,7 +282,9 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
 export function unmount() {
   _scope?.stop();
   _scope = null;
-  for (const host of _hosts.values()) {
+  dismissPresetMenu();
+  for (const [paneId, host] of _hosts) {
+    disposePane(paneId);
     applyPaneContextOffset(0, host);
   }
   _hosts.clear();
@@ -284,7 +308,7 @@ export function unmount() {
  * @param {HTMLElement | null} [host] The bar's host. Its cell takes the variable when it has one.
  */
 export function applyPaneContextOffset(height: number, host?: HTMLElement | null): void {
-  const target = host?.closest<HTMLElement>(".pane") ?? document.documentElement;
+  const target = host?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
   target.style.setProperty(PANE_CONTEXT_VAR, `${height}px`);
 }
 
@@ -295,10 +319,13 @@ export function applyPaneContextOffset(height: number, host?: HTMLElement | null
  * knows how many lines that is. `offsetHeight` is 0 in a DOM with no layout engine (every unit
  * test), so the bar's declared height is the floor: the offset is then exactly what it was before
  * banners existed, which is the honest answer when nothing has been laid out.
+ *
+ * The band is the DOCUMENT's, handed back by the mount rather than found by selector — a surface
+ * that re-queries its own markup is holding a node that the next render may already have replaced
+ * (guidelines §9.4).
  */
-function topBandHeight(host: HTMLElement): number {
-  const band = host.querySelector<HTMLElement>(".pc-band");
-  return Math.max(band?.offsetHeight ?? 0, PANE_CONTEXT_HEIGHT);
+function topBandHeight(surface: PaneContextSurfaceHandle): number {
+  return Math.max(surface.band()?.offsetHeight ?? 0, PANE_CONTEXT_HEIGHT);
 }
 
 /**
@@ -316,14 +343,14 @@ function wantsContextBar(tab: Tab): boolean {
   return tab.session.ui.canvasMode !== "settings";
 }
 
-/** Paint every attached pane's chrome. */
+/** Project every attached pane's chrome. */
 export function render() {
   for (const [paneId, host] of _hosts) {
     renderPane(paneId, host);
   }
 }
 
-/** Paint one pane's chrome into its own host, from its own tab. */
+/** Project one pane's chrome into its own mount, from its own tab. */
 function renderPane(paneId: string, host: HTMLElement) {
   if (!_ctx) {
     return;
@@ -331,8 +358,32 @@ function renderPane(paneId: string, host: HTMLElement) {
   try {
     const tab = tabOfPane(paneId);
     const show = Boolean(tab) && wantsContextBar(tab as Tab);
-    litRender(show ? paneChromeTemplate(tab as Tab, paneId, _ctx) : nothing, host);
-    applyPaneContextOffset(show ? topBandHeight(host) : 0, host);
+    if (!show) {
+      disposePane(paneId);
+      applyPaneContextOffset(0, host);
+      return;
+    }
+    const view = viewFor(tab as Tab, paneId, _ctx);
+    let surface = _surfaces.get(paneId);
+    if (!surface || !surface.connected()) {
+      disposePane(paneId);
+      surface = mountPaneContextSurface(paneId, host, view, actionsFor(paneId, _ctx));
+      _surfaces.set(paneId, surface);
+      /* The band cannot be measured until the document has drawn it, so the first offset lands
+         after the mount settles; every later projection writes it synchronously from the standing
+         band. The stage is offset by the declared height in between, which is what it was before
+         banners existed. */
+      applyPaneContextOffset(PANE_CONTEXT_HEIGHT, host);
+      void surface.ready.then(() => {
+        const live = _surfaces.get(paneId);
+        if (live) {
+          applyPaneContextOffset(topBandHeight(live), host);
+        }
+      });
+      return;
+    }
+    surface.update(view);
+    applyPaneContextOffset(topBandHeight(surface), host);
   } catch (error) {
     console.error("pane-context render error:", error);
   }
@@ -341,36 +392,20 @@ function renderPane(paneId: string, host: HTMLElement) {
 // ─── The preset menu · the first renderer of `context/pane` ──────────────────
 
 /** The open preset menu, if any. One at a time, like every other menu in this shell. */
-let _presetMenu: { dismiss: () => void } | null = null;
+let _presetMenu: MenuHandle | null = null;
 
 /** Close the preset menu, if it is open. Idempotent. */
 export function dismissPresetMenu(): void {
-  _presetMenu?.dismiss();
+  _presetMenu?.close();
   _presetMenu = null;
 }
 
 /**
- * The `⟲` trigger, in the context bar's leading slot — the one that was empty.
+ * Open the preset menu, from the ⟲ trigger in the bar's leading slot — the one that was empty.
  *
- * `.pc-spacer` existed to push the three axes right. It is where §18.4's preset menu goes because
- * the menu is about THIS PANE and the bar is the pane's own chrome; the alternative homes (the tab
- * strip, the jump bar) are about a document and an address respectively.
- */
-function presetTriggerTpl(paneId: string): TemplateResult {
-  return html`<button
-    class="pc-derive-trigger"
-    aria-haspopup="menu"
-    title="Show something beside this pane"
-    @click=${(event: MouseEvent) => {
-      openPresetMenu(event, paneId);
-    }}
-  >
-    <span aria-hidden="true">⟲</span>
-  </button>`;
-}
-
-/**
- * Open the preset menu.
+ * The leading slot existed to push the three axes right. It is where §18.4's preset menu goes
+ * because the menu is about THIS PANE and the bar is the pane's own chrome; the alternative homes
+ * (the tab strip, the jump bar) are about a document and an address respectively.
  *
  * **There is no `pane.showDerivePresets`.** §13.5, quoted verbatim in `canvas/canvas-render.ts`:
  * opening a menu to press an item names a CONTROL; the item is the command. Every row here runs
@@ -378,53 +413,81 @@ function presetTriggerTpl(paneId: string): TemplateResult {
  * addresses those ids directly rather than driving this widget. Its region is
  * `overlay.menu:derive-presets`, which `ui/layers.ts` derives from the slot key — no budget is
  * spent.
+ *
+ * **It is the kit menu, not a second one.** `surfaces/menu.ts` already owns roving focus,
+ * typeahead, light dismissal, the disabled row's `requires` sentence and the Escape that closes it
+ * (guidelines §12.5); this hands it rows.
  */
-function openPresetMenu(event: MouseEvent, paneId: string): void {
-  event.preventDefault();
-  event.stopPropagation();
+function openPresetMenu(paneId: string, anchor: HTMLElement): void {
   dismissPresetMenu();
   const registry = activeRegistry();
   if (!registry) {
     return;
   }
-  const anchor = rectOf(event.currentTarget as HTMLElement);
-  const left = Math.round(Math.min(anchor.left, window.innerWidth - 4));
-  const top = Math.round(anchor.bottom);
   const rows = presetRows(paneId);
-  _presetMenu = renderPopover(
-    html`<sp-popover open style="position:fixed;z-index:10000;left:${left}px;top:${top}px">
-      <sp-menu role="menu" aria-label="Show beside this pane">
-        ${rows.map(
-          (row) => html`<sp-menu-item
-            role="menuitem"
-            ?disabled=${row.disabled !== null}
-            title=${row.disabled ? `requires ${row.disabled}` : row.label}
-            @click=${() => {
-              dismissPresetMenu();
-              if (row.disabled === null) {
-                /* THE PANE THE MENU IS ABOUT, before the verb that resolves the focus runs.
-                   See {@link PresetRow.pane}: all three of these commands take the focused pane as
-                   their subject, and a pointer gesture on this pane has already focused it — but a
-                   keyboard activation has not, because `panels/pane-grid.ts` focuses on
-                   pointerdown. Without this line the secondary pane's menu derived from the
-                   primary and its Unsplit closed the wrong pane, by keyboard only. */
-                focusPane(row.pane);
-                void registry.run(row.command, row.args);
-              }
-            }}
-            >${row.label}</sp-menu-item
-          >`,
-        )}
-      </sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      onDismiss: () => {
-        _presetMenu = null;
-      },
-      region: "derive-presets",
+  _presetMenu = openMenu({
+    label: "Show beside this pane",
+    opener: anchor,
+    onClosed: () => {
+      _presetMenu = null;
     },
-  );
+    place: (box) => {
+      const at = rectOf(anchor);
+      return {
+        x: Math.round(Math.min(at.left, window.innerWidth - box.width - 4)),
+        y: Math.round(at.bottom),
+      };
+    },
+    region: "derive-presets",
+    rows: rows.map((row) => menuRow(row)),
+  });
+}
+
+/**
+ * One preset row, as the kit menu reads it: an identity, a sentence, and what pressing it runs.
+ *
+ * **There is no second refusal inside `run`, and the lit version's is deliberately gone.** The
+ * handler used to re-ask `row.disabled !== null` before doing anything, which was a second answer
+ * to the question the line above it already settles: `jx-menu-item` writes `aria-disabled` from
+ * this flag and raises no `select` while it is true, so a refused row never reaches `run` at all.
+ * Keeping both left the projection's own flag with nothing able to tell right from wrong about it —
+ * `check-lens-mutants.ts` said so, by surviving.
+ */
+function menuRow(row: PresetRow): MenuRowProjection {
+  return {
+    destructive: false,
+    disabled: row.disabled !== null,
+    dividerAbove: false,
+    id: rowId(row),
+    ...(row.disabled === null ? {} : { requires: row.disabled }),
+    run: () => {
+      /* THE PANE THE MENU IS ABOUT, before the verb that resolves the focus runs.
+         See {@link PresetRow.pane}: all three of these commands take the focused pane as their
+         subject, and a pointer gesture on this pane has already focused it — but a keyboard
+         activation has not, because `panels/pane-grid.ts` focuses on pointerdown. Without this line
+         the secondary pane's menu derived from the primary and its Unsplit closed the wrong pane,
+         by keyboard only. */
+      focusPane(row.pane);
+      void activeRegistry()?.run(row.command, row.args);
+    },
+    title: row.label,
+  };
+}
+
+/**
+ * A row's identity in the menu, which is not simply its command: `pane.derive` appears once per
+ * projection, once per declared breakpoint and once per declared locale, and a keyed `$map` cannot
+ * reconcile three rows that all call themselves `pane.derive`.
+ */
+function rowId(row: PresetRow): string {
+  const parts = [row.command];
+  for (const key of ["preset", "media", "locale"] as const) {
+    const value = row.args[key];
+    if (typeof value === "string") {
+      parts.push(value);
+    }
+  }
+  return parts.join(":");
 }
 
 /** One row of the preset menu: a command, its arguments, and why it cannot run when it cannot. */
@@ -547,18 +610,10 @@ export function presetRows(paneId: string): PresetRow[] {
   return rows;
 }
 
-/** One labelled axis. The label is the point: five unlabelled controls is what this replaces. */
-function axisTpl(label: string, control: TemplateResult): TemplateResult {
-  return html`
-    <div class="pc-axis">
-      <span class="pc-axis-label">${label}</span>
-      ${control}
-    </div>
-  `;
-}
+// ─── The projection ──────────────────────────────────────────────────────────
 
 /**
- * The bar, always the same three axes.
+ * Everything one pane's chrome draws, as words and keyed rows.
  *
  * There is no takeover branch. Opening a function body or a formula reveals the dock's Logic tab
  * (P8) and leaves the canvas standing underneath it, so the axes still describe the document on the
@@ -569,8 +624,7 @@ function axisTpl(label: string, control: TemplateResult): TemplateResult {
  * and the Logic tab's own header carries the Close. This bar drew a second Back and a second trail
  * beside both of them.
  */
-function paneChromeTemplate(tab: Tab, paneId: string, ctx: PaneContextCtx): TemplateResult {
-  const kind = editorKindOf(tab);
+function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView {
   /* A LENS suppresses the two axes that WRITE. Editor kind and Canvas view both land in
      `ctx.setCanvasMode(tab, …)`, and that tab belongs to the pane beside this one — so a control
      drawn in the lens would flip the document the author is editing. The lens's own mode is the
@@ -578,34 +632,52 @@ function paneChromeTemplate(tab: Tab, paneId: string, ctx: PaneContextCtx): Temp
      a static summary for the same reason (it writes `updateUi(tab, …)`), and the zoom pod stays
      because zoom is the one view fact a lens genuinely owns. */
   const lens = derivationOfPane(paneId)?.kind === "lens";
+  const readOnly = collabState(tab).active && collabState(tab).readOnly;
+  const view: PaneContextView = {
+    ...baseView(paneId),
+    /* …and NO ⟲ trigger in a lens. Every projection row in the menu it opens is permanently
+       disabled from there (a derived pane cannot derive again) and the breakpoint rows are
+       suppressed outright, leaving one live row — Unsplit — which the derivation chip's ✕ in this
+       pane's own strip already runs. A control that can do nothing from where it is drawn is the
+       class this phase has deleted three times. A COMPANION keeps it: "Keep This Document" is live
+       there and it is genuinely about that pane. The leading slot stays either way: it is what
+       pushes the axes right, and dropping it would move the one control a lens does draw. */
+    presetState: lens ? "hidden" : "shown",
+    /* A lens draws no banner: the projection would be announcing a collaboration session it is not
+       in, twice on one screen, about a document it does not own. */
+    bannerState: !lens && readOnly ? "shown" : "hidden",
+    barMode: lens ? "lens" : "full",
+    ...podFor(tab, paneId),
+  };
+  if (lens) {
+    view.summary = lensSummary(paneId);
+    return view;
+  }
+  Object.assign(view, editorAxis(tab));
+  if (editorKindOf(tab) === "canvas") {
+    Object.assign(view, viewAxis(tab));
+  }
+  Object.assign(view, contextAxis(tab, paneId, ctx));
+  /* THIS tab's effective mode. `ctx.getCanvasMode()` answered for the focused pane, so a document
+     opened as Code in either pane put an Export button in the OTHER pane's bar as well — over a
+     document that is not the one the button exports. */
+  view.exportState = canvasModeOfTab(tab) === "source" ? "shown" : "hidden";
+  return view;
+}
 
-  return html`
-    <div class="pc-band">
-      <div class="pane-context" data-jx-region=${paneRegion(paneId, "context")}>
-        <div class="pc-spacer">
-          ${
-            /* …and NO ⟲ trigger in a lens. Every projection row in the menu it opens is permanently
-               disabled from there (a derived pane cannot derive again) and the breakpoint rows are
-               suppressed outright, leaving one live row — Unsplit — which the derivation chip's ✕
-               in this pane's own strip already runs. A control that can do nothing from where it is
-               drawn is the class this phase has deleted three times. A COMPANION keeps it: "Keep
-               This Document" is live there and it is genuinely about that pane. The SPACER stays
-               either way: it is what pushes the axes right, and dropping it would move the one
-               control a lens does draw. */
-            lens ? nothing : presetTriggerTpl(paneId)
-          }
-        </div>
-        ${
-          lens
-            ? renderingSummaryTpl(paneId)
-            : html`${editorKindTpl(tab, ctx)} ${kind === "canvas" ? viewTpl(tab, ctx) : nothing}
-              ${renderingContextTpl(tab, paneId, ctx)} ${exportTpl(tab, ctx)}`
-        }
-      </div>
-      ${lens ? nothing : readOnlyBannerTemplate(tab)}
-    </div>
-    ${zoomPodTpl(tab, paneId)}
-  `;
+/**
+ * The projection before any axis has spoken: the two regions, and everything else absent.
+ *
+ * The empty shape comes from the SURFACE — one list of fields, beside the interface that declares
+ * them — because two hand-kept copies of a 36-field record is exactly how a new field ends up
+ * projected in one place and forgotten in the other.
+ */
+function baseView(paneId: string): PaneContextView {
+  return {
+    ...emptyPaneContextView(),
+    contextRegion: paneRegion(paneId, "context"),
+    zoomRegion: paneRegion(paneId, "zoom"),
+  };
 }
 
 /**
@@ -616,7 +688,7 @@ function paneChromeTemplate(tab: Tab, paneId: string, ctx: PaneContextCtx): Temp
  * screen — but the popover behind it writes the source tab's `session.ui`, which is the one thing a
  * lens must never do.
  */
-function renderingSummaryTpl(paneId: string): TemplateResult {
+function lensSummary(paneId: string): string {
   /* No `ctx.parseMediaEntries` here. It parsed the document's whole `$media` map, discarded the
      result through `void sizeBreakpoints` and printed the media NAME — a parse per lens-bar render
      for a value that was never read. `mediaDisplayName` is the only lookup this line needs. */
@@ -632,15 +704,14 @@ function renderingSummaryTpl(paneId: string): TemplateResult {
      document's own language, for the reason the trigger beside it is: a pane drawing the file it
      has open in the language that file is written in has nothing to report. */
   const locale = localeOf(tabOfPane(paneId));
-  const stated = `${media ? mediaDisplayName(media) : "Base"}${
+  return `${media ? mediaDisplayName(media) : "Base"}${
     locale?.overridden ? ` · ${localeLabel(locale.effective)}` : ""
   }`;
-  return axisTpl("Context", html`<span class="pc-static">${stated}</span>`);
 }
 
 // ─── Axis 1 · Editor kind ────────────────────────────────────────────────────
 
-function editorKindTpl(tab: Tab, ctx: PaneContextCtx): TemplateResult {
+function editorAxis(tab: Tab): Partial<PaneContextView> {
   /* What the DOCUMENT declares, and nothing else. This read `hostableKindsOf` — the declared kinds
      narrowed by what the tab's pane was allowed to host — so a page in the side pane was offered
      Code and not Design. The pane cap is gone; a control that cannot go anywhere is still the
@@ -650,43 +721,23 @@ function editorKindTpl(tab: Tab, ctx: PaneContextCtx): TemplateResult {
   if (kinds.length < 2) {
     // One kind is not a choice. Rendering it as a dropdown would be a control that cannot move —
     // Which is the defect this axis exists to remove, in miniature.
-    return axisTpl("Editor", html`<span class="pc-static">${EDITOR_KIND_LABELS[current]}</span>`);
+    return { editorLabel: EDITOR_KIND_LABELS[current], editorMode: "static" };
   }
-  return axisTpl(
-    "Editor",
-    html`
-      <sp-picker
-        size="s"
-        quiet
-        class="pc-editor-kind"
-        label="Editor"
-        value=${current}
-        @change=${(e: Event) => {
-          const kind = (e.target as HTMLInputElement).value as EditorKind;
-          const mode = modeForEditorKind(tab, kind);
-          if (!mode) {
-            return;
-          }
-          tab.session.ui.preview = false;
-          ctx.setCanvasMode(tab, mode);
-        }}
-      >
-        ${kinds.map(
-          (kind) => html`<sp-menu-item value=${kind}>${EDITOR_KIND_LABELS[kind]}</sp-menu-item>`,
-        )}
-      </sp-picker>
-    `,
-  );
+  return {
+    editorMode: "picker",
+    editorOptions: kinds.map((kind) => ({ label: EDITOR_KIND_LABELS[kind], value: kind })),
+    editorValue: current,
+  };
 }
 
 // ─── Axis 2 · Canvas view ────────────────────────────────────────────────────
 
-function viewTpl(tab: Tab, ctx: PaneContextCtx): TemplateResult | typeof nothing {
+function viewAxis(tab: Tab): Partial<PaneContextView> {
   // Every pane draws a live Canvas, so this is no longer narrowed by WHERE the tab is — only by
   // What the document declares. A document with no Canvas view still draws no view group.
   const views = canvasBaseViewsFor(tab);
   if (views.length === 0) {
-    return nothing;
+    return {};
   }
   const current = canvasBaseViewOf(tab);
   const preview = previewStateOf(tab);
@@ -698,54 +749,21 @@ function viewTpl(tab: Tab, ctx: PaneContextCtx): TemplateResult | typeof nothing
    * say which mode you were previewing — or which one Escape would return you to. Now the radio
    * marks the base the whole time and the toggle sits beside it, pressed.
    */
-  return axisTpl(
-    "View",
-    html`
-      <sp-action-group compact size="s" class="pc-view" role="radiogroup" aria-label="Canvas view">
-        ${views.map(
-          (value) => html`
-            <sp-action-button
-              size="s"
-              role="radio"
-              aria-checked=${value === current ? "true" : "false"}
-              ?selected=${value === current}
-              title=${`Show this document in ${CANVAS_VIEW_LABELS[value]}`}
-              @click=${() => setCanvasView(tab, value, ctx.setCanvasMode)}
-            >
-              ${CANVAS_VIEW_LABELS[value]}
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-      ${
-        preview.available
-          ? html`
-              <sp-action-button
-                size="s"
-                class="pc-preview-toggle"
-                toggles
-                ?selected=${preview.on}
-                aria-pressed=${preview.on ? "true" : "false"}
-                title=${
-                  preview.on
-                    ? `Stop previewing — back to ${CANVAS_VIEW_LABELS[current ?? "edit"]}`
-                    : "Preview: the page as it ships, with editing off"
-                }
-                @click=${() => {
-                  setCanvasView(
-                    tab,
-                    preview.on ? (current ?? "edit") : "preview",
-                    ctx.setCanvasMode,
-                  );
-                }}
-              >
-                ${CANVAS_VIEW_LABELS.preview}
-              </sp-action-button>
-            `
-          : nothing
-      }
-    `,
-  );
+  return {
+    previewHint: preview.on
+      ? `Stop previewing — back to ${CANVAS_VIEW_LABELS[current ?? "edit"]}`
+      : "Preview: the page as it ships, with editing off",
+    previewOn: preview.on,
+    previewState: preview.available ? "shown" : "hidden",
+    views: views.map((value) => ({
+      checked: value === current ? "true" : "false",
+      hint: `Show this document in ${CANVAS_VIEW_LABELS[value]}`,
+      key: value,
+      label: CANVAS_VIEW_LABELS[value],
+      value,
+    })),
+    viewState: "shown",
+  };
 }
 
 // ─── Axis 3 · Rendering context ──────────────────────────────────────────────
@@ -775,9 +793,9 @@ interface PaneLocale {
 /**
  * The language axis for a tab, or `null` when the project has no language question to ask.
  *
- * Called at RENDER time and never cached: `projectState` is replaced wholesale rather than mutated,
- * so a locale added in Settings reaches this bar on the next paint and a module-level copy would
- * still be describing the project that was open when this file loaded.
+ * Called at PROJECTION time and never cached: `projectState` is replaced wholesale rather than
+ * mutated, so a locale added in Settings reaches this bar on the next paint and a module-level copy
+ * would still be describing the project that was open when this file loaded.
  *
  * A single declared locale is the same as none for this control — there is nothing to switch TO,
  * and "groups a document declares nothing for are absent" is the rule the whole popover follows.
@@ -798,7 +816,7 @@ function localeOf(tab: Tab | null): PaneLocale | null {
   return { effective, i18n, overridden: effective !== own, pathLocale };
 }
 
-function renderingContextTpl(tab: Tab, paneId: string, ctx: PaneContextCtx): TemplateResult {
+function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<PaneContextView> {
   const { ui } = tab.session;
   const { featureQueries, sizeBreakpoints } = ctx.parseMediaEntries(
     getEffectiveMedia(tab.doc.document?.$media as Record<string, string> | undefined),
@@ -813,7 +831,7 @@ function renderingContextTpl(tab: Tab, paneId: string, ctx: PaneContextCtx): Tem
   /* The language joins the trigger ONLY when the pane is not drawing the document's own — a French
      page open in a French pane is not a rendering context worth three more characters, and a bar
      that grew a third term in every multilingual project would stop reading as a state. */
-  const summary = [
+  const contextSummary = [
     sizeLabel,
     schemeQueries.length > 0 ? schemeLabel : null,
     locale?.overridden ? localeLabel(locale.effective) : null,
@@ -821,285 +839,74 @@ function renderingContextTpl(tab: Tab, paneId: string, ctx: PaneContextCtx): Tem
     .filter((part) => part !== null)
     .join(" · ");
   const hasLayout = isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document?.$layout));
-  const resolving = isPageDoc(tab) ? paramPickersTpl(tab, paneId) : propFieldsTpl(tab, paneId);
+  const page = isPageDoc(tab);
+  const params = page ? paramRows(tab) : [];
+  const props = page ? [] : propRows(tab, paneId);
   /* How many of those fields carry a value. The trigger has to say something true at a glance, the
      way the Context trigger says `Base · Auto` — a chevron with no reading is a control you have to
      open in order to learn whether it was worth opening. */
-  const resolvingSet = isPageDoc(tab)
+  const resolvingSet = page
     ? Object.values(ui.previewParams ?? {}).filter((v) => v !== "" && v !== undefined).length
     : Object.keys(ui.previewProps ?? {}).length;
+  const hasResolving = page ? params.length > 0 : props.length > 0;
 
-  return axisTpl(
-    "Context",
-    html`
-      ${resolvingTpl(paneId, resolving, resolvingSet)}
-      <overlay-trigger placement="bottom-end" triggered-by="click">
-        <sp-action-button
-          slot="trigger"
-          size="s"
-          quiet
-          class="pc-context-trigger"
-          title="What this document is being rendered with"
-        >
-          ${summary} ⌄
-        </sp-action-button>
-        <sp-popover slot="click-content" tip class="pc-context-popover">
-          <div class="pc-ctx">
-            ${sizeGroupTpl(paneId, sizeBreakpoints, activeMedia)}
-            ${
-              schemeQueries.length > 0
-                ? groupTpl(
-                    "Color scheme",
-                    html`
-                      <sp-action-group compact size="s">
-                        ${SCHEMES.map(
-                          ([value, label, title]) => html`
-                            <sp-action-button
-                              size="s"
-                              role="radio"
-                              aria-checked=${scheme === value ? "true" : "false"}
-                              title=${title}
-                              ?selected=${scheme === value}
-                              @click=${() =>
-                                runContextCommand(paneId, "canvas.setColorScheme", {
-                                  scheme: value,
-                                })}
-                            >
-                              ${label}
-                            </sp-action-button>
-                          `,
-                        )}
-                      </sp-action-group>
-                    `,
-                  )
-                : nothing
-            }
-            ${locale ? localeGroupTpl(paneId, locale) : nothing}
-            ${
-              plainQueries.length > 0
-                ? groupTpl(
-                    "Features",
-                    html`
-                      <sp-action-group compact size="s">
-                        ${plainQueries.map(
-                          ({ name, query }) => html`
-                            <sp-action-button
-                              size="s"
-                              toggles
-                              title=${query}
-                              ?selected=${Boolean(ui.featureToggles[name])}
-                              @click=${() => {
-                                updateUi(tab, "featureToggles", {
-                                  ...tab.session.ui.featureToggles,
-                                  [name]: !tab.session.ui.featureToggles[name],
-                                });
-                              }}
-                            >
-                              ${mediaDisplayName(name)}
-                            </sp-action-button>
-                          `,
-                        )}
-                      </sp-action-group>
-                    `,
-                  )
-                : nothing
-            }
-            ${
-              hasLayout
-                ? groupTpl(
-                    "Layout",
-                    html`
-                      <sp-switch
-                        size="s"
-                        class="pc-layout-switch"
-                        ?checked=${ui.showLayout !== false}
-                        @change=${() =>
-                          runContextCommand(paneId, "canvas.setLayoutVisible", {
-                            visible: tab.session.ui.showLayout === false,
-                          })}
-                      >
-                        Show layout elements
-                      </sp-switch>
-                    `,
-                  )
-                : nothing
-            }
-            <button
-              class="pc-ctx-manage"
-              type="button"
-              title="Breakpoints, schemes and feature queries are defined in Project Settings › Contexts"
-              @click=${() => {
-                void activeRegistry()?.run("settings.open", { section: "contexts" });
-              }}
-            >
-              Manage contexts…
-            </button>
-          </div>
-        </sp-popover>
-      </overlay-trigger>
-    `,
-  );
-}
-
-/**
- * The document DATA a render resolves against — route params, component test props — in a popover.
- *
- * §4.2 folds these in behind the words "resolving with…", and this is where that lands: the phrase
- * is the popover's header and the fields are a vertical stack under it, the same shape as the
- * rendering-context popover beside it.
- *
- * They used to sit OPEN on the bar, and the argument for that was the screenshot contract (§13.1):
- * behind a click, the one first-hour flow the docs teach — typing a test prop on
- * `start/first-component` — costs a second gesture, and the manifest's input budget may only
- * ratchet down. The answer is not to keep n text fields on a 28px band that also carries the
- * editor, the view and the rendering context; it is that a transient surface opens by COMMAND (plan
- * §13.2), so the shot spends a `cmd` step rather than a selector and the input budget is untouched.
- * `canvas.setResolvingOpen` is that command, and it is the same door the pointer uses.
- *
- * @param {string} paneId
- * @param {TemplateResult | typeof nothing} body
- * @param {number} setCount — how many fields carry a value, for the trigger's summary
- */
-function resolvingTpl(
-  paneId: string,
-  body: TemplateResult | typeof nothing,
-  setCount: number,
-): TemplateResult | typeof nothing {
-  if (body === nothing) {
-    return nothing;
-  }
-  return html`
-    <overlay-trigger
-      placement="bottom-end"
-      triggered-by="click"
-      ${ref((el: Element | undefined) => {
-        if (el) {
-          _resolvingTrigger.set(paneId, el as HTMLElement & { open?: string | undefined });
-        }
-      })}
-    >
-      <sp-action-button
-        slot="trigger"
-        size="s"
-        quiet
-        class="pc-resolving-trigger"
-        title="The values this document is being rendered with"
-      >
-        ${setCount > 0 ? `${setCount} set` : "Defaults"} ⌄
-      </sp-action-button>
-      <sp-popover slot="click-content" tip class="pc-context-popover">
-        <div class="pc-ctx">${groupTpl("resolving with", body as TemplateResult)}</div>
-      </sp-popover>
-    </overlay-trigger>
-  `;
-}
-
-/**
- * Each pane's "resolving with" `overlay-trigger`, which IS the open state.
- *
- * No parallel `Set`. The overlay owns whether it is showing — it opens on a pointer click without
- * telling anyone first — so a second record of the same fact could only ever be the stale one. The
- * element's `open` property is what the pointer writes and what the command writes, and reading it
- * back is how anything else asks.
- */
-const _resolvingTrigger = new Map<string, HTMLElement & { open?: string | undefined }>();
-
-/** Whether this pane's resolving popover is open. Exported for the tests. */
-export function isResolvingOpen(paneId: string): boolean {
-  return _resolvingTrigger.get(paneId)?.open === "click";
-}
-
-/**
- * Open or close it.
- *
- * A named end state rather than a toggle, so `canvas.setResolvingOpen { open: false }` means the
- * same thing twice and a screenshot can photograph it (§13's R1).
- *
- * It writes the element and does NOT re-render the bar. `overlay-trigger` moves the popover into an
- * overlay portal while it is open and restores it on close; re-rendering this template in the
- * middle of that leaves the moved copy painted over the canvas with no way to dismiss it. The
- * overlay owns its own visibility — the only thing the bar redraws for is the trigger's summary,
- * and that changes when a VALUE changes, which already renders.
- */
-export function setResolvingOpen(paneId: string, open: boolean): void {
-  const trigger = _resolvingTrigger.get(paneId);
-  if (trigger && isResolvingOpen(paneId) !== open) {
-    trigger.open = open ? "click" : undefined;
-  }
-}
-
-/** Forget the held triggers — a fresh window, and the tests. */
-export function resetResolvingOpen(): void {
-  _resolvingTrigger.clear();
-}
-
-/** One labelled group inside the rendering-context popover. */
-function groupTpl(label: string, body: TemplateResult): TemplateResult {
-  return html`
-    <div class="pc-ctx-group">
-      <span class="pc-ctx-label">${label}</span>
-      ${body}
-    </div>
-  `;
+  return {
+    contextSummary,
+    featureState: plainQueries.length > 0 ? "shown" : "hidden",
+    features: plainQueries.map(({ name, query }) => ({
+      hint: query,
+      key: name,
+      label: mediaDisplayName(name),
+      selected: Boolean(ui.featureToggles[name]),
+      value: name,
+    })) satisfies PaneContextToggle[],
+    layoutOn: ui.showLayout !== false,
+    layoutState: hasLayout ? "shown" : "hidden",
+    ...localeGroup(locale),
+    params,
+    props,
+    resolvingKind: page ? "params" : "props",
+    resolvingLabel: resolvingSet > 0 ? `${resolvingSet} set` : "Defaults",
+    resolvingState: hasResolving ? "shown" : "hidden",
+    schemes: SCHEMES.map(([value, label, hint]) => ({
+      checked: scheme === value ? "true" : "false",
+      hint,
+      key: value,
+      label,
+      value,
+    })) satisfies PaneContextChoice[],
+    schemeState: schemeQueries.length > 0 ? "shown" : "hidden",
+    sizes: sizeRows(sizeBreakpoints, activeMedia),
+  };
 }
 
 /**
  * The size segment: the base width plus every declared size breakpoint.
  *
  * It writes `ui.activeMedia`, the same field a canvas panel header click writes — one axis, one
- * field, two ways in. `null` is the base, which is why the list is not simply the breakpoints.
+ * field, two ways in. The base is the empty string on the wire, because that is what "no breakpoint
+ * applied" is: `canvas.setBreakpoint` reads it back as `null`.
  */
-/**
- * Run a rendering-context verb through the registry.
- *
- * These four controls wrote `session.ui` directly through `updateUi`, which is why none of the
- * three axes was a command: the popover WAS the capability, and the palette, the assistant and
- * `__jxAutomation` had no name for it. Going through the registry makes the control and the verb
- * one thing (§2, principle 1) and gets the breakpoint refusal for free.
- */
-function runContextCommand(paneId: string, id: string, args: Record<string, unknown>): void {
-  // THIS pane, named. The bar is drawn once per pane and the side bar's controls write the side
-  // Pane's tab; a verb defaulting to the focused pane would have made the side bar edit the
-  // Foreground document the moment its control became a command.
-  void activeRegistry()?.run(id, { ...args, pane: paneId });
-}
-
-function sizeGroupTpl(
-  paneId: string,
+function sizeRows(
   breakpoints: { name: string; width: number }[],
   activeMedia: string | null,
-): TemplateResult {
-  return groupTpl(
-    "Size",
-    html`
-      <sp-action-group compact size="s" class="pc-sizes">
-        <sp-action-button
-          size="s"
-          role="radio"
-          aria-checked=${activeMedia === null ? "true" : "false"}
-          title="The base rendering, with no breakpoint applied"
-          ?selected=${activeMedia === null}
-          @click=${() => runContextCommand(paneId, "canvas.setBreakpoint", { media: null })}
-        >
-          Base
-        </sp-action-button>
-        ${breakpoints.map(
-          ({ name, width }) => html`
-            <sp-action-button
-              size="s"
-              role="radio"
-              aria-checked=${activeMedia === name ? "true" : "false"}
-              title=${`${mediaDisplayName(name)} — ${width}px`}
-              ?selected=${activeMedia === name}
-              @click=${() => runContextCommand(paneId, "canvas.setBreakpoint", { media: name })}
-            >
-              ${mediaDisplayName(name)}
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-    `,
-  );
+): PaneContextChoice[] {
+  return [
+    {
+      checked: activeMedia === null ? "true" : "false",
+      hint: "The base rendering, with no breakpoint applied",
+      key: "--base",
+      label: "Base",
+      value: "",
+    },
+    ...breakpoints.map(({ name, width }) => ({
+      checked: activeMedia === name ? ("true" as const) : ("false" as const),
+      hint: `${mediaDisplayName(name)} — ${width}px`,
+      key: name,
+      label: mediaDisplayName(name),
+      value: name,
+    })),
+  ];
 }
 
 /**
@@ -1120,57 +927,25 @@ function sizeGroupTpl(
  * has no room for a second visual state, and the author needs to know which entry is "no override"
  * before clicking, not after.
  */
-function localeGroupTpl(paneId: string, locale: PaneLocale): TemplateResult {
-  return groupTpl(
-    "Language",
-    html`
-      <sp-action-group
-        compact
-        size="s"
-        title="The language this pane renders as — its lang and direction only. The text is whatever file is open."
-      >
-        ${locale.i18n.locales.map(
-          (tag) => html`
-            <sp-action-button
-              size="s"
-              role="radio"
-              aria-checked=${locale.effective === tag ? "true" : "false"}
-              title=${
-                tag === locale.pathLocale
-                  ? `${localeLabel(tag)} — the language of the file this pane has open`
-                  : `Render as ${localeLabel(tag)} (${tag})`
-              }
-              ?selected=${locale.effective === tag}
-              @click=${() => runContextCommand(paneId, "i18n.switchLocale", { locale: tag })}
-            >
-              ${localeLabel(tag)}
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-    `,
-  );
-}
-
-// ─── The mode action ─────────────────────────────────────────────────────────
-// Export is not an axis, and it is the one control in the old bar with nowhere to go yet: retiring
-// It without a command name, a chord and a residue would be deletion, not consolidation (§2
-// Principle 9). It stays in the Code view's trailing slot until the Code editor kind owns an action
-// Strip of its own.
-
-function exportTpl(tab: Tab, ctx: PaneContextCtx): TemplateResult | typeof nothing {
-  /* THIS tab's effective mode. `ctx.getCanvasMode()` answered for the focused pane, so a document
-     opened as Code in either pane put an Export button in the OTHER pane's bar as well — over a
-     document that is not the one the button exports. */
-  if (canvasModeOfTab(tab) !== "source") {
-    return nothing;
+function localeGroup(locale: PaneLocale | null): Partial<PaneContextView> {
+  if (!locale) {
+    return { localeState: "hidden" };
   }
-  return html`
-    <sp-action-button size="s" class="pc-export" @click=${ctx.exportFile}>
-      <sp-icon-export slot="icon"></sp-icon-export>
-      Export
-    </sp-action-button>
-  `;
+  return {
+    localeHint:
+      "The language this pane renders as — its lang and direction only. The text is whatever file is open.",
+    locales: locale.i18n.locales.map((tag) => ({
+      checked: locale.effective === tag ? "true" : "false",
+      hint:
+        tag === locale.pathLocale
+          ? `${localeLabel(tag)} — the language of the file this pane has open`
+          : `Render as ${localeLabel(tag)} (${tag})`,
+      key: tag,
+      label: localeLabel(tag),
+      value: tag,
+    })),
+    localeState: "shown",
+  };
 }
 
 // ─── ⑩ The floating zoom pod ─────────────────────────────────────────────────
@@ -1191,6 +966,9 @@ function fitChoiceValue(fit: FitMode): string {
   return fit;
 }
 
+/** The modes whose stage is the panzoom surface — the only ones with a fit to state. */
+const STAGE_ZOOM_MODES = new Set(["design", "stylebook", "git-diff"]);
+
 /**
  * Zoom and fit, floating over the canvas bottom-right.
  *
@@ -1199,7 +977,7 @@ function fitChoiceValue(fit: FitMode): string {
  * fit, because a fit is a statement about an artboard. Preview is deliberately absent: its frame is
  * a real viewport that scrolls its own document, so there is nothing to zoom.
  */
-function zoomPodTpl(tab: Tab, paneId: string): TemplateResult | typeof nothing {
+function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
   /* THIS pane's mode. `ctx.getCanvasMode()` answers for the focused pane, so the unfocused pod
      offered an `editZoom` control over a stage drawing Design — and hid the fit that stage has. */
   const mode = canvasModeOfPane(paneId);
@@ -1209,91 +987,205 @@ function zoomPodTpl(tab: Tab, paneId: string): TemplateResult | typeof nothing {
   const surface = surfaceForPane(paneId);
   if (mode === "edit") {
     const editZoom = tab.session.ui.editZoom ?? 1;
-    return podTpl(
-      paneId,
-      html`
-        ${zoomButton("Zoom out (Ctrl+-)", "−", () =>
-          setEditZoom((tab.session.ui.editZoom ?? 1) / 1.2, surface),
-        )}
-        <sp-action-button
-          size="s"
-          class="pc-zoom-label"
-          title="Reset to 100% (Ctrl+0)"
-          @click=${() => setEditZoom(1, surface)}
-        >
-          ${Math.round(editZoom * 100)}%
-        </sp-action-button>
-        ${zoomButton("Zoom in (Ctrl+=)", "+", () =>
-          setEditZoom((tab.session.ui.editZoom ?? 1) * 1.2, surface),
-        )}
-      `,
-    );
+    return { podState: "shown", zoomLabel: `${Math.round(editZoom * 100)}%` };
   }
-  if (mode !== "design" && mode !== "stylebook" && mode !== "git-diff") {
-    return nothing;
+  if (!STAGE_ZOOM_MODES.has(mode)) {
+    return { podState: "hidden" };
   }
   const zoom = stageZoom(surface);
-  const chosen = fitChoiceValue(getFit(surface));
-  return podTpl(
-    paneId,
-    html`
-      ${zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom(surface) / 1.2, surface))}
-      <sp-action-button
-        size="s"
-        class="pc-zoom-label"
-        title="Reset to 100% (Ctrl+0)"
-        @click=${() => resetZoom(surface)}
-      >
-        ${Math.round(zoom * 100)}%
-      </sp-action-button>
-      ${zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom(surface) * 1.2, surface))}
-      <sp-picker
-        size="s"
-        quiet
-        class="pc-fit"
-        label="Fit"
-        value=${chosen}
-        title="How this document is framed"
-        @change=${(e: Event) => {
-          const { value } = e.target as HTMLInputElement;
-          const choice = FIT_CHOICES.find((entry) => entry.value === value);
-          if (!choice) {
-            return;
-          }
-          // "Fit page" from the control may magnify a small artboard past life size; the fit APPLIED
-          // On arrival never does. Same declared state, two caps — see fitToScreen's maxZoom.
-          if (choice.fit === "page") {
-            fitToScreen({ surface });
-            return;
-          }
-          setFit(choice.fit, surface);
-        }}
-      >
-        ${FIT_CHOICES.map(
-          ({ value, label }) => html`<sp-menu-item value=${value}>${label}</sp-menu-item>`,
-        )}
-      </sp-picker>
-    `,
-  );
+  return {
+    fitOptions: FIT_CHOICES.map(({ label, value }) => ({ label, value })),
+    fitState: "shown",
+    fitValue: fitChoiceValue(getFit(surface)),
+    podState: "shown",
+    zoomLabel: `${Math.round(zoom * 100)}%`,
+  };
 }
 
-function podTpl(paneId: string, body: TemplateResult): TemplateResult {
-  return html`
-    <div class="pane-zoom" data-jx-region=${paneRegion(paneId, "zoom")}>
-      <sp-action-group compact size="s">${body}</sp-action-group>
-    </div>
-  `;
+// ─── What the controls do ────────────────────────────────────────────────────
+
+/**
+ * Run a rendering-context verb through the registry.
+ *
+ * These four controls wrote `session.ui` directly through `updateUi`, which is why none of the
+ * three axes was a command: the popover WAS the capability, and the palette, the assistant and
+ * `__jxAutomation` had no name for it. Going through the registry makes the control and the verb
+ * one thing (§2, principle 1) and gets the breakpoint refusal for free.
+ */
+function runContextCommand(paneId: string, id: string, args: Record<string, unknown>): void {
+  // THIS pane, named. The bar is drawn once per pane and the side bar's controls write the side
+  // Pane's tab; a verb defaulting to the focused pane would have made the side bar edit the
+  // Foreground document the moment its control became a command.
+  void activeRegistry()?.run(id, { ...args, pane: paneId });
 }
 
-function zoomButton(title: string, glyph: string, onClick: () => void): TemplateResult {
-  return html`
-    <sp-action-button size="s" title=${title} @click=${onClick}>${glyph}</sp-action-button>
-  `;
+/**
+ * Every gesture the pane's chrome offers, bound to the pane it is drawn for.
+ *
+ * Built once per mount rather than per projection: the document holds these by reference, and a new
+ * closure on every paint would replace a listener the reader may be mid-press on.
+ */
+function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
+  /** The tab this pane is drawing, at the moment the gesture happens rather than when it was drawn. */
+  const tabNow = (): Tab | null => tabOfPane(paneId);
+  return {
+    chooseEditor: (kind) => {
+      const tab = tabNow();
+      if (!tab) {
+        return;
+      }
+      const mode = modeForEditorKind(tab, kind as EditorKind);
+      if (!mode) {
+        return;
+      }
+      tab.session.ui.preview = false;
+      ctx.setCanvasMode(tab, mode);
+    },
+    chooseFit: (value) => {
+      const choice = FIT_CHOICES.find((entry) => entry.value === value);
+      if (!choice) {
+        return;
+      }
+      const surface = surfaceForPane(paneId);
+      // "Fit page" from the control may magnify a small artboard past life size; the fit APPLIED
+      // On arrival never does. Same declared state, two caps — see fitToScreen's maxZoom.
+      if (choice.fit === "page") {
+        fitToScreen({ surface });
+        return;
+      }
+      setFit(choice.fit, surface);
+    },
+    chooseView: (value) => {
+      const tab = tabNow();
+      if (tab) {
+        setCanvasView(tab, value as CanvasView, ctx.setCanvasMode);
+      }
+    },
+    exportFile: ctx.exportFile,
+    manageContexts: () => {
+      void activeRegistry()?.run("settings.open", { section: "contexts" });
+    },
+    openPresetMenu: (anchor) => {
+      openPresetMenu(paneId, anchor);
+    },
+    setBreakpoint: (media) => {
+      // The base row's value is the empty string, which the command reads back as "no breakpoint".
+      runContextCommand(paneId, "canvas.setBreakpoint", { media: media === "" ? null : media });
+    },
+    setLocale: (locale) => {
+      runContextCommand(paneId, "i18n.switchLocale", { locale });
+    },
+    setParam: (name, value) => {
+      // Through the registry, like every control in the popover beside this one.
+      runContextCommand(paneId, "canvas.setRouteParam", { name, value });
+    },
+    setProp: (name, raw) => {
+      // The command owns the write; this control owns only the parse, because "what a typed string
+      // Means" is a fact about a text field and not about the value.
+      runContextCommand(paneId, "canvas.setTestProp", {
+        name,
+        value: raw === "" ? null : parsePropValue(raw),
+      });
+    },
+    setScheme: (scheme) => {
+      runContextCommand(paneId, "canvas.setColorScheme", { scheme });
+    },
+    toggleFeature: (name) => {
+      const tab = tabNow();
+      if (tab) {
+        updateUi(tab, "featureToggles", {
+          ...tab.session.ui.featureToggles,
+          [name]: !tab.session.ui.featureToggles[name],
+        });
+      }
+    },
+    toggleLayout: () => {
+      runContextCommand(paneId, "canvas.setLayoutVisible", {
+        visible: tabNow()?.session.ui.showLayout === false,
+      });
+    },
+    togglePreview: () => {
+      const tab = tabNow();
+      if (!tab) {
+        return;
+      }
+      const preview = previewStateOf(tab);
+      const current = canvasBaseViewOf(tab);
+      setCanvasView(tab, preview.on ? (current ?? "edit") : "preview", ctx.setCanvasMode);
+    },
+    zoomIn: () => {
+      const tab = tabNow();
+      const surface = surfaceForPane(paneId);
+      if (canvasModeOfPane(paneId) === "edit") {
+        setEditZoom((tab?.session.ui.editZoom ?? 1) * 1.2, surface);
+        return;
+      }
+      setUserZoom(stageZoom(surface) * 1.2, surface);
+    },
+    zoomOut: () => {
+      const tab = tabNow();
+      const surface = surfaceForPane(paneId);
+      if (canvasModeOfPane(paneId) === "edit") {
+        setEditZoom((tab?.session.ui.editZoom ?? 1) / 1.2, surface);
+        return;
+      }
+      setUserZoom(stageZoom(surface) / 1.2, surface);
+    },
+    zoomReset: () => {
+      const surface = surfaceForPane(paneId);
+      if (canvasModeOfPane(paneId) === "edit") {
+        setEditZoom(1, surface);
+        return;
+      }
+      resetZoom(surface);
+    },
+  };
+}
+
+// ─── The resolving-with popover's open state ─────────────────────────────────
+
+/**
+ * Whether this pane's resolving popover is open. Exported for the tests.
+ *
+ * The MOUNT owns the answer, not this module: the panel is a `jx-popover` in that pane's document
+ * and the platform can close it without telling anyone (a light dismiss, an Escape, a second panel
+ * taking the top layer). The handle mirrors the platform's own `toggle`, so a pane with no chrome —
+ * no tab, or Project Settings — is closed by definition.
+ */
+export function isResolvingOpen(paneId: string): boolean {
+  return _surfaces.get(paneId)?.isResolvingOpen() ?? false;
+}
+
+/**
+ * Open or close it.
+ *
+ * A named end state rather than a toggle, so `canvas.setResolvingOpen { open: false }` means the
+ * same thing twice and a screenshot can photograph it (§13's R1).
+ *
+ * It writes the panel and does NOT re-project the bar. A popover moves into the top layer while it
+ * is open; nothing about the bar changes when it does, and the only thing the bar redraws for is
+ * the trigger's summary, which changes when a VALUE changes and already projects.
+ */
+export function setResolvingOpen(paneId: string, open: boolean): void {
+  // Asked through {@link isResolvingOpen}, so "is it already what you are asking for" has one
+  // Answer in this module rather than one here and another in the mount.
+  if (isResolvingOpen(paneId) === open) {
+    return;
+  }
+  _surfaces.get(paneId)?.setResolvingOpen(open);
+}
+
+/** Forget the mounted chrome — a fresh window, and the tests. */
+export function resetResolvingOpen(): void {
+  for (const surface of _surfaces.values()) {
+    surface.dispose();
+  }
+  _surfaces.clear();
 }
 
 // ─── Dynamic route-param pickers ─────────────────────────────────────────────
 // Candidate values load asynchronously (ContentCollection resolution / data-file read); the module
-// Caches the last result per (documentPath, $paths) and re-renders when it lands — the same lazy
+// Caches the last result per (documentPath, $paths) and re-projects when it lands — the same lazy
 // Fill pattern as head-panel's loadLayoutEntries. When values arrive, any param without a chosen
 // Value auto-selects the first candidate (matching the compiler, whose first expanded route is the
 // First path entry).
@@ -1304,14 +1196,14 @@ function zoomButton(title: string, glyph: string, onClick: () => void): Template
  * **A Map, not one slot, and that is a livelock fix rather than a cache-size preference.** It was
  * `_paramValues` + `_paramValuesKey`, holding exactly ONE result, while {@link render} loops every
  * attached pane. Two panes on documents with different keys evicted each other on every pass: pane
- * A's render stored A's key and cleared the value, pane B's render in the same loop stored B's, and
+ * A's projection stored A's key and cleared the value, pane B's in the same loop stored B's, and
  * whichever load landed found its key gone — or, once the "still shown somewhere" guard let it
  * through, stored its value and called `render()`, which re-issued both loads again. An unbounded
  * microtask chain: no rAF, no paint, no input. `⌘\` with two pages under dynamic routes was enough,
  * and the probe never returned.
  *
- * `_paramLoading` is what stops a re-render re-issuing a load that has not landed yet; the value
- * map is what stops one pane's answer erasing the other's.
+ * `_paramLoading` is what stops a re-projection re-issuing a load that has not landed yet; the
+ * value map is what stops one pane's answer erasing the other's.
  */
 const _paramValues = new Map<string, ParamValues>();
 
@@ -1377,47 +1269,29 @@ function autoSelectParams(tab: Tab, values: ParamValues) {
 }
 
 /**
+ * One picker per route param the document declares, in the order the path names them.
+ *
  * @param {Tab} tab
- * @returns {TemplateResult | typeof nothing}
  */
-function paramPickersTpl(tab: Tab, paneId: string): TemplateResult | typeof nothing {
+function paramRows(tab: Tab): PaneContextView["params"] {
   const values = paramValuesFor(tab);
   const names = new Set(dynamicRouteParams(tab.documentPath));
   for (const name of Object.keys(values ?? {})) {
     names.add(name);
   }
-  if (names.size === 0) {
-    return nothing;
-  }
   const { previewParams } = tab.session.ui;
-  return html`
-    ${[...names].map(
-      (name) => html`
-        <sp-picker
-          size="s"
-          quiet
-          class="pc-param"
-          label=${name}
-          title=${`Preview value for [${name}]`}
-          value=${previewParams?.[name] ?? ""}
-          @change=${(e: Event) => {
-            const { value } = e.target as HTMLInputElement;
-            // Through the registry, like every control in the popover beside this one.
-            runContextCommand(paneId, "canvas.setRouteParam", { name, value });
-          }}
-        >
-          ${(values?.[name] ?? []).map(
-            (v: string) => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`,
-          )}
-        </sp-picker>
-      `,
-    )}
-  `;
+  return [...names].map((name) => ({
+    key: name,
+    label: `Preview value for [${name}]`,
+    name,
+    options: (values?.[name] ?? []).map((value: string) => ({ label: value, value })),
+    value: previewParams?.[name] ?? "",
+  }));
 }
 
 // ─── Component test-prop fields ──────────────────────────────────────────────
 // The previewParams mirror for component docs: one small field per prop entry (the doc's
-// Plain-data state entries), committed on change so typing never re-renders the bar mid-edit. A
+// Plain-data state entries), committed on change so typing never re-projects the bar mid-edit. A
 // Value parses as JSON when it can (numbers, booleans, arrays) and falls back to the raw string;
 // Clearing a field removes the override so the prop returns to its authored default.
 
@@ -1436,42 +1310,20 @@ function parsePropValue(raw: string): JsonValue {
 /**
  * @param {Tab} tab
  * @param {string} paneId
- * @returns {TemplateResult | typeof nothing}
  */
-function propFieldsTpl(tab: Tab, paneId: string): TemplateResult | typeof nothing {
+function propRows(tab: Tab, paneId: string): PaneContextView["props"] {
   const doc = tab.doc.document;
   if (!isComponentDoc(doc)) {
-    return nothing;
-  }
-  const entries = componentPropEntries(doc);
-  if (entries.length === 0) {
-    return nothing;
+    return [];
   }
   const { previewProps } = tab.session.ui;
   const display = (v: JsonValue | undefined) =>
     v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v);
-  return html`
-    ${entries.map(
-      ({ name }) => html`
-        <sp-textfield
-          size="s"
-          quiet
-          class="pc-prop"
-          data-jx-region=${paneRegion(paneId, `prop:${name}`)}
-          placeholder=${name}
-          title=${`Test value for ${name}`}
-          .value=${display(previewProps?.[name])}
-          @change=${(e: Event) => {
-            const raw = (e.target as HTMLInputElement).value;
-            // The command owns the write; this control owns only the parse, because "what a typed
-            // String means" is a fact about a text field and not about the value.
-            runContextCommand(paneId, "canvas.setTestProp", {
-              name,
-              value: raw === "" ? null : parsePropValue(raw),
-            });
-          }}
-        ></sp-textfield>
-      `,
-    )}
-  `;
+  return componentPropEntries(doc).map(({ name }) => ({
+    key: name,
+    label: `Test value for ${name}`,
+    name,
+    region: paneRegion(paneId, `prop:${name}`),
+    value: display(previewProps?.[name]),
+  }));
 }

@@ -86,30 +86,45 @@ describe("clearStudioStorage without a Storage", () => {
 // ─── settings/contexts-section.ts — the parked failure, read back ────────────
 
 describe("contextsError", () => {
-  test("is null until a control refuses, then names the control and the reason", () => {
+  /*
+   * The section is a Jx document, so the container has to be IN the page — a kit element renders in
+   * `connectedCallback` and a detached one is an empty tag — and the mount has to be awaited before
+   * there is a control to refuse anything.
+   */
+  test("is null until a control refuses, then names the control and the reason", async () => {
     installMockPlatform();
     resetStudioState({ projectConfig: { $media: { "--": "1280px" } } as unknown });
     const container = document.createElement("div");
+    document.body.append(container);
     renderContextsSection(container);
+    await flush(8);
 
     expect(contextsError(container)).toBeNull();
 
-    const base = container.querySelector('[data-context="base"]') as HTMLInputElement;
+    const base = container.querySelector(
+      '[data-context="base"] [part="input"]',
+    ) as HTMLInputElement;
     base.value = "wide";
     base.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(4);
 
     expect(contextsError(container)).toEqual({
       message: "Enter a width in pixels, like 1280px.",
       target: "base",
     });
-    expect(container.querySelector(".settings-field-error")?.textContent?.trim()).toBe(
+    expect(container.querySelector('[part="row-error"]')?.textContent?.trim()).toBe(
       "Enter a width in pixels, like 1280px.",
     );
 
     // Keyed by container, so a second mount has its own failure state rather than this one.
     const other = document.createElement("div");
+    document.body.append(other);
     renderContextsSection(other);
+    await flush(8);
     expect(contextsError(other)).toBeNull();
+
+    container.remove();
+    other.remove();
   });
 });
 
@@ -128,10 +143,10 @@ describe("css vars — Manage contexts when the section cannot be opened", () =>
 
     const container = document.createElement("div");
     renderCssVarsEditor(container);
-    const link = [...container.querySelectorAll("sp-action-button")].find((b) =>
-      b.textContent?.includes("Manage contexts"),
-    );
-    expect(link).toBeDefined();
+    // A document now, so its content lands a turn later; the footer link is `[part="manage"]`.
+    await flush(2);
+    const link = container.querySelector('[part="manage"]');
+    expect(link).not.toBeNull();
 
     pointer(link!, "click");
     await flush(4);
@@ -174,74 +189,92 @@ describe("the settings pane's draw guards", () => {
     registry.resetSettingsDocumentState();
   });
 
-  test("a change notification for a detached pane is a no-op, not a null dereference", () => {
+  /**
+   * Mount the pane and let its chrome land.
+   *
+   * The chrome is a document now (`surfaces/settings-pane.json`), so the island a section renders
+   * into does not exist until the mount settles — the first synchronous `draw` returns at it, and
+   * the pass that reaches a section renderer is the one the mount's own `ready` schedules.
+   */
+  async function mount(): Promise<void> {
     renderSettingsPane(surfaceOf(host));
+    await flush(3);
+  }
+
+  /** The island a section is drawn into, addressed by `part` rather than by a class. */
+  function body(): HTMLElement | null {
+    return host.querySelector('[part="body"]');
+  }
+
+  test("a change notification for a detached pane is a no-op, not a null dereference", async () => {
+    await mount();
     expect(renders).toBe(1);
-    const drawn = host.innerHTML;
 
     detachSettingsPane("primary");
     /* The unsubscribe is stubbed in this file, so the listener outlives its panel — the state the
        guard exists for. It must draw nothing rather than reach through the missing record. */
     paneListeners[0]!();
+    await flush();
 
     expect(renders).toBe(1);
-    expect(host.innerHTML).toBe(drawn);
   });
 
-  test("an idle remount leaves the section body standing, half-typed form and all", () => {
-    renderSettingsPane(surfaceOf(host));
+  test("an idle remount leaves the section body standing, half-typed form and all", async () => {
+    await mount();
     expect(renders).toBe(1);
 
     /* Stands in for the open inline form the idempotence exists to protect: a node the SECTION
        owns, holding state no redraw could restore because the user typed it and it has not been
        written back to the document yet. The section renderer replaces `textContent`, so this node
        survives exactly as long as the renderer is not re-run. */
-    const body = host.querySelector(".settings-doc-content") as HTMLElement;
     const halfTyped = document.createElement("input");
     halfTyped.value = "half-typed";
-    body.append(halfTyped);
+    body()!.append(halfTyped);
 
     renderSettingsPane(surfaceOf(host));
     renderSettingsPane(surfaceOf(host));
+    await flush(3);
 
     expect(renders).toBe(1);
-    const survivor = host.querySelector(".settings-doc-content input");
+    const survivor = host.querySelector('[part="body"] input');
     expect(survivor).toBe(halfTyped);
     expect((survivor as HTMLInputElement).value).toBe("half-typed");
   });
 
-  test("…and a real change still redraws — the guard is idempotence, not inertia", () => {
-    renderSettingsPane(surfaceOf(host));
+  test("…and a real change still redraws — the guard is idempotence, not inertia", async () => {
+    await mount();
     expect(renders).toBe(1);
 
     /* The document announcing a change draws with `force`, which is the half of the guard that
        must NOT be suppressed. Without this the test above would be satisfied by a pane that never
        redraws at all. */
     paneListeners[0]!();
+    await flush();
 
     expect(renders).toBe(2);
-    expect(host.querySelector(".settings-doc-content")?.textContent).toBe("render 2");
+    expect(body()?.textContent).toBe("render 2");
   });
 
-  test("the body binder invoked as the pane tears down resurrects nothing", () => {
-    renderSettingsPane(surfaceOf(host));
+  test("detaching takes the chrome down, and the pane re-mounts cleanly afterwards", async () => {
+    await mount();
     expect(renders).toBe(1);
 
-    /* The canvas's mode change does exactly this pair, in this order: `detachSettingsPane`
-       (canvas/canvas-render.ts:953) and then `litRender(nothing, canvasWrap)` (:962) over the very
-       container that held the template. The second disconnects the `ref`, so lit invokes the
-       binder with `undefined` AFTER the record is gone — the only path that reaches its guard, and
-       without it the binder dereferences a missing panel and the mode change throws. */
+    /* What the canvas's mode change does: `detachSettingsPane` and then blank the container that
+       held the stage (`canvas/canvas-render.ts`). Detaching is a TEARDOWN now rather than an
+       unsubscribe — the chrome is a mounted document holding a registry subscription and its own
+       effects, so the record disposes it — which is what makes the second half of this test the
+       assertion it always meant to be: nothing of the old pane survives to be re-used. */
     detachSettingsPane("primary");
     litRender(nothing, host);
+    await flush();
 
-    expect(host.querySelector(".settings-doc-content")).toBeNull();
+    expect(body()).toBeNull();
     expect(renders).toBe(1);
 
     // Re-mountable afterwards, which is what "tore down cleanly" has to mean.
-    renderSettingsPane(surfaceOf(host));
+    await mount();
     expect(renders).toBe(2);
-    expect(host.querySelector(".settings-doc-content")?.textContent).toBe("render 2");
+    expect(body()?.textContent).toBe("render 2");
   });
 });
 

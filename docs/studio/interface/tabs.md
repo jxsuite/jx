@@ -13,6 +13,7 @@ code:
   - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/workspace/workspace.ts
 ---
 
@@ -32,6 +33,7 @@ Media files open too. An image, a video, a font or a PDF gets a document of its 
 - Close one with its **×**, by middle-clicking it, or with :kbd[⌘W].
 - Reopen the last one you closed with :kbd[⌘⇧T].
 - Drag to reorder. When more are open than fit, scroll the mouse wheel over the strip, or use the **⌄** button at its right edge to pick from the ones currently out of view.
+- Reach the strip from the keyboard with :kbd[Tab]. The whole strip is one stop, so the arrow keys then walk along it and switch as they land, :kbd[Home] and :kbd[End] jump to its ends, and :kbd[Delete] closes the document you are on, asking about unsaved changes exactly as the **×** does.
 
 ## Labels
 

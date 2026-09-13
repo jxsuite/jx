@@ -28,6 +28,8 @@ import {
   popoverDisplayRepair,
   POPOVER_DEFAULT_MODE,
 } from "@jxsuite/schema/overlays";
+import { findDialogDefects } from "@jxsuite/schema/dialogs";
+import { INVOKER_TAGS, POPOVER_TAGS } from "@jxsuite/ui";
 import {
   mutateUpdateAttribute,
   mutateUpdateNestedStyle,
@@ -39,9 +41,15 @@ import { getNodeAtPath } from "../state";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { JxElement, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
-import type { PopoverFix } from "@jxsuite/schema/overlays";
+import type { PopoverFix, PopoverPath } from "@jxsuite/schema/overlays";
 
 /** The `source` every record here files under, so a re-run clears exactly its own. */
+/**
+ * What the kit's own elements are, so the lints judge them as what they render rather than as
+ * unknown tags: an overlay element IS a popover, and a kit button IS an invoker.
+ */
+const KIT_SCOPE = { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS };
+
 export const POPOVER_PROBLEM_SOURCE = "Popover";
 
 /** The command that repairs each fix kind. A finding with no fix carries no action. */
@@ -53,6 +61,33 @@ const REPAIR_COMMAND: Record<PopoverFix, string> = {
 };
 
 /**
+ * The Problem key for one defect, with an ordinal when this run has already keyed one just like it.
+ *
+ * Rule and path are not enough on their own, because one node can carry several defects of ONE
+ * rule: `breakpoint-display` files one per `@media` block that sets `display`, so a panel with two
+ * of them is two defects sharing a rule and a path. A Problem key REPLACES rather than stacks, so
+ * the author was told about the last block and never heard about the earlier one. The first
+ * occurrence keeps the bare key, so nothing already distinct moves.
+ *
+ * @param seen How many keys of each shape this run has filed already, mutated in place.
+ * @param prefix The report half filing it, `popover` or `dialog`.
+ * @param rule The defect's rule id.
+ * @param path The node the defect is about.
+ * @returns The key to file it under.
+ */
+function problemKey(
+  seen: Map<string, number>,
+  prefix: string,
+  rule: string,
+  path: PopoverPath,
+): string {
+  const base = `${prefix}.${rule}.${path.join("/")}`;
+  const before = seen.get(base) ?? 0;
+  seen.set(base, before + 1);
+  return before === 0 ? base : `${base}#${before}`;
+}
+
+/**
  * File every popover defect in `doc` as a Problem, replacing whatever this source filed before.
  *
  * @param doc The document to check.
@@ -61,21 +96,37 @@ const REPAIR_COMMAND: Record<PopoverFix, string> = {
  */
 export function reportPopoverProblems(doc: JxElement, path?: string): number {
   clearProblems((record) => record.source === POPOVER_PROBLEM_SOURCE);
-  const defects = findPopoverDefects(doc);
+  const seen = new Map<string, number>();
+  const defects = findPopoverDefects(doc, KIT_SCOPE);
   for (const defect of defects) {
     const action = defect.fix === undefined ? undefined : REPAIR_COMMAND[defect.fix];
     notify(defect.severity, defect.message, {
       detail: defect.detail,
       /* Keyed by RULE AND PATH, not by rule alone: a header with two popovers can carry the same
-         defect twice, and a key that collapsed them would report one and silently drop the other. */
-      key: `popover.${defect.rule}.${defect.path.join("/")}`,
+         defect twice, and a key that collapsed them would report one and silently drop the other.
+         The ordinal `problemKey` adds is the other half of that: one node can also carry the same
+         rule twice, which rule and path alone cannot tell apart either. */
+      key: problemKey(seen, "popover", defect.rule, defect.path),
       source: POPOVER_PROBLEM_SOURCE,
       tier: "problem",
       ...(action === undefined ? {} : { action, actionArgs: { path: defect.path } }),
       ...(path === undefined ? {} : { path }),
     });
   }
-  return defects.length;
+  /* The dialog and invoker-command rules (spec §8.7) file under the same source: one report for
+     everything the platform overlays. They carry no repair button yet — the popover repairs move
+     `display` into `:popover-open`, and a dialog's open rule is a different selector. */
+  const dialogDefects = findDialogDefects(doc, KIT_SCOPE);
+  for (const defect of dialogDefects) {
+    notify(defect.severity, defect.message, {
+      detail: defect.detail,
+      key: problemKey(seen, "dialog", defect.rule, defect.path),
+      source: POPOVER_PROBLEM_SOURCE,
+      tier: "problem",
+      ...(path === undefined ? {} : { path }),
+    });
+  }
+  return defects.length + dialogDefects.length;
 }
 
 /** Read the path argument a repair command was invoked with, or throw naming the command. */

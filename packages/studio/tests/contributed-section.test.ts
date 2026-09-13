@@ -3,14 +3,35 @@
  * sections: form layout (schema form over the whole section value) and map layout (master-detail
  * with add/rename/delete, slugified keys, and newEntry templates), both persisting through
  * projectState.projectConfig + platform.writeFile("project.json", …).
+ *
+ * **The section is a Jx document now** (`src/surfaces/settings-contributed.json`), so four things
+ * about this file are deliberate rather than incidental:
+ *
+ * - The container is APPENDED TO THE DOCUMENT. A kit element renders in `connectedCallback`, so a
+ *   detached container gets `<jx-textfield>` tags with nothing inside them, and every assertion
+ *   about a control would read `null` — a failure that looks like a missing element rather than a
+ *   missing connection.
+ * - Rendering is awaited. `renderContributedSection` still returns void, as the registry's
+ *   `render(container)` seam requires, and mounting is asynchronous underneath it; {@link settle}
+ *   is the one place that knows how long that takes.
+ * - Nothing is addressed by a CSS class. The section's own chrome is addressed by `part`, an entry
+ *   row by its `data-entry` key, and the two rows the screenshot pipeline photographs by the
+ *   `data-jx-region` they carry.
+ * - The SCHEMA FORM is still lit over Spectrum (`src/ui/schema-form.ts`), and this document renders
+ *   an empty `[part="form-host"]` for it. So `.style-row`, `[data-prop=…]` and `sp-checkbox` are
+ *   still the right way to reach a field: they belong to the island, not to this surface.
+ *
+ * What the surface added, and what these pin as behaviour rather than markup: a refused rename now
+ * puts the on-disk key back in the field (the scope moves, where the lit handler assigned to
+ * `target.value`), and the new-entry name survives a redraw that arrives mid-typing.
  */
 import { flush, installMockPlatform, key, pointer, resetStudioState } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { html } from "lit-html";
-import { registerFormControl } from "../src/ui/schema-form";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { registerFormControl, resetSchemaForms } from "../src/ui/schema-form";
 import { projectState } from "../src/store";
 import type { MockPlatformState } from "./harness";
 import type { SettingsContribution } from "../src/settings/contributed-section";
+
 /** What the mocked project validator returns (or throws) on the next call. */
 let validatorResult: string[] | Error = [];
 void mock.module("../src/services/jx-validate.js", () => ({
@@ -32,28 +53,102 @@ const {
   resetContributedSectionState,
   routeDiagnostics,
 } = await import("../src/settings/contributed-section");
+const { mountContributedSurface } = await import("../src/surfaces/settings-contributed");
 const { problems, resetNotifications } = await import("../src/services/notify");
 
-type ValueEl = HTMLElement & { value: string };
-
-function commitValue(el: Element, value: string): void {
-  (el as ValueEl).value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+/**
+ * Let the document catch up.
+ *
+ * Generous on purpose, and in one place: the mount awaits the kit's registration, each kit element
+ * builds its own scope asynchronously in `connectedCallback`, the schema form is rendered into the
+ * host node the document announces, and a write goes through a commit before the file is on disk.
+ */
+async function settle(): Promise<void> {
+  await flush(8);
 }
 
-function inputValue(el: Element, value: string): void {
-  (el as ValueEl).value = value;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function buttonByText(scope: HTMLElement, text: string): Element {
-  const el = [...scope.querySelectorAll("sp-action-button")].find(
-    (b) => b.textContent?.trim() === text,
-  );
+/** A node the section's own document draws, by the `part` it carries. */
+function part(root: ParentNode, name: string): HTMLElement {
+  const el = root.querySelector(`[part="${name}"]`);
   if (!el) {
-    throw new Error(`no button "${text}"`);
+    throw new Error(`no [part="${name}"] in the contributed section`);
   }
-  return el;
+  return el as HTMLElement;
+}
+
+/** The native control a kit element wraps: a field's input, or a select's select. */
+function control(el: Element): HTMLInputElement {
+  const inner = el.querySelector<HTMLInputElement>(
+    'input[part="input"], textarea[part="input"], select[part="control"]',
+  );
+  if (!inner) {
+    throw new Error(`no native control inside <${el.tagName.toLowerCase()}>`);
+  }
+  return inner;
+}
+
+/** One field of the schema form — its own island, addressed by the property it edits. */
+function field(root: ParentNode, prop: string): HTMLElement {
+  const el = root.querySelector(`[data-prop="${prop}"]`);
+  if (!el) {
+    throw new Error(`the form has no field for "${prop}"`);
+  }
+  return el as HTMLElement;
+}
+
+/**
+ * The message under one field, or `""`.
+ *
+ * `[part="error-slot"]` and not `[part="error"]`: a kit textfield carries an error part of its own,
+ * so the second selector finds the CONTROL's empty one on every field whether or not anything is
+ * wrong.
+ */
+function fieldError(root: ParentNode, prop: string): string {
+  return field(root, prop).querySelector('[part="error-slot"]')?.textContent?.trim() ?? "";
+}
+
+/** Tick a checkbox the way a reader does. */
+function tick(el: Element, checked: boolean): void {
+  const inner = control(el);
+  inner.checked = checked;
+  inner.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/**
+ * Type into a kit control and commit it, the way a reader does: `input` as each character lands,
+ * and then the event that commits it. A kit field mirrors `input` into its own state and hears
+ * nothing from `change`, so a test that fired only the commit would leave the element believing it
+ * still holds the old text.
+ */
+function setAndFire(el: Element, value: string, type = "change"): void {
+  const inner = control(el);
+  inner.value = value;
+  inner.dispatchEvent(new Event("input", { bubbles: true }));
+  if (type !== "input") {
+    inner.dispatchEvent(new Event(type, { bubbles: true }));
+  }
+}
+
+/** What a kit control currently shows. */
+function shows(el: Element): string {
+  return control(el).value;
+}
+
+/** The entry keys the left column is offering, in order. */
+function entryKeys(container: HTMLElement): string[] {
+  return [...container.querySelectorAll("[data-entry]")].map(
+    (el) => (el as HTMLElement).dataset.entry ?? "",
+  );
+}
+
+/** Click one entry row and let the editor arrive. */
+async function selectEntry(container: HTMLElement, name: string): Promise<void> {
+  const row = container.querySelector(`[data-entry="${name}"]`);
+  if (!row) {
+    throw new Error(`no entry row for "${name}"`);
+  }
+  pointer(row, "click");
+  await settle();
 }
 
 function config(): Record<string, unknown> {
@@ -74,6 +169,10 @@ beforeEach(() => {
   validatorResult = [];
   resetContributedDiagnostics();
   resetContributedSectionState();
+  /* The schema form is a standing mount keyed by name (`ui/schema-form.ts`), and a key that is
+     asked for again is exempt from its own sweep — so without this, one test's form is handed to
+     the next with the previous test's host detached under it. */
+  resetSchemaForms();
   ({ state: platformState } = installMockPlatform());
   resetStudioState({
     projectConfig: {
@@ -82,6 +181,11 @@ beforeEach(() => {
     } as unknown,
   });
   container = document.createElement("div");
+  document.body.append(container);
+});
+
+afterEach(() => {
+  document.body.replaceChildren();
 });
 
 // ─── Form layout ─────────────────────────────────────────────────────────────
@@ -100,27 +204,28 @@ const formContribution: SettingsContribution = {
 };
 
 describe("form layout", () => {
-  test("renders the title and one form over the section value", () => {
+  test("renders the title and one form over the section value", async () => {
     renderContributedSection(container, formContribution);
-    expect(container.querySelector(".settings-section-title")?.textContent).toBe("Analytics");
-    expect(container.querySelectorAll(".settings-form-panel .style-row")).toHaveLength(3);
-    expect(container.querySelector('[data-prop="enabled"] sp-checkbox')).not.toBeNull();
-    expect(container.querySelector('[data-prop="mode"] sp-picker')).not.toBeNull();
+    await settle();
+    expect(part(container, "title").textContent).toBe("Analytics");
+    expect(part(container, "form-host").querySelectorAll("[data-prop]")).toHaveLength(3);
+    expect(field(container, "enabled").querySelector('[part="checkbox"]')).not.toBeNull();
+    expect(field(container, "mode").querySelector('[part="select"]')).not.toBeNull();
+    // A form layout has no master-detail chrome at all.
+    expect(container.querySelector('[part="columns"]')).toBeNull();
   });
 
-  test("title falls back to the section key", () => {
+  test("title falls back to the section key", async () => {
     renderContributedSection(container, { ...formContribution, title: undefined });
-    expect(container.querySelector(".settings-section-title")?.textContent).toBe("analytics");
+    await settle();
+    expect(part(container, "title").textContent).toBe("analytics");
   });
 
   test("edits mutate projectConfig[key] and persist via writeFile", async () => {
     renderContributedSection(container, formContribution);
-    const check = container.querySelector('[data-prop="enabled"] sp-checkbox') as HTMLElement & {
-      checked: boolean;
-    };
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await settle();
+    tick(part(field(container, "enabled"), "checkbox"), true);
+    await settle();
 
     expect(config().analytics).toEqual({ enabled: true });
     const writes = projectWrites(platformState);
@@ -131,34 +236,39 @@ describe("form layout", () => {
   test("undefined patches unset keys; the form rerenders with current values", async () => {
     config().analytics = { mode: "auto" };
     renderContributedSection(container, formContribution);
-    const picker = container.querySelector('[data-prop="mode"] sp-picker') as ValueEl;
-    expect(picker.getAttribute("value")).toBe("auto");
-    commitValue(picker, "__none__");
-    await flush();
+    await settle();
+    const picker = part(field(container, "mode"), "select");
+    expect(shows(picker)).toBe("auto");
+    setAndFire(picker, "__none__");
+    await settle();
     expect(config().analytics).toEqual({});
     expect(projectWrites(platformState)).toHaveLength(1);
   });
 
-  test("entry.ui control overrides apply to the form", () => {
-    registerFormControl(
-      "stub-section-control",
-      ({ key: prop }) => html`<div class="stub-section-control">${prop}</div>`,
-    );
+  test("entry.ui control overrides apply to the form", async () => {
+    /* A registered control is a MOUNT now, whichever surface it is drawn on: the section's form
+       announces an empty `[part="control-host"]` and the control owns what goes in it. */
+    registerFormControl("stub-section-control", {
+      mount(host, { key: prop }) {
+        host.dataset.stub = "section";
+        host.textContent = prop;
+        return { dispose: () => host.replaceChildren(), update: () => {} };
+      },
+    });
     renderContributedSection(container, {
       ...formContribution,
       settings: { entry: { ui: { id: { control: "stub-section-control" } } }, layout: "form" },
     });
-    expect(container.querySelector(".stub-section-control")?.textContent).toBe("id");
+    await settle();
+    expect(container.querySelector('[data-stub="section"]')?.textContent).toBe("id");
   });
 
-  test("renders without a project config and drops edits silently", () => {
+  test("renders without a project config and drops edits silently", async () => {
     resetStudioState({ projectConfig: null });
     renderContributedSection(container, formContribution);
-    const check = container.querySelector('[data-prop="enabled"] sp-checkbox') as HTMLElement & {
-      checked: boolean;
-    };
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle();
+    tick(part(field(container, "enabled"), "checkbox"), true);
+    await settle();
     expect(projectWrites(platformState)).toHaveLength(0);
   });
 });
@@ -183,24 +293,34 @@ const mapContribution: SettingsContribution = {
 };
 
 describe("map layout", () => {
-  test("lists entry keys on the left with an empty state until one is selected", () => {
+  test("lists entry keys on the left with an empty state until one is selected", async () => {
     renderContributedSection(container, mapContribution);
-    const keys = [...container.querySelectorAll(".settings-list-panel sp-action-button")]
-      .map((b) => b.textContent?.trim())
-      .filter((t) => t !== "New Entry");
-    expect(keys).toEqual(["main"]);
-    expect(container.querySelector(".settings-empty-state")).not.toBeNull();
+    await settle();
+    expect(entryKeys(container)).toEqual(["main"]);
+    expect(part(container, "empty").textContent).toContain("Select or create an entry");
+    expect(container.querySelector('[part="editor"]')).toBeNull();
+  });
+
+  test("an entry row and the editor carry the region a shot names them by", async () => {
+    renderContributedSection(container, mapContribution);
+    await settle();
+    expect((container.querySelector('[data-entry="main"]') as HTMLElement).dataset.jxRegion).toBe(
+      "pane.primary/entry:main",
+    );
+    await selectEntry(container, "main");
+    expect(part(container, "editor").dataset.jxRegion).toBe("pane.primary/editor");
   });
 
   test("selecting an entry renders its form; edits persist to the entry", async () => {
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "main"), "click");
-    expect(container.querySelector(".settings-editor-panel")).not.toBeNull();
+    await settle();
+    await selectEntry(container, "main");
+    expect(container.querySelector('[part="editor"]')).not.toBeNull();
 
-    const picker = container.querySelector('[data-prop="provider"] sp-picker') as ValueEl;
-    expect(picker.getAttribute("value")).toBe("d1");
-    commitValue(picker, "sqlite");
-    await flush();
+    const picker = part(field(container, "provider"), "select");
+    expect(shows(picker)).toBe("d1");
+    setAndFire(picker, "sqlite");
+    await settle();
 
     expect(config().connections).toEqual({ main: { provider: "sqlite" } });
     expect(projectWrites(platformState)).toHaveLength(1);
@@ -208,12 +328,14 @@ describe("map layout", () => {
 
   test("creates slugified entries from the newEntry template with ${key} substitution", async () => {
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "New Entry"), "click");
+    await settle();
+    pointer(part(container, "new-open"), "click");
+    await settle();
 
-    const nameField = container.querySelector(".settings-inline-form sp-textfield")!;
-    inputValue(nameField, "My DB!");
-    pointer(buttonByText(container, "Create"), "click");
-    await flush();
+    setAndFire(part(container, "new-field"), "My DB!", "input");
+    await settle();
+    pointer(part(container, "new-create"), "click");
+    await settle();
 
     expect((config().connections as Record<string, unknown>)["my-db"]).toEqual({
       label: "my-db connection",
@@ -221,78 +343,126 @@ describe("map layout", () => {
       provider: "d1",
     });
     // The new entry is selected and editable
-    expect((container.querySelector(".entry-name-input") as ValueEl).getAttribute("value")).toBe(
-      "my-db",
-    );
+    expect(shows(part(container, "entry-name"))).toBe("my-db");
     expect(projectWrites(platformState)).toHaveLength(1);
   });
 
   test("Enter creates, Escape closes, blanks and duplicates are ignored", async () => {
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "New Entry"), "click");
-    const nameField = () => container.querySelector(".settings-inline-form sp-textfield")!;
+    await settle();
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const nameField = () => part(container, "new-field");
 
-    inputValue(nameField(), "!!!");
-    key(nameField(), "Enter");
+    setAndFire(nameField(), "!!!", "input");
+    await settle();
+    key(control(nameField()), "Enter");
+    await settle();
     expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["main"]);
 
-    inputValue(nameField(), "main");
-    key(nameField(), "Enter");
+    setAndFire(nameField(), "main", "input");
+    await settle();
+    key(control(nameField()), "Enter");
+    await settle();
     expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["main"]);
 
-    key(nameField(), "Escape");
-    expect(container.querySelector(".settings-inline-form")).toBeNull();
+    key(control(nameField()), "Escape");
+    await settle();
+    expect(container.querySelector('[part="new-field"]')).toBeNull();
 
-    pointer(buttonByText(container, "New Entry"), "click");
-    inputValue(nameField(), "Backup Store");
-    key(nameField(), "Enter");
-    await flush();
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    setAndFire(nameField(), "Backup Store", "input");
+    await settle();
+    key(control(nameField()), "Enter");
+    await settle();
     expect(Object.keys(config().connections as Record<string, unknown>)).toEqual([
       "main",
       "backup-store",
     ]);
   });
 
+  test("the half-typed new-entry name survives a redraw that arrives mid-typing", async () => {
+    renderContributedSection(container, mapContribution);
+    await settle();
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    setAndFire(part(container, "new-field"), "part-typ", "input");
+    await settle();
+
+    // Something else redraws the section — an extension registering, a validator returning.
+    renderContributedSection(container, mapContribution);
+    await settle();
+    expect(shows(part(container, "new-field"))).toBe("part-typ");
+  });
+
   test("renames slugify, preserve entry order, and skip collisions", async () => {
     config().connections = { alpha: { provider: "d1" }, beta: { provider: "sqlite" } };
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "alpha"), "click");
+    await settle();
+    await selectEntry(container, "alpha");
 
-    commitValue(container.querySelector(".entry-name-input")!, "Primary DB");
-    await flush();
+    setAndFire(part(container, "entry-name"), "Primary DB");
+    await settle();
     expect(Object.keys(config().connections as Record<string, unknown>)).toEqual([
       "primary-db",
       "beta",
     ]);
     expect(projectWrites(platformState)).toHaveLength(1);
+    expect(entryKeys(container)).toEqual(["primary-db", "beta"]);
+  });
 
-    // Renaming onto an existing key (or to a blank slug) is ignored
-    commitValue(container.querySelector(".entry-name-input")!, "beta");
-    commitValue(container.querySelector(".entry-name-input")!, "!!!");
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual([
-      "primary-db",
-      "beta",
-    ]);
-    expect(projectWrites(platformState)).toHaveLength(1);
-    expect((container.querySelector(".entry-name-input") as ValueEl).value).toBe("primary-db");
+  test("a refused rename puts the key on disk back in the field", async () => {
+    config().connections = { alpha: { provider: "d1" }, beta: { provider: "sqlite" } };
+    renderContributedSection(container, mapContribution);
+    await settle();
+    await selectEntry(container, "alpha");
+
+    // Onto an existing key, and to a slug that is empty — both refused.
+    setAndFire(part(container, "entry-name"), "beta");
+    await settle();
+    expect(shows(part(container, "entry-name"))).toBe("alpha");
+
+    setAndFire(part(container, "entry-name"), "!!!");
+    await settle();
+    expect(shows(part(container, "entry-name"))).toBe("alpha");
+
+    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["alpha", "beta"]);
+    expect(projectWrites(platformState)).toHaveLength(0);
+  });
+
+  test("Escape in the name field abandons the edit without writing", async () => {
+    renderContributedSection(container, mapContribution);
+    await settle();
+    await selectEntry(container, "main");
+    setAndFire(part(container, "entry-name"), "renamed", "input");
+    await settle();
+    key(control(part(container, "entry-name")), "Escape");
+    await settle();
+    expect(shows(part(container, "entry-name"))).toBe("main");
+    expect(projectWrites(platformState)).toHaveLength(0);
   });
 
   test("delete removes the entry and returns to the empty state", async () => {
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "main"), "click");
-    pointer(container.querySelector('[title="Delete entry"]')!, "click");
-    await flush();
+    await settle();
+    await selectEntry(container, "main");
+    pointer(part(container, "delete-entry"), "click");
+    await settle();
 
     expect(config().connections).toEqual({});
-    expect(container.querySelector(".settings-empty-state")).not.toBeNull();
+    expect(container.querySelector('[part="empty"]')).not.toBeNull();
     expect(projectWrites(platformState)).toHaveLength(1);
   });
 
-  test("entry.ui overrides apply to the entry form", () => {
-    registerFormControl(
-      "stub-entry-control",
-      ({ value }) => html`<div class="stub-entry-control">${String(value)}</div>`,
-    );
+  test("entry.ui overrides apply to the entry form", async () => {
+    registerFormControl("stub-entry-control", {
+      mount(host, { value }) {
+        host.dataset.stub = "entry";
+        host.textContent = String(value);
+        return { dispose: () => host.replaceChildren(), update: () => {} };
+      },
+    });
     renderContributedSection(container, {
       ...mapContribution,
       settings: {
@@ -300,15 +470,159 @@ describe("map layout", () => {
         layout: "map",
       },
     });
-    pointer(buttonByText(container, "main"), "click");
-    expect(container.querySelector(".stub-entry-control")?.textContent).toBe("d1");
+    await settle();
+    await selectEntry(container, "main");
+    expect(container.querySelector('[data-stub="entry"]')?.textContent).toBe("d1");
   });
 
-  test("creates the section object on demand when missing", () => {
+  test("creates the section object on demand when missing", async () => {
     delete config().connections;
     renderContributedSection(container, mapContribution);
-    expect(container.querySelector(".settings-empty-state")).not.toBeNull();
+    await settle();
+    expect(container.querySelector('[part="empty"]')).not.toBeNull();
     expect(config().connections).toEqual({});
+  });
+});
+
+// ─── The host's actions row ──────────────────────────────────────────────────
+/* An island: the row is contributed by `panels/data-grid.ts`, still lit over Spectrum, and the
+   document renders the node it lands in and nothing inside it. */
+
+describe("the actions island", () => {
+  test("a section with no actions draws no actions row at all", async () => {
+    renderContributedSection(container, formContribution);
+    await settle();
+    expect(container.querySelector('[part="actions"]')).toBeNull();
+  });
+
+  /* The contributor is handed the HOST rather than asked for a template. It used to return one and
+     this module lit-rendered it, which replaced the row on every redraw — so the seam is a mount
+     now, and what the test asserts is that the same node comes back and is told what is selected. */
+  test("a host's actions land in the section's actions node, told what is selected", async () => {
+    const seen: (string | null)[] = [];
+    const hosts: HTMLElement[] = [];
+    renderContributedSection(container, mapContribution, {
+      actions: (host, ctx) => {
+        seen.push(ctx.selected);
+        hosts.push(host);
+        host.replaceChildren(
+          Object.assign(document.createElement("button"), { textContent: ctx.sectionKey }),
+        );
+      },
+    });
+    await settle();
+    expect(part(container, "actions").querySelector("button")?.textContent).toBe("connections");
+    expect(seen.at(-1)).toBeNull();
+
+    await selectEntry(container, "main");
+    expect(seen.at(-1)).toBe("main");
+    // One host for the life of the section: a contributor may mount into it once and project after.
+    expect(new Set(hosts).size).toBe(1);
+  });
+
+  test("a section that loses its actions loses the row with it", async () => {
+    renderContributedSection(container, mapContribution, {
+      actions: (host) => {
+        host.replaceChildren(
+          Object.assign(document.createElement("button"), { id: "stub-action", textContent: "x" }),
+        );
+      },
+    });
+    await settle();
+    expect(part(container, "actions").querySelector("#stub-action")).not.toBeNull();
+
+    renderContributedSection(container, mapContribution);
+    await settle();
+    expect(container.querySelector('[part="actions"]')).toBeNull();
+    expect(container.querySelector("#stub-action")).toBeNull();
+  });
+});
+
+// ─── The mount seam ──────────────────────────────────────────────────────────
+/* `panels/settings-pane.ts` hands each section its own host and may hand the same one back, so the
+   section has to be able to say whether what it mounted is still standing — and to take it down
+   when it is not. */
+
+describe("the section's mount", () => {
+  test("a container another section took over is re-mounted, not drawn into twice", async () => {
+    renderContributedSection(container, mapContribution);
+    await settle();
+    expect(container.querySelector('[part="contributed"]')).not.toBeNull();
+
+    // What a lit section rendering into the same container does.
+    container.replaceChildren();
+    renderContributedSection(container, mapContribution);
+    await settle();
+    expect(container.querySelectorAll('[part="contributed"]')).toHaveLength(1);
+    expect(entryKeys(container)).toEqual(["main"]);
+  });
+
+  test("a mount disposed before it settles leaves nothing behind", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const noop = (): void => {};
+    const handle = mountContributedSurface(
+      host,
+      {
+        cancelNew: noop,
+        cancelRename: noop,
+        createNew: noop,
+        editNew: noop,
+        openNew: noop,
+        removeEntry: noop,
+        renameEntry: noop,
+        select: noop,
+      },
+      { actionsSlot: noop, formSlot: noop },
+    );
+    handle.dispose();
+    await handle.ready;
+    await settle();
+
+    expect(handle.attached()).toBe(false);
+    expect(handle.host).toBe(host);
+    expect(host.querySelector('[part="contributed"]')).toBeNull();
+  });
+
+  test("the two island hosts are announced as the document creates them", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const noop = (): void => {};
+    const seen: string[] = [];
+    const handle = mountContributedSurface(
+      host,
+      {
+        cancelNew: noop,
+        cancelRename: noop,
+        createNew: noop,
+        editNew: noop,
+        openNew: noop,
+        removeEntry: noop,
+        renameEntry: noop,
+        select: noop,
+      },
+      {
+        actionsSlot: (el) => seen.push(`actions:${el.tagName.toLowerCase()}`),
+        formSlot: (el) => seen.push(`form:${el.tagName.toLowerCase()}`),
+      },
+    );
+    handle.update({
+      actionsState: "slot",
+      editorRegion: "pane.primary/editor",
+      editorState: "empty",
+      entries: [],
+      entryName: "",
+      layout: "form",
+      newName: "",
+      newState: "closed",
+      title: "Islands",
+    });
+    await handle.ready;
+    await settle();
+
+    expect(seen).toEqual(["actions:div", "form:div"]);
+    expect(handle.attached()).toBe(true);
+    handle.dispose();
   });
 });
 
@@ -370,12 +684,9 @@ describe("persistence failures", () => {
       },
     } as never);
     renderContributedSection(container, formContribution);
-    const check = container.querySelector('[data-prop="enabled"] sp-checkbox') as HTMLElement & {
-      checked: boolean;
-    };
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(4);
+    await settle();
+    tick(part(field(container, "enabled"), "checkbox"), true);
+    await settle();
     const failure = problems.find((p) => p.message.includes("Could not save project.json"));
     expect(failure?.source).toBe("Settings");
     expect(failure?.path).toBe("project.json");
@@ -385,26 +696,23 @@ describe("persistence failures", () => {
   test("schema errors reach the field they are about, on the next render", async () => {
     validatorResult = ["/analytics/id: must be string"];
     renderContributedSection(container, formContribution);
-    const check = container.querySelector('[data-prop="enabled"] sp-checkbox') as HTMLElement & {
-      checked: boolean;
-    };
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(6);
-    const row = container.querySelector('[data-prop="id"]') as HTMLElement;
-    expect(row.querySelector(".style-row-error")?.textContent).toContain("must be string");
+    await settle();
+    tick(part(field(container, "enabled"), "checkbox"), true);
+    await settle();
+    /* §7.1: a message that names a field belongs on that field, and nowhere else — so it is under
+       the control it is about, and nothing about it reaches the Problems panel. */
+    expect(fieldError(container, "id")).toContain("must be string");
+    expect(problems.some((p) => p.message.includes("must be string"))).toBe(false);
+    expect(projectWrites(platformState)).toHaveLength(1);
   });
 
   test("a validator that will not compile is a problem of its own, not the user's field", async () => {
     validatorResult = new Error("ajv exploded");
     renderContributedSection(container, formContribution);
-    const check = container.querySelector('[data-prop="enabled"] sp-checkbox') as HTMLElement & {
-      checked: boolean;
-    };
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(6);
+    await settle();
+    tick(part(field(container, "enabled"), "checkbox"), true);
+    await settle();
     expect(problems.some((p) => p.message.includes("Could not validate project.json"))).toBe(true);
-    expect(container.querySelector(".style-row-error")).toBeNull();
+    expect(fieldError(container, "id")).toBe("");
   });
 });

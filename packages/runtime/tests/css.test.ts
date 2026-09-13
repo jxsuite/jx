@@ -60,11 +60,14 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
       "cssRuleText",
       "hashCss",
       "isDeclarationAtRule",
+      "isKeyframesAtRule",
       "isNestedSelectorKey",
       "pureSchemeOf",
       "resolveAtQuery",
       "resolveNestedSelector",
       "schemeSelectors",
+      "splitSelectorList",
+      "transposeCanvasOverlaySelector",
       "transposeCanvasPopoverSelector",
     ]);
   });
@@ -164,6 +167,182 @@ describe("buildStyleRules classifies what a rule points at", () => {
   });
 });
 
+describe("buildStyleRules on @keyframes", () => {
+  test("the stops are not scoped, and the whole block is ONE rule", () => {
+    /* The defect: `@keyframes` fell through to the verbatim-at-rule branch, so the emitter walked
+       its body carrying the element scope and wrote `@keyframes toast-in { .s from { … } }` — one
+       rule per stop. Chrome parses that into a keyframes rule holding NO keyframes, so the
+       `animation` beside it names a live animation that animates nothing. */
+    const rules = css.buildStyleRules(
+      {
+        animation: "toast-in 180ms ease-out",
+        "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+      },
+      { scope: ".s" },
+    );
+    expect(textsOf(rules)).toEqual([
+      ".s { animation: toast-in 180ms ease-out }",
+      "@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }",
+    ]);
+  });
+
+  test("one rule, not one per stop — a repeated name would erase all but the last", () => {
+    /* CSS Animations 1: where two `@keyframes` share a name the last wins and the earlier ones are
+       ignored entirely. So a per-stop emission is valid CSS that animates only its final stop, and
+       "the scope is gone" is not enough to assert. */
+    const rules = css.buildStyleRules(
+      { "@keyframes fade": { from: { opacity: "0" }, to: { opacity: "1" } } },
+      { scope: ".s" },
+    );
+    expect(rules.length).toBe(1);
+    expect(rules[0]).toMatchObject({
+      blocks: [
+        { declarations: [["opacity", "0"]], selector: "from" },
+        { declarations: [["opacity", "1"]], selector: "to" },
+      ],
+      declarations: [],
+      selector: null,
+      target: "unscoped",
+    });
+  });
+
+  test("percentage stops and a comma-separated stop are taken verbatim", () => {
+    // `"0%, 100%"` is ONE valid keyframe selector; distributing it as a selector list splits a
+    // Stop in two and, scoped, produced `.s 0%, .s 100%`.
+    const rules = css.buildStyleRules(
+      { "@keyframes blink": { "0%, 100%": { opacity: "1" }, "50%": { opacity: "0" } } },
+      { scope: ".s" },
+    );
+    expect(textsOf(rules)).toEqual([
+      "@keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }",
+    ]);
+  });
+
+  test("no element scope reaches a keyframe selector, whatever the scope is", () => {
+    for (const scope of [".s", "#box", "jx-scope", "html body .deep > li"]) {
+      const rules = css.buildStyleRules(
+        { "@keyframes k": { from: { opacity: "0" }, to: { opacity: "1" } } },
+        { scope },
+      );
+      expect({ scope, text: textsOf(rules).join("\n") }).toEqual({
+        scope,
+        text: "@keyframes k { from { opacity: 0 } to { opacity: 1 } }",
+      });
+    }
+  });
+
+  test("a keyframes block inside @media keeps the media wrapper", () => {
+    const rules = css.buildStyleRules(
+      { "@(min-width: 40rem)": { "@keyframes k": { from: { opacity: "0" } } } },
+      { scope: ".s" },
+    );
+    expect(textsOf(rules)).toEqual([
+      "@media (min-width: 40rem) { @keyframes k { from { opacity: 0 } } }",
+    ]);
+  });
+
+  test("with no scope at all it still emits — the site-style path passes null", () => {
+    // The nested-block recursion is guarded on a non-null selector, so before the branch existed a
+    // Project-level `@keyframes` emitted nothing whatsoever.
+    const rules = css.buildStyleRules(
+      { "@keyframes fade": { from: { opacity: "0" }, to: { opacity: "1" } } },
+      { scope: null },
+    );
+    expect(textsOf(rules)).toEqual(["@keyframes fade { from { opacity: 0 } to { opacity: 1 } }"]);
+  });
+
+  test("the value transposer runs inside a stop; the selector transposer never sees one", () => {
+    /* The canvas hook returns null for `::backdrop`, and a keyframe selector handed to it would be
+       a category error whose cost is a deleted stop. The unit rewrite still has to reach the
+       declarations. */
+    const seen: string[] = [];
+    const rules = css.buildStyleRules(
+      { "@keyframes rise": { from: { transform: "translateY(10vh)" } } },
+      {
+        scope: ".s",
+        transposeSelector: (selector) => {
+          seen.push(selector);
+          return null;
+        },
+        transposeValue: (value) => value.replace("vh", "cqh"),
+      },
+    );
+    expect({ seen, texts: textsOf(rules) }).toEqual({
+      seen: [],
+      texts: ["@keyframes rise { from { transform: translateY(10cqh) } }"],
+    });
+  });
+
+  test("a reactive value inside a stop is dropped rather than indirected through a var()", () => {
+    /* The resolver answers `var(--jx-rN-M)`, a property the runtime sets INLINE on the one element
+       that declared the style — while this rule is hoisted for the whole document. It would also
+       make the text per-element, so two elements naming one animation would be two definitions of
+       one name and the later would erase the earlier. */
+    const seen: string[] = [];
+    const rules = css.buildStyleRules(
+      {
+        "@keyframes k": {
+          from: { color: { $ref: "#/state/tint" }, opacity: "${state.a}", transform: "none" },
+        },
+      },
+      {
+        resolveValue: (property) => {
+          seen.push(property);
+          return "var(--jx-r0-0)";
+        },
+        scope: ".s",
+      },
+    );
+    expect({ seen, texts: textsOf(rules) }).toEqual({
+      seen: [],
+      texts: ["@keyframes k { from { transform: none } }"],
+    });
+  });
+
+  test("a scheme-pure query emits the block once, under the media guard", () => {
+    /* The forced-scheme twin re-points a SELECTOR at the root attribute. A keyframes name has no
+       selector, so a second copy would be a second definition of one name — and the unconditional
+       one would win for every visitor, forced scheme or not. */
+    const rules = css.buildStyleRules(
+      {
+        "@(prefers-color-scheme: dark)": { "@keyframes k": { from: { opacity: "0" } }, color: "a" },
+      },
+      { scope: ".s" },
+    );
+    expect(textsOf(rules)).toEqual([
+      "@media (prefers-color-scheme: dark) { :where(:root:not([data-color-scheme])) .s { color: a } }",
+      "@media (prefers-color-scheme: dark) { @keyframes k { from { opacity: 0 } } }",
+      ':where(:root[data-color-scheme="dark"]) .s { color: a }',
+    ]);
+  });
+
+  test("an unnamed block, or one whose stops say nothing, emits nothing", () => {
+    expect(
+      css.buildStyleRules(
+        { "@keyframes": { from: { opacity: "0" } }, "@keyframes empty": { from: {} } },
+        { scope: ".s" },
+      ),
+    ).toEqual([]);
+  });
+
+  test("@keyframes is its own predicate and is NOT a declaration at-rule", () => {
+    /* The tempting one-line fix is to add it to `isDeclarationAtRule`, and it deletes the
+       animation in silence: every child of a keyframes block is a block, `declarationsOf` skips
+       blocks, and a rule with no declarations is never emitted. */
+    expect(
+      ["@keyframes spin", "@keyframes  spin ", "@keyframes"].map((key) =>
+        css.isKeyframesAtRule(key),
+      ),
+    ).toEqual([true, true, true]);
+    expect(
+      ["@media screen", "@font-face", "@property --p", "@starting-style"].map((key) =>
+        css.isKeyframesAtRule(key),
+      ),
+    ).toEqual([false, false, false, false]);
+    expect(css.isDeclarationAtRule("@keyframes spin")).toBe(false);
+  });
+});
+
 describe("buildStyleRules on values", () => {
   test("custom property names are never kebab-cased", () => {
     // `--fooBar` and `--foo-bar` are two different properties; renaming one orphans its `var()`.
@@ -259,6 +438,103 @@ describe("buildStyleRules on selectors", () => {
     expect(css.buildStyleRules({ ":hover": "red", color: "blue" }, { scope: ".s" })).toMatchObject([
       { text: ".s { color: blue }" },
     ]);
+  });
+});
+
+describe("buildStyleRules on a block that documents itself", () => {
+  const build = (style: unknown) => css.buildStyleRules(style as never, { scope: ":root" });
+
+  test("$description reaches the rule and stays out of its text", () => {
+    /* Out of `text` is the load-bearing half. `text` is what a sheet inserts and what `hashCss`
+       interns, so prose there would make two otherwise identical rules two rules, and would put a
+       paragraph into every adopted sheet at runtime. */
+    const [rule] = build({ $description: "why this exists", color: "red" });
+    expect(rule!.text).toBe(":root { color: red }");
+    expect(rule!.description).toBe("why this exists");
+    expect(rule!.key).toBe(css.hashCss(":root { color: red }"));
+  });
+
+  test("two rules alike but for their prose intern as one", () => {
+    const [a] = build({ $description: "one reason", color: "red" });
+    const [b] = build({ $description: "a different reason", color: "red" });
+    expect(a!.key).toBe(b!.key);
+  });
+
+  test("a nested block and a declaration at-rule each carry their own", () => {
+    const rules = build({
+      "&:hover": { $description: "the hover", color: "blue" },
+      "@font-face": { $description: "the face", fontFamily: "A" },
+    });
+    expect(rules.map((rule) => rule.description)).toEqual(["the hover", "the face"]);
+  });
+
+  test("a rule that documents nothing carries no description at all", () => {
+    const [rule] = build({ color: "red" });
+    expect(rule!.description).toBeUndefined();
+    expect("description" in rule!).toBe(false);
+  });
+
+  test("every $-prefixed key is metadata, and none is a declaration", () => {
+    /* The prefix rather than the one name: no CSS property begins with `$` — a custom property
+       begins with `--` — so a document's metadata can never be mistaken for styling. It used to
+       emit `$description: why this exists;`, an invalid declaration the parser drops in silence. */
+    expect(build({ $description: "a", $anything: "b", color: "red" })[0]!.text).toBe(
+      ":root { color: red }",
+    );
+    // A block that is nothing BUT metadata emits no rule, rather than an empty one.
+    expect(build({ $description: "a" })).toEqual([]);
+  });
+
+  test("an empty or non-string description is not carried", () => {
+    expect(build({ $description: "", color: "red" })[0]!.description).toBeUndefined();
+    expect(build({ $description: 42, color: "red" })[0]!.description).toBeUndefined();
+  });
+});
+
+describe("buildStyleRules on a key written more than once", () => {
+  const rules = (style: unknown) =>
+    css.buildStyleRules(style as never, { scope: ":root" }).map((rule) => rule.text);
+
+  test("a declaration at-rule may hold several blocks, emitted in order", () => {
+    /* An object's keys are unique, so `@font-face` — the at-rule whose identity is NOT in its key —
+       had no spelling for a family's second weight. Studio ships three JetBrains Mono faces. */
+    expect(
+      rules({
+        "@font-face": [
+          { fontFamily: "JetBrains Mono", fontWeight: "400", src: 'url("a.woff2")' },
+          { fontFamily: "JetBrains Mono", fontWeight: "700", src: 'url("b.woff2")' },
+        ],
+      }),
+    ).toEqual([
+      '@font-face { font-family: JetBrains Mono; font-weight: 400; src: url("a.woff2") }',
+      '@font-face { font-family: JetBrains Mono; font-weight: 700; src: url("b.woff2") }',
+    ]);
+  });
+
+  test("every declaration at-rule takes the form, and each block is its own rule", () => {
+    for (const key of ["@font-face", "@property --a", "@position-try --p", "@counter-style c"]) {
+      expect(rules({ [key]: [{ syntax: "a" }, { syntax: "b" }] }).length, key).toBe(2);
+    }
+  });
+
+  test("one block under the same key still means one rule", () => {
+    expect(rules({ "@font-face": { fontFamily: "A" } })).toEqual(["@font-face { font-family: A }"]);
+  });
+
+  test("a SELECTOR key takes no array, and is unchanged by this", () => {
+    /* Deliberately still dropped. Under a selector an array says what one block already says, and
+       every other style walker in the repo — the overlay lint, the a11y lint, the canvas — assumes
+       a block key holds one block. Admitting it there would leave those reading past it in
+       silence. */
+    expect(rules({ "&:hover": [{ color: "red" }] })).toEqual([]);
+    expect(rules({ "@media (min-width: 40em)": [{ color: "red" }] })).toEqual([]);
+  });
+
+  test("an array is never read as a declaration value", () => {
+    // It used to reach `String(value)` and emit `@font-face: [object Object]` as a declaration.
+    expect(rules({ color: [{ a: "1" }] })).toEqual([]);
+    expect(rules({ "@font-face": [] })).toEqual([]);
+    expect(rules({ "@font-face": [{ fontFamily: "A" }, "not-a-block"] })).toEqual([]);
   });
 });
 

@@ -24,6 +24,15 @@
  * from. A cell whose command this window has not registered is drawn disabled with that as its
  * tooltip, rather than as a button that does nothing.
  *
+ * **The body is a Jx document** (`surfaces/panel-i18n.json`, mounted by `surfaces/panel-i18n.ts`),
+ * so `render` draws nothing and `afterRender` mounts. What stays here is everything that is a
+ * DECISION — the scan, the fold from files to rows, which command a square runs, whether the
+ * registry refuses it and what the refusal says — projected into a scope whose every square already
+ * carries its glyph, its sentence and the three arguments its command takes. `afterRender` runs on
+ * every repaint, so the mount is idempotent: the standing surface is updated where it is still
+ * there, and re-mounted only where lit has taken it out (which is what a switch to another panel
+ * does, because the document is appended into the `.panel-content` lit renders `nothing` into).
+ *
  * **Off the rail.** `railDeclarations()` does not apply `when`, so a rail button here would spend
  * the last `rail/project` slot in every monolingual project and shift every document panel's ⌘1–8
  * chord by one. `i18n.showParity` is how this panel is reached.
@@ -31,8 +40,6 @@
  * @docs studio/interface/languages
  */
 
-import { html, nothing } from "lit-html";
-import { repeat } from "lit-html/directives/repeat.js";
 import { activeRegistry } from "../commands/active-registry";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { getEffectiveLocales } from "../site-context";
@@ -43,15 +50,22 @@ import {
   translationKeyOfPath,
   translationPathFor,
 } from "@jxsuite/schema/locale";
+import { mountI18nSurface } from "../surfaces/panel-i18n";
 import { notify } from "../services/notify";
+import { nothing } from "lit-html";
 import { projectState } from "../store";
 import { registerPanel } from "./panel-registry";
-import { renderEmptyState } from "./empty-state";
 import { scanLibrary } from "../browse/library-model";
+import type {
+  I18nActions,
+  I18nParityCell,
+  I18nParityRow,
+  I18nSurfaceHandle,
+  I18nValues,
+} from "../surfaces/panel-i18n";
 import type { LibraryFile, ScanFailure } from "../browse/library-model";
 import type { NavigatorPanelContext, PanelBody } from "./panel-registry";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { TemplateResult } from "lit-html";
 
 /**
  * One cell of the parity grid.
@@ -382,56 +396,31 @@ function runByName(id: string, args: Record<string, unknown> = {}): void {
   });
 }
 
-/** One square of the grid. */
-function cellTpl(
-  row: ParityRow,
-  locale: string,
-  cell: ParityCell,
-  i18n: ResolvedI18n,
-): TemplateResult {
-  const id = CELL_COMMAND[cell.state];
-  const refusal = cellRefusal(cell, id);
-  const title = cellTitle(cell, locale, refusal);
-  return html`<td class="i18n-cell">
-    <button
-      class="i18n-cell-button i18n-cell-button--${cell.state}"
-      ?disabled=${refusal !== undefined}
-      title=${title}
-      aria-label=${title}
-      @click=${() => {
-        runByName(id, { locale, path: rowSourcePath(row, i18n) });
-      }}
-    >
-      <span aria-hidden="true">${CELL_GLYPH[cell.state]}</span>
-    </button>
-  </td>`;
-}
-
-/** One row: the key it names, then its cell per declared locale. */
-function rowTpl(row: ParityRow, i18n: ResolvedI18n): TemplateResult {
-  return html`<tr class="i18n-row">
-    <th class="i18n-key" scope="row" title=${row.key}>${row.key}</th>
-    ${i18n.locales.map((locale) =>
-      cellTpl(row, locale, row.cells.get(locale) ?? { path: null, state: "missing" }, i18n),
-    )}
-  </tr>`;
-}
-
-/** The column heads: each locale's autonym, with the tag as the tooltip. */
-function headTpl(i18n: ResolvedI18n): TemplateResult {
-  return html`<tr>
-    <th class="i18n-key-head" scope="col">Page</th>
-    ${i18n.locales.map(
-      (locale) => html`<th class="i18n-locale-head" scope="col" title=${locale}>
-        ${localeLabel(locale)}
-        ${
-          locale === i18n.defaultLocale
-            ? html`<span class="i18n-default-mark">source</span>`
-            : nothing
-        }
-      </th>`,
-    )}
-  </tr>`;
+/**
+ * One row of the projection: the row's key, and a square per declared locale with every decision
+ * about it already taken.
+ *
+ * The path a row's commands are addressed by is the ROW's, not the square's — `rowSourcePath` picks
+ * whichever file of the row actually exists — so every cell in a row carries the same `rowPath` and
+ * differs only in the locale it asks for.
+ */
+function projectRow(row: ParityRow, i18n: ResolvedI18n): I18nParityRow {
+  const rowPath = rowSourcePath(row, i18n);
+  const cells: I18nParityCell[] = i18n.locales.map((locale) => {
+    const cell: ParityCell = row.cells.get(locale) ?? { path: null, state: "missing" };
+    const command = CELL_COMMAND[cell.state];
+    const refusal = cellRefusal(cell, command);
+    return {
+      command,
+      disabled: refusal !== undefined,
+      glyph: CELL_GLYPH[cell.state],
+      locale,
+      rowPath,
+      state: cell.state,
+      title: cellTitle(cell, locale, refusal),
+    };
+  });
+  return { cells, key: row.key };
 }
 
 /** How many squares are not yet a file, and how many are behind their source. */
@@ -467,31 +456,30 @@ function summaryText(rows: readonly ParityRow[]): string {
   return `${pages} — ${parts.join(", ")}.`;
 }
 
+/** An empty projection, so the two bodies that draw no grid do not have to spell one out. */
+function blankValues(mode: I18nValues["mode"]): I18nValues {
+  return {
+    heads: [],
+    incomplete: "",
+    mode,
+    rows: [],
+    settingsDisabled: activeRegistry()?.get(SETTINGS_COMMAND) === undefined,
+    summary: "",
+    truncated: "",
+  };
+}
+
 /**
- * The panel body.
+ * What the surface should be showing right now.
  *
  * `getEffectiveLocales()` is read HERE, on every paint, rather than cached at module scope:
  * `projectState` is a plain binding replaced wholesale by `setProjectState`, so a locale added in
  * Settings reaches a cached copy never.
  */
-export function renderI18nPanel(ctx: NavigatorPanelContext): PanelBody {
+function panelValues(ctx: NavigatorPanelContext): I18nValues {
   const i18n = getEffectiveLocales();
   if (i18n === null || i18n.locales.length < 2) {
-    return renderEmptyState({
-      actions: [
-        {
-          disabled: activeRegistry()?.get(SETTINGS_COMMAND) === undefined,
-          label: "Open project settings…",
-          run: () => {
-            runByName(SETTINGS_COMMAND);
-          },
-        },
-      ],
-      detail:
-        "Declare them under Locales in the project's settings, then a page's translations are " +
-        "sibling files under a directory named for each language.",
-      message: "This project is written in one language.",
-    });
+    return blankValues("mono");
   }
 
   const root = projectState?.projectRoot ?? "";
@@ -500,68 +488,83 @@ export function renderI18nPanel(ctx: NavigatorPanelContext): PanelBody {
       scanning = root;
       void takeScan(root, ctx.rerender);
     }
-    return renderEmptyState({
-      detail: "Reading pages/ and content/ to find out which languages each page is written in.",
-      message: "Looking for translations…",
-    });
+    return blankValues("scanning");
   }
 
   const rows = parityRows(scanned.files, i18n, scanned.declared);
   const shown = rows.slice(0, PARITY_ROW_LIMIT);
   const hidden = rows.length - shown.length;
-  return html`
-    <div class="i18n-panel">
-      <div class="i18n-actions">
-        <p class="i18n-summary">${summaryText(rows)}</p>
-        <button
-          class="i18n-rescan"
-          title="Read pages/ and content/ again"
-          @click=${() => {
-            refreshParityScan();
-            ctx.rerender();
-          }}
-        >
-          Rescan
-        </button>
-      </div>
-      ${
-        scanned.failures.length > 0
-          ? html`<p class="i18n-incomplete">
-              This list is incomplete —
-              ${scanned.failures.map((failure) => `${failure.dir} (${failure.error})`).join("; ")}
-            </p>`
-          : nothing
-      }
-      ${
-        rows.length === 0
-          ? renderEmptyState({
-              compact: true,
-              detail: "Add a page under pages/, or an entry to a content collection.",
-              message: "There is nothing to translate yet.",
-            })
-          : html`<table class="i18n-parity">
-              <thead>
-                ${headTpl(i18n)}
-              </thead>
-              <tbody>
-                ${repeat(
-                  shown,
-                  (row) => row.key,
-                  (row) => rowTpl(row, i18n),
-                )}
-              </tbody>
-            </table>`
-      }
-      ${
-        hidden > 0
-          ? html`<p class="i18n-truncated">
-              ${hidden} more page${hidden === 1 ? " is" : "s are"} not shown — the grid stops at
-              ${PARITY_ROW_LIMIT}.
-            </p>`
-          : nothing
-      }
-    </div>
-  `;
+  return {
+    ...blankValues("grid"),
+    heads: i18n.locales.map((locale) => ({
+      isDefault: locale === i18n.defaultLocale,
+      label: localeLabel(locale),
+      locale,
+    })),
+    incomplete: scanned.failures.map((failure) => `${failure.dir} (${failure.error})`).join("; "),
+    rows: shown.map((row) => projectRow(row, i18n)),
+    summary: summaryText(rows),
+    truncated:
+      hidden > 0
+        ? `${hidden} more page${hidden === 1 ? " is" : "s are"} not shown — the grid stops at ` +
+          `${PARITY_ROW_LIMIT}.`
+        : "",
+  };
+}
+
+/**
+ * Repaint the Navigator.
+ *
+ * Held at module scope rather than closed over at mount, because the standing surface outlives the
+ * `NavigatorPanelContext` that mounted it and its Rescan button has to reach the CURRENT renderer.
+ */
+let rerender: () => void = () => {};
+
+/** What the document's three controls do. Every one of them is a decision this module owns. */
+const ACTIONS: I18nActions = {
+  openSettings: () => {
+    runByName(SETTINGS_COMMAND);
+  },
+  rescan: () => {
+    refreshParityScan();
+    rerender();
+  },
+  runCell: (command, locale, path) => {
+    runByName(command, { locale, path });
+  },
+};
+
+/**
+ * The surface standing in the Navigator, and the node it was mounted into.
+ *
+ * One slot rather than a per-host map, because there is one Navigator: a mount into a DIFFERENT
+ * node is the old one being replaced, and holding both would leave the first one's effects running
+ * against a scope nobody writes any more.
+ */
+let standing: { host: HTMLElement; handle: I18nSurfaceHandle } | null = null;
+
+/**
+ * Draw the panel body — mounting the document the first time, updating it every time after.
+ *
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed. Both are
+ * lit's, but only one of them is the node lit renders this panel's body INTO: a repaint commits
+ * `nothing` there, which lit skips, and a switch to another panel commits that panel's template,
+ * which clears to the end of the parent and takes this document with it. Appending to `.panel-body`
+ * instead would survive the switch — and leave the parity grid drawn underneath the Files tree.
+ */
+export function mountI18nPanel(ctx: NavigatorPanelContext, host: HTMLElement): void {
+  ({ rerender } = ctx);
+  const container = host.querySelector<HTMLElement>(".panel-content") ?? host;
+  if (standing && (standing.host !== container || !standing.handle.connected())) {
+    standing.handle.dispose();
+    standing = null;
+  }
+  const values = panelValues(ctx);
+  if (standing) {
+    standing.handle.update(values);
+    return;
+  }
+  standing = { handle: mountI18nSurface(container, values, ACTIONS), host: container };
 }
 
 /**
@@ -579,14 +582,19 @@ export function registerI18nPanel(): void {
     title: "Languages",
     level: "project",
     dock: "navigator",
-    // Inert, like every other `rail: false` panel's: `tabIcon()` is only ever called by a rail
+    // Inert, like every other `rail: false` panel's: the glyph is only ever drawn by a rail
     // Button, and `check-icons.ts` fails on a resolver row no rail panel declares.
-    icon: "sp-icon-globe",
+    icon: "globe",
     // OFF THE RAIL. `railDeclarations()` does not apply `when`, so a rail button would spend the
     // Last rail/project slot in every monolingual project — and would shift every document panel's
     // ⌘1-8 chord by one. `i18n.showParity` is how it is reached.
     rail: false,
     when: (ctx) => ctx.project.isMultilingual,
-    render: (ctx) => renderI18nPanel(ctx),
+    // The body is a document, so lit draws nothing and the mount happens against the painted
+    // DOM. `afterRender` runs on every repaint; {@link mountI18nPanel} is idempotent.
+    render: (): PanelBody => nothing,
+    afterRender: (ctx, host) => {
+      mountI18nPanel(ctx, host);
+    },
   });
 }

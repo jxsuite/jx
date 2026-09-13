@@ -101,6 +101,18 @@ Studio reports a boolean `popover` as a problem rather than correcting it. See [
 
 That distinction matters for accessibility: a bare `aria-hidden` is _not_ hidden, and an omitted `contenteditable` means "inherit from the parent" rather than `false`. Writing either as a presence attribute would silently invert it.
 
+**A value of `null` removes the attribute.** A `$ref` to a missing entry, or a template whose single expression yields `null` or `undefined`, takes the attribute away rather than writing an empty string. That is how one template carries an attribute that exists only in some states:
+
+```json
+{
+  "tagName": "li",
+  "attributes": {
+    "role": "menuitem",
+    "aria-haspopup": "${state.haspopup ? 'menu' : null}"
+  }
+}
+```
+
 A **string** is never reinterpreted in either family. `"aria-current": "false"` stays exactly that, which is how you write the not-the-current-page marker beside `"aria-current": "page"`.
 
 The compiled page and the live runtime apply the same rule, so a prerendered element does not change meaning when it hydrates.
@@ -153,6 +165,8 @@ Custom elements use the standard HTML `slot` mechanism for content composition. 
 
 A slot's own `children` act as fallback content, kept when the instance provides nothing for it.
 
+The `<slot>` itself leaves nothing behind. What the instance provided stands exactly where the slot was written, as a direct child of whatever contained it. That is what lets a component style what it was given: a rule like `"& > [part=\"body\"] > b"` reaches a slotted `<b>`, because the `<b>` really is a child of that part.
+
 ## Annotations
 
 Any element may carry `$title` and `$description`, developer-facing labels that never reach the DOM:
@@ -170,7 +184,7 @@ Studio's [Outline panel](/docs/studio/design/layers) shows `$title` as the eleme
 
 ## How it works
 
-The runtime creates the element with `document.createElement(tagName)`, assigns each listed property directly on the element object, and writes `attributes` entries with `setAttribute`. Properties whose values are templates or `$ref` bindings are wrapped in reactive effects, so the DOM updates whenever the underlying state changes. Slot distribution is manual light-DOM distribution: host children are captured before the template renders, then moved to matching `<slot>` elements by `name`.
+The runtime creates the element with `document.createElement(tagName)`, assigns each listed property directly on the element object, and writes `attributes` entries with `setAttribute`. Properties whose values are templates or `$ref` bindings are wrapped in reactive effects, so the DOM updates whenever the underlying state changes. Slot distribution is manual light-DOM distribution: host children are captured before the template renders, then each `<slot>` is replaced by the children matching it, or by its own fallback children when nothing matches.
 
 ## Rules
 

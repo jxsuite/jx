@@ -1,0 +1,565 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxActionButton",
+  "tagName": "jx-action-button",
+  "observedAttributes": [
+    "label",
+    "hint",
+    "icon",
+    "mirror",
+    "weight",
+    "toggles",
+    "selected",
+    "quiet",
+    "emphasized",
+    "size",
+    "disabled",
+    "popovertarget",
+    "popovertargetaction",
+    "command",
+    "commandfor",
+    "stacked",
+    "haspopup",
+    "expanded",
+    "badge",
+    "loading",
+    "labelledby",
+    "describedby",
+    "checked"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-spinner.json"
+    }
+  ],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, required: an action button is icon-first, so its name is not on screen. It is NOT also the tooltip — see hint."
+    },
+    "hint": {
+      "type": "string",
+      "default": "",
+      "attribute": "hint",
+      "description": "The tooltip, and the whole of it: title is this and nothing else. It used to fall back to label, so EVERY button got a tooltip whether or not its name was already on screen and a reader heard the name twice. Now each call site decides: pass hint on an icon-only button or one whose visible label ellipses, where a tooltip carrying the name is the standard affordance and hint equal to label is the right answer; leave it empty wherever the text is already fully visible."
+    },
+    "icon": {
+      "type": "string",
+      "default": "",
+      "attribute": "icon",
+      "description": "The glyph, by its name in the kit's manifest. Empty for a text-only action button."
+    },
+    "mirror": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "mirror",
+      "description": "Draw the glyph flipped horizontally: one shipped glyph serves both sides of a pair."
+    },
+    "weight": {
+      "type": "string",
+      "default": "regular",
+      "attribute": "weight",
+      "description": "The glyph's weight: regular, bold or fill. A selected toggle draws fill by convention."
+    },
+    "toggles": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "toggles",
+      "description": "A two-state button: selected flips on activation and aria-pressed says which state it is in."
+    },
+    "selected": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "selected",
+      "description": "The pressed or chosen state, and the ONLY thing the selected drawing follows — whoever wrote it. A host that owns the selection sets it with toggles off and the button draws selected without flipping itself or emitting change; with toggles on the button also flips it on activation. What selected does NOT do is announce anything by itself: aria-pressed comes from toggles and aria-checked from checked, so a host-owned segment that must be announced is a checked radio (and setting checked also draws it selected, so the two never disagree)."
+    },
+    "checked": {
+      "type": "string",
+      "default": "",
+      "attribute": "checked",
+      "description": "Empty for a plain button; true or false for one segment of a radio group, which then carries role=radio and aria-checked on its control, is drawn selected while it is true, and puts role=none on the HOST so the radio is the radiogroup's own child rather than a grandchild behind a generic. It is the ALTERNATIVE to toggles, not a companion: a button that is one of several mutually exclusive choices is a radio, a button that is independently on or off is a toggle. Setting both is not a second opinion but a refusal — checked wins, so no aria-pressed is written on a radio (it is not a state of that role) and the button does not flip itself either."
+    },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the button inside, not the host, so a group moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops. Write tabindex on the host and you get the platform's meaning — the host is the tab stop and nothing reaches the control."
+    },
+    "quiet": {
+      "type": "boolean",
+      "default": true,
+      "attribute": "quiet",
+      "description": "No fill and no border until hovered, which is what a toolbar wants. Off for a standalone tool button."
+    },
+    "emphasized": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "emphasized",
+      "description": "Draws the selected state in the accent rather than a neutral fill."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot act. Disabled, never absent."
+    },
+    "loading": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "loading",
+      "description": "Working on the last activation: the click is swallowed, the glyph gives way to a spinner, and aria-busy says so. An action button draws its icon from a name and has no icon slot, so this is the only way a host can put a spinner where the glyph was."
+    },
+    "stacked": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "stacked",
+      "description": "Icon above the label, the label visible and small: the shape of a rail button. The label is then on screen, so it is the accessible name by itself."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby: the id of the visible text that names this button, when something on screen already does."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby: the id of a description beside the name, which is where a jx-tooltip's id goes."
+    },
+    "haspopup": {
+      "type": "string",
+      "default": "",
+      "attribute": "haspopup",
+      "description": "What the button opens instead of running a command: menu, dialog or listbox. Forwarded to the control as aria-haspopup."
+    },
+    "expanded": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "expanded",
+      "description": "Whether what haspopup names is showing. Forwarded to the control as aria-expanded, only when haspopup is set."
+    },
+    "badge": {
+      "type": "string",
+      "default": "",
+      "attribute": "badge",
+      "description": "A count or a mark drawn over the button's corner; empty for none."
+    },
+    "popovertarget": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertarget",
+      "description": "The popover this button invokes; forwarded to the inner control."
+    },
+    "popovertargetaction": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertargetaction",
+      "description": "toggle, show or hide; forwarded with popovertarget."
+    },
+    "command": {
+      "type": "string",
+      "default": "",
+      "attribute": "command",
+      "description": "The invoker command this button sends; forwarded to the inner control."
+    },
+    "commandfor": {
+      "type": "string",
+      "default": "",
+      "attribute": "commandfor",
+      "description": "The element the command is sent to; forwarded to the inner control."
+    },
+    "noIcon": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/icon"
+        }
+      }
+    },
+    "notLoading": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/loading"
+        }
+      }
+    },
+    "iconHidden": {
+      "$expression": {
+        "operator": "||",
+        "target": {
+          "$ref": "#/state/noIcon"
+        },
+        "value": {
+          "$ref": "#/state/loading"
+        }
+      }
+    },
+    "notRadio": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/checked"
+        }
+      }
+    },
+    "canToggle": {
+      "$expression": {
+        "operator": "&&",
+        "target": {
+          "$ref": "#/state/toggles"
+        },
+        "value": {
+          "operator": "&&",
+          "target": {
+            "$ref": "#/state/notRadio"
+          },
+          "value": {
+            "operator": "&&",
+            "target": {
+              "operator": "!",
+              "target": {
+                "$ref": "#/state/disabled"
+              }
+            },
+            "value": {
+              "$ref": "#/state/notLoading"
+            }
+          }
+        }
+      }
+    },
+    "hasBadge": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/badge"
+        },
+        "value": ""
+      }
+    },
+    "onSwallow": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "The swallow, on the INNER CONTROL rather than the host: stopPropagation halts an event at the node it is called on and every node after it, not the other listeners on that same node — so a swallow on the host cancels the default and then runs the host's own click listeners anyway, which is the one path a consumer actually uses. Called one node earlier, the click never reaches the host at all."
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        },
+        {
+          "if": {
+            "$ref": "#/state/canToggle"
+          },
+          "then": [
+            {
+              "operator": "=",
+              "target": {
+                "$ref": "#/state/selected"
+              },
+              "value": {
+                "operator": "!",
+                "target": {
+                  "$ref": "#/state/selected"
+                }
+              }
+            },
+            {
+              "dispatchEvent": "change",
+              "detail": {
+                "$ref": "#/state/selected"
+              },
+              "bubbles": true
+            }
+          ]
+        }
+      ],
+      "emits": [
+        {
+          "name": "change",
+          "description": "A toggling button flipped; detail is the new selected state."
+        }
+      ],
+      "description": "A toggling button flips selected and says so with change. A plain one leaves the click to the host, which listens for it on the element. The loading branch is the second half of the swallow: a click dispatched at the HOST never passes the inner control, so this is the only guard that sees it."
+    }
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "attributes": {
+    "role": "${state.checked ? 'none' : null}",
+    "data-size": "${state.size}",
+    "data-quiet": "${state.quiet ? '' : null}",
+    "data-emphasized": "${state.emphasized ? '' : null}",
+    "data-selected": "${state.selected || state.checked === 'true' ? '' : null}",
+    "data-stacked": "${state.stacked ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"control\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "var(--jx-control-h)",
+      "minHeight": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg-dim)",
+      "cursor": "pointer",
+      "whiteSpace": "nowrap",
+      "outline": "none",
+      "transition": "background var(--jx-dur-1) var(--jx-ease-out), color var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      },
+      "&[aria-busy=\"true\"]": {
+        "cursor": "progress"
+      },
+      "position": "relative"
+    },
+    "&[data-quiet] > [part=\"control\"]": {
+      "background": "transparent",
+      "borderColor": "transparent",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      }
+    },
+    "&[data-stacked] > [part=\"control\"]": {
+      "flexDirection": "column",
+      "gap": "2px",
+      "width": "100%",
+      "minWidth": "0",
+      "padding": "var(--jx-space-2) var(--jx-space-1)",
+      "borderRadius": "0",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "var(--jx-leading-xs)"
+    },
+    "&[data-stacked] > [part=\"control\"] > [part=\"label\"]": {
+      "display": "block",
+      "maxWidth": "100%",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "&[data-stacked] > [part=\"control\"] > [part=\"label\"]:empty, &[data-stacked] > [part=\"control\"] > [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
+      "display": "none"
+    },
+    "&[data-selected] > [part=\"control\"]": {
+      "background": "var(--jx-accent-15)",
+      "color": "var(--jx-fg)"
+    },
+    "&[data-selected][data-emphasized] > [part=\"control\"]": {
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)"
+    },
+    "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "minWidth": "calc(var(--jx-control-h) - 4px)",
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "padding": "0 var(--jx-space-1)"
+    },
+    "&[data-size=\"lg\"] > [part=\"control\"]": {
+      "minWidth": "calc(var(--jx-control-h) + 8px)",
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "padding": "0 var(--jx-space-3)"
+    },
+    "& [part=\"icon\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"icon\"][hidden]": {
+      "display": "none"
+    },
+    "& [part=\"label\"]": {
+      "display": "contents"
+    },
+    "& [part=\"label-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"badge-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"badge\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minWidth": "16px",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "999px",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "fontVariantNumeric": "tabular-nums",
+      "position": "absolute",
+      "top": "2px",
+      "right": "2px",
+      "boxSizing": "border-box",
+      "pointerEvents": "none"
+    },
+    "& [part=\"spinner\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"spinner\"][hidden]": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "button",
+      "onclick": {
+        "$ref": "#/state/onSwallow"
+      },
+      "attributes": {
+        "part": "control",
+        "type": "button",
+        "disabled": {
+          "$ref": "#/state/disabled"
+        },
+        "aria-label": "${state.label || null}",
+        "title": "${state.hint || null}",
+        "role": "${state.checked ? 'radio' : null}",
+        "aria-checked": "${state.checked || null}",
+        "aria-pressed": "${state.toggles && !state.checked ? (state.selected ? 'true' : 'false') : null}",
+        "tabindex": "${state.tabindex || null}",
+        "popovertarget": "${state.popovertarget || null}",
+        "popovertargetaction": "${state.popovertargetaction || null}",
+        "command": "${state.command || null}",
+        "commandfor": "${state.commandfor || null}",
+        "aria-haspopup": "${state.haspopup || null}",
+        "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}",
+        "aria-labelledby": "${state.labelledby || null}",
+        "aria-describedby": "${state.describedby || null}",
+        "aria-busy": "${state.loading ? 'true' : null}",
+        "aria-disabled": "${state.loading ? 'true' : null}"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "icon"
+          },
+          "hidden": {
+            "$ref": "#/state/iconHidden"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": {
+                  "$ref": "#/state/icon"
+                },
+                "weight": {
+                  "$ref": "#/state/weight"
+                },
+                "mirror": {
+                  "$ref": "#/state/mirror"
+                }
+              },
+              "attributes": {
+                "part": "icon-glyph"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-spinner",
+          "attributes": {
+            "part": "spinner"
+          },
+          "hidden": {
+            "$ref": "#/state/notLoading"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "badge-slot"
+          },
+          "$switch": {
+            "$ref": "#/state/hasBadge"
+          },
+          "cases": {
+            "true": {
+              "tagName": "span",
+              "attributes": {
+                "part": "badge",
+                "aria-hidden": "true"
+              },
+              "textContent": "${state.badge}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

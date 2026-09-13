@@ -1,0 +1,243 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioJumpBar",
+  "$description": "⑥ The jump bar: one pane's address, outermost step first, every step a command the adapter has already resolved against the registry. A step is a button when its command can run and a readout when it cannot — an address with a hole in it is a lie about containment, so a step never disappears. A step with more than one place to go carries the chevron that opens its siblings; one alternative is not a choice and draws no control. Nothing here decides what the bar says, which step is where you are, or what a chevron opens.",
+  "tagName": "nav",
+  "attributes": {
+    "part": "bar",
+    "aria-label": "Location",
+    "data-jx-region": "${state.region}",
+    "hidden": "${state.empty ? '' : null}"
+  },
+  "style": {
+    "$description": "The `.jump-bar` rules the bar used to take from `styles/shell.css`, brought here and re-valued onto the kit's own layer. It scrolls rather than wraps — a deep selection must not push the stage down by a second line — and the overflow is taken at the START, because the leaf is the part being read. The height is the one number this file shares with its adapter: the stage's `--jump-bar-h` offset must be the box this rule draws.",
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "1px",
+    "height": "24px",
+    "padding": "0 var(--jx-space-3)",
+    "minWidth": "0",
+    "overflowX": "auto",
+    "scrollbarWidth": "none",
+    "whiteSpace": "nowrap",
+    "boxSizing": "border-box",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-xs)",
+    "color": "var(--jx-fg-dim)",
+    "background": "var(--jx-bg-panel)",
+    "borderBottom": "1px solid var(--jx-border)",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "&::-webkit-scrollbar": {
+      "display": "none"
+    },
+    "& [part=\"step\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexShrink": "0"
+    },
+    "& [part=\"separator\"]": {
+      "flexShrink": "0",
+      "padding": "0 1px",
+      "color": "var(--jx-fg-dim)",
+      "opacity": "0.6"
+    },
+    "& [part=\"crumb\"]": {
+      "maxWidth": "28ch",
+      "overflow": "hidden",
+      "margin": "0",
+      "padding": "0 var(--jx-space-2)",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "inherit",
+      "font": "inherit",
+      "lineHeight": "1",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& button[part=\"crumb\"]": {
+      "cursor": "pointer",
+      ":hover:not(:disabled)": {
+        "color": "var(--jx-fg)",
+        "background": "var(--jx-hover-bg)"
+      },
+      ":disabled": {
+        "cursor": "default",
+        "opacity": "0.6"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"crumb\"][aria-current]": {
+      "$description": "Where you ARE is stated by weight, not by taking the control away: the leaf still selects, which is how a stray click in the canvas is undone without leaving the bar.",
+      "color": "var(--jx-fg)"
+    },
+    "& span[part=\"crumb\"]": {
+      "$description": "A step with no runnable command is a readout, not a dead button. No hover, no pointer, no promise.",
+      "cursor": "default"
+    },
+    "& [part=\"alternatives\"]": {
+      "padding": "0 1px",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "inherit",
+      "font": "inherit",
+      "lineHeight": "1",
+      "cursor": "pointer",
+      ":hover": {
+        "color": "var(--jx-fg)",
+        "background": "var(--jx-hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/segments"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "span",
+        "attributes": {
+          "part": "step",
+          "data-jump-kind": "${$map.item.kind}"
+        },
+        "children": [
+          {
+            "tagName": "span",
+            "attributes": {
+              "part": "separator-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/leading"
+            },
+            "cases": {
+              "false": {
+                "tagName": "span",
+                "attributes": {
+                  "part": "separator",
+                  "aria-hidden": "true"
+                },
+                "textContent": "›"
+              }
+            }
+          },
+          {
+            "tagName": "span",
+            "attributes": {
+              "part": "crumb-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/control"
+            },
+            "cases": {
+              "button": {
+                "tagName": "button",
+                "attributes": {
+                  "part": "crumb",
+                  "type": "button",
+                  "title": "${$map.item.title}",
+                  "aria-current": "${$map.item.current ? 'true' : null}",
+                  "disabled": {
+                    "$ref": "$map/item/disabled"
+                  }
+                },
+                "textContent": "${$map.item.label}",
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/run"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "readout": {
+                "tagName": "span",
+                "attributes": {
+                  "part": "crumb",
+                  "title": "${$map.item.title}",
+                  "aria-current": "${$map.item.current ? 'true' : null}"
+                },
+                "textContent": "${$map.item.label}"
+              }
+            }
+          },
+          {
+            "tagName": "span",
+            "attributes": {
+              "part": "alternatives-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/hasChoices"
+            },
+            "cases": {
+              "true": {
+                "tagName": "button",
+                "attributes": {
+                  "part": "alternatives",
+                  "type": "button",
+                  "aria-haspopup": "menu",
+                  "aria-label": "${$map.item.altsLabel}",
+                  "title": "${$map.item.altsLabel}"
+                },
+                "textContent": "⌄",
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/choose"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        },
+                        {
+                          "$ref": "event#/currentTarget"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

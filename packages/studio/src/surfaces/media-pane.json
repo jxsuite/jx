@@ -1,0 +1,513 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioMediaPane",
+  "$description": "The Media viewer: a pane that SHOWS a file the studio has no document model for — an image at its own size, a video or audio player, an embedded PDF, a font set in a pangram, or an honest line about a format nothing here can draw. The adapter hands in one projection: which of the six stages to draw, the URL that loads it, the file's name and facts, the reference a document would write for it, and the documents that already do. Nothing here decides anything; a control asks the host to copy, to open a path, or to record the pixel size the browser just learned.",
+  "tagName": "div",
+  "attributes": {
+    "part": "viewer",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "What `.media-viewer`, `.media-stage`, `.media-image`, `.media-video`, `.media-embed`, `.media-audio`, `.media-specimen`, `.media-specimen-line`, `.media-unviewable`, `.media-note`, `.media-details`, `.media-name`, `.media-facts`, `.media-ref`, `.media-ref-value`, `.media-usage`, `.media-usage-title`, `.media-usage-headline`, `.media-usage-list`, `.media-usage-link` and `.media-usage-count` said in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer. All twenty-two were this surface's alone, so the stylesheet block goes with the conversion rather than being copied. Eight `var(--spectrum-font-size-…)` names could not come with the declarations: every one of them resolves only inside `<sp-theme>`, and this document is mounted in a pane stage that is outside it, so each would silently have taken its hex fallback — they are the kit's `--jx-text-xs`, `--jx-text-sm`, `--jx-text-md` and `--jx-text-lg` instead.",
+    "height": "100%",
+    "display": "flex",
+    "gap": "var(--jx-space-5)",
+    "padding": "var(--jx-space-5)",
+    "overflowY": "auto",
+    "background": "var(--bg-panel)",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"asset-slot\"], & [part=\"usage-slot\"], & [part=\"list-slot\"]": {
+      "$description": "A `$switch` renders its own container, and none of these three is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
+      "display": "contents"
+    },
+    "& [part=\"stage\"]": {
+      "$description": "The asset takes the room and the details column keeps a fixed width, so the file is the thing being looked at and the facts about it are beside it rather than on top of it.",
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "alignItems": "flex-start",
+      "justifyContent": "center"
+    },
+    "& [part=\"image\"]": {
+      "$description": "Never larger than its own pixels: an upscaled thumbnail is a lie about the asset, and judging whether an imported image is big enough is the whole reason somebody opens this.",
+      "maxWidth": "100%",
+      "height": "auto",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-input)"
+    },
+    "& [part=\"video\"], & [part=\"embed\"]": {
+      "width": "100%",
+      "maxHeight": "70vh",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-input)"
+    },
+    "& [part=\"audio\"]": {
+      "width": "100%"
+    },
+    "& [part=\"specimen\"]": {
+      "$description": "A font is shown by being USED. The face itself arrives as a `@font-face` the adapter writes, under a family name generated from the path so two specimens open side by side cannot claim the same one; the element carries only that NAME, as a custom property, and the fallback stack that catches a face the browser refuses stays here where it is a rule rather than data.",
+      "width": "100%",
+      "padding": "var(--jx-space-5)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-input)",
+      "color": "var(--fg)",
+      "fontFamily": "var(--jx-specimen-family, system-ui), system-ui, sans-serif"
+    },
+    "& [part=\"specimen-line\"]": {
+      "margin": "0 0 var(--jx-space-4)",
+      "lineHeight": "1.3",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"specimen-line\"][data-size=\"48\"]": {
+      "fontSize": "48px"
+    },
+    "& [part=\"specimen-line\"][data-size=\"32\"]": {
+      "fontSize": "32px"
+    },
+    "& [part=\"specimen-line\"][data-size=\"24\"]": {
+      "fontSize": "24px"
+    },
+    "& [part=\"specimen-line\"][data-size=\"18\"]": {
+      "fontSize": "18px"
+    },
+    "& [part=\"specimen-line\"][data-size=\"14\"]": {
+      "fontSize": "var(--jx-text-lg)"
+    },
+    "& [part=\"unviewable\"]": {
+      "$description": "Not a failure state. A file the browser cannot render is a zip, or a format this build has never heard of, so the box says what the file IS and that the project still builds with it in.",
+      "padding": "var(--jx-space-6)",
+      "border": "1px dashed var(--border)",
+      "borderRadius": "var(--radius)",
+      "color": "var(--fg-dim)",
+      "textAlign": "center"
+    },
+    "& [part=\"note\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"details\"]": {
+      "flex": "0 0 260px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "color": "var(--fg)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"facts\"]": {
+      "$description": "Kind, pixel size, bytes and modified date, joined by the adapter. Each is omitted rather than zeroed when it is not known: a real file can almost be `0 × 0` or `0 B`, so neither may double as \"we did not find out\".",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"ref\"]": {
+      "$description": "The reference a document writes for this file — `/hero.jpg` for `public/hero.jpg`, which shares not one segment with it. Getting this wrong is the commonest way an image goes missing from a page, which is why it is on screen next to a button that copies it.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px"
+    },
+    "& [part=\"ref-value\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "background": "var(--bg-input)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "padding": "3px 6px",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"usage\"]": {
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0 0 var(--jx-space-2)",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "500",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"message\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"list\"]": {
+      "listStyle": "none",
+      "margin": "var(--jx-space-3) 0 0",
+      "padding": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "6px",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"file-path\"]": {
+      "$description": "The path is a control, not a label: it opens the document that references this file. A plain button rather than a `jx-button`, for the reason the Problems rows give — what it has to look like is a line of text, and every fill, border and control height the kit draws would have to be taken back off again. Named `file-path` and not `path` because `jx-icon` puts `part=\"path\"` on the `<path>` of every glyph it draws, so `[part=\"path\"]` would select this button and any SVG path beside it.",
+      "flex": "1",
+      "minWidth": "0",
+      "margin": "0",
+      "padding": "0",
+      "background": "none",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-xs)",
+      "textAlign": "left",
+      "color": "var(--accent)",
+      "cursor": "pointer",
+      "font": "inherit",
+      "overflowWrap": "anywhere",
+      ":hover": {
+        "textDecoration": "underline"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    },
+    "& [part=\"count\"]": {
+      "flex": "0 0 auto",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "stage"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "asset-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/kind"
+          },
+          "cases": {
+            "image": {
+              "tagName": "img",
+              "attributes": {
+                "part": "image",
+                "src": "${state.src}",
+                "alt": ""
+              },
+              "onload": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/imageLoaded"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/naturalWidth"
+                      },
+                      {
+                        "$ref": "event#/target/naturalHeight"
+                      }
+                    ]
+                  }
+                ],
+                "description": "The only honest source of pixel dimensions in a browser is an image that has loaded, and this viewer is showing one at full size anyway. The host decides whether the numbers are new; a repeat load of the same picture must not repaint the pane."
+              }
+            },
+            "video": {
+              "tagName": "video",
+              "attributes": {
+                "part": "video",
+                "src": "${state.src}",
+                "controls": true
+              }
+            },
+            "audio": {
+              "tagName": "audio",
+              "attributes": {
+                "part": "audio",
+                "src": "${state.src}",
+                "controls": true
+              }
+            },
+            "embed": {
+              "tagName": "embed",
+              "attributes": {
+                "part": "embed",
+                "src": "${state.src}",
+                "type": "application/pdf",
+                "title": "${state.name}"
+              }
+            },
+            "font": {
+              "tagName": "div",
+              "attributes": {
+                "part": "specimen",
+                "style": "${state.specimenFamily}"
+              },
+              "children": [
+                {
+                  "tagName": "style",
+                  "textContent": "${state.fontFace}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "specimen-line",
+                    "data-size": "48"
+                  },
+                  "textContent": "${state.specimen}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "specimen-line",
+                    "data-size": "32"
+                  },
+                  "textContent": "${state.specimen}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "specimen-line",
+                    "data-size": "24"
+                  },
+                  "textContent": "${state.specimen}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "specimen-line",
+                    "data-size": "18"
+                  },
+                  "textContent": "${state.specimen}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "specimen-line",
+                    "data-size": "14"
+                  },
+                  "textContent": "${state.specimen}"
+                }
+              ]
+            },
+            "unviewable": {
+              "tagName": "div",
+              "attributes": {
+                "part": "unviewable"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Jx has no viewer for "
+                    },
+                    {
+                      "tagName": "code",
+                      "textContent": "${state.extLabel}"
+                    },
+                    {
+                      "tagName": "span",
+                      "textContent": "."
+                    }
+                  ]
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "The file is in the project and builds normally."
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "details"
+      },
+      "children": [
+        {
+          "tagName": "h3",
+          "attributes": {
+            "part": "title"
+          },
+          "textContent": "${state.name}"
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "facts"
+          },
+          "textContent": "${state.facts}"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "ref"
+          },
+          "children": [
+            {
+              "tagName": "code",
+              "attributes": {
+                "part": "ref-value"
+              },
+              "textContent": "${state.ref}"
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "hint": "Copy the reference"
+              },
+              "attributes": {
+                "part": "copy"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/copyRef"
+                    }
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Copy"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "usage-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/usageState"
+          },
+          "cases": {
+            "shown": {
+              "tagName": "div",
+              "attributes": {
+                "part": "usage"
+              },
+              "children": [
+                {
+                  "tagName": "h4",
+                  "attributes": {
+                    "part": "group-title"
+                  },
+                  "textContent": "Used by"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "message"
+                  },
+                  "textContent": "${state.usageHeadline}"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "list-slot",
+                    "role": "none"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasUsageFiles"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "ul",
+                      "attributes": {
+                        "part": "list"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/usageFiles"
+                          },
+                          "key": {
+                            "$ref": "$map/item/path"
+                          },
+                          "map": {
+                            "tagName": "li",
+                            "attributes": {
+                              "part": "row",
+                              "data-usage": "${$map.item.path}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "file-path",
+                                  "type": "button"
+                                },
+                                "textContent": "${$map.item.path}",
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/openDocument"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/path"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "count"
+                                },
+                                "textContent": "${$map.item.count}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -174,13 +174,18 @@ describe("the Data panel the commands drive", () => {
     await flush();
     // ONE panel: the definition row, and what the canvas resolved it to. `state` and `data` were
     // Two tabs listing the same names, and the one holding the editor had no rail button.
-    const row = document.querySelector<HTMLElement>("#left-panel .signal-row");
-    expect(row?.querySelector(".signal-name")?.textContent).toBe("count");
+    // The panel is a document (`surfaces/panel-signals.json`), so it is addressed by `part`.
+    const row = document.querySelector<HTMLElement>('#left-panel [part="entry"]');
+    expect(row?.dataset["signal"]).toBe("count");
+    expect(row?.querySelector('[part="name"]')?.textContent).toBe("count");
     // No canvas has rendered in this fixture, so the row shows how the entry is DEFINED. It starts
     // Showing what the entry became the moment a scope arrives — one slot, and the value wins it.
-    expect(row?.querySelector(".signal-hint")).not.toBeNull();
-    expect(row?.querySelector(".data-type")).toBeNull();
-    const refresh = document.querySelector<HTMLElement>("#left-panel .data-refresh-btn");
+    const summary = row?.querySelector<HTMLElement>('[part="summary"]');
+    expect(summary?.dataset["tone"]).toBe("hint");
+    expect(summary?.textContent).toBe("number");
+    const refresh = document.querySelector<HTMLElement>(
+      '#left-panel [part="refresh"] [part="control"]',
+    );
     expect(refresh).not.toBeNull();
     // `refreshData` is the one bootstrap callback the Data panel owns: a canvas re-render that
     // ALSO lets automatic `Request` state entries fetch. Reaching it through the rendered button

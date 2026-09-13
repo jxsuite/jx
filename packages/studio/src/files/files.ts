@@ -1,32 +1,43 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 /**
- * File tree management — project loading, file tree rendering, and file CRUD.
+ * File tree management — project loading, file CRUD, and the flow behind the Navigator's Files
+ * panel.
  *
- * Functions that mutate state accept a context object with callbacks, following the same pattern as
- * file-ops.js. Every name the user supplies (new file, rename) is collected with the Spectrum
- * prompt dialog from ui/layers.ts — never a native browser prompt (studio-ui-guidelines.md §8.7).
+ * **The body is a Jx document** (`surfaces/files-panel.json`, mounted by
+ * `surfaces/files-panel.ts`), so this module draws no markup: it projects. What stays here is
+ * everything that is a DECISION — which directories are listed, which entries `.gitignore` masks,
+ * how the flat row model is built and where the window falls on it, what a click and a key MEAN,
+ * what the per-row menu offers, and what each verb does to the filesystem. The surface reads
+ * values.
+ *
+ * Every name the user supplies (new file, rename) is collected with the prompt dialog from
+ * ui/layers.ts — never a native browser prompt (studio-ui-guidelines.md §8.7).
  *
  * **The tree is a flat list of rows, and the DOM holds a window onto it** ({@link FileRow},
  * `ui/virtual-window.ts`). It used to recurse a template per directory level, which is why it drew
  * every expanded row of every expanded directory — a `node_modules` expanded by accident is tens of
- * thousands of `sp-icon` custom elements, built synchronously, on every repaint. A recursion has no
- * row list to window, so the recursion moved into {@link collectFileRows}, which produces the rows
- * in display order and nothing else; the render is then a window over that array.
+ * thousands of icon custom elements, built synchronously, on every repaint. A recursion has no row
+ * list to window, so the recursion moved into {@link collectFileRows}, which produces the rows in
+ * display order and nothing else; the projection is then a window over that array.
  *
  * Flattening costs the `role="group"` wrappers, and pays for them with `aria-level` +
  * `aria-posinset` / `aria-setsize` on every row — the same shape the Outline has always had, and
  * the only shape that stays TRUE when the tree draws eleven rows out of ten thousand.
  *
+ * **Four facts about a row are ONE scope field each**, not fields of the row: the selected path,
+ * the dragged path, the drop target and the roving tab stop. The document compares each against
+ * `$map.item.path`, so moving the selection or dragging a file re-evaluates one attribute per drawn
+ * row instead of rebuilding the list — which is what lets a drag-over highlight cost nothing, and
+ * what stops a window sliding out from under the drag sources pragmatic-dnd is holding.
+ *
  * @docs studio/interface
  */
 
-import { html, nothing } from "lit-html";
+import { nothing } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
-import { classMap } from "lit-html/directives/class-map.js";
-import { ref } from "lit-html/directives/ref.js";
-import { renderPopover, showPromptDialog } from "../ui/layers";
+import { showPromptDialog } from "../ui/layers";
 import { projectState, requireProjectState, setProjectState } from "../store";
 import { getPlatform } from "../platform";
 import { disarmPreviewOverlay } from "../preview/preview-overlay";
@@ -80,31 +91,21 @@ import { markSessionRestored, persistedSession, resetProjectShell, setActivityTa
 import { restoreSession } from "../workspace/session";
 import { cleanupGitPanel } from "../panels/git-panel";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
-import {
-  listWindow,
-  measuredRowHeight,
-  revealListRow,
-  watchListWindow,
-} from "../ui/virtual-window";
-import type { TemplateResult } from "lit-html";
+import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { ChoiceOption } from "../ui/choice-field";
+import type { ChoiceOption } from "../ui/layers";
+import { emptyFilesPanelValues, mountFilesPanelSurface } from "../surfaces/files-panel";
+import { openMenu } from "../surfaces/menu";
+import type {
+  FileRowView,
+  FilesPanelActions,
+  FilesPanelSurfaceHandle,
+  FilesPanelValues,
+} from "../surfaces/files-panel";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { DirEntry, RenameResult } from "../types";
 import type { ListWindowWatch } from "../ui/virtual-window";
-import { rectOf } from "../utils/geometry";
-import { repeat } from "lit-html/directives/repeat.js";
-
-// ─── File icon map ────────────────────────────────────────────────────────────
-
-const fileIconMap = {
-  "sp-icon-document": html`<sp-icon-document></sp-icon-document>`,
-  "sp-icon-file-code": html`<sp-icon-file-code></sp-icon-file-code>`,
-  "sp-icon-file-txt": html`<sp-icon-file-txt></sp-icon-file-txt>`,
-  "sp-icon-folder": html`<sp-icon-folder></sp-icon-folder>`,
-  "sp-icon-folder-open": html`<sp-icon-folder-open></sp-icon-folder-open>`,
-  "sp-icon-image": html`<sp-icon-image></sp-icon-image>`,
-} as Record<string, TemplateResult>;
 
 // ─── File management ──────────────────────────────────────────────────────────
 
@@ -416,160 +417,66 @@ export async function openLastSessionOrHome(): Promise<boolean> {
   return false;
 }
 
-// ─── File tree templates ──────────────────────────────────────────────────────
+// ─── Row icons ────────────────────────────────────────────────────────────────
 
-function fileTypeIconTpl(name: string, type: string) {
-  let tag;
+/**
+ * The kit glyph one row draws, by NAME rather than by tag.
+ *
+ * It used to be a map of six `sp-icon-*` templates built once at module load, which is a
+ * `TemplateResult` per icon whether or not the tree was ever opened. A name is a string the
+ * document hands `jx-icon`, and the manifest is what resolves it — so a row costs nothing until it
+ * is drawn, and `scripts/check-icons.ts` checks the key against the same manifest the rail's does.
+ */
+function fileIconName(name: string, type: string, expanded: boolean): string {
   if (type === "directory") {
-    tag = projectState?.expanded?.has(name) ? "sp-icon-folder-open" : "sp-icon-folder";
-  } else {
-    const ext = name.split(".").pop()?.toLowerCase();
-    switch (ext) {
-      case "json": {
-        tag = "sp-icon-file-code";
-        break;
-      }
-      case "md": {
-        tag = "sp-icon-file-txt";
-        break;
-      }
-      case "js":
-      case "ts": {
-        tag = "sp-icon-file-code";
-        break;
-      }
-      case "css": {
-        tag = "sp-icon-file-code";
-        break;
-      }
-      default: {
-        // Every image extension the media layer knows about, so an uploaded .avif/.ico gets the
-        // Same icon as a .png instead of falling through to the generic document glyph.
-        tag = ext && isImage(ext) ? "sp-icon-image" : "sp-icon-document";
-        break;
-      }
+    return expanded ? "folder-open" : "folder";
+  }
+  const ext = name.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "css":
+    case "js":
+    case "json":
+    case "ts": {
+      return "file-code";
+    }
+    case "md": {
+      return "file-text";
+    }
+    default: {
+      // Every image extension the media layer knows about, so an uploaded .avif/.ico gets the
+      // Same icon as a .png instead of falling through to the generic document glyph.
+      return ext !== undefined && isImage(ext) ? "image" : "file";
     }
   }
-  return fileIconMap[tag] || fileIconMap["sp-icon-document"];
 }
 
 /**
- * Render the file tree template for the left panel.
+ * The Navigator no longer draws this panel with lit.
  *
- * @param {{
- *   openProject: () => void;
- *   openFileFromTree: (path: string) => void;
- *   renderLeftPanel: () => void;
- * }} ctx
+ * The record below returns `nothing` and mounts `surfaces/files-panel.json` in `afterRender`, so
+ * this is a stub: it survives only because `NavigatorPanelDeps` still declares the injection and
+ * `studio.ts` still passes it. Both go in the change that deletes this.
+ *
+ * @deprecated The panel is `surfaces/files-panel.json`; call {@link mountFilesPanel}.
  */
-export function renderFilesTemplate({
-  openProject: openProjectFn,
-  openFileFromTree: openFileFn,
-  renderLeftPanel,
-}: {
-  openProject: () => void;
-  openFileFromTree: (path: string) => void;
-  renderLeftPanel: () => void;
-}) {
-  if (!projectState) {
-    return html`<div class="file-tree-empty">No project loaded</div>`;
-  }
+export function renderFilesTemplate(): typeof nothing {
+  return nothing;
+}
 
-  // No project selected in a monorepo — show welcome prompt
-  if (!projectState.isSiteProject && projectState.projectRoot === ".") {
-    return html`<div class="file-tree-empty">
-      <p style="margin:0 0 12px">Open a project folder to get started.</p>
-      <sp-button variant="accent" size="s" @click=${openProjectFn}>Open Project</sp-button>
-    </div>`;
-  }
-
-  const showingIgnored = showIgnoredFiles();
-
-  return html`
-    ${
-      projectState.isSiteProject
-        ? html`
-            <div class="project-header">
-              <span class="project-name"
-                >${projectState.projectConfig?.name || projectState.name}</span
-              >
-            </div>
-          `
-        : nothing
-    }
-    <div class="files-toolbar">
-      <sp-action-group size="xs" compact quiet>
-        <sp-action-button
-          size="xs"
-          label="New File"
-          @click=${() => createNewFile(".", renderLeftPanel)}
-        >
-          <sp-icon-add slot="icon"></sp-icon-add>
-        </sp-action-button>
-        <sp-action-button
-          size="xs"
-          label="Refresh"
-          @click=${async () => {
-            requireProjectState().dirs.clear();
-            /* The rules go with the listings. Refresh is what an author reaches for after editing a
-               `.gitignore` by hand, and a tree that came back still hiding by the old rules would
-               read as the button not having worked. */
-            resetIgnoreCache();
-            await loadDirectory(".");
-            for (const dir of requireProjectState().expanded) {
-              await loadDirectory(dir);
-            }
-            renderLeftPanel();
-          }}
-        >
-          <sp-icon-refresh slot="icon"></sp-icon-refresh>
-        </sp-action-button>
-        <sp-action-button
-          size="xs"
-          label=${showingIgnored ? "Hide ignored files" : "Show ignored files"}
-          ?selected=${showingIgnored}
-          @click=${() => {
-            /* A repaint and nothing else: the ignored entries were never dropped from
-               `projectState.dirs`, only from the rows built out of it. */
-            setShowIgnoredFiles(!showingIgnored);
-            renderLeftPanel();
-          }}
-        >
-          ${
-            showingIgnored
-              ? html`<sp-icon-visibility slot="icon"></sp-icon-visibility>`
-              : html`<sp-icon-visibility-off slot="icon"></sp-icon-visibility-off>`
-          }
-        </sp-action-button>
-      </sp-action-group>
-      <sp-search
-        size="s"
-        quiet
-        placeholder="Filter files…"
-        value=${requireProjectState().searchQuery}
-        @input=${(e: Event) => {
-          requireProjectState().searchQuery = (e.target as HTMLInputElement).value;
-          renderLeftPanel();
-        }}
-        @submit=${(e: Event) => e.preventDefault()}
-      ></sp-search>
-    </div>
-    <div
-      class="file-tree"
-      role="tree"
-      aria-label="Project files"
-      @keydown=${(e: KeyboardEvent) => {
-        onFileTreeKeydown(e, e.currentTarget as HTMLElement);
-      }}
-      ${ref((el) => {
-        if (el) {
-          afterFileTreeRender(el as HTMLElement);
-        }
-      })}
-    >
-      ${fileTreeBodyTemplate({ openFileFn, renderLeftPanel })}
-    </div>
-  `;
+/**
+ * Drag-and-drop is registered against the row elements the DOCUMENT creates, as they are created.
+ *
+ * The pass this replaced ran on a `requestAnimationFrame` after every repaint, found the tree and
+ * its rows by class, and re-registered every one of them — which is exactly the acquisition
+ * `studio-ui-guidelines.md` §9.4 objects to, and which a WINDOWED list makes wrong rather than
+ * merely wasteful: the rows are re-used for different files as the window slides, so a pass that
+ * arrives one frame late hands a file's drag source to whichever file is standing in its place.
+ * {@link mountFilesPanel} adopts each row through `onNodeCreated` instead.
+ *
+ * @deprecated Registration is `onNodeCreated`; this exists for the deps entry alone.
+ */
+export function registerFileTreeDnD(_ctx: { renderLeftPanel: () => void }): void {
+  // Intentionally nothing: see the note above.
 }
 
 // ─── The row model, and the window onto it ───────────────────────────────────
@@ -583,7 +490,7 @@ export function renderFilesTemplate({
  */
 interface FileRow {
   /**
-   * Lit's `repeat` key.
+   * The `$map` key the document reconciles by.
    *
    * Keyed, where the recursive form was positional: a windowed list re-uses its DOM nodes for
    * DIFFERENT rows as the window slides, so positional reuse would leave the keyboard focused on an
@@ -613,7 +520,7 @@ interface FileRow {
 }
 
 /**
- * The declared height of one row — `styles/panels.css` `.file-tree-item { block-size: 24px }`.
+ * The declared height of one row — the `--jx-control-h` the document gives `[part="row"]`.
  *
  * The first paint of a session windows by this constant, because nothing has been laid out yet to
  * measure; {@link fileRowHeight} measures a real row from then on and believes the measurement.
@@ -622,18 +529,58 @@ export const FILE_ROW_HEIGHT = 24;
 
 /** The rows the tree last built, in display order. */
 let _fileRows: FileRow[] = [];
-/** The `.file-tree` element, kept between renders so the next one can be windowed. */
+/** The tree element, adopted through the document's `onNodeCreated` so it is never re-found. */
 let _fileList: HTMLElement | null = null;
+/**
+ * Every DRAWN row's element, by path.
+ *
+ * Held rather than queried, which is the §9.4 rule and, for a windowed list, the only correct
+ * answer: the nodes are re-used for different files as the window slides, so a selector run a frame
+ * later resolves to whichever file is standing there now. Entries whose element has left the
+ * document are swept on the next projection.
+ */
+const _fileRowEls = new Map<string, HTMLElement>();
 /** The scroll watch that repaints the tree as its scroller moves. */
 let _fileWatch: ListWindowWatch | null = null;
 /** The Navigator repaint, captured per render so the scroll watch never holds a stale one. */
 let _filesRerender: (() => void) | null = null;
-/** A keyboard jump that had to scroll first, spent by the repaint it provoked. */
-let _pendingFocusPath: string | null = null;
 
-/** The height one row actually has; the declared constant until a row has been laid out. */
+/**
+ * The height one row actually has; the declared constant until a row has been laid out.
+ *
+ * Measured off a row this module already holds. The DECLARED height is what lets the FIRST render
+ * window anything at all, before any row exists; the MEASUREMENT is what stops that constant
+ * becoming a lie the day the density setting changes it, a user zooms, or a locale's font raises
+ * the line box.
+ */
 function fileRowHeight(): number {
-  return measuredRowHeight(_fileList, ".file-tree-item", FILE_ROW_HEIGHT);
+  for (const el of _fileRowEls.values()) {
+    if (el.isConnected && el.offsetHeight > 0) {
+      return el.offsetHeight;
+    }
+  }
+  return FILE_ROW_HEIGHT;
+}
+
+/** Forget the rows the window has taken away, and release what was registered against them. */
+function sweepRowElements(): void {
+  for (const [path, el] of _fileRowEls) {
+    if (!el.isConnected) {
+      _fileRowEls.delete(path);
+      releaseRowDnD(el);
+    }
+  }
+}
+
+/** The rendered row for a path, or null when the window does not currently hold it. */
+function fileRowElement(path: string): HTMLElement | null {
+  const el = _fileRowEls.get(path);
+  return el?.isConnected === true ? el : null;
+}
+
+/** The model row for a path, or undefined. A "Loading…" row is keyed apart and never matches. */
+function fileRowAt(path: string): FileRow | undefined {
+  return _fileRows.find((row) => !row.loading && row.path === path);
 }
 
 /**
@@ -646,12 +593,11 @@ function collectFileRows(
   dirPath: string,
   depth: number,
   rows: FileRow[],
-  ctx: { renderLeftPanel: () => void },
   i18n: ResolvedI18n | null,
 ): void {
   const entries = requireProjectState().dirs.get(dirPath);
   if (!entries) {
-    void loadDirectory(dirPath).then(() => ctx.renderLeftPanel());
+    void loadDirectory(dirPath).then(() => repaintFiles());
     rows.push({
       depth,
       expanded: false,
@@ -705,7 +651,7 @@ function collectFileRows(
       type: entry.type,
     });
     if (isExpanded) {
-      collectFileRows(entry.path, depth + 1, rows, ctx, i18n);
+      collectFileRows(entry.path, depth + 1, rows, i18n);
     }
   }
 }
@@ -726,160 +672,386 @@ function fileStep(index: number, step: 1 | -1): number {
 }
 
 /**
- * Repaint the tree because its window changed.
+ * The row at `index`'s parent: the nearest row above it at a shallower depth; -1 at the top level.
  *
- * Deferred to a microtask so a scroll arriving mid-commit cannot re-enter the render producing the
- * rows, and skipped during a drag: `registerFileTreeDnD` holds pragmatic-dnd registrations on the
- * rows it can see, and re-rendering under an active drag would drop every one of them.
+ * Over the MODEL, which is the whole reason `jx-tree` asks rather than answering. The element's own
+ * `ArrowLeft` climbs to the nearest DRAWN row at a shallower level, and a directory whose contents
+ * fill the viewport is precisely the case where its own row is the one scrolled off the top.
  */
-function fileWindowChanged(): void {
-  if (_fileList?.isConnected !== true || _fileList.querySelector(".file-tree-item.dragging")) {
-    return;
+function fileParentIndex(index: number): number {
+  const row = _fileRows[index];
+  if (!row) {
+    return -1;
   }
-  queueMicrotask(() => _filesRerender?.());
+  for (let i = index - 1; i >= 0; i--) {
+    const above = _fileRows[i]!;
+    if (!above.loading && above.depth < row.depth) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 /**
- * Adopt the rendered tree: remember it, keep it watching whatever scrolls it, and hand the keyboard
- * the row a jump asked for once that row exists.
+ * Repaint the tree because its window changed.
  *
- * The first paint of a session draws every row, because nothing can be measured before it exists;
- * the watch's opening measurement is what asks for the second, windowed pass. Idempotent by
- * construction — `watchListWindow` hands back the same watch for the same element and scroller — so
- * calling it after every render costs a comparison.
+ * Deferred to a microtask so a scroll arriving mid-commit cannot re-enter the projection producing
+ * the rows, and skipped during a drag: a window that slid under pragmatic-dnd would hand its
+ * registrations to a different set of rows halfway through the gesture. `_dragPath` is what says a
+ * drag is in flight — a state this module holds, where it used to be a class on a node it then had
+ * to go and look for.
  */
-function adoptFileTree(tree: HTMLElement): void {
-  _fileList = tree;
+function fileWindowChanged(): void {
+  if (_fileList?.isConnected !== true || _dragPath !== "") {
+    return;
+  }
+  queueMicrotask(repaintFiles);
+}
+
+/**
+ * Adopt the tree: keep it watching whatever scrolls it.
+ *
+ * Called after every projection rather than once at mount, and that is not belt-and-braces. The
+ * tree element is created ONE time — the document re-uses it for the life of the panel — and at
+ * that instant it holds no rows, so it does not yet overflow and `watchListWindow` correctly
+ * resolves no scroller at all. The first paint draws every row, because nothing can be measured
+ * before it exists; the watch's opening measurement is what asks for the second, windowed pass.
+ * Idempotent by construction — `watchListWindow` hands back the same watch for the same element and
+ * scroller — so calling it again costs a comparison.
+ */
+function adoptFileTree(): void {
+  const tree = _fileList;
+  if (tree === null) {
+    return;
+  }
   _fileWatch = watchListWindow(_fileWatch, tree, {
     count: () => _fileRows.length,
     onChange: fileWindowChanged,
     rowHeight: fileRowHeight,
   });
-  const wanted = _pendingFocusPath;
-  if (wanted !== null) {
-    // One shot: a focus request that outlived its own repaint is stale, and moving the keyboard
-    // Later is worse than never having moved it.
-    _pendingFocusPath = null;
-    fileRowElement(tree, wanted)?.focus();
-  }
 }
 
-/**
- * Adopt the tree once its rows are in the document.
- *
- * Deferred by a microtask on purpose, exactly as the Outline's `afterTreeRender` is: a `ref` on the
- * tree element commits BEFORE the child part holding the rows, so on a first render the callback
- * would otherwise measure an empty tree.
- */
-function afterFileTreeRender(tree: HTMLElement): void {
-  queueMicrotask(() => adoptFileTree(tree));
-}
+// ─── What the document draws ─────────────────────────────────────────────────
 
-/** The rendered row for a path, or null when the window does not currently hold it. */
-function fileRowElement(tree: HTMLElement, path: string): HTMLElement | null {
-  return tree.querySelector<HTMLElement>(`.file-tree-item[data-path="${CSS.escape(path)}"]`);
-}
-
-/**
- * The tree's rows, windowed, with the scroll height of the rows it left out reserved either side.
- *
- * The two spacers are `aria-hidden` because a `role="tree"` owns `treeitem`s, and an empty div that
- * exists to be 4 000 pixels tall is not one.
- */
-function fileTreeBodyTemplate(ctx: {
-  openFileFn: (path: string) => void;
-  renderLeftPanel: () => void;
-}): TemplateResult {
-  // The scroll watch outlives this call and must never repaint through a closure from an earlier
-  // One — the Navigator's scheduler is the only thing that knows how to draw this panel.
-  _filesRerender = ctx.renderLeftPanel;
-  _fileRows = [];
-  // Resolved once for the whole tree, not once per row: this function runs on EVERY repaint of the
-  // Navigator, and `resolveI18n` canonicalizes every declared tag through `Intl.Locale`.
-  const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
-  collectFileRows(".", 0, _fileRows, ctx, i18n);
-  // Windowed against the PREVIOUS render's element, the only one that exists while this template is
-  // Being built. There is none on the first paint, and `listWindow` then answers "all of them".
-  const range = listWindow(_fileList, { count: _fileRows.length, rowHeight: fileRowHeight() });
-  // The roving tab stop is decided from the MODEL — the first DRAWN row of a windowed tree is
-  // Usually not the first row of the tree — and then clamped INTO the window, because a tab stop
-  // That is not in the document is not a tab stop: a tree whose selected row has scrolled away
-  // Would otherwise have no tabbable row at all, and Tab would skip the whole panel.
-  const wanted = Math.max(0, fileIndexOfPath(requireProjectState().selectedPath ?? undefined));
-  const tabStop = Math.min(Math.max(wanted, range.start), Math.max(range.start, range.end - 1));
-  const slice = _fileRows
-    .slice(range.start, range.end)
-    .map((row, offset) => ({ row, tabStop: range.start + offset === tabStop }));
-  return html`
-    <div style="height:${range.padTop}px" aria-hidden="true"></div>
-    ${repeat(
-      slice,
-      (entry) => entry.row.key,
-      (entry) => fileRowTemplate(entry.row, entry.tabStop, ctx),
-    )}
-    <div style="height:${range.padBottom}px" aria-hidden="true"></div>
-  `;
-}
-
-/** One row, drawn. */
-function fileRowTemplate(
-  row: FileRow,
-  tabStop: boolean,
-  ctx: { openFileFn: (path: string) => void; renderLeftPanel: () => void },
-): TemplateResult {
+/** One model row, as the document reads it: every field a string, and nothing left to decide. */
+function fileRowView(row: FileRow): FileRowView {
+  const level = String(row.depth + 1);
   if (row.loading) {
-    return html`<div
-      class="file-tree-item"
-      style="padding-left:${8 + row.depth * 16}px;color:var(--fg-dim);font-style:italic"
-    >
-      Loading…
-    </div>`;
+    return {
+      ariaExpanded: "",
+      depth: String(row.depth),
+      icon: "",
+      key: row.key,
+      kind: "loading",
+      level,
+      locale: "",
+      localeState: "hidden",
+      name: row.name,
+      path: row.path,
+      posInSet: "",
+      setSize: "",
+      type: row.type,
+    };
   }
+  /* `""` for a file, and it is not "no answer": an empty `expanded` is what tells `jx-tree-item` the
+     row is a LEAF, so it draws no twisty, writes no `aria-expanded`, and `ArrowRight` on it does
+     nothing rather than stepping into a directory the row does not have. */
   const isDir = row.type === "directory";
-  return html`
-    <div
-      class=${classMap({
-        "file-tree-item": true,
-        selected: requireProjectState().selectedPath === row.path,
-      })}
-      style="padding-left:${8 + row.depth * 16}px"
-      role="treeitem"
-      aria-level=${row.depth + 1}
-      aria-posinset=${row.posInSet}
-      aria-setsize=${row.setSize}
-      tabindex=${tabStop ? "0" : "-1"}
-      data-path=${row.path}
-      data-type=${row.type}
-      aria-expanded=${isDir ? String(row.expanded) : nothing}
-      @click=${async (e: MouseEvent) => {
-        e.stopPropagation();
-        if (isDir) {
-          await toggleTreeDirectory(row.path);
-          ctx.renderLeftPanel();
-        } else {
-          ctx.openFileFn(row.path);
-        }
-      }}
-      @contextmenu=${(e: MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showFileContextMenu(e, { name: row.name, path: row.path, type: row.type }, ctx);
-      }}
-    >
-      ${
-        isDir
-          ? html`<span class="file-tree-toggle">${row.expanded ? "▼" : "▶"}</span>`
-          : html`<span class="file-tree-toggle empty"> </span>`
-      }
-      <span class="file-tree-icon">${fileTypeIconTpl(row.path, row.type)}</span>
-      <span class="file-tree-name">${row.name}</span>
-      ${
-        row.locale === undefined
-          ? nothing
-          : html`<span class="file-tree-locale">${localeLabel(row.locale)}</span>`
-      }
-    </div>
-  `;
+  return {
+    ariaExpanded: isDir ? String(row.expanded) : "",
+    depth: String(row.depth),
+    icon: fileIconName(row.path, row.type, row.expanded),
+    key: row.key,
+    kind: "item",
+    level,
+    locale: row.locale === undefined ? "" : localeLabel(row.locale),
+    localeState: row.locale === undefined ? "hidden" : "shown",
+    name: row.name,
+    path: row.path,
+    posInSet: String(row.posInSet),
+    setSize: String(row.setSize),
+    type: row.type,
+  };
+}
+
+/**
+ * Everything the Files document draws right now.
+ *
+ * Three shapes, discriminated by one word, because "there is no project", "this is a monorepo root
+ * that has not been pointed at a site" and "here is a tree" are three different things to say and
+ * the first two have different offers. The rows are the WINDOW, and the scroll of everything either
+ * side of it is reserved by the two spacers — so the array this hands over is a dozen rows whether
+ * the project holds twelve files or ten thousand.
+ */
+function filesPanelValues(): FilesPanelValues {
+  sweepRowElements();
+  if (!projectState) {
+    _fileRows = [];
+    const values: FilesPanelValues = { ...emptyFilesPanelValues(), view: "none" };
+    _lastValues = values;
+    return values;
+  }
+  if (!projectState.isSiteProject && projectState.projectRoot === ".") {
+    _fileRows = [];
+    const values: FilesPanelValues = { ...emptyFilesPanelValues(), view: "welcome" };
+    _lastValues = values;
+    return values;
+  }
+
+  const state = requireProjectState();
+  _fileRows = [];
+  // Resolved once for the whole tree, not once per row: this runs on EVERY repaint of the
+  // Navigator, and `resolveI18n` canonicalizes every declared tag through `Intl.Locale`.
+  const { i18n } = resolveI18n(state.projectConfig ?? {});
+  collectFileRows(".", 0, _fileRows, i18n);
+  // Windowed against the element the document holds, which is the only one that exists while this
+  // Is being built. There is none before the first mount, and `listWindow` then answers "all of
+  // Them".
+  const range = listWindow(_fileList, { count: _fileRows.length, rowHeight: fileRowHeight() });
+  const drawn = _fileRows.slice(range.start, range.end);
+  /* The caret is a SEED, not a clamp. `jx-tree` owns it, keeps it across every repaint that does
+     not change `current`, and falls back to the first drawn row for the TAB STOP on its own — so a
+     reader whose row has scrolled three hundred rows away keeps their place and still has a way
+     back in with Tab. What this replaced recomputed the stop from the selection on every paint and
+     clamped it into the window, which moved the reader on a wheel.
+
+     It must still NAME a row, and the fallback is what guarantees it rather than tidiness: `move`
+     reports the caret's own row as `from`, and a tree nobody has touched would report `""` and send
+     every ↓ off the bottom of the window back to the first row of the project. */
+  const caret =
+    (state.selectedPath !== null && fileRowAt(state.selectedPath) ? state.selectedPath : "") ||
+    drawn.find((row) => !row.loading)?.path ||
+    "";
+  const showingIgnored = showIgnoredFiles();
+
+  const values: FilesPanelValues = {
+    currentPath: caret,
+    dragPath: _dragPath,
+    dropPath: _dropPath,
+    headerState: state.isSiteProject ? "shown" : "hidden",
+    ignoredIcon: showingIgnored ? "eye" : "eye-slash",
+    ignoredLabel: showingIgnored ? "Hide ignored files" : "Show ignored files",
+    ignoredSelected: showingIgnored,
+    padBottom: range.padBottom,
+    padTop: range.padTop,
+    projectName: state.projectConfig?.name || state.name,
+    query: state.searchQuery,
+    rootDrop: _rootDrop,
+    rows: drawn.map((row) => fileRowView(row)),
+    selectedPath: state.selectedPath ?? "",
+    view: "tree",
+  };
+  _lastValues = values;
+  return values;
+}
+
+/**
+ * Say only what a DRAG changed, without rebuilding the row model.
+ *
+ * `onDrag` fires per pointer move. Re-projecting from scratch would re-walk every listed directory,
+ * re-resolve the locales and re-slice the window on each of them, so the three fields a drag
+ * actually moves are written over the last projection instead — and because the document compares
+ * each of them against `$map.item.path`, what reaches the DOM is one attribute per drawn row.
+ */
+function syncFilesDragState(): void {
+  if (!_standingFiles || !_lastValues) {
+    return;
+  }
+  _lastValues = {
+    ..._lastValues,
+    dragPath: _dragPath,
+    dropPath: _dropPath,
+    rootDrop: _rootDrop,
+  };
+  _standingFiles.handle.update(_lastValues);
+}
+
+/** Repaint the Navigator, which is what brings a new projection to the mounted document. */
+function repaintFiles(): void {
+  _filesRerender?.();
+}
+
+// ─── The panel's own verbs ───────────────────────────────────────────────────
+
+/** Re-read every listed directory, and the `.gitignore` rules with them. */
+async function refreshFileTree(): Promise<void> {
+  const state = requireProjectState();
+  state.dirs.clear();
+  /* The rules go with the listings. Refresh is what an author reaches for after editing a
+     `.gitignore` by hand, and a tree that came back still hiding by the old rules would read as
+     the button not having worked. */
+  resetIgnoreCache();
+  await loadDirectory(".");
+  for (const dir of state.expanded) {
+    await loadDirectory(dir);
+  }
+  repaintFiles();
+}
+
+/**
+ * What a click or Enter on a row MEANS.
+ *
+ * One verb for both kinds of row, decided here rather than in the document: a directory opens, a
+ * file opens in a tab, and a row whose model has since gone does nothing at all.
+ */
+function activateFileRow(path: string): void {
+  const row = fileRowAt(path);
+  if (!row) {
+    return;
+  }
+  if (row.type === "directory") {
+    void toggleTreeDirectory(path).then(() => repaintFiles());
+    return;
+  }
+  void openFileInTab(path);
+}
+
+/**
+ * `jx-tree` says a row should be OPENED or CLOSED; this is what that means to a directory.
+ *
+ * One entry point for the twisty, `ArrowRight` and `ArrowLeft` alike, because the element resolves
+ * all three into the state the row should be PUT INTO before it asks. The guard is still load
+ * bearing: a leaf's twisty box is drawn empty and still answers a click, so a file can arrive here
+ * asking to be expanded and must be told nothing happens.
+ */
+function expandFileRow(path: string, expanded: boolean): void {
+  const state = requireProjectState();
+  if (fileRowAt(path)?.type !== "directory" || state.expanded.has(path) === expanded) {
+    return;
+  }
+  if (!expanded) {
+    state.expanded.delete(path);
+    // It used to leave the repaint to "the caller who sets up keyboard", and there was no such
+    // Caller: ← changed the state and left the children on screen until something else happened to
+    // Redraw the panel.
+    repaintFiles();
+    return;
+  }
+  // The expansion repaints THROUGH the panel. It used to synthesise a click on the focused row to
+  // Get a repaint, which ran that row's own toggle a second time and only did the right thing
+  // Because the handler's captured `isExpanded` was already stale.
+  void toggleTreeDirectory(path).then(() => repaintFiles());
+}
+
+/**
+ * The reader meant that row.
+ *
+ * The tree is single-select, so `jx-tree` has already resolved every modifier to one replace before
+ * this is reached. Selection follows the caret here where it used to lag behind it: the tab stop
+ * was computed FROM `selectedPath`, so an arrow key moved the focus and left the highlight on the
+ * row the reader had left.
+ *
+ * The selection is also the only thing this module remembers about where the caret IS. It does not
+ * need a second variable: `jx-tree` owns the caret and keeps it across every repaint that does not
+ * change `current`, so what the projection owes it is a SEED — a row to start on, and a row to come
+ * back to when the one it was on has gone.
+ */
+function selectFileRow(path: string): void {
+  if (!projectState || requireProjectState().selectedPath === path) {
+    return;
+  }
+  requireProjectState().selectedPath = path;
+  repaintFiles();
+}
+
+/**
+ * The caret has to reach a row the window did not draw.
+ *
+ * `jx-tree` walks the DRAWN rows and stops at the ends of the slice; when a pad says the model
+ * continues that way it dispatches this instead of performing anything, because where the row is
+ * and how far to scroll are facts about the model. Each key is answered here exactly as the element
+ * would have answered it over a slice that held everything.
+ */
+function moveFileCaret(from: string, key: string): void {
+  const index = fileIndexOfPath(from);
+  let target: number;
+  switch (key) {
+    case "Home": {
+      target = fileStep(-1, 1);
+      break;
+    }
+    case "End": {
+      target = fileStep(_fileRows.length, -1);
+      break;
+    }
+    case "ArrowUp": {
+      target = fileStep(index, -1);
+      break;
+    }
+    case "ArrowLeft": {
+      target = fileParentIndex(index);
+      break;
+    }
+    // ↓ and → both ask for the next drawn row; over the model they are the same step.
+    case "ArrowDown":
+    case "ArrowRight": {
+      target = fileStep(index, 1);
+      break;
+    }
+    default: {
+      return;
+    }
+  }
+  focusFileRow(target);
+}
+
+/**
+ * A printable character on a windowed tree: find the model row it names, and go there.
+ *
+ * `jx-tree` resolves typeahead itself only when the drawn rows ARE the model; past that it
+ * dispatches, and the reason is sharper than the one behind `move`. A move off the end of the slice
+ * announces itself — there is nothing to land on. A letter never does: the element's search over
+ * the drawn rows always answers, and over `node_modules` the answer is whichever of the eleven
+ * painted rows happened to start with that letter.
+ *
+ * The search is the element's own, moved onto the full list: forward from the caret, wrapping once,
+ * matching the row's NAME — which is the string the row draws and announces, so the caret can never
+ * land somewhere the reader was not told about — and skipping the "Loading…" placeholders, which
+ * are not tree items and which the arrows already step over.
+ *
+ * @param {string} from The row the caret is on
+ * @param {string} char The character typed, lowercased
+ */
+function typeaheadFileCaret(from: string, char: string): void {
+  const start = fileIndexOfPath(from);
+  const total = _fileRows.length;
+  for (let step = 1; step <= total; step++) {
+    const at = (start + step + total) % total;
+    const row = _fileRows[at];
+    if (row && !row.loading && row.name.trim().toLowerCase().startsWith(char)) {
+      focusFileRow(at);
+      return;
+    }
+  }
+}
+
+/**
+ * Reveal the model row at `index` and put the caret on it.
+ *
+ * The SELECTION moves with it, and that is not a flourish: `jx-tree` raises `select` alongside
+ * `change` on every arrow it can perform itself, so a step the window could not satisfy must not be
+ * the one step that silently does not. It is also what moves the CARET, because the projection
+ * seeds `currentPath` from the selection — and that write is the whole of this panel's side of the
+ * handoff.
+ *
+ * **The keyboard is deliberately not touched here.** This is the answer to a `move` or a
+ * `typeahead` the tree could not perform, and `jx-tree` keeps the keyboard across both: it focuses
+ * the caret row once its own sync has written the roving `tabindex` onto the revealed element,
+ * which is the only moment focusing it does anything. What this function used to do instead was
+ * pend the path and spend the request from `onNodeCreated` — one reconcile step before the row had
+ * a `tabindex` at all — so the `focus()` was a silent no-op and the caret jump never landed.
+ */
+function focusFileRow(index: number): void {
+  const row = _fileRows[index];
+  if (!row) {
+    return;
+  }
+  selectFileRow(row.path);
+  if (fileRowElement(row.path)) {
+    return;
+  }
+  revealListRow(_fileList, index, fileRowHeight());
+  repaintFiles();
 }
 
 /** Expand or collapse one directory, listing it the first time it is opened. */
@@ -895,107 +1067,32 @@ async function toggleTreeDirectory(path: string): Promise<void> {
   }
 }
 
-/*
- * There is no setupTreeKeyboard here any more, and no WeakSet of trees that already have one.
- *
- * The panel's afterRender called it after every repaint and lit re-uses the `.file-tree` element
- * across all of them, so the unguarded `addEventListener` it replaced accumulated one listener per
- * render — after ten repaints a single Down keystroke walked ten rows. The WeakSet made that safe;
- * `@keydown` on the element the template already renders makes it impossible, because lit owns the
- * binding and swaps it rather than stacking it.
- */
+// ─── Drag and drop: the island the document draws a home for ─────────────────
 
 /**
- * The tree's keyboard model: ↑↓ walk the rows, → expands, ← collapses, Enter opens.
+ * What is registered against each drawn row, so it can be released when the row leaves the window.
  *
- * ↑ and ↓ step through the MODEL, not through the rendered rows. A DOM-indexed walk stopped dead at
- * the last row of the window — three rows past the bottom of the viewport, with thousands of files
- * still below it — because there was simply no next element to focus. When the step lands outside
- * the window the scroller moves instead, and the focus follows on the repaint ({@link
- * adoptFileTree}).
+ * Keyed by the ELEMENT rather than by the path: a windowed list re-uses nodes, and the question
+ * this map answers is "has this node's registration already been taken back", which is about the
+ * node.
  */
-function onFileTreeKeydown(e: KeyboardEvent, tree: HTMLElement): void {
-  const focused = tree.querySelector(".file-tree-item:focus") as HTMLElement | null;
-  if (!focused) {
-    return;
-  }
-  let handled = true;
-
-  switch (e.key) {
-    case "ArrowDown":
-    case "ArrowUp": {
-      const from = fileIndexOfPath(focused.dataset.path);
-      focusFileRow(tree, fileStep(from, e.key === "ArrowDown" ? 1 : -1));
-      break;
-    }
-    case "ArrowRight": {
-      const path = collapsedDirectoryAt(focused);
-      if (path !== null) {
-        // The expansion repaints THROUGH the panel. It used to synthesise a click on the focused
-        // Row to get a repaint, which ran that row's own toggle a second time and only did the
-        // Right thing because the handler's captured `isExpanded` was already stale.
-        void toggleTreeDirectory(path).then(() => _filesRerender?.());
-      }
-      break;
-    }
-    case "ArrowLeft": {
-      const path = expandedDirectoryAt(focused);
-      if (path !== null) {
-        requireProjectState().expanded.delete(path);
-        // It used to leave the repaint to "the caller who sets up keyboard", and there was no such
-        // Caller: ← changed the state and left the children on screen until something else
-        // Happened to redraw the panel.
-        _filesRerender?.();
-      }
-      break;
-    }
-    case "Enter": {
-      focused.click();
-      break;
-    }
-    default: {
-      handled = false;
-    }
-  }
-  if (handled) {
-    e.preventDefault();
-  }
-}
-
-/** The row's directory path when it is a COLLAPSED directory — what → acts on, and nothing else. */
-function collapsedDirectoryAt(row: HTMLElement): string | null {
-  const { path, type } = row.dataset;
-  return type === "directory" && path !== undefined && !requireProjectState().expanded.has(path)
-    ? path
-    : null;
-}
-
-/** The row's directory path when it is an EXPANDED directory — what ← acts on, and nothing else. */
-function expandedDirectoryAt(row: HTMLElement): string | null {
-  const { path, type } = row.dataset;
-  return type === "directory" && path !== undefined && requireProjectState().expanded.has(path)
-    ? path
-    : null;
-}
-
-/** Move the keyboard to the model row at `index`, bringing it into the window if it is outside. */
-function focusFileRow(tree: HTMLElement, index: number): void {
-  const row = _fileRows[index];
-  if (!row) {
-    return;
-  }
-  const el = fileRowElement(tree, row.path);
-  if (el) {
-    el.focus();
-    return;
-  }
-  if (revealListRow(_fileList, index, fileRowHeight())) {
-    _pendingFocusPath = row.path;
-    _filesRerender?.();
-  }
-}
-
-let _fileTreeDndCleanups: (() => void)[] = [];
+const _rowDnd = new Map<HTMLElement, () => void>();
+/** What is registered against the tree itself: the project root's two drop targets, and the monitor. */
+let _treeDnd: { element: HTMLElement; cleanup: () => void } | null = null;
+/** The row being dragged, the row a drag is over, and whether the background is. */
+let _dragPath = "";
+/**
+ * The row the pointer is over, whether or not it will take the drop.
+ *
+ * Two facts, not one, because the tree background is a drop target that CONTAINS every row: a
+ * refused row still has to occlude it, or a drop the row said no to lands in the project root.
+ * {@link _dropPath} is the row that will take the drop; this is the row that is in the way.
+ */
+let _overRow = "";
+let _dropPath = "";
+/** Whether the tree background is under the drag; {@link _rootDrop} is what that projects to. */
+let _overRoot = false;
+let _rootDrop = "";
 
 /** Whether a drag carries OS files (as opposed to a pragmatic in-app drag). */
 export function isFileDrag(e: DragEvent): boolean {
@@ -1003,15 +1100,19 @@ export function isFileDrag(e: DragEvent): boolean {
 }
 
 /**
- * Attach external-file drop handling to one tree row. Pragmatic-dnd only sees pragmatic sources, so
+ * Attach external-file drop handling to one element. Pragmatic-dnd only sees pragmatic sources, so
  * an OS file drag needs the native listeners; `dir` is where a drop lands (the row itself for a
  * directory, its parent for a file, `.` for the tree background).
+ *
+ * The affordance is reported rather than drawn: `setActive` writes the state the document renders
+ * from, where this used to add and remove a class. That is the same correction the Library made — a
+ * highlight a handler adds is a highlight another handler has to remember to take away, and a drag
+ * that left the window never fired the handler that would have.
  */
 function registerFileDropTarget(
   element: HTMLElement,
   dir: string,
-  activeClass: string,
-  renderLeftPanel: () => void,
+  setActive: (active: boolean) => void,
 ): () => void {
   const onDragOver = (e: DragEvent) => {
     if (!isFileDrag(e)) {
@@ -1022,18 +1123,18 @@ function registerFileDropTarget(
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = "copy";
     }
-    element.classList.add(activeClass);
+    setActive(true);
   };
-  const onDragLeave = () => element.classList.remove(activeClass);
+  const onDragLeave = () => setActive(false);
   const onDrop = (e: DragEvent) => {
-    element.classList.remove(activeClass);
+    setActive(false);
     const files = e.dataTransfer?.files;
     if (!files?.length) {
       return;
     }
     e.preventDefault();
     e.stopPropagation();
-    void uploadFilesToDir(files, dir, renderLeftPanel);
+    void uploadFilesToDir(files, dir, repaintFiles);
   };
   element.addEventListener("dragover", onDragOver);
   element.addEventListener("dragleave", onDragLeave);
@@ -1043,6 +1144,72 @@ function registerFileDropTarget(
     element.removeEventListener("dragleave", onDragLeave);
     element.removeEventListener("drop", onDrop);
   };
+}
+
+/**
+ * Whether the tree will move `srcPath` into `targetDir` — the ONE predicate behind every answer the
+ * drag gives: which rows light up, which drops the monitor performs, and whether the background
+ * offers the project root.
+ *
+ * Four refusals, and the third is the one nothing used to say. A directory is not a place inside
+ * itself; an entry already in a directory (at any depth) has nowhere to go by being dropped on it;
+ * a directory may not be moved into its own descendant, which is a rename onto a path underneath
+ * the thing being renamed and which the tree happily offered until the server answered 500; and an
+ * entry already directly in the target is a no-op — the case that spelled `.` for the root.
+ *
+ * Both sides are normalised first: `assets\logo.png` and `assets/logo.png` name one entry, and a
+ * predicate that agreed with itself only on one of the two spellings is a predicate with a hole.
+ */
+export function canMoveInto(srcPath: string, targetDir: string): boolean {
+  const src = srcPath.replaceAll("\\", "/");
+  const dir = targetDir.replaceAll("\\", "/");
+  if (!src || src === dir) {
+    return false;
+  }
+  if (src.startsWith(`${dir}/`) || dir.startsWith(`${src}/`)) {
+    return false;
+  }
+  return parentDir(src) !== dir;
+}
+
+/** {@link canMoveInto} for a ROW: only a directory has an inside to move something into. */
+function acceptsDrop(srcPath: unknown, targetPath: string, targetType: string): boolean {
+  return (
+    targetType === "directory" && typeof srcPath === "string" && canMoveInto(srcPath, targetPath)
+  );
+}
+
+/**
+ * Say which row the drag is over and whether that row will take it, and let the document redraw.
+ *
+ * The root affordance is DERIVED here rather than set alongside: a drag over a row is never also a
+ * drag over the background, and the two flags used to be written independently — so a row that
+ * refused the drop left the tree lit up saying the project root would take it, which after the
+ * refusal became final is no longer true either.
+ */
+function setRowUnderDrag(row: string, accepted: boolean): void {
+  const dropPath = accepted ? row : "";
+  if (_overRow === row && _dropPath === dropPath) {
+    return;
+  }
+  _overRow = row;
+  _dropPath = dropPath;
+  syncRootDrop();
+}
+
+/** Say whether a drag is over the tree background, which is the project root. */
+function setRootUnderDrag(active: boolean): void {
+  if (_overRoot === active) {
+    return;
+  }
+  _overRoot = active;
+  syncRootDrop();
+}
+
+/** Recompute the background's affordance from the two facts, and project both. */
+function syncRootDrop(): void {
+  _rootDrop = _overRoot && _overRow === "" ? "true" : "";
+  syncFilesDragState();
 }
 
 /**
@@ -1066,7 +1233,7 @@ export async function uploadFilesToDir(
 
 /**
  * Open the OS file picker and upload the choice into `dir` (the tree's "Upload Files…" item). The
- * input is created per invocation and discarded after — the tree template is re-rendered often.
+ * input is created per invocation and discarded after — the tree is re-rendered often.
  */
 export function pickAndUploadTo(dir: string, renderLeftPanel: () => void): void {
   const input = document.createElement("input");
@@ -1082,158 +1249,181 @@ export function pickAndUploadTo(dir: string, renderLeftPanel: () => void): void 
 }
 
 /**
- * Register drag-and-drop on file tree items. Called after each file tree render.
+ * Adopt one row element the document has just created: remember it, make it a drag source, and give
+ * it the two drop behaviours its KIND earns.
  *
- * @param {{ renderLeftPanel: () => void }} ctx
+ * Every row is a source, an external-file target and an in-app target. Only a DIRECTORY accepts an
+ * in-app drop, because a file has no inside to move something into — but a file row registers the
+ * target anyway and refuses in its data, because a row that is not a target at all is a row the
+ * drop falls straight through, onto the tree, which is the project root. The registration happens
+ * as the node is created, which is the one moment at which "this element is that path" is certainly
+ * true.
  */
-export function registerFileTreeDnD({ renderLeftPanel }: { renderLeftPanel: () => void }) {
-  // Clean up previous registrations
-  for (const fn of _fileTreeDndCleanups) {
-    fn();
-  }
-  _fileTreeDndCleanups = [];
+function adoptFileRow(element: HTMLElement, path: string, type: string): void {
+  releaseRowDnD(element);
+  _fileRowEls.set(path, element);
 
-  requestAnimationFrame(() => {
-    const tree = document.querySelector(".file-tree") as HTMLElement | null;
-    if (!tree) {
-      return;
-    }
-
-    const items = tree.querySelectorAll(".file-tree-item") as NodeListOf<HTMLElement>;
-
-    for (const row of items) {
-      const { path } = row.dataset;
-      const { type } = row.dataset;
-      if (!path) {
-        continue;
-      }
-
-      const cleanups = [
-        draggable({
-          element: row,
-          getInitialData() {
-            return { entryType: type, path, type: "file-tree" };
-          },
-          onDragStart() {
-            row.classList.add("dragging");
-          },
-          onDrop() {
-            row.classList.remove("dragging");
-          },
-        }),
-        // Files dropped from the OS land in the row's own directory; a file row targets its parent
-        // So dropping next to a sibling puts the upload beside it.
-        registerFileDropTarget(
-          row,
-          type === "directory" ? path : parentDir(path),
-          "drag-over",
-          renderLeftPanel,
-        ),
-      ];
-
-      if (type === "directory") {
-        cleanups.push(
-          dropTargetForElements({
-            canDrop({ source }) {
-              if (source.data.type !== "file-tree") {
-                return false;
-              }
-              const srcPath = source.data.path as string;
-              if (srcPath === path) {
-                return false;
-              }
-              if (srcPath.startsWith(`${path}/`)) {
-                return false;
-              }
-              const srcParent = parentDir(srcPath);
-              if (srcParent === path) {
-                return false;
-              }
-              return true;
-            },
-            element: row,
-            getData() {
-              return { targetDir: path, type: "file-tree-target" };
-            },
-            onDrag() {
-              if (!row.classList.contains("drag-over")) {
-                row.classList.add("drag-over");
-              }
-            },
-            onDragEnter() {
-              row.classList.add("drag-over");
-            },
-            onDragLeave() {
-              row.classList.remove("drag-over");
-            },
-            onDrop() {
-              row.classList.remove("drag-over");
-            },
-          }),
-        );
-      }
-
-      _fileTreeDndCleanups.push(combine(...cleanups));
-    }
-
-    // Root-level drop target (move to project root)
-    const rootCleanup = dropTargetForElements({
-      canDrop({ source }) {
-        if (source.data.type !== "file-tree") {
-          return false;
-        }
-        const srcPath = source.data.path as string;
-        return parentDir(srcPath) !== ".";
+  const cleanups = [
+    draggable({
+      element,
+      getInitialData() {
+        return { entryType: type, path, type: "file-tree" };
       },
-      element: tree,
-      getData() {
-        return { targetDir: ".", type: "file-tree-target" };
-      },
-      onDragEnter() {
-        tree.classList.add("drag-over-root");
-      },
-      onDragLeave() {
-        tree.classList.remove("drag-over-root");
+      onDragStart() {
+        _dragPath = path;
+        syncFilesDragState();
       },
       onDrop() {
-        tree.classList.remove("drag-over-root");
+        _dragPath = "";
+        setRowUnderDrag("", false);
+        syncFilesDragState();
       },
-    });
-    // The tree background is the project root's drop target for OS files. Row handlers
-    // StopPropagation, so a drop on a row never also fires here.
-    _fileTreeDndCleanups.push(
-      rootCleanup,
-      registerFileDropTarget(tree, ".", "drag-over-root", renderLeftPanel),
-    );
-
-    // Monitor for drop events
-    const monitorCleanup = monitorForElements({
-      onDrop({ source, location }) {
-        const [target] = location.current.dropTargets;
-        if (!target) {
-          return;
-        }
-        if (source.data.type !== "file-tree") {
-          return;
-        }
-        if (target.data.type !== "file-tree-target") {
-          return;
-        }
-
-        const srcPath = source.data.path as string;
-        const targetDirPath = target.data.targetDir as string;
-        const fileName = srcPath.split("/").pop();
-        const newPath = targetDirPath === "." ? fileName : `${targetDirPath}/${fileName}`;
-
-        if (newPath === srcPath) {
-          return;
-        }
-
-        void moveFileEntry(srcPath, newPath!, renderLeftPanel);
+    }),
+    // Files dropped from the OS land in the row's own directory; a file row targets its parent so
+    // Dropping next to a sibling puts the upload beside it.
+    registerFileDropTarget(element, type === "directory" ? path : parentDir(path), (active) => {
+      setRowUnderDrag(active ? path : "", active);
+    }),
+    /**
+     * The in-app target — on EVERY row, accepting or not.
+     *
+     * A row that answered `canDrop: false` was not a drop target at all, and pragmatic-dnd
+     * documents what happens next: "blocking dropping on a drop target will not block dropping on
+     * child or parent drop targets". The next target up is the tree element, whose target IS the
+     * project root — so a refused drop became a move to the root, silently, with no affordance
+     * anywhere on screen to warn the reader it would. Answering `true` and carrying the verdict in
+     * the DATA keeps the innermost target innermost, which is what makes a refusal final.
+     */
+    dropTargetForElements({
+      canDrop({ source }) {
+        return source.data.type === "file-tree";
       },
-    });
-    _fileTreeDndCleanups.push(monitorCleanup);
+      element,
+      getData({ source }) {
+        return acceptsDrop(source.data.path, path, type)
+          ? { targetDir: path, type: "file-tree-target" }
+          : { type: "file-tree-refused" };
+      },
+      onDrag({ source }) {
+        setRowUnderDrag(path, acceptsDrop(source.data.path, path, type));
+      },
+      onDragEnter({ source }) {
+        setRowUnderDrag(path, acceptsDrop(source.data.path, path, type));
+      },
+      onDragLeave() {
+        setRowUnderDrag("", false);
+      },
+      onDrop() {
+        setRowUnderDrag("", false);
+      },
+    }),
+  ];
+
+  _rowDnd.set(element, combine(...cleanups));
+}
+
+/** Take back everything registered against one row element. */
+function releaseRowDnD(element: HTMLElement): void {
+  const cleanup = _rowDnd.get(element);
+  if (cleanup) {
+    cleanup();
+    _rowDnd.delete(element);
+  }
+}
+
+/**
+ * Adopt the tree element: the window's scroller, the project root's drop target, and the monitor
+ * that turns a completed drag into a move.
+ *
+ * Registered once, against the element the document created. The pass this replaced ran on every
+ * repaint and re-registered every row from scratch, which is what made a drag mid-scroll drop its
+ * own sources.
+ */
+function adoptFileTreeElement(element: HTMLElement): void {
+  if (_treeDnd?.element === element) {
+    return;
+  }
+  releaseFileTreeDnD();
+  _fileList = element;
+
+  /* The background keeps an honest `canDrop`: it is the OUTERMOST target, so there is nothing
+     inside it for a refusal here to leak to. Its affordance is suppressed while a row is under the
+     pointer — {@link syncRootDrop} — because the row is what the drop will reach. */
+  const rootCleanup = dropTargetForElements({
+    canDrop({ source }) {
+      return source.data.type === "file-tree" && canMoveInto(source.data.path as string, ".");
+    },
+    element,
+    getData() {
+      return { targetDir: ".", type: "file-tree-target" };
+    },
+    onDragEnter() {
+      setRootUnderDrag(true);
+    },
+    onDragLeave() {
+      setRootUnderDrag(false);
+    },
+    onDrop() {
+      setRootUnderDrag(false);
+    },
   });
+
+  const monitorCleanup = monitorForElements({
+    onDrop({ source, location }) {
+      const [target] = location.current.dropTargets;
+      if (!target) {
+        return;
+      }
+      if (source.data.type !== "file-tree") {
+        return;
+      }
+      /* The INNERMOST target and no other. `dropTargets` is bubble-ordered, so reading [0] and
+         then refusing what it says is what keeps a row's "no" from becoming the tree's "yes". */
+      if (target.data.type !== "file-tree-target") {
+        return;
+      }
+
+      const srcPath = source.data.path as string;
+      const targetDirPath = target.data.targetDir as string;
+      if (!canMoveInto(srcPath, targetDirPath)) {
+        return;
+      }
+      const fileName = srcPath.split("/").pop();
+      const newPath = targetDirPath === "." ? fileName : `${targetDirPath}/${fileName}`;
+
+      void moveFileEntry(srcPath, newPath!, repaintFiles);
+    },
+  });
+
+  _treeDnd = {
+    cleanup: combine(
+      rootCleanup,
+      monitorCleanup,
+      // The tree background is the project root's drop target for OS files. Row handlers
+      // StopPropagation, so a drop on a row never also fires here.
+      registerFileDropTarget(element, ".", setRootUnderDrag),
+    ),
+    element,
+  };
+  adoptFileTree();
+}
+
+/** Take back the tree's own registrations and its scroll watch. */
+function releaseFileTreeDnD(): void {
+  _treeDnd?.cleanup();
+  _treeDnd = null;
+  for (const cleanup of _rowDnd.values()) {
+    cleanup();
+  }
+  _rowDnd.clear();
+  _fileWatch?.window.destroy();
+  _fileWatch = null;
+  _fileList = null;
+  _dragPath = "";
+  _overRow = "";
+  _dropPath = "";
+  _overRoot = false;
+  _rootDrop = "";
 }
 
 /**
@@ -1297,23 +1487,11 @@ function parentDir(path: string) {
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-let _fileCtxHandle: ReturnType<typeof renderPopover> | null = null;
+let _fileMenu: MenuHandle | null = null;
 
-function dismissFileContextMenu() {
-  if (_fileCtxHandle) {
-    _fileCtxHandle.dismiss();
-    _fileCtxHandle = null;
-  }
-}
-
-/** One row of the file menu. The divider is the em-dash label; `disabled` rows explain themselves. */
-interface FileMenuItem {
-  label: string;
-  action?: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-  /** The `requires` sentence, printed under a disabled row. */
-  reason?: string;
+function dismissFileContextMenu(): void {
+  _fileMenu?.close();
+  _fileMenu = null;
 }
 
 /**
@@ -1361,6 +1539,16 @@ function fileRowFacts(entry: { path: string; type: string }): Record<string, unk
   return facts;
 }
 
+/** One of the tree's OWN verbs, as the kit menu reads a row. */
+function treeMenuRow(
+  id: string,
+  title: string,
+  run: () => void,
+  extra: Partial<MenuRowProjection> = {},
+): MenuRowProjection {
+  return { destructive: false, disabled: false, dividerAbove: false, id, run, title, ...extra };
+}
+
 /**
  * The declared `context/file` commands this row can offer.
  *
@@ -1368,13 +1556,13 @@ function fileRowFacts(entry: { path: string; type: string }): Record<string, unk
  * `group`), whether it is enabled and the sentence saying why not. Nothing here names a command, so
  * a new `context/file` record appears in the tree with no edit to this file.
  */
-function placedFileItems(entry: { path: string; type: string }): FileMenuItem[] {
+function placedFileRows(entry: { path: string; type: string }): MenuRowProjection[] {
   const registry = activeRegistry();
   if (!registry) {
     return [];
   }
   const facts = fileRowFacts(entry);
-  const items: FileMenuItem[] = [];
+  const rows: MenuRowProjection[] = [];
   for (const command of registry.forPlacement("context/file")) {
     const schema = command.args as
       | { properties?: Record<string, unknown>; required?: readonly string[] }
@@ -1389,128 +1577,111 @@ function placedFileItems(entry: { path: string; type: string }): FileMenuItem[] 
       }
     }
     const reason = registry.disabledReason(command.id);
-    items.push(
+    rows.push(
       reason === undefined
-        ? {
-            action: () => {
-              void registry.run(command.id, args);
-            },
-            label: command.title,
-          }
-        : { disabled: true, label: command.title, reason },
+        ? treeMenuRow(command.id, command.title, () => {
+            void registry.run(command.id, args);
+          })
+        : {
+            destructive: false,
+            disabled: true,
+            dividerAbove: false,
+            id: command.id,
+            // A disabled row says what it needs, the same sentence the palette and the agent
+            // Print — `requires`, off the record, never re-worded here.
+            requires: reason,
+            title: command.title,
+          },
     );
   }
-  return items;
+  return rows;
 }
 
-function showFileContextMenu(
-  e: MouseEvent,
-  entry: { name: string; path: string; type: string },
-  ctx: { openFileFn: (path: string) => void; renderLeftPanel: () => void },
-) {
-  e.preventDefault();
-  dismissFileContextMenu();
+/**
+ * Everything one row can be asked to do, in the order it is offered.
+ *
+ * The declared rows sit between what the TREE does to a file (open it, create in it, upload to it)
+ * and what it does to the file's existence (rename, delete) — and the boundary between the last two
+ * groups is the `dividerAbove` on Rename, which is what the `"—"` sentinel row used to stand for.
+ */
+function fileMenuRows(entry: { name: string; path: string; type: string }): MenuRowProjection[] {
   const isDir = entry.type === "directory";
-
-  const items: FileMenuItem[] = [];
-
-  if (!isDir) {
-    items.push({ action: () => ctx.openFileFn(entry.path), label: "Open" });
-  }
+  const rows: MenuRowProjection[] = [];
   if (isDir) {
-    items.push(
-      {
-        action: () => createNewFile(entry.path, ctx.renderLeftPanel),
-        label: "New File\u2026",
-      },
-      {
-        action: () => pickAndUploadTo(entry.path, ctx.renderLeftPanel),
-        label: "Upload Files\u2026",
-      },
+    rows.push(
+      treeMenuRow("files.newFile", "New File\u2026", () => {
+        void createNewFile(entry.path, repaintFiles);
+      }),
+      treeMenuRow("files.upload", "Upload Files\u2026", () => {
+        pickAndUploadTo(entry.path, repaintFiles);
+      }),
     );
     if (entry.path === "pages" || entry.path.endsWith("/pages")) {
       // The one hand-built row left: no command declares "open the pages grid". `grid-open.ts`'s
       // `collection.editInGrid` has no pages sibling, so there is nothing here to render yet.
-      items.push({
-        action: () => {
+      rows.push(
+        treeMenuRow("files.pagesGrid", "Edit Pages in Grid", () => {
           openPagesGrid();
-        },
-        label: "Edit Pages in Grid",
-      });
+        }),
+      );
     }
+  } else {
+    rows.push(
+      treeMenuRow("files.open", "Open", () => {
+        void openFileInTab(entry.path);
+      }),
+    );
   }
-  items.push(
-    // The declared rows sit between what the TREE does to a file (open it, create in it, upload to
-    // It) and what it does to the file's existence (rename, delete).
-    ...placedFileItems(entry),
-    { label: "\u2014" },
-    {
-      action: () => renameFile(entry, ctx.renderLeftPanel),
-      label: "Rename\u2026",
-    },
-    {
-      action: () => deleteFile(entry, ctx.renderLeftPanel),
-      danger: true,
-      label: "Delete",
-    },
-  );
-
-  let x = e.clientX;
-  let y = e.clientY;
-
-  _fileCtxHandle = renderPopover(
-    html`<sp-popover
-      open
-      style="position:fixed;z-index:10000;left:${x}px;top:${y}px"
-      ${ref((el) => {
-        if (!el) {
-          return;
-        }
-        requestAnimationFrame(() => {
-          const popover = el as HTMLElement;
-          const menuRect = rectOf(popover);
-          if (x + menuRect.width > window.innerWidth) {
-            x = window.innerWidth - menuRect.width - 4;
-          }
-          if (y + menuRect.height > window.innerHeight) {
-            y = window.innerHeight - menuRect.height - 4;
-          }
-          popover.style.left = `${x}px`;
-          popover.style.top = `${y}px`;
-        });
-      })}
-    >
-      <sp-menu>
-        ${items.map((item) =>
-          item.label === "\u2014"
-            ? html`<sp-menu-divider></sp-menu-divider>`
-            : html`<sp-menu-item
-                style=${item.danger ? "color: var(--danger)" : ""}
-                ?disabled=${item.disabled === true}
-                aria-disabled=${item.disabled === true ? "true" : "false"}
-                @click=${() => {
-                  if (item.disabled === true) {
-                    return;
-                  }
-                  dismissFileContextMenu();
-                  void item.action?.();
-                }}
-                >${item.label}${
-                  // A disabled row says what it needs, the same sentence the palette and the agent
-                  // Print — `requires`, off the record, never re-worded here.
-                  item.reason ? html`<span slot="description">Needs ${item.reason}</span>` : nothing
-                }</sp-menu-item
-              >`,
-        )}
-      </sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      onDismiss: () => {
-        _fileCtxHandle = null;
+  rows.push(
+    ...placedFileRows(entry),
+    treeMenuRow(
+      "files.rename",
+      "Rename\u2026",
+      () => {
+        void renameFile(entry, repaintFiles);
       },
-    },
+      { dividerAbove: true },
+    ),
+    treeMenuRow(
+      "files.delete",
+      "Delete",
+      () => {
+        void deleteFile(entry, repaintFiles);
+      },
+      { destructive: true },
+    ),
   );
+  return rows;
+}
+
+/**
+ * Open the file menu at the pointer.
+ *
+ * The KIT menu, not a popover of this module's own: `openMenu()` owns the panel, the roving focus,
+ * the typeahead, the light dismissal and Escape, and it is the answer this shell already settled on
+ * (§8.4). What went with the `sp-popover` it replaces is the hand-written clamp — a `ref` that
+ * measured the panel a frame after it opened and moved it back inside the viewport — because the
+ * kit does that for every menu instead of this one doing it for itself.
+ */
+function showFileContextMenu(path: string, x: number, y: number): void {
+  const row = fileRowAt(path);
+  if (!row) {
+    return;
+  }
+  dismissFileContextMenu();
+  const opener = fileRowElement(path);
+  _fileMenu = openMenu({
+    label: "File actions",
+    onClosed: (handle) => {
+      if (_fileMenu === handle) {
+        _fileMenu = null;
+      }
+    },
+    opener,
+    origin: { x, y },
+    region: "files",
+    rows: fileMenuRows({ name: row.name, path: row.path, type: row.type }),
+  });
 }
 
 // ─── File CRUD ────────────────────────────────────────────────────────────────
@@ -2293,10 +2464,113 @@ export function registerFilesPanel(): void {
     title: "Files",
     level: "project",
     dock: "navigator",
-    icon: "sp-icon-folder",
-    render: (ctx) => ctx.deps.renderFilesTemplate(),
-    afterRender: (ctx) => {
-      ctx.deps.registerFileTreeDnD({ renderLeftPanel: ctx.rerender });
+    icon: "folder",
+    // The body is a document, so lit draws nothing and the mount happens against the painted DOM.
+    // `afterRender` runs on every repaint; {@link mountFilesPanel} is idempotent.
+    render: () => nothing,
+    afterRender: (ctx, host) => {
+      mountFilesPanel(host, ctx.rerender);
     },
   });
+}
+
+// ─── The mount ───────────────────────────────────────────────────────────────
+
+/** Everything a control on the surface can ask for, defined once. */
+const FILE_ACTIONS: FilesPanelActions = {
+  activate: activateFileRow,
+  contextMenu: showFileContextMenu,
+  expand: expandFileRow,
+  move: moveFileCaret,
+  newFile: () => {
+    void createNewFile(".", repaintFiles);
+  },
+  openProject: () => {
+    /* The DECLARED command, run through the registry — never a second opener of this surface's own
+       (§12.5). It is the one the ⌘O chord, the palette and the status bar's PROJECT field already
+       run, and it is the only one that knows about the picker modal and the "new window" target. */
+    void activeRegistry()?.run("project.open");
+  },
+  refresh: () => {
+    void refreshFileTree();
+  },
+  rowHost: adoptFileRow,
+  search: (value) => {
+    requireProjectState().searchQuery = value;
+    repaintFiles();
+  },
+  select: selectFileRow,
+  toggleIgnored: () => {
+    /* A repaint and nothing else: the ignored entries were never dropped from `projectState.dirs`,
+       only from the rows built out of it. */
+    setShowIgnoredFiles(!showIgnoredFiles());
+    repaintFiles();
+  },
+  treeHost: adoptFileTreeElement,
+  typeahead: typeaheadFileCaret,
+};
+
+/** The mounted document, and the node it was mounted into. */
+let _standingFiles: { handle: FilesPanelSurfaceHandle; host: HTMLElement } | null = null;
+/** The last projection, so a drag can move three fields without rebuilding the row model. */
+let _lastValues: FilesPanelValues | null = null;
+
+/**
+ * Draw the panel — mounting the document the first time, and re-projecting into it every time
+ * after.
+ *
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed, for the
+ * reason `panels/git-panel.ts` states: only one of them is the node lit renders this panel's body
+ * into, and appending to the other would leave the panel drawn under whatever the Navigator paints
+ * next.
+ *
+ * The repaint stays the NAVIGATOR'S. Source Control owns an `effect()` because its inputs are the
+ * reactive `shell.git` record; the tree's inputs are a `Map` of directory listings, a `Set` of
+ * expanded paths and a roaming setting, none of which is reactive — so `ctx.rerender` is what this
+ * surface has always been redrawn by, and it stays that way rather than growing a second scheduler
+ * that could disagree with it.
+ *
+ * @param host - The painted `.panel-body`
+ * @param rerender - The Navigator's repaint
+ */
+export function mountFilesPanel(host: HTMLElement, rerender: () => void): void {
+  const container = host.querySelector<HTMLElement>(".panel-content") ?? host;
+  // Captured per paint, so the scroll watch and every awaited flow repaint through the CURRENT
+  // Navigator scheduler rather than through a closure from an earlier one.
+  _filesRerender = rerender;
+  if (_standingFiles && (_standingFiles.host !== container || !_standingFiles.handle.connected())) {
+    unmountFilesPanel();
+  }
+  const values = filesPanelValues();
+  if (_standingFiles) {
+    _standingFiles.handle.update(values);
+  } else {
+    const handle = mountFilesPanelSurface(container, values, FILE_ACTIONS);
+    _standingFiles = { handle, host: container };
+    /* The FIRST paint is the one nothing else follows, and the tree element it announces through
+       `onNodeCreated` is still detached — the document is appended when its mount resolves. A watch
+       armed against a detached element resolves no scroller, so the window would answer "all of
+       them" for the life of the panel. This is where the tree is finally in the document. */
+    void handle.ready.then(adoptFileTree);
+  }
+  /* One microtask later, because the projection above has only just been written: the rows reach
+     the DOM as the scope's effects run, and a watch armed before they exist measures a tree that
+     does not overflow yet. */
+  queueMicrotask(adoptFileTree);
+}
+
+/**
+ * Take the panel down: the document, the drag registrations, the scroll watch and the row handles.
+ *
+ * Exported because a project close has to reach it — the tree it is showing belongs to the project
+ * being left behind, exactly as `cleanupGitPanel` is for the working tree.
+ */
+export function unmountFilesPanel(): void {
+  dismissFileContextMenu();
+  _standingFiles?.handle.dispose();
+  _standingFiles = null;
+  _lastValues = null;
+  releaseFileTreeDnD();
+  _fileRowEls.clear();
+  _fileRows = [];
 }

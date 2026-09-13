@@ -1,0 +1,38 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxDot",
+  "tagName": "jx-dot",
+  "observedAttributes": ["tone"],
+  "state": {
+    "tone": {
+      "type": "string",
+      "default": "",
+      "attribute": "tone",
+      "description": "danger, success or warning. Anything else, the empty default included, is the neutral disc."
+    }
+  },
+  "attributes": {
+    "tone": "${state.tone || null}"
+  },
+  "style": {
+    "display": "inline-block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "flex": "none",
+    "width": "6px",
+    "height": "6px",
+    "borderRadius": "50%",
+    "background": "var(--jx-fg-muted)",
+    "&[tone=\"danger\"]": {
+      "background": "var(--jx-danger)"
+    },
+    "&[tone=\"success\"]": {
+      "background": "var(--jx-success)"
+    },
+    "&[tone=\"warning\"]": {
+      "background": "var(--jx-warning)"
+    }
+  },
+  "children": []
+}

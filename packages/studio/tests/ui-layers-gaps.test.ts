@@ -1,19 +1,16 @@
 /**
- * Ui/layers — showDialog/showConfirmDialog resolution, openModal handle, renderPopover dismissal
- * (outside click, layer targeting), and named layer slots.
+ * Ui/layers — the three named dialog flows and how each maps a dismissal, `isModalOpen`'s reading
+ * of the live DOM, and named layer slots.
  */
 import { flush, mountOverlayLayers } from "./harness";
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { html } from "lit-html";
 import {
   clearLayerSlot,
   getLayerSlot,
   initLayers,
   isModalOpen,
-  openModal,
-  renderPopover,
   showConfirmDialog,
-  showDialog,
   showPromptDialog,
   showSaveDiscardDialog,
 } from "../src/ui/layers";
@@ -38,142 +35,47 @@ describe("layers after init", () => {
     initLayers();
   });
 
-  describe("showDialog", () => {
-    test("resolves with the done() value and removes the slot", async () => {
-      const promise = showDialog<string>(
-        (done) => html`<button
-          id="dlg-btn"
-          @click=${() => {
-            done("picked");
-          }}
-        >
-          pick
-        </button>`,
-      );
-      expect(layer("dialog").querySelector("#dlg-btn")).not.toBeNull();
-      (layer("dialog").querySelector("#dlg-btn") as HTMLElement).click();
-      expect(await promise).toBe("picked");
-      expect(layer("dialog").querySelector("#dlg-btn")).toBeNull();
-    });
-
-    test("a dialog says it is one, and that everything behind it is inert", async () => {
-      /*
-       * `aria-modal` is what constrains a screen reader's virtual cursor, which a Tab trap cannot:
-       * the virtual cursor does not use Tab. It is also why not trapping Tab is still correct — the
-       * wrapper's action buttons live in a shadow root a light-DOM cycle cannot enumerate.
-       */
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper headline="Delete page?"></sp-dialog-wrapper>`;
-      });
-      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
-      expect(slot).not.toBeNull();
-      expect(slot.getAttribute("aria-modal")).toBe("true");
-      // The name comes off the wrapper's headline, which only exists after the template has run.
-      expect(slot.getAttribute("aria-label")).toBe("Delete page?");
-      doneFn!("x");
-      await promise;
-    });
-
-    test("an explicit label wins, and a nameless dialog is left nameless", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const labelled = showDialog<string>(
-        (done) => {
-          doneFn = done;
-          return html`<sp-dialog-wrapper headline="Ignored"></sp-dialog-wrapper>`;
-        },
-        { label: "Chosen" },
-      );
-      expect(
-        (layer("dialog").querySelector("[role='dialog']") as HTMLElement).getAttribute(
-          "aria-label",
-        ),
-      ).toBe("Chosen");
-      doneFn!("x");
-      await labelled;
-
-      // A caller that supplies neither has a defect of its own; inventing a name would hide it.
-      const bare = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<span>body</span>`;
-      });
-      expect(
-        (layer("dialog").querySelector("[role='dialog']") as HTMLElement).hasAttribute(
-          "aria-label",
-        ),
-      ).toBe(false);
-      doneFn!("x");
-      await bare;
-    });
-
-    test("second done() call is ignored", async () => {
-      let doneFn: ((v: number) => void) | null = null;
-      const promise = showDialog<number>((done) => {
-        doneFn = done;
-        return html`<span>x</span>`;
-      });
-      doneFn!(1);
-      doneFn!(2);
-      expect(await promise).toBe(1);
-    });
-
-    test("takes the keyboard on open and hands focus back on close", async () => {
-      const opener = document.createElement("button");
-      document.body.append(opener);
-      opener.focus();
-      expect(document.activeElement).toBe(opener);
-
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper open><input id="dlg-field" /></sp-dialog-wrapper>`;
-      });
-      // Focus lands a frame later — the wrapper's own buttons live in a shadow root Spectrum
-      // Renders asynchronously.
-      await flush();
-      expect(document.activeElement).toBe(layer("dialog").querySelector("#dlg-field"));
-
-      doneFn!("x");
-      await promise;
-      expect(document.activeElement).toBe(opener);
-      opener.remove();
-    });
-
-    test("does not steal focus from a body that already claimed it", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper open
-          ><input id="first" /><input id="second"
-        /></sp-dialog-wrapper>`;
-      });
-      (layer("dialog").querySelector("#second") as HTMLElement).focus();
-      await flush();
-      expect((document.activeElement as HTMLElement).id).toBe("second");
-      doneFn!("x");
-      await promise;
-    });
-
-    test("Escape fires the wrapper's close event (each helper maps its own cancel value)", async () => {
+  /*
+   * `describe("showDialog")` was here, and it held eight tests about machinery that no longer
+   * exists: a slot stamped `role="dialog"` and `aria-modal`, an accessible name scraped off an
+   * `sp-dialog-wrapper`'s `headline` after the template had run, a deferred focus move into the
+   * body or the wrapper's shadow buttons, a focus restore on close, and an Escape translated into
+   * the wrapper's own `close` event. All of it existed because a `showDialog` body was arbitrary
+   * markup rather than a dialog element.
+   *
+   * `surfaces/dialog.json` is a `jx-dialog` over the platform's `<dialog>`, and the platform owns
+   * every one of those. So the assertions are not re-implemented against a second mechanism — the
+   * ones that still have a subject are below, against the three named flows, and the rest went with
+   * the thing they described. What is kept here is the one that was never about the wrapper: how a
+   * dismissal reaches a flow.
+   */
+  describe("the flow dialogs", () => {
+    test("Escape on a flow's dialog is the platform's cancel, and each helper maps it to its own value", async () => {
       const promise = showConfirmDialog("Hm", "really?");
-      const dlg = layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement;
-      dlg.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+      await flush();
+      // The kit dialog is a native modal <dialog>: Escape reaches it as the platform's `cancel`,
+      // Which the element dispatches on itself and the flow answers with false.
+      const native = layer("dialog").querySelector('jx-dialog [part="dialog"]') as HTMLElement;
+      native.dispatchEvent(new Event("cancel"));
       expect(await promise).toBe(false);
       expect(layer("dialog").children).toHaveLength(0);
     });
 
-    test("Escape in a bespoke body with no wrapper is left to the body", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<div id="bespoke">no wrapper here</div>`;
-      });
-      const body = layer("dialog").querySelector("#bespoke") as HTMLElement;
-      body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
-      expect(layer("dialog").querySelector("#bespoke")).not.toBeNull();
-      doneFn!("still here");
-      expect(await promise).toBe("still here");
+    test("names itself from its headline, and is the dialog rather than sitting inside one", async () => {
+      /* The name used to be scraped off the body and stamped on a wrapper div. It is the element's
+         own now: `jx-dialog` takes `headline` and labels its `[part="dialog"]` with it, so there is
+         no window in which the surface is up and nameless, and nothing outside the element claims
+         to be the dialog. */
+      const promise = showConfirmDialog("Delete page?", "This cannot be undone.");
+      await flush();
+      const dialog = layer("dialog").querySelector("jx-dialog")!;
+      expect(dialog.getAttribute("headline")).toBe("Delete page?");
+      expect(dialog.querySelector('[part="dialog"]')?.getAttribute("aria-label")).toBe(
+        "Delete page?",
+      );
+      expect(layer("dialog").querySelector("[role='dialog']")).toBeNull();
+      dialog.dispatchEvent(new Event("cancel"));
+      expect(await promise).toBe(false);
     });
   });
 
@@ -184,165 +86,218 @@ describe("layers after init", () => {
 
     test("true while a dialog is up, false once it resolves", async () => {
       const promise = showConfirmDialog("Blocking?", "yes");
+      await flush();
+      // Open state is the platform's toggle, mirrored onto the host as data-open.
       expect(isModalOpen()).toBe(true);
-      (layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-        new Event("close"),
-      );
+      (layer("dialog").querySelector("jx-dialog") as HTMLElement).dispatchEvent(new Event("close"));
       await promise;
       expect(isModalOpen()).toBe(false);
     });
 
-    test("true for an openModal body that paints its own underlay", () => {
-      const handle = openModal(
-        html`<sp-underlay open></sp-underlay>
-          <div>settings</div>`,
-        { label: "Settings" },
-      );
+    test("true for a jx-dialog surface open in the MODAL layer", () => {
+      /* The modal layer is read beside the dialog layer for the two surfaces that live in it —
+         `surfaces/progress-modal.ts` and `surfaces/publish.ts`, both `jx-dialog`s. `data-open` is
+         how the element mirrors the platform's own toggle (`jx-dialog.json`), so the predicate asks
+         the DOM what is covering the app rather than keeping a count. */
+      const slot = document.createElement("div");
+      const dialog = document.createElement("jx-dialog");
+      dialog.dataset.open = "";
+      slot.append(dialog);
+      layer("modal").append(slot);
       expect(isModalOpen()).toBe(true);
-      handle.close();
+      slot.remove();
       expect(isModalOpen()).toBe(false);
     });
 
     test("false for a modal-layer body with no underlay (the mouse still gets through)", () => {
-      const handle = openModal(html`<div class="progress">working…</div>`, { label: "Working" });
+      const slot = document.createElement("div");
+      slot.append(document.createElement("jx-dialog"));
+      layer("modal").append(slot);
       expect(isModalOpen()).toBe(false);
-      handle.close();
+      slot.remove();
     });
   });
 
   describe("showConfirmDialog", () => {
-    test("confirm resolves true with custom labels", async () => {
-      const promise = showConfirmDialog("Delete?", "Sure?", {
+    /** The flow's dialog: the kit element, once its document has rendered. */
+    async function dialog(): Promise<HTMLElement> {
+      await flush();
+      return layer("dialog").querySelector("jx-dialog") as HTMLElement;
+    }
+    const buttonText = (host: HTMLElement, part: string) =>
+      host.querySelector(`[part="${part}"]`)?.textContent?.trim() ?? null;
+
+    test("confirm resolves true with custom labels, on a kit dialog opened modally", async () => {
+      const promise = showConfirmDialog("Delete?", "Gone for good", {
         cancelLabel: "Keep",
-        confirmLabel: "Nuke",
+        confirmLabel: "Delete",
         destructive: true,
       });
-      const dlg = layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement;
-      expect(dlg.getAttribute("headline")).toBe("Delete?");
-      expect(dlg.getAttribute("confirm-label")).toBe("Nuke");
-      expect(dlg.getAttribute("cancel-label")).toBe("Keep");
-      expect(dlg.classList.contains("dialog-destructive")).toBe(true);
-      dlg.dispatchEvent(new Event("confirm"));
+      const host = await dialog();
+      expect(host.getAttribute("headline")).toBe("Delete?");
+      expect(host.querySelector('[part="message"]')?.textContent).toBe("Gone for good");
+      expect(buttonText(host, "confirm")).toBe("Delete");
+      expect(buttonText(host, "cancel")).toBe("Keep");
+      expect(host.querySelector<HTMLElement>('[part="confirm"]')?.dataset["variant"]).toBe(
+        "negative",
+      );
+      expect((host.querySelector('[part="dialog"]') as HTMLDialogElement).open).toBe(true);
+      expect(host.parentElement?.dataset["jxRegion"]).toBe("overlay.dialog");
+      host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe(true);
+      expect(layer("dialog").querySelector("jx-dialog")).toBeNull();
     });
 
-    test("close event resolves false; defaults are non-destructive", async () => {
-      const promise = showConfirmDialog("Hm", "really?");
-      const dlg = layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement;
-      expect(dlg.getAttribute("confirm-label")).toBe("Confirm");
-      expect(dlg.classList.contains("dialog-destructive")).toBe(false);
-      dlg.dispatchEvent(new Event("close"));
+    test("close resolves false; defaults are non-destructive, and a lit message lands in the island", async () => {
+      const promise = showConfirmDialog("Sure?", html`<em>rich</em>`);
+      const host = await dialog();
+      expect(buttonText(host, "confirm")).toBe("Confirm");
+      expect(host.querySelector<HTMLElement>('[part="confirm"]')?.dataset["variant"]).toBe(
+        "accent",
+      );
+      expect(host.querySelector('[part="island"] em')?.textContent).toBe("rich");
+      expect(host.querySelector('[part="message"]')).toBeNull();
+      host.dispatchEvent(new Event("close"));
       expect(await promise).toBe(false);
     });
   });
 
   describe("showSaveDiscardDialog", () => {
-    test("confirm resolves 'save' with the given labels", async () => {
-      const promise = showSaveDiscardDialog("Unsaved Changes", `"c.json" has unsaved changes.`);
-      const dlg = layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement;
-      expect(dlg.getAttribute("headline")).toBe("Unsaved Changes");
-      expect(dlg.getAttribute("confirm-label")).toBe("Save");
-      expect(dlg.getAttribute("secondary-label")).toBe("Discard");
-      expect(dlg.getAttribute("cancel-label")).toBe("Cancel");
-      dlg.dispatchEvent(new Event("confirm"));
-      expect(await promise).toBe("save");
-    });
+    async function dialog(): Promise<HTMLElement> {
+      await flush();
+      return layer("dialog").querySelector("jx-dialog") as HTMLElement;
+    }
 
-    test("secondary resolves 'discard'", async () => {
-      const promise = showSaveDiscardDialog("Unsaved Changes", "msg");
-      const dlg = layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement;
-      dlg.dispatchEvent(new Event("secondary"));
-      expect(await promise).toBe("discard");
+    test("confirm resolves 'save' with the given labels, and secondary resolves 'discard'", async () => {
+      const promise = showSaveDiscardDialog("Unsaved", "Keep them?", {
+        cancelLabel: "Back",
+        discardLabel: "Throw away",
+        saveLabel: "Keep",
+      });
+      const host = await dialog();
+      const text = (part: string) => host.querySelector(`[part="${part}"]`)?.textContent?.trim();
+      expect([text("confirm"), text("secondary"), text("cancel")]).toEqual([
+        "Keep",
+        "Throw away",
+        "Back",
+      ]);
+      host.dispatchEvent(new Event("confirm"));
+      expect(await promise).toBe("save");
+
+      const second = showSaveDiscardDialog("Again", "?");
+      const again = await dialog();
+      again.dispatchEvent(new Event("secondary"));
+      expect(await second).toBe("discard");
     });
 
     test("cancel and close both resolve 'cancel'", async () => {
-      const p1 = showSaveDiscardDialog("H", "m");
-      (layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-        new Event("cancel"),
-      );
-      expect(await p1).toBe("cancel");
-      const p2 = showSaveDiscardDialog("H", "m");
-      (layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-        new Event("close"),
-      );
-      expect(await p2).toBe("cancel");
+      const cancelled = showSaveDiscardDialog("A", "?");
+      const first = await dialog();
+      first.dispatchEvent(new Event("cancel"));
+      expect(await cancelled).toBe("cancel");
+      const closed = showSaveDiscardDialog("B", "?");
+      const second = await dialog();
+      second.dispatchEvent(new Event("close"));
+      expect(await closed).toBe("cancel");
     });
   });
 
   describe("showPromptDialog", () => {
-    function wrapper(): HTMLElement {
-      return layer("dialog").querySelector("sp-dialog-wrapper") as HTMLElement;
+    async function dialog(): Promise<HTMLElement> {
+      await flush();
+      return layer("dialog").querySelector("jx-dialog") as HTMLElement;
     }
-    function field(): HTMLElement {
-      return layer("dialog").querySelector("sp-textfield") as HTMLElement;
+    function field(): HTMLInputElement {
+      return layer("dialog").querySelector('jx-textfield [part="input"]') as HTMLInputElement;
     }
-    /** Type into the field the way the sp-textfield input event reaches the handler. */
+    /** Type into the field the way the kit's input event reaches the flow. */
     function type(text: string): void {
-      (field() as unknown as { value: string }).value = text;
+      field().value = text;
       field().dispatchEvent(new Event("input", { bubbles: true }));
     }
-    /** Give the field a shadow-root <input> so the focus rAF has something to select. */
-    function stubShadowInput(value: string): { input: HTMLInputElement; ranges: number[][] } {
-      const tf = field();
-      const shadow = tf.shadowRoot ?? tf.attachShadow({ mode: "open" });
-      const input = document.createElement("input");
-      input.value = value;
-      const ranges: number[][] = [];
-      input.select = () => {
-        ranges.push([0, -1]);
-      };
-      input.setSelectionRange = (start, end) => {
-        ranges.push([start ?? 0, end ?? 0]);
-      };
-      shadow.append(input);
-      return { input, ranges };
-    }
+    const errorText = () =>
+      layer("dialog").querySelector('jx-textfield [part="error"]')?.textContent?.trim() ?? null;
 
     test("confirm resolves the trimmed value; defaults render OK/Cancel", async () => {
       const promise = showPromptDialog("Name it");
-      expect(wrapper().getAttribute("headline")).toBe("Name it");
-      expect(wrapper().getAttribute("confirm-label")).toBe("OK");
-      expect(wrapper().getAttribute("cancel-label")).toBe("Cancel");
-      // No message option → no explanatory paragraph.
-      expect(wrapper().querySelector("p")).toBeNull();
-
+      const host = await dialog();
+      expect(host.getAttribute("headline")).toBe("Name it");
+      expect(host.querySelector('[part="confirm"]')?.textContent?.trim()).toBe("OK");
+      expect(host.querySelector('[part="cancel"]')?.textContent?.trim()).toBe("Cancel");
+      // No message option → no explanatory paragraph, and the field is named by the headline.
+      expect(host.querySelector('[part="message"]')).toBeNull();
+      expect(field().getAttribute("aria-label")).toBe("Name it");
       type("  spaced  ");
-      wrapper().dispatchEvent(new Event("confirm"));
+      host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("spaced");
-      expect(layer("dialog").querySelector("sp-dialog-wrapper")).toBeNull();
+      expect(layer("dialog").querySelector("jx-dialog")).toBeNull();
     });
 
     test("cancel and close both resolve null", async () => {
       const cancelled = showPromptDialog("A");
-      wrapper().dispatchEvent(new Event("cancel"));
+      const first = await dialog();
+      first.dispatchEvent(new Event("cancel"));
       expect(await cancelled).toBeNull();
-
       const closed = showPromptDialog("B");
-      wrapper().dispatchEvent(new Event("close"));
+      const second = await dialog();
+      second.dispatchEvent(new Event("close"));
       expect(await closed).toBeNull();
     });
 
     test("Enter in the field confirms; other keys do not", async () => {
       const promise = showPromptDialog("C", { value: "seed" });
+      await dialog();
       field().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "a" }));
-      expect(layer("dialog").querySelector("sp-dialog-wrapper")).not.toBeNull();
+      await flush();
+      expect(layer("dialog").querySelector("jx-dialog")).not.toBeNull();
+      field().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      expect(await promise).toBe("seed");
+    });
+
+    /* A paste box is this same flow with a taller field, not a second dialog (§12.5) — which is
+       what the redirects import needed. Two things have to change together for that to be usable:
+       the control becomes a `<textarea>`, and Enter stops confirming, because Enter on the second
+       line of a pasted `_redirects` file would submit the dialog mid-paste. */
+    test("a multiline prompt is a textarea, and Enter in it is a newline rather than a confirm", async () => {
+      const promise = showPromptDialog("Paste", { multiline: true, mono: true, rows: "10" });
+      const host = await dialog();
+      const box = host.querySelector("jx-textfield textarea") as HTMLTextAreaElement;
+      expect(box).not.toBeNull();
+      expect(host.querySelector('jx-textfield [part="input"]')?.tagName).toBe("TEXTAREA");
+
+      box.value = "/old  /new  301";
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      box.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      await flush();
+      expect(layer("dialog").querySelector("jx-dialog")).not.toBeNull();
+
+      host.dispatchEvent(new Event("confirm"));
+      expect(await promise).toBe("/old  /new  301");
+    });
+
+    test("a single-line prompt still confirms on Enter", async () => {
+      const promise = showPromptDialog("Name", { value: "seed" });
+      await dialog();
       field().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
       expect(await promise).toBe("seed");
     });
 
     test("a blank value blocks confirm and shows the default help text", async () => {
       const promise = showPromptDialog("D");
-      wrapper().dispatchEvent(new Event("confirm"));
-      expect(layer("dialog").querySelector("sp-dialog-wrapper")).not.toBeNull();
-      expect(field().getAttribute("invalid")).not.toBeNull();
-      expect(layer("dialog").querySelector("sp-help-text")?.textContent).toContain(
-        "Enter a value.",
-      );
-
-      // Typing something valid clears the error in place, then confirm goes through.
+      const host = await dialog();
+      host.dispatchEvent(new Event("confirm"));
+      await flush();
+      expect(layer("dialog").querySelector("jx-dialog")).not.toBeNull();
+      expect(field().getAttribute("aria-invalid")).toBe("true");
+      expect(errorText()).toBe("Enter a value.");
+      /* Typing something valid empties the error in place, then confirm goes through. The region
+         itself stays: it is the field's live region, and one minted with its text already inside
+         announces nothing. `""` rather than `null` is what says it is still there. */
       type("ok");
-      expect(layer("dialog").querySelector("sp-help-text")).toBeNull();
-      wrapper().dispatchEvent(new Event("confirm"));
+      await flush();
+      expect(errorText()).toBe("");
+      expect(field().hasAttribute("aria-invalid")).toBe(false);
+      host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("ok");
     });
 
@@ -353,325 +308,114 @@ describe("layers after init", () => {
         validate: (v) => (v.startsWith("x") ? "" : "Must start with x."),
         value: "nope",
       });
-      expect(wrapper().querySelector("p")?.textContent).toContain("Pick a slug");
-      expect(wrapper().getAttribute("confirm-label")).toBe("Create");
-
-      wrapper().dispatchEvent(new Event("confirm"));
-      expect(layer("dialog").querySelector("sp-help-text")?.textContent).toContain(
-        "Must start with x.",
-      );
-
+      const host = await dialog();
+      expect(host.querySelector('[part="message"]')?.textContent).toBe("Pick a slug");
+      expect(host.querySelector('[part="confirm"]')?.textContent?.trim()).toBe("Create");
+      host.dispatchEvent(new Event("confirm"));
+      await flush();
+      expect(errorText()).toBe("Must start with x.");
       type("xyz");
-      wrapper().dispatchEvent(new Event("confirm"));
+      host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("xyz");
     });
 
-    test("input that leaves the error state unchanged does not re-render", async () => {
+    test("typing keeps the same field: the document reconciles, it never rebuilds", async () => {
       const promise = showPromptDialog("F");
+      const host = await dialog();
       const before = field();
       type("aa");
       type("bb");
-      // Still valid throughout, so lit never rebuilt the tree.
-      expect(field()).toBe(before);
-      expect(field().getAttribute("value")).toBe("");
-      wrapper().dispatchEvent(new Event("confirm"));
+      await flush();
+      expect(field() === before).toBe(true);
+      host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("bb");
     });
 
-    test("select:'all' selects the whole value once the rAF fires", async () => {
-      const promise = showPromptDialog("G", { value: "hello" });
-      const { ranges } = stubShadowInput("hello");
+    test("select:'all' focuses the field and selects the whole value; 'stem' stops at the last dot", async () => {
+      const all = showPromptDialog("G", { value: "hello" });
+      let host = await dialog();
       await flush();
-      expect(ranges).toEqual([[0, -1]]);
+      expect(document.activeElement === field()).toBe(true);
+      expect([field().selectionStart, field().selectionEnd]).toEqual([0, 5]);
+      host.dispatchEvent(new Event("cancel"));
+      await all;
 
-      // The focus ref only fires once — a re-render must not re-select mid-edit.
-      type("");
+      const stem = showPromptDialog("H", { select: "stem", value: "note.md" });
+      host = await dialog();
       await flush();
-      expect(ranges).toEqual([[0, -1]]);
+      expect([field().selectionStart, field().selectionEnd]).toEqual([0, 4]);
+      host.dispatchEvent(new Event("cancel"));
+      await stem;
 
-      wrapper().dispatchEvent(new Event("cancel"));
-      await promise;
+      const none = showPromptDialog("I", { select: "none", value: "as is" });
+      host = await dialog();
+      await flush();
+      expect(document.activeElement === field()).toBe(true);
+      host.dispatchEvent(new Event("cancel"));
+      await none;
     });
 
-    test("select:'stem' stops at the last dot, and falls back to the full value without one", async () => {
-      const dotted = showPromptDialog("H", { select: "stem", value: "note.md" });
-      const withDot = stubShadowInput("note.md");
+    test("a choice renders as a native select, and a pick refreshes the placeholder and the options", async () => {
+      const picked: string[] = [];
+      let format = ".md";
+      const promise = showPromptDialog("New file", {
+        choice: {
+          initial: ".md",
+          label: "Format",
+          onChange: (next) => {
+            picked.push(next);
+            format = next;
+          },
+          options: () => [
+            { label: "Markdown", value: ".md" },
+            { label: "JSON", value: ".json" },
+          ],
+        },
+        placeholder: () => `untitled${format}`,
+        validate: (v, chosen) => (v === "taken" && chosen === ".json" ? "taken.json exists." : ""),
+        value: "taken",
+      });
+      const host = await dialog();
+      /* The part is on the `jx-select`; the `<select>` inside it is what a reader drives, and what
+         carries the name the element forwarded. Selectedness is read off the CONTROL rather than
+         off an option's attribute — no option carries one, which is the whole point (ui.md §5.1). */
+      const choice = host.querySelector<HTMLElement>('jx-select[part="choice"]')!;
+      const select = choice.querySelector<HTMLSelectElement>("select")!;
+      expect(select.getAttribute("aria-label")).toBe("Format");
+      expect([...select.options].map((o) => [o.value, o.textContent?.trim()])).toEqual([
+        [".md", "Markdown"],
+        [".json", "JSON"],
+      ]);
+      expect(select.value).toBe(".md");
+      expect(host.querySelector("option[selected]")).toBeNull();
+      expect(field().placeholder).toBe("untitled.md");
+      // Nothing said yet: the prefill is valid for the initial format, and nobody has typed.
+      expect(errorText()).toBe("");
+      select.value = ".json";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
       await flush();
-      expect(withDot.ranges).toEqual([[0, 4]]);
-      wrapper().dispatchEvent(new Event("cancel"));
-      await dotted;
-
-      const bare = showPromptDialog("H", { select: "stem", value: "README" });
-      const noDot = stubShadowInput("README");
+      expect(picked).toEqual([".json"]);
+      expect(field().placeholder).toBe("untitled.json");
+      // A pick never puts the first error under an untouched field…
+      expect(errorText()).toBe("");
+      // …but confirm still refuses, and from then on a pick refreshes the verdict.
+      host.dispatchEvent(new Event("confirm"));
       await flush();
-      expect(noDot.ranges).toEqual([[0, 6]]);
-      wrapper().dispatchEvent(new Event("cancel"));
-      await bare;
-
-      // A leading dot is an extension-less dotfile, not a stem boundary.
-      const dotfile = showPromptDialog("H", { select: "stem", value: ".env" });
-      const leading = stubShadowInput(".env");
+      expect(errorText()).toBe("taken.json exists.");
+      select.value = ".md";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
       await flush();
-      expect(leading.ranges).toEqual([[0, 4]]);
-      wrapper().dispatchEvent(new Event("cancel"));
-      await dotfile;
-    });
-
-    test("select:'none' focuses without selecting", async () => {
-      const promise = showPromptDialog("I", { select: "none", value: "keep" });
-      const { ranges } = stubShadowInput("keep");
-      await flush();
-      expect(ranges).toEqual([]);
-      wrapper().dispatchEvent(new Event("cancel"));
-      await promise;
-    });
-
-    test("a textfield with no shadow input is tolerated", async () => {
-      const promise = showPromptDialog("J", { placeholder: "type here", value: "v" });
-      expect(field().getAttribute("placeholder")).toBe("type here");
-      await flush();
-      expect(layer("dialog").querySelector("sp-dialog-wrapper")).not.toBeNull();
-      wrapper().dispatchEvent(new Event("cancel"));
-      expect(await promise).toBeNull();
+      expect(errorText()).toBe("");
+      host.dispatchEvent(new Event("confirm"));
+      expect(await promise).toBe("taken");
     });
   });
 
-  describe("openModal", () => {
-    /** Dispatch a bubbling key on an element inside the modal body. */
-    function key(el: Element, k: string, shiftKey = false): KeyboardEvent {
-      const event = new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key: k,
-        shiftKey,
-      });
-      el.dispatchEvent(event);
-      return event;
-    }
-
-    test("renders into the modal layer, updates, and closes", () => {
-      const handle = openModal(html`<div id="modal-a">one</div>`, { label: "A" });
-      expect(layer("modal").querySelector("#modal-a")).not.toBeNull();
-      expect(handle.host.style.pointerEvents).toBe("auto");
-      handle.update(html`<div id="modal-b">two</div>`);
-      expect(layer("modal").querySelector("#modal-a")).toBeNull();
-      expect(layer("modal").querySelector("#modal-b")).not.toBeNull();
-      handle.close();
-      expect(layer("modal").querySelector("#modal-b")).toBeNull();
-      expect(handle.host.parentElement).toBeNull();
-    });
-
-    test("the wrapper carries role/aria-modal/label so no body can forget them", () => {
-      const handle = openModal(html`<div>body</div>`, { label: "Manage Files" });
-      expect(handle.host.getAttribute("role")).toBe("dialog");
-      expect(handle.host.getAttribute("aria-modal")).toBe("true");
-      expect(handle.host.getAttribute("aria-label")).toBe("Manage Files");
-      handle.close();
-    });
-
-    test("takes the keyboard on open and hands it back to the opener on close", async () => {
-      const opener = document.createElement("button");
-      document.body.append(opener);
-      opener.focus();
-
-      const handle = openModal(
-        html`<button id="modal-first">first</button><button id="modal-second">second</button>`,
-        { label: "Focus" },
-      );
-      await flush();
-      expect(document.activeElement).toBe(layer("modal").querySelector("#modal-first"));
-
-      handle.close();
-      expect(document.activeElement).toBe(opener);
-      opener.remove();
-    });
-
-    test("a body with no focusable content still owns the keyboard", async () => {
-      const handle = openModal(html`<div class="progress">working…</div>`, { label: "Working" });
-      await flush();
-      expect(document.activeElement).toBe(handle.host);
-      // Nothing to cycle to: Tab is swallowed rather than walking into the app behind.
-      expect(key(handle.host, "Tab").defaultPrevented).toBe(true);
-      handle.close();
-    });
-
-    test("Tab and Shift+Tab cycle within the modal", async () => {
-      const handle = openModal(html`<button id="trap-a">a</button><button id="trap-b">b</button>`, {
-        label: "Trap",
-      });
-      await flush();
-      const a = layer("modal").querySelector("#trap-a") as HTMLElement;
-      const b = layer("modal").querySelector("#trap-b") as HTMLElement;
-      expect(document.activeElement).toBe(a);
-
-      expect(key(a, "Tab").defaultPrevented).toBe(true);
-      expect(document.activeElement).toBe(b);
-      // Last → wraps to first.
-      key(b, "Tab");
-      expect(document.activeElement).toBe(a);
-      // First → wraps backwards to last.
-      key(a, "Tab", true);
-      expect(document.activeElement).toBe(b);
-      key(b, "Tab", true);
-      expect(document.activeElement).toBe(a);
-      handle.close();
-    });
-
-    test("disabled controls are skipped by the trap", async () => {
-      const handle = openModal(
-        html`<button id="skip-a">a</button><button id="skip-off" disabled>off</button
-          ><button id="skip-b">b</button>`,
-        { label: "Skip" },
-      );
-      await flush();
-      const a = layer("modal").querySelector("#skip-a") as HTMLElement;
-      key(a, "Tab");
-      expect((document.activeElement as HTMLElement).id).toBe("skip-b");
-      handle.close();
-    });
-
-    test("Escape closes by default and stops the app behind seeing it", async () => {
-      const handle = openModal(html`<button id="esc-btn">x</button>`, { label: "Escapable" });
-      await flush();
-      const event = key(layer("modal").querySelector("#esc-btn") as Element, "Escape");
-      expect(event.defaultPrevented).toBe(true);
-      expect(layer("modal").querySelector("#esc-btn")).toBeNull();
-      expect(handle.host.parentElement).toBeNull();
-    });
-
-    test("Escape runs onDismiss when the call site keeps its own bookkeeping", async () => {
-      const onDismiss = mock(() => {});
-      const handle = openModal(html`<button id="esc-hook">x</button>`, {
-        label: "Hooked",
-        onDismiss,
-      });
-      await flush();
-      key(layer("modal").querySelector("#esc-hook") as Element, "Escape");
-      expect(onDismiss).toHaveBeenCalledTimes(1);
-      // The hook owns closing — the wrapper does not close behind its back.
-      expect(handle.host.parentElement).not.toBeNull();
-      handle.close();
-    });
-
-    test("dismissible:false ignores Escape", async () => {
-      const handle = openModal(html`<button id="esc-no">x</button>`, {
-        dismissible: false,
-        label: "Blocking",
-      });
-      await flush();
-      const event = key(layer("modal").querySelector("#esc-no") as Element, "Escape");
-      expect(event.defaultPrevented).toBe(false);
-      expect(handle.host.parentElement).not.toBeNull();
-      handle.close();
-    });
-  });
-
-  describe("renderPopover", () => {
-    test("defaults to the popover layer and dismisses on outside mousedown", async () => {
-      const onDismiss = mock(() => {});
-      renderPopover(html`<div id="pop-a">pop</div>`, { onDismiss });
-      expect(layer("popover").querySelector("#pop-a")).not.toBeNull();
-      // Outside-click handler attaches on the next animation frame.
-      await flush();
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      expect(layer("popover").querySelector("#pop-a")).toBeNull();
-      expect(onDismiss).toHaveBeenCalledTimes(1);
-    });
-
-    test("mousedown inside the popover does not dismiss", async () => {
-      const handle = renderPopover(html`<div id="pop-in">pop</div>`);
-      await flush();
-      const inner = layer("popover").querySelector("#pop-in") as HTMLElement;
-      inner.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      expect(layer("popover").querySelector("#pop-in")).not.toBeNull();
-      handle.dismiss();
-      expect(layer("popover").querySelector("#pop-in")).toBeNull();
-    });
-
-    test("dismissOnOutsideClick:false leaves the popover; update() swaps content", async () => {
-      const handle = renderPopover(html`<div id="pop-stay">stay</div>`, {
-        dismissOnOutsideClick: false,
-      });
-      await flush();
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      expect(layer("popover").querySelector("#pop-stay")).not.toBeNull();
-      handle.update(html`<div id="pop-stay2">two</div>`);
-      expect(layer("popover").querySelector("#pop-stay2")).not.toBeNull();
-      handle.dismiss();
-    });
-
-    test("layer option targets modal and dialog layers", () => {
-      const m = renderPopover(html`<div id="pop-m"></div>`, {
-        dismissOnOutsideClick: false,
-        layer: "modal",
-      });
-      const d = renderPopover(html`<div id="pop-d"></div>`, {
-        dismissOnOutsideClick: false,
-        layer: "dialog",
-      });
-      expect(layer("modal").querySelector("#pop-m")).not.toBeNull();
-      expect(layer("dialog").querySelector("#pop-d")).not.toBeNull();
-      m.dismiss();
-      d.dismiss();
-    });
-
-    test("dismiss before the rAF tick does not attach a stale listener", async () => {
-      const fired: string[] = [];
-      const early = renderPopover(html`<div id="pop-fast"></div>`, {
-        onDismiss: () => fired.push("pop-fast"),
-      });
-      early.dismiss();
-      await new Promise((resolve) => {
-        requestAnimationFrame(() => resolve(null));
-      });
-
-      /* What must be observed is NOT that #pop-fast is gone — `dismiss()` removed it either way,
-         so asserting only that says nothing about the arming. It is that the corpse's listener was
-         never armed: a popover opened afterwards must survive a mousedown INSIDE itself, and the
-         dead popover's `onDismiss` must not run. Otherwise the corpse answers that mousedown by
-         nulling its owner's handle field, and the live popover is stranded with nothing left that
-         can dismiss it. */
-      const live = renderPopover(html`<div id="pop-live"></div>`, {
-        onDismiss: () => fired.push("pop-live"),
-      });
-      await new Promise((resolve) => {
-        requestAnimationFrame(() => resolve(null));
-      });
-      (live.host.querySelector("#pop-live") as HTMLElement).dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true }),
-      );
-      await flush();
-
-      expect(fired).toEqual([]);
-      expect(layer("popover").querySelector("#pop-fast")).toBeNull();
-      expect(layer("popover").querySelector("#pop-live")).not.toBeNull();
-      live.dismiss();
-    });
-  });
-
-  describe("named layer slots", () => {
-    test("getLayerSlot creates once and reuses while attached", () => {
-      const slot1 = getLayerSlot("popover", "zoom");
-      const slot2 = getLayerSlot("popover", "zoom");
-      expect(slot1).toBe(slot2);
-      expect(slot1.parentElement).toBe(layer("popover"));
-    });
-
-    test("recreates the slot if it was detached", () => {
-      const slot = getLayerSlot("modal", "thing");
-      slot.remove();
-      const fresh = getLayerSlot("modal", "thing");
-      expect(fresh).not.toBe(slot);
-      expect(fresh.parentElement).toBe(layer("modal"));
-    });
-
-    test("dialog layer slots and clearLayerSlot removal", () => {
-      const slot = getLayerSlot("dialog", "confirm");
-      expect(slot.parentElement).toBe(layer("dialog"));
-      clearLayerSlot("dialog", "confirm");
-      expect(slot.parentElement).toBeNull();
-      // Clearing again is a no-op
-      clearLayerSlot("dialog", "confirm");
-    });
-  });
+  /*
+   * Two more describes stood here — "Escape in a showDialog body that HAS a wrapper" and "a key the
+   * slot does not answer" — and both tested `openOverlaySlot`'s keydown listener, which is gone
+   * with `showDialog`. A `jx-dialog` is a native modal: Escape reaches it as the platform's own
+   * `cancel`, which is asserted above against each of the three flows, and every other key is the
+   * body's without anything having to stand aside for it.
+   */
 });

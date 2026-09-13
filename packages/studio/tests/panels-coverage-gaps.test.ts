@@ -8,13 +8,7 @@
  *   children), stray-toggle clicks, and startLayerTitleEdit guards.
  * - Dnd: the onGenerateDragPreview suppressors for layer and component drags.
  */
-import {
-  flush,
-  registerPrimaryStage,
-  renderInto,
-  resetStudioState,
-  resetWorkspaceWithTab,
-} from "./harness";
+import { flush, registerPrimaryStage, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
@@ -63,7 +57,8 @@ void mock.module("../src/panels/component-preview", () => ({
 const { buildStylebookDoc, hasTagStyle, transposeStylebookStyle } =
   await import("../src/panels/stylebook-doc");
 const paneContext = await import("../src/panels/pane-context");
-const { renderLayersTemplate, startLayerTitleEdit } = await import("../src/panels/layers-panel");
+const { detachOutline, mountOutlinePanel, startLayerTitleEdit } =
+  await import("../src/panels/layers-panel");
 const dnd = await import("../src/panels/dnd");
 const { initShellRefs } = await import("../src/store");
 const { componentRegistry } = await import("../src/files/components");
@@ -163,10 +158,9 @@ describe("pane-context interaction gaps", () => {
     document.body.innerHTML = "";
   });
 
-  function btnByText(root: HTMLElement, text: string): HTMLElement {
-    return [...root.querySelectorAll("sp-action-button")].find(
-      (b) => b.textContent?.trim() === text,
-    ) as HTMLElement;
+  /** A control of the pane's chrome, by the `part` the document stamps on it. */
+  function podPart(root: HTMLElement, name: string): HTMLElement {
+    return root.querySelector<HTMLElement>(`[part="${name}"]`)!;
   }
 
   test("the pod's panzoom actions run without a panzoom surface", async () => {
@@ -181,14 +175,15 @@ describe("pane-context interaction gaps", () => {
     const root = document.createElement("div");
     document.body.append(root);
     paneContext.mount(root, makePaneCtx() as never);
-    await flush();
+    // A mounted document settles over several turns; the pod does not exist on the next tick.
+    await flush(8);
 
-    btnByText(root, "−").click();
-    await flush();
+    podPart(root, "zoom-out").click();
+    await flush(4);
     expect(tab.session.ui.zoom).toBeCloseTo(2);
 
-    (root.querySelector(".pc-zoom-label") as HTMLElement).click();
-    await flush();
+    podPart(root, "zoom-label").click();
+    await flush(4);
     expect(tab.session.ui.zoom).toBeCloseTo(2); // Guarded no-ops without a panzoom surface.
   });
 
@@ -216,10 +211,12 @@ describe("pane-context render failure", () => {
         setCanvasMode: () => {},
       });
     }).not.toThrow();
-    await flush();
+    await flush(6);
     expect(() => {
       paneContext.render();
     }).not.toThrow();
+    // …and nothing was left half-drawn: the projection threw before a mount was ever asked for.
+    expect(host.querySelector('[part="bar"]')).toBeNull();
     paneContext.unmount();
     host.remove();
   });
@@ -247,13 +244,17 @@ describe("layers-panel gaps", () => {
   }
 
   async function renderLayers() {
-    const tpl = renderLayersTemplate({ navigateToComponent: () => {}, rerender: () => {} });
-    await renderInto(tpl, host);
+    mountOutlinePanel({ registerDnD: () => {}, rerender: () => {} }, host);
+    await flush(3);
     return host;
   }
 
   function rowByKey(path: JxPath): HTMLElement | null {
-    return host.querySelector(`.layer-row[data-path="${path.join("/")}"]`);
+    return (
+      [...host.querySelectorAll<HTMLElement>('[part="row"]')].find(
+        (el) => el.dataset.value === path.join("/"),
+      ) ?? null
+    );
   }
 
   /**
@@ -262,44 +263,50 @@ describe("layers-panel gaps", () => {
    * Row actions exist for the selected row (and the hovered one) only, so selecting first is the
    * real interaction — clicking a row does both. The button itself is always rendered: ONE shape,
    * so an unavailable verb is disabled rather than removed, and "can this node move in" is read off
-   * `disabled` rather than off the button's presence.
+   * the kit control's `disabled` rather than off the button's presence.
    */
   async function canMoveIn(path: JxPath): Promise<boolean> {
     activeTab.value!.session.selection = [path];
     await renderLayers();
-    const btn = rowByKey(path)?.querySelector('sp-action-button[data-command="selection.moveIn"]');
+    const btn = rowByKey(path)?.querySelector('[part="action"][data-command="selection.moveIn"]');
     if (!btn) {
       throw new Error(`no Move Into Previous button on row ${path.join("/")}`);
     }
-    return !btn.hasAttribute("disabled");
+    return !btn.querySelector('[part="control"]')!.hasAttribute("disabled");
   }
 
   beforeEach(() => {
+    detachOutline();
     document.body.innerHTML = `
-      <div id="host"></div>
+      <div class="panel-body"><div class="panel-content"></div></div>
       <div id="layer-popover"></div>
       <div id="layer-modal"></div>
       <div id="layer-dialog"></div>
     `;
     initLayers();
-    host = document.querySelector("#host") as HTMLElement;
+    host = document.querySelector(".panel-body") as HTMLElement;
     view._layersCollapsed = new Set();
     view.dndCleanups = [];
     resetWorkspaceWithTab(makeDoc());
   });
 
   afterEach(() => {
+    detachOutline();
     closeAllTabs();
     document.body.innerHTML = "";
   });
 
+  function badge(path: JxPath): HTMLElement {
+    return rowByKey(path)!.querySelector('[part="badge"]') as HTMLElement;
+  }
+
   test("slot rows get the slot badge with named and default titles", async () => {
     await renderLayers();
-    const named = rowByKey(["children", 6])!.querySelector(".slot-tag")!;
+    const named = badge(["children", 6]);
+    expect(named.dataset.kind).toBe("slot");
     expect(named.textContent).toBe("▣");
     expect(named.getAttribute("title")).toBe('Slot "header"');
-    const anonymous = rowByKey(["children", 7])!.querySelector(".slot-tag")!;
-    expect(anonymous.getAttribute("title")).toBe("Default slot");
+    expect(badge(["children", 7]).getAttribute("title")).toBe("Default slot");
   });
 
   test("move-in is unavailable after a void sibling", async () => {
@@ -325,54 +332,60 @@ describe("layers-panel gaps", () => {
     expect(await canMoveIn(["children", 5])).toBe(false);
   });
 
-  test("clicking a stray toggle outside any row is a no-op", async () => {
+  test("a click on the chevron collapses the row without also selecting it", async () => {
     await renderLayers();
-    const tree = host.querySelector(".layers-tree") as HTMLElement;
-    const stray = document.createElement("span");
-    stray.className = "layer-toggle";
-    tree.append(stray);
-    stray.click();
-    expect(view._layersCollapsed!.size).toBe(0);
+    const toggle = rowByKey(["children", 2])!.querySelector('[part="twisty"]') as HTMLElement;
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flush();
+    expect(view._layersCollapsed!.has("children/2")).toBe(true);
+    // The chevron stops the click: collapsing a branch is not a way of selecting it.
+    expect(activeTab.value!.session.selection).toEqual([]);
   });
 
-  test("startLayerTitleEdit returns silently when the row has no label", async () => {
+  test("a text line has no title to rename", async () => {
+    /* The row EXISTS in the model — it is drawn, it is keyed, it sits under its paragraph — and it
+       is still not renameable, because a text node has nowhere to put a `$title`. That is the
+       branch a "the node is gone" guard could never reach: the node is right there. */
+    const doc = activeTab.value!.doc.document as AnyRec;
+    doc.children[0].children = ["just words"];
     await renderLayers();
-    const bare = document.createElement("div");
-    bare.className = "layer-row";
-    bare.dataset.path = "children/0";
-    host.querySelector(".layer-row")!.replaceWith(bare);
+    const textRow = rowByKey(["children", 0, "children", 0])!;
+    expect(textRow.dataset.kind).toBe("text");
+
     expect(() => {
-      startLayerTitleEdit(["children", 0], () => {});
+      startLayerTitleEdit(["children", 0, "children", 0], () => {});
     }).not.toThrow();
-    expect(document.querySelector(".layer-title-input")).toBeNull();
+    await flush(2);
+    expect(host.querySelector('[part="title-input"]')).toBeNull();
   });
 
-  test("startLayerTitleEdit returns silently when the node is gone from the doc", async () => {
+  test("startLayerTitleEdit returns silently when the path is in no row at all", async () => {
     await renderLayers();
-    const ghost = document.createElement("div");
-    ghost.className = "layer-row";
-    ghost.dataset.path = "children/99";
-    const label = document.createElement("span");
-    label.className = "layer-label";
-    ghost.append(label);
-    host.append(ghost);
     expect(() => {
       startLayerTitleEdit(["children", 99], () => {});
     }).not.toThrow();
-    expect(ghost.querySelector(".layer-title-input")).toBeNull();
+    await flush(2);
+    expect(host.querySelector('[part="title-input"]')).toBeNull();
   });
 
-  test("Escape after a commit is a no-op (committed guard)", async () => {
+  test("Escape after a commit is a no-op — the rename is already over", async () => {
     await renderLayers();
     const rerender = mock(() => {});
     startLayerTitleEdit(["children", 1], rerender);
-    const input = document.querySelector(".layer-title-input") as HTMLInputElement;
+    await flush(2);
+    const input = rowByKey(["children", 1])!.querySelector(
+      '[part="title-input"]',
+    ) as HTMLInputElement;
     input.value = "Committed";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("blur"));
+    await flush(2);
     expect(rerender).toHaveBeenCalledTimes(1);
+
     input.dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
     );
+    await flush(2);
     expect(rerender).toHaveBeenCalledTimes(1);
     const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
     expect(node.$title).toBe("Committed");
@@ -397,10 +410,10 @@ describe("dnd drag previews", () => {
     registerPrimaryStage();
   });
 
-  test("layer-row drags suppress the native drag image", async () => {
+  test("Outline row drags suppress the native drag image", async () => {
     const leftPanel = document.querySelector("#left-panel") as HTMLElement;
-    leftPanel.innerHTML = `<div class="layers-container">
-      <div data-dnd-row data-path="children/0" data-dnd-depth="0"></div>
+    leftPanel.innerHTML = `<div part="outline">
+      <div part="row" data-dnd-row data-value="children/0" data-dnd-depth="0"></div>
     </div>`;
     dnd.registerLayersDnD();
     await raf();

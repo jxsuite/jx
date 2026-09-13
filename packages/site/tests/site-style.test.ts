@@ -29,6 +29,45 @@ describe("buildSiteStyleCSS", () => {
     expect(css).not.toContain("color-scheme");
   });
 
+  test("a &-prefixed block is a state of the root, and reaches the sheet", () => {
+    /* `&[data-theme="light"]` means `:root[data-theme="light"]` — a project forcing a scheme. It
+       used to fall in with every other nested selector under "page-content styling, the resolved
+       document covers those" and was dropped in SILENCE, so a site declaring a forced-theme
+       override shipped a sheet without one. A bare element or class key really is page content and
+       is still skipped, which is the half that made the old rule look right. */
+    const css = buildSiteStyleCSS(
+      {
+        "--bg": "light-dark(#fff, #111)",
+        '&[data-theme="dark"]': { colorScheme: "dark" },
+        '&[data-theme="light"]': { "--bg": "#fff", colorScheme: "light" },
+        ".card": { color: "red" },
+        colorScheme: "light dark",
+      },
+      {},
+      id,
+    );
+    expect(css).toContain(':root[data-theme="light"] { --bg: #fff; color-scheme: light }');
+    expect(css).toContain(':root[data-theme="dark"] { color-scheme: dark }');
+    // Page content stays the document's own business.
+    expect(css).not.toContain(".card");
+  });
+
+  test("color-scheme lands on :root, where light-dark() can see it", () => {
+    /* The one non-custom property that must not go to `body`. Every semantic token is a
+       `light-dark()` pair, and `light-dark()` resolves against the element carrying
+       `color-scheme` — so declared on `body` it leaves every token on `:root` resolving against
+       the wrong element. It is also what made the site builder and `installTheme`, which puts the
+       same authored block on `:root`, disagree about one project. */
+    const css = buildSiteStyleCSS(
+      { "--bg": "light-dark(#fff, #111)", colorScheme: "light dark", margin: "0" },
+      {},
+      id,
+    );
+    expect(css).toContain(":root { --bg: light-dark(#fff, #111); color-scheme: light dark }");
+    expect(css).toContain("body { margin: 0 }");
+    expect(css).not.toContain("body { color-scheme");
+  });
+
   test("dual-emits scheme blocks with the §9.5 selector contract", () => {
     const css = buildSiteStyleCSS(
       { "--bg": "#fff", "@--dark": { "--bg": "#000", ".card": { borderColor: "#333" } } },
@@ -67,6 +106,19 @@ describe("buildSiteStyleCSS", () => {
       id,
     );
     expect(css).toBe("@font-face { font-family: Jx; src: url(/a.woff2) }");
+  });
+
+  test("a project-level @keyframes is ONE block, not one rule per stop", () => {
+    /* This path decomposed an `@` block itself before the builder ever saw it, so it pushed one
+       call per sub-key with the stop as the SCOPE — output that looks like valid CSS and is not:
+       the last definition of a `@keyframes` name replaces every earlier one, so a site-wide
+       animation kept only its final stop. */
+    const css = buildSiteStyleCSS(
+      { "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } } },
+      {},
+      id,
+    );
+    expect(css).toBe("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
   });
 
   /*

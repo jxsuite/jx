@@ -127,7 +127,7 @@ jobs:
     if: >-
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       !(github.event_name == 'pull_request' && github.actor == 'github-actions[bot]')
-    # A PINNED container, Chromium AND fontconfig. The fontset is not optional: the Spectrum UI
+    # A PINNED container, Chromium AND fontconfig. The fontset is not optional: the chrome's
     # Stack resolves differently on NixOS and on Ubuntu, so a hash lock over bytes rendered with an
     # Unknown font set is a lock nobody can reproduce — which is why every lock entry records the
     # Runtime triple (Chromium major · fontset id · OS) that `scripts/check-image-lock.ts` reads.

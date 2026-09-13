@@ -22,12 +22,12 @@ import { setProjectState } from "../src/store";
 import { resetIgnoreCache } from "../src/files/gitignore";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import {
-  STAGE_CLASS,
   allCanvasSurfaces,
   registerCanvasSurface,
   unregisterCanvasSurface,
 } from "../src/canvas/surface-registry";
 import { REGION_ATTR, paneRegion } from "../src/ui/regions";
+import { STAGE_PART } from "../src/surfaces/pane-grid";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { DirEntry, ProjectState, RenameResult, StudioPlatform } from "../src/types";
 
@@ -67,6 +67,10 @@ export async function flush(turns = 2): Promise<void> {
 export function resetStudioState(overrides: Record<string, unknown> = {}): void {
   resetIgnoreCache();
   setProjectState({
+    /* `dirs` is not optional on `ProjectState`, and the default was missing it — which was
+       invisible while the Files tree was a lit template the suites mocked, and is a thrown
+       `dirs.get of undefined` the moment a suite paints the real panel. Overrides still win. */
+    dirs: new Map(),
     expanded: new Set(),
     projectConfig: null,
     ...overrides,
@@ -386,48 +390,66 @@ export function setValue(el: HTMLInputElement | HTMLTextAreaElement, value: stri
 
 // ─── Dialog helpers ───────────────────────────────────────────────────────────
 
-/** The topmost `sp-dialog-wrapper` currently mounted in the #layer-dialog layer, if any. */
+/**
+ * The topmost `jx-dialog` mounted in the #layer-dialog layer, if any.
+ *
+ * It also matched `sp-dialog-wrapper`, for the bespoke bodies that were still lit. Spectrum is
+ * removed, so that half matched nothing before it was deleted — and a selector that can never match
+ * reads like a substrate still in play, which is the one thing a test harness must not imply.
+ */
 export function topDialog(): HTMLElement | null {
-  const wrappers = [...document.querySelectorAll("#layer-dialog sp-dialog-wrapper")];
-  return (wrappers.at(-1) as HTMLElement | undefined) ?? null;
+  const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
+  return (dialogs.at(-1) as HTMLElement | undefined) ?? null;
+}
+
+/** The prompt's field control — the native input the kit's field draws inside itself. */
+function promptField(dialog: HTMLElement): HTMLInputElement | null {
+  return dialog.querySelector<HTMLInputElement>('jx-textfield [part="input"]');
 }
 
 /**
- * Drive an open `showPromptDialog()`: type `value` into its field and confirm, or pass `null` to
- * cancel. Returns the dialog element it acted on, or null when no dialog is open.
- *
- * `pick` selects a row in the dialog's format picker BEFORE typing, which is the order a reader
- * works in and the order that matters: the picker re-runs `validate` against the composed name, so
- * picking after typing and picking before it exercise different code.
+ * Answer the topmost prompt dialog: `null` cancels; a string is typed into the field (after an
+ * optional format pick) and confirmed. Both flows dispatch the same `confirm`/`cancel` names on the
+ * dialog element, so the helper does not care which substrate it is.
  */
 export async function answerPromptDialog(
   value: string | null,
   pick?: string,
 ): Promise<HTMLElement | null> {
-  const wrapper = topDialog();
-  if (!wrapper) {
+  const dialog = topDialog();
+  if (!dialog) {
     return null;
   }
   if (value === null) {
-    wrapper.dispatchEvent(new Event("cancel"));
+    dialog.dispatchEvent(new Event("cancel"));
   } else {
     if (pick !== undefined) {
       await pickPromptFormat(pick);
     }
-    const field = (topDialog() ?? wrapper).querySelector("sp-textfield") as HTMLInputElement | null;
+    const field = promptField(topDialog() ?? dialog);
     if (field) {
       field.value = value;
       field.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    (topDialog() ?? wrapper).dispatchEvent(new Event("confirm"));
+    (topDialog() ?? dialog).dispatchEvent(new Event("confirm"));
   }
   await flush();
-  return topDialog() ?? wrapper;
+  return topDialog() ?? dialog;
 }
 
-/** Select a row in the open prompt dialog's picker, the way `sp-picker` reports one. */
+/**
+ * Pick a format in the topmost prompt dialog's choice: the kit's `jx-select`, or the Spectrum
+ * picker.
+ *
+ * The write goes to the NATIVE control inside the element, and the event is dispatched from there,
+ * because that is what a reader's pick is: `jx-select` hears its own control's `change`, writes the
+ * value into its state, and lets the event bubble on to the host. Setting the element's `value`
+ * property instead would move the control without ever telling the surface anything, which is a
+ * pick no reader can perform.
+ */
 export async function pickPromptFormat(value: string): Promise<void> {
-  const picker = topDialog()?.querySelector("sp-picker") as HTMLInputElement | null;
+  const dialog = topDialog();
+  const picker = dialog?.querySelector<HTMLSelectElement>('[part="choice"] select');
   if (!picker) {
     return;
   }
@@ -436,22 +458,30 @@ export async function pickPromptFormat(value: string): Promise<void> {
   await flush();
 }
 
-/** The open prompt dialog's picker rows, as `[value, label]` pairs. */
+/** The `[value, label]` pairs the topmost prompt dialog's choice offers. */
 export function promptFormatOptions(): [string, string][] {
-  return [...(topDialog()?.querySelectorAll("sp-picker sp-menu-item") ?? [])].map((el) => [
-    el.getAttribute("value") ?? "",
-    el.textContent?.trim() ?? "",
-  ]);
+  const dialog = topDialog();
+  /* `[part="choice"] option`, not `select[part="choice"] option`: the part is on the `jx-select`
+     element and the `<select>` inside it carries `part="control"`. Rows the element stands in for a
+     value no list holds are excluded — they are the element saying it holds something unlisted,
+     never an offer. */
+  return [...(dialog?.querySelectorAll<HTMLOptionElement>('[part="choice"] option') ?? [])]
+    .filter((el) => el.getAttribute("part") !== "unlisted")
+    .map((el) => [el.value, el.textContent?.trim() ?? ""]);
 }
 
-// ─── New Project modal field accessors ───────────────────────────────────────
-// The Parameters step renders a destination block between the name and description whose shape
-// Depends on the platform's `createDestination` (specs/desktop.md §4.5), so positional indexing
-// Into the textfield list is not stable. Address the identity/destination fields by class.
+// ─── New Project wizard field accessors ──────────────────────────────────────
+/* The second step renders a destination block between the name and the note whose shape depends on
+   the platform's `createDestination` (specs/desktop.md §4.5), so positional indexing into the field
+   list is not stable. Address each field by its `part` — the wizard is a document now
+   (`src/surfaces/new-project.json`), so it lives in the dialog layer and emits no classes at all,
+   and what a test reaches for is the native control the kit's field draws inside itself. */
 
-/** A New Project Parameters-step field by its stable class suffix. */
-function npField(suffix: string): HTMLInputElement {
-  return document.querySelector(`#layer-modal .new-project-${suffix}`) as HTMLInputElement;
+/** A New Project second-step control by the `part` of the kit field around it. */
+function npField(part: string): HTMLInputElement {
+  return document.querySelector(
+    `#layer-dialog [part="${part}"] [part="input"], #layer-dialog [part="${part}"] [part="control"]`,
+  ) as HTMLInputElement;
 }
 
 /** The Project Name textfield. */
@@ -467,13 +497,13 @@ export const npOwner = () => npField("owner");
 export function npPreview(): string {
   return (
     document
-      .querySelector("#layer-modal .new-project-destination-preview")
+      .querySelector('#layer-dialog [part="destination-preview"]')
       ?.textContent?.trim()
       .replaceAll(/\s+/g, " ") ?? ""
   );
 }
 
-/** Set a New Project textfield's value and fire the input event the modal listens for. */
+/** Set a New Project field's value and fire the input event the wizard listens for. */
 export function npType(el: HTMLInputElement, value: string): void {
   el.value = value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -485,6 +515,69 @@ export function npType(el: HTMLInputElement, value: string): void {
  */
 export function npFillLocation(parent = "/home/dev/Sites"): void {
   npType(npLocation(), parent);
+}
+
+/** One node of the wizard's document, addressed by `part`. */
+export function npPart<T extends Element = HTMLElement>(part: string): T | null {
+  return document.querySelector(`#layer-dialog [part="${part}"]`) as T | null;
+}
+
+/** Every node of the wizard's document carrying a `part`. */
+export function npParts<T extends Element = HTMLElement>(part: string): T[] {
+  return [...document.querySelectorAll(`#layer-dialog [part="${part}"]`)] as T[];
+}
+
+/** The wizard's dialog element, or null when it is not up. */
+export function npDialog(): HTMLElement | null {
+  return document.querySelector('#layer-dialog jx-dialog[part="new-project"]');
+}
+
+/** The dialog's headline, which is also its accessible name. */
+export function npHeadline(): string {
+  return npPart("headline")?.textContent?.trim() ?? "";
+}
+
+/**
+ * The footer's answers, in the order the kit draws them: Back, Cancel, then the primary. Absent
+ * labels are absent buttons — `jx-dialog` draws a button only for a label it was given.
+ */
+export function npFooter(): string[] {
+  return ["secondary-label", "cancel-label", "confirm-label"]
+    .map((part) => npPart(part)?.textContent?.trim() ?? "")
+    .filter((label) => label !== "");
+}
+
+/** Press one of the footer's answers, from the native control the kit's button draws. */
+export function npPress(label: "Back" | "Cancel" | "Confirm"): void {
+  const part = label === "Back" ? "secondary" : label === "Cancel" ? "cancel" : "confirm";
+  npPart(`${part}`)
+    ?.querySelector('[part="control"]')
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+/** The starter gallery's cards, in order. */
+export function npCards(): HTMLElement[] {
+  return npParts("card");
+}
+
+/** The source tabs' values, in strip order. */
+export function npTabValues(): string[] {
+  return npParts("tab").map((tab) => tab.getAttribute("value") ?? "");
+}
+
+/** Choose a source tab the way a reader does: a click on the tab itself. */
+export function npPickTab(value: string): void {
+  document
+    .querySelector(`#layer-dialog jx-tab[value="${value}"]`)
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+/**
+ * Dismiss the wizard the way a reader does: the platform's `cancel`, which is what Escape raises on
+ * a modal `<dialog>` and what the kit's Cancel button dispatches. A no-op with nothing up.
+ */
+export function npDismiss(): void {
+  npDialog()?.dispatchEvent(new Event("cancel", { bubbles: true }));
 }
 
 // ─── Pane stages ──────────────────────────────────────────────────────────────
@@ -499,7 +592,7 @@ export function npFillLocation(parent = "/home/dev/Sites"): void {
  *
  * Deliberately NOT `pane-grid.ts`'s own reconciler: a unit test for the Library should not have to
  * boot the shell, install stage gestures or own a `#pane-grid`. It builds the same shape the
- * reconciler builds — `.pane-stage`, stamped, registered — and nothing else.
+ * reconciler builds — `part="stage"`, stamped, registered — and nothing else.
  *
  * @param {string} [paneId]
  * @param {ParentNode} [parent] Where to attach. Defaults to `document.body`.
@@ -507,7 +600,7 @@ export function npFillLocation(parent = "/home/dev/Sites"): void {
  */
 export function standUpPaneGrid(paneId = "primary", parent: ParentNode = document.body) {
   const stage = document.createElement("div");
-  stage.className = STAGE_CLASS;
+  stage.setAttribute("part", STAGE_PART);
   stage.setAttribute(REGION_ATTR, paneRegion(paneId));
   parent.append(stage);
   return registerCanvasSurface(paneId, stage);
@@ -545,9 +638,13 @@ export function surfaceOf(el: HTMLElement, paneId = "primary") {
  * @returns {CanvasSurface}
  */
 export function registerPrimaryStage(paneId = "primary") {
+  /* Found by its REGION, not by a class. A pane's stage is `surfaces/pane-grid.json`'s
+     `[part="stage"]` and carries no class at all, while the fixtures this adopts were written when
+     it did — so the id both spellings agree on is the one the shots crop. */
   const stage =
-    document.querySelector<HTMLElement>(`.${STAGE_CLASS}`) ?? document.createElement("div");
-  stage.className = STAGE_CLASS;
+    document.querySelector<HTMLElement>(`[${REGION_ATTR}="${paneRegion(paneId)}"]`) ??
+    document.createElement("div");
+  stage.setAttribute("part", STAGE_PART);
   stage.setAttribute(REGION_ATTR, paneRegion(paneId));
   if (!stage.isConnected) {
     (document.querySelector("#app") ?? document.body).append(stage);
@@ -582,6 +679,56 @@ export function stubRect(el: Element, rect: Partial<DOMRect>): void {
     ...rect,
   } as DOMRect;
   (el as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () => full;
+}
+
+/** A `ResizeObserver` a test delivers by hand — see {@link installResizeObserver}. */
+export interface FakeResizeObservers {
+  /** Whether any live observer currently holds `target`. */
+  observes: (target: Element) => boolean;
+  /** Deliver a resize of `target`. Nothing happens for an element nobody observed. */
+  resize: (target: Element) => void;
+  /** Put the environment's own `ResizeObserver` back. Call from a `finally`. */
+  restore: () => void;
+}
+
+/**
+ * Happy-dom's `ResizeObserver` exists and never fires, because nothing there has a box to change.
+ * Replace it with one a test can fire for a named element, so code that re-measures on a resize can
+ * be shown to do so — and shown NOT to for an element it never observed, which is the half a real
+ * observer enforces and a stub that fires everything would wave through.
+ */
+export function installResizeObserver(): FakeResizeObservers {
+  const original = globalThis.ResizeObserver;
+  const observers: { cb: () => void; targets: Element[] }[] = [];
+  function FakeResizeObserver(this: Record<string, unknown>, cb: () => void) {
+    const record = { cb, targets: [] as Element[] };
+    observers.push(record);
+    this.observe = (target: Element) => {
+      if (!record.targets.includes(target)) {
+        record.targets.push(target);
+      }
+    };
+    this.unobserve = (target: Element) => {
+      record.targets = record.targets.filter((el) => el !== target);
+    };
+    this.disconnect = () => {
+      record.targets = [];
+    };
+  }
+  globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+  return {
+    observes: (target) => observers.some((o) => o.targets.includes(target)),
+    resize(target) {
+      for (const o of observers) {
+        if (o.targets.includes(target)) {
+          o.cb();
+        }
+      }
+    },
+    restore: () => {
+      globalThis.ResizeObserver = original;
+    },
+  };
 }
 
 /**

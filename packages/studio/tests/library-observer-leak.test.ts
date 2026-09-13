@@ -164,7 +164,7 @@ async function windowedPane(): Promise<HTMLElement> {
   renderLibraryMode(surfaceOf(host), tab);
   await flush();
   await flush();
-  const body = host.querySelector(".library-body") as HTMLElement;
+  const body = host.querySelector('[part="body"]') as HTMLElement;
   Object.defineProperty(body, "clientHeight", { configurable: true, value: VIEWPORT.height });
   Object.defineProperty(body, "clientWidth", { configurable: true, value: VIEWPORT.width });
   body.dispatchEvent(new Event("scroll"));

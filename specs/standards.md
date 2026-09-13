@@ -2,16 +2,16 @@
 
 ## Which External Standards Jx Adopts, and How That Is Recorded
 
-**Version:** 0.1.15-draft\
+**Version:** 0.1.17-draft\
 **Status:** Partial\
-**Updated:** 2026-08-17\
+**Updated:** 2026-09-02\
 **License:** MIT
 
 ---
 
 ## 1. Overview
 
-> **Status: Implemented.** The parser, the gate and the generated page ship (`scripts/docs/lib/standards.ts`, `scripts/docs/check-standards.ts`, `docs/extending/reference/standards.md`), and **every spec with numbered headings carries its table** — both ratchets in the checker (`UNCITED`, `EXEMPT_UNNUMBERED`) are empty, so a new spec with no table fails on its first pull request. The program closing the gaps this registry tracks has its status board at [`STANDARDS-ADOPTION.md`](../STANDARDS-ADOPTION.md).
+> **Status: Implemented.** The parser, the gate and the generated page ship (`scripts/docs/lib/standards.ts`, `scripts/docs/check-standards.ts`, `docs/extending/reference/standards.md`), and **every spec with numbered headings carries its table** — both ratchets in the checker (`UNCITED`, `EXEMPT_UNNUMBERED`) are empty, so a new spec with no table fails on its first pull request. The gaps this registry tracks are listed by tier on the generated page, and a standard no section owns yet is a row in the backlog (§11).
 
 Jx builds on external standards, and until now it said so only in prose — unevenly, without citations, and with no way for a machine to tell a genuine conformance claim from a borrowed name. This specification defines how that is recorded instead: **each spec carries a numbered `## N. Standards Alignment` section holding one table**, and every row states what Jx does about one standard, which section of that spec it binds, and what backs the claim.
 
@@ -234,13 +234,12 @@ Standards the audit found relevant whose **owning spec section does not exist ye
 
 An entry names the spec that will own it. When that section is written, the entry moves out of this table and becomes a `Pending` row bound to it; `backlog-already-cited` fails if it is left in both places.
 
-| Standard                                                      | Target                                  | Why not yet                                                                                                                                                                                                         |
-| ------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)         | `desktop.md` §10                        | Passkeys need a registered relying-party id and a recovery story, neither of which is designed.                                                                                                                     |
-| [CSS Cascade Layers](https://www.w3.org/TR/css-cascade-5/)    | `spec.md` §9                            | The style model has no layer concept; adding one is a design change, not a citation.                                                                                                                                |
-| [CSS Containment 3](https://www.w3.org/TR/css-contain-3/)     | `spec.md` §9                            | `$media` is viewport-only. Container queries would need a named-container model in the style object.                                                                                                                |
-| [Media Queries 5](https://www.w3.org/TR/mediaqueries-5/)      | `spec.md` §9.4                          | `$media` borrows `@custom-media`'s shape from this level, but Jx resolves it itself and no browser ships it — so there is nothing to conform to until one does.                                                     |
-| [CSS Shadow Parts](https://www.w3.org/TR/css-shadow-parts-1/) | `spec.md` §16.6 — `::part` from outside | Shadow roots exist now (the `$shadow` opt-in), so `::part` is finally _possible_ — but nothing emits a `part` attribute and no selector addresses one from a page stylesheet, so there is no behaviour to cite yet. |
+| Standard                                                  | Target           | Why not yet                                                                                          |
+| --------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)     | `desktop.md` §10 | Passkeys need a registered relying-party id and a recovery story, neither of which is designed.      |
+| [CSS Containment 3](https://www.w3.org/TR/css-contain-3/) | `spec.md` §9     | `$media` is viewport-only. Container queries would need a named-container model in the style object. |
+
+Three entries this table used to carry — CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts — moved to `ui.md` §11 when the UI kit gave each a section to bind: its theme sheet lives in a layer, honours the user-preference media features, and emits `part` on every internal node. The `@custom-media` caveat Media Queries 5 carried here is restated in that row.
 
 ## 12. Normative Keywords
 
@@ -256,6 +255,8 @@ This section is the whole declaration. Individual specifications do not repeat t
 
 ## Changelog
 
+- **0.1.17-draft** (2026-09-02) — §1 no longer links the deleted adoption plan.
+- **0.1.16-draft** (2026-09-02) — §11: CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts moved to ui.md §11.
 - **0.1.15-draft** (2026-08-17) — §4.1: the Standards Alignment heading is matched tolerantly and a visual-editor escape is reported as heading-escaped.
 - **0.1.14-draft** (2026-08-16) — §11 WebDriver BiDi leaves the adoption backlog — the pipeline speaks it, and studio-ui-guidelines.md §15 owns it.
 - **0.1.13-draft** (2026-08-16) — §11 RFC 8414 leaves the adoption backlog — the flow it would configure now exists, and it is recorded Rejected in desktop.md for the reason that remains.
@@ -275,4 +276,4 @@ This section is the whole declaration. Individual specifications do not repeat t
 
 ---
 
-_Jx Standards Alignment Specification v0.1.15-draft_
+_Jx Standards Alignment Specification v0.1.17-draft_

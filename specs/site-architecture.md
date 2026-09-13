@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.6.10-draft\
+**Version:** 0.6.11-draft\
 **Status:** Partial\
-**Updated:** 2026-08-29\
+**Updated:** 2026-09-10\
 **License:** MIT
 
 ---
@@ -2231,7 +2231,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 - [ ] Studio: Frontmatter form editor (schema-driven sidebar for markdown content entries)
 - [ ] Studio: JSON data entry editor (form-based editing for JSON collection entries)
-- [ ] Studio: CSV table editor (inline sp-table editor for CSV entries)
+- [ ] Studio: CSV table editor (an inline grid for CSV entries)
 - [ ] Studio: Content CRUD (create new entry, delete, rename/move)
 - [ ] Studio: Media browser (thumbnail grid, upload, file picker integration)
 - [ ] Studio: SEO panel (title/description preview, OG card preview, JSON-LD editor)
@@ -2255,6 +2255,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.6.11-draft** (2026-09-10) — the CSV table-editor backlog item names a grid rather than a Spectrum element that no longer exists.
 - **0.6.10-draft** (2026-08-29) — A site deployed under a subpath: url's path is the base every emitted reference resolves against, applied to every output a host reads and answered by the dev server alongside the bare path.
 - **0.6.9-draft** (2026-08-29) — A reference inside a format that cannot round-trip is repaired through the rewrite capability rather than reported as a remainder.
 - **0.6.8-draft** (2026-08-29) — Media reachable only through a cross-root asset mount has no project-relative name, which is why it has no usage count; addressing it is a host file-API question, not an engine one.

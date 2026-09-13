@@ -95,29 +95,29 @@ export interface PopoverDefect {
 // ─── Reading a node ─────────────────────────────────────────────────────────────
 
 /** The attribute bag, whatever shape the author wrote it in. */
-function attrs(node: JxElement): Record<string, unknown> {
+export function attrs(node: JxElement): Record<string, unknown> {
   return isJsonObject(node.attributes) ? (node.attributes as Record<string, unknown>) : {};
 }
 
 /** An attribute's literal string value, or null when absent or bound. */
-function literalAttr(node: JxElement, name: string): string | null {
+export function literalAttr(node: JxElement, name: string): string | null {
   const value = attrs(node)[name];
   return typeof value === "string" ? value : null;
 }
 
 /** The element's tag, lowercased, or "" when it is a tag expression or absent. */
-function tagOf(node: JxElement): string {
+export function tagOf(node: JxElement): string {
   return typeof node.tagName === "string" ? node.tagName.toLowerCase() : "";
 }
 
 /** How the author addresses this node in a message: its id if it has one, else its tag. */
-function labelOf(node: JxElement): string {
+export function labelOf(node: JxElement, fallback = "the popover"): string {
   const id = typeof node.id === "string" ? node.id : literalAttr(node, "id");
   if (id) {
     return `#${id}`;
   }
   const tag = tagOf(node);
-  return tag === "" ? "the popover" : `the <${tag}>`;
+  return tag === "" ? fallback : `the <${tag}>`;
 }
 
 /**
@@ -133,13 +133,94 @@ export function popoverModeOf(node: JxElement): string | null {
   return typeof raw === "string" ? raw : null;
 }
 
-/** Whether the node declares `popover` at all, however it was written. */
-export function isPopover(node: JxElement): boolean {
-  return "popover" in attrs(node);
+/**
+ * What a caller knows about the custom elements in scope, which the schema cannot know by itself.
+ *
+ * A kit element's `popover` attribute lives in its DEFINITION, so a consumer's node is `{"tagName":
+ * "jx-popover", "attributes": {"id": "p1"}}` and every structural rule here read it as an ordinary
+ * `<div>`: a command aimed at it was a target mismatch, `documentHasPopover` was false, and an
+ * author who dropped one on a page could not open it on the canvas at all. The tags come in rather
+ * than out, so the schema keeps no dependency on any particular kit.
+ */
+export interface OverlayScope {
+  /** Tags whose definition declares `popover`. Studio passes the kit's; the compiler the project's. */
+  popoverTags?: ReadonlySet<string>;
+  /**
+   * Tags whose definition FORWARDS the invoker attributes to a native button inside itself.
+   *
+   * `popovertarget` and `commandfor` come from an IDL mixin HTML includes into `HTMLButtonElement`
+   * and `HTMLInputElement` and nothing else, so on any other tag they parse and do nothing — which
+   * is what `invoker-not-button` is for. A custom element that observes them and passes them to its
+   * own inner `<button>` is the exception, and without this the rule fires on the natural spelling
+   * of the kit's own documented usage.
+   */
+  invokerTags?: ReadonlySet<string>;
+}
+
+/** The invoker attributes an element must observe to be forwarding them to a native button. */
+const INVOKER_ATTRS = ["popovertarget", "popovertargetaction", "command", "commandfor"] as const;
+
+/**
+ * Derive an {@link OverlayScope} from the element definitions a document may use.
+ *
+ * One definition of what makes a tag each kind, so the kit, `jx validate` and the studio cannot
+ * disagree about the same project. A definition IS a popover when its own root carries `popover`,
+ * and it FORWARDS invocation when it observes all four invoker attributes — which is the only
+ * evidence available from the document alone, and is what a forwarding element must do to receive
+ * them at all.
+ *
+ * @param definitions The element documents in scope.
+ * @returns {OverlayScope} The two tag sets, ready to pass to any rule here.
+ */
+export function overlayScopeFor(definitions: Iterable<JxElement>): OverlayScope {
+  const popoverTags = new Set<string>();
+  const invokerTags = new Set<string>();
+  for (const def of definitions) {
+    const tag = typeof def?.tagName === "string" ? def.tagName : "";
+    if (!tag.includes("-")) {
+      continue;
+    }
+    if (declaresPopover(def)) {
+      popoverTags.add(tag);
+    }
+    const observed = (def as { observedAttributes?: unknown }).observedAttributes;
+    if (Array.isArray(observed) && INVOKER_ATTRS.every((attr) => observed.includes(attr))) {
+      invokerTags.add(tag);
+    }
+  }
+  return { invokerTags, popoverTags };
+}
+
+/**
+ * Whether the node ITSELF declares `popover`, however it was written.
+ *
+ * The style rules are judged against this rather than {@link isPopover}, because they read the
+ * style the node carries and a consumer's `<jx-popover>` carries none — the definition owns it. A
+ * scope-aware check there would report `no-open-rule` on every correct consumer, and that rule is a
+ * warning the conformance suites assert away entirely.
+ */
+export function declaresPopover(node: JxElement): boolean {
+  /* BOTH spellings, which is what "however it was written" has to mean. `popover` is not a reserved
+     key, so a top-level `"popover": "auto"` reaches `bindProperty` and is set as the DOM PROPERTY —
+     a real popover, reflected back to the attribute — and reading only the bag left one invisible
+     to every rule here: no `base-display` finding, no `no-open-rule` finding, and its tag missing
+     from the scope, so consumers of that definition went unrecognised too. `idOf` below already
+     reads a key either way, for the same reason. */
+  return "popover" in attrs(node) || "popover" in (node as Record<string, unknown>);
+}
+
+/**
+ * Whether the node IS a popover: it declares `popover`, or its tag names a definition that does.
+ *
+ * This is the structural question — what an id refers to, what an invoker may target, what a node
+ * is enclosed by — and a kit popover answers yes to all three.
+ */
+export function isPopover(node: JxElement, scope?: OverlayScope): boolean {
+  return declaresPopover(node) || (scope?.popoverTags?.has(tagOf(node)) ?? false);
 }
 
 /** The node's own `id`, from either the top-level key or the attribute bag. */
-function idOf(node: JxElement): string | null {
+export function idOf(node: JxElement): string | null {
   if (typeof node.id === "string" && node.id !== "") {
     return node.id;
   }
@@ -149,7 +230,7 @@ function idOf(node: JxElement): string | null {
 
 // ─── Walking a document ─────────────────────────────────────────────────────────
 
-interface Visit {
+export interface Visit {
   node: JxElement;
   path: PopoverPath;
   /** The nearest enclosing popover, so an invoker can be judged against the panel it sits in. */
@@ -166,31 +247,37 @@ interface Visit {
  * @param root The document or subtree to walk.
  * @yields {Visit} Each element, its path, and the popover it is inside (if any).
  */
-function* walk(
+export function* walk(
   root: JxElement,
   path: PopoverPath = [],
   enclosing: JxElement | null = null,
+  scope?: OverlayScope,
 ): Generator<Visit> {
   yield { enclosing, node: root, path };
-  const inside = isPopover(root) ? root : enclosing;
+  const inside = isPopover(root, scope) ? root : enclosing;
   const { children } = root;
   if (Array.isArray(children)) {
     for (const [index, child] of children.entries()) {
       if (child && typeof child === "object") {
-        yield* walk(child as JxElement, [...path, "children", index], inside);
+        yield* walk(child as JxElement, [...path, "children", index], inside, scope);
       }
     }
   } else if (isJsonObject(children) && isJsonObject((children as JxElement).map)) {
-    yield* walk((children as JxElement).map as JxElement, [...path, "children", "map"], inside);
+    yield* walk(
+      (children as JxElement).map as JxElement,
+      [...path, "children", "map"],
+      inside,
+      scope,
+    );
   }
   const template = isJsonObject(root.map) ? (root.map as JxElement) : null;
   if (template) {
-    yield* walk(template, [...path, "map"], inside);
+    yield* walk(template, [...path, "map"], inside, scope);
   }
   const cases = isJsonObject(root.cases) ? (root.cases as Record<string, JxElement>) : {};
   for (const [key, branch] of Object.entries(cases)) {
     if (branch && typeof branch === "object") {
-      yield* walk(branch, [...path, "cases", key], inside);
+      yield* walk(branch, [...path, "cases", key], inside, scope);
     }
   }
 }
@@ -207,10 +294,10 @@ function* walk(
  * @param doc The document to scan.
  * @returns The ids, in document order, without duplicates.
  */
-export function popoverIdsIn(doc: JxElement): string[] {
+export function popoverIdsIn(doc: JxElement, scope?: OverlayScope): string[] {
   const ids: string[] = [];
-  for (const { node } of walk(doc)) {
-    if (!isPopover(node)) {
+  for (const { node } of walk(doc, [], null, scope)) {
+    if (!isPopover(node, scope)) {
       continue;
     }
     const id = idOf(node);
@@ -232,9 +319,9 @@ export function popoverIdsIn(doc: JxElement): string[] {
  * @param doc The document to scan.
  * @returns True when at least one node declares `popover`.
  */
-export function documentHasPopover(doc: JxElement): boolean {
-  for (const { node } of walk(doc)) {
-    if (isPopover(node)) {
+export function documentHasPopover(doc: JxElement, scope?: OverlayScope): boolean {
+  for (const { node } of walk(doc, [], null, scope)) {
+    if (isPopover(node, scope)) {
       return true;
     }
   }
@@ -254,9 +341,12 @@ function isSelector(key: string): boolean {
 }
 
 /** A scalar style value as text, or null when the key is absent or holds a nested block. */
-function scalar(style: JxStyle | undefined, prop: string): string | null {
+export function scalar(style: JxStyle | undefined, prop: string): string | null {
   const value = style?.[prop];
-  if (value === undefined || isNestedStyle(value)) {
+  /* `Array.isArray` as well as the block guard: several blocks under one key is a rule written more
+     than once (spec.md §9.4), and stringifying it gives `[object Object]` — a declaration value
+     that is not one, which every caller here would then compare against. */
+  if (value === undefined || isNestedStyle(value) || Array.isArray(value)) {
     return null;
   }
   return String(value);
@@ -414,10 +504,10 @@ const DOCS = "See docs/framework/concepts/overlays.";
  * @param doc The document to check.
  * @returns The defects, most structural first within each node.
  */
-export function findPopoverDefects(doc: JxElement): PopoverDefect[] {
-  const visits = [...walk(doc)];
-  const ids = popoverIdsIn(doc);
-  const hasAnyPopover = visits.some(({ node }) => isPopover(node));
+export function findPopoverDefects(doc: JxElement, scope?: OverlayScope): PopoverDefect[] {
+  const visits = [...walk(doc, [], null, scope)];
+  const ids = popoverIdsIn(doc, scope);
+  const hasAnyPopover = visits.some(({ node }) => isPopover(node, scope));
   const targeted = new Set<string>();
   for (const { node } of visits) {
     if (POPOVER_INVOKER_TAGS.has(tagOf(node))) {
@@ -430,8 +520,10 @@ export function findPopoverDefects(doc: JxElement): PopoverDefect[] {
 
   const defects: PopoverDefect[] = [];
   for (const { enclosing, node, path } of visits) {
-    defects.push(...invokerDefects(node, path, enclosing, ids, hasAnyPopover));
-    if (isPopover(node)) {
+    defects.push(...invokerDefects(node, path, enclosing, ids, hasAnyPopover, scope));
+    // The node's OWN declaration, not the scope-aware one: these rules read the style this node
+    // Carries, and a consumer of a kit popover carries none.
+    if (declaresPopover(node)) {
       defects.push(...panelDefects(node, path, targeted));
     }
   }
@@ -445,12 +537,14 @@ function invokerDefects(
   enclosing: JxElement | null,
   ids: string[],
   hasAnyPopover: boolean,
+  scope?: OverlayScope,
 ): PopoverDefect[] {
   const out: PopoverDefect[] = [];
   const tag = tagOf(node);
   const target = literalAttr(node, "popovertarget");
+  const isInvoker = POPOVER_INVOKER_TAGS.has(tag) || (scope?.invokerTags?.has(tag) ?? false);
 
-  if (target !== null && !POPOVER_INVOKER_TAGS.has(tag)) {
+  if (target !== null && !isInvoker) {
     out.push({
       detail:
         "`popovertarget` and `popovertargetaction` come from the `PopoverTargetAttributes` IDL " +
@@ -556,7 +650,12 @@ function panelDefects(
   }
 
   const baseDisplay = scalar(style, "display");
-  if (baseDisplay !== null) {
+  /* `revert` is the one value that does NOT beat the UA rule — it rolls the cascade back TO it, so
+     a closed panel still computes `display: none` and an open one still takes its `:popover-open`
+     declaration (measured in Chrome 152: closed `none`, open `flex`). It is what an author writes
+     when the interpreter would otherwise inject a default `display` on a custom element, which is
+     exactly the defect this rule is about — so refusing it would refuse the fix. */
+  if (baseDisplay !== null && baseDisplay !== "revert" && baseDisplay !== "revert-layer") {
     out.push({
       detail:
         "A closed popover is hidden by the browser's own `[popover]:not(:popover-open) { display: " +

@@ -1,0 +1,850 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPreferences",
+  "$description": "Preferences (⌘,): the application settings that follow an author between projects, as a `jx-dialog` over the kit. A section list beside one section's body, and the body is a `$switch` over four cases because the reader is looking at exactly one of them. Everything here is a projection — `settings/preferences-dialog.ts` keeps which section is showing, which theme the shell holds, what `preferences-accounts.ts` enumerates, and every decision the Keyboard sheet makes about a captured chord. **The Keyboard sheet is GENERATED**: its groups and rows come from the running registry through `commands/reference.ts`'s `shortcutReference()`, the same projection `docs/studio/interface/shortcuts.md` is built from, so a command an extension registers appears here without this document knowing it exists. **Assistant is two islands** — `managed-slot` and `creds-slot` are rendered empty and filled through `onNodeCreated` by the adapter, because the keyless Cloudflare offer and the provider-key form are surfaces of their own that three other gates also embed (studio-ui-guidelines.md §9.4, \"an island attaches through onNodeCreated\").",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Preferences",
+    "confirmLabel": "",
+    "cancelLabel": "Close",
+    "size": "lg"
+  },
+  "attributes": {
+    "part": "preferences"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "The twenty-three `.prefs-*` rules in `styles/shell.css`, keyed on `part`. Three things in them do not travel. The `sp-dialog-wrapper` card, its underlay, its focus management and its Escape are `jx-dialog`'s now, so nothing here draws a box. Eight `var(--spectrum-font-size-50 | -75 | -100, …)` reads become `--jx-text-sm` and `--jx-text-md`: a `--spectrum-*` name is declared by `<sp-theme>` and by nothing else, and a document mounted into the dialog layer is outside that element, so every one of them would silently have taken its hard-coded fallback. And `.prefs-nav-item.active` was a CLASS doing what a state should — the selected row is the one whose `aria-current` is already true, so the rule reads the accessibility tree rather than a second record of the same fact. No part below is named `field`, `label`, `body`, `error`, `text` or `actions`: the kit is light DOM, and `jx-textfield`, `jx-select` and `jx-dialog` each draw internal nodes under exactly those names inside this same tree.",
+    "& [part=\"sheet\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-5)",
+      "minHeight": "320px"
+    },
+    "& [part=\"nav\"]": {
+      "$description": "A fixed 148px gutter: the four titles are known and short, and a nav that resized with its longest label would move the body under the reader as they switched sections.",
+      "flex": "0 0 148px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "borderRight": "1px solid var(--border)",
+      "paddingRight": "var(--jx-space-3)"
+    },
+    "& [part=\"nav-item\"]": {
+      "appearance": "none",
+      "border": "0",
+      "background": "transparent",
+      "color": "var(--fg-dim)",
+      "font": "inherit",
+      "textAlign": "left",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "borderRadius": "var(--radius)",
+      "cursor": "pointer"
+    },
+    "& [part=\"nav-item\"]:hover": {
+      "background": "var(--hover-bg)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"nav-item\"][aria-current=\"true\"]": {
+      "$description": "The selected row, drawn from the state a screen reader is already told about. `.prefs-nav-item.active` was a second spelling of `aria-current`, and two spellings of one fact is how a surface ends up announcing one row and highlighting another.",
+      "background": "var(--accent-10)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"nav-item\"]:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "& [part=\"section\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "maxHeight": "60vh",
+      "overflowY": "auto"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"blurb\"]": {
+      "margin": "0 0 var(--jx-space-2)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"theme-row\"], & [part=\"search-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"theme-label\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"assistant\"]": {
+      "$description": "The two islands, centred in a column. `.prefs-assistant` said exactly this and lived in `styles/shell.css` under the credentials form's own heading, which is where it had drifted to: the form is embedded by three gates and this is the only one that centres it, so the rule belongs to the host rather than to the guest.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"accounts\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"account\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"account-text\"]": {
+      "$description": "`min-width: 0` so a long detail sentence ellipses inside the row rather than pushing the row's own buttons off the end of it.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "minWidth": "0"
+    },
+    "& [part=\"account-label\"]": {
+      "color": "var(--fg)"
+    },
+    "& [part=\"account-detail\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"account-actions\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "flexShrink": "0"
+    },
+    "& [part=\"keys\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"refusal\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"refusal-reason\"]": {
+      "$description": "Named `refusal-reason` rather than `error` because `jx-textfield` draws a permanent `[part=\"error\"]` region of its own in this same light-DOM tree — the search field above this line has one — so a rule on that name would be addressing somebody else's empty paragraph first.",
+      "margin": "0",
+      "color": "var(--danger)",
+      "lineHeight": "var(--jx-leading-md)"
+    },
+    "& [part=\"key-group\"]": {
+      "display": "contents"
+    },
+    "& [part=\"scope\"]": {
+      "margin": "var(--jx-space-4) 0 var(--jx-space-1)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"key\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-1) 0"
+    },
+    "& [part=\"chord\"]": {
+      "$description": "A fixed 96px column so the chords line up down the sheet: the answer to \"what is bound to this\" is read by scanning one column, and a chord that starts where the last one ended is not scannable.",
+      "flex": "0 0 96px",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"key-title\"]": {
+      "color": "var(--fg-dim)",
+      "minWidth": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "sheet"
+      },
+      "children": [
+        {
+          "tagName": "nav",
+          "attributes": {
+            "part": "nav",
+            "aria-label": "Preferences sections"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/sections"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "button",
+                "attributes": {
+                  "part": "nav-item",
+                  "type": "button",
+                  "data-section": "${$map.item.id}",
+                  "aria-current": "${$map.item.current}"
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/selectSection"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "textContent": "${$map.item.title}"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "section",
+          "attributes": {
+            "part": "section"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "title"
+              },
+              "textContent": "${state.sectionTitle}"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "blurb"
+              },
+              "textContent": "${state.sectionBlurb}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "section-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/section"
+              },
+              "cases": {
+                "appearance": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "theme-row"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "theme-label"
+                      },
+                      "textContent": "Theme"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "themes"
+                      },
+                      "$props": {
+                        "selects": "single",
+                        "compact": true,
+                        "label": "Theme"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/themes"
+                          },
+                          "key": {
+                            "$ref": "$map/item/value"
+                          },
+                          "map": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "theme",
+                              "data-theme": "${$map.item.value}"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "checked": {
+                                "$ref": "$map/item/checked"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/setTheme"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "assistant": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "assistant"
+                  },
+                  "children": [
+                    {
+                      "$description": "The keyless Cloudflare offer. An island: `ui/ai-managed-connect.ts` owns the element mounted here, and it is the same element three other credentials gates embed, so this document renders the box and nothing inside it.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "managed-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      }
+                    },
+                    {
+                      "$description": "The provider-key form, on the same terms: `ui/ai-credentials-form.ts` owns it, and a repaint of this sheet must never rebuild three fields a reader is typing into.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "creds-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      }
+                    }
+                  ]
+                },
+                "accounts": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "accounts"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/accounts"
+                      },
+                      "key": {
+                        "$ref": "$map/item/id"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "account",
+                          "data-account": "${$map.item.id}"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "account-text"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "account-label"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "account-detail"
+                                },
+                                "textContent": "${$map.item.detail}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "account-actions"
+                            },
+                            "children": [
+                              {
+                                "$prototype": "Array",
+                                "items": {
+                                  "$ref": "$map/item/actions"
+                                },
+                                "key": {
+                                  "$ref": "$map/item/key"
+                                },
+                                "map": {
+                                  "tagName": "jx-button",
+                                  "attributes": {
+                                    "part": "account-action",
+                                    "data-action": "${$map.item.id}"
+                                  },
+                                  "$props": {
+                                    "size": "sm",
+                                    "variant": {
+                                      "$ref": "$map/item/variant"
+                                    }
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/runAccountAction"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/key"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "textContent": "${$map.item.label}"
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "keyboard": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "keyboard-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/keyboardState"
+                  },
+                  "cases": {
+                    "none": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "${state.keyboardEmpty}"
+                    },
+                    "keys": {
+                      "$description": "One keydown listener for the whole sheet, and `capture` is a host function in handler position so it receives the event itself: a chord is the modifier set plus the key, which no structured `$switch` on `event#/key` can spell. `stopPropagation` inside it is the load-bearing line — the app's dispatcher is a `document` listener and Preferences deliberately does not suspend the app, so without it capturing ⌘S would SAVE while the author was trying to bind it.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "keys"
+                      },
+                      "onkeydown": {
+                        "$ref": "#/state/capture"
+                      },
+                      "children": [
+                        {
+                          "$description": "Both toggles on this sheet are HOST-OWNED: `selected` is bound and `toggles` is off, so the button draws pressed without flipping itself — a capture also ends by itself, when the chord lands, and a button that had flipped its own state would then be lying. Neither carries `aria-pressed` as a result, and neither needs to: each announces its state through its accessible name instead, which changes with it (\"Search by keystroke\" / \"Press it now\", \"Change the shortcut for Save\" / \"Stop changing Save\").",
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "search-row"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "key-search"
+                              },
+                              "$props": {
+                                "label": "Find a shortcut",
+                                "type": "search",
+                                "size": "sm",
+                                "placeholder": "Find a shortcut…",
+                                "value": {
+                                  "$ref": "#/state/keyQuery"
+                                }
+                              },
+                              "oninput": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setKeyQuery"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "keystroke"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "quiet": false,
+                                "selected": {
+                                  "$ref": "#/state/capturingSearch"
+                                },
+                                "label": {
+                                  "$ref": "#/state/keystrokeLabel"
+                                }
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/toggleKeystroke"
+                                    },
+                                    "value": []
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "${state.keystrokeLabel}"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "refusal-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasRefusal"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "refusal"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "refusal-reason",
+                                    "role": "alert"
+                                  },
+                                  "textContent": "${state.refusal}"
+                                },
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "conflict-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "#/state/hasConflict"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "jx-button",
+                                      "attributes": {
+                                        "part": "show-conflict"
+                                      },
+                                      "$props": {
+                                        "size": "sm"
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/showConflict"
+                                            },
+                                            "value": []
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "textContent": "${state.conflictLabel}"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "rows-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/rowsState"
+                          },
+                          "cases": {
+                            "empty": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "empty"
+                              },
+                              "textContent": "${state.rowsEmpty}"
+                            },
+                            "rows": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "groups",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/groups"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/scope"
+                                  },
+                                  "map": {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "key-group",
+                                      "role": "none",
+                                      "data-scope": "${$map.item.scope}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "h4",
+                                        "attributes": {
+                                          "part": "scope"
+                                        },
+                                        "textContent": "${$map.item.label}"
+                                      },
+                                      {
+                                        "$prototype": "Array",
+                                        "items": {
+                                          "$ref": "$map/item/rows"
+                                        },
+                                        "key": {
+                                          "$ref": "$map/item/key"
+                                        },
+                                        "map": {
+                                          "tagName": "div",
+                                          "attributes": {
+                                            "part": "key",
+                                            "data-command": "${$map.item.commandId}"
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "kbd",
+                                              "attributes": {
+                                                "part": "chord"
+                                              },
+                                              "textContent": "${$map.item.chord}"
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "key-title"
+                                              },
+                                              "textContent": "${$map.item.title}"
+                                            },
+                                            {
+                                              "tagName": "jx-action-button",
+                                              "attributes": {
+                                                "part": "change"
+                                              },
+                                              "$props": {
+                                                "size": "sm",
+                                                "selected": {
+                                                  "$ref": "$map/item/capturing"
+                                                },
+                                                "label": {
+                                                  "$ref": "$map/item/changeName"
+                                                }
+                                              },
+                                              "onclick": {
+                                                "$prototype": "Function",
+                                                "body": [
+                                                  {
+                                                    "operator": "call",
+                                                    "target": {
+                                                      "$ref": "#/state/toggleRebind"
+                                                    },
+                                                    "value": [
+                                                      {
+                                                        "$ref": "$map/item/commandId"
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              },
+                                              "children": [
+                                                {
+                                                  "tagName": "span",
+                                                  "textContent": "${$map.item.changeLabel}"
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "reset-slot",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/overridden"
+                                              },
+                                              "cases": {
+                                                "true": {
+                                                  "tagName": "jx-action-button",
+                                                  "attributes": {
+                                                    "part": "reset"
+                                                  },
+                                                  "$props": {
+                                                    "size": "sm",
+                                                    "label": {
+                                                      "$ref": "$map/item/resetName"
+                                                    }
+                                                  },
+                                                  "onclick": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/resetBinding"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/commandId"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "tagName": "span",
+                                                      "textContent": "Reset"
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

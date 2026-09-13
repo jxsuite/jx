@@ -17,42 +17,56 @@
  * because it is the one head value you type while writing. Everything the modal holds is either a
  * rendering of what the build will emit or a field you set once and leave.
  *
+ * **This module is the flow; `surfaces/seo.json` is the markup.** What lives here is every
+ * judgement the picture rests on: which realm a commit is written into, what each previewed line
+ * says when nothing supplies it, where a value came from and whether that donor is somewhere the
+ * reader can go, which fields are counted, and what Browse and Upload do. The document holds no
+ * decision — it holds the parts, the ARIA and the styling, and it branches on flags this module
+ * hands it.
+ *
  * The mutation path is the card's, unchanged: a markdown page commits through
  * `applyContentMutation` and a JSON one through `transact`, both taking the tab so the modal edits
  * the document it was opened over rather than whichever pane has focus.
+ *
+ * @docs studio/editing/frontmatter
  */
 
-import { html, nothing } from "lit-html";
 import { activeRegistry } from "../commands/active-registry";
 import { previewAssetSrc } from "../canvas/asset-refs";
-import { renderFieldRow } from "../ui/field-row";
-import { renderMediaPicker } from "../ui/media-picker";
-import { renderProvenanceChip } from "./provenance";
+import { getPlatform } from "../platform";
+import { layerHost } from "../ui/layers";
+import { mediaSiteUrl } from "../files/media-paths";
+import { openMenu } from "../surfaces/menu";
+import { openSeoSurface } from "../surfaces/seo";
+import { provenanceTitle } from "./provenance";
+import { PUBLIC_DIR } from "@jxsuite/schema/asset-paths";
+import { scanLibrary } from "../browse/library-model";
 import { tabLabel } from "./tab-strip";
-import { openModal } from "../ui/layers";
 import { transact } from "../tabs/transact";
 import { activeTab } from "../workspace/workspace";
+import { MEDIA_EXTENSIONS, uploadAccept, uploadAssets } from "../files/media-upload";
 import {
   OG_FIELDS,
   PAGE_FIELDS,
   applyContentMutation,
   buildHeadDoc,
   findLinkEntry,
-  renderMetaFieldRow,
+  findMetaEntry,
   seoField,
   reportSeoProblems,
   seoPreviewFor,
   upsertLink,
+  upsertMeta,
   visibleLength,
 } from "./head-panel";
 import type { SeoField, SeoPreview } from "./head-panel";
 import type { FieldProvenance } from "./provenance";
+import type { SeoEditRowView, SeoFieldView, SeoSurfaceHandle, SeoView } from "../surfaces/seo";
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import type { TemplateResult } from "lit-html";
 
-// ─── The body ─────────────────────────────────────────────────────────────────
+// ─── Provenance ───────────────────────────────────────────────────────────────
 
 /*
  * Two rendered previews, a resolved-field list and a warning list, over the MERGED head — and no
@@ -72,8 +86,9 @@ import type { TemplateResult } from "lit-html";
  *
  * The two chips that can go somewhere do: a value from the site's own `$head` opens Project
  * Settings › Site head, and one from the site `name` opens Overview. The layout and build donors
- * get a `<span>` rather than a `<button>`, because the card has no verb for "open that layout" and
- * a control that looks pressable and does nothing is the defect §6.2 exists to remove.
+ * get no handler, because the card has no verb for "open that layout" and a control that looks
+ * pressable and does nothing is the defect §6.2 exists to remove — the document draws those two as
+ * a `<span>` and the two below as a `<button>`, on exactly this answer.
  *
  * @param {SeoField} field
  * @returns {FieldProvenance}
@@ -116,158 +131,174 @@ function seoProvenance(field: SeoField): FieldProvenance {
   }
 }
 
-/** A previewed line of text, or the placeholder that says nothing supplies it. */
-function previewText(field: SeoField): TemplateResult {
-  const text = field.value.trim();
-  return text
-    ? html`<span>${text}</span>`
-    : html`<span class="seo-unset">No ${field.label.toLowerCase()}</span>`;
+/** What a previewed line says when nothing in the cascade supplies it. */
+function unsetLabel(field: SeoField): string {
+  return `No ${field.label.toLowerCase()}`;
 }
 
-/** The mock search result: the breadcrumb the canonical produces, the title, the description. */
-function serpCard(preview: SeoPreview): TemplateResult {
-  return html`
-    <figure class="seo-card seo-card--serp" aria-label="Search result preview">
-      <figcaption class="seo-card-label">Search result</figcaption>
-      <div class="seo-serp-url">${preview.url.crumb}</div>
-      <div class="seo-serp-title">${seoField(preview, "title").value}</div>
-      <div class="seo-serp-desc">${previewText(seoField(preview, "description"))}</div>
-    </figure>
-  `;
+/** One resolved field, as the list draws it: the value, its budget, and where it came from. */
+function fieldView(field: SeoField): SeoFieldView {
+  const length = visibleLength(field.value);
+  const provenance = seoProvenance(field);
+  const inherited = provenance.state === "inherited";
+  return {
+    chipKind:
+      provenance.state === "default"
+        ? "none"
+        : provenance.state === "set"
+          ? "dot"
+          : provenance.onClick
+            ? "link"
+            : "static",
+    chipText: inherited ? `from ${provenance.donor ?? "the cascade"}` : "",
+    chipTitle: provenanceTitle(field.key, provenance),
+    count: field.limit === null ? "" : `${length}/${field.limit}`,
+    counted: field.limit !== null,
+    key: field.key,
+    label: field.label,
+    over: field.limit !== null && length > field.limit,
+    unsetLabel: unsetLabel(field),
+    value: field.value,
+  };
 }
 
-/**
- * The mock social card.
- *
- * The image is resolved the same way every other image in the studio chrome is — `previewAssetSrc`
- * — so a content-relative `./images/hero.jpg` previews at its asset-mount URL while the authored
- * ref stays exactly as written.
- */
-function socialCard(preview: SeoPreview): TemplateResult {
-  const image = seoField(preview, "og:image").value.trim();
-  return html`
-    <figure class="seo-card seo-card--social" aria-label="Social card preview">
-      <figcaption class="seo-card-label">Social card</figcaption>
-      <div class="seo-social-media">
-        ${
-          image
-            ? html`<img src=${previewAssetSrc(image)} alt="" />`
-            : html`<span class="seo-unset">No image</span>`
-        }
-      </div>
-      <div class="seo-social-text">
-        <span class="seo-social-domain"
-          >${preview.url.host || html`<span class="seo-unset">No site URL</span>`}</span
-        >
-        <span class="seo-social-title">${previewText(seoField(preview, "og:title"))}</span>
-        <span class="seo-social-desc">${previewText(seoField(preview, "og:description"))}</span>
-      </div>
-    </figure>
-  `;
-}
+// ─── The editable rows ────────────────────────────────────────────────────────
 
-/** One row per resolved field: what reaches the browser, how long it is, and where it came from. */
-function seoFieldList(preview: SeoPreview): TemplateResult {
-  return html`
-    <ul class="seo-fields">
-      ${preview.fields.map((field) => {
-        const length = visibleLength(field.value);
-        const over = field.limit !== null && length > field.limit;
-        return html`
-          <li class="seo-field" data-seo-field=${field.key}>
-            <span class="seo-field-label">${field.label}</span>
-            <span class="seo-field-value" title=${field.value}>${previewText(field)}</span>
-            ${
-              field.limit === null
-                ? nothing
-                : html`<span
-                    class=${over ? "seo-field-count seo-field-count--over" : "seo-field-count"}
-                    >${length}/${field.limit}</span
-                  >`
-            }
-            ${renderProvenanceChip(field.key, seoProvenance(field))}
-          </li>
-        `;
-      })}
-    </ul>
-  `;
-}
+/** The one meta field a key names, so a commit knows which attribute it writes. */
+const META_BY_KEY = new Map([...PAGE_FIELDS, ...OG_FIELDS].map((field) => [field.key, field]));
 
-/** The named warnings. A list, never a total — see the note at the top of this section. */
-function seoWarningList(preview: SeoPreview): TemplateResult {
-  if (preview.warnings.length === 0) {
-    return html`<p class="doc-header-empty">
-      Nothing to flag — every previewed field resolves to a value.
-    </p>`;
+/** The favicon is a `<link rel="icon">` rather than a meta tag: the one row with its own realm. */
+const ICON_KEY = "icon";
+
+/** A field's placeholder. `viewport` gets the value almost every page wants, spelled out. */
+function placeholderFor(key: string, label: string, media: boolean): string {
+  if (key === "viewport") {
+    return "width=device-width, initial-scale=1";
   }
-  return html`
-    <ul class="seo-warnings">
-      ${preview.warnings.map(
-        (warning) => html`
-          <li class="seo-warning" data-seo-warning=${warning.id}>
-            <code class="seo-warning-field">${warning.field}</code>
-            <span>${warning.message}</span>
-          </li>
-        `,
-      )}
-    </ul>
-  `;
+  return media ? "/image.jpg" : `${label}…`;
+}
+
+/** One editable row, drawn from the entry currently in `$head`. */
+function editRow(
+  key: string,
+  label: string,
+  value: string,
+  opts: { media?: boolean | undefined; multiline?: boolean | undefined } = {},
+): SeoEditRowView {
+  const media = Boolean(opts.media);
+  return {
+    isMedia: media,
+    key,
+    label,
+    multiline: Boolean(opts.multiline),
+    placeholder: placeholderFor(key, label, media),
+    /* The thumbnail resolves the same way every other image in the studio chrome does, so a
+       content-relative `./images/hero.jpg` previews at its asset-mount URL while the authored ref
+       stays exactly as written. */
+    thumb: media && value ? previewAssetSrc(value) : "",
+    value,
+  };
+}
+
+/** The current content of one meta row. */
+function metaValue(head: JxHeadEntry[], key: string): string {
+  const field = META_BY_KEY.get(key);
+  if (!field) {
+    return "";
+  }
+  return String(findMetaEntry(head, field.attr, field.key)?.attributes?.content ?? "");
 }
 
 /**
- * The previews, the resolved fields, then the controls that change them.
+ * Write one row's value, in whichever realm the key belongs to.
  *
- * That order on purpose: what it looks like, what is wrong with it, and only then the form. The
- * form was all this block used to be, and a form cannot tell you that the description you are about
- * to write is already coming from the site.
+ * An empty value REMOVES the entry, which is what makes the control's own clear button and typing
+ * the field empty one path rather than two.
  */
-function seoBody(
-  tab: Tab,
-  headDoc: JxMutableNode,
-  head: JxHeadEntry[],
+function writeField(
+  key: string,
+  value: string,
   applyMutation: (fn: (doc: JxMutableNode) => void) => void,
-): TemplateResult {
-  const iconHref = String(findLinkEntry(head, "icon")?.attributes?.href ?? "");
-  // The card's tab, so the SERP row shows this document's route and this document's layout layer.
-  const preview = seoPreviewFor(tab, headDoc);
-  return html`
-    <div class="seo-previews">${serpCard(preview)} ${socialCard(preview)}</div>
-    ${seoFieldList(preview)} ${seoWarningList(preview)}
-    <!-- GROUPED, because the two sets collide by name: Open Graph has its own Title, Description
-         and Image, and eight unlabelled rows in a column made "Description" mean two things. Each
-         group is headed by the preview card it feeds, so a row and the picture it changes are
-         nameable together. -->
-    <div class="seo-modal-group">
-      <h3 class="seo-modal-group-title">Search result</h3>
-      ${PAGE_FIELDS.map((field) => renderMetaFieldRow(field, head, applyMutation))}
-      ${renderFieldRow({
-        hasValue: Boolean(iconHref),
-        label: "Icon",
-        onClear: () => applyMutation((d) => upsertLink(d, "icon", "")),
-        prop: "icon",
-        widget: renderMediaPicker("icon", iconHref, (v: string) => {
-          applyMutation((d) => upsertLink(d, "icon", v || ""));
-        }),
-      })}
-    </div>
-    <div class="seo-modal-group">
-      <h3 class="seo-modal-group-title">Social card</h3>
-      <!-- No fallback is promised here, because the build emits none: the warning list above says
-           an unset og:title means "a shared link carries no headline of its own", and a note
-           claiming otherwise would contradict the app two inches higher. -->
-      <p class="seo-modal-group-note">Open Graph — what a shared link shows.</p>
-      ${OG_FIELDS.map((field) => renderMetaFieldRow(field, head, applyMutation))}
-    </div>
-  `;
+): void {
+  const trimmed = value.trim();
+  if (key === ICON_KEY) {
+    applyMutation((doc: JxMutableNode) => upsertLink(doc, "icon", trimmed));
+    return;
+  }
+  const field = META_BY_KEY.get(key);
+  if (!field) {
+    return;
+  }
+  applyMutation((doc: JxMutableNode) => upsertMeta(doc, field.attr, field.key, trimmed));
+}
+
+/**
+ * How long a keystroke waits before it is written.
+ *
+ * Every commit is a document mutation, and the previews repaint from it, so a write per keystroke
+ * would redraw the picture mid-word. A `change` — the control losing focus, or its clear button —
+ * cancels the timer and commits immediately, which is why nothing is ever lost to the debounce.
+ */
+const EDIT_DEBOUNCE_MS = 300;
+
+/** One timer per field key, so editing Description then Title does not cancel the first write. */
+const _pending = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Forget every pending keystroke — the modal closed, or a commit already landed. */
+function cancelPending(key?: string): void {
+  if (key === undefined) {
+    for (const timer of _pending.values()) {
+      clearTimeout(timer);
+    }
+    _pending.clear();
+    return;
+  }
+  const timer = _pending.get(key);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    _pending.delete(key);
+  }
+}
+
+// ─── The project's media ──────────────────────────────────────────────────────
+
+/** The listing, once. Invalidated by an upload, which is the only thing that changes it here. */
+let _media: string[] | null = null;
+
+/**
+ * Every media file under `public/`, as the site URLs a pick would write.
+ *
+ * `browse/library-model.ts`'s walker rather than a second one: it is the scanner the Library pane
+ * already runs over the same tree, it records what it could not read instead of swallowing it, and
+ * it skips the directories nobody wants walked. The site URL is the authored form — what production
+ * serves — and `files/media-paths.ts` holds the one definition of that mapping.
+ */
+async function mediaChoices(): Promise<string[]> {
+  if (_media) {
+    return _media;
+  }
+  const { files } = await scanLibrary([PUBLIC_DIR], getPlatform());
+  _media = files
+    .filter((file) => MEDIA_EXTENSIONS.has(file.ext))
+    .map((file) => mediaSiteUrl(file.path));
+  return _media;
+}
+
+/** Forget the listing: it was derived from a tree an upload has just changed. */
+function invalidateMediaChoices(): void {
+  _media = null;
 }
 
 // ─── The modal ───────────────────────────────────────────────────────────────
 
-/** The open modal, or `null`. One at a time: it is about the focused document. */
-let _handle: { update: (tpl: TemplateResult) => void; close: () => void } | null = null;
+/** The open surface, or `null`. One at a time: it is about the focused document. */
+let _handle: SeoSurfaceHandle | null = null;
 
 /** The tab it was opened over, so a re-render draws the same document the author opened. */
 let _tab: Tab | null = null;
+
+/** Where each chip that leads somewhere goes, rebuilt with the view it was drawn from. */
+let _donors = new Map<string, () => void>();
 
 /**
  * What the SEO body needs from a tab, resolved once.
@@ -294,38 +325,185 @@ function seoContextFor(tab: Tab): {
   };
 }
 
+/**
+ * Everything the document draws, from the merged head of the tab it was opened over.
+ *
+ * The previews, then the resolved fields, then the controls that change them — that order on
+ * purpose: what it looks like, what is wrong with it, and only then the form. The form was all this
+ * block used to be, and a form cannot tell you that the description you are about to write is
+ * already coming from the site.
+ */
+function buildView(tab: Tab, headDoc: JxMutableNode, head: JxHeadEntry[]): SeoView {
+  // The card's tab, so the SERP row shows this document's route and this document's layout layer.
+  const preview: SeoPreview = seoPreviewFor(tab, headDoc);
+  const description = seoField(preview, "description");
+  const ogTitle = seoField(preview, "og:title");
+  const ogDescription = seoField(preview, "og:description");
+  const image = seoField(preview, "og:image").value.trim();
+  const iconHref = String(findLinkEntry(head, "icon")?.attributes?.href ?? "");
+
+  _donors = new Map();
+  for (const field of preview.fields) {
+    const { onClick } = seoProvenance(field);
+    if (onClick) {
+      _donors.set(field.key, onClick);
+    }
+  }
+
+  return {
+    crumb: preview.url.crumb,
+    description: description.value,
+    descriptionUnset: unsetLabel(description),
+    documentLabel: tab.documentPath ?? tabLabel(tab),
+    domain: preview.url.host,
+    fields: preview.fields.map(fieldView),
+    groups: [
+      {
+        key: "page",
+        note: "",
+        rows: [
+          ...PAGE_FIELDS.map((field) =>
+            editRow(field.key, field.label, metaValue(head, field.key), {
+              multiline: field.multiline,
+            }),
+          ),
+          editRow(ICON_KEY, "Icon", iconHref, { media: true }),
+        ],
+        title: "Search result",
+      },
+      {
+        key: "og",
+        note: "Open Graph — what a shared link shows.",
+        rows: OG_FIELDS.map((field) =>
+          editRow(field.key, field.label, metaValue(head, field.key), {
+            media: field.media,
+            multiline: field.multiline,
+          }),
+        ),
+        title: "Social card",
+      },
+    ],
+    image: image ? previewAssetSrc(image) : "",
+    socialDescription: ogDescription.value,
+    socialDescriptionUnset: unsetLabel(ogDescription),
+    socialTitle: ogTitle.value,
+    socialTitleUnset: unsetLabel(ogTitle),
+    title: seoField(preview, "title").value,
+    warnings: preview.warnings,
+  };
+}
+
 /** Repaint the modal if it is open. Every field commits live, so the picture follows the edit. */
 export function renderSeoModal(): void {
   if (!_handle || !_tab) {
     return;
   }
-  const { applyMutation, head, headDoc } = seoContextFor(_tab);
-  const tab = _tab;
-  _handle.update(html`
-    <!-- The region goes on the BODY, not on the layer slot: the slot is a zero-height wrapper
-         around a fixed-position body, so a shot capturing it would capture nothing. The publish
-         panel stamps its own for the same reason. An overlay.instance:id name is a DERIVED shape,
-         so this costs the manifest no non-derived-region budget. -->
-    <div class="seo-modal" data-jx-region="overlay.dialog:seo">
-      <div class="settings-modal-header">
-        <h2 class="settings-modal-title">Search appearance</h2>
-        <!-- WHICH document, in the header. A modal has no tab strip behind it to say so, and every
-             field below resolves through this document's layout and site head. -->
-        <span class="seo-modal-doc">${tab.documentPath ?? tabLabel(tab)}</span>
-        <sp-action-button quiet size="s" title="Close" @click=${closeSeoModal}>
-          <sp-icon-close slot="icon"></sp-icon-close>
-        </sp-action-button>
-      </div>
-      <div class="seo-modal-body">${seoBody(tab, headDoc, head, applyMutation)}</div>
-    </div>
-  `);
+  const { head, headDoc } = seoContextFor(_tab);
+  _handle.update(buildView(_tab, headDoc, head));
+}
+
+/** Commit one field's value onto the document the modal was opened over. */
+function commitField(key: string, value: string): void {
+  cancelPending(key);
+  if (!_tab) {
+    return;
+  }
+  writeField(key, value, seoContextFor(_tab).applyMutation);
+  // The JSON realm commits through `transact`, which does not repaint this surface for us.
+  renderSeoModal();
+}
+
+/** Open the OS file picker for a media row, and assign the first file it returns. */
+function uploadInto(key: string): void {
+  /* The input is created per click and discarded after: a hidden one kept in the document would be
+     a node the surface owns outside its own document, which is exactly what a surface may not
+     have. */
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.accept = uploadAccept();
+  input.addEventListener("change", () => {
+    if (!input.files?.length) {
+      return;
+    }
+    void uploadAssets([...input.files]).then((uploaded) => {
+      invalidateMediaChoices();
+      const [first] = uploaded;
+      if (first) {
+        commitField(key, first.ref);
+      }
+    });
+  });
+  input.click();
+}
+
+/**
+ * Offer the project's media for one row.
+ *
+ * A kit menu rather than the Spectrum popover `ui/media-picker.ts` draws, and it has to be: a modal
+ * `<dialog>` is in the top layer, so an overlay painted into a layer div renders UNDERNEATH the
+ * dialog that opened it and is inert besides (`specs/ui.md` §7). The menu is shown with the Browse
+ * button as its `source`, which is what puts it in the dialog's own top-layer hierarchy.
+ */
+function browseFor(key: string, anchor: HTMLElement): void {
+  void mediaChoices().then((choices) => {
+    openMenu({
+      label: "Project media",
+      opener: anchor,
+      region: "seo-media",
+      rows:
+        choices.length > 0
+          ? choices.map((path) => ({
+              destructive: false,
+              disabled: false,
+              dividerAbove: false,
+              id: path,
+              run: () => commitField(key, path),
+              /* The site URL rather than the file name, because it is the string the pick writes
+                 AND the only one of the two that is unique: two `hero.jpg`s in two directories are
+                 one row twice over in a list that shows names. */
+              title: path,
+            }))
+          : [
+              {
+                destructive: false,
+                disabled: true,
+                dividerAbove: false,
+                id: "seo.media.empty",
+                requires: "a file under public/",
+                title: "No media in this project",
+              },
+            ],
+    });
+  });
 }
 
 /** Open it over `tab`. Idempotent — opening it again re-points it at the current document. */
 export function openSeoModal(tab: Tab): void {
   _tab = tab;
   if (!_handle) {
-    _handle = openModal(html``, { label: "Search appearance", onDismiss: closeSeoModal });
+    const { head, headDoc } = seoContextFor(tab);
+    _handle = openSeoSurface({
+      layer: layerHost("dialog"),
+      onBrowse: browseFor,
+      onClosed: closeSeoModal,
+      onCommit: commitField,
+      onEdit: (key: string, value: string) => {
+        cancelPending(key);
+        _pending.set(
+          key,
+          setTimeout(() => {
+            _pending.delete(key);
+            commitField(key, value);
+          }, EDIT_DEBOUNCE_MS),
+        );
+      },
+      onOpenDonor: (key: string) => {
+        _donors.get(key)?.();
+      },
+      onUpload: uploadInto,
+      view: buildView(tab, headDoc, head),
+    });
   }
   renderSeoModal();
   /*
@@ -341,9 +519,15 @@ export function openSeoModal(tab: Tab): void {
 
 /** Close it, and forget the document it was about. */
 export function closeSeoModal(): void {
-  _handle?.close();
+  cancelPending();
+  const handle = _handle;
+  /* Cleared FIRST: the platform's `close` raises the dialog's own `close` event, which arrives
+     here as `onClosed` — and a re-entrant `closeSeoModal` that still saw a handle would close it
+     twice. */
   _handle = null;
   _tab = null;
+  _donors = new Map();
+  handle?.close();
 }
 
 /**

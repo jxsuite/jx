@@ -5,19 +5,21 @@
  * It used to take over the canvas: `renderFunctionEditor` cleared `canvasWrap`, dropped every
  * canvas panel and mounted Monaco over the stage, so the page whose handler you were writing was
  * the one thing you could not see while writing it. It is a surface of the Bottom dock's **Logic**
- * tab now (plan §12 P8.5); `panels/formula-workspace.ts` owns that tab's record and calls the three
- * exports below — {@link functionEditorTemplate} for the container, {@link syncFunctionEditor} from
- * the panel's `afterRender`, and {@link closeFunctionEditor} for its Close. The canvas keeps
- * rendering the page underneath the dock; `canvas/canvas-render.ts` no longer knows this surface
- * exists.
+ * tab now (plan §12 P8.5); `panels/formula-workspace.ts` owns that tab's record and calls the two
+ * exports below — {@link syncFunctionEditor} from the panel's `afterRender`, and
+ * {@link closeFunctionEditor} for its Close. The container is no longer one of them: the Logic tab
+ * is a Jx document (`surfaces/logic-workspace.json`) and it draws the empty
+ * {@link CODE_HOST_SELECTOR} node itself, which is what an island is (studio-ui-guidelines.md
+ * §9.4). The canvas keeps rendering the page underneath the dock; `canvas/canvas-render.ts` no
+ * longer knows this surface exists.
  *
- * **The mount is driven by the DOM, not by a render call.** A dock tab's body is re-rendered by lit
- * whenever anything it reads changes, and lit will happily replace the container element out from
- * under a live Monaco instance (switching to the formula surface and back does exactly that). So
- * `syncFunctionEditor` asks the one question that matters — is the editor I hold still inside the
- * container I was just handed? — and rebuilds when the answer is no. Re-checking the target string
- * alone, which is all the takeover ever did, would have left a detached editor holding the user's
- * unsaved body.
+ * **The mount is driven by the DOM, not by a render call.** A dock tab's body is re-rendered
+ * whenever anything it reads changes, and a repaint will happily replace the container element out
+ * from under a live Monaco instance (switching to the formula surface and back does exactly that).
+ * So `syncFunctionEditor` asks the one question that matters — is the editor I hold still inside
+ * the container I was just handed? — and rebuilds when the answer is no. Re-checking the target
+ * string alone, which is all the takeover ever did, would have left a detached editor holding the
+ * user's unsaved body.
  *
  * **The move changed the REPAINT rate, not just the teardown rate, and the repaint is the one that
  * runs with the user's hands on the keyboard.** The dock's `afterRender` effect tracks every badge
@@ -32,7 +34,6 @@ import type * as monaco from "monaco-editor";
 import { loadMonaco, mountStillWanted } from "../services/monaco-lazy";
 import { monacoTheme } from "../shell";
 import { isJsonObject } from "@jxsuite/schema/guards";
-import { html } from "lit-html";
 
 import { getNodeAtPath, renderOnly, updateUi } from "../store";
 import { activeTab, tabIsLive } from "../workspace/workspace";
@@ -55,7 +56,6 @@ import type { OxLintDiagnostic } from "../services/code-services";
 import type { JxPrototypeDef } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
-import type { TemplateResult } from "lit-html";
 
 type EditingTarget =
   | { type: "def"; defName: string }
@@ -88,10 +88,17 @@ function getFunctionBody(tab: Tab | null | undefined, editing: EditingTarget | n
   return "";
 }
 
-/** Where Monaco goes inside the Logic tab. Empty on purpose — the editor fills it imperatively. */
-export function functionEditorTemplate(): TemplateResult {
-  return html`<div class="fw-code"></div>`;
-}
+/**
+ * The element the Logic tab draws for Monaco to fill.
+ *
+ * `surfaces/logic-workspace.json` renders it and nothing inside it — the island contract of
+ * studio-ui-guidelines.md §9.4 — so the code surface is addressed by `part` rather than by the
+ * `.fw-code` class the lit takeover carried. It is a SELECTOR rather than an announced node on
+ * purpose: this module mounts by asking the painted DOM what is there (see the header), and a node
+ * announced by `onNodeCreated` is one reconcile step short of being in the page, which is exactly
+ * the state an editor that measures its container must not be mounted into.
+ */
+export const CODE_HOST_SELECTOR = '[part="code-host"]';
 
 /**
  * Create, re-target or tear down the Monaco instance for the Logic tab's current body.
@@ -103,7 +110,7 @@ export function functionEditorTemplate(): TemplateResult {
 export function syncFunctionEditor(host: HTMLElement): void {
   const tab = activeTab.value;
   const editing = tab?.session.ui.editingFunction as EditingTarget | null | undefined;
-  const container = editing && tab ? host.querySelector<HTMLElement>(".fw-code") : null;
+  const container = editing && tab ? host.querySelector<HTMLElement>(CODE_HOST_SELECTOR) : null;
   if (!container || !tab || !editing) {
     // Either nothing is open in the code surface, or the formula surface is showing: whichever
     // Monaco instance we hold is detached DOM, and holding it leaks a model plus its listeners.

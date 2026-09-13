@@ -368,12 +368,14 @@ describe("choosing the target", () => {
     );
     setFormats([MARKDOWN_FORMAT, MARKDOWN_TWO, CSV_FORMAT]);
     const pending = convertFile("pages/about.md");
-    for (let i = 0; i < 50 && !topDialog()?.querySelector("sp-picker"); i += 1) {
+    for (let i = 0; i < 50 && !topDialog()?.querySelector('[part="choice"] select'); i += 1) {
       await flush();
     }
-    const picker = topDialog()!.querySelector("sp-picker") as HTMLElement & { value: string };
+    const picker = topDialog()!.querySelector('[part="choice"] select') as HTMLElement & {
+      value: string;
+    };
     expect(
-      [...topDialog()!.querySelectorAll("sp-menu-item")].map((el) => el.getAttribute("value")),
+      [...topDialog()!.querySelectorAll("option")].map((el) => el.getAttribute("value")),
     ).toEqual([".json", ".mdx"]);
     picker.value = ".mdx";
     picker.dispatchEvent(new Event("change", { bubbles: true }));

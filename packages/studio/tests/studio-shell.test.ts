@@ -7,7 +7,7 @@
  * (navigateToComponent, openRecentProject, closeFunctionEditor, ...), which the tests then drive
  * directly.
  */
-import { flush, installMockPlatform, resetStudioState } from "./harness";
+import { flush, installMockPlatform, resetStudioState, topDialog } from "./harness";
 import { nothing } from "lit-html";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
@@ -32,8 +32,8 @@ import { view } from "../src/view";
 import { bufferWrites } from "../src/services/monaco-buffer";
 import { shell } from "../src/shell";
 import { resetZoom } from "../src/canvas/canvas-utils";
+import { getCssInitialMap } from "../src/panels/style-utils";
 import type { Tab } from "../src/tabs/tab";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── Global stubs (must exist before studio.ts is imported) ──────────────────
 
@@ -125,7 +125,7 @@ const renderStatusbarMock = mock(() => {});
 void mock.module("../src/panels/bottom-dock.ts", () => ({
   BOTTOM_DOCK_SELECTOR: "#bottom-dock",
   activeBottomPanel: mock(() => null),
-  bottomDockTemplate: mock(() => nothing),
+  bottomDockValues: mock(() => ({ bodyRegion: "", tab: "", tabId: "", tabs: [] })),
   bottomPanelSet: mock(() => []),
   bottomTabLabel: mock(() => ""),
   mountBottomDock: mock(() => {}),
@@ -135,7 +135,7 @@ void mock.module("../src/panels/bottom-dock.ts", () => ({
   visibleBottomPanels: mock(() => []),
 }));
 
-void mock.module("../src/panels/statusbar.ts", () => ({
+void mock.module("../src/surfaces/statusbar.ts", () => ({
   forgetSavedTimes: mock(() => {}),
   mountStatusbar: mock(() => {}),
   noteDocumentSaved: mock(() => {}),
@@ -155,7 +155,7 @@ void mock.module("../src/services/notify.ts", () =>
 /** Calls the `view.openInBrowser` hook forwards to the toolbar's own implementation. */
 const openInBrowserRuns = mock(() => {});
 
-void mock.module("../src/panels/toolbar.ts", () => ({
+void mock.module("../src/surfaces/commandbar.ts", () => ({
   mount: (_el: HTMLElement, ctx: unknown) => {
     toolbarCtx = ctx;
   },
@@ -177,7 +177,7 @@ void mock.module("../src/panels/pane-context.ts", () => ({
   unmount: mock(() => {}),
 }));
 
-void mock.module("../src/panels/welcome-screen.ts", () => ({
+void mock.module("../src/surfaces/welcome.ts", () => ({
   initWelcome: (ctx: unknown) => {
     welcomeCtx = ctx;
   },
@@ -236,6 +236,7 @@ void mock.module("../src/canvas/canvas-render.ts", () => ({
   initCanvasRender: (ctx: unknown) => {
     canvasRenderCtx = ctx;
   },
+  redefineElementOnCanvases: mock(() => 0),
   registerSelectionSetCommand: mock(() => {}),
   renderCanvas: renderCanvasMock,
   renderOverlays: mock(() => {}),
@@ -259,7 +260,6 @@ void mock.module("../src/new-project/new-project-modal.ts", () => ({
 }));
 
 void mock.module("../src/new-project/add-repo-modal.ts", () => ({
-  closeAddRepoModal: mock(() => {}),
   openAddRepoModal: mock(async () => addRepoResult),
   openProjectPickerModal: mock(async () => pickerResult),
   platformSupportsAddRepo: mock(() => true),
@@ -352,7 +352,7 @@ const { platform, state } = installMockPlatform(
 );
 
 await import("../src/studio");
-const { renderLayoutPickerRow } = await import("../src/panels/head-panel");
+const { layoutPickerEntries } = await import("../src/panels/head-panel");
 
 await flush();
 
@@ -424,13 +424,20 @@ describe("bootstrap", () => {
     expect(shortcutsGet).not.toBeNull();
   });
 
-  test("renders tag-name datalist and populates css-props via requestIdleCallback", () => {
-    const tagList = document.querySelector("#tag-names");
-    expect(tagList).not.toBeNull();
-    expect(tagList!.querySelectorAll("option").length).toBeGreaterThan(0);
-    const cssList = document.querySelector("#css-props");
-    expect(cssList).not.toBeNull();
-    expect(cssList!.querySelectorAll("option").length).toBeGreaterThan(0);
+  /*
+   * This used to read "renders tag-name datalist and populates css-props via
+   * requestIdleCallback", and it was the only reader either datalist ever had. A `<datalist>` is
+   * reached through a `list="<id>"` on a control, and nothing in the package has carried one since
+   * the Inspector's inputs became documents — so the boot was appending a hidden host to the body,
+   * painting six hundred `<option>`s into it a frame later, and querying them back for nobody. Both
+   * are gone, and what is asserted instead is the half of "the boot wires webdata" that has a
+   * reader: the CSS initial-value map the Style tab consults to tell a set property from a
+   * defaulted one.
+   */
+  test("hands webdata to the CSS initial-value map, and paints no autocomplete source for it", () => {
+    expect(getCssInitialMap().size).toBeGreaterThan(0);
+    expect(getCssInitialMap().get("color")).toBeDefined();
+    expect(document.querySelector("datalist")).toBeNull();
   });
 
   test("probed the platform for a root project at import time", () => {
@@ -1138,7 +1145,7 @@ describe("openRecentProject", () => {
    */
   describe("unsaved documents", () => {
     function dialog(): HTMLElement | null {
-      return document.querySelector("#layer-dialog sp-dialog-wrapper");
+      return topDialog();
     }
 
     test("Cancel abandons the switch with the workspace untouched", async () => {
@@ -1405,15 +1412,13 @@ describe("filesystem events drop the derived caches", () => {
     expect(fsWatcher, "the boot must subscribe to the backend watcher").not.toBeNull();
     state.files.set("layouts/base.json", JSON.stringify({ tagName: "html" }));
 
-    const doc = { tagName: "main" } as unknown as JxMutableNode;
-    const apply = () => {};
-    // First paint populates the cache; the second is served from it.
-    renderLayoutPickerRow(doc, apply);
+    // First ask populates the cache; the second is served from it.
+    layoutPickerEntries();
     await waitFor(() => state.calls.some((c) => c[0] === "listDirectory" && c[1] === "layouts"));
     const afterFirst = state.calls.filter(
       (c) => c[0] === "listDirectory" && c[1] === "layouts",
     ).length;
-    renderLayoutPickerRow(doc, apply);
+    layoutPickerEntries();
     await flush();
     expect(state.calls.filter((c) => c[0] === "listDirectory" && c[1] === "layouts")).toHaveLength(
       afterFirst,
@@ -1421,7 +1426,7 @@ describe("filesystem events drop the derived caches", () => {
 
     // A file appears on disk. The next paint must go back and look.
     fsWatcher!([{ isDir: false, path: "layouts/marketing.json", type: "add" }]);
-    renderLayoutPickerRow(doc, apply);
+    layoutPickerEntries();
     await waitFor(
       () =>
         state.calls.filter((c) => c[0] === "listDirectory" && c[1] === "layouts").length >

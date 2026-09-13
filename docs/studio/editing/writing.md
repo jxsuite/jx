@@ -13,6 +13,7 @@ code:
   - packages/studio/src/editor/inline-format.ts
   - packages/studio/src/editor/inline-link.ts
   - packages/studio/src/panels/block-action-bar.ts
+  - packages/studio/src/surfaces/block-action-bar.ts
   - packages/studio/src/canvas/iframe-inline-edit.ts
 ---
 

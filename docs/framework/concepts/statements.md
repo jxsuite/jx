@@ -25,7 +25,7 @@ The smallest complete structured body mutates, then notifies:
 }
 ```
 
-There are four statement kinds, each reusing a web-platform name:
+There are six statement kinds, each reusing a web-platform name:
 
 | Kind       | Shape                                                     | Source of the name                   |
 | ---------- | --------------------------------------------------------- | ------------------------------------ |
@@ -33,6 +33,8 @@ There are four statement kinds, each reusing a web-platform name:
 | Branch     | `{ "if", "then", "else"? }`                               | JSON Schema conditional keywords     |
 | Multiway   | `{ "$switch", "cases", "default"? }`                      | Element-level `$switch`, ECMA switch |
 | Dispatch   | `{ "dispatchEvent", "detail"?, "bubbles"?, "composed"? }` | WHATWG DOM `dispatchEvent`           |
+| Stop       | `{ "stopPropagation": true }`                             | WHATWG DOM `stopPropagation()`       |
+| Cancel     | `{ "preventDefault": true }`                              | WHATWG DOM `preventDefault()`        |
 
 ## Expression statements
 
@@ -94,6 +96,25 @@ To capture a result, make the step an assignment whose `value` is a `call` node.
 
 The event dispatches from the handler's `event.currentTarget` (or the component instance in compiled custom elements). Declare the events a function fires in its `emits` array so Studio can autocomplete them.
 
+## Stopping and cancelling events
+
+`stopPropagation` and `preventDefault` act on the event the handler is running for. Each is written as the member set to `true`, so the step reads as the call it becomes:
+
+```json
+{
+  "onclick": {
+    "$prototype": "Function",
+    "body": [
+      { "stopPropagation": true },
+      { "preventDefault": true },
+      { "dispatchEvent": "select", "detail": { "$ref": "#/state/value" }, "bubbles": true }
+    ]
+  }
+}
+```
+
+Stop the event when an ancestor handles the same one and must not see this occurrence: a row nested inside another row, a button inside a clickable card. Cancel the default when the element's built-in behaviour is not wanted: a link that opens in place, a form the body submits itself, an arrow key that would otherwise scroll. Outside a handler, where there is no event, both steps do nothing.
+
 ## Parameters
 
 A structured body follows the named-formula pattern. Without `parameters`, the entry is an event handler, and statements see `state` and the `event#/` scheme. With `parameters`, it is a callable invoked positionally, its arguments bound to `$args/` names:
@@ -128,7 +149,7 @@ A statement body stays fully analyzable and visually editable; a source string i
 
 ## How it works
 
-One engine serves both halves: an interpreter (`runStatements`) executes statement arrays directly against the reactive `state` proxy, and a compiler (`compileStatements`) emits the genuine ECMAScript forms: `if`/`else` statements, a `switch` over the discriminant's string form, and `dispatchEvent(new CustomEvent(type, init))`. The emitted function is identical in shape to a hand-written handler, so [reactivity](/docs/framework/concepts/reactivity) tracking works unchanged.
+One engine serves both halves: an interpreter (`runStatements`) executes statement arrays directly against the reactive `state` proxy, and a compiler (`compileStatements`) emits the genuine ECMAScript forms: `if`/`else` statements, a `switch` over the discriminant's string form, `dispatchEvent(new CustomEvent(type, init))`, and `event.stopPropagation()` / `event.preventDefault()`. The emitted function is identical in shape to a hand-written handler, so [reactivity](/docs/framework/concepts/reactivity) tracking works unchanged.
 
 Statements execute sequentially. A step whose value is a promise is awaited before the next step runs, giving async/await semantics without writing `await`.
 
@@ -141,6 +162,7 @@ Statements execute sequentially. A step whose value is a promise is awaited befo
 - There is no capture field; assign a `call`'s result with an `=` statement.
 - `dispatchEvent` needs a dispatch target; outside a handler (no `event`), a compiled custom element dispatches from the component instance.
 - Declare dispatched events in `emits`, which is the declaration tooling reads.
+- `stopPropagation` and `preventDefault` need the handler's event; outside a handler they do nothing.
 
 ## Related
 

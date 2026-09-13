@@ -25,16 +25,32 @@
  * them means running the page and axe-core over it, which is a different program with a different
  * lifetime. `unavailableChecks()` names them so the absence is stated rather than implied.
  *
+ * **The structural rules live in `@jxsuite/schema/a11y`** — an unnamed control, an image with no
+ * alt, an aria reference to an id nothing has, a tab, menu item or option outside its container, a
+ * tablist with no selected tab, an unnamed dialog, aria-activedescendant on an element that cannot
+ * take focus — so `jx validate`, the kit's conformance tests and this report judge a document alike
+ * (spec §8.8). What stays here is what needs the whole page rather than a node: the heading
+ * outline, duplicate ids, the document language, link wording, autocomplete purposes and media.
+ *
  * @docs studio/interface/problems-and-progress
  */
 
 import { activeTab } from "../workspace/workspace";
 import { clearProblems, notify } from "./notify";
+import { findA11yDefects } from "@jxsuite/schema/a11y";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { JxElement } from "@jxsuite/schema/types";
 
 /** WCAG success criteria these checks bind to, by the id ATAG B.3.1 asks a report to carry. */
-export type A11yCriterion = "1.1.1" | "1.3.1" | "1.3.5" | "2.4.4" | "2.4.6" | "3.1.1" | "4.1.2";
+export type A11yCriterion =
+  | "1.1.1"
+  | "1.3.1"
+  | "1.3.5"
+  | "2.1.1"
+  | "2.4.4"
+  | "2.4.6"
+  | "3.1.1"
+  | "4.1.2";
 
 /** One thing that is wrong with the document, and — where one exists — the command that fixes it. */
 export interface A11yFinding {
@@ -59,8 +75,23 @@ export interface A11yFinding {
   action?: string;
 }
 
-/** Elements whose whole purpose is an image, and which therefore owe alternative text. */
-const IMAGE_TAGS = new Set(["img", "area", "input-image"]);
+/**
+ * Whether the element's whole purpose is an image, so its `alt` is the text a reader hears.
+ *
+ * `<input type="image">` is one of the three elements HTML gives an `alt`, and it is a TYPE rather
+ * than a tag. The set this replaced spelled it `"input-image"` alongside `img` and `area` — a tag
+ * name no document can have — so the wording check below never once ran on a submit image.
+ *
+ * @param {JxElement} node
+ * @param {string} tag The node's lowercased tag name.
+ * @returns {boolean}
+ */
+function isImage(node: JxElement, tag: string): boolean {
+  if (tag === "img" || tag === "area") {
+    return true;
+  }
+  return tag === "input" && literal(node, "type")?.toLowerCase() === "image";
+}
 
 /** Controls that owe an accessible name. */
 const CONTROL_TAGS = new Set(["input", "select", "textarea", "button"]);
@@ -170,20 +201,14 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     const where = tag === "" ? `element ${index}` : `<${tag}>`;
 
     // ── 1.1.1 Non-text Content ────────────────────────────────────────────────
-    if (IMAGE_TAGS.has(tag)) {
+    if (isImage(node, tag)) {
       const alt = literal(node, "alt");
-      if (!has(node, "alt")) {
-        findings.push({
-          criterion: "1.1.1",
-          detail:
-            "A screen reader falls back to reading the file name, which is rarely useful and " +
-            "sometimes misleading. An image that is purely decorative takes an EMPTY alt, which " +
-            "is a decision — the absent attribute is not.",
-          id: `img-no-alt:${index}`,
-          message: `${where} has no alt text.`,
-          severity: "error",
-        });
-      } else if (alt !== null && /^(image|photo|picture|graphic|icon)\b/i.test(alt.trim())) {
+      /*
+       * A missing alt is the schema engine's: `img-alt-missing` for an `<img>`, and
+       * `interactive-unnamed` for the two that are also controls, an `<area href>` and an
+       * `<input type="image">`. Only the WORDING is judged here, which no engine rule does.
+       */
+      if (alt !== null && /^(image|photo|picture|graphic|icon)\b/i.test(alt.trim())) {
         findings.push({
           criterion: "1.1.1",
           detail:
@@ -233,19 +258,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     if (CONTROL_TAGS.has(tag)) {
       const type = literal(node, "type")?.toLowerCase() ?? "";
       const selfLabelling = tag === "button" || SELF_LABELLING_INPUTS.has(type);
-      const labelled = hasAccessibleName(node) || has(node, "id");
-      if (!selfLabelling && !labelled) {
-        findings.push({
-          criterion: "4.1.2",
-          detail:
-            'A control with no name is announced as its type alone — "edit", "combo box" — ' +
-            "which tells a reader nothing about what to type. Give it an aria-label, or an id a " +
-            "<label> points at.",
-          id: `control-unnamed:${index}`,
-          message: `${where} has no label.`,
-          severity: "error",
-        });
-      }
+      // An unnamed control is the schema rule `interactive-unnamed`, with `<label for>` resolved.
       // 1.3.5: a field asking for the user's own data should say which (autocomplete).
       if (tag === "input" && !selfLabelling && !has(node, "autocomplete")) {
         const name = `${literal(node, "name") ?? ""} ${literal(node, "id") ?? ""}`.toLowerCase();
@@ -269,17 +282,8 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
         .toLowerCase()
         .replaceAll(/[^a-z ]/g, "")
         .trim();
-      if (!hasAccessibleName(node)) {
-        findings.push({
-          criterion: "4.1.2",
-          detail:
-            "A link with no text is announced as its URL, one character at a time in some " +
-            "readers. If the link is an icon, give it an aria-label.",
-          id: `link-unnamed:${index}`,
-          message: "A link has no text.",
-          severity: "error",
-        });
-      } else if (VAGUE_LINK_TEXT.has(text)) {
+      // A link with no text is the schema rule `interactive-unnamed`; only the wording is judged here.
+      if (hasAccessibleName(node) && VAGUE_LINK_TEXT.has(text)) {
         findings.push({
           criterion: "2.4.4",
           detail:
@@ -363,7 +367,38 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     });
   }
 
-  return findings;
+  // The structural rules, from the engine every judge of a Jx document shares.
+  for (const defect of findA11yDefects(doc)) {
+    findings.push({
+      criterion: defect.criterion as A11yCriterion,
+      detail: defect.detail,
+      id: `${defect.rule}:${defect.path.join("/")}`,
+      message: defect.message,
+      severity: defect.severity,
+    });
+  }
+  return distinctIds(findings);
+}
+
+/**
+ * Give every finding an id no other finding shares.
+ *
+ * A Problem key REPLACES rather than stacks, so two findings under one id are one row, and the
+ * author is told about the last of them and never hears about the rest. Two rules produce
+ * duplicates honestly: `aria-target-missing` files one per token that resolves to nothing, so
+ * `aria-labelledby="a b c"` is three at one rule and one path; and `duplicate-id` files one per
+ * extra element sharing an id, so three elements are two findings under one id. The ordinal is
+ * applied to every finding rather than to one loop, because "a key names a finding" is either true
+ * of all of them or it is not the rule it claims to be. The first keeps its bare id, so nothing
+ * already distinct moves and no existing key changes.
+ */
+function distinctIds(findings: A11yFinding[]): A11yFinding[] {
+  const seen = new Map<string, number>();
+  return findings.map((finding) => {
+    const before = seen.get(finding.id) ?? 0;
+    seen.set(finding.id, before + 1);
+    return before === 0 ? finding : { ...finding, id: `${finding.id}#${before}` };
+  });
 }
 
 /** A check this program cannot run, and the honest reason. */

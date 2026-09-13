@@ -1,0 +1,441 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxNumberField",
+  "tagName": "jx-number-field",
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "observedAttributes": [
+    "value",
+    "min",
+    "max",
+    "step",
+    "placeholder",
+    "label",
+    "labelledby",
+    "describedby",
+    "disabled",
+    "stepper",
+    "step-up-label",
+    "step-down-label",
+    "name",
+    "size"
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "The field's text, as a string rather than a number. An empty value means empty: a numeric entry would read a removed attribute as 0, so clearing a numeric key would write 0 into the document instead of deleting it. It is bound twice, as the control's value property AND as its value content attribute: the property is what tracks state once the reader has typed (typing sets the control's dirty value flag, after which the attribute no longer moves the live value), and the attribute keeps the control's DEFAULT value equal to its current one. The price of that mirror is that form.reset() is a no-op here, and it is deliberate: the element is not form-associated (specs/ui.md §3.2), so it never hears the reset, and an unmirrored default would move the control while leaving this state where it was — the element and its control disagreeing silently, which is worse than a reset that does nothing."
+    },
+    "min": {
+      "type": "string",
+      "default": "",
+      "attribute": "min",
+      "description": "The smallest value the control accepts, as a string. Empty removes the attribute rather than setting an empty one, and the step grid is measured from it."
+    },
+    "max": {
+      "type": "string",
+      "default": "",
+      "attribute": "max",
+      "description": "The largest value the control accepts, as a string. Empty removes the attribute."
+    },
+    "step": {
+      "type": "string",
+      "default": "",
+      "attribute": "step",
+      "description": "The stepping interval, as a string. Empty removes the attribute, leaving the platform's default of 1."
+    },
+    "placeholder": {
+      "type": "string",
+      "default": "",
+      "attribute": "placeholder",
+      "description": "Shown while the field is empty. Not a label."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the control as aria-label. Required unless a visible label points at the control."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby. The help sentence under a row is the row's, not the field's."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be edited, stepped or focused."
+    },
+    "stepper": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "stepper",
+      "description": "Draw the two stepping buttons. The Arrow keys step whether or not they are drawn; the buttons are for a pointer."
+    },
+    "stepUpLabel": {
+      "type": "string",
+      "default": "Increase",
+      "attribute": "step-up-label",
+      "description": "The step-up button's accessible name. It is a real name rather than aria-hidden: a button with no name is reported as unnamed whether or not it is hidden from assistive technology."
+    },
+    "stepDownLabel": {
+      "type": "string",
+      "default": "Decrease",
+      "attribute": "step-down-label",
+      "description": "The step-down button's accessible name."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The form field name, forwarded to the control."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The control height is the kit's, so a row of controls lines up."
+    },
+    "badInput": {
+      "type": "boolean",
+      "default": false,
+      "description": "Mirrored from the control, never authored: the reader has typed something that is not a number, so the sanitized value reads empty while an edit is still in progress. A host that deletes a key on an empty value must not delete on this one, and it reads the case off the ELEMENT rather than off an event — this prop, or the data-bad-input attribute it mirrors, reached from a handler as event.target.closest('jx-number-field')."
+    },
+    "onInput": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/value"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        },
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/badInput"
+          },
+          "value": {
+            "$ref": "event#/target/validity/badInput"
+          }
+        }
+      ],
+      "description": "Mirrors what the reader types, and whether the control could parse it. The platform's own input event is left alone and goes on bubbling from the control, so a host's event.target is the live input."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/number-field.ts",
+      "$export": "onNumberChange",
+      "description": "The reader committed an edit: reads the control back into state. The platform's own change event is neither stopped nor re-sent, so a host still reaches event.target.valueAsNumber (NaN when empty), .validity and .form on the live control; the sanitization case is read off the element as badInput, not off a detail."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/number-field.ts",
+      "$export": "onNumberKeydown",
+      "description": "Shift and an Arrow move ten steps, through the control's own stepping API.",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The value moved. Dispatched from the element, because the platform fires nothing for a value the element wrote itself. No detail: event.target is the element, whose own value is the same string."
+        },
+        {
+          "name": "change",
+          "description": "The value was committed. Dispatched from the element for the same reason, with no detail; the sanitization case is the element's own badInput."
+        }
+      ]
+    },
+    "onStepUp": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/number-field.ts",
+      "$export": "onStepUp",
+      "description": "The step-up button: one step up.",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The value moved. Dispatched from the element, because the platform fires nothing for a value the element wrote itself. No detail: event.target is the element, whose own value is the same string."
+        },
+        {
+          "name": "change",
+          "description": "The value was committed. Dispatched from the element for the same reason, with no detail; the sanitization case is the element's own badInput."
+        }
+      ]
+    },
+    "onStepDown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/number-field.ts",
+      "$export": "onStepDown",
+      "description": "The step-down button: one step down.",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The value moved. Dispatched from the element, because the platform fires nothing for a value the element wrote itself. No detail: event.target is the element, whose own value is the same string."
+        },
+        {
+          "name": "change",
+          "description": "The value was committed. Dispatched from the element for the same reason, with no detail; the sanitization case is the element's own badInput."
+        }
+      ]
+    },
+    "onStepperPointerDown": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "preventDefault": true
+        }
+      ],
+      "description": "Keeps focus in the field while a stepping button is pressed. Without it the blur that follows the press fires a second change for the same edit."
+    }
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-disabled": "${state.disabled ? '' : null}",
+    "data-stepper": "${state.stepper ? '' : null}",
+    "data-bad-input": "${state.badInput ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "minWidth": "0",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& [part=\"field\"]": {
+      "display": "flex",
+      "alignItems": "stretch",
+      "minWidth": "0",
+      "width": "100%"
+    },
+    "& [part=\"input\"]": {
+      "appearance": "none",
+      "boxSizing": "border-box",
+      "flex": "1 1 auto",
+      "width": "100%",
+      "minWidth": "0",
+      "minHeight": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-3)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "fontVariantNumeric": "tabular-nums",
+      "outline": "none",
+      "transition": "border-color var(--jx-dur-1) var(--jx-ease-out)",
+      "::placeholder": {
+        "color": "var(--jx-fg-muted)"
+      },
+      "::-webkit-inner-spin-button": {
+        "appearance": "none",
+        "margin": "0"
+      },
+      "::-webkit-outer-spin-button": {
+        "appearance": "none",
+        "margin": "0"
+      },
+      ":hover": {
+        "borderColor": "var(--jx-fg-muted)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      }
+    },
+    "& [part=\"stepper-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"stepper\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "marginInlineStart": "var(--jx-space-1)"
+    },
+    "& [part=\"step-up\"], & [part=\"step-down\"]": {
+      "appearance": "none",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "flex": "1 1 0",
+      "width": "var(--jx-space-5)",
+      "padding": "0",
+      "margin": "0",
+      "border": "1px solid var(--jx-border-strong)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg-dim)",
+      "cursor": "default",
+      "--jx-icon-size": "10px",
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      },
+      ":disabled": {
+        "opacity": "0.5"
+      }
+    },
+    "& [part=\"step-up\"]": {
+      "borderRadius": "var(--jx-radius-sm) var(--jx-radius-sm) 0 0",
+      "borderBottom": "0"
+    },
+    "& [part=\"step-down\"]": {
+      "borderRadius": "0 0 var(--jx-radius-sm) var(--jx-radius-sm)"
+    },
+    "&[data-size=\"sm\"] [part=\"input\"]": {
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "fontSize": "var(--jx-text-sm)",
+      "padding": "0 var(--jx-space-2)"
+    },
+    "&[data-size=\"lg\"] [part=\"input\"]": {
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "fontSize": "var(--jx-text-lg)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "field",
+        "role": "none"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "input",
+            "type": "number",
+            "inputmode": "decimal",
+            "placeholder": "${state.placeholder || null}",
+            "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-describedby": "${state.describedby || null}",
+            "name": "${state.name || null}",
+            "min": "${state.min || null}",
+            "max": "${state.max || null}",
+            "step": "${state.step || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "value": "${state.value}"
+          },
+          "value": {
+            "$ref": "#/state/value"
+          },
+          "oninput": {
+            "$ref": "#/state/onInput"
+          },
+          "onchange": {
+            "$ref": "#/state/onChange"
+          },
+          "onkeydown": {
+            "$ref": "#/state/onKeydown"
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "stepper-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/stepper"
+          },
+          "cases": {
+            "true": {
+              "tagName": "div",
+              "attributes": {
+                "part": "stepper",
+                "role": "none"
+              },
+              "children": [
+                {
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "step-up",
+                    "type": "button",
+                    "tabindex": "-1",
+                    "aria-label": "${state.stepUpLabel}",
+                    "disabled": {
+                      "$ref": "#/state/disabled"
+                    }
+                  },
+                  "onclick": {
+                    "$ref": "#/state/onStepUp"
+                  },
+                  "onpointerdown": {
+                    "$ref": "#/state/onStepperPointerDown"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "$props": {
+                        "name": "caret-up",
+                        "weight": "bold"
+                      },
+                      "attributes": {
+                        "part": "step-up-icon"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "step-down",
+                    "type": "button",
+                    "tabindex": "-1",
+                    "aria-label": "${state.stepDownLabel}",
+                    "disabled": {
+                      "$ref": "#/state/disabled"
+                    }
+                  },
+                  "onclick": {
+                    "$ref": "#/state/onStepDown"
+                  },
+                  "onpointerdown": {
+                    "$ref": "#/state/onStepperPointerDown"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "$props": {
+                        "name": "caret-down",
+                        "weight": "bold"
+                      },
+                      "attributes": {
+                        "part": "step-down-icon"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

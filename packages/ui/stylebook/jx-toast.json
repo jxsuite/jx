@@ -1,0 +1,266 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookToast",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-button.json"
+    },
+    {
+      "$ref": "../components/jx-toast.json"
+    }
+  ],
+  "state": {},
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-toast"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One outcome, said once: a glyph, a line of text, at most one control that undoes or retries it, and a dismiss button that is always there. A toast never takes the keyboard, and it carries no live region of its own, so the toasts below are drawn and not announced. Put them in a jx-toast-host and the stack speaks for them."
+    },
+    {
+      "tagName": "p",
+      "textContent": "Off a host each toast is an ordinary box in the flow, which is what these are. The corner, the stacking and the clock policy of a real stack all belong to the host."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Variants"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Variants"
+      },
+      "children": [
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Draft saved to about.json."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "positive"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Published 14 pages to jxsuite.com."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "warning"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Two images are larger than 2 MB and were not resized."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "negative"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Save failed: the file is open in another program."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "One recovery control"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Anything slotted into action is the one thing a reader may do about the message. Using it closes the toast and reports action, because an answer that has been given is not still being asked. The click is not stopped, so the control's own handler runs first and a host listening above the toast hears it too."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "With an action"
+      },
+      "children": [
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "negative"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Could not reach the deploy service."
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "slot": "action"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Retry"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "dismissLabel": "Dismiss notification"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Moved 3 files to the trash."
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "slot": "action"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Undo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Sticky, and on a clock"
+    },
+    {
+      "tagName": "p",
+      "textContent": "timeout is 0 by default, so a toast stays until it is dismissed. Give it a number of milliseconds and it retires itself, dispatching close with the reason timeout. The clock stops while the pointer is on the toast and while focus is inside it, and resumes with the time that was left, so a control the reader has reached cannot expire under their hand. The second toast below is on a ten second clock and will retire itself."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Timing"
+      },
+      "children": [
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Sticky: this one waits to be dismissed."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "positive",
+            "timeout": 10000
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "On a clock: rest the pointer here and it stops counting."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A long message"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Long message"
+      },
+      "children": [
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "warning"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "The stylesheet at styles/site.css declares 41 custom properties that no page reads. Nothing was changed, and the build carried on without them."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

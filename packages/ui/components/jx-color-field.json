@@ -1,0 +1,565 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxColorField",
+  "tagName": "jx-color-field",
+  "observedAttributes": [
+    "value",
+    "resolved",
+    "format",
+    "alpha",
+    "label",
+    "labelledby",
+    "size",
+    "disabled",
+    "system",
+    "eyedropper"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-action-button.json"
+    },
+    {
+      "$ref": "./jx-textfield.json"
+    },
+    {
+      "$ref": "./jx-popover.json"
+    },
+    {
+      "$ref": "./jx-color-area.json"
+    },
+    {
+      "$ref": "./jx-color-slider.json"
+    }
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "The colour, spelled as format says. This is what the element HOLDS; the four channels behind the picker are a working copy of it, and the sidecar rewrites that copy only when the two genuinely disagree. The empty string means no colour has been chosen and draws the slashed chip rather than black."
+    },
+    "resolved": {
+      "type": "string",
+      "default": "",
+      "attribute": "resolved",
+      "description": "The colour behind value, for a value the page cannot resolve: a var() naming a token whose definition lives in the document being EDITED rather than in the one drawing this field, which is what Studio's palette commits. Empty, the chip draws value itself, which is right whenever the browser can resolve it. Set, it is what the chip draws and what the picker opens on, so the first drag starts from the token's own colour rather than from wherever the sliders last were; value is untouched, and the text field still shows the reference. A host that sets it is answering for the value it also set, so it clears it when the value stops being a reference."
+    },
+    "format": {
+      "type": "string",
+      "default": "hex",
+      "attribute": "format",
+      "description": "hex or oklch: which spelling the element writes when the reader moves anything. It changes what is WRITTEN, never what is read — a reader may type any of hex, rgb() or oklch() into the text field whatever this says, because refusing a colour the element itself could have produced would be a trap."
+    },
+    "alpha": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "alpha",
+      "description": "Whether the colour has an opacity at all: it adds the alpha track to the picker and the alpha channel to the value. Off, every value the element writes is opaque, so a field that feeds a property with no alpha cannot be handed one by accident."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "What the colour is FOR — \"Background\", \"Border\" — and the stem every control inside the element takes its own name from: the text field is named this, the swatch button is \"Pick <label>\", the screen picker is \"Pick <label> from the screen\". Required: five controls named only by their roles is five sliders and two buttons in a row, and a reader has no way to tell this field from the next one."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the text field as aria-labelledby, for a visible label the element does not own. The other controls keep their composed names, because a visible label naming the row does not name the button inside it."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg, forwarded to the text field so a row of controls lines up."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be opened or edited. Forwarded to every control inside, and checked again by the handlers that open the picker and the screen picker, because those act on a click rather than on a control's own refusal."
+    },
+    "system": {
+      "type": "boolean",
+      "default": true,
+      "attribute": "system",
+      "description": "Offer the operating system's own colour picker, through a native input type=color. It is a DOOR and never the control: it opens the platform's dialog, takes what comes back, and has no part in how the element is operated. Turn it off where a project's colours must come from its own palette."
+    },
+    "eyedropper": {
+      "type": "boolean",
+      "default": true,
+      "attribute": "eyedropper",
+      "description": "Offer the screen picker, where the engine has one. The button is drawn only when BOTH this and the EyeDropper API are there, so an engine without it shows no dead control rather than one that does nothing when pressed."
+    },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the swatch button as its tabindex, which is what makes a roving caret possible: a jx-toolbar moving focus writes this rather than reaching into the element's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops. The swatch is THE stop, and it is named part=control for that reason, which is the kit's name for the node a roving container focuses. It is the opener, so Enter on it reaches the whole picker and a reader parked on it can choose any colour; it is the one control the element always draws; and it is first in the row, so Tab lands where the eye does. While the prop is set the text field, the screen picker and the system door step out of the tab order (tabindex -1): a container that has been told this element is one stop must find exactly one, and those three are then the pointer's. Unset, which is every form, each keeps its own stop."
+    },
+    "hue": {
+      "type": "number",
+      "default": 0,
+      "description": "The working hue, 0-360. It is kept across a colour going grey, which is why it is state rather than something derived from value each time: a round trip through the string would send the hue track back to red the moment the reader dragged the saturation to zero."
+    },
+    "saturation": {
+      "type": "number",
+      "default": 0,
+      "description": "The working saturation, 0-100: the square's horizontal axis."
+    },
+    "brightness": {
+      "type": "number",
+      "default": 0,
+      "description": "The working brightness, 0-100: the square's vertical axis, measured upward."
+    },
+    "opacity": {
+      "type": "number",
+      "default": 100,
+      "description": "The working opacity, 0-100, in the alpha track's own units. Only ever written into the value when alpha is on."
+    },
+    "text": {
+      "type": "string",
+      "default": "",
+      "description": "What the text field is showing, which is NOT value while the reader is mid-word: a half-typed hex is not a colour and the element must not refuse it or reformat it under the caret. It becomes the value on the commit, and follows the value whenever anything else moves it."
+    },
+    "invalid": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the text field is holding something that is not a colour. Raised on the COMMIT rather than on each keystroke, and forwarded to the text field so the refusal is announced there."
+    },
+    "expanded": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the picker is showing. It follows the panel's own toggle event, so light dismissal and Escape move it as surely as the button does; writing it opens nothing."
+    },
+    "ink": {
+      "type": "string",
+      "default": "",
+      "description": "black or white, whichever can be seen on the current colour. The preview chip's boundary is drawn in it, because a neutral border disappears against a neutral colour and a control whose edge cannot be seen is a WCAG 1.4.11 failure."
+    },
+    "solid": {
+      "type": "string",
+      "default": "",
+      "description": "The current colour at full opacity, as hex. Two things need it and neither can compute it: the alpha track fades from it, and a native input type=color accepts the six-digit form and nothing else."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This element's own id stem, minted on mount. The picker panel takes its id from it and the swatch button names that id in aria-controls, so nothing a consumer writes has to be unique."
+    },
+    "dropperAvailable": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-field.ts",
+      "$export": "eyeDropperAvailable",
+      "parameters": ["offered"],
+      "description": "Whether the screen picker is both offered here and present in the engine. A capability question, asked by the document rather than assumed by it. It takes the opt-in as an argument because a Function entry with no declared parameters is an event handler rather than a callable, and calling one from a template throws mid-render and takes the element's whole child tree with it."
+    },
+    "hasDropper": "${state.dropperAvailable(state.eyedropper)}",
+    "preview": "${state.resolved || state.value || 'transparent'}",
+    "pickerId": "${state.uid ? state.uid + '-picker' : ''}",
+    "onInput": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-field.ts",
+      "$export": "onFieldInput",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The colour is moving under the reader's hand. It comes from the ELEMENT, so e.target.value is the colour whichever of the five controls moved it."
+        }
+      ],
+      "description": "The one listener the whole composed control speaks through: it works out which channel fired from the data-channel beside each part, stops the original, and re-says the platform's own name from the host."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-field.ts",
+      "$export": "onFieldChange",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The reader committed a colour; e.target is the element."
+        }
+      ],
+      "description": "The same routing, for the commit. It is also where a typed colour is parsed: a keystroke is not a colour and the refusal waits for this."
+    },
+    "onOpen": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-field.ts",
+      "$export": "onOpenPicker",
+      "description": "Positions the panel under the field and shows it, or hides it when it is already showing. The coordinates are written before the panel is shown, which is what jx-popover asks of whoever opens it."
+    },
+    "onDropper": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-field.ts",
+      "$export": "onEyeDropper",
+      "description": "Opens the system's screen picker and takes what comes back. A reader who dismisses it has cancelled rather than failed, so the rejection is swallowed and the colour is left where it was."
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-field.ts",
+      "$export": "onFieldMount",
+      "description": "Learns the element, mints its id stem, takes the value apart into the working channels, and keeps them in step with value for as long as it lives — through data-value, which is the one thing that moves when a host writes el.value."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "jx-ready",
+          "description": "The element has rendered, which is how onReady reaches the element itself."
+        }
+      ],
+      "description": "Announces that the element has rendered. Its own onReady listens for it, and a host may too."
+    }
+  },
+  "oninput": {
+    "$ref": "#/state/onInput"
+  },
+  "onchange": {
+    "$ref": "#/state/onChange"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "attributes": {
+    "data-value": "${state.value}",
+    "data-resolved": "${state.resolved}",
+    "data-size": "${state.size}",
+    "data-expanded": "${state.expanded ? '' : null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "verticalAlign": "middle",
+    "minInlineSize": "0",
+    "--jx-color-checkerboard": "repeating-conic-gradient(var(--jx-gray-300) 0% 25%, var(--jx-bg-input) 0% 50%) 50% / 8px 8px",
+    "--jx-color-field-preview": "${state.preview}",
+    "--jx-color-field-ink": "${state.ink || 'var(--jx-border-strong)'}",
+    "& > [part=\"row\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minInlineSize": "0"
+    },
+    "& > [part=\"row\"] > [part=\"control\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "flex": "none",
+      "inlineSize": "var(--jx-control-h)",
+      "blockSize": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "var(--jx-space-1)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "cursor": "pointer",
+      "outline": "none",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      }
+    },
+    "& [part=\"preview\"]": {
+      "display": "block",
+      "inlineSize": "100%",
+      "blockSize": "100%",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "linear-gradient(var(--jx-color-field-preview), var(--jx-color-field-preview)), var(--jx-color-checkerboard)",
+      "boxShadow": "inset 0 0 0 1px var(--jx-color-field-ink)"
+    },
+    "& [part=\"text\"]": {
+      "minInlineSize": "0",
+      "inlineSize": "11ch"
+    },
+    "& [part=\"system-slot\"], & [part=\"dropper-slot\"], & [part=\"opacity-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"system\"]": {
+      "appearance": "none",
+      "inlineSize": "var(--jx-control-h)",
+      "blockSize": "var(--jx-control-h)",
+      "flex": "none",
+      "margin": "0",
+      "padding": "2px",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "cursor": "pointer",
+      "outline": "none",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      }
+    },
+    "& [part=\"picker\"]": {
+      "--jx-popover-offset": "6px"
+    },
+    "& [part=\"panel\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "inlineSize": "200px"
+    },
+    "& [part=\"tokens\"]": {
+      "display": "block"
+    },
+    "& [part=\"tokens\"]:empty": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "row"
+      },
+      "children": [
+        {
+          "tagName": "button",
+          "attributes": {
+            "part": "control",
+            "type": "button",
+            "aria-label": "Pick ${state.label}",
+            "aria-haspopup": "dialog",
+            "aria-expanded": "${state.expanded ? 'true' : 'false'}",
+            "aria-controls": "${state.pickerId || null}",
+            "tabindex": "${state.tabindex || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "onclick": {
+            "$ref": "#/state/onOpen"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "preview",
+                "aria-hidden": "true"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "text",
+            "data-jx-channel": "text"
+          },
+          "$props": {
+            "label": {
+              "$ref": "#/state/label"
+            },
+            "labelledby": {
+              "$ref": "#/state/labelledby"
+            },
+            "value": {
+              "$ref": "#/state/text"
+            },
+            "size": {
+              "$ref": "#/state/size"
+            },
+            "invalid": {
+              "$ref": "#/state/invalid"
+            },
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "mono": true,
+            "autocomplete": "off",
+            "spellcheck": false,
+            "tabindex": "${state.tabindex ? '-1' : ''}"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "dropper-slot"
+          },
+          "$switch": {
+            "$ref": "#/state/hasDropper"
+          },
+          "cases": {
+            "true": {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "dropper"
+              },
+              "$props": {
+                "icon": "eyedropper",
+                "label": "Pick ${state.label} from the screen",
+                "hint": "Pick ${state.label} from the screen",
+                "quiet": false,
+                "tabindex": "${state.tabindex ? '-1' : ''}",
+                "disabled": {
+                  "$ref": "#/state/disabled"
+                }
+              },
+              "onclick": {
+                "$ref": "#/state/onDropper"
+              }
+            }
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "system-slot"
+          },
+          "$switch": {
+            "$ref": "#/state/system"
+          },
+          "cases": {
+            "true": {
+              "tagName": "input",
+              "attributes": {
+                "part": "system",
+                "data-jx-channel": "system",
+                "type": "color",
+                "aria-label": "Choose ${state.label} in the system picker",
+                "value": "${state.solid}",
+                "tabindex": "${state.tabindex ? '-1' : null}",
+                "disabled": {
+                  "$ref": "#/state/disabled"
+                }
+              },
+              "value": {
+                "$ref": "#/state/solid"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-popover",
+      "attributes": {
+        "part": "picker",
+        "id": "${state.pickerId || null}"
+      },
+      "$props": {
+        "label": "${state.label} picker"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "panel"
+          },
+          "children": [
+            {
+              "tagName": "jx-color-area",
+              "attributes": {
+                "part": "area",
+                "data-jx-channel": "area"
+              },
+              "$props": {
+                "label": "Saturation and brightness",
+                "hue": {
+                  "$ref": "#/state/hue"
+                },
+                "saturation": {
+                  "$ref": "#/state/saturation"
+                },
+                "brightness": {
+                  "$ref": "#/state/brightness"
+                },
+                "disabled": {
+                  "$ref": "#/state/disabled"
+                }
+              }
+            },
+            {
+              "tagName": "jx-color-slider",
+              "attributes": {
+                "part": "hue",
+                "data-jx-channel": "hue"
+              },
+              "$props": {
+                "label": "Hue",
+                "channel": "hue",
+                "value": {
+                  "$ref": "#/state/hue"
+                },
+                "disabled": {
+                  "$ref": "#/state/disabled"
+                }
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "opacity-slot"
+              },
+              "$switch": {
+                "$ref": "#/state/alpha"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-color-slider",
+                  "attributes": {
+                    "part": "opacity",
+                    "data-jx-channel": "opacity"
+                  },
+                  "$props": {
+                    "label": "Opacity",
+                    "channel": "alpha",
+                    "value": {
+                      "$ref": "#/state/opacity"
+                    },
+                    "color": {
+                      "$ref": "#/state/solid"
+                    },
+                    "disabled": {
+                      "$ref": "#/state/disabled"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "tokens",
+                "data-jx-channel": "palette"
+              },
+              "children": [
+                {
+                  "tagName": "slot",
+                  "attributes": {
+                    "name": "tokens"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

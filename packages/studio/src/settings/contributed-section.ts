@@ -6,24 +6,57 @@
  * section value; layout "map" is master-detail (key list left, entry form right) for `type: object`
  * + `additionalProperties` sections. Persistence mirrors the content-types editor: mutate
  * projectState.projectConfig and rewrite project.json through the platform.
+ *
+ * **The markup left.** The section is the `settings-contributed` surface
+ * (`surfaces/settings-contributed.json`), mounted by `surfaces/settings-contributed.ts`; what is
+ * here is the section itself — what an entry may be named, what reaches `project.json`, and what
+ * the validator said about it. `renderContributedSection` is unchanged as a contract: the registry
+ * hands a container to a `render`, and this one mounts a document into it instead of rendering
+ * lit.
+ *
+ * **Two islands, and both are somebody else's surface.** The form is drawn from a JSON Schema by
+ * `ui/schema-form.ts`, and the actions row (Test Connection, Push Schema, Open Data Grid) is
+ * contributed by `panels/data-grid.ts`. The document renders a host node for each and nothing
+ * inside it, announced through `onNodeCreated` (specs/studio-ui-guidelines.md §9.4), and this
+ * module fills them. That is what made the two convert one at a time, and BOTH have since gone: the
+ * schema form is a document of its own, so {@link paintForm} PLACES its host element, and the
+ * actions row is one too, so {@link paintActions} hands the host over and the contributor MOUNTS
+ * into it. The seam did not move, exactly as designed — what changed is that nothing on either side
+ * of it renders a template any more.
+ *
+ * Two things the conversion settled, and each was a defect rather than a translation:
+ *
+ * - **A refused rename snaps back because the scope moves, not because a handler writes to an
+ *   input.** The lit version assigned `target.value = selected` from inside the change handler. A
+ *   document's binding writes only when the scope value CHANGES, and after a refusal the scope
+ *   still holds the key on disk — so {@link say} states what the control now holds first, and the
+ *   correction that follows is a real move.
+ * - **The new-entry name lives in this module rather than in the DOM.** It always did for `Create`,
+ *   but the field itself was uncontrolled, so a redraw arriving mid-typing (an extension
+ *   registering, a validator returning) put the field back to empty while the module still held the
+ *   text. It is one value now, and the field shows it.
  */
 
-import { html, nothing, render as litRender } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { getPlatform } from "../platform";
 import { commitProjectConfig } from "../tabs/project-config";
 import { projectState } from "../store";
-import { renderForm } from "../ui/schema-form";
+import { mountSchemaForm } from "../ui/schema-form";
 import { resolveContextPointer } from "../services/context-resolver";
 import { deriveSecretEnvName } from "../services/data-service";
 import { validateProjectConfig } from "../services/jx-validate";
 import { notify } from "../services/notify";
 import { paneRegion } from "../ui/regions";
 import { paneOfContainer } from "../canvas/canvas-surface";
+import { mountContributedSurface } from "../surfaces/settings-contributed";
 
-import type { TemplateResult } from "lit-html";
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  ContributedActions,
+  ContributedSurfaceHandle,
+  ContributedView,
+} from "../surfaces/settings-contributed";
 
 // ─── Contribution shape ───────────────────────────────────────────────────────
 
@@ -64,12 +97,19 @@ export interface ContributedSectionOptions {
    * section-scoped operations (e.g. the data surface's Test/Push actions) without the generic
    * renderer knowing any extension.
    */
-  actions?: ((ctx: SectionActionsContext) => TemplateResult) | undefined;
+  actions?: ((host: HTMLElement, ctx: SectionActionsContext) => void) | undefined;
 }
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 
-/** Selected entry key per section (map layout). */
+/**
+ * Selected entry key per SECTION (map layout), and the two halves of the new-entry form beside it.
+ *
+ * Per section rather than per container, unlike `settings/defs-editor.ts`, and the reason is a
+ * contract rather than an oversight: {@link selectContributedEntry} is the `settings.open {section,
+ * entry}` command's writer and addresses an entry by its section key alone. A per- container
+ * selection would have nothing for that command to write into.
+ */
 const selectedEntries = new Map<string, string | null>();
 /** Sections whose new-entry form is open (map layout). */
 const newEntryOpen = new Set<string>();
@@ -138,7 +178,7 @@ export function resetContributedDiagnostics(): void {
  *
  * @param {string} base - JSON pointer of the record the form is editing, e.g. `/search`
  * @param {string[]} messages
- * @returns {{ fields: Record<string, string>; section: string[] }}
+ * @returns
  */
 export function routeDiagnostics(
   base: string,
@@ -307,12 +347,294 @@ function sectionValue(key: string): Record<string, unknown> | null {
   return fresh;
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Per-container mount ──────────────────────────────────────────────────────
 
 /* There is no `paneOfContainer` here. It moved to `canvas/canvas-surface.ts`, beside the other
    "which pane is this about" answers, because it is not a settings idea: any stage content handed
    only a host needs it, and `settings/general-settings.ts` and `settings/project-sections.ts` are
    two more that do — both write a canvas mode, and both used to write the FOCUSED pane's. */
+
+/** One mounted section: its document, its two island hosts, and what it was last asked to draw. */
+interface SectionMount {
+  /** The element the registry handed the renderer, and this record's identity. */
+  container: HTMLElement;
+  handle: ContributedSurfaceHandle;
+  contribution: SettingsContribution;
+  opts: ContributedSectionOptions;
+  /** Where the schema form goes, once the document has made one. */
+  formHost: HTMLElement | null;
+  /** Where the host's actions row goes, once the document has made one. */
+  actionsHost: HTMLElement | null;
+  /**
+   * What the rename field holds while a rename is being decided, or `null`.
+   *
+   * One at a time is the whole truth of it: a `change` commits one control and the decision about
+   * it is synchronous, so there is never a second control in flight. See {@link say}.
+   */
+  echo: string | null;
+}
+
+const mounts = new WeakMap<HTMLElement, SectionMount>();
+
+/** Draw the section again from what the store and this module now say. */
+function redraw(record: SectionMount): void {
+  renderContributedSection(record.container, record.contribution, record.opts);
+}
+
+/**
+ * Say what the rename field now holds, before anything is decided about it.
+ *
+ * This is what `live()` did for the lit template. A document's binding writes only when the SCOPE
+ * value changes, and after a refusal the scope still holds the key on disk — so without this
+ * nothing is written back and the refused text stays in the field.
+ */
+function say(record: SectionMount, value: string): void {
+  record.echo = value;
+  redraw(record);
+}
+
+// ─── Projection ───────────────────────────────────────────────────────────────
+
+/** What the document draws right now, read from the store and this module's own state. */
+function project(record: SectionMount): ContributedView {
+  const { container, contribution, opts } = record;
+  const sectionKey = contribution.key;
+  const title = contribution.title ?? sectionKey;
+  const actionsState = opts.actions ? "slot" : "none";
+  const paneId = paneOfContainer(container);
+  const editorRegion = paneRegion(paneId, "editor");
+
+  if ((contribution.settings.layout ?? "form") !== "map") {
+    return {
+      actionsState,
+      editorRegion,
+      editorState: "empty",
+      entries: [],
+      entryName: "",
+      layout: "form",
+      newName: "",
+      newState: "closed",
+      title,
+    };
+  }
+
+  const entries = sectionValue(sectionKey) ?? {};
+  const selected = selectedEntries.get(sectionKey) ?? null;
+  const value = selected === null ? undefined : entries[selected];
+  const editing =
+    selected !== null && value !== undefined && value !== null && typeof value === "object";
+  return {
+    actionsState,
+    editorRegion,
+    editorState: editing ? "editing" : "empty",
+    entries: Object.keys(entries).map((name) => ({
+      key: name,
+      region: paneRegion(paneId, `entry:${name}`),
+      selected: name === selected,
+    })),
+    entryName: record.echo ?? (editing ? selected : ""),
+    layout: "map",
+    newName: newEntryNames.get(sectionKey) ?? "",
+    newState: newEntryOpen.has(sectionKey) ? "open" : "closed",
+    title,
+  };
+}
+
+// ─── The two islands ──────────────────────────────────────────────────────────
+
+/**
+ * Put the schema form into the node the document made for it.
+ *
+ * `ui/schema-form.ts` is a document too now, and a document CLEARS the host it is given — so what
+ * arrives here is the form's own host element rather than a template, and this function's whole job
+ * is to place it. Calling `mountSchemaForm` again with the same key updates the standing form in
+ * place, which is what keeps the caret in a field across the repaint a commit provokes; a key that
+ * stops being asked for is swept when its host leaves the page.
+ */
+function paintForm(record: SectionMount): void {
+  const host = record.formHost;
+  if (!host) {
+    return;
+  }
+  const { contribution, opts } = record;
+  const sectionKey = contribution.key;
+  const ui = contribution.settings.entry?.ui;
+  const rerender = () => redraw(record);
+
+  const place = (form: HTMLElement) => {
+    if (form.parentNode !== host) {
+      host.replaceChildren(form);
+    }
+  };
+
+  if ((contribution.settings.layout ?? "form") !== "map") {
+    const base = `/${sectionKey}`;
+    place(
+      mountSchemaForm(
+        `section:${sectionKey}`,
+        contribution.entrySchema,
+        sectionValue(sectionKey) ?? {},
+        {
+          context: buildContext(sectionKey, opts, null),
+          errors: diagnostics.get(base) ?? {},
+          onChange: (patch) => {
+            const target = sectionValue(sectionKey);
+            if (!target) {
+              return;
+            }
+            applyPatch(target, patch);
+            rerender();
+            void saveProjectConfig(base, rerender);
+          },
+          rerender,
+          ...(ui !== undefined && { ui }),
+        },
+      ),
+    );
+    return;
+  }
+
+  const entries = sectionValue(sectionKey) ?? {};
+  const selected = selectedEntries.get(sectionKey) ?? null;
+  const value = selected === null ? undefined : entries[selected];
+  if (selected === null || !value || typeof value !== "object") {
+    host.replaceChildren();
+    return;
+  }
+  const entry = value as Record<string, unknown>;
+  const base = `/${sectionKey}/${selected}`;
+  place(
+    mountSchemaForm(`section:${sectionKey}:${selected}`, contribution.entrySchema, entry, {
+      context: buildContext(sectionKey, opts, selected),
+      errors: diagnostics.get(base) ?? {},
+      onChange: (patch) => {
+        applyPatch(entry, patch);
+        rerender();
+        void saveProjectConfig(base, rerender);
+      },
+      rerender,
+      ...(ui !== undefined && { ui }),
+    }),
+  );
+}
+
+/** Draw the host's actions row into the node the document made for it. */
+function paintActions(record: SectionMount): void {
+  const host = record.actionsHost;
+  const { actions } = record.opts;
+  if (!host) {
+    return;
+  }
+  if (!actions) {
+    host.replaceChildren();
+    return;
+  }
+  const sectionKey = record.contribution.key;
+  const selected =
+    (record.contribution.settings.layout ?? "form") === "map"
+      ? (selectedEntries.get(sectionKey) ?? null)
+      : null;
+  actions(host, { rerender: () => redraw(record), sectionKey, selected });
+}
+
+// ─── What the reader can do ───────────────────────────────────────────────────
+
+/**
+ * The handlers the document calls. Each reads the container's record at call time rather than
+ * closing over a contribution: the registry may hand the same container a fresh contribution when
+ * an extension re-registers, and a handler that had captured the old one would write to the wrong
+ * section.
+ */
+function actionsFor(record: SectionMount): ContributedActions {
+  /** A write went through: forget the echo, redraw from the file, and commit it. */
+  const done = (base: string): void => {
+    record.echo = null;
+    redraw(record);
+    void saveProjectConfig(base, () => redraw(record));
+  };
+  /** The write was refused: forget the echo, so the field shows the file again. */
+  const refuse = (): void => {
+    record.echo = null;
+    redraw(record);
+  };
+  /** The section this record is currently drawing. Read per call, never captured. */
+  const keyOf = (): string => record.contribution.key;
+
+  return {
+    cancelNew() {
+      newEntryOpen.delete(keyOf());
+      newEntryNames.delete(keyOf());
+      redraw(record);
+    },
+    cancelRename(held) {
+      /* The held value comes in because the scope may already agree with the file: nothing was
+         committed, so `entryName` still says what is on disk, and a redraw alone would be an equal
+         write the binding skips — leaving the abandoned text in the field. Saying what the control
+         holds first makes the snap-back a real move. */
+      say(record, held);
+      refuse();
+    },
+    createNew() {
+      const sectionKey = keyOf();
+      const slug = slugify(newEntryNames.get(sectionKey) ?? "");
+      const target = sectionValue(sectionKey);
+      if (!slug || !target || target[slug]) {
+        return;
+      }
+      target[slug] = instantiateNewEntry(record.contribution.settings.entry?.newEntry, slug);
+      selectedEntries.set(sectionKey, slug);
+      newEntryOpen.delete(sectionKey);
+      newEntryNames.delete(sectionKey);
+      done(`/${sectionKey}`);
+    },
+    editNew(value) {
+      newEntryNames.set(keyOf(), value);
+      redraw(record);
+    },
+    openNew() {
+      newEntryOpen.add(keyOf());
+      redraw(record);
+    },
+    removeEntry() {
+      const sectionKey = keyOf();
+      const selected = selectedEntries.get(sectionKey) ?? null;
+      const target = sectionValue(sectionKey);
+      if (!selected || !target?.[selected]) {
+        return;
+      }
+      delete target[selected];
+      selectedEntries.set(sectionKey, null);
+      done(`/${sectionKey}`);
+    },
+    renameEntry(value) {
+      say(record, value);
+      const sectionKey = keyOf();
+      const selected = selectedEntries.get(sectionKey) ?? null;
+      const target = sectionValue(sectionKey);
+      const slug = slugify(value.trim());
+      if (!selected || !target || !slug || slug === selected || target[slug]) {
+        refuse();
+        return;
+      }
+      // Rebuild the map to preserve entry order under the new key
+      const next: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(target)) {
+        next[k === selected ? slug : k] = v;
+        delete target[k];
+      }
+      Object.assign(target, next);
+      selectedEntries.set(sectionKey, slug);
+      done(`/${sectionKey}`);
+    },
+    select(name) {
+      selectedEntries.set(keyOf(), name);
+      record.echo = null;
+      redraw(record);
+    },
+  };
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
 
 /**
  * Render a contributed settings section into the settings document's content area.
@@ -326,221 +648,36 @@ export function renderContributedSection(
   contribution: SettingsContribution,
   opts: ContributedSectionOptions = {},
 ) {
-  const rerender = () => renderContributedSection(container, contribution, opts);
-  const title = contribution.title ?? contribution.key;
-  const layout = contribution.settings.layout ?? "form";
-
-  const body =
-    layout === "map"
-      ? renderMapLayout(contribution, opts, rerender, paneOfContainer(container))
-      : renderFormLayout(contribution, opts, rerender);
-
-  const selected = layout === "map" ? (selectedEntries.get(contribution.key) ?? null) : null;
-  const actions = opts.actions
-    ? opts.actions({ rerender, sectionKey: contribution.key, selected })
-    : nothing;
-
-  const tpl = html`
-    <div class="settings-section contributed-section">
-      <h3 class="settings-section-title">${title}</h3>
-      ${actions}${body}
-    </div>
-  `;
-
-  litRender(tpl, container);
-}
-
-/** Layout "form" — one schema form over the whole section value. */
-function renderFormLayout(
-  contribution: SettingsContribution,
-  opts: ContributedSectionOptions,
-  rerender: () => void,
-): TemplateResult {
-  const value = sectionValue(contribution.key) ?? {};
-  const ui = contribution.settings.entry?.ui;
-  const base = `/${contribution.key}`;
-
-  return html`
-    <div class="settings-form-panel">
-      ${renderForm(contribution.entrySchema, value, {
-        context: buildContext(contribution.key, opts, null),
-        errors: diagnostics.get(base) ?? {},
-        onChange: (patch) => {
-          const target = sectionValue(contribution.key);
-          if (!target) {
-            return;
-          }
-          applyPatch(target, patch);
-          rerender();
-          void saveProjectConfig(base, rerender);
-        },
-        rerender,
-        ...(ui !== undefined && { ui }),
-      })}
-    </div>
-  `;
-}
-
-/** Layout "map" — master-detail: entry key list left, entry form right. */
-function renderMapLayout(
-  contribution: SettingsContribution,
-  opts: ContributedSectionOptions,
-  rerender: () => void,
-  paneId: string,
-): TemplateResult {
-  const { key: sectionKey } = contribution;
-  const entries = sectionValue(sectionKey) ?? {};
-  const entryKeys = Object.keys(entries);
-  const selected = selectedEntries.get(sectionKey) ?? null;
-  const ui = contribution.settings.entry?.ui;
-
-  const handleCreate = () => {
-    const slug = slugify(newEntryNames.get(sectionKey) ?? "");
-    const target = sectionValue(sectionKey);
-    if (!slug || !target || target[slug]) {
-      return;
-    }
-    target[slug] = instantiateNewEntry(contribution.settings.entry?.newEntry, slug);
-    selectedEntries.set(sectionKey, slug);
-    newEntryOpen.delete(sectionKey);
-    newEntryNames.delete(sectionKey);
-    rerender();
-    void saveProjectConfig(`/${sectionKey}`, rerender);
-  };
-
-  const handleDelete = () => {
-    const target = sectionValue(sectionKey);
-    if (!selected || !target?.[selected]) {
-      return;
-    }
-    delete target[selected];
-    selectedEntries.set(sectionKey, null);
-    rerender();
-    void saveProjectConfig(`/${sectionKey}`, rerender);
-  };
-
-  const handleRename = (newName: string) => {
-    const target = sectionValue(sectionKey);
-    const slug = slugify(newName);
-    if (!selected || !target || !slug || slug === selected || target[slug]) {
-      return;
-    }
-    // Rebuild the map to preserve entry order under the new key
-    const next: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(target)) {
-      next[k === selected ? slug : k] = v;
-      delete target[k];
-    }
-    Object.assign(target, next);
-    selectedEntries.set(sectionKey, slug);
-    rerender();
-    void saveProjectConfig(`/${sectionKey}`, rerender);
-  };
-
-  // Left column — entry key list
-  const listTpl = html`
-    <div class="settings-list-panel">
-      ${entryKeys.map(
-        (name) => html`
-          <sp-action-button
-            size="s"
-            data-jx-region=${paneRegion(paneId, `entry:${name}`)}
-            ?selected=${selected === name}
-            @click=${() => {
-              selectedEntries.set(sectionKey, name);
-              rerender();
-            }}
-          >
-            ${name}
-          </sp-action-button>
-        `,
-      )}
-      ${
-        newEntryOpen.has(sectionKey)
-          ? html`
-              <div class="settings-inline-form">
-                <sp-textfield
-                  size="s"
-                  placeholder="entry-name"
-                  .value=${newEntryNames.get(sectionKey) ?? ""}
-                  @input=${(e: Event) => {
-                    newEntryNames.set(sectionKey, (e.target as HTMLInputElement).value);
-                  }}
-                  @keydown=${(e: KeyboardEvent) => {
-                    if (e.key === "Enter") {
-                      handleCreate();
-                    }
-                    if (e.key === "Escape") {
-                      newEntryOpen.delete(sectionKey);
-                      rerender();
-                    }
-                  }}
-                ></sp-textfield>
-                <sp-action-button size="s" @click=${handleCreate}>Create</sp-action-button>
-              </div>
-            `
-          : html`
-              <sp-action-button
-                size="s"
-                quiet
-                @click=${() => {
-                  newEntryOpen.add(sectionKey);
-                  rerender();
-                }}
-              >
-                <sp-icon-add slot="icon"></sp-icon-add> New Entry
-              </sp-action-button>
-            `
-      }
-    </div>
-  `;
-
-  // Right column — entry form
-  const selectedEntry = selected ? entries[selected] : undefined;
-  const editorTpl: TemplateResult =
-    selected && selectedEntry && typeof selectedEntry === "object"
-      ? html`
-          <div class="settings-editor-panel" data-jx-region=${paneRegion(paneId, "editor")}>
-            <div class="settings-editor-header">
-              <sp-textfield
-                size="s"
-                quiet
-                class="entry-name-input"
-                value=${selected}
-                @change=${(e: Event) => {
-                  const target = e.target as HTMLInputElement;
-                  handleRename(target.value.trim());
-                  target.value = selectedEntries.get(sectionKey) ?? selected;
-                }}
-                @keydown=${(e: KeyboardEvent) => {
-                  const target = e.target as HTMLInputElement;
-                  if (e.key === "Enter") {
-                    target.blur();
-                  }
-                  if (e.key === "Escape") {
-                    target.value = selected;
-                    target.blur();
-                  }
-                }}
-              ></sp-textfield>
-              <sp-action-button size="xs" quiet title="Delete entry" @click=${handleDelete}>
-                <sp-icon-delete slot="icon"></sp-icon-delete>
-              </sp-action-button>
-            </div>
-            ${renderForm(contribution.entrySchema, selectedEntry as Record<string, unknown>, {
-              context: buildContext(sectionKey, opts, selected),
-              errors: diagnostics.get(`/${sectionKey}/${selected}`) ?? {},
-              onChange: (patch) => {
-                applyPatch(selectedEntry as Record<string, unknown>, patch);
-                rerender();
-                void saveProjectConfig(`/${sectionKey}/${selected}`, rerender);
-              },
-              rerender,
-              ...(ui !== undefined && { ui }),
-            })}
-          </div>
-        `
-      : html`<div class="settings-empty-state">Select or create an entry</div>`;
-
-  return html` <div class="settings-two-col">${listTpl} ${editorTpl}</div> `;
+  let record = mounts.get(container);
+  if (record) {
+    record.contribution = contribution;
+    record.opts = opts;
+  }
+  if (!record?.handle.attached()) {
+    record?.handle.dispose();
+    const fresh: SectionMount = {
+      actionsHost: null,
+      container,
+      contribution,
+      echo: null,
+      formHost: null,
+      handle: undefined as unknown as ContributedSurfaceHandle,
+      opts,
+    };
+    mounts.set(container, fresh);
+    fresh.handle = mountContributedSurface(container, actionsFor(fresh), {
+      actionsSlot: (host) => {
+        fresh.actionsHost = host;
+        paintActions(fresh);
+      },
+      formSlot: (host) => {
+        fresh.formHost = host;
+        paintForm(fresh);
+      },
+    });
+    record = fresh;
+  }
+  record.handle.update(project(record));
+  paintActions(record);
+  paintForm(record);
 }

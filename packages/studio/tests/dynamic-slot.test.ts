@@ -1,16 +1,14 @@
-import { pointer, renderInto } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { html } from "lit-html";
+import "./harness";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   effectiveSlotMode,
-  renderDynamicSlot,
   resetSlotModeMemory,
   setSlotMode,
   slotCaps,
   slotMode,
+  slotModeSeed,
   switchSlotMode,
 } from "../src/ui/dynamic-slot";
-import type { DynamicSlotOpts } from "../src/ui/dynamic-slot";
 
 describe("slotMode", () => {
   test("detects each rung of the ladder", () => {
@@ -23,7 +21,7 @@ describe("slotMode", () => {
 
 describe("slotCaps", () => {
   test("a named position is derived from the document schema", () => {
-    expect(slotCaps("styleProperty")).toEqual(["literal", "template"]);
+    expect(slotCaps("styleProperty")).toEqual(["literal", "ref", "template"]);
     expect(slotCaps("attribute")).toEqual(["literal", "ref", "template"]);
   });
 
@@ -33,302 +31,45 @@ describe("slotCaps", () => {
   });
 });
 
-describe("renderDynamicSlot", () => {
-  const staticWidget = html`<input class="static-widget" />`;
-  /* A position the document schema has no name for: a number that also accepts a binding or a
-     formula. Handed in as a schema, because a caller may not state a rung list of its own. */
-  const FIXED_REF_FORMULA = {
-    schema: {
-      oneOf: [
-        { type: "number" },
-        { $ref: "#/$defs/RefObject" },
-        { $ref: "#/$defs/ExpressionEntry" },
-      ],
-    },
-  };
+// ─── The seed each rung lands on ─────────────────────────────────────────────
 
-  beforeEach(() => {
-    resetSlotModeMemory();
+describe("slotModeSeed", () => {
+  test("From data… points at the first signal, and falls back to the first extra pointer", () => {
+    expect(slotModeSeed("ref", { stateDefs: ["count", "items"] })).toEqual({
+      $ref: "#/state/count",
+    });
+    expect(
+      slotModeSeed("ref", { extraSignals: [{ label: "item", value: "$map/item" }], stateDefs: [] }),
+    ).toEqual({ $ref: "$map/item" });
   });
 
-  async function renderSlot(opts: Partial<DynamicSlotOpts> & { value: unknown }) {
-    const parts = renderDynamicSlot({
-      caps: "repeaterItems",
-      fieldKey: "test|0|field",
-      onChange: () => {},
-      staticWidget,
-      stateDefs: [],
-      ...opts,
+  test("a position with nothing to point at still seeds a well-formed ref", () => {
+    // An empty `$ref` is a ref the picker can fill; a missing one is a document that fails its
+    // Own validator the moment the rung is chosen.
+    expect(slotModeSeed("ref", { stateDefs: [] })).toEqual({ $ref: "" });
+  });
+
+  test("Mixed text seeds a placeholder around the first signal, or an empty one", () => {
+    expect(slotModeSeed("template", { stateDefs: ["count"] })).toBe("${state.count}");
+    expect(slotModeSeed("template", { stateDefs: [] })).toBe("${}");
+  });
+
+  test("Formula and Inline function seed the scaffold each rung parses", () => {
+    expect(slotModeSeed("expression", { stateDefs: [] })).toEqual({
+      $expression: { operator: "??", target: null, value: null },
     });
-    return renderInto(html`${parts.widget}${parts.modeButton}`);
-  }
+    expect(slotModeSeed("function", { stateDefs: [] })).toEqual({
+      $prototype: "Function",
+      body: "",
+      parameters: [],
+    });
+  });
 
-  function chip(container: HTMLElement) {
-    return container.querySelector(".dynamic-slot-mode")!;
-  }
-
-  function offered(container: HTMLElement): string[] {
-    return [...container.querySelectorAll<HTMLElement>("sp-menu-item[data-mode]")].map(
-      (i) => i.dataset.mode!,
+  test("Fixed value restores what the position declares, and clears when it declares nothing", () => {
+    expect(slotModeSeed("literal", { literalDefault: "declared default", stateDefs: [] })).toBe(
+      "declared default",
     );
-  }
-
-  function choose(container: HTMLElement, mode: string) {
-    pointer(container.querySelector(`sp-menu-item[data-mode="${mode}"]`)!, "click");
-  }
-
-  // ─── The chip states the source in plain language ──────────────────────────
-
-  test("a fixed value renders the panel's static widget and says so", async () => {
-    const container = await renderSlot({ stateDefs: ["count"], value: "hello" });
-    expect(container.querySelector(".static-widget")).not.toBeNull();
-    const btn = chip(container);
-    expect(btn.textContent!.trim()).toBe("Fixed value");
-    expect(btn.getAttribute("title")).toBe("Value source: Fixed value — click to change");
-    expect(btn.hasAttribute("disabled")).toBe(false);
-  });
-
-  test("from-data renders the signal picker with state options", async () => {
-    const container = await renderSlot({
-      stateDefs: ["count", "title"],
-      value: { $ref: "#/state/count" },
-    });
-    expect(container.querySelector(".static-widget")).toBeNull();
-    const items = [...container.querySelectorAll("sp-picker sp-menu-item")].map((i) =>
-      i.getAttribute("value"),
-    );
-    expect(items).toContain("#/state/count");
-    expect(items).toContain("#/state/title");
-    expect(chip(container).textContent!.trim()).toBe("From data…");
-  });
-
-  test("formula renders the expression editor", async () => {
-    const container = await renderSlot({
-      caps: FIXED_REF_FORMULA,
-      stateDefs: ["count"],
-      value: { $expression: { operator: "!", target: { $ref: "#/state/count" } } },
-    });
-    expect(container.querySelector(".expression-editor")).not.toBeNull();
-    expect(chip(container).textContent!.trim()).toBe("Formula");
-  });
-
-  test("mixed text renders the raw template textfield", async () => {
-    const container = await renderSlot({
-      caps: "attribute",
-      stateDefs: ["count"],
-      value: "${state.count}",
-    });
-    expect(container.querySelector("sp-textfield")).not.toBeNull();
-    expect(chip(container).textContent!.trim()).toBe("Mixed text");
-  });
-
-  // ─── Any rung is one action away ───────────────────────────────────────────
-
-  test("the picker offers every permitted rung, current one selected", async () => {
-    const container = await renderSlot({
-      caps: "attribute",
-      stateDefs: ["count"],
-      value: "${state.count}",
-    });
-    expect(offered(container)).toEqual(["literal", "ref", "template"]);
-    const items = [...container.querySelectorAll<HTMLElement>("sp-menu-item[data-mode]")];
-    expect(items.map((i) => i.textContent!.trim().split("\n")[0]!.trim())).toEqual([
-      "Fixed value",
-      "From data…",
-      "Mixed text",
-    ]);
-    expect(items.find((i) => i.hasAttribute("selected"))!.dataset.mode).toBe("template");
-  });
-
-  test("from-data reaches a fixed value directly, without passing through mixed text", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({
-      caps: "attribute",
-      literalDefault: "declared default",
-      onChange,
-      stateDefs: ["count"],
-      value: { $ref: "#/state/count" },
-    });
-    choose(container, "literal");
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith("declared default");
-  });
-
-  test("choosing from-data seeds the first signal", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({ onChange, stateDefs: ["count"], value: "hello" });
-    choose(container, "ref");
-    expect(onChange).toHaveBeenCalledWith({ $ref: "#/state/count" });
-  });
-
-  test("choosing the rung already in force is a no-op", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({ onChange, stateDefs: ["count"], value: "hello" });
-    choose(container, "literal");
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  test("the from-data rung is withheld when there is nothing to point at", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({
-      caps: "attribute",
-      onChange,
-      value: "hello",
-    });
-    expect(offered(container)).toEqual(["literal", "template"]);
-    choose(container, "template");
-    expect(onChange).toHaveBeenCalledWith("${}");
-  });
-
-  test("the from-data rung stays available with extraSignals only", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({
-      extraSignals: [{ label: "item", value: "$map/item" }],
-      onChange,
-      value: "hello",
-    });
-    choose(container, "ref");
-    expect(onChange).toHaveBeenCalledWith({ $ref: "$map/item" });
-  });
-
-  test("a position with one usable rung renders a disabled chip and no picker", async () => {
-    const container = await renderSlot({ value: "hello" });
-    const btn = chip(container);
-    expect(btn.hasAttribute("disabled")).toBe(true);
-    expect(btn.getAttribute("title")).toBe(
-      "Value source: Fixed value (no other source available here)",
-    );
-    expect(container.querySelector("sp-overlay")).toBeNull();
-  });
-
-  test("a value on a rung the position forbids still gets a way off it", async () => {
-    /* `SwitchDef` permits only a $ref, so a plain string left in a $switch sits on a rung that is
-       not on offer. Counting rungs alone greyed the chip out — stranding the value exactly where
-       it is illegal. */
-    const container = await renderSlot({
-      caps: "switchDiscriminant",
-      stateDefs: ["route"],
-      value: "home",
-    });
-    const btn = chip(container);
-    expect(btn.textContent!.trim()).toBe("Fixed value");
-    expect(btn.hasAttribute("disabled")).toBe(false);
-    expect(offered(container)).toEqual(["ref"]);
-  });
-
-  test("a from-data rung may take a pointer outside its list when the caller allows it", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({
-      allowCustomRef: true,
-      caps: "attribute",
-      onChange,
-      stateDefs: ["count"],
-      value: { $ref: "#/$params/slug" },
-    });
-    const combo = container.querySelector("jx-value-selector") as HTMLElement & {
-      value: string;
-      options: { value: string }[];
-    };
-    expect(combo).not.toBeNull();
-    expect(combo.value).toBe("#/$params/slug");
-    expect(combo.options.map((o) => o.value)).toEqual(["#/state/count"]);
-    combo.value = "#/$context/anything";
-    combo.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(onChange).toHaveBeenCalledWith({ $ref: "#/$context/anything" });
-  });
-
-  test("clearing the custom pointer clears the position", async () => {
-    const onChange = mock(() => {});
-    const container = await renderSlot({
-      allowCustomRef: true,
-      caps: "attribute",
-      extraSignals: [{ label: "slug", value: "#/$params/slug" }],
-      onChange,
-      stateDefs: [],
-      value: { $ref: "#/$params/slug" },
-    });
-    const combo = container.querySelector("jx-value-selector") as HTMLElement & { value: string };
-    combo.value = "  ";
-    combo.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect((onChange.mock.calls[0] as unknown[])[0]).toBeUndefined();
-  });
-
-  test("a style position derives its rungs and never offers from-data", async () => {
-    const container = await renderSlot({
-      caps: "styleProperty",
-      stateDefs: ["count"],
-      value: "12px",
-    });
-    expect(offered(container)).toEqual(["literal", "template"]);
-  });
-
-  // ─── Mode switches stash the previous representation ───────────────────────
-
-  test("switching back to a former rung restores what was there", async () => {
-    const first = mock(() => {});
-    const c1 = await renderSlot({
-      caps: "styleProperty",
-      onChange: first,
-      stateDefs: ["count"],
-      value: "hello",
-    });
-    choose(c1, "template");
-    expect(first).toHaveBeenCalledWith("${state.count}");
-
-    const second = mock(() => {});
-    const c2 = await renderSlot({
-      caps: "styleProperty",
-      literalDefault: "fallback",
-      onChange: second,
-      stateDefs: ["count"],
-      value: "${state.count}",
-    });
-    choose(c2, "literal");
-    expect(second).toHaveBeenCalledWith("hello");
-  });
-
-  test("memory is isolated per fieldKey", async () => {
-    const first = mock(() => {});
-    const c1 = await renderSlot({
-      caps: "styleProperty",
-      fieldKey: "test|0|a",
-      onChange: first,
-      value: "hello",
-    });
-    choose(c1, "template");
-
-    const second = mock(() => {});
-    const c2 = await renderSlot({
-      caps: "styleProperty",
-      fieldKey: "test|0|b",
-      literalDefault: "fallback",
-      onChange: second,
-      value: "${state.x}",
-    });
-    choose(c2, "literal");
-    expect(second).toHaveBeenCalledWith("fallback");
-  });
-
-  test("a cleared literal (undefined) is a restorable stash, beating literalDefault", async () => {
-    const first = mock(() => {});
-    const c1 = await renderSlot({
-      caps: "styleProperty",
-      onChange: first,
-      value: undefined,
-    });
-    choose(c1, "template");
-
-    const second = mock(() => {});
-    const c2 = await renderSlot({
-      caps: "styleProperty",
-      literalDefault: "fallback",
-      onChange: second,
-      value: "${state.x}",
-    });
-    choose(c2, "literal");
-    expect(second).toHaveBeenCalledTimes(1);
-    expect((second.mock.calls[0] as unknown[])[0]).toBeUndefined();
+    expect(slotModeSeed("literal", { stateDefs: [] })).toBeUndefined();
   });
 });
 

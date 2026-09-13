@@ -1,0 +1,227 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioShellFrame",
+  "$description": "The application FRAME: the #app grid, the cells every surface mounts into, the resize handles and edges, the collapsed-dock variants and the four overlay layers. `styles/shell-frame.css` is GENERATED from this by `scripts/build-styles.ts`; edit this file and run `bun run styles:sync`. It is emitted UNSCOPED, and it stays a linked stylesheet for the reason tokens.json gives: the frame is what the first paint lays out, and its cells are addressed by id because TypeScript adopts them (`store.ts`'s initShellRefs) and the overlay API renders into them.",
+  "tagName": "html",
+  "style": {
+    ":root": {
+      "$description": "The Bottom dock's track, declared on :root for the reason tokens.css gives for the two panel widths: `src/shell.ts`'s applyDockLayout() writes it as an inline style on document.documentElement, and a definition on any closer ancestor of #app would shadow that override and freeze the dock. It must also be declared SOMEWHERE \u2014 an unset custom property inside the grid-template-rows shorthand invalidates the whole declaration at computed-value time, and the shell would paint one frame with no grid at all.",
+      "--dock-h-bottom": "220px"
+    },
+    "#shell-root": {
+      "$description": "The element `src/shell/tree.ts` mounts the frame and the four overlay layers into. It was `<sp-theme>`, and `styles/spectrum.css` gave it exactly this box \u2014 the wrapper is all that survives Spectrum, because the mount needs a container it owns: `mountResizeEdges()` puts its own container on the body one line earlier, and a clear-and-eject aimed at the body would take the four resize edges with it. `height: 100%` is the whole of what it does; `#app` inside it is `height: 100%` too, and body is already the full viewport.",
+      "height": "100%"
+    },
+    "#app": {
+      "$description": "FOUR rows, not five. The pane's tab strip used to own row 2 of the APPLICATION grid, which is the one thing a per-pane surface can never be \u2014 so it is a row of the pane's own cell now and this grid is one row shorter. The columns are NAMED. Every rule below addressed them by index, so the four surfaces that left this grid would have meant re-counting `grid-column: 4` at seven sites and getting it wrong at one of them. A name survives an insertion; a number does not.",
+      "display": "grid",
+      "grid-template-rows": "36px minmax(0, 1fr) var(--dock-h-bottom) 24px",
+      "grid-template-columns": "[rail] 56px [nav] var(--panel-w-left) [pane] 1fr [insp] var(--panel-w-right)",
+      "height": "100%"
+    },
+    "#toolbar": {
+      "grid-column": "1 / -1",
+      "display": "flex",
+      "align-items": "center",
+      "gap": "6px",
+      "padding": "0 8px",
+      "background": "var(--bg)",
+      "border-bottom": "1px solid var(--border)",
+      "overflow": "hidden",
+      "min-width": "0",
+      "container-type": "inline-size",
+      "container-name": "toolbar"
+    },
+    "#toolbar.electrobun-webkit-app-region-drag": {
+      "-webkit-app-region": "drag"
+    },
+    ".resize-edge": {
+      "$description": "Resize edge zones",
+      "position": "fixed",
+      "z-index": "9999",
+      "-webkit-app-region": "no-drag"
+    },
+    ".resize-edge.top": {
+      "top": "0",
+      "left": "6px",
+      "right": "6px",
+      "height": "4px",
+      "cursor": "ns-resize"
+    },
+    ".resize-edge.bottom": {
+      "bottom": "0",
+      "left": "6px",
+      "right": "6px",
+      "height": "4px",
+      "cursor": "ns-resize"
+    },
+    ".resize-edge.left": {
+      "left": "0",
+      "top": "6px",
+      "bottom": "6px",
+      "width": "4px",
+      "cursor": "ew-resize"
+    },
+    ".resize-edge.right": {
+      "right": "0",
+      "top": "6px",
+      "bottom": "6px",
+      "width": "4px",
+      "cursor": "ew-resize"
+    },
+    ".resize-edge.top-left": {
+      "top": "0",
+      "left": "0",
+      "width": "6px",
+      "height": "6px",
+      "cursor": "nwse-resize"
+    },
+    ".resize-edge.top-right": {
+      "top": "0",
+      "right": "0",
+      "width": "6px",
+      "height": "6px",
+      "cursor": "nesw-resize"
+    },
+    ".resize-edge.bottom-left": {
+      "bottom": "0",
+      "left": "0",
+      "width": "6px",
+      "height": "6px",
+      "cursor": "nesw-resize"
+    },
+    ".resize-edge.bottom-right": {
+      "bottom": "0",
+      "right": "0",
+      "width": "6px",
+      "height": "6px",
+      "cursor": "nwse-resize"
+    },
+    "#pane-grid": {
+      "$description": "One track per pane, laid out by `panels/pane-grid.ts` \u2014 the reconciler writes `grid-template-columns` because the track count depends on `workspace.panes.length`, which the shell's own layout effect must not read.",
+      "grid-row": "2",
+      "grid-column": "pane",
+      "display": "grid",
+      "grid-template-rows": "1fr",
+      "min-width": "0",
+      "min-height": "0"
+    },
+    "#activity-bar": {
+      "grid-row": "2 / 4",
+      "grid-column": "rail",
+      "display": "flex",
+      "flex-direction": "column",
+      "background": "var(--bg)",
+      "border-right": "1px solid var(--border)"
+    },
+    "#left-panel": {
+      "grid-row": "2 / 4",
+      "grid-column": "nav",
+      "overflow-y": "auto",
+      "background": "var(--bg-panel)",
+      "border-right": "1px solid var(--border)"
+    },
+    "#right-panel": {
+      "$description": "The Inspector dock. A flex COLUMN, not a scroll box: the header and the four-tab strip are fixed, and the selected tab's body is the only thing that scrolls \u2014 which is what lets the Assistant tab (whose chat owns its own scrolling) share the dock at zero extra width.",
+      "grid-row": "2 / 4",
+      "grid-column": "insp",
+      "display": "flex",
+      "flex-direction": "column",
+      "overflow": "hidden",
+      "background": "var(--bg)",
+      "border-left": "1px solid var(--border)"
+    },
+    "#bottom-dock": {
+      "$description": "A flex COLUMN in the pane's own grid column: the tab strip is fixed and the selected tab's body is the only thing that scrolls. It borders on the top only \u2014 the sides are the pane's, and a box drawn inside the stage's column would read as a second panel rather than as the floor.",
+      "grid-row": "3",
+      "grid-column": "pane",
+      "display": "flex",
+      "flex-direction": "column",
+      "min-width": "0",
+      "min-height": "0",
+      "overflow": "hidden",
+      "background": "var(--bg-panel)",
+      "border-top": "1px solid var(--border)"
+    },
+    "#bottom-dock:empty": {
+      "display": "none"
+    },
+    "#app.left-collapsed": {
+      "$description": "Collapsed sidebars",
+      "--panel-w-left": "0px"
+    },
+    "#app.left-collapsed #left-panel, #app.left-collapsed #resize-left": {
+      "display": "none"
+    },
+    "#app.right-collapsed": {
+      "--panel-w-right": "0px"
+    },
+    "#app.right-collapsed #right-panel, #app.right-collapsed #resize-right": {
+      "display": "none"
+    },
+    "#app.bottom-collapsed": {
+      "--dock-h-bottom": "0px"
+    },
+    "#app.bottom-collapsed #bottom-dock, #app.bottom-collapsed #resize-bottom": {
+      "display": "none"
+    },
+    "#statusbar": {
+      "$description": "\u246b Status bar Three fields in the shell's own level order, separated by a rule rather than by a run of \"|\" characters: the boundary between PROJECT, DOCUMENT and SELECTION is structural, and the eye should be able to find it without reading.",
+      "grid-row": "4",
+      "grid-column": "1 / -1",
+      "display": "flex",
+      "align-items": "stretch",
+      "overflow": "hidden",
+      "padding": "0 4px",
+      "font-size": "var(--jx-text-sm, 11px)",
+      "color": "var(--fg-dim)",
+      "background": "var(--bg)",
+      "border-top": "1px solid var(--border)"
+    },
+    ".resize-handle": {
+      "$description": "The two column handles span the stage AND the bottom dock, so the grab target is the dock's full height rather than stopping at the floor of the canvas.",
+      "grid-row": "2 / 4",
+      "width": "5px",
+      "margin-left": "-3px",
+      "margin-right": "-2px",
+      "z-index": "10",
+      "position": "relative"
+    },
+    "#app > .resize-handle": {
+      "$description": "The docks' handles at REST: invisible, as they have always been \u2014 the panel's own 1px border is the line a reader sees, and the element's 5px `--jx-border` bar beside it read as a second, thicker one. The id is not decoration: the element's own rule is `[data-jx=\"…\"]` (0,1,0), the same weight as a bare class, and the runtime adopts it (`adoptedStyleSheets` cascade after every linked sheet), so a `.resize-handle` override tied it and lost on order. One id heavier, (1,1,0), is what holds.",
+      "background": "transparent"
+    },
+    "#app > .resize-handle:hover, #app > .resize-handle[data-dragging]": {
+      "$description": "And LIT on hover and through a drag, at the same weight as the rest rule \u2014 because an id-prefixed rest rule also outranks the element's own `:hover`/`[data-dragging]` (0,2,1), so the look has to be restated here or the handle would never light. `[data-dragging]` rather than `.dragging`: the element mirrors its own gesture as an attribute and writes no class.",
+      "background": "var(--accent, #3b82f6)",
+      "opacity": "0.5"
+    },
+    "#resize-left": {
+      "grid-column": "pane",
+      "justify-self": "start"
+    },
+    "#resize-right": {
+      "grid-column": "insp",
+      "justify-self": "start"
+    },
+    ".jx-layer": {
+      "$description": "Overlay layers The four full-viewport hosts `ui/layers.ts` renders into, in stacking order. Their z-indices were inline `style` attributes on four divs in index.html, which put the one piece of ordering the whole overlay system depends on outside `check-styles.ts`'s stacking rule \u2014 the rule that exists because a blocking progress modal shipped above its own scrim with no reachable exit. `src/shell/tree.ts` emits these classes; the ordering is reviewable here. Each layer is inert until something is rendered into it: `pointer-events` is none on the host, and each slot `ui/layers.ts` appends turns it back on for itself.",
+      "position": "fixed",
+      "inset": "0",
+      "pointer-events": "none"
+    },
+    ".jx-layer--popover": {
+      "z-index": "1000"
+    },
+    ".jx-layer--modal": {
+      "z-index": "2000"
+    },
+    ".jx-layer--dialog": {
+      "z-index": "3000"
+    },
+    ".jx-layer--toast": {
+      "$description": "Above the dialog layer, deliberately: an operation started from a dialog reports its outcome to the person who is still looking at the dialog.",
+      "z-index": "4000"
+    }
+  }
+}

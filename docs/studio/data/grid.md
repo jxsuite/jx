@@ -6,6 +6,10 @@ code:
   - packages/studio/src/grid/grid-open.ts
   - packages/studio/src/grid/grid-panel.ts
   - packages/studio/src/grid/grid-layout.ts
+  - packages/studio/src/panels/data-grid.ts
+  - packages/studio/src/surfaces/grid-open.ts
+  - packages/studio/src/surfaces/data-actions.ts
+  - packages/studio/src/surfaces/push-plan.ts
   - packages/server/src/data-api.ts
 ---
 
@@ -17,7 +21,7 @@ The data grid is **[Grid mode](/docs/studio/editing/grid)** pointed at a databas
 
 ## Open a table
 
-Click **Open Data Grid** in the action row of _Settings > Connections_ or _Settings > Data Tables_. The picker lists every grid-able source in one place: pages and content collections under **Project**, then a **Data** group per connection with its tables. A connection with no tables yet shows a disabled entry asking you to push a schema first: define and push in **[Data tables](/docs/studio/data/tables)**, then come back.
+Click **Open Data Grid** in the action row of _Settings > Connections_ or _Settings > Data Tables_. The picker lists every grid-able source in one place: pages and content collections under **Project**, then a **Data** group per connection with its tables. A connection with no tables yet says so in place of its list, and asks you to push a schema first: define and push in **[Data tables](/docs/studio/data/tables)**, then come back.
 
 Each table opens as its own tab, so you can keep a grid alongside the page you're building.
 

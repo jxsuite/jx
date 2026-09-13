@@ -50,11 +50,11 @@ Contexts are declared in one place, **Settings › Contexts**, described in **[B
 
 Tokens surface right inside the [Style inspector](/docs/studio/design/style-inspector)'s controls:
 
-- The **color picker** lists your color tokens; pick one and the field shows the token's name with its swatch instead of a raw code.
+- The **color picker** lists your color tokens under its sliders, each by the name you gave it. Pick one and the field holds the reference, `var(--color-primary-blue)`, with that swatch marked as the chosen one and the swatch beside the value showing the token's color.
 - The **font family** box lists your font tokens first, each previewed in its own face. Picking one of the ready-made presets creates a matching font token automatically, so even your first font choice becomes reusable.
 - Any field accepts a token typed directly as `var(--color-primary-blue)`, useful for the occasional property without a picker.
 
-A field showing a token name is _following_ the token: edit the token in Settings and every element using it updates. The edit lands in place on every live canvas, the page you had open and the **[Project Styles](/docs/studio/design/stylebook)** catalog alike, so tuning a token shows the design changing rather than describing it.
+A field holding a token reference is _following_ the token: edit the token in Settings and every element using it updates. The edit lands in place on every live canvas, the page you had open and the **[Project Styles](/docs/studio/design/stylebook)** catalog alike, so tuning a token shows the design changing rather than describing it.
 
 In **[Project Styles](/docs/studio/design/stylebook)**, a value that arrives from your project's site-wide style rather than from the open file wears an inherited chip reading **from site tokens**, so an element default that comes with the project is never mistaken for one written in this file.
 

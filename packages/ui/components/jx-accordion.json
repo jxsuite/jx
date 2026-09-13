@@ -1,0 +1,33 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxAccordion",
+  "tagName": "jx-accordion",
+  "observedAttributes": ["multiple"],
+  "state": {
+    "multiple": {
+      "type": "boolean",
+      "default": true,
+      "attribute": "multiple",
+      "description": "Whether more than one section may stand open at once, which is what an un-named details already is and what all six shipped Studio panels want. It is ADVISORY: the container declares the intent and reflects it as data-exclusive, and it does NOT enforce it, because the platform's own switch for exclusivity is the name attribute on each details and that attribute belongs to the item. A container that reached into its slotted children to write one would be the foreign-attribute write §2 principle 5 forbids, and there is no declarative channel from a container to light-DOM children it did not author — a slot leaves no node and projects no props. So multiple=\"false\" is a statement a consumer makes true by giving every item the same name; the element is the place that statement is written down and read back, not the place it is imposed. The marker is spelled for the NOTABLE state rather than for the prop: every other boolean reflection in the kit (quiet, compact, checked, disabled, open, loading, stepper, selected, stacked, determinate, destructive, badInput, indeterminate) defaults false and marks attribute-present, so a marker named data-multiple would have been present on every default stack and absent exactly where the intent was declared, and styling the exclusive case would read :not([data-multiple])."
+    }
+  },
+  "attributes": {
+    "data-exclusive": "${state.multiple ? null : ''}"
+  },
+  "style": {
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "flexDirection": "column",
+    "minWidth": "0",
+    "& > :not([hidden]) ~ *": {
+      "borderBlockStart": "1px solid var(--jx-border)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

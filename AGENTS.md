@@ -11,10 +11,10 @@ We're crafting a comprehensive web-based application suite that aims to encompas
 
 ## Studio UI Rules
 
-- **Lit-html rendering only**: All UI must be rendered via `lit-html` templates (`html` tagged literals + `litRender`). Never use `document.createElement`, `element.style.cssText`, or other imperative DOM construction for UI.
-- **Spectrum Web Components**: Use stock `sp-*` components for all controls (buttons, dialogs, text fields, menus, etc.). Never build custom DOM equivalents of components that Spectrum provides. All Spectrum components used must be registered in `packages/studio/src/ui/spectrum.js`.
-- **No inline styles**: Spectrum components are styled by the design system. Do not set `style` attributes or `style.cssText` on Spectrum components. Use CSS classes in `index.html` only when Spectrum doesn't cover the layout need.
-- **Dialog pattern**: Use `sp-dialog-wrapper` with `open`, `underlay`, `headline`, `confirm-label`, `cancel-label` attributes and `@confirm`/`@cancel`/`@close` events. Do not create manual backdrops or modal overlays.
+- **A surface is a Jx document**: Studio's chrome is `src/surfaces/*.json`, mounted by an adapter through `mountSurface()`. Never add a new `lit-html` template for a surface, and never use `document.createElement`, `element.style.cssText`, or other imperative DOM construction for UI. `lit-html` renders the four overlay layers, the canvas realm and the grid's cell editors, and nothing else.
+- **The Jx UI kit is the only element family**: use `@jxsuite/ui` elements (`jx-button`, `jx-dialog`, `jx-textfield`, `jx-menu`, …) for every control, and never build a custom DOM equivalent of one the kit provides. Adobe Spectrum Web Components are **removed**: an `sp-*` tag or a `--spectrum-*` token anywhere in `packages/studio` fails `scripts/check-styles.ts`, and importing `@spectrum-web-components/*` fails lint. A control the kit lacks is a new component document in `packages/ui/components/`, not a second element family.
+- **No inline styles**: a surface's look is its own `style` block keyed on `part`; shared chrome is `styles/*.css`, which is GENERATED from the `.json` beside it (`bun run styles:sync`). Do not set `style` attributes or `style.cssText`, and never hand-edit a generated stylesheet.
+- **Dialog pattern**: call `showConfirmDialog` / `showSaveDiscardDialog` / `showPromptDialog` from `src/ui/layers.ts`, or mount a `jx-dialog` surface document into the dialog layer. Never create manual backdrops or modal overlays: a modal `<dialog>` opened with `showModal()` owns modality, focus restoration and Escape.
 
 ## NixOS Development Environment Considerations
 

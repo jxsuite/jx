@@ -1,0 +1,1654 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioNewProject",
+  "$description": "The New Project wizard: two steps in one dialog. Step 1 asks where the site comes from — a starter gallery that ends with one Start from scratch card, an Import of a site that already exists, or an Agent brief — and step 2 asks what it is called and where it is written. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop, which is what retired the fixed `.new-project-modal` card, the `<sp-underlay>` beside it, the `z-index: 1000` that card needed to climb back out from under its own scrim, and the hand-drawn header with its own close button. The footer is the dialog's too: Cancel, Back and the primary are `cancelLabel`, `secondaryLabel` and `confirmLabel`, so the wizard says which answers exist by naming them rather than by drawing three buttons per step. Nothing here knows what a starter is, which platform writes to a repository rather than a folder, what makes an AI gate open, or how a breakpoint policy is spelled — `new-project/new-project-modal.ts` keeps the flow, `new-project/import-tab.ts` the brief and `new-project/location-fields.ts` the destination, and all three hand over strings, flags and one discriminant per branch. The three AI controllers are islands: their own mounted documents, placed by the adapter into boxes this document renders empty (§9.4).",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": {
+      "$ref": "#/state/headline"
+    },
+    "confirmLabel": {
+      "$ref": "#/state/confirmLabel"
+    },
+    "secondaryLabel": {
+      "$ref": "#/state/secondaryLabel"
+    },
+    "cancelLabel": "Cancel",
+    "dismissible": true,
+    "size": "lg"
+  },
+  "attributes": {
+    "part": "new-project"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onsecondary": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/secondary"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "Forty-three `.new-project-*` rules in `styles/overlays.css` become the parts below, and eight of them do not travel. `.new-project-modal` was a fixed, centred, bordered, shadowed card with its own width and `z-index: 1000`, and a modal `<dialog>` is every one of those; `.new-project-modal-header`, `.new-project-modal-title`, `.new-project-modal-body` and `.new-project-modal-footer` are the header, headline, scroll body and button row `jx-dialog` already draws; `.new-project-tabs` drew a rule under the strip that `jx-tabs` draws itself; `.new-project-error--global` pinned the backend error outside the scroll body, which a dialog that scrolls as one has nowhere to put; and `.new-project-field` / `.new-project-label` drew a label above a control, which is `jx-field` with `span` — with the label actually NAMING the control, which a bare `<span>` beside a textfield never did. Three repairs travel with the rest. Every `--spectrum-font-size-*` reference is gone: those names resolve only inside `<sp-theme>` and a document mounted in the dialog layer is outside it, so all eleven would silently have taken their hard-coded fallback. `var(--accent, #3b82f6)` on the selected card loses the hex, which was the same bug written the other way round. And the two thumbnail wells read `var(--bg-elevated, #1a1a1a)` for a token no stylesheet in this package defines, so the fallback was not a fallback — it was the value; they take `--bg-input`, which is the recessed surface the rest of the chrome uses.",
+    "& [part=\"wizard\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)",
+      "fontFamily": "var(--jx-font-sans)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"blurb\"]": {
+      "$description": "The sentence at the top of a source tab: what this path does, before any field asks for anything. `blurb` rather than `intro`, and the footnote below is `footnote` rather than `note`, because the three AI controllers mount their own documents INSIDE this one: `surfaces/ai-managed-connect.json` draws a `[part=\"intro\"]` and `surfaces/ai-credentials-form.json` a `[part=\"note\"]`, and a scoped rule on either name would restyle a surface this document does not own.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-lg)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"gallery\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "1fr 1fr 1fr",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"card\"]": {
+      "$description": "A whole card is the button, because the answer is the starter rather than a control inside it. `font: inherit` because a `<button>` does not inherit type, and what it inherits here is the dialog's own body size rather than a number this surface picked.",
+      "display": "flex",
+      "flexDirection": "column",
+      "overflow": "hidden",
+      "padding": "0",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--bg-panel)",
+      "font": "inherit",
+      "color": "var(--fg)",
+      "textAlign": "left",
+      "cursor": "pointer",
+      "&:hover": {
+        "borderColor": "var(--fg-dim)"
+      },
+      "&[data-selected]": {
+        "borderColor": "var(--accent)",
+        "boxShadow": "0 0 0 1px var(--accent)"
+      },
+      "&[data-art=\"blank\"]": {
+        "$description": "The one non-starter card, last in the gallery and spanning it, so the sites lead.",
+        "gridColumn": "1 / -1",
+        "flexDirection": "row",
+        "alignItems": "center",
+        "& [part=\"blank\"]": {
+          "width": "96px",
+          "flexShrink": "0"
+        }
+      }
+    },
+    "& [part=\"thumb\"]": {
+      "display": "block",
+      "width": "100%",
+      "aspectRatio": "16 / 10",
+      "objectFit": "cover",
+      "background": "var(--bg-input)"
+    },
+    "& [part=\"blank\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "aspectRatio": "16 / 10",
+      "background": "var(--bg-input)",
+      "fontSize": "28px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"card-body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "padding": "var(--jx-space-2) var(--jx-space-3) var(--jx-space-3)"
+    },
+    "& [part=\"card-name\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600"
+    },
+    "& [part=\"card-tag\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"creds\"]": {
+      "$description": "The gate's column: the keyless offer above the key form, both of them mounted documents of their own. `max-width` so three text fields do not stretch to the width of a large dialog.",
+      "display": "flex",
+      "flexDirection": "column",
+      "maxWidth": "480px"
+    },
+    "& [part=\"managed-island\"], & [part=\"creds-island\"], & [part=\"model-island\"]": {
+      "$description": "An island's box lays nothing out: each controller's own host is `display: contents`, so what the column above sees is the mounted document's own root and not a wrapper that would become the flex item in its place.",
+      "display": "contents"
+    },
+    "& [part=\"grid\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "1fr 1fr",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"breakpoints\"]": {
+      "$description": "A mode picker, whichever value control that mode takes, and the rounding rule. It wraps rather than scrolls — the widths field is the one that needs room, and it should get it.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"bp-mode\"], & [part=\"bp-rounding\"]": {
+      "minWidth": "132px"
+    },
+    "& [part=\"bp-count\"], & [part=\"min-fidelity\"]": {
+      "width": "96px"
+    },
+    "& [part=\"bp-widths\"]": {
+      "flex": "1",
+      "minWidth": "160px"
+    },
+    "& [part=\"location-row-controls\"]": {
+      "$description": "The Location field takes the slack; Browse… stays its natural width.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"url\"], & [part=\"prompt\"], & [part=\"import-prompt\"], & [part=\"name\"], & [part=\"slug\"], & [part=\"location\"], & [part=\"owner\"], & [part=\"visibility\"]": {
+      "$description": "The kit's fields are `inline-flex`, which is right in a row of controls and wrong for the one control of a `span` row. Named one by one rather than as `& jx-textfield`, because the credentials island below is three more text fields in the same tree and none of them is this document's to size.",
+      "display": "flex",
+      "width": "100%"
+    },
+    "& [part=\"context\"]": {
+      "$description": "WHICH source this project is being made from, said on the step that no longer shows the tab strip.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"destination-preview\"]": {
+      "$description": "Live preview of where the project will land — the answer to “where did that go?”.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"destination-target\"]": {
+      "fontFamily": "var(--font-mono)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"footnote\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-lg)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"name-failure\"], & [part=\"destination-failure\"], & [part=\"import-failure\"], & [part=\"failure\"]": {
+      "$description": "Four refusals, one look, and none of them called `error`: `jx-textfield` and `jx-field` both draw a `[part=\"error\"]` of their own inside this same tree, and the kit is light DOM, so a scoped rule on that name would restyle every field's own error line.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"failure\"]": {
+      "$description": "The backend's refusal, said at the end of the body so it sits directly above the footer the reader is about to press again. It used to be pinned outside the scroll box; a dialog scrolls as one, so what replaces the pin is being last.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)",
+      "paddingTop": "var(--jx-space-3)",
+      "borderTop": "1px solid var(--border)"
+    },
+    "& [part=\"install\"]": {
+      "color": "var(--accent)",
+      "textDecoration": "underline"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "wizard"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "tabs-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/showTabs"
+          },
+          "cases": {
+            "true": {
+              "tagName": "jx-tabs",
+              "attributes": {
+                "part": "tabs"
+              },
+              "$props": {
+                "label": "Where the project comes from",
+                "selected": {
+                  "$ref": "#/state/tab"
+                }
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/pickTab"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/tabs"
+                  },
+                  "key": {
+                    "$ref": "$map/item/value"
+                  },
+                  "map": {
+                    "tagName": "jx-tab",
+                    "attributes": {
+                      "part": "tab",
+                      "value": "${$map.item.value}",
+                      "label": "${$map.item.label}"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/body"
+          },
+          "cases": {
+            "starter": {
+              "tagName": "div",
+              "attributes": {
+                "part": "starter",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "blurb"
+                  },
+                  "textContent": "Every starter is a complete site copied in as plain files you own — open it, look at it, then make it yours."
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "gallery"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/cards"
+                      },
+                      "key": {
+                        "$ref": "$map/item/id"
+                      },
+                      "map": {
+                        "tagName": "button",
+                        "attributes": {
+                          "part": "card",
+                          "type": "button",
+                          "data-starter": "${$map.item.id}",
+                          "data-art": "${$map.item.art}",
+                          "data-selected": "${$map.item.selected ? '' : null}",
+                          "aria-pressed": "${$map.item.selected ? 'true' : 'false'}",
+                          "title": "${$map.item.title || null}"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/pickCard"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/id"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "art-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/art"
+                            },
+                            "cases": {
+                              "thumb": {
+                                "tagName": "img",
+                                "attributes": {
+                                  "part": "thumb",
+                                  "src": "${$map.item.thumbnail}",
+                                  "alt": ""
+                                }
+                              },
+                              "blank": {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "blank",
+                                  "aria-hidden": "true"
+                                },
+                                "textContent": "+"
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "card-body"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "card-name"
+                                },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "card-tag"
+                                },
+                                "textContent": "${$map.item.tagline}"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "gate": {
+              "tagName": "div",
+              "attributes": {
+                "part": "gate",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "blurb"
+                  },
+                  "textContent": "${state.gateIntro}"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "creds"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "$description": "Where `ui/ai-managed-connect.ts`'s own mounted document goes. The node is rendered EMPTY and the adapter puts the controller's host inside it — the one seam a foreign mount may arrive through (specs/studio-ui-guidelines.md §9.4). It is drawn even when the platform brokers nothing, because the controller answers that question itself and hands back nothing to place.",
+                      "attributes": {
+                        "part": "managed-island",
+                        "role": "none"
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "$description": "Where `ui/ai-credentials-form.ts`'s own mounted document goes. Three fields a reader is typing into, so it must survive every repaint of the wizard around it: the document renders this box and never its contents, and the adapter places the same host node back into it rather than rebuilding one.",
+                      "attributes": {
+                        "part": "creds-island",
+                        "role": "none"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "agent": {
+              "tagName": "div",
+              "attributes": {
+                "part": "agent",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "blurb"
+                  },
+                  "textContent": "Describe the site you want; the assistant builds it in the editor while you watch."
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "agent-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Prompt",
+                    "required": true
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "prompt"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "value": {
+                          "$ref": "#/state/agentPrompt"
+                        },
+                        "placeholder": "A landing page for a small coffee roastery with a menu and contact form…",
+                        "multiline": true,
+                        "rows": "6"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setAgentPrompt"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "import": {
+              "tagName": "div",
+              "attributes": {
+                "part": "import",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "blurb"
+                  },
+                  "textContent": "Clone an existing site into an editable Jx project: pages, styles, assets, and components."
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "url-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Site URL",
+                    "required": true
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "url"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "value": {
+                          "$ref": "#/state/url"
+                        },
+                        "placeholder": "https://example.com",
+                        "type": "url"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setUrl"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "grid"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "depth-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Crawl Depth"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-number-field",
+                          "attributes": {
+                            "part": "depth"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Crawl Depth",
+                            "min": "0",
+                            "max": {
+                              "$ref": "#/state/maxDepth"
+                            },
+                            "value": {
+                              "$ref": "#/state/depth"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setDepth"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "pages-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Max Pages"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-number-field",
+                          "attributes": {
+                            "part": "max-pages"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Max Pages",
+                            "min": "1",
+                            "max": "100",
+                            "value": {
+                              "$ref": "#/state/maxPages"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setMaxPages"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "breakpoints-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Breakpoints",
+                    "description": "${state.breakpointHint}"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "breakpoints"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "attributes": {
+                            "part": "bp-mode"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Breakpoints",
+                            "value": {
+                              "$ref": "#/state/breakpointMode"
+                            },
+                            "options": {
+                              "$ref": "#/state/breakpointModes"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setBreakpointMode"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "bp-value-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/breakpointValue"
+                          },
+                          "cases": {
+                            "count": {
+                              "tagName": "jx-number-field",
+                              "attributes": {
+                                "part": "bp-count"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "How many breakpoints to keep",
+                                "min": "1",
+                                "max": {
+                                  "$ref": "#/state/maxBreakpoints"
+                                },
+                                "value": {
+                                  "$ref": "#/state/breakpointCount"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setBreakpointCount"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            },
+                            "widths": {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "bp-widths"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "value": {
+                                  "$ref": "#/state/breakpointWidths"
+                                },
+                                "label": "Breakpoint widths",
+                                "placeholder": "640, 1024, 1440"
+                              },
+                              "oninput": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setBreakpointWidths"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "bp-rounding-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/showRounding"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "jx-select",
+                              "attributes": {
+                                "part": "bp-rounding"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Rounding",
+                                "value": {
+                                  "$ref": "#/state/breakpointRounding"
+                                },
+                                "options": {
+                                  "$ref": "#/state/roundings"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setBreakpointRounding"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-switch",
+                  "attributes": {
+                    "part": "ai-naming"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "checked": {
+                      "$ref": "#/state/aiNaming"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setAiNaming"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/checked"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "AI component naming"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "verify-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/canVerify"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "jx-switch",
+                      "attributes": {
+                        "part": "verify"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "checked": {
+                          "$ref": "#/state/verify"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setVerify"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/checked"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Check fidelity against the original (slower)"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "fidelity-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/showFidelity"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "fidelity-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Minimum fidelity",
+                        "description": "Below this average, the assistant reports that the clone did not match the original. A floor rather than a target: a faithful import of a complicated site still lands well under 100. Set 0 to report the score without judging it."
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-number-field",
+                          "attributes": {
+                            "part": "min-fidelity"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Minimum fidelity",
+                            "min": "0",
+                            "max": "100",
+                            "value": {
+                              "$ref": "#/state/minFidelity"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setMinFidelity"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "model-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Model"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "$description": "Where `ui/ai-model-picker.ts`'s own mounted document goes. The picker holds the in-flight catalogue fetch and the credentials the last failure belonged to, so it is one controller for the life of the wizard and this box is only ever where its host is put.",
+                      "attributes": {
+                        "part": "model-island",
+                        "role": "none"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "brief-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "What should the assistant do with it?"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "import-prompt"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "value": {
+                          "$ref": "#/state/importPrompt"
+                        },
+                        "placeholder": "Keep the layout but modernise the typography, and turn the news list into a content collection…",
+                        "multiline": true,
+                        "rows": "4"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setImportPrompt"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "import-failure-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasImportError"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "import-failure",
+                        "role": "alert"
+                      },
+                      "textContent": "${state.importError}"
+                    }
+                  }
+                }
+              ]
+            },
+            "params": {
+              "tagName": "div",
+              "attributes": {
+                "part": "params",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "context"
+                  },
+                  "textContent": "${state.contextLabel}"
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "name-row",
+                    "data-invalid": "${state.hasNameError ? '' : null}"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Project Name",
+                    "required": true
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "name"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "value": {
+                          "$ref": "#/state/name"
+                        },
+                        "label": "Project Name",
+                        "placeholder": "My Site",
+                        "invalid": {
+                          "$ref": "#/state/hasNameError"
+                        }
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setName"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "name-failure-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasNameError"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "name-failure",
+                        "role": "alert"
+                      },
+                      "textContent": "${state.nameError}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "destination-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/destination"
+                  },
+                  "cases": {
+                    "path": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "path-fields",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "location-row"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "Location",
+                            "required": true
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "location-row-controls"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-textfield",
+                                  "attributes": {
+                                    "part": "location"
+                                  },
+                                  "$props": {
+                                    "size": "sm",
+                                    "value": {
+                                      "$ref": "#/state/parent"
+                                    },
+                                    "label": "Location",
+                                    "placeholder": "${state.parentPlaceholder}"
+                                  },
+                                  "oninput": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setParent"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                },
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "browse-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "#/state/canBrowse"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "jx-button",
+                                      "attributes": {
+                                        "part": "browse"
+                                      },
+                                      "$props": {
+                                        "size": "sm",
+                                        "disabled": {
+                                          "$ref": "#/state/browsing"
+                                        }
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/browse"
+                                            },
+                                            "value": []
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "textContent": "${state.browseLabel}"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "repo": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "repo-fields",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "owner-row"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "Owner",
+                            "required": true
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "owner-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/hasOwners"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "jx-select",
+                                  "attributes": {
+                                    "part": "owner"
+                                  },
+                                  "$props": {
+                                    "size": "sm",
+                                    "label": "Owner",
+                                    "value": {
+                                      "$ref": "#/state/owner"
+                                    },
+                                    "options": {
+                                      "$ref": "#/state/owners"
+                                    }
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setOwner"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                },
+                                "false": {
+                                  "tagName": "jx-textfield",
+                                  "attributes": {
+                                    "part": "owner"
+                                  },
+                                  "$props": {
+                                    "size": "sm",
+                                    "value": {
+                                      "$ref": "#/state/owner"
+                                    },
+                                    "label": "Owner",
+                                    "placeholder": "your-account-or-org"
+                                  },
+                                  "oninput": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setOwner"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "slug-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "${state.slugLabel}"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "slug"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "value": {
+                          "$ref": "#/state/slug"
+                        },
+                        "label": "${state.slugLabel}",
+                        "placeholder": "my-site"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setSlug"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "taken-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasRepoTaken"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "destination-failure"
+                      },
+                      "textContent": "${state.repoTaken}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "visibility-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/destination"
+                  },
+                  "cases": {
+                    "repo": {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "visibility-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Visibility"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "attributes": {
+                            "part": "visibility"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Visibility",
+                            "value": {
+                              "$ref": "#/state/visibility"
+                            },
+                            "options": {
+                              "$ref": "#/state/visibilities"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setVisibility"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "destination-preview"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.previewLabel}: "
+                    },
+                    {
+                      "tagName": "code",
+                      "attributes": {
+                        "part": "destination-target"
+                      },
+                      "textContent": "${state.preview}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "destination-failure-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasDestinationError"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "destination-failure",
+                        "role": "alert"
+                      },
+                      "textContent": "${state.destinationError}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "footnote"
+                  },
+                  "textContent": "${state.note}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "failure-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasError"
+          },
+          "cases": {
+            "true": {
+              "tagName": "p",
+              "attributes": {
+                "part": "failure",
+                "role": "alert"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.error}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "install-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasInstallUrl"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "a",
+                      "attributes": {
+                        "part": "install",
+                        "href": "${state.errorInstallUrl}",
+                        "target": "_blank",
+                        "rel": "noreferrer"
+                      },
+                      "textContent": "Install the Jx Suite GitHub App →"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

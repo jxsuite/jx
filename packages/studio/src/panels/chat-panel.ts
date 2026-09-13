@@ -17,15 +17,17 @@
  * and never tears down on tab switches — the assistant's module state and DOM (composer draft,
  * scroll position) persist.
  *
- * Deliberately NOT built on createPanelScheduler: ai-panel owns a focus-guard-free rAF render loop
- * (streaming must repaint while the composer is focused). This module only provides the host
- * container, the initial paint, and the pending-agent-prompt handoff; ai-panel's watcher drives all
- * chat-state repaints through the same lit part cache.
+ * **This module is the SEAM, and it has no markup of its own.** The assistant is a Jx document
+ * (`surfaces/ai-chat.json`), and a document CLEARS the host it is given — so it needs a container
+ * nobody else writes into. That container is the one thing created here; `.ai-panel-host` is its
+ * layout rule in `styles/inspector.css`, which is why the class stays on a node the surface does
+ * not own. Everything below it is the surface's, and `ai-panel.ts` drives it from one effect —
+ * there is no scheduler, and there is no frame loop, because a document's bindings re-run per
+ * property and a streaming token never reaches the composer.
  *
  * @license MIT
  */
 
-import { render as litRender } from "lit-html";
 import { effect, effectScope } from "../reactivity";
 import { workspace } from "../workspace/workspace";
 import { consumePendingAgentPrompt, hasPendingAgentPrompt } from "../services/agent-seed";
@@ -33,7 +35,7 @@ import { REGION_ATTR } from "../ui/regions";
 import {
   bindAiPanelHost,
   mountAiPanel,
-  renderAiPanelTemplate,
+  renderAiPanel,
   revealAssistant,
   seedAssistantPrompt,
 } from "./ai-panel";
@@ -49,9 +51,8 @@ let _scope: EffectScope | null = null;
 
 /**
  * Mount the assistant into the host the Inspector hands it. Idempotent per host: the persistent
- * `.ai-panel-host` container is created once and bound as the ai-panel render host (lit needs a
- * single render target for its part cache). A missing host (a reduced test fixture with no
- * inspector) is a no-op.
+ * `.ai-panel-host` container is created once and handed to `ai-panel.ts` as the surface's mount
+ * point. A missing host (a reduced test fixture with no inspector) is a no-op.
  *
  * @param {HTMLElement | null} host
  */
@@ -67,10 +68,7 @@ export function mount(host: HTMLElement | null) {
   host.append(_container);
 
   mountAiPanel();
-  // The AI panel owns a focus-guard-free rAF render loop into this container so
-  // Streaming repaints while the composer is focused (see ai-panel.ts).
   bindAiPanelHost(_container);
-  render();
 
   _scope?.stop();
   _scope = effectScope();
@@ -100,6 +98,8 @@ export function mount(host: HTMLElement | null) {
 export function unmount() {
   _scope?.stop();
   _scope = null;
+  // `null` unbinds the surface: the document is disposed and the chat-state watcher stopped.
+  bindAiPanelHost(null);
   if (_host) {
     _host.textContent = "";
   }
@@ -107,9 +107,14 @@ export function unmount() {
   _container = null;
 }
 
-/** Repaint the assistant template into the persistent container (no-op before mount). */
+/**
+ * Recompute the assistant's projection now (no-op before mount).
+ *
+ * Kept because `store.ts`'s `registerRenderer("chatPanel", …)` compat registry still names it. The
+ * surface follows the projection, so this is one function call rather than a repaint.
+ */
 export function render() {
   if (_container) {
-    litRender(renderAiPanelTemplate(), _container);
+    renderAiPanel();
   }
 }

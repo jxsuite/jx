@@ -222,6 +222,16 @@ describe("transposeStylebookStyle", () => {
     });
   });
 
+  test("a @keyframes body is passed through — its stops are not selectors", () => {
+    /* `from` and `to` pass `isTagPath`, so the media-block arm would re-key them as
+       `& .element-card-preview from` and the browser would throw the whole animation away. */
+    const out = transposeStylebookStyle({
+      "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+      h1: { animation: "toast-in 180ms" },
+    } as JxStyle) as Record<string, unknown>;
+    expect(out["@keyframes toast-in"]).toEqual({ from: { opacity: "0" }, to: { opacity: "1" } });
+  });
+
   test("pseudo/class sub-rules ride along; @-- base-width markers are dropped", () => {
     const out = transposeStylebookStyle({
       "@--": { width: "1280px" },

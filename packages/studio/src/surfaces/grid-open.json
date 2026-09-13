@@ -1,0 +1,147 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGridOpen",
+  "$description": "Every grid-able source a project has, grouped by where it comes from: the project's own pages and content collections first, then each connection's tables. It is the ISLAND of a confirm dialog rather than a dialog of its own — `ui/layers.ts`'s dialog owns the headline, the cancel button, modality and focus, and this document is only the list — because a second answer to \"what is a dialog\" is a defect (§12.5). Group headings are why it is not the kit menu: a menu row can carry a divider above it and cannot carry a name for the run it opens.",
+  "tagName": "div",
+  "attributes": {
+    "part": "sources"
+  },
+  "style": {
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-3)",
+    "minWidth": "280px",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"group-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "600",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.04em",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"rows\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "1px",
+      "marginTop": "var(--jx-space-1)"
+    },
+    "& [part=\"source\"]": {
+      "textAlign": "left",
+      "background": "none",
+      "border": "none",
+      "color": "var(--fg)",
+      "font": "inherit",
+      "padding": "var(--jx-space-2) var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "cursor": "pointer"
+    },
+    "& [part=\"source\"]:hover": {
+      "background": "var(--bg-hover)"
+    },
+    "& [part=\"source\"]:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "& [part=\"group-empty\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-2)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/groups"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "$description": "One origin of grid-able sources. A connection with no tables says why it has none instead of drawing an empty box — an author who has not pushed a schema yet is exactly the reader who needs the sentence.",
+        "tagName": "section",
+        "attributes": {
+          "part": "group",
+          "data-group": "${$map.item.key}"
+        },
+        "children": [
+          {
+            "tagName": "h3",
+            "attributes": {
+              "part": "group-title"
+            },
+            "textContent": "${$map.item.title}"
+          },
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "rows"
+            },
+            "$switch": {
+              "$ref": "$map/item/state"
+            },
+            "cases": {
+              "listed": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "rows-list",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/rows"
+                    },
+                    "key": {
+                      "$ref": "$map/item/id"
+                    },
+                    "map": {
+                      "tagName": "button",
+                      "attributes": {
+                        "part": "source",
+                        "type": "button",
+                        "data-source": "${$map.item.id}"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/open"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/id"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "textContent": "${$map.item.label}"
+                    }
+                  }
+                ]
+              },
+              "empty": {
+                "tagName": "p",
+                "attributes": {
+                  "part": "group-empty"
+                },
+                "textContent": "${$map.item.emptyMessage}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

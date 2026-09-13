@@ -6,9 +6,12 @@ import {
   setStampPropBindings,
 } from "@jxsuite/runtime";
 import {
+  applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
   applySiteStyle,
+  CANVAS_OVERLAY_CSS,
+  CANVAS_OVERLAY_STYLE_ID,
   EDIT_PLACEHOLDER_CSS,
   EDIT_PLACEHOLDER_STYLE_ID,
   injectHead,
@@ -17,11 +20,13 @@ import {
   registerElements,
   renderResolvedDocument,
   STYLEBOOK_STYLE_ID,
+  syncCanvasOverlayCss,
   syncEditableRoot,
   syncEditModeCss,
   syncStylebookCss,
 } from "../src/canvas/iframe-render";
 import { BUILD_LANES } from "@jxsuite/schema/asset-paths";
+import { CANVAS_MODES } from "../src/canvas/iframe-protocol";
 import { SITE_STYLE_ID } from "@jxsuite/site/site-style";
 import type { AssetContext } from "../src/canvas/asset-refs";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
@@ -1140,6 +1145,40 @@ describe("asset context", () => {
   });
 });
 
+describe("applyCanvasDialogOpen", () => {
+  /** Two stamped dialogs and a stamped details, as a render would leave them. */
+  function twoDialogs() {
+    const root = document.createElement("div");
+    for (const path of ['["children",0]', '["children",1]']) {
+      const el = document.createElement("dialog");
+      el.dataset.jxPath = path;
+      root.append(el);
+    }
+    const details = document.createElement("details");
+    details.dataset.jxPath = '["children",2]';
+    root.append(details);
+    document.body.append(root);
+    return root;
+  }
+
+  test("opens exactly one dialog and closes the rest", () => {
+    const root = twoDialogs();
+    applyCanvasDialogOpen(root, '["children",1]');
+    const open = root.querySelectorAll("[data-jx-dialog-open]");
+    expect(open).toHaveLength(1);
+    expect((open[0] as HTMLElement).dataset.jxPath).toBe('["children",1]');
+  });
+
+  test("a path that is not a dialog opens nothing, and null closes them all", () => {
+    const root = twoDialogs();
+    applyCanvasDialogOpen(root, '["children",2]');
+    expect(root.querySelectorAll("[data-jx-dialog-open]")).toHaveLength(0);
+    applyCanvasDialogOpen(root, '["children",0]');
+    applyCanvasDialogOpen(root, null);
+    expect(root.querySelectorAll("[data-jx-dialog-open]")).toHaveLength(0);
+  });
+});
+
 describe("applyCanvasPopoverOpen", () => {
   /** Two de-popovered panels with stamped paths, as a render would leave them. */
   function twoPanels() {
@@ -1191,19 +1230,19 @@ describe("applyCanvasPopoverOpen", () => {
   });
 });
 
-describe("EDIT_PLACEHOLDER_CSS — the canvas UA substitute", () => {
+describe("CANVAS_OVERLAY_CSS — the canvas UA substitute", () => {
   test("the closed rule is inside a cascade layer, so author styles still beat it", () => {
-    expect(EDIT_PLACEHOLDER_CSS).toContain("@layer jx-canvas-ua {");
-    expect(EDIT_PLACEHOLDER_CSS).toContain("[data-jx-popover]:not([data-jx-popover-open])");
+    expect(CANVAS_OVERLAY_CSS).toContain("@layer jx-canvas-ua {");
+    expect(CANVAS_OVERLAY_CSS).toContain("[data-jx-popover]:not([data-jx-popover-open])");
   });
 
   test("the closed rule is never forced — the canvas must SHOW a base-display defect", () => {
     // A base `display` on a popover defeats the real UA rule on the shipped page too, so forcing
     // The canvas rule would hide a live defect. `@jxsuite/schema/overlays` reports it as
     // `base-display` and the author fixes the document.
-    const layer = EDIT_PLACEHOLDER_CSS.slice(
-      EDIT_PLACEHOLDER_CSS.indexOf("@layer jx-canvas-ua"),
-      EDIT_PLACEHOLDER_CSS.indexOf("[data-jx-popover][data-jx-popover-open]"),
+    const layer = CANVAS_OVERLAY_CSS.slice(
+      CANVAS_OVERLAY_CSS.indexOf("@layer jx-canvas-ua"),
+      CANVAS_OVERLAY_CSS.indexOf("[data-jx-popover][data-jx-popover-open]"),
     );
     expect(layer).not.toContain("!important");
     expect(layer).toContain("display: none");
@@ -1213,17 +1252,113 @@ describe("EDIT_PLACEHOLDER_CSS — the canvas UA substitute", () => {
     // Measured, not reasoned: every drawer in the fleet sits in its header's flex row, and
     // `align-items: center` centred a 904px panel on a 64px header — half of it above the artboard
     // At a negative offset, contributing nothing to the overflow the host measures.
-    expect(EDIT_PLACEHOLDER_CSS).toContain("align-self: start !important");
-    expect(EDIT_PLACEHOLDER_CSS).toContain("flex: none !important");
+    expect(CANVAS_OVERLAY_CSS).toContain("align-self: start !important");
+    expect(CANVAS_OVERLAY_CSS).toContain("flex: none !important");
   });
 
   test("`position` IS forced, because shown-in-place is the editing model", () => {
     // A panel that sets `position: fixed` itself would be laid out against the frame's viewport,
-    // Which in an editable mode is the document's full height. Preview still renders it natively.
-    expect(EDIT_PLACEHOLDER_CSS).toContain("position: relative !important");
+    // Which in a de-linked mode is the document's full height. Preview still renders it natively.
+    expect(CANVAS_OVERLAY_CSS).toContain("position: relative !important");
+    // The position rules are the OTHER half and live outside the layer, where an author rule
+    // Cannot silently win them.
+    expect(CANVAS_OVERLAY_CSS.indexOf("[data-jx-popover][data-jx-popover-open]")).toBeGreaterThan(
+      CANVAS_OVERLAY_CSS.indexOf("@layer jx-canvas-ua"),
+    );
   });
 
   test("an open panel is labelled without a wrapper element", () => {
-    expect(EDIT_PLACEHOLDER_CSS).toContain("[data-jx-popover][data-jx-popover-open]::before");
+    expect(CANVAS_OVERLAY_CSS).toContain("[data-jx-popover][data-jx-popover-open]::before");
+  });
+
+  test("the editing affordances no longer carry them", () => {
+    // The split IS the fix: while these rules shipped inside the design/edit sheet, Stylebook and
+    // A git-diff side renamed their overlay attributes with nothing to draw them.
+    expect(EDIT_PLACEHOLDER_CSS).not.toContain("data-jx-popover");
+    expect(EDIT_PLACEHOLDER_CSS).not.toContain("data-jx-dialog-open");
+  });
+});
+
+describe("syncCanvasOverlayCss", () => {
+  const sheet = () => document.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`);
+
+  afterEach(() => {
+    syncCanvasOverlayCss(document, "preview");
+  });
+
+  test("it is installed in exactly the modes that de-link, which is every mode but preview", () => {
+    // The invariant this file exists to hold: an attribute renamed without its substitute rule is
+    // An overlay that can never be drawn. `setCanvasDelinkPopovers`/`setCanvasDelinkCommands` are
+    // Gated `mode !== "preview"`, so this sheet is too — Stylebook and git-diff included.
+    for (const mode of CANVAS_MODES) {
+      syncCanvasOverlayCss(document, "preview");
+      syncCanvasOverlayCss(document, mode);
+      if (mode === "preview") {
+        expect(sheet()).toBeNull();
+      } else {
+        expect(sheet()).toBeTruthy();
+      }
+    }
+  });
+
+  test("it is idempotent, and a preview render removes it", () => {
+    syncCanvasOverlayCss(document, "git-diff");
+    syncCanvasOverlayCss(document, "git-diff");
+    expect(document.head.querySelectorAll(`#${CANVAS_OVERLAY_STYLE_ID}`)).toHaveLength(1);
+    syncCanvasOverlayCss(document, "preview");
+    expect(sheet()).toBeNull();
+    // Removing when absent is a no-op.
+    syncCanvasOverlayCss(document, "preview");
+    expect(sheet()).toBeNull();
+  });
+
+  test("a git-diff render renames the overlay attributes AND ships the rules that draw them", async () => {
+    // The regression, end to end. A git-diff artboard renders a real project document with the
+    // Tab's `popoverOpen`/`dialogOpen`, and is read side by side with a design artboard of the
+    // Same document, so it must draw an overlay identically.
+    const container = document.createElement("div");
+    const handle = await renderResolvedDocument({
+      container,
+      dialogOpen: '["children",1]',
+      doc: {
+        children: [
+          { attributes: { popover: "auto" }, children: ["panel"], tagName: "nav" },
+          { attributes: { open: "" }, children: ["dialog"], tagName: "dialog" },
+        ],
+        tagName: "div",
+      } as never,
+      docBase: "http://localhost:3000/page.json",
+      mapperCtx: { ...ctx, canvasMode: "git-diff" },
+      mode: "git-diff",
+    });
+
+    const nav = container.querySelector("nav") as HTMLElement;
+    expect(nav.hasAttribute("popover")).toBe(false);
+    expect(nav.dataset.jxPopover).toBe("auto");
+    const dialog = container.querySelector("dialog") as HTMLElement;
+    expect(dialog.hasAttribute("open")).toBe(false);
+    expect(dialog.dataset.jxDialogOpen).toBe("");
+
+    const css = sheet()!.textContent!;
+    expect(css).toContain("[data-jx-popover]:not([data-jx-popover-open])");
+    expect(css).toContain("dialog[data-jx-dialog-open]");
+    handle.dispose();
+  });
+
+  test("a preview render leaves the native attributes and installs no substitute", async () => {
+    const container = document.createElement("div");
+    const handle = await renderResolvedDocument({
+      container,
+      doc: {
+        children: [{ attributes: { popover: "auto" }, children: ["panel"], tagName: "nav" }],
+        tagName: "div",
+      } as never,
+      docBase: "http://localhost:3000/page.json",
+      mapperCtx: { ...ctx, canvasMode: "preview" },
+      mode: "preview",
+    });
+    expect((container.querySelector("nav") as HTMLElement).hasAttribute("popover")).toBe(true);
+    expect(sheet()).toBeNull();
+    handle.dispose();
   });
 });

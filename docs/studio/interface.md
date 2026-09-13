@@ -9,11 +9,14 @@ spec:
   - studio.md#16
   - studio.md#18
 code:
-  - packages/studio/src/panels/toolbar.ts
+  - packages/studio/src/surfaces/commandbar.json
+  - packages/studio/src/surfaces/commandbar.ts
   - packages/studio/src/preview/preview-overlay.ts
-  - packages/studio/src/panels/activity-bar.ts
+  - packages/studio/src/surfaces/rail.ts
   - packages/studio/src/panels/left-panel.ts
   - packages/studio/src/files/files.ts
+  - packages/studio/src/surfaces/files-panel.json
+  - packages/studio/src/surfaces/files-panel.ts
   - packages/studio/src/files/gitignore.ts
   - packages/studio/src/format/format-host.ts
   - packages/studio/src/format/format-choices.ts
@@ -23,7 +26,7 @@ code:
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/bottom-dock.ts
   - packages/studio/src/panels/formula-workspace.ts
-  - packages/studio/src/panels/statusbar.ts
+  - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/ui/panel-resize.ts
 ---
 
@@ -39,7 +42,7 @@ The bar across the top of the window. Everything in it is a command, so what you
 
 From left to right:
 
-- The **⬢ menu** holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Open Library**, **Preferences…**, **Zen Mode**, and the rest.
+- The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Open Library**, **Preferences…**, **Zen Mode**, and the rest.
 - The **layout tabs** (**Write · Design · Build · Ship**) are named arrangements of the workspace. Clicking one sets the Navigator panel, the dock widths, the Inspector tab and the Bottom dock in a single step. Double-click a tab to rename it, and press **+** to save whatever is on screen now as a layout of your own. Layouts are remembered per project.
 - The **Command Center pill** sits in the middle: `◈ project › document › selection`, with :kbd[⌘K] at its right end. It names the project you're in, the document you're editing and the element you have selected, and each segment is a button that opens the palette already scoped to that level. Click the pill's empty space to open the palette with nothing pre-picked. The pill is where you go to _search_ for a place; the [jump bar](#the-jump-bar) over the pane is where you _step_ to one.
 - The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A greyed-out one tells you in its tooltip what it is waiting for.
@@ -55,7 +58,7 @@ Press it again and you get **the same tab**, moved to whatever page you're on no
 
 It is always there. When the open file has no route it's disabled and its tooltip says why: a component isn't a page, a `[slug]` route needs a value picked in the pane context bar's **resolving with** popover first, and a project that doesn't build a site has nothing to serve.
 
-**Build Site** is the other half, and it answers a different question: not "what does this page look like?" but "does my site build?" It's in the ⬢ menu and the Command Center. It runs the real compiler (bundling, image variants, the sitemap and the rest) and reports what it produced. That's the one to reach for before you publish; Open in Browser is the one for everything else.
+**Build Site** is the other half, and it answers a different question: not "what does this page look like?" but "does my site build?" It's in the Studio menu and the Command Center. It runs the real compiler (bundling, image variants, the sitemap and the rest) and reports what it produced. That's the one to reach for before you publish; Open in Browser is the one for everything else.
 
 :::doc-tip
 A layout reconfigures the workspace; it never takes anything away. Every panel stays on the rail, on its shortcut and in the palette after any layout is applied.
@@ -93,7 +96,15 @@ Clicking a heading opens that surface where you last left it; following its subm
 
 The dock to the right of the rail shows one panel at a time, under a header naming the panel and the level it works at: `FILES · project`, `OUTLINE · document`. That header is how you always know which panel you're looking at and whether closing the last document would empty it.
 
-Drag the dock's inner edge to resize it (up to half the window), and double-click that edge to snap back to the default width.
+Drag the dock's inner edge to resize it (up to half the window), and double-click that edge to snap back to the default width. The edge is a keyboard stop too: :kbd[Tab] to it, then :kbd[←] and :kbd[→] move it a step at a time (:kbd[Shift] for a larger one), :kbd[Home] and :kbd[End] take it to its narrowest and widest, and :kbd[Enter] snaps it back to the default width the way a double-click does. The bottom dock's edge answers :kbd[↑] and :kbd[↓] instead.
+
+Both trees in the dock, **Files** and **[Outline](/docs/studio/design/layers)**, answer the same keys. :kbd[Tab] enters the tree at the row you were last on, :kbd[↑] and :kbd[↓] walk the rows, :kbd[→] opens a folder or steps into it, :kbd[←] closes it or steps out to the one it sits in, and :kbd[Home] / :kbd[End] jump to the ends of the whole tree rather than to the ends of what is on screen. Typing a letter jumps to the next row whose name starts with it. Everything the tree does not use reaches your commands untouched, so cut, paste and delete still work on the row you are standing on.
+
+## Moving a file
+
+Drag a row onto a folder and the file moves into it, taking its open tab with it and repairing every reference to it across the project (see [Renaming and moving](/docs/studio/projects/pages-layouts-components)). The folder highlights as you hover it, and that highlight is the whole promise: if nothing lights up, nothing will happen when you let go.
+
+Some drops are refused, and refusing them looks like refusing them. A file dropped on the folder it is already in stays where it is. A folder cannot be dropped inside itself or into anything it contains. Dropping on a file does nothing, because a file has no inside. To move something to the top level of your project, drop it on the empty space below the tree, which highlights as a whole while nothing else does.
 
 ## Creating a file
 
@@ -150,7 +161,7 @@ A project with no `.gitignore` is unaffected: nothing is hidden, and the toggle 
 
 ## Panes and the canvas
 
-The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Library** or **Project Styles**. It carries its own strip of open documents, its own jump bar and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline and the keyboard at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
+The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Library** or **Project Styles**. It carries its own strip of open documents, its own jump bar and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline and the keyboard at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 

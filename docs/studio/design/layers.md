@@ -5,6 +5,8 @@ spec:
   - studio.md#6.7
 code:
   - packages/studio/src/panels/layers-panel.ts
+  - packages/studio/src/surfaces/panel-outline.json
+  - packages/studio/src/surfaces/panel-outline.ts
   - packages/studio/src/panels/dnd.ts
   - packages/studio/src/tabs/selection.ts
 ---
@@ -34,7 +36,7 @@ An empty page has no tree to show, so the panel says so and offers **Add an elem
 
 ## Select and navigate
 
-Click a row to select that element. The canvas pans to bring it into view, and the Inspector's [Content](/docs/studio/design/properties), [Style](/docs/studio/design/style-inspector) and [Logic](/docs/studio/logic/events) tabs switch to it. If the element is inside a [popover](/docs/framework/concepts/overlays), the popover opens first, so a row you can see in Outline is always a thing you can see on the canvas. Selection works in both directions: click something on the canvas and its row highlights and scrolls into view in Outline.
+Click a row to select that element. The canvas pans to bring it into view, and the Inspector's [Content](/docs/studio/design/properties), [Style](/docs/studio/design/style-inspector) and [Logic](/docs/studio/logic/events) tabs switch to it. If the element is inside a [popover](/docs/framework/concepts/overlays), the popover opens first, so a row you can see in Outline is always a thing you can see on the canvas. Selection works in both directions: click something on the canvas and its row highlights and scrolls into view in Outline. That scroll follows the selection, not the panel: once a row is on screen, scrolling Outline to read the rest of the page leaves it where you put it, and the list moves on its own again only when the selection next changes.
 
 ## Select several at once
 
@@ -80,7 +82,7 @@ Select a row, or just hover it, and its actions appear on the right:
 A row's buttons act on **that row**, the one under your pointer, which is not always the one you selected. An action that cannot apply (moving the first child up, say) is shown greyed rather than hidden, with a tooltip saying what it needs. The buttons never move under your cursor.
 
 :::doc-tip
-The tree is keyboard-navigable. :kbd[↑] and :kbd[↓] walk the rows and take the selection with them, :kbd[→] expands a row or steps into it, :kbd[←] collapses it or climbs to its parent, and :kbd[Home] / :kbd[End] jump to the ends.
+The tree is keyboard-navigable. :kbd[↑] and :kbd[↓] walk the rows and take the selection with them, :kbd[→] expands a row or steps into it, :kbd[←] collapses it or climbs to its parent, and :kbd[Home] / :kbd[End] jump to the ends. Typing a letter jumps to the next row whose name starts with it, which beats arrowing through a long page. It searches the whole document, not only the rows currently on screen. The arrows stop at the ends rather than wrapping around, so a long walk never quietly puts you back where you started.
 :::
 
 For bigger moves, drag the **⠿** handle (it appears on any row you hover) or the row itself. An indicator shows where the element will land: above or below the row under the cursor, or inside it as a child. You can also drag a row straight onto the canvas and drop it at the spot you see. Press :kbd[Esc] mid-drag to cancel with nothing changed. Dropping an element into itself or its own descendants is blocked.

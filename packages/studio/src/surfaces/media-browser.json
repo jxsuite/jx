@@ -1,0 +1,303 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioMediaBrowser",
+  "$description": "The project's media, offered under whatever control asked for them. **Not the kit menu, and the difference is the thumbnails.** `surfaces/menu.json` is the settled answer to \"a list of actions\" and a `MenuRowProjection` carries a title, a chord and a gate — there is nowhere in it for a picture, nowhere for the size caption beside it, and a `jx-menu` is itself `popover=auto`, so a filter field cannot stand above one inside a panel. This is a browser: you pick an image by looking at it. **It is a `jx-popover`, so the PLATFORM owns dismissal** — light dismiss, Escape, the top layer and focus back to the invoker are the popover's contract, which is why nothing here binds a document listener and why the panel can paint over a modal `<dialog>` that the layer-div popover it replaces could not. The rows are plain buttons in a group, exactly as `grid-views.json`'s saved views are: a list of buttons is reachable by Tab, and a `role=\"listbox\"` would be a keyboard contract nothing here implements.",
+  "tagName": "jx-popover",
+  "attributes": {
+    "part": "media-browser"
+  },
+  "$props": {
+    "label": "Project media",
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "$description": "A search box that stays put and a list that scrolls under it. The panel itself never scrolls — `jx-popover` says why — so the box is here rather than on the host.",
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "var(--jx-space-2)",
+        "padding": "var(--jx-space-2)",
+        "minWidth": "260px",
+        "maxHeight": "360px",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)",
+        "color": "var(--fg)",
+        "& [part=\"rows\"]": {
+          "display": "flex",
+          "flexDirection": "column",
+          "gap": "2px",
+          "overflowY": "auto",
+          "minHeight": "0"
+        },
+        "& [part=\"row\"]": {
+          "display": "flex",
+          "alignItems": "center",
+          "gap": "var(--jx-space-2)",
+          "textAlign": "left",
+          "background": "none",
+          "border": "none",
+          "color": "var(--fg)",
+          "font": "inherit",
+          "padding": "var(--jx-space-1) var(--jx-space-2)",
+          "borderRadius": "var(--jx-radius-sm)",
+          "cursor": "pointer",
+          "minWidth": "0"
+        },
+        "& [part=\"row\"]:hover": {
+          "background": "var(--bg-hover)"
+        },
+        "& [part=\"row\"]:focus-visible": {
+          "outline": "var(--jx-focus-ring)",
+          "outlineOffset": "-2px"
+        },
+        "& [part=\"row-thumb\"]": {
+          "width": "24px",
+          "height": "24px",
+          "objectFit": "cover",
+          "borderRadius": "var(--jx-radius-sm)",
+          "flexShrink": "0"
+        },
+        "& [part=\"row-text\"]": {
+          "display": "flex",
+          "flexDirection": "column",
+          "minWidth": "0"
+        },
+        "& [part=\"row-name\"]": {
+          "overflow": "hidden",
+          "textOverflow": "ellipsis",
+          "whiteSpace": "nowrap"
+        },
+        "& [part=\"row-caption\"]": {
+          "color": "var(--fg-dim)",
+          "fontSize": "var(--jx-text-xs)"
+        },
+        "& [part=\"empty\"]": {
+          "margin": "0",
+          "color": "var(--fg-dim)",
+          "fontSize": "var(--jx-text-xs)"
+        },
+        "& [part=\"more\"]": {
+          "margin": "0",
+          "color": "var(--fg-dim)",
+          "fontSize": "var(--jx-text-xs)"
+        }
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "filter"
+          },
+          "$props": {
+            "type": "search",
+            "size": "sm",
+            "label": "Search media",
+            "placeholder": "Search media…",
+            "autocomplete": "off",
+            "value": {
+              "$ref": "#/state/filter"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setFilter"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "rows-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/rowsState"
+          },
+          "cases": {
+            "empty": {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty"
+              },
+              "textContent": "${state.emptyLabel}"
+            },
+            "listed": {
+              "tagName": "div",
+              "attributes": {
+                "part": "rows"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "$description": "One file. The row hands back the value a pick writes — the site URL — rather than an index, so the list may be filtered under it without changing what any row means.",
+                    "tagName": "button",
+                    "attributes": {
+                      "part": "row",
+                      "type": "button",
+                      "data-path": "${$map.item.path}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/pick"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "row-thumb-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/thumbState"
+                        },
+                        "cases": {
+                          "shown": {
+                            "$description": "Decorative: the row's own text names the file. The load handler is the whole of the dimensions caption — measuring an image is a decode the `<img>` has finished by the time `load` fires, so the numbers are a read of work already done rather than a second fetch per row.",
+                            "tagName": "img",
+                            "attributes": {
+                              "part": "row-thumb",
+                              "src": "${$map.item.thumbSrc}",
+                              "alt": ""
+                            },
+                            "onload": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/measure"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/file"
+                                    },
+                                    {
+                                      "$ref": "event#/target/naturalWidth"
+                                    },
+                                    {
+                                      "$ref": "event#/target/naturalHeight"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "row-text"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "row-name"
+                            },
+                            "textContent": "${$map.item.name}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "row-caption-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/captionState"
+                            },
+                            "cases": {
+                              "shown": {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "row-caption"
+                                },
+                                "textContent": "${$map.item.caption}"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "more-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/moreState"
+          },
+          "cases": {
+            "shown": {
+              "$description": "A truncated list says so. Fifty rows is the cap the list has always had; the sentence is what keeps the cap from reading as \"that is all there is\".",
+              "tagName": "p",
+              "attributes": {
+                "part": "more"
+              },
+              "textContent": "${state.moreLabel}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

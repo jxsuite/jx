@@ -16,17 +16,19 @@
  * holding a pasted API token (desktop, dev server) keeps its own local account field and this
  * resolves null without opening anything.
  *
+ * The dialog itself is `src/surfaces/cf-account-picker.json`, a `jx-dialog`; this module is the
+ * flow around it. It used to be a lit template rendered through `showDialog`, with its own
+ * `repaint()` re-rendering the whole body into the slot's parent whenever anything landed — the
+ * surface is reactive now, so a listing that arrives late, or a refusal, changes only what it names.
+ *
  * @docs studio/ai
  * @license MIT
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
-import type { TemplateResult } from "lit-html";
 import { getPlatform, hasPlatform } from "../platform";
 import { notifyCredentialsChanged } from "../settings/preferences-accounts";
-import { showDialog } from "./layers";
-import { overlayRegion } from "./regions";
+import { openCfAccountPickerSurface } from "../surfaces/cf-account-picker";
+import { layerHost } from "./layers";
 import type { CfAccountSummary } from "../types";
 
 /** Whether this platform brokers the connection, and so can be asked which accounts it reaches. */
@@ -36,6 +38,11 @@ function canPick(): boolean {
   }
   const platform = getPlatform();
   return Boolean(platform.cfAccounts && platform.cfSelectAccount);
+}
+
+/** What a thrown thing says, for a line the reader has to act on. */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -51,150 +58,78 @@ export function openCfAccountPicker(): Promise<CfAccountSummary | null> {
   if (!canPick()) {
     return Promise.resolve(null);
   }
-  return showDialog<CfAccountSummary | null>(
-    (done) => {
-      let accounts: CfAccountSummary[] = [];
-      let loading = true;
-      /** The last refusal — a listing that failed, or an account the broker would not accept. */
+  return new Promise<CfAccountSummary | null>((resolve) => {
+    let accounts: CfAccountSummary[] = [];
+    /** The id being committed. Held here as well as in the scope: it is what guards a second press. */
+    let choosing = "";
+    let settled = false;
+
+    /* Resolve once, and take the dialog down with it. `close()` provokes the platform's own
+       `close`, which comes back as `onClosed` — so the guard is what keeps a chosen account from
+       being overwritten by the dismissal its own commit caused. */
+    const finish = (account: CfAccountSummary | null): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve(account);
+    };
+
+    async function load(): Promise<void> {
+      handle.update({ failure: "", loading: true });
       let failure = "";
-      /** The id being committed, so its own row can say so rather than the whole list going grey. */
-      let choosing = "";
-      let settled = false;
-      let wrapperEl: HTMLElement | null = null;
-
-      function finish(account: CfAccountSummary | null): void {
-        settled = true;
-        done(account);
+      try {
+        accounts = (await getPlatform().cfAccounts?.()) ?? [];
+      } catch (error) {
+        accounts = [];
+        failure = reasonOf(error);
       }
+      /* `done` released the slot, so a late listing landing after a dismissal would otherwise be a
+         write into a disposed surface. The lit version guarded the same moment by resolving its
+         host lazily and finding none. */
+      if (settled) {
+        return;
+      }
+      handle.update({ accounts, failure, loading: false });
+    }
 
-      function repaint(): void {
-        /* Resolved lazily, and only while the dialog is still up: `done` releases the slot, so a
-           late `load()` landing after a dismissal would otherwise paint into a detached host. */
-        const host = settled ? null : wrapperEl?.parentElement;
-        if (host) {
-          litRender(build(), host);
+    async function choose(id: string): Promise<void> {
+      const account = accounts.find((candidate) => candidate.id === id);
+      if (!account || choosing !== "") {
+        return;
+      }
+      choosing = id;
+      handle.update({ choosing: id, failure: "" });
+      try {
+        await getPlatform().cfSelectAccount?.({ id: account.id, name: account.name });
+      } catch (error) {
+        choosing = "";
+        if (!settled) {
+          /* The list survives a refusal, and the reason sits above it: listing again is not what
+             would fix an account the broker will not accept, so this state offers no retry. */
+          handle.update({ choosing: "", failure: reasonOf(error) });
         }
+        return;
       }
+      /* The stored account is a credential like any other: the assistant's gate, the publish
+         panel and the Preferences row all re-read from the same announcement. */
+      notifyCredentialsChanged();
+      finish(account);
+    }
 
-      async function load(): Promise<void> {
-        loading = true;
-        failure = "";
-        repaint();
-        try {
-          accounts = (await getPlatform().cfAccounts?.()) ?? [];
-        } catch (error) {
-          failure = error instanceof Error ? error.message : String(error);
-        }
-        loading = false;
-        repaint();
-      }
-
-      async function choose(account: CfAccountSummary): Promise<void> {
-        choosing = account.id;
-        failure = "";
-        repaint();
-        try {
-          await getPlatform().cfSelectAccount?.({ id: account.id, name: account.name });
-        } catch (error) {
-          failure = error instanceof Error ? error.message : String(error);
-          choosing = "";
-          repaint();
-          return;
-        }
-        /* The stored account is a credential like any other: the assistant's gate, the publish
-           panel and the Preferences row all re-read from the same announcement. */
-        notifyCredentialsChanged();
-        finish(account);
-      }
-
-      function listTpl(): TemplateResult | typeof nothing {
-        if (loading) {
-          return html`<p class="cf-account-picker-empty">Reading your Cloudflare accounts…</p>`;
-        }
-        /* Nothing to show and a reason why. The retry is offered only here: a commit that was
-           refused (below) keeps the list, because listing again is not what would fix it. */
-        if (accounts.length === 0) {
-          return html`
-            <p class="cf-account-picker-empty">
-              ${
-                failure
-                  ? `Cloudflare could not be reached: ${failure}`
-                  : "This Cloudflare login reaches no accounts. Create one at dash.cloudflare.com, then try again."
-              }
-            </p>
-            ${
-              failure
-                ? html`<sp-button
-                    size="s"
-                    treatment="outline"
-                    @click=${() => {
-                      void load();
-                    }}
-                  >
-                    Try again
-                  </sp-button>`
-                : nothing
-            }
-          `;
-        }
-        /* The row shape is Preferences › Accounts', deliberately reused: this IS an account list,
-           and a second stylesheet entry for the same shape is how two lists drift apart. */
-        return html`
-          ${failure ? html`<p class="cf-account-picker-error">${failure}</p>` : nothing}
-          <div class="prefs-accounts">
-            ${accounts.map(
-              (account) => html`
-                <div class="prefs-account" data-account=${account.id}>
-                  <div class="prefs-account-text">
-                    <span class="prefs-account-label">${account.name}</span>
-                    <span class="prefs-account-detail">${account.id}</span>
-                  </div>
-                  <sp-button
-                    size="s"
-                    variant="accent"
-                    ?disabled=${choosing !== ""}
-                    @click=${() => {
-                      void choose(account);
-                    }}
-                  >
-                    ${choosing === account.id ? "Selecting…" : "Use this account"}
-                  </sp-button>
-                </div>
-              `,
-            )}
-          </div>
-        `;
-      }
-
-      function build(): TemplateResult {
-        return html`
-          <sp-dialog-wrapper
-            open
-            underlay
-            headline="Choose a Cloudflare account"
-            cancel-label="Cancel"
-            @cancel=${() => finish(null)}
-            @close=${() => finish(null)}
-            ${ref((el?: Element) => {
-              if (el) {
-                wrapperEl = el as HTMLElement;
-              }
-            })}
-          >
-            <div class="cf-account-picker">
-              <p class="cf-account-picker-lede">
-                Your Cloudflare login reaches more than one account. Publishing and the assistant
-                both run against the one you pick; you can change it in Preferences › Accounts.
-              </p>
-              ${listTpl()}
-            </div>
-          </sp-dialog-wrapper>
-        `;
-      }
-
-      void load();
-      return build();
-    },
-    { region: overlayRegion("dialog", "cf-accounts") },
-  );
+    const handle = openCfAccountPickerSurface({
+      layer: layerHost("dialog"),
+      onChoose: (id) => {
+        void choose(id);
+      },
+      onClosed: () => {
+        finish(null);
+      },
+      onRetry: () => {
+        void load();
+      },
+    });
+    void load();
+  });
 }

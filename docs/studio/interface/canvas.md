@@ -7,9 +7,12 @@ spec:
   - studio-ui-guidelines.md#8.1
 code:
   - packages/studio/src/canvas/edit-width-drag.ts
+  - packages/studio/src/surfaces/canvas-stage.ts
   - packages/studio/src/editor/shortcuts.ts
   - packages/studio/src/panels/block-action-bar.ts
+  - packages/studio/src/surfaces/block-action-bar.ts
   - packages/studio/src/editor/context-menu.ts
+  - packages/studio/src/surfaces/menu.ts
   - packages/studio/src/editor/insert-zone-action.ts
   - packages/studio/src/panels/canvas-dnd-bridge.ts
   - packages/studio/src/canvas/iframe-interaction.ts
@@ -24,7 +27,7 @@ The canvas is the center of the workspace, where your page renders live. It is t
 
 ## Resizing the page
 
-In **Edit** the canvas is a single centred column with a drag handle on each side. Dragging either one resizes the page symmetrically, and the [breakpoint](/docs/studio/design/breakpoints) follows the width. Design has no handles, because it already draws every breakpoint side by side.
+In **Edit** the canvas is a single centred column with a handle on each side. Dragging either one resizes the page symmetrically, and the [breakpoint](/docs/studio/design/breakpoints) follows the width. Each handle is a control rather than only a grip: Tab reaches it, the arrow keys resize the page a step at a time, and :kbd[Enter] returns it to the breakpoint's own width. Design has no handles, because it already draws every breakpoint side by side.
 
 ## Pan and zoom
 
@@ -60,6 +63,8 @@ Two things are therefore **Preview only**: the backdrop behind the panel, and th
 
 Selecting something outside the popover does not close it. Otherwise reaching for a colour in the Inspector would shut the panel you were styling. Close it from the block action bar, or by clicking its trigger again.
 
+A `<dialog>` works the same way. Select it, or anything inside it, and it opens in place with a **DIALOG · SHOWN IN PLACE** mark; a `command="show-modal"` button opens it too, and a `close` button closes it. On the canvas nothing goes modal and nothing goes inert, so the rest of the page stays editable while the dialog is up. Preview shows the dialog as a visitor sees it: modal, over a backdrop, with the page behind it locked. A region you marked `inert` is editable on the canvas for the same reason, and inert again in Preview and on the built page. A style rule you wrote for `[inert]` still applies while you edit, so the region looks the way it will on the page.
+
 :::doc-note
 A popover that lives inside a component stays closed while you are on a page that uses the component. Open the component's own file to edit it, the same rule that makes layout chrome read-only on a page.
 :::
@@ -71,7 +76,7 @@ A small floating toolbar appears above the selected element:
 ![The block action bar floating above a selected paragraph, showing the parent, tag, move, duplicate and formatting controls](../../images/block-action-bar.png)
 
 - A **back arrow** selects the parent element.
-- The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions.
+- The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions. On a component instance or a repeater, where there is nothing to convert to, the badge is greyed rather than gone.
 - Drag the **⠿ drag handle** to move the element somewhere else on the page.
 - **Move up** and **Move down** arrows swap the element with its neighbors.
 - For a component instance, **Edit Component** opens the component itself; for anything else, **Convert to Component** turns the selection into a reusable component.
