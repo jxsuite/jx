@@ -11,6 +11,7 @@
  * ATTACHED container of its own and the standing mount is what a repaint updates.
  */
 import { flush, installMockPlatform, pointer } from "./harness";
+import { printedOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import {
@@ -438,7 +439,8 @@ describe("binding a config field", () => {
 
   test("a plain string field offers the whole ladder — the way IN to a binding", async () => {
     const m = await mountForm(schema, { id: "abc" }, { context: sourced() });
-    expect(part(m, "id", "source").textContent!.trim()).toBe("Fixed value");
+    // What the chip PRINTS: its label part, since an enabled hint is a tip child of the host.
+    expect(printedOf(part(m, "id", "source"))).toBe("Fixed value");
     const menu = await openSourceMenu(m, "id");
     const rungs = [...menu.querySelectorAll<HTMLElement>("jx-menu-item")];
     expect(rungs.map((r) => r.dataset["commandId"])).toEqual(["literal", "ref", "template"]);

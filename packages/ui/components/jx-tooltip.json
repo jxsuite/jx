@@ -85,7 +85,7 @@
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/tooltip.ts",
       "$export": "onTooltipUnmount",
-      "description": "Takes the fallback listeners off the control again. They sit on an element the kit does not own and which outlives the tip, so without this a removed tip keeps answering its control's pointer."
+      "description": "Takes the fallback listeners off the control again, one microtask after the tip left the document and only if it is still out by then. They sit on an element the kit does not own and which outlives the tip, so without this a removed tip keeps answering its control's pointer; but a tip that is MOVED, by a keyed $map reordering its rows or a host re-parenting the control, is disconnected and reconnected in one step and never mounts again, so an unmount that disposed at once would leave it silent for good."
     },
     "onMount": {
       "$prototype": "Function",

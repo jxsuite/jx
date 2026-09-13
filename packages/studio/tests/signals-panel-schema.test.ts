@@ -18,6 +18,7 @@ import {
   settle,
 } from "./signals-panel-fixture";
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
+import { printedOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { activeTab } from "../src/workspace/workspace";
 import { resetSlotModeMemory } from "../src/ui/dynamic-slot";
@@ -622,7 +623,8 @@ describe("binding a config field", () => {
   test("the rungs are the ladder's own words, not a private Static / param / Custom… list", async () => {
     const container = await mountSchema(stringSchema, { id: "abc" }, skuDoc);
     const chip = container.querySelector('[data-prop="id"] [part="source"]')!;
-    expect(chip.textContent!.trim()).toBe("Fixed value");
+    // What the chip PRINTS: its label part, since an enabled hint is a tip child of the host.
+    expect(printedOf(chip)).toBe("Fixed value");
     expect(await rungs(container, "id")).toEqual(["literal", "ref", "template"]);
     const menu = await openSourceMenu(container, "id");
     const labels = [...menu.querySelectorAll<HTMLElement>("jx-menu-item")].map((el) =>
@@ -641,7 +643,7 @@ describe("binding a config field", () => {
     const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
     const combo = fieldEl<ValueEl>(container, "id", '[part="pointer"]');
     expect(combo.value).toBe("#/$params/sku");
-    expect(container.querySelector('[data-prop="id"] [part="source"]')!.textContent!.trim()).toBe(
+    expect(printedOf(container.querySelector('[data-prop="id"] [part="source"]'))).toBe(
       "From data…",
     );
     expect(container.textContent).not.toContain("[object Object]");

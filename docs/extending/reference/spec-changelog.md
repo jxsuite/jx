@@ -694,6 +694,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.47-draft** (2026-09-13) — jx-action-button and jx-button draw an enabled hint as a jx-tooltip child wired by id from a stem the tooltip sidecar mints (mintHintId), and keep it as the control's title while disabled; §5.2 says how a control declares a tip, and what the bound path owes the desktop app (Chromium 147): keyboard-only focus, one Escape listener per root, a moved tip keeps its binding (#299).
 - **0.1.46-draft** (2026-09-13) — Compact density draws controls at 24px, the WCAG 2.2 SC 2.5.8 floor, at every density; §4.3 records what compact buys instead and §11 claims the criterion for the control height, naming the sub-control targets it does not size as the non-claims (#309).
 - **0.1.45-draft** (2026-09-12) — jx-option and jx-select rows carry five typographic channels (weight, slant, variant, transform, decoration) beside face, swatch and line; jx-color-field takes resolved, the colour behind a reference the page cannot resolve, for its chip and its picker; the Style tab's font row is a jx-combobox of specimen rows and the unit row is the last menu composite.
 - **0.1.44-draft** (2026-09-11) — §11: WCAG 2.2 is a Subset with a test per criterion, and SC 2.4.7 is a gate (every focusable control has the kit's focus ring); CSS Scoping is a Subset now that the light-DOM decision is held by the conformance test, and gap:ui-scoping is retired (§11).
