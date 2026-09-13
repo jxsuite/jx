@@ -70,7 +70,9 @@ The theme is one stylesheet of custom properties on `:root`, inside the cascade 
 }
 ```
 
-Every colour token is a `light-dark()` pair, so the theme follows the operating system. Set `data-theme="light"` or `data-theme="dark"` on the root element to force one. Set `data-density="compact"` to tighten control heights.
+Every colour token is a `light-dark()` pair, so the theme follows the operating system. Set `data-theme="light"` or `data-theme="dark"` on the root element to force one.
+
+Density is a second attribute on the root element. `data-density="compact"` steps the body type down one size (`--jx-text-md` to 11px, `--jx-leading-md` to 16px), so more of a label fits a row and a panel reads smaller; `data-density="comfortable"` raises the control height to 28px. The control height itself never goes below 24px at any density: WCAG 2.2 SC 2.5.8 asks 24 CSS px of a pointer target, and the kit holds every density to that floor with a test. The floor covers what that token sizes. A control's own `size="sm"` draws 4px under it, and it is your choice per control rather than a density, so leave room around `sm` controls that sit side by side. A few targets sit inside a control and are smaller than its box: the number field's steppers, the text field's clear button, the combobox's toggle and the split handle. The spec names them as the criterion's stated exceptions.
 
 The tokens live in the kit's own `project.json`. Open that file in Studio to edit them on the canvas.
 

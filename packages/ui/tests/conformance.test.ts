@@ -14,7 +14,7 @@ import { findA11yDefects } from "@jxsuite/schema/a11y";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
-import { themeCSS } from "../src/theme.ts";
+import { themeCSS, themeTokens } from "../src/theme.ts";
 import { ICON_NAMES } from "../src/icons.ts";
 import type { IconList } from "../src/icons-build.ts";
 
@@ -495,6 +495,39 @@ describe("the kit keeps a visible focus (WCAG 2.2 SC 2.4.7)", () => {
         ":focus-visible",
       );
       expect(rule, `${tag}'s focus ring is not the kit's token`).toContain("--jx-focus-ring");
+    });
+  }
+});
+
+describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.8)", () => {
+  /* Target Size (Minimum) asks 24×24 CSS px of a pointer target, and the kit has ONE number that
+     decides the height of every control: `--jx-control-h`, which every button, field, row, tab and
+     swatch draws as its `minHeight` or `blockSize`. Compact density used to re-declare it at 20px,
+     which put every compact row under the criterion and left ui.md §11 unable to claim it (#309).
+     So the token is gated like the focus ring is: the root value and every `[data-density]`
+     re-declaration must be a pixel length of at least 24. A density that omits the token inherits
+     the root's, which the same loop checks. What this does NOT cover, and the spec says so, is an
+     element's own `size="sm"`, which is `calc(var(--jx-control-h) - 4px)` and a host's choice. */
+  const MINIMUM = 24;
+  const densities = Object.entries(themeTokens).filter(([key]) =>
+    key.startsWith("&[data-density="),
+  ) as [string, Record<string, unknown>][];
+
+  test("the theme declares the compact and comfortable densities", () => {
+    expect(densities.map(([key]) => key).toSorted()).toEqual([
+      '&[data-density="comfortable"]',
+      '&[data-density="compact"]',
+    ]);
+  });
+
+  for (const [label, block] of [[":root", themeTokens], ...densities] as const) {
+    test(`${label} draws --jx-control-h at ${MINIMUM}px or more`, () => {
+      const declared = String(block["--jx-control-h"] ?? themeTokens["--jx-control-h"]);
+      const px = /^(\d+(?:\.\d+)?)px$/.exec(declared);
+      expect(px, `${label}: --jx-control-h is "${declared}", not a pixel length`).not.toBeNull();
+      expect(Number(px![1]), `${label}: --jx-control-h is ${declared}`).toBeGreaterThanOrEqual(
+        MINIMUM,
+      );
     });
   }
 });

@@ -269,9 +269,12 @@ describe("createVirtualWindow", () => {
 
   // ─── A row-height change with no scroll ──────────────────────────────────
   //
-  // The density switch: `--jx-control-h` goes from 24px to 20px, every drawn row shrinks in place,
-  // The scroller's box is exactly what it was and no scroll event arrives. The window's only way
-  // Of learning that `rowHeight()` now answers differently is the LIST's box moving by drawn × Δ.
+  // The density switch: `--jx-control-h` goes from 24px to 28px under comfortable, every drawn row
+  // Grows in place, the scroller's box is exactly what it was and no scroll event arrives. The
+  // Window's only way of learning that `rowHeight()` now answers differently is the LIST's box
+  // Moving by drawn × Δ. (Compact was the original direction, 20px; it is 24px now — WCAG 2.2
+  // SC 2.5.8, ui.md §4.3 — so it no longer moves a row, and a test that drove it would pass with
+  // The spacers stale.)
 
   test("a row-height change with no scroll re-measures through the LIST's resize", async () => {
     const ro = installResizeObserver();
@@ -295,8 +298,8 @@ describe("createVirtualWindow", () => {
       expect(ro.observes(el)).toBe(true);
       expect(ro.observes(list)).toBe(true);
 
-      // The rows shrink to 20px. The scroller did not move and did not resize; the list did.
-      rowHeight = 20;
+      // The rows grow to 28px. The scroller did not move and did not resize; the list did.
+      rowHeight = 28;
       ro.resize(list);
       /* Nothing yet: a resize is measured ONE FRAME LATER, because measuring inside the observer's
          own delivery repaints the spacers, which changes the list's box during that delivery, and
@@ -305,7 +308,7 @@ describe("createVirtualWindow", () => {
       expect(seen).toHaveLength(1);
       await nextFrame();
       const after = handle.range();
-      expect(after.padTop + (after.end - after.start) * 20 + after.padBottom).toBe(61 * 20);
+      expect(after.padTop + (after.end - after.start) * 28 + after.padBottom).toBe(61 * 28);
       expect(seen).toEqual([47 * 24, after.padBottom]);
       // One report, not a storm: the repaint it asks for changes the list's box again, and that
       // Second resize measures the same window. Two deliveries in one frame are one measure.

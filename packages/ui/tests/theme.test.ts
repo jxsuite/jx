@@ -213,6 +213,30 @@ describe("theme", () => {
     }
   });
 
+  test("compact density keeps the 24px control and buys its density from the type", () => {
+    /* Compact used to draw `--jx-control-h` at 20px, which put every compact row under WCAG 2.2
+       SC 2.5.8's 24×24 CSS px minimum and left ui.md §11 unable to claim the criterion (#309). The
+       height is the floor now, at every density, and compact is still a visibly denser mode
+       because what it re-declares is the body TYPE: `--jx-text-md` steps down to the small size
+       and `--jx-leading-md` to the small step's leading, so a 24px row carries an 11px/16px line
+       instead of a 12px/18px one. Comfortable keeps its taller control. The floor itself is held
+       by `conformance.test.ts`; this pins what each density says. */
+    const compact = themeTokens['&[data-density="compact"]'] as Record<string, string>;
+    expect(compact).toEqual({
+      "--jx-control-h": "24px",
+      "--jx-text-md": "11px",
+      "--jx-leading-md": "16px",
+    });
+    expect(themeTokens["--jx-control-h"]).toBe("24px");
+    expect(themeTokens['&[data-density="comfortable"]']).toEqual({ "--jx-control-h": "28px" });
+    // The compact pair is the kit's own small step, not a fifth size.
+    expect(compact["--jx-text-md"]).toBe(String(themeTokens["--jx-text-sm"]));
+    expect(compact["--jx-leading-md"]).toBe(String(themeTokens["--jx-leading-sm"]));
+    expect(themeCSS()).toContain(
+      ':root[data-density="compact"] { --jx-control-h: 24px; --jx-text-md: 11px; --jx-leading-md: 16px }',
+    );
+  });
+
   test("--jx-switch-c is the $switch KEYWORD colour, not this kit's switch control", () => {
     // It sits in the syntax run beside --jx-tag, --jx-signal, --jx-handler and --jx-map, and the
     // Canvas and code views paint the `$switch` keyword with it. Reading the name as "the switch
