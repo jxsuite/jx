@@ -9,7 +9,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { findGaps, readTargets, report, tagFor } from "./check-release-integrity.ts";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { UNRELEASED, findGaps, readTargets, report, tagFor } from "./check-release-integrity.ts";
 import type { ReleaseTarget } from "./check-release-integrity.ts";
 
 const CONFIG = {
@@ -71,6 +75,29 @@ describe("readTargets", () => {
     // That is where the bundlers attach, and how desktop-v2.2.0 shipped with no installers.
     expect(targets.find((t) => t.path === "packages/desktop")).toBeDefined();
     expect(targets.find((t) => t.path === "packages/starters")).toBeDefined();
+  });
+
+  test("a component still at release-please's 0.0.0 sentinel claims nothing yet", async () => {
+    // `@jxsuite/ui` entered the manifest at 0.0.0 and the gate demanded `ui-v0.0.0` of it — a
+    // Release that release-please by its own rule never creates. The sentinel is not a claim.
+    const root = mkdtempSync(join(tmpdir(), "release-integrity-"));
+    writeFileSync(
+      join(root, "release-please-config.json"),
+      JSON.stringify({
+        "include-v-in-tag": true,
+        "include-component-in-tag": true,
+        packages: {
+          "packages/shipped": { component: "shipped" },
+          "packages/fresh": { component: "fresh" },
+        },
+      }),
+    );
+    writeFileSync(
+      join(root, ".release-please-manifest.json"),
+      JSON.stringify({ "packages/shipped": "1.2.0", "packages/fresh": UNRELEASED }),
+    );
+    const targets = await readTargets(root);
+    expect(targets.map((t) => t.tag)).toEqual(["shipped-v1.2.0"]);
   });
 });
 
