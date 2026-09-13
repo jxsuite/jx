@@ -44,6 +44,7 @@ import type { BindingAwareness } from "../collab/monaco-binding";
 import { monacoTheme, shell } from "../shell";
 import { parseSourceForPath } from "../files/file-ops";
 import { serializeDocument } from "../files/serialize-document";
+import { parseJsonDocument, serializeJson } from "../files/json-layout";
 import { detachGridPanel, gridPanelMounted, renderGridMode } from "../grid/grid-panel";
 import { detachLibraryPane, libraryPaneMounted, renderLibraryMode } from "../browse/library-pane";
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
@@ -164,7 +165,9 @@ async function sourceContent(tab: Tab) {
   if (formatByName(tab.doc.sourceFormat)) {
     return serializeDocument(tab);
   }
-  return JSON.stringify(tab.doc.document, null, 2);
+  // The file's own layout (`files/json-layout.ts`), so the buffer shows the bytes a save writes and
+  // A commit from it reads the same layout back — what `serializeDocument`'s JSON branch does.
+  return serializeJson(tab.doc.document, tab.doc.layout ?? null);
 }
 
 // Single-RAF scheduling; concurrent schedule requests within the same frame are deduped.
@@ -844,7 +847,11 @@ async function mountSourceEditor(
         }
       } else if (lang === "json") {
         try {
-          tab.doc.document = JSON.parse(sourceEditor.getValue()) as JxMutableNode;
+          // The buffer's text is the author's own layout now — the objects they opened up or
+          // Closed, the blank lines they left — so it is what the next save preserves.
+          const parsed = parseJsonDocument(sourceEditor.getValue());
+          tab.doc.document = parsed.document as JxMutableNode;
+          tab.doc.layout = parsed.layout;
           tab.doc.dirty = true;
           writes.markSettled();
         } catch {
