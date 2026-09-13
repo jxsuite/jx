@@ -15,9 +15,18 @@
  * The nesting inside a block is NOT this module's own recursion any more: it delegates to
  * `buildStyleRules`, which the runtime and the compiler also use, so all three agree about what an
  * `@media` inside a selector inside an `@supports` means.
+ *
+ * The sheet is the build's. `compileStyles` (`@jxsuite/compiler`, `src/shared.ts`) writes the same
+ * project block into every built page's `<style>`, and this builder emits the same rules in the
+ * same order for the same block — `site-style.test.ts` holds the two byte-for-byte — because a host
+ * that shows a page is showing what the build will ship. The one place the two were allowed to
+ * differ was a nested element key, on the belief that "the document's own style pass covers page
+ * content": nothing else reads `project.json#/style`, so the canvas simply dropped a site's
+ * typography and link rules while the build kept them (#296).
  */
 
 import {
+  COLOR_SCHEME_ATTR,
   buildStyleRules,
   isDeclarationAtRule,
   isKeyframesAtRule,
@@ -31,18 +40,27 @@ export const SITE_STYLE_ID = "jx-site-style";
 
 /**
  * Build the site-style sheet text: custom properties on `:root`, plain properties on `body`,
- * conditional `@`-blocks resolved against `mediaQueries` (scheme queries dual-emitted per the
- * forced-scheme contract), and `color-scheme: light dark` declared when a scheme query exists.
+ * selector-keyed blocks (`"h1, h2"`, `a`, `.card`) as rules of their own, `&`-keyed blocks as
+ * states of `:root`, conditional `@`-blocks resolved against `mediaQueries` (scheme queries
+ * dual-emitted per the forced-scheme contract), and the `color-scheme` hint triplet declared when a
+ * scheme query exists and the author has not set `colorScheme` (spec.md §9.5).
  *
  * The `:root` / `body` split is the one decision this builder owns; everything after it is handed
  * to `buildStyleRules`, which is the single definition of what a Jx style object means as CSS. That
  * is what makes a nested selector inside a conditional block compose rather than flatten to one
  * level, and what makes a host and the compiled page agree about a `@supports` block.
  *
+ * A selector-keyed block is emitted UNSCOPED, exactly as the build emits it into a page: the
+ * project's `style` is the page's stylesheet, so `"h1, h2"` styles every `h1` and `h2` the page
+ * holds, not `:root h1`. That is the right answer for both hosts too — the canvas iframe and the
+ * live-preview tab each ARE the page, with the project's `$head` in their head and the rendered
+ * document as their body — so no host-side prefix is added, and nothing has to know one.
+ *
  * @param {Record<string, unknown>} siteStyle
  * @param {Record<string, string>} mediaQueries
  * @param {(value: string) => string} transpose - Unit transposer (canvas vh→cqh etc.)
  * @returns {string}
+ * @docs studio/interface/canvas
  */
 export function buildSiteStyleCSS(
   siteStyle: Record<string, unknown>,
@@ -63,22 +81,29 @@ export function buildSiteStyleCSS(
   const rootProps: JxStyle = {};
   const bodyProps: JxStyle = {};
   const condBlocks: [string, JxStyle][] = [];
-  const rootBlocks: [string, JxStyle][] = [];
+  /* Every block keyed by a selector, in authored order — `&`-keyed root states and element, class
+     and attribute selectors alike. ONE list rather than one per kind because the build keeps them
+     in one list, and source order is what decides between two rules of equal specificity: a site
+     that writes `a { … }` and then `&[data-theme="dark"] a { … }` has said which wins. */
+  const selectorBlocks: [string, JxStyle][] = [];
 
   for (const [key, value] of Object.entries(siteStyle)) {
     if (value !== null && typeof value === "object" && !Array.isArray(value)) {
       if (key.startsWith("@")) {
         condBlocks.push([key, value as JxStyle]);
-      } else if (key.startsWith("&")) {
-        /* A `&`-prefixed key is a STATE OF THE ROOT, not page content: `&[data-theme="light"]`
-           means `:root[data-theme="light"]`, which is how a project forces a scheme. It used to
-           fall into the skip below with every other nested selector and was dropped in silence, so
-           a site declaring a forced-theme override got a sheet without one. A bare element or
-           class key IS page content and is still the resolved document's own business. */
-        rootBlocks.push([key, value as JxStyle]);
+      } else if (!key.startsWith("--")) {
+        /* A selector-keyed block is a rule of the page's stylesheet, and this is where the canvas
+           used to lose it. `&`-keyed blocks were rescued first — `&[data-theme="light"]` is a STATE
+           OF THE ROOT, how a project forces a scheme, and it was dropped in silence — while a bare
+           element or class key was still skipped on the stated belief that the resolved document's
+           own style pass covered page content. It never did: nothing but this builder and the
+           compiler reads `project.json#/style`, and the compiler emits these rules into every
+           page. So a site's `"h1, h2"` and `a` rules were in the built output and missing from the
+           canvas, which showed headings in the fallback face and links underlined (#296). A block
+           under a `--name` key is not a rule at all — a custom property has no block value — and
+           is skipped the way the compiler skips it. */
+        selectorBlocks.push([key, value as JxStyle]);
       }
-      // A nested ELEMENT selector is page-content styling — the resolved doc's own style pass
-      // Covers those; the site sheet handles tokens and root-level conditional overrides.
       continue;
     }
     if (isNestedSelectorKey(key) || key.startsWith("@")) {
@@ -96,11 +121,19 @@ export function buildSiteStyleCSS(
     }
   }
 
+  // Base rules precede conditional blocks so equal-specificity overrides win by source order.
   push(rootProps, ":root");
   push(bodyProps, "body");
 
-  for (const [key, block] of rootBlocks) {
-    push({ [key]: block } as JxStyle, ":root");
+  for (const [key, block] of selectorBlocks) {
+    if (key.startsWith("&")) {
+      /* `&` is spliced onto `:root`, so `&[data-theme="light"]` emits `:root[data-theme="light"]`.
+         The runtime resolves `&` against a scope and a project block has none but the root. */
+      push({ [key]: block } as JxStyle, ":root");
+    } else {
+      // A top-level selector key IS the selector — `.card` styles `.card`, not `:root .card`.
+      push(block, key);
+    }
   }
 
   for (const [atKey, block] of condBlocks) {
@@ -135,8 +168,22 @@ export function buildSiteStyleCSS(
     }
   }
 
-  if (Object.values(mediaQueries).some((q) => pureSchemeOf(q) !== null)) {
-    rules.push(":root { color-scheme: light dark }");
+  /* The forced-scheme UA hint, and the same three lines the compiler writes: native widgets,
+     scrollbars and form controls follow `color-scheme`, not the author's `light-dark()` tokens, so
+     the root attribute has to re-point it as well. An authored `colorScheme` suppresses all three
+     (spec.md §9.5). This builder used to emit the first line unconditionally, AFTER the `:root`
+     rule that carried the author's own value — same selector, same specificity, later in source —
+     so a project declaring `colorScheme: "light"` under a scheme query got `light dark` in every
+     host and its own value in the build. */
+  if (
+    Object.values(mediaQueries).some((q) => pureSchemeOf(q) !== null) &&
+    !("colorScheme" in siteStyle)
+  ) {
+    rules.push(
+      ":root { color-scheme: light dark }",
+      `:root:where([${COLOR_SCHEME_ATTR}="light"]) { color-scheme: light }`,
+      `:root:where([${COLOR_SCHEME_ATTR}="dark"]) { color-scheme: dark }`,
+    );
   }
 
   return rules.join("\n");
