@@ -550,12 +550,7 @@ export function seoCommands(): AnyCommand[] {
       group: "2_document",
       requires: "an open document",
       when: (ctx) => ctx.document.open,
-      aiTool: {
-        description:
-          "Open Search appearance for the current document — the SERP and social previews, the " +
-          "resolved head fields with their donors, and the page/Open Graph meta fields.",
-        name: "open_seo",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a modal for a person. */
       run: () => {
         const tab = activeTab.value;
         if (!tab) {

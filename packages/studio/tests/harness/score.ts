@@ -99,12 +99,15 @@ export async function scoreRun({
   }
 
   // ── Read-first (§5.1 hard constraint): mutating before reading is a Correctness/Recovery risk. ──
+  // `delete_node` and `duplicate_node` are the command projections of `selection.delete` and
+  // `selection.duplicate` (issue 273); `remove_node`, the hand tool `delete_node` replaced, is gone.
   const MUTATORS = new Set([
     "set_property",
     "set_style",
     "set_text",
     "add_child",
-    "remove_node",
+    "delete_node",
+    "duplicate_node",
     "move_node",
     "add_state",
     "update_state",

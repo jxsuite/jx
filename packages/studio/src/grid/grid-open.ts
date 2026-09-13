@@ -255,10 +255,8 @@ export function gridCommands(): AnyCommand[] {
       group: "5_data",
       requires: "a project that declares content collections",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description: "Open a content collection's entries as an editable grid in a new tab.",
-        name: "open_collection_grid",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the grid is
+         not a tool surface. */
       run: (_commandCtx, args) => {
         const name = stringArg("collection.editInGrid", args, "name");
         const declared = collectionDirs().map((c) => c.name);
@@ -293,10 +291,7 @@ export function gridCommands(): AnyCommand[] {
       requires: "a platform that serves the data routes",
       when: (ctx) => ctx.project.open,
       enablement: (ctx) => ctx.capability.dataRows,
-      aiTool: {
-        description: "Open a connector table as an editable grid in a new tab.",
-        name: "open_data_grid",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
       run: (_commandCtx, args) => {
         const table = stringArg("data.openGrid", args, "table");
         openConnectorGrid(optionalStringArg("data.openGrid", args, "connection"), table);

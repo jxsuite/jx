@@ -192,8 +192,64 @@ describe("the records that settle an existing argument", () => {
   test("duplicate is defined once and projected to the assistant from the same record", () => {
     const duplicate = defaultCommandSet().find((c) => c.id === "selection.duplicate");
     expect(duplicate?.aiTool?.name).toBe("duplicate_node");
-    expect(duplicate?.requires).toBe("an element that has a sibling position");
+    // One predicate, one sentence — Delete carries the same string, because the tooltip, the
+    // Palette subtitle and the assistant's refusal all print it, and it names the whole gate.
+    expect(duplicate?.requires).toBe(
+      "an element selected on the canvas that has a sibling position: not the document root, a repeater's template or a switch case",
+    );
     expect(duplicate?.undo).toBe("document");
+  });
+
+  test("delete and duplicate tell the assistant what they did, from the context's own paths", () => {
+    /* `aiTool.report` is the one hand-written thing on a projected record: `run` returns void,
+       and a tool that can only say "done" is one the model builds its next edits on blind.
+       Delete reads `before` — the context after the bridge's selector step, so its paths are what
+       went — and Duplicate reads `after`, because `mutateDuplicateNodes` selects the clones. */
+    const byId = (id: string) => defaultCommandSet().find((c) => c.id === id)!.aiTool!.report;
+    const at = (paths: (string | number)[][]) =>
+      makeContext({ selection: { count: paths.length, paths } });
+    const facts = (before: (string | number)[][], after: (string | number)[][]) => ({
+      after: at(after),
+      args: undefined as never,
+      before: at(before),
+    });
+    expect(
+      byId("selection.delete")(
+        facts(
+          [
+            ["children", 2],
+            ["children", 0],
+          ],
+          [],
+        ),
+      ),
+    ).toBe(
+      "Deleted 2 elements at [children, 2] and [children, 0] in one undo step; the selection " +
+        "is now empty.",
+    );
+    expect(
+      byId("selection.delete")(facts([["children", 0, "children", 1]], [["children", 0]])),
+    ).toBe(
+      "Deleted 1 element at [children, 0, children, 1] in one undo step; the selection is now " +
+        "elsewhere.",
+    );
+    expect(byId("selection.duplicate")(facts([["children", 0]], [["children", 1]]))).toBe(
+      "Duplicated 1 element; the copy is selected at [children, 1].",
+    );
+    expect(
+      byId("selection.duplicate")(
+        facts(
+          [
+            ["children", 0],
+            ["children", 2],
+          ],
+          [
+            ["children", 1],
+            ["children", 4],
+          ],
+        ),
+      ),
+    ).toBe("Duplicated 2 elements; the copies are selected at [children, 1] and [children, 4].");
   });
 
   test("duplicate refuses the document root, like delete", () => {
@@ -217,10 +273,14 @@ describe("the records that settle an existing argument", () => {
    * could not list it and `__jxAutomation.run("selection.repeat")` answered "unknown command".
    * Beside Duplicate and Delete it is one record with three renderings.
    */
-  test("repeat is a context-menu row AND a palette entry AND an assistant tool", () => {
+  test("repeat is a context-menu row AND a palette entry, and NOT an assistant tool", () => {
     const repeat = defaultCommandSet().find((c) => c.id === "selection.repeat");
     expect(repeat?.menus).toEqual(["context/element", "palette"]);
-    expect(repeat?.aiTool?.name).toBe("repeat_node");
+    /* §12.4's second deletion rule: "a projected `run` may not await a dialog". `run` starts the
+       collection picker and is not awaited — "a command nothing automated can call" by its own
+       comment — so a declaration would advertise a tool whose every call hangs the turn on a
+       person. A declaration MAKES a tool now, which is why its absence is asserted. */
+    expect(repeat?.aiTool).toBeUndefined();
     expect(repeat?.undo).toBe("document");
     expect(repeat?.group).toBe("3_structure");
   });

@@ -157,12 +157,8 @@ export function publishCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       // `when` already asked about the project.
       enablement: () => platformSupportsPublish(),
-      aiTool: {
-        description:
-          "Open the publishing set-up flow, which connects this project to a Cloudflare Pages " +
-          "project that rebuilds on every push.",
-        name: "set_up_publishing",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: an auth flow that waits on a person, with
+         credentials. */
       run: async () => {
         const { openPublishPanel } = await import("./publish-panel");
         openPublishPanel();
@@ -181,12 +177,8 @@ export function publishCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       enablement: (ctx) =>
         ctx.project.isRepo && currentDeploy() !== undefined && platformSupportsPublish(),
-      aiTool: {
-        description:
-          "Push the current branch so the connected provider builds it, then report the " +
-          "deployment. Does not commit — commit first if there are unsaved changes.",
-        name: "deploy_site",
-      },
+      /* No `aiTool`, by §12.4's third deletion rule: remote and irreversible, the same class as
+         `packages.remove`. */
       run: async () => {
         await runDeploy();
       },

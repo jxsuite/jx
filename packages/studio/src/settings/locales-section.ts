@@ -131,11 +131,20 @@ function alreadyDeclared(tag: string): boolean {
  * nowhere else, so a thrown refusal is one the author never sees. The form refuses both of them
  * before it gets here, with the reason under the field.
  *
+ * **It answers whether it wrote.** The already-declared case is decided HERE, against the raw
+ * `locales` the author wrote — not against the resolved list, which unshifts a `defaultLocale` the
+ * array does not hold — and `i18n.addLocale`'s report has to tell the model the same thing this
+ * function told the file. A second reading of "is it declared" beside the command would be a second
+ * spelling of this predicate, and the two disagreed exactly on that default: the report said
+ * "already declared" for a tag this function had just written.
+ *
  * @param {string} tag - A BCP 47 language tag, in any case.
+ * @returns {Promise<boolean>} `true` when `project.json` was written; `false` for a refused or
+ *   already-declared tag, both of which have been notified.
  * @throws {Error} Whatever `updateSiteConfig` rejects with — the caller decides where a failed
  *   write shows.
  */
-export async function addProjectLocale(tag: string): Promise<void> {
+export async function addProjectLocale(tag: string): Promise<boolean> {
   const canonical = canonicalizeLocale(tag);
   if (canonical === null) {
     notify.error(`"${tag}" is not a well-formed language tag.`, {
@@ -144,17 +153,18 @@ export async function addProjectLocale(tag: string): Promise<void> {
         "`pt-BR`, `zh-Hant`. Underscores and spaces are not part of the grammar.",
       source: "Languages",
     });
-    return;
+    return false;
   }
   if (alreadyDeclared(canonical)) {
     notify.info(`${localeLabel(canonical)} is already one of this project's languages.`, {
       source: "Languages",
     });
-    return;
+    return false;
   }
   await updateSiteConfig({
     i18n: { ...config().i18n, locales: [...declaredLocales(), canonical] },
   });
+  return true;
 }
 
 /**

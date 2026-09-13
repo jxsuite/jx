@@ -1432,12 +1432,8 @@ export function paneCommands(deps: TabCommandDeps): AnyCommand[] {
       enablement: () => workspace.activeTabId !== null,
       requires: "an open document",
       undo: "none",
-      aiTool: {
-        description:
-          "Open a second document in the pane beside the current one, without moving the document " +
-          "you are in.",
-        name: "compare_with",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
+         looking at. */
       run: async (_ctx, args) => {
         const path = stringArg("pane.compareWith", args, "path");
         const here = activePane();

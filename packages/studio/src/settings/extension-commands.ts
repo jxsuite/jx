@@ -5,9 +5,17 @@
  * **They are command records because the array has two writers.** The person flips a switch and the
  * assistant calls a tool, and `specs/studio-ui-guidelines.md` §12.4 is about exactly that: "the
  * agent counts as a surface", and a family over one piece of state declares ONE availability rule.
- * The tools in `services/ai-extension-tools.ts` execute by running these records rather than
- * reimplementing the writes, so the two gates cannot drift into the shape that table catalogues,
- * where the loose member is always the one that writes.
+ * The assistant's `enable_extension` / `disable_extension` ARE these records — the `aiTool`
+ * projection below is what `services/ai-command-tools.ts` lists, and its `execute` is
+ * `registry.run` — so the two gates cannot drift into the shape that table catalogues, where the
+ * loose member is always the one that writes. What the record cannot say for itself is what to tell
+ * the model afterwards, and that is `aiTool.report`, written beside `run`.
+ *
+ * **There is no `list_extensions` read tool, deliberately.** The system prompt already carries the
+ * catalogue, the enabled set and each entry's sections at turn start, so a read tool could only
+ * answer a question the prompt has answered. The one thing it would add — "what changed after I
+ * enabled that" — is served by `enable_extension`'s own report, which costs no prompt budget
+ * because it is a result rather than an advertisement.
  *
  * **`enablement` is `ctx.project.open` and nothing else, on all three.** A precondition that
  * depends on an ARGUMENT cannot live there — `enablement` cannot see one — so "is this a real
@@ -38,6 +46,20 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /** The package an extension operation is running for, or null. */
 let _inFlight: string | null = null;
+
+/**
+ * The files the LAST enable wrote: `[]` for a run that found the row already enabled and returned,
+ * `["project.json"]` for one that only enabled, both files for one that installed first.
+ *
+ * A latch beside `_inFlight` rather than a return value, because `run` returns void and the report
+ * is a separate call: `enable_extension`'s ledger entry has to name `package.json` exactly when
+ * this run touched it, and the row's `installed` flag has already flipped by the time the report
+ * reads it. The empty case is the one that matters most — {@link enableExtension} is idempotent by
+ * design (its enum offers enabled rows), and a report that answered "Enabled X" with a
+ * `project.json` entry for a run that wrote nothing would be the phantom write the ledger exists to
+ * keep out. Runs are serialised by `_inFlight`, so one slot is enough.
+ */
+let _lastEnableWrote: readonly string[] = [];
 
 /**
  * What an extension operation is currently running for, if anything.
@@ -102,11 +124,15 @@ export async function enableExtension(specifier: string): Promise<void> {
         `this backend — ${row.unavailable}`,
     );
   }
+  /* Reset BEFORE the idempotent return, so the report of a no-op cannot read the previous run's
+     files — the same package enabled twice in a row would otherwise report its install twice. */
+  _lastEnableWrote = [];
   if (row.enabled) {
     return;
   }
 
   _inFlight = row.name;
+  let installed = false;
   notifySettingsDocument();
   try {
     if (!row.installed && !row.bundled) {
@@ -124,6 +150,7 @@ export async function enableExtension(specifier: string): Promise<void> {
       });
       try {
         await getPlatform().addPackage(row.name);
+        installed = true;
       } catch (error) {
         activity.fail(
           `Could not install ${row.name} — ${error instanceof Error ? error.message : String(error)}`,
@@ -140,6 +167,8 @@ export async function enableExtension(specifier: string): Promise<void> {
       activity.done();
     }
     await updateSiteConfig({ extensions: [...enabledSpecifiers(), row.specifier] });
+    /* Set after the write resolved, so the latch never claims a file the write did not reach. */
+    _lastEnableWrote = installed ? ["project.json", "package.json"] : ["project.json"];
   } finally {
     _inFlight = null;
     notifySettingsDocument();
@@ -210,6 +239,21 @@ export async function removeExtensionPackage(name: string): Promise<void> {
   }
 }
 
+/** The `project.json` sections an extension owns, for the report. */
+function sectionsOf(name: string): string[] {
+  return buildRows().find((row) => row.name === name || row.specifier === name)?.sections ?? [];
+}
+
+/** The specifiers the project enables right now, for the report. */
+function enabledNow(): string {
+  return (
+    buildRows()
+      .filter((row) => row.enabled)
+      .map((row) => row.specifier)
+      .join(", ") || "none"
+  );
+}
+
 /** The three records, for `appCommandSet()` and the bootstrap registry. */
 export function extensionCommands(): AnyCommand[] {
   return [
@@ -235,12 +279,33 @@ export function extensionCommands(): AnyCommand[] {
        */
       undo: "none",
       aiTool: {
+        /* "Installing is not undoable" used to be this sentence's last clause; the bridge appends
+           `Not undoable.` from `undo` for every record, so saying it here would say it twice. */
         description:
           "Turn on a Jx extension for this project: install its npm package if it is missing and " +
           'add it to project.json "extensions". Enable an extension BEFORE writing the ' +
           "project.json section it owns, because a section belonging to a disabled extension is a " +
-          "schema error. Installing is not undoable.",
+          "schema error.",
         name: "enable_extension",
+        /* The result carries what a read tool would otherwise have to be advertised to answer: the
+           sections that became legal and the enabled set. `wrote` is explicit because `undo` is
+           `none` — the ledger cannot infer a disk path — and is the latch's own list: `package.json`
+           only for the run that installed, and EMPTY for the run that found the row already on,
+           which is then a statement rather than a change and files nothing. */
+        report: ({ args }) => {
+          const name = stringArg("project.enableExtension", args, "package");
+          const sections = sectionsOf(name);
+          const owned =
+            sections.length > 0
+              ? ` Its project.json sections are ${_lastEnableWrote.length > 0 ? "now " : ""}valid: ${sections.join(", ")}.`
+              : "";
+          const verb =
+            _lastEnableWrote.length > 0 ? `Enabled ${name}.` : `${name} was already enabled.`;
+          return {
+            summary: `${verb}${owned} Enabled extensions: ${enabledNow()}.`,
+            wrote: _lastEnableWrote,
+          };
+        },
       },
       run: async (_ctx, args) =>
         enableExtension(stringArg("project.enableExtension", args, "package")),
@@ -267,6 +332,12 @@ export function extensionCommands(): AnyCommand[] {
           "and the settings sections it contributed disappear. Remove any project.json sections " +
           "it owns first, or the configuration will not validate.",
         name: "disable_extension",
+        /* "Ask before uninstalling" is the sentence that keeps `packages.remove` — deliberately not
+           projected — from being reached for by inference. `wrote` defaults from `undo: "project"`
+           to `project.json`, which is the one file this touches. */
+        report: ({ args }) =>
+          `Disabled ${stringArg("project.disableExtension", args, "package")}; its npm package ` +
+          `is still installed. Ask before uninstalling it. Enabled extensions: ${enabledNow()}.`,
       },
       run: async (_ctx, args) =>
         disableExtension(stringArg("project.disableExtension", args, "package")),

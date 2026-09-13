@@ -164,10 +164,12 @@ describe("the records", () => {
     expect(hidden).toEqual(["library.setLocale"]);
   });
 
-  test("every one is project-level and offered to the assistant", () => {
+  test("every one is project-level, and none is offered to the assistant", () => {
     for (const command of libraryCommands()) {
       expect(command.level).toBe("project");
-      expect(command.aiTool?.name).toBeTruthy();
+      // §12.4's first deletion rule: each of these shapes a listing a person reads, and the model
+      // Has `list_files` / `search_files` for the same facts. A declaration would MAKE a tool.
+      expect([command.id, command.aiTool]).toEqual([command.id, undefined]);
       expect(command.category).toBe("Project");
     }
   });
