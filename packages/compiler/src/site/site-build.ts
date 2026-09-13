@@ -68,6 +68,7 @@ import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server
 import {
   buildComponentCSS,
   buildInitialScope,
+  buildInstanceScope,
   collectServerEntries,
   collectStyles,
   colorSchemePrePaintScript,
@@ -76,12 +77,14 @@ import {
   isComponentFullyStatic,
   isSingleExpression,
   isTemplateString,
+  liftPropsAttributes,
   preRenderComponentHtml,
   pureSchemeOf,
   renderStaticNode,
+  resolveHostStyle,
   resolveRefValue,
-  resolveStaticValue,
 } from "../shared.ts";
+import type { ComponentPrerenderContext } from "../shared.ts";
 import { resolvePrototypes } from "./prototype-resolver.ts";
 import { transformImageNodes } from "./image-transform.ts";
 import { collectCspSources, emptyCspSources } from "./csp.ts";
@@ -2041,27 +2044,23 @@ function expandComponents(
 
   const def = componentDefs.get(node.tagName as string);
   if (def) {
-    // JSON-authored instances pass props as literal `props.*` attribute keys (markdown directives
-    // Are normalized to $props by the parser's expandDotPaths, but JSON is parsed verbatim).
-    // Lift them into $props so the pre-render sees them, and strip them from attributes so they
-    // Don't leak into the emitted HTML. Values stay raw strings — no coercion, matching the
-    // Markdown path and the runtime's $props semantics. Explicit $props wins on key conflicts.
+    // Literal `props.*` attribute keys become $props (`liftPropsAttributes` says why) and leave the
+    // Attributes, so they do not reach the emitted HTML. Explicit $props wins on key conflicts.
     if (node.attributes) {
-      let lifted: NonNullable<JxElement["$props"]> | null = null;
-      for (const [key, value] of Object.entries(node.attributes)) {
-        if (key.startsWith("props.") && key.length > "props.".length) {
-          lifted ??= {};
-          // JxAttributeValue is JSON-representable (primitives or a $ref object), so the
-          // Narrowing to JsonValue is sound.
-          lifted[key.slice("props.".length)] = value as JsonValue;
-          delete node.attributes[key];
-        }
-      }
+      const { lifted, rest } = liftPropsAttributes(node.attributes);
       if (lifted) {
+        node.attributes = rest;
         node.$props = { ...lifted, ...node.$props };
       }
     }
 
+    /*
+     * Slotted children are rendered with NO component registry: this walk is bottom-up, so any
+     * instance among them was expanded a moment ago and now carries its markup as `innerHTML` and
+     * no `$props`. Expanding it again would render the definition's defaults over the props it
+     * was given. Instances written inside `def` itself are another matter — those are reached
+     * below, through `preRenderComponentHtml`, with `node` as the first frame of the path.
+     */
     const slotContent =
       Array.isArray(node.children) && node.children.length > 0
         ? node.children
@@ -2081,7 +2080,15 @@ function expandComponents(
      * render them twice.
      */
     const shadow = resolveShadowMode(def, defaults);
-    const innerHTML = preRenderComponentHtml(def, node.$props || null, shadow ? null : slotContent);
+    const props = node.$props || null;
+    // This instance is the first frame of the path, so a definition that names itself is reported
+    // At the first nesting rather than after the stack overflows.
+    const context: ComponentPrerenderContext = {
+      componentDefs,
+      defaults,
+      path: [{ key: JSON.stringify(props ?? {}), tag: node.tagName as string }],
+    };
+    const innerHTML = preRenderComponentHtml(def, props, shadow ? null : slotContent, context);
     const isStatic = isComponentFullyStatic(def);
 
     /*
@@ -2097,26 +2104,20 @@ function expandComponents(
       : innerHTML;
     delete node.children;
 
-    // Resolve template-string host styles with props (per-instance values like background-image)
-    if (def.style && node.$props) {
-      const stateDefs: Record<string, JxStateDefinition> = { ...def.state };
-      for (const [key, value] of Object.entries(node.$props)) {
-        stateDefs[key] =
-          key in stateDefs ? (value as JxStateDefinition) : (value as JxStateDefinition);
-      }
-      const scope = buildInitialScope(stateDefs, null);
-      const resolvedStyle: Record<string, unknown> = {};
-      for (const [prop, value] of Object.entries(def.style)) {
-        if (typeof value === "string" && isTemplateString(value)) {
-          const resolved = resolveStaticValue(value, scope);
-          if (resolved != null) {
-            resolvedStyle[prop] = resolved;
-          }
-        }
-      }
-      if (Object.keys(resolvedStyle).length > 0) {
-        node.style = { ...node.style, ...resolvedStyle } as JxStyle;
-      }
+    /*
+     * Resolve template-string host styles against the instance (per-instance values like
+     * background-image). The page's style pass gives the result a class rule; a nested instance
+     * gets the same values inline, from the same resolver (`renderComponentInstance` in shared.ts).
+     *
+     * Resolved whether or not the instance passes props: a template declaration is a reactive one
+     * and `pushStyleRules` drops it from the component stylesheet, so the value resolved here is
+     * the ONLY place it reaches a static page. This used to be guarded on `$props`, which left an
+     * instance that took the definition's defaults with no host style at all — no size, no mask —
+     * while the same instance one level down had them.
+     */
+    const resolvedStyle = resolveHostStyle(def.style, buildInstanceScope(def, props));
+    if (Object.keys(resolvedStyle).length > 0) {
+      node.style = { ...node.style, ...resolvedStyle } as JxStyle;
     }
 
     /*
