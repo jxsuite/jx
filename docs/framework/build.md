@@ -6,7 +6,7 @@ spec:
   - compiler.md#2.1 # static detection (isDynamic)
   - compiler.md#3 # output tiers
   - compiler.md#8.2 # CSS extraction
-  - compiler.md#8.1 # fully static output, runtime-only reads left unresolved
+  - compiler.md#8.1 # fully static output, runtime-only reads left unresolved, component instances expanded at every level
   - compiler.md#9.1 # pre-rendered HTML + reactive JS
   - compiler.md#4.1 # element module output structure
 code:
@@ -157,6 +157,17 @@ Every page is prerendered: the compiler evaluates `${state.…}` against the bui
 
 :::doc-note
 One case the compiler cannot see: a handler loaded through `$src` lives in a JavaScript file the build does not open, so a state entry written **only** from there is still treated as a constant and baked. Declare a writer for it in the document if a binding over it goes dead.
+:::
+
+### Components inside components
+
+A component instance is expanded wherever it is written: on a page, slotted into another component, or inside another component's own `children`. Each level is prerendered against its own props, so a card that renders a button that renders an icon comes out as three levels of real markup, with no JavaScript when all three are static. Two details follow from that:
+
+- **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`.
+- **Each component decides its own JavaScript.** A live component nested inside a static one is prerendered as a shell that loads its own module and upgrades in place; the static parent still ships none.
+
+:::doc-warning
+A component that renders itself with the same props can never finish expanding, so the build fails that route with a message naming the chain (`a-loop → b-loop → a-loop`) instead of overflowing. A component that renders itself with props that change at each level (a tree node) is allowed up to 32 levels deep, which is where a recursion that never bottoms out is reported the same way.
 :::
 
 ## Why is my page shipping JavaScript?

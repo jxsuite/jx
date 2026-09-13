@@ -40,7 +40,7 @@ import {
   paramNames,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
-import { styleScopePrefix } from "./shadow.ts";
+import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
 import type { ShadowMode } from "./shadow.ts";
 import type { ExpressionNode } from "@jxsuite/runtime/expression";
 import { readPath } from "@jxsuite/runtime/pointer";
@@ -53,6 +53,7 @@ import type {
   JxStateDefinition,
   JxStateObject,
   JxStyle,
+  ProjectConfig,
 } from "@jxsuite/schema/types";
 
 // Re-export runtime utilities used by submodules
@@ -853,12 +854,58 @@ export function cloneValue(value: unknown) {
 // ─── HTML building ────────────────────────────────────────────────────────────
 
 /**
+ * The inline `style` declarations of one node: its template-string entries, resolved against
+ * `scope`. Everything else in a `style` object is a stylesheet rule (`collectStyles` gives it a
+ * class handle), so only a per-instance value is written on the element.
+ *
+ * @param {JxStyle | null | undefined} style
+ * @param {Record<string, unknown> | null} scope
+ * @returns {string} `prop: value; prop: value`, or "" when nothing resolves
+ */
+export function inlineStyleDeclarations(
+  style: JxStyle | null | undefined,
+  scope: Record<string, unknown> | null,
+): string {
+  if (!style || !scope) {
+    return "";
+  }
+  return Object.entries(style)
+    .filter(
+      ([k, v]) =>
+        !k.startsWith(":") &&
+        !k.startsWith(".") &&
+        !k.startsWith("&") &&
+        !k.startsWith("[") &&
+        !k.startsWith("@") &&
+        v !== null &&
+        typeof v !== "object" &&
+        typeof v === "string" &&
+        isTemplateString(v),
+    )
+    .map(([k, v]) => {
+      const value = resolveStaticValue(v, scope);
+      return value == null ? null : `${camelToKebab(k)}: ${value}`;
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+/**
  * Build an HTML attribute string from a static element definition.
  *
  * @param {JxElement | JxMutableNode} def
- * @param {Record<string, unknown>} scope @returns {string}
+ * @param {Record<string, unknown>} scope
+ * @param {string} [hostStyle] - Declarations resolved by the caller against ANOTHER scope, folded
+ *   into the same `style` attribute after the node's own. A nested component instance is the one
+ *   caller: its own `style` resolves against the parent's scope, while the definition's host style
+ *   resolves against the instance's, and an element cannot carry two `style` attributes.
+ * @returns {string}
  */
-export function buildAttrs(def: JxElement | JxMutableNode, scope: Record<string, unknown> | null) {
+export function buildAttrs(
+  def: JxElement | JxMutableNode,
+  scope: Record<string, unknown> | null,
+  hostStyle = "",
+) {
   let out = "";
 
   const id = resolveStaticValue(def.id, scope);
@@ -891,29 +938,20 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: Record<string,
     out += ` dir="${escapeHtml(String(dir))}"`;
   }
 
-  if (def.style && scope) {
-    const inline = Object.entries(def.style)
-      .filter(
-        ([k, v]) =>
-          !k.startsWith(":") &&
-          !k.startsWith(".") &&
-          !k.startsWith("&") &&
-          !k.startsWith("[") &&
-          !k.startsWith("@") &&
-          v !== null &&
-          typeof v !== "object" &&
-          typeof v === "string" &&
-          isTemplateString(v),
-      )
-      .map(([k, v]) => {
-        const value = resolveStaticValue(v, scope);
-        return value == null ? null : `${camelToKebab(k)}: ${value}`;
-      })
-      .filter(Boolean)
-      .join("; ");
-    if (inline) {
-      out += ` style="${inline}"`;
-    }
+  // The host declarations go last: in one `style` attribute the later declaration of a property
+  // Wins, and the page walk gives the definition's resolved host style the same precedence over an
+  // Instance's own (`{ ...node.style, ...resolvedStyle }`), so the two paths agree.
+  const inline = [inlineStyleDeclarations(def.style, scope), hostStyle].filter(Boolean).join("; ");
+  if (inline) {
+    /*
+     * Escaped like every other attribute. Both halves carry values a template string resolved
+     * from data — a `background-image: url("…")` host style reads its target from a prop — and a
+     * `"` in that data would otherwise end the attribute and hand the rest of the value to the
+     * parser as attributes. The HTML parser decodes `&quot;` before the CSS parser sees the
+     * declaration, so `url(&quot;…&quot;)` renders exactly as `url("…")`, and `rewriteHtmlBase`
+     * already reads the entity-wrapped form back when it re-roots a `url()`.
+     */
+    out += ` style="${escapeHtml(inline)}"`;
   }
   if (def.attributes) {
     for (const [k, v] of Object.entries(def.attributes)) {
@@ -1499,6 +1537,148 @@ export function resolveStaticTagName(
 }
 
 /**
+ * What the static renderer needs to expand a component instance it meets INSIDE a definition.
+ *
+ * Without one, a custom-element tag in a component's `children` is an element like any other: the
+ * generic path emits `<inner-chip></inner-chip>` with the instance's own (empty) children, no
+ * content and no host style — and because the parent still looks static, no module ever loads to
+ * fill it (issue #286). The page walk in `site-build` has always expanded the instances it meets in
+ * the PAGE tree; this is the same registry, handed down so the definition walk expands too.
+ *
+ * `path` is the chain of instances currently being expanded, outermost first. It is what makes the
+ * recursion terminate: a component graph is bounded, but a definition may name itself.
+ */
+export interface ComponentPrerenderContext {
+  /** Tag name → parsed definition, the registry the page walk expands from. */
+  componentDefs: ReadonlyMap<string, JxElement>;
+  /** Project defaults, read for `defaults.shadow` (spec.md §16.6). */
+  defaults?: ProjectConfig["defaults"] | undefined;
+  /** The instances being expanded, outermost first; empty at a page-level instance. */
+  path?: readonly PrerenderFrame[] | undefined;
+}
+
+/** One instance on the expansion path: its tag, and its resolved props as an identity. */
+interface PrerenderFrame {
+  tag: string;
+  /** `JSON.stringify` of the resolved props — two frames with equal keys are the same instance. */
+  key: string;
+}
+
+/**
+ * How deep component nesting may go before the build refuses to continue.
+ *
+ * The cycle check below catches a definition that renders ITSELF — same tag, same props — which is
+ * the only shape that can never terminate. A self-reference whose props change at every level
+ * (`depth: "${state.depth + 1}"`) is data-driven recursion, legitimate when a `$switch` bottoms it
+ * out and unbounded when the author forgot to. The seen-set cannot tell those apart, so this cap is
+ * what turns the second into a diagnostic instead of a stack overflow. Thirty-two is far beyond any
+ * component library's real depth and far below the call stack's.
+ */
+export const MAX_COMPONENT_NESTING = 32;
+
+/**
+ * Lift literal `props.*` attribute keys off an instance's attributes.
+ *
+ * JSON-authored instances pass props as literal `props.*` attribute keys (markdown directives are
+ * normalized to `$props` by the parser's `expandDotPaths`, but JSON is parsed verbatim). They are
+ * lifted so the prerender sees them, and stripped so they do not leak into the emitted HTML. Values
+ * stay raw strings — no coercion, matching the markdown path and the runtime's `$props` semantics.
+ * Pure: the page walk writes the result back onto its node, the definition walk must not touch a
+ * definition every page shares.
+ *
+ * @param {Record<string, JxAttributeValue> | undefined} attributes
+ * @returns {{ lifted: Record<string, JsonValue> | null; rest: Record<string, JxAttributeValue> }}
+ *   The lifted props (null when there were none) and the attributes that remain
+ */
+export function liftPropsAttributes(attributes: JxElement["attributes"]): {
+  lifted: Record<string, JsonValue> | null;
+  rest: NonNullable<JxElement["attributes"]>;
+} {
+  let lifted: Record<string, JsonValue> | null = null;
+  const rest: NonNullable<JxElement["attributes"]> = {};
+  for (const [key, value] of Object.entries(attributes ?? {})) {
+    if (key.startsWith("props.") && key.length > "props.".length) {
+      lifted ??= {};
+      // JxAttributeValue is JSON-representable (primitives or a $ref object), so the narrowing to
+      // JsonValue is sound.
+      lifted[key.slice("props.".length)] = value as JsonValue;
+    } else {
+      rest[key] = value;
+    }
+  }
+  return { lifted, rest };
+}
+
+/**
+ * The build-time scope of one component instance: the definition's `state` with the instance's
+ * props laid over it.
+ *
+ * A prop for an entry declared as an object keeps the declaration and replaces its `default`, so a
+ * typed entry stays typed; a bare or undeclared entry is the value itself. Shared by the inner
+ * render and the host-style resolution so both read the same instance — they used to build the
+ * scope separately, in two slightly different ways.
+ *
+ * @param {JxElement} doc - Component definition
+ * @param {Record<string, JsonValue> | null} props - Instance-specific prop values
+ * @returns {Record<string, unknown>}
+ */
+export function buildInstanceScope(
+  doc: JxElement,
+  props: Record<string, JsonValue> | null,
+): Record<string, unknown> {
+  let stateDefs: Record<string, JxStateDefinition> = doc.state ?? {};
+  if (props) {
+    stateDefs = { ...stateDefs };
+    for (const [key, value] of Object.entries(props)) {
+      if (key in stateDefs) {
+        const existing = stateDefs[key];
+        stateDefs[key] =
+          existing &&
+          typeof existing === "object" &&
+          !Array.isArray(existing) &&
+          "default" in existing
+            ? { .../** @type {JxStateObject} */ existing, default: value }
+            : (value as JxStateDefinition);
+      } else {
+        stateDefs[key] = value as JxStateDefinition;
+      }
+    }
+  }
+  return buildInitialScope(stateDefs, null);
+}
+
+/**
+ * The definition's host `style` entries that depend on the instance, resolved against it.
+ *
+ * Only template-string values are per-instance (`maskImage: "${'var(--icon-' + state.name +
+ * ')'}"`); a literal declaration is in the component's stylesheet already. This is the resolution
+ * the page walk performs for a page-level instance, extracted so a nested instance gets the same
+ * one.
+ *
+ * @param {JxStyle | null | undefined} style - The definition's `style`
+ * @param {Record<string, unknown>} scope - The instance's scope (`buildInstanceScope`)
+ * @returns {Record<string, unknown>} Resolved values by (camelCase) property
+ */
+export function resolveHostStyle(
+  style: JxStyle | null | undefined,
+  scope: Record<string, unknown>,
+): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  if (!style) {
+    return resolved;
+  }
+  for (const [prop, value] of Object.entries(style)) {
+    if (typeof value === "string" && isTemplateString(value)) {
+      const val = resolveStaticValue(value, scope);
+      if (val != null) {
+        resolved[prop] = val;
+      }
+    }
+  }
+  return resolved;
+}
+
+/**
  * The content of one node: `textContent`, else `innerHTML`, else rendered `children`.
  *
  * Shared with `preRenderComponentHtml`, which returns a component's innerHTML and so cannot call
@@ -1509,12 +1689,14 @@ export function resolveStaticTagName(
  * @param {JxElement | JxMutableNode} node
  * @param {Record<string, unknown> | null} scope
  * @param {string | null} slotContent
+ * @param {ComponentPrerenderContext | null} context
  * @returns {string}
  */
 function renderInner(
   node: JxElement | JxMutableNode,
   scope: Record<string, unknown> | null,
   slotContent: string | null,
+  context: ComponentPrerenderContext | null,
 ): string {
   if (node.textContent !== undefined) {
     const val = resolveStaticValue(node.textContent, scope);
@@ -1526,7 +1708,9 @@ function renderInner(
   }
   if (Array.isArray(node.children)) {
     return node.children
-      .map((c: JxElement | JxMutableNode | string) => renderStaticNode(c, scope, slotContent))
+      .map((c: JxElement | JxMutableNode | string) =>
+        renderStaticNode(c, scope, slotContent, context),
+      )
       .join("\n");
   }
   return "";
@@ -1538,12 +1722,15 @@ function renderInner(
  * @param {JxElement | JxMutableNode | string} node
  * @param {Record<string, unknown>} scope
  * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
+ * @param {ComponentPrerenderContext | null} [context] - The component registry, when a custom
+ *   element tag met here should be expanded rather than emitted bare
  * @returns {string}
  */
 export function renderStaticNode(
   node: JxElement | JxMutableNode | string,
   scope: Record<string, unknown> | null,
   slotContent: string | null = null,
+  context: ComponentPrerenderContext | null = null,
 ): string {
   if (typeof node === "string") {
     if (isTemplateString(node) && scope) {
@@ -1558,7 +1745,7 @@ export function renderStaticNode(
   if (Array.isArray(node)) {
     return (node as (JxElement | JxMutableNode | string)[])
       .map((c: JxElement | JxMutableNode | string): string =>
-        renderStaticNode(c, scope, slotContent),
+        renderStaticNode(c, scope, slotContent, context),
       )
       .join("\n");
   }
@@ -1584,7 +1771,7 @@ export function renderStaticNode(
         : (node.cases as Record<string, JxElement | string> | undefined)?.[String(key)];
     const inner =
       caseDef !== undefined && !isRefObject(caseDef)
-        ? renderStaticNode(caseDef, scope, slotContent)
+        ? renderStaticNode(caseDef, scope, slotContent, context)
         : "";
     return `<${switchTag}${attrs}>${inner}</${switchTag}>`;
   }
@@ -1600,13 +1787,119 @@ export function renderStaticNode(
     return slotContent;
   }
 
+  // A registered component: expanded exactly as the page walk expands one, not emitted bare.
+  const def = context?.componentDefs.get(tag);
+  if (def && context) {
+    return renderComponentInstance(node, def, scope, slotContent, context);
+  }
+
   const attrs = buildAttrs(node, scope);
 
   if (SELF_CLOSING.has(tag)) {
     return `<${tag}${attrs}>`;
   }
 
-  return `<${tag}${attrs}>${renderInner(node, scope, slotContent)}</${tag}>`;
+  return `<${tag}${attrs}>${renderInner(node, scope, slotContent, context)}</${tag}>`;
+}
+
+/**
+ * Render one component instance met inside a definition, with everything the page walk gives a
+ * page-level instance — the expansion is the same in both places, so the pieces are shared.
+ *
+ * - Props: `props.*` attributes lifted, then `$props`; a template value resolves against the PARENT's
+ *   scope, which is what `resolveDocTemplates` does for a page-level instance before the page walk
+ *   reaches it.
+ * - Slot content: the instance's own children, rendered in the parent's scope and with the parent's
+ *   slot content, so a `<slot>` written among them passes the grandparent's through.
+ * - Shadow mode: a declarative shadow root with the stylesheet link inside it (spec.md §16.6).
+ * - Host style: the definition's template-string entries resolved against the INSTANCE, written on
+ *   the element — the page walk's `resolvedStyle` in inline form, since there is no page stylesheet
+ *   to append a class rule to from here.
+ * - `data-jx-props` when the instance is not static, so the props survive the element's re-render on
+ *   upgrade (compiler.md §4.4); `data-jx-static` / `data-jx-prerendered` by the same predicate.
+ *
+ * Termination: a frame equal to one already on the path — same tag, same props — is the instance
+ * rendering itself, and a path at the cap is recursion that never settled. Both are the author's
+ * error and both name the chain, because "Maximum call stack size exceeded" names nothing.
+ *
+ * @param {JxElement | JxMutableNode} node - The instance as written in the parent's tree
+ * @param {JxElement} def - The registered definition for its tag
+ * @param {Record<string, unknown> | null} scope - The parent's scope
+ * @param {string | null} slotContent - The parent's slot content
+ * @param {ComponentPrerenderContext} context
+ * @returns {string}
+ * @docs framework/build
+ */
+function renderComponentInstance(
+  node: JxElement | JxMutableNode,
+  def: JxElement,
+  scope: Record<string, unknown> | null,
+  slotContent: string | null,
+  context: ComponentPrerenderContext,
+): string {
+  const tag = def.tagName as string;
+  const { lifted, rest: attributes } = liftPropsAttributes(node.attributes);
+  const written = { ...lifted, ...node.$props };
+  const props: Record<string, JsonValue> = {};
+  for (const [key, value] of Object.entries(written)) {
+    props[key] = (resolveStaticValue(value, scope) as JsonValue | null) ?? value;
+  }
+  const hasProps = Object.keys(props).length > 0;
+
+  const path = context.path ?? [];
+  const frame: PrerenderFrame = { key: JSON.stringify(props), tag };
+  const chain = [...path.map((f) => f.tag), tag].join(" → ");
+  if (path.some((f) => f.tag === frame.tag && f.key === frame.key)) {
+    throw new Error(
+      `Component <${tag}> renders itself: ${chain}. A component cannot appear inside its own ` +
+        `definition with the same props — the expansion would never end.`,
+    );
+  }
+  if (path.length >= MAX_COMPONENT_NESTING) {
+    throw new Error(
+      `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${chain}. A component that ` +
+        `renders itself with changing props needs a case that stops.`,
+    );
+  }
+  const nested: ComponentPrerenderContext = { ...context, path: [...path, frame] };
+
+  // The instance's children are the parent's nodes: parent scope, parent slot, parent path.
+  const slot =
+    Array.isArray(node.children) && node.children.length > 0
+      ? node.children
+          .map((c: JxElement | JxMutableNode | string) =>
+            renderStaticNode(c, scope, slotContent, context),
+          )
+          .join("\n")
+      : null;
+
+  const shadow = resolveShadowMode(def, context.defaults);
+  const isStatic = isComponentFullyStatic(def);
+  const instanceScope = buildInstanceScope(def, hasProps ? props : null);
+  const inner = renderInner(def, instanceScope, shadow ? null : slot, nested);
+  const innerHTML = shadow
+    ? `<template shadowrootmode="${shadow}">` +
+      `<link rel="stylesheet" href="/components/${tag}.css">` +
+      `${inner}</template>${slot ?? ""}`
+    : inner;
+
+  const hostStyle = Object.entries(resolveHostStyle(def.style, instanceScope))
+    .map(([prop, value]) => `${camelToKebab(prop)}: ${value}`)
+    .join("; ");
+
+  // The element as the page walk would leave it: props consumed, children rendered, stamped. A
+  // Copy, because `node` is a definition every page shares.
+  const instance: JxElement = { ...(node as JxElement) };
+  delete instance.$props;
+  delete instance.children;
+  instance.attributes =
+    !isStatic && hasProps ? { ...attributes, "data-jx-props": JSON.stringify(props) } : attributes;
+  if (isStatic) {
+    instance.$static = true;
+  } else {
+    instance.$prerendered = true;
+  }
+  return `<${tag}${buildAttrs(instance, scope, hostStyle)}>${innerHTML}</${tag}>`;
 }
 
 /**
@@ -1616,33 +1909,17 @@ export function renderStaticNode(
  * @param {Record<string, JsonValue> | null} [propsOverride] - Instance-specific prop values to
  *   merge into state
  * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
+ * @param {ComponentPrerenderContext | null} [context] - The component registry; with one, an
+ *   instance of a registered component inside `doc` is expanded rather than emitted bare
  * @returns {string} The pre-rendered innerHTML
  */
 export function preRenderComponentHtml(
   doc: JxElement,
   propsOverride: Record<string, JsonValue> | null = null,
   slotContent: string | null = null,
+  context: ComponentPrerenderContext | null = null,
 ) {
-  let stateDefs: Record<string, JxStateDefinition> = doc.state ?? {};
-  if (propsOverride) {
-    stateDefs = { ...stateDefs };
-    for (const [key, value] of Object.entries(propsOverride)) {
-      if (key in stateDefs) {
-        const existing = stateDefs[key];
-        stateDefs[key] =
-          existing &&
-          typeof existing === "object" &&
-          !Array.isArray(existing) &&
-          "default" in existing
-            ? { .../** @type {JxStateObject} */ existing, default: value }
-            : (value as JxStateDefinition);
-      } else {
-        stateDefs[key] = value as JxStateDefinition;
-      }
-    }
-  }
-  const scope = buildInitialScope(stateDefs, null);
-  return renderInner(doc, scope, slotContent);
+  return renderInner(doc, buildInstanceScope(doc, propsOverride), slotContent, context);
 }
 
 /**
