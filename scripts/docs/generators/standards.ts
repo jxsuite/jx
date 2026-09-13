@@ -106,12 +106,16 @@ export function generateStandards(): string {
   const rows = flatten(reg).toSorted((a, b) => compareIds(sortKey(reg, a), sortKey(reg, b)));
 
   const lines: string[] = [
-    frontmatter({
-      title: "Standards alignment",
-      description:
-        "Generated from the specs: every external standard Jx adopts, borrows, diverges from, " +
-        "or has declined — plus the tracked gaps.",
-    }),
+    frontmatter(
+      {
+        title: "Standards alignment",
+        description:
+          "Generated from the specs: every external standard Jx adopts, borrows, diverges from, " +
+          "or has declined — plus the tracked gaps.",
+      },
+      // A projection of the specs, read from its page and not searched for by name (#305).
+      { search: false },
+    ),
     "",
     BANNER,
     "",
