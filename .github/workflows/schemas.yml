@@ -74,13 +74,26 @@ on:
 # `contents: write` pushes the regeneration and, on `main`, opens the drift pull request;
 # `pull-requests: write` posts the one comment and creates that pull request; `checks: write`
 # publishes the NEUTRAL conclusion a fixup deserves and that a job conclusion cannot express.
+#
+# `actions: write` is for ONE endpoint, `POST /actions/runs/{id}/approve`, for the same reason
+# screenshots.yml carries it: the pushed commit's head is the bot's, the repository's Actions
+# policy holds every run on a bot-authored head in `action_required`, and `ci` then never reports
+# on the head branch protection requires it on (issue #307; PR #313's head 56e441a3 was this
+# lane's, with all seven runs held). The step after the push approves those held runs.
 permissions:
   contents: write
   pull-requests: write
   checks: write
+  actions: write
 
+# BOT OR HUMAN is part of the group for the approval step's sake: the approved run on the bot's
+# head has `github.actor == 'github-actions[bot]'`, and with `cancel-in-progress` it must not land
+# in the group of the human-actor run that is approving it, seconds before that run posts its
+# comment. This lane has no actor refusal (item 3 above), so the approved run regenerates from the
+# pushed head, finds the fixed point, and pushes nothing. See screenshots.yml's `concurrency:` for
+# why the suffix is bot-versus-human and not the actor's identity.
 concurrency:
-  group: schemas-${{ github.event.pull_request.number || github.event.inputs.pr || github.ref }}
+  group: schemas-${{ github.event.pull_request.number || github.event.inputs.pr || github.ref }}-${{ github.actor == 'github-actions[bot]' && 'bot' || 'human' }}
   cancel-in-progress: true
 
 jobs:
@@ -214,12 +227,32 @@ jobs:
           git push origin "HEAD:refs/heads/${BRANCH}"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # ── Un-hold what the push queued ───────────────────────────────────────
+      # The push raised `pull_request: synchronize` and GitHub queued every workflow on the new
+      # head, then held all of them, because the head is the bot's (issue #307). This approves them
+      # — `Test` included, so `ci` reports — through the same script screenshots.yml runs; its
+      # header carries the safety argument for approving every held run, this lane's own included.
+      # It cannot fail the job: a refusal is printed as the one-line human crank per run and written
+      # to NOTE_FILE, which the comment step appends.
+      - name: Approve the runs the push queued
+        id: approve
+        if: steps.push.outputs.sha != ''
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          NOTE_FILE: /tmp/schemas-approval.md
+        run: bun scripts/ci/approve-held-runs.ts
+
       - name: Comment on the pull request
         if: >-
           steps.sync.outputs.changed == 'true' &&
           steps.target.outputs.pr != '' &&
           steps.target.outputs.fork != 'true'
         uses: actions/github-script@v9
+        env:
+          # Same path as the approval step's; the wiring test in scripts/ci pins the two together.
+          NOTE_FILE: /tmp/schemas-approval.md
         with:
           script: |
             const fs = require('node:fs');
@@ -230,6 +263,12 @@ jobs:
               '`bun run schema:sync` produces the same bytes locally. If a pointer above is not a ' +
               'change you meant to make, the fix belongs in the generator or the source it reads, ' +
               'never in the committed JSON._\n';
+            // Written only when the approval step could not release a held run: the crank the
+            // human has to turn, with the run ids, so BLOCKED comes with its own instructions.
+            const note = process.env.NOTE_FILE;
+            if (note && fs.existsSync(note)) {
+              body += fs.readFileSync(note, 'utf8');
+            }
             const { owner, repo } = context.repo;
             const issue_number = Number('${{ steps.target.outputs.pr }}');
             const comments = await github.paginate(github.rest.issues.listComments, {

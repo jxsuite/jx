@@ -87,13 +87,32 @@ on:
 # `contents: write` pushes the re-capture; `pull-requests: write` posts the one comment;
 # `checks: write` publishes the NEUTRAL conclusion that a visual change deserves and that a job
 # Conclusion cannot express.
+#
+# `actions: write` is for ONE endpoint, `POST /actions/runs/{id}/approve`, and exists because of
+# what the push does next. The pushed commit's head is the bot's, and the repository's Actions
+# policy holds every run on a bot-authored head in `action_required` — `ci`, the check branch
+# protection requires, then never reports on the head it is required on, and the PR reads BLOCKED
+# with nothing red anywhere (issue #307; twice on #298). The step after the push approves those
+# held runs through the API. It is the least privilege that can do so: the token can also cancel
+# and re-run workflows with it, and nothing here does.
 permissions:
   contents: write
   pull-requests: write
   checks: write
+  actions: write
 
+# BOT OR HUMAN is part of the group, and that is what lets the approval step below approve the
+# lane's own held run without cutting its own throat. A held run joins no concurrency group (the
+# run that pushed it went on to post its comment, every time), but an approved one does — and with
+# `cancel-in-progress` it would cancel the in-progress run doing the approving, seconds before
+# that run posts the comment and the neutral check. The approved run's `github.actor` is
+# `github-actions[bot]` (approval sets only `triggering_actor`), so it lands in the `bot` group,
+# its job skips on the actor refusal, and nothing is cancelled. The suffix is bot-versus-human and
+# NOT the actor's identity on purpose: every human push on one PR — a co-author's, a maintainer's
+# `workflow_dispatch` while a `pull_request` run is in flight — must stay in ONE group, because two
+# runs that both reach the push step race it and the second push is rejected non-fast-forward.
 concurrency:
-  group: screenshots-${{ github.event.pull_request.number || github.event.inputs.pr || github.ref }}
+  group: screenshots-${{ github.event.pull_request.number || github.event.inputs.pr || github.ref }}-${{ github.actor == 'github-actions[bot]' && 'bot' || 'human' }}
   cancel-in-progress: true
 
 jobs:
@@ -326,6 +345,8 @@ jobs:
       # its own output. Nothing here can prevent the run being created: for a `pull_request` event
       # the `paths:` filter matches the PR's whole diff against its base, and once one re-capture
       # has landed that diff contains `docs/images/**` forever. The run is queued; the job declines.
+      # And it is HELD, with every other run on the new head — which is what the approval step
+      # two below is for.
       - name: Push the re-capture
         id: push
         if: >-
@@ -366,6 +387,43 @@ jobs:
             --before-sha "${BEFORE_SHA}" \
             --after-sha "${{ steps.push.outputs.sha }}" > /dev/null
 
+      # ── Un-hold what the push queued ───────────────────────────────────────
+      # The push above raised `pull_request: synchronize`, and GitHub queued every workflow on the
+      # new head — then held all of them, because the head is the bot's and the repository's
+      # Actions policy holds bot-actor runs in `action_required` (the state the job `if:` above
+      # describes). Held includes `Test`, so `ci` never reports on the commit branch protection
+      # requires it on, and the PR sits BLOCKED until a human presses *Approve and run* on each
+      # (issue #307). This step presses it: it polls for the head's runs to appear and settle
+      # (bounded, 90 s) and approves every one whose conclusion is `action_required`.
+      #
+      # EVERY held run, this lane's own included. The runs that could push again are the two
+      # pushing lanes, and each is safe on its own head by a DIFFERENT mechanism — a third lane
+      # that pushes must bring one of the two before this step may approve it:
+      #   * THIS lane declines its head: `github.actor` on the queued Screenshots run is
+      #     `github-actions[bot]`, an approval only sets `triggering_actor`, and the job `if:`
+      #     skips. Measured on #298's head 3e6b589a: the approved Screenshots run concluded
+      #     `skipped` while `Test` ran green.
+      #   * schemas.yml has NO actor refusal (its header, item 3) and terminates on a FIXED POINT:
+      #     deterministic generators regenerate identical bytes from this head and push nothing.
+      # Approving only `Test` by name would leave `ci` waiting on whichever other run is held,
+      # which is the same BLOCKED. The one hazard in approving this workflow's own run is the
+      # concurrency group, and the bot/human suffix on the group's name (see the `concurrency:`
+      # block) is what removes it.
+      #
+      # THIS STEP CANNOT FAIL THE JOB. Whether a `GITHUB_TOKEN` is allowed to approve runs here is
+      # a repository policy nothing in this tree can assert, so the script exits 0 on any refusal
+      # and instead prints the one-line human crank per run and writes it to NOTE_FILE, which the
+      # comment step appends: the PR then says which runs are held and exactly how to release them.
+      - name: Approve the runs the push queued
+        id: approve
+        if: steps.push.outputs.sha != ''
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          NOTE_FILE: /tmp/screenshots-approval.md
+        run: bun scripts/ci/approve-held-runs.ts
+
       # ── Fork PRs: no credentials, no push ──────────────────────────────────
       - name: Upload the diff (fork PRs and nightly)
         if: >-
@@ -384,6 +442,9 @@ jobs:
       - name: Comment
         if: steps.target.outputs.pr != '' && steps.target.outputs.fork != 'true'
         uses: actions/github-script@v9
+        env:
+          # Same path as the approval step's; the wiring test in scripts/ci pins the two together.
+          NOTE_FILE: /tmp/screenshots-approval.md
         with:
           script: |
             const fs = require('node:fs');
@@ -396,6 +457,12 @@ jobs:
             } else if ('${{ steps.target.outputs.fork }}' !== 'true') {
               body += '\n_Pushed by `.github/workflows/screenshots.yml`. ' +
                 'A changed picture is never a failure here._\n';
+            }
+            // Written only when the approval step could not release a held run: the crank the
+            // human has to turn, with the run ids, so BLOCKED comes with its own instructions.
+            const note = process.env.NOTE_FILE;
+            if (note && fs.existsSync(note)) {
+              body += fs.readFileSync(note, 'utf8');
             }
             const { owner, repo } = context.repo;
             const issue_number = Number('${{ steps.target.outputs.pr }}');
