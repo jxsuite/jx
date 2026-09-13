@@ -139,8 +139,9 @@
         "colorScheme": "dark"
       },
       "&[data-density=\"compact\"]": {
-        "--jx-control-h": "20px",
-        "--jx-text-md": "11px"
+        "--jx-control-h": "24px",
+        "--jx-text-md": "11px",
+        "--jx-leading-md": "16px"
       },
       "&[data-density=\"comfortable\"]": {
         "--jx-control-h": "28px"

@@ -180,15 +180,17 @@ export interface VirtualWindowOptions {
  * reaches the window.** The window has two inputs nothing else reports: the scroller's box, which
  * its own observer covers, and the height of one row, which the host measures live off a drawn row
  * — but only when something asks for a measurement. A density switch asks for nothing: the rows
- * shrink from 24px to 20px in place, the scroller's box is exactly what it was, and no scroll
- * arrives, so the spacers stayed at 24px a row until the reader happened to scroll, and the tree
- * declared 1320px over a 62-row model whose rows now totalled 1240. The list's height, though, is
- * `padTop + drawn × rowHeight + padBottom` with the two spacers fixed in pixels, so ANY change to
- * the row height changes the list's box by `drawn × Δ`, and observing the list is what turns that
- * into the ask. It is deliberately not an observer on `data-density`: Studio writes no such
- * attribute (the kit declares the rule and a consumer sets it), and the same drift follows a late
- * web font, a zoom, or a stylesheet that overrides `--jx-control-h` — none of which touch an
- * attribute, all of which move the list's box.
+ * change height in place, the scroller's box is exactly what it was, and no scroll arrives, so the
+ * spacers stood at the old height until the reader happened to scroll — sighted when compact still
+ * drew rows at 20px, as a tree declaring 1320px over a 62-row model whose rows now totalled 1240.
+ * Compact is 24px today and the switch that moves a row is comfortable, 24px to 28px (ui.md §4.3);
+ * the drift is the same in either direction. The list's height, though, is `padTop + drawn ×
+ * rowHeight + padBottom` with the two spacers fixed in pixels, so ANY change to the row height
+ * changes the list's box by `drawn × Δ`, and observing the list is what turns that into the ask. It
+ * is deliberately not an observer on `data-density`: Studio writes no such attribute (the kit
+ * declares the rule and a consumer sets it), and the same drift follows a late web font, a zoom, or
+ * a stylesheet that overrides `--jx-control-h` — none of which touch an attribute, all of which
+ * move the list's box.
  */
 export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindow {
   const { scroller, list, count, rowHeight, columns, onChange, overscanRows } = options;
@@ -402,19 +404,20 @@ export function revealListRow(list: HTMLElement | null, index: number, rowHeight
  * any row has been laid out. It used to be `styles/panels.css`'s `.layer-row` and `.file-tree-item`
  * rules; both trees are `jx-tree-item` now and the declaration travelled with them — `blockSize:
  * var(--jx-control-h)`, which is 24px and matches the constants the two hosts pass. At
- * `[data-density=compact]` that token is 20px while the constants stay 24, and the constant is only
- * the answer until a row exists, so a session that STARTS compact is right from its second paint.
- * The MEASUREMENT is what stops that constant becoming a lie the day someone changes the row's
- * padding, a user zooms, or a locale's font raises the line box: a window computed from a stale
- * height does not fail loudly, it drifts, and the list quietly ends a few rows short of its own
- * scrollbar.
+ * `[data-density=comfortable]` that token is 28px while the constants stay 24, and the constant is
+ * only the answer until a row exists, so a session that STARTS comfortable is right from its second
+ * paint. (Compact used to be the other direction, 20px; it is 24px now, because WCAG 2.2 SC 2.5.8
+ * asks 24 CSS px of a target and the kit holds every density to it — ui.md §4.3.) The MEASUREMENT
+ * is what stops that constant becoming a lie the day someone changes the row's padding, a user
+ * zooms, or a locale's font raises the line box: a window computed from a stale height does not
+ * fail loudly, it drifts, and the list quietly ends a few rows short of its own scrollbar.
  *
  * A measurement is only as fresh as the last time something ASKED for one, and this used to be
  * where the density switch got through: the rows shrank in place, nothing scrolled, nothing resized
  * the scroller, and the spacers stood at the old height until the next scroll — measured in a
- * browser as a `padbottom` of 408 (17 × 24) over rows that were 20px tall. The ask is now the
- * list's own resize ({@link createVirtualWindow} observes it), which is the one event every cause
- * of a row-height change has in common.
+ * browser as a `padbottom` of 408 (17 × 24) over rows that had shrunk to 20px, when compact still
+ * drew them at that height. The ask is now the list's own resize ({@link createVirtualWindow}
+ * observes it), which is the one event every cause of a row-height change has in common.
  */
 export function measuredRowHeight(
   list: HTMLElement | null,
