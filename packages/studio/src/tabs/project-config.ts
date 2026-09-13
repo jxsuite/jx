@@ -33,17 +33,23 @@
  * from the other side: a config that reached disk without passing through here (the assistant's
  * `write_file`) is put INTO the document rather than left beside it as a rival.
  *
- * **One serialisation.** {@link serializeProjectConfig} is `JSON.stringify(config, null, 2)` —
- * byte-for-byte what `files/file-ops.ts`'s native-JSON branch writes, so a ⌘S on the open tab and a
- * settings edit produce the same file. The predecessor had `null, 2` in `site-context.ts` and
- * `"\t"` in both `settings/contributed-section.ts` and `settings/defs-editor.ts`, so a settings
- * edit re-indented the entire file — every `project.json` in this repository is on disk with two
- * spaces.
+ * **One serialisation.** {@link serializeProjectConfig} is `files/json-layout.ts`'s serializer over
+ * the layout the file was read in — byte-for-byte what `files/serialize-document.ts`'s native-JSON
+ * branch writes, so a ⌘S on the open tab and a settings edit produce the same file. The predecessor
+ * had `null, 2` in `site-context.ts` and `"\t"` in both `settings/contributed-section.ts` and
+ * `settings/defs-editor.ts`, so a settings edit re-indented the entire file — every `project.json`
+ * in this repository is on disk with two spaces. It was then `JSON.stringify(config, null, 2)`,
+ * which agreed with the tab's save and disagreed with the formatter: a one-field edit re-laid every
+ * short array in the file (issue 308).
  *
  * **A no-op edit writes nothing.** A form that re-commits the value it already holds — and every
  * one of these surfaces has such a path — used to rewrite the whole file. A commit now compares the
  * serialised result against what the file itself says and returns without a transaction, without a
  * write, and therefore with an empty diff.
+ *
+ * **A real edit is a one-line diff.** The file's layout — which objects sit on one line, where a
+ * blank line falls — is read once per binding ({@link seedCommitted}) and every serialisation here
+ * honours it, so what changes on disk is the field that changed.
  *
  * **Collaboration.** `project.json` is out of collab replication; the gate is in
  * `collab/collab-session.ts`'s `ensureCollab`, which is what would otherwise register the Yjs
@@ -58,6 +64,8 @@ import { requireProjectState, setProjectState } from "../state";
 import { setWorkspaceProject, workspace } from "../workspace/workspace";
 import { PROJECT_CONFIG_PATH, createTab, disposeTab } from "./tab";
 import { transactDoc } from "./transact";
+import { parseJsonDocument, serializeJson } from "../files/json-layout";
+import type { JsonLayout } from "../files/json-layout";
 
 import type { Tab } from "./tab";
 import type { ProjectConfig } from "@jxsuite/schema/types";
@@ -67,15 +75,16 @@ export { PROJECT_CONFIG_PATH } from "./tab";
 /**
  * The project configuration, as a file.
  *
- * The ONE serialisation. Identical to the native-JSON branch of `files/file-ops.ts`'s
+ * The ONE serialisation. Identical to the native-JSON branch of `files/serialize-document.ts`'s
  * `serializeDocument`, which is what ⌘S on the open `project.json` tab goes through — the two must
- * agree or every save would fight the last one.
+ * agree or every save would fight the last one. Both honour the layout the file was read in ({@link
+ * configLayout}); with none known, the formatter's layout for fresh output.
  *
  * @param {ProjectConfig} config
  * @returns {string}
  */
 export function serializeProjectConfig(config: ProjectConfig): string {
-  return JSON.stringify(config, null, 2);
+  return serializeJson(config, configLayout());
 }
 
 // ─── The document of record ───────────────────────────────────────────────────
@@ -94,14 +103,33 @@ let _detached: Tab | null = null;
  * variables editor writes into `config.style` and then hands the same object over as a patch. A
  * value taken from memory would call every one of those edits a no-op.
  *
- * Comparing two `JSON.stringify(_, null, 2)` renderings of the same key order is a SEMANTIC test,
- * not a textual one, which is the point: `project.json` on disk is formatted by `oxfmt` (two-space
- * indent, short arrays kept on one line), so a byte comparison against the file would call every
- * edit a change and rewrite the whole file. This calls it unchanged and writes nothing.
+ * Comparing two renderings of the same key order through the same serializer is a SEMANTIC test,
+ * not a textual one, which is the point: a `project.json` formatted some other way than the
+ * serializer would lay it out — every array expanded, say — would otherwise look changed on every
+ * commit, and a byte comparison against the file would rewrite it whole. This calls it unchanged
+ * and writes nothing.
  *
  * `null` means "unknown" — no project file, or one that would not parse — and every commit writes.
  */
 let _committed: string | null = null;
+
+/**
+ * The layout the file was read in ({@link seedCommitted}), for a binding with no open tab to carry
+ * it. Reset with the binding: a different project is a different file.
+ */
+let _layout: JsonLayout | null = null;
+
+/**
+ * The layout a configuration write honours.
+ *
+ * The open tab's, when there is one — it read the file when it opened, or was lent the seed's
+ * record ({@link lendProjectConfigLayout}), and a source-view commit or a reload from disk keeps it
+ * current — and otherwise what the seed read. The two describe the same file, so the choice only
+ * matters for freshness, and the tab is the fresher.
+ */
+function configLayout(): JsonLayout | null {
+  return openConfigTab()?.doc.layout ?? _layout;
+}
 
 /** Whether {@link _committed} has been sought for the current binding. One read per project. */
 let _seeding: Promise<void> | null = null;
@@ -126,6 +154,7 @@ function unbind(): void {
   }
   _bound = null;
   _committed = null;
+  _layout = null;
   _seeding = null;
 }
 
@@ -134,7 +163,9 @@ function seedCommitted(): Promise<void> {
   _seeding ??= (async () => {
     try {
       const text = await getPlatform().readFile(PROJECT_CONFIG_PATH);
-      _committed = serializeProjectConfig(JSON.parse(text) as ProjectConfig);
+      const { document, layout } = parseJsonDocument(text);
+      _layout = layout;
+      _committed = serializeProjectConfig(document as unknown as ProjectConfig);
     } catch {
       // No file, an unreadable one, or one that does not parse. "Unknown" is the honest answer,
       // And an unknown file is one every commit must write.
@@ -142,6 +173,29 @@ function seedCommitted(): Promise<void> {
     }
   })();
   return _seeding;
+}
+
+/**
+ * Lend the file's layout to `tab` when it has none of its own.
+ *
+ * The Settings door (`settings/settings-document.ts`) opens the `project.json` tab over the
+ * configuration object the project was loaded with — an object the platform parsed, with no text
+ * behind it — so that tab arrives with `doc.layout === null`. Left there, a ⌘S on it would write
+ * the formatter's layout for fresh output while a settings commit on the SAME document wrote the
+ * file's: every short object in the file blown open by the save the settings edit had just kept,
+ * which is the one disagreement this module exists to make impossible. The file is read once per
+ * binding anyway ({@link seedCommitted}); this hands the record that read made to the tab, and
+ * {@link configLayout} then takes it back from the tab like every other writer. A tab that read the
+ * file itself — the Files tree, a reload, a source-view commit — keeps the fresher record it has.
+ *
+ * @param {Tab} tab
+ * @returns {Promise<void>}
+ */
+export async function lendProjectConfigLayout(tab: Tab): Promise<void> {
+  await seedCommitted();
+  if (tab.doc.layout === null && _layout !== null) {
+    tab.doc.layout = _layout;
+  }
 }
 
 /**
@@ -307,7 +361,9 @@ export async function commitProjectConfig(
   // Tab's own parse, and the caller has already mutated the object it rendered from.
   const live = liveConfig();
   const tab = projectConfigDocument();
-  await seedCommitted();
+  // The seed, and the record it read handed to the document — so the tab the Settings door opened
+  // Writes the same bytes from ⌘S that this commit is about to.
+  await lendProjectConfigLayout(tab);
   const current = toRaw(tab.doc.document) as unknown as ProjectConfig;
   const currentText = serializeProjectConfig(current);
 

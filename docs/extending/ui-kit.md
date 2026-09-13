@@ -835,6 +835,8 @@ Studio's own chrome is a Jx project too: `packages/studio/project.json`, whose d
 
 On the canvas, a kit element is drawn from the project's own files, and its behaviour is fetched the first time a page needs it, one small chunk per behaviour, so a page that uses no kit element loads none of them. Design mode shows a bound prop as its binding text, which is the canvas's rule for every bound value; switch to Preview to work a stylebook page's controls.
 
+A save writes the file in the layout the repository keeps it in. The surfaces and the kit components are formatted by the pre-commit hook, with short objects such as `"attributes": { "part": "bar" }` on one line, and Studio [preserves that layout](/docs/studio/interface/tabs#studio-saves-only-when-you-do) when it writes, so `git diff` after a save shows the edit and nothing else.
+
 :::doc-tip
 An edit made outside Studio, in your editor, reaches the shell the way it always did: on the next reload. The lane re-mounts from the document Studio just wrote, never from the disk.
 :::

@@ -550,6 +550,52 @@ describe("the configuration tab", () => {
     expect(showSettingsDocument()).toBeNull();
   });
 
+  /*
+   * THE TWO WRITERS AGREE, from this door too.
+   *
+   * The tab this door opens is built over the configuration OBJECT — parsed by the platform, with
+   * no text behind it — so it arrived with `doc.layout === null`, and a ⌘S on it went through
+   * `serializeDocument` layout-less while a settings commit on the same document went through the
+   * chokepoint with the file's layout. Seeded with a file the formatter keeps short objects inline
+   * in, a settings commit wrote a one-line diff and the ⌘S that follows it (the undo workflow the
+   * docs prescribe) blew `"style": { "--a": "1" }` open to three lines. The chokepoint lends the
+   * tab the record it read (`tabs/project-config.ts`, issue 308); this pins both writes to the
+   * same bytes.
+   */
+  test("a ⌘S on the tab writes the bytes a settings commit does, with the file's layout kept", async () => {
+    const { commitProjectConfig, resetProjectConfigDocument } =
+      await import("../src/tabs/project-config");
+    const { saveFile } = await import("../src/files/file-ops");
+    const { deriveJsonLayout } = await import("../src/files/json-layout");
+    const { toRaw } = await import("../src/reactivity");
+    const onDisk =
+      '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
+    const { state } = installMockPlatform({}, { "project.json": onDisk });
+    resetStudioState({ projectConfig: JSON.parse(onDisk) as unknown });
+    resetProjectConfigDocument();
+    try {
+      const tab = showSettingsDocument()!;
+      await flush();
+      // The lend landed: the tab's record is the file's, keyed like a read of the file would be.
+      // Unwrapped, because `doc` is reactive and a proxied Map is not `toEqual` to a plain one.
+      expect(toRaw(tab.doc.layout)).toEqual(deriveJsonLayout(onDisk));
+
+      const committed = await commitProjectConfig({ name: "renamed" } as never);
+      expect(committed.ok).toBe(true);
+      expect(await saveFile(tab as never)).toBe(true);
+
+      const written = state.calls
+        .filter((call) => call[0] === "writeFile" && call[1] === "project.json")
+        .map((call) => call[2] as string);
+      expect(written).toHaveLength(2);
+      expect(written[1]).toBe(written[0]);
+      // A one-line diff of the seed: the renamed line moved and the inline object and array did not.
+      expect(written[0]).toBe(onDisk.replace('"name": "site"', '"name": "renamed"'));
+    } finally {
+      resetProjectConfigDocument();
+    }
+  });
+
   test("activeSettingsSection is null until the settings editor is the active one", () => {
     expect(activeSettingsSection()).toBeNull();
     showSettingsDocument();

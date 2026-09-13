@@ -31,6 +31,7 @@ import { optionalStringArg, stringProperty } from "../commands/command-args";
 import { notify } from "../services/notify";
 import { requireProjectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { lendProjectConfigLayout } from "../tabs/project-config";
 import { activeTab, focusPane, openTab, workspace } from "../workspace/workspace";
 import {
   notifySettingsDocument,
@@ -229,6 +230,12 @@ export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
      Editor control offers the modes in that order. */
   tab.session.ui.canvasMode = mode;
   tab.session.ui.preview = false;
+  /* The tab was opened over the configuration OBJECT — the platform parsed it, so there is no text
+     here to read a layout from, and `doc.layout` is null. A ⌘S on it would then write the
+     formatter's layout for fresh output while a settings commit on the same document wrote the
+     file's (`tabs/project-config.ts`, issue 308). The chokepoint reads the file once anyway; it
+     lends the tab that record, and the Code view re-renders when it lands (`doc` is reactive). */
+  void lendProjectConfigLayout(tab);
   return tab;
 }
 

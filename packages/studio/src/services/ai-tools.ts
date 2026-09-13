@@ -28,6 +28,7 @@ import {
 import type { JxNodeValue } from "../tabs/transact";
 import { validateDoc } from "./jx-validate";
 import { recordWrite } from "./ai-writes";
+import { serializeJson } from "../files/json-layout";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 
 const PATH_DESCRIPTION =
@@ -751,7 +752,9 @@ export function registerAiTools(
           }
         }
         try {
-          await saveFile(relPath, JSON.stringify(content, null, 2));
+          // The save serializer, layout-less (`files/json-layout.ts`): the assistant supplied a
+          // Value, not a text, so the formatter's layout for fresh output is the right one.
+          await saveFile(relPath, serializeJson(content, null));
           recordWrite({ disk: true, ok: true, path: relPath, tool: "create_component" });
           return {
             success: true,
@@ -828,7 +831,8 @@ export function registerAiTools(
           }
         }
         try {
-          await saveFile(relPath, JSON.stringify(content, null, 2));
+          // As `create_component`: a value the assistant supplied, written in the formatter's layout.
+          await saveFile(relPath, serializeJson(content, null));
           recordWrite({ disk: true, ok: true, path: relPath, tool: "create_page" });
           return {
             success: true,
