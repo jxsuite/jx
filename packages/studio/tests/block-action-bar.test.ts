@@ -17,6 +17,7 @@
  * A mounted document reconciles in a microtask, so `render()` awaits and every test is async.
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { hintOf, printedOf } from "./kit-readers";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { getConvertTargets } from "../src/editor/convert-targets";
 import { dismissSlashMenu, isSlashMenuOpen } from "../src/editor/slash-menu";
@@ -153,8 +154,8 @@ function part(name: string): HTMLElement | null {
 }
 
 /**
- * A kit button's own control: the `<button>` that carries `disabled`, the `title` and the
- * accessible name, and the node a press is dispatched at.
+ * A kit button's own control: the `<button>` that carries `disabled`, the accessible name, and —
+ * only while it is disabled — the `title`; and the node a press is dispatched at.
  */
 function control(el: Element | null): HTMLElement | null {
   return (el?.querySelector('[part="control"]') as HTMLElement) ?? null;
@@ -164,6 +165,11 @@ function isDisabled(el: Element | null): boolean {
   return control(el)?.hasAttribute("disabled") === true;
 }
 
+/**
+ * The `title` of a DISABLED kit button, which is where its hint lives while it cannot act: a
+ * disabled control can open no tooltip, and the hover title is the one affordance left to say why
+ * (ui.md §5.1). An enabled button's hint is read with `hintOf`, from the tip it renders instead.
+ */
 function titleOf(el: Element | null): string | null {
   return control(el)?.getAttribute("title") ?? null;
 }
@@ -343,7 +349,7 @@ describe("block action bar", () => {
     );
     await render();
 
-    expect(part("tag")!.textContent!.trim()).toBe("p");
+    expect(printedOf(part("tag"))).toBe("p");
     // The badge is a control on a tag that has somewhere to go, and DISABLED where it has not.
     expect(isDisabled(part("tag"))).toBe(false);
     expect(control(part("tag"))!.getAttribute("aria-haspopup")).toBe("menu");
@@ -382,7 +388,7 @@ describe("block action bar", () => {
     // Every verb at the root, so selecting the document rearranged the toolbar under the cursor.
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, []);
     await render();
-    expect(part("tag")!.textContent!.trim()).toBe("div");
+    expect(printedOf(part("tag"))).toBe("div");
 
     expect(isDisabled(part("parent"))).toBe(true);
     const handle = part("drag-handle")!;
@@ -571,7 +577,7 @@ describe("block action bar", () => {
       0,
     ]);
     await render();
-    expect(part("tag")!.textContent!.trim()).toBe("hero");
+    expect(printedOf(part("tag"))).toBe("hero");
   });
 
   // ─── Bar mousedown focus guard ─────────────────────────────────────────────
@@ -703,7 +709,7 @@ describe("block action bar", () => {
     await render();
 
     const badge = part("tag")!;
-    expect(badge.textContent!.trim()).toBe("x-card");
+    expect(printedOf(badge)).toBe("x-card");
     // A component instance has no tag to convert to, so the badge is refused rather than removed.
     expect(isDisabled(badge)).toBe(true);
     expect(control(badge)!.getAttribute("aria-haspopup")).toBeNull();
@@ -723,7 +729,7 @@ describe("block action bar", () => {
     host.editingProp = "title";
     await render();
 
-    expect(part("tag")!.textContent!.trim()).toBe("x-card · title");
+    expect(printedOf(part("tag"))).toBe("x-card · title");
     expect(part("format")).toBeNull();
   });
 
@@ -747,7 +753,7 @@ describe("block action bar", () => {
 
     const badge = part("tag")!;
     // NodeLabel(node) → "Repeater → <items-ref>" instead of falling through to "div".
-    expect(badge.textContent!.trim()).toBe("Repeater → #/state/excavators");
+    expect(printedOf(badge)).toBe("Repeater → #/state/excavators");
     // Repeaters offer no tag-conversion targets, so the badge is inert. Refused twice over: the
     // Control cannot be activated, and a click that reaches the host anyway opens nothing — an
     // Empty convert list is a menu with no rows in it, which is worse than no menu.
@@ -762,7 +768,7 @@ describe("block action bar", () => {
     await render();
 
     const badge = part("tag")!;
-    expect(badge.textContent!.trim()).toBe("div");
+    expect(printedOf(badge)).toBe("div");
     expect(isDisabled(badge)).toBe(false);
   });
 
@@ -837,7 +843,8 @@ describe("block action bar", () => {
 
     await startEditingState();
     const group = part("format")!;
-    const titles = [...group.querySelectorAll('[part="format-button"]')].map((b) => titleOf(b));
+    // Enabled buttons, so each hint is the text of the tip the button renders, not a title.
+    const titles = [...group.querySelectorAll('[part="format-button"]')].map((b) => hintOf(b));
     /* The chord comes from the KEYMAP now, so it is formatted for the platform the test is running
        on. This asserted the literal "Bold (Cmd+B)", which is the string
        `data/elements-meta.json` hardcoded into every tooltip on every machine — the exact defect

@@ -10,6 +10,7 @@ import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import { themeCSS } from "../src/theme.ts";
+import { describeHint } from "./hint-contract.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -178,17 +179,21 @@ describe("jx-action-button", () => {
        that. What the removal bought is that each call site now decides. */
     const el = await action({ label: "Toggle Inspector Dock", icon: "sidebar-simple" });
     expect(control(el).hasAttribute("title")).toBe(false);
+    expect(el.querySelector("jx-tooltip")).toBeNull();
     el.setAttribute("hint", "Toggle Inspector Dock (⌘I)");
     el.setAttribute("mirror", "");
     await tick();
-    // The name stays the name; only the tooltip carries the chord.
+    // The name stays the name; only the tooltip carries the chord — and on an ENABLED button the
+    // Tooltip is a jx-tooltip, not a title (see "hint" below for the whole of that contract).
     expect(control(el).getAttribute("aria-label")).toBe("Toggle Inspector Dock");
-    expect(control(el).title).toBe("Toggle Inspector Dock (⌘I)");
+    expect(control(el).hasAttribute("title")).toBe(false);
+    expect(el.querySelector("jx-tooltip")!.textContent).toBe("Toggle Inspector Dock (⌘I)");
     const icon = el.querySelector("jx-icon") as (HTMLElement & { mirror: boolean }) | null;
     expect(icon?.mirror).toBe(true);
     el.setAttribute("hint", "");
     await tick();
     expect(control(el).hasAttribute("title")).toBe(false);
+    expect(el.querySelector("jx-tooltip")).toBeNull();
   });
 
   test("describedby and labelledby reach the inner control, which is where a name is read", async () => {
@@ -630,3 +635,5 @@ describe("jx-action-button", () => {
     expect(rule).toContain("box-sizing: border-box");
   });
 });
+
+describeHint("jx-action-button", (attrs) => action(attrs));

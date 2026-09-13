@@ -18,6 +18,19 @@
  * authors to prefer, and on Firefox and Safari it is the shape that shows nothing at all without
  * this module.
  *
+ * "AN OLDER ENGINE" INCLUDES THE DESKTOP APP. Studio ships inside Electrobun's CEF, and the pinned
+ * release is Chromium 147 (`vendor/electrobun/package/src/shared/cef-version.ts`) — five releases
+ * short of the attribute. So until that bump reaches 152 the ONLY end-user path to Studio runs the
+ * fallback for every hinted button in its chrome, several hundred of them, and this module is not a
+ * corner for other people's browsers but the behaviour a user sees. Three consequences are designed
+ * for rather than tolerated: focus opens the tip only when it is KEYBOARD focus, the way the
+ * platform's interest-on-focus does, so a click does not pin a tip open; Escape is ONE listener per
+ * root shared by every bound tip, not one per tip on the document, so a keystroke in Studio walks
+ * one handler rather than one per button; and a tip that is MOVED — a keyed `$map` reordering its
+ * rows, a button re-parented into a toolbar — keeps its binding, because the runtime fires
+ * `disconnectedCallback` for a move and never re-runs `onMount`, so an unmount that disposed at
+ * once would strip a reordered row of its tooltip for good.
+ *
  * IT ADDS LISTENERS TO AN ELEMENT THE KIT DOES NOT OWN, and that is said out loud rather than left
  * to be discovered in review. specs/ui.md §2 principle 5 forbids WRITING ATTRIBUTES or styles on
  * another element; `behaviors/menu.ts` already sets `row.tabIndex` on a slotted row, so a listener
@@ -28,6 +41,12 @@
  * The explicit hide is not belt and braces either. On an engine that does not know `popover="hint"`
  * the value is INVALID, and `popover`'s invalid-value default is `manual`: no light dismiss, no
  * Escape, and a tip that sticks until reload.
+ *
+ * The one thing here that is not about `jx-tooltip`'s own element is {@link mintHintId}: the id stem
+ * a CONTROL that renders a tip for its `hint` needs, and cannot mint for itself. It lives with the
+ * tip rather than with the buttons because it is the pair's contract — the tip's id, the control's
+ * id, and the three attributes that name one from the other — and one module is what keeps the two
+ * elements that use it from ever minting the same stem.
  *
  * @docs extending/ui-kit
  */
@@ -66,8 +85,96 @@ const TOOLTIP_OFFSET = 6;
 /** How close to the viewport edge the tip may come, in pixels. */
 const MARGIN = 4;
 
-/** The disposer each bound instance is holding, keyed by its own reactive scope. */
-const disposers = new WeakMap<object, () => void>();
+/**
+ * What each bound instance is holding, keyed by its own reactive scope: the tip, so that
+ * {@link onTooltipUnmount} can tell a move from a removal, and the disposer.
+ */
+const bindings = new WeakMap<object, { tip: HTMLElement; dispose: () => void }>();
+
+/**
+ * The one Escape listener each root carries, and the dismissers of every tip bound within it.
+ *
+ * Per ROOT rather than per tip, because the listener has to be on an ancestor that sees the
+ * keystroke wherever focus is — a tip hides on Escape whether or not its control is focused — and a
+ * capture listener on the document per tip is one handler per hinted button on every keystroke. The
+ * set is what Escape walks instead, and only a dismisser whose tip is showing does anything.
+ */
+const escapes = new WeakMap<Node, { listener: EventListener; dismiss: Set<() => void> }>();
+
+/**
+ * Watch `root` for Escape on behalf of one binding, sharing the listener with every other binding
+ * in that root, and hand back the un-watch.
+ *
+ * The listener goes on with the first dismisser and comes off with the last, so a document with no
+ * bound tip carries nothing.
+ */
+function watchEscape(root: Node, dismiss: () => void): () => void {
+  let entry = escapes.get(root);
+  if (!entry) {
+    const set = new Set<() => void>();
+    const listener = (event: Event): void => {
+      if ((event as KeyboardEvent).key !== "Escape") {
+        return;
+      }
+      for (const fn of set) {
+        fn();
+      }
+    };
+    root.addEventListener("keydown", listener, true);
+    entry = { dismiss: set, listener };
+    escapes.set(root, entry);
+  }
+  const { dismiss: set, listener } = entry;
+  set.add(dismiss);
+  return () => {
+    set.delete(dismiss);
+    if (set.size === 0 && escapes.get(root)?.listener === listener) {
+      root.removeEventListener("keydown", listener, true);
+      escapes.delete(root);
+    }
+  };
+}
+
+/**
+ * Whether the platform is showing this tip, for an engine whose selector knows the answer.
+ *
+ * The binding's own `visible` flag covers what the binding showed; this covers a tip a host showed
+ * in code, so that Escape still dismisses it. Guarded, because `:popover-open` is a parse error on
+ * an engine without the popover API and a selector that throws would take Escape down with it.
+ */
+function popoverOpen(tip: HTMLElement): boolean {
+  try {
+    return tip.matches(":popover-open");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the trigger's focus is the kind a tip should answer at once: keyboard focus.
+ *
+ * The platform's interest-on-focus is keyboard-only — a click gives a control focus too, and a tip
+ * that opened on every click and stayed until focus left would be pinned open under the pointer on
+ * the fallback path while the declarative path showed nothing. `:focus-visible` is the platform's
+ * own verdict on that and is asked first, of the element that actually took the focus (the event's
+ * target, which for a kit button is the trigger itself and for a consumer's wrapper is a
+ * descendant); `pointerHeld` — a pointer is down on the trigger, so whatever focus arrives now is
+ * the click's — is the answer where the selector is not known, and the tie-break on an engine whose
+ * `:focus-visible` is merely `:focus`.
+ */
+function keyboardFocus(focused: EventTarget | null, pointerHeld: boolean): boolean {
+  if (pointerHeld) {
+    return false;
+  }
+  if (!(focused instanceof Element)) {
+    return true;
+  }
+  try {
+    return focused.matches(":focus-visible");
+  } catch {
+    return true;
+  }
+}
 
 /**
  * The re-measure each ANCHORED, SHOWING tip is running, keyed by its own reactive scope.
@@ -123,7 +230,9 @@ function hideTip(tip: HTMLElement): void {
  * The two events `title=` never handled are the point of this function. `focusin` shows the tip
  * IMMEDIATELY — a keyboard reader who tabbed to the control has already committed, and a delay
  * there is only a stutter. `pointerenter` shows it after the element's own `delay`, because a
- * pointer crossing a toolbar passes over every control in it.
+ * pointer crossing a toolbar passes over every control in it. Focus that a CLICK gave the control
+ * counts for neither: the hover already scheduled the tip, and the focus is not one the reader is
+ * reading — {@link keyboardFocus} is what tells the two apart.
  *
  * @param tip The `jx-tooltip` element.
  * @param trigger The control it describes. Nothing is written on it.
@@ -148,6 +257,10 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
   let onTrigger = false;
   let onTip = false;
   let focused = false;
+  /** A pointer is down on the trigger, so a focus that arrives now is the click's. */
+  let pointerHeld = false;
+  /** Whether this binding showed the tip and has not hidden it since. */
+  let visible = false;
 
   const cancel = (): void => {
     if (showTimer !== null) {
@@ -161,7 +274,12 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
   };
   const show = (): void => {
     cancel();
+    visible = true;
     showTip(tip, trigger);
+  };
+  const hide = (): void => {
+    visible = false;
+    hideTip(tip);
   };
   /** Hide, unless a trigger the reader has not removed is still holding the tip up. */
   const hideIfIdle = (): void => {
@@ -169,7 +287,7 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
     if (onTrigger || onTip || focused) {
       return;
     }
-    hideTip(tip);
+    hide();
   };
   const showLater = (): void => {
     cancel();
@@ -186,9 +304,28 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
   };
   const onPointerLeave = (): void => {
     onTrigger = false;
+    // A pointer dragged off the control releases nowhere the trigger can hear; this is the release.
+    pointerHeld = false;
     hideLater();
   };
-  const onFocusIn = (): void => {
+  const onPointerDown = (): void => {
+    pointerHeld = true;
+  };
+  const onPointerUp = (): void => {
+    pointerHeld = false;
+  };
+  const onFocusIn = (event: Event): void => {
+    /*
+     * Only KEYBOARD focus is a trigger, matching the platform's interest-on-focus. A click's focus
+     * neither shows the tip nor holds it up: the hover is what shows it, after `delay`, and the
+     * hover leaving is what hides it — so a clicked button is not left with a tip pinned to it for
+     * as long as it keeps the focus.
+     */
+    const keyboard = keyboardFocus(event.target, pointerHeld);
+    pointerHeld = false;
+    if (!keyboard) {
+      return;
+    }
     focused = true;
     show();
   };
@@ -204,30 +341,38 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
     onTip = false;
     hideLater();
   };
-  /** Escape is DISMISSAL, which outranks every live trigger — SC 1.4.13 asks for both. */
-  const onEscape = (event: Event): void => {
-    if ((event as KeyboardEvent).key === "Escape") {
-      cancel();
-      hideTip(tip);
+  /**
+   * Escape is DISMISSAL, which outranks every live trigger — SC 1.4.13 asks for both. Reached
+   * through the root's one shared listener, and a no-op for a tip that is not showing, so an Escape
+   * in a chrome of several hundred hinted buttons hides the one tip that is up.
+   */
+  const onEscape = (): void => {
+    if (!visible && !popoverOpen(tip)) {
+      return;
     }
+    cancel();
+    hide();
   };
 
-  const bindings: [EventTarget, string, EventListener][] = [
+  const listeners: [EventTarget, string, EventListener][] = [
     [trigger, "pointerenter", onPointerEnter],
     [trigger, "pointerleave", onPointerLeave],
+    [trigger, "pointerdown", onPointerDown],
+    [trigger, "pointerup", onPointerUp],
     [trigger, "focusin", onFocusIn],
     [trigger, "focusout", onFocusOut],
     // SC 1.4.13 hoverable: the pointer may rest on the tip itself, and the tip stays.
     [tip, "pointerenter", onTipEnter],
     [tip, "pointerleave", onTipLeave],
-    [root, "keydown", onEscape],
   ];
-  for (const [target, type, listener] of bindings) {
+  for (const [target, type, listener] of listeners) {
     target.addEventListener(type, listener, true);
   }
+  const unwatch = watchEscape(root, onEscape);
   return () => {
     cancel();
-    for (const [target, type, listener] of bindings) {
+    unwatch();
+    for (const [target, type, listener] of listeners) {
       target.removeEventListener(type, listener, true);
     }
   };
@@ -495,22 +640,76 @@ export function onTooltipReady(state: TooltipState, event: Event): void {
   if (!trigger) {
     return;
   }
-  disposers.get(state)?.();
-  disposers.set(state, bindTooltip(tip, trigger));
+  bindings.get(state)?.dispose();
+  bindings.set(state, { dispose: bindTooltip(tip, trigger), tip });
 }
 
 /**
- * Take the listeners off the control when the tip leaves the document.
+ * Take the listeners off the control when the tip leaves the document — and only then.
  *
  * They are on an element the kit does not own and that outlives the tip, so without this a removed
  * tip keeps a control alive and keeps answering its pointer.
  *
+ * A MOVE is not a removal, and the runtime cannot tell the element which one it is having: a keyed
+ * `$map` reorders its kept rows with `before()`, which fires `disconnectedCallback` and then
+ * `connectedCallback` on every element in the row, and the second is a no-op for an element that
+ * has already initialised — `onMount` and the `jx-ready` that binds the control never run again. So
+ * the disposal waits a microtask and is skipped when the tip is back in a document by then, which a
+ * synchronous move always is. A tip taken out for good is disposed as before, one tick later; a tip
+ * that was rebound in the meantime (a re-mount, which changes the entry) is not touched.
+ *
  * @param state The tip's reactive state.
  */
 export function onTooltipUnmount(state: TooltipState): void {
-  disposers.get(state)?.();
-  disposers.delete(state);
-  /* A tip removed while showing gets no toggle from the platform, so its watch is stopped here or
-     not at all — and a watch is a window listener, which would hold the removed tip forever. */
+  /* A tip removed while showing gets no toggle from the platform, so its flip watch is stopped
+     here or not at all — a watch is a window listener, which would hold the removed tip forever.
+     Stopped at once rather than a tick later: a MOVED tip that was open loses nothing but its
+     re-measure until its next open re-arms it, and the binding below is the thing a move must keep. */
   watchers.get(state)?.();
+  const bound = bindings.get(state);
+  if (!bound) {
+    return;
+  }
+  queueMicrotask(() => {
+    if (bindings.get(state) !== bound) {
+      return;
+    }
+    if (bound.tip.isConnected) {
+      return;
+    }
+    bound.dispose();
+    bindings.delete(state);
+  });
+}
+
+/** How many hint stems have been minted, so no two hinted controls share one. */
+let mintedHints = 0;
+
+/**
+ * Mint the id stem a control that draws its `hint` as a `jx-tooltip` needs, and write it into
+ * `uid`.
+ *
+ * `jx-action-button` and `jx-button` render their tip as a child of their own element, and the pair
+ * is wired by id in both directions: `interestfor` on the control naming the tip, which is what
+ * shows it with nothing bound on an engine that has interest invokers (Chrome 152 — and NOT the
+ * desktop app's Chromium 147, which is on the fallback path until the CEF bump reaches it); `for`
+ * on the tip naming the control, which is what {@link onTooltipReady} resolves by id rather than by
+ * an attribute scan of the document; and `aria-describedby` on the control naming the tip again,
+ * which is what makes the hint a DESCRIPTION beside the name rather than the name itself. So a
+ * consumer writes none of the three, and two hinted buttons in one toolbar cannot collide. A
+ * document cannot mint the stem: the closed operator set has no counter and no identity, which is
+ * the sidecar case specs/ui.md §3.2 sanctions. The stem carries the host's own tag, so an id read
+ * off the inspector says what it belongs to.
+ *
+ * The write lands after the first render, because `onMount` runs a microtask after it — so the tip
+ * and the three attributes appear on the second pass, and every binding that reads the stem guards
+ * on it being there. A control disabled at mount never gets a tip at all; its `hint` is the native
+ * `title` until it is enabled.
+ *
+ * @param state The control's reactive scope, whose `uid` this writes.
+ * @param host The `jx-action-button` or `jx-button` element.
+ */
+export function mintHintId(state: Record<string, unknown>, host: HTMLElement): void {
+  mintedHints += 1;
+  state["uid"] = `${host.localName}-${mintedHints}`;
 }
