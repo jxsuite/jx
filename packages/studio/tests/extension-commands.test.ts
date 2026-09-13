@@ -5,13 +5,18 @@
  * ONE availability rule — asserted over a context matrix rather than by reading three records and
  * hoping. Second, that every argument-dependent refusal NAMES the value and says what to do, which
  * is what makes the same refusal readable to a person in the palette and to the agent in a tool
- * result.
+ * result. Since `registry.run` coerces `package` against each record's derived enum, the first
+ * refusal a caller meets is the schema's own, and these tests assert that sentence.
  */
 import { installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
-import { extensionCommands, extensionOpInFlight } from "../src/settings/extension-commands";
+import {
+  enableExtension,
+  extensionCommands,
+  extensionOpInFlight,
+} from "../src/settings/extension-commands";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import type { CommandContext } from "../src/commands/context";
 import type { ExtensionCatalogEntry } from "../src/types";
@@ -101,27 +106,46 @@ describe("one availability rule across the family (§12.4)", () => {
 });
 
 describe("argument refusals name the value (§12.4)", () => {
-  test("an unknown package is refused, and the message lists what is offered", async () => {
+  /*
+   * The two refusals below are the SCHEMA's, not `enableExtension`'s. `registry.run` coerces
+   * `package` against the derived enum before `run` is entered, so a value the choice list would
+   * never have offered — an unknown package, one this backend cannot run — reads the same sentence
+   * every other enum argument does, synchronously, and the model and `__jxAutomation` read exactly
+   * what the palette's choice list implied. `enableExtension`'s richer sentences remain for the
+   * Extensions section's direct call and for a row that changed between rounds.
+   */
+  test("an unknown package is refused, and the message lists what is offered", () => {
     resetStudioState({ projectConfig: { extensions: [] } });
     const registry = registryWith(true);
-    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(
-      registry.run("project.enableExtension", { package: "@acme/nope" }),
-    ).rejects.toThrow(/"@acme\/nope" is not an extension this backend offers/);
-    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(
-      registry.run("project.enableExtension", { package: "@acme/nope" }),
-    ).rejects.toThrow(/offered: @jxsuite\/parser/);
+    expect(() => registry.run("project.enableExtension", { package: "@acme/nope" })).toThrow(
+      'command "project.enableExtension" argument "package": "@acme/nope" is not declared — ' +
+        "declared: @jxsuite/parser",
+    );
   });
 
-  test("an extension this backend cannot run is refused with the backend's own sentence", async () => {
+  test("an extension this backend cannot run is outside the enum, so it is refused as undeclared", () => {
     resetStudioState({ projectConfig: { extensions: [] } });
     setExtensionCatalog([{ ...PARSER, problem: "this Worker bundles no parser" }]);
     const registry = registryWith(true);
+    expect(() => registry.run("project.enableExtension", { package: "@jxsuite/parser" })).toThrow(
+      'command "project.enableExtension" argument "package": "@jxsuite/parser" is not declared — ' +
+        "declared: none",
+    );
+  });
+
+  test("the backend's own sentence still reaches a caller that bypasses the schema", async () => {
+    // The Extensions section calls `enableExtension` directly, and a row can become unavailable
+    // Between the schema being read and the verb running; both read the richer sentence.
+    resetStudioState({ projectConfig: { extensions: [] } });
+    setExtensionCatalog([{ ...PARSER, problem: "this Worker bundles no parser" }]);
     // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(
-      registry.run("project.enableExtension", { package: "@jxsuite/parser" }),
-    ).rejects.toThrow(/this Worker bundles no parser/);
+    await expect(enableExtension("@jxsuite/parser")).rejects.toThrow(
+      /this Worker bundles no parser/,
+    );
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
+    await expect(enableExtension("@acme/nope")).rejects.toThrow(
+      /"@acme\/nope" is not an extension this backend offers/,
+    );
   });
 
   test("removing a package that is still enabled is refused, and says to disable it first", async () => {
@@ -134,8 +158,10 @@ describe("argument refusals name the value (§12.4)", () => {
   });
 });
 
-describe("the verbs are idempotent", () => {
+describe("enable is idempotent; disable refuses what is not on", () => {
   test("enabling an already-enabled extension writes nothing", async () => {
+    // The enable enum names every row this backend offers, enabled or not, so an enabled package
+    // Is a declared value and `enableExtension`'s own early return keeps the verb idempotent.
     resetStudioState({ projectConfig: { extensions: ["@jxsuite/parser"] } });
     const { state } = installMockPlatform();
     const registry = registryWith(true);
@@ -144,11 +170,26 @@ describe("the verbs are idempotent", () => {
     expect(state.calls.some(([name]) => name === "writeFile")).toBe(false);
   });
 
-  test("disabling an extension the project does not have writes nothing", async () => {
-    resetStudioState({ projectConfig: { extensions: [] } });
+  test("the enable enum lists what is already on, which is what keeps that true", () => {
+    resetStudioState({ projectConfig: { extensions: ["@jxsuite/parser"] } });
+    const registry = registryWith(true);
+    const schema = registry.get("project.enableExtension")?.args as {
+      properties: { package: { enum: string[] } };
+    };
+    expect(schema.properties.package.enum).toEqual(["@jxsuite/parser"]);
+  });
+
+  test("disabling an extension the project does not have is refused as undeclared", () => {
+    /* It used to be a silent no-op. The disable enum is `enabledSpecifiers()` — the palette only
+       ever offered what was on — and `registry.run` now coerces against it, so the sentence the
+       palette implied by omission is the one every caller reads. Nothing is written. */
+    resetStudioState({ projectConfig: { extensions: ["@acme/on"] } });
     const { state } = installMockPlatform();
     const registry = registryWith(true);
-    await registry.run("project.disableExtension", { package: "@jxsuite/parser" });
+    expect(() => registry.run("project.disableExtension", { package: "@jxsuite/parser" })).toThrow(
+      'command "project.disableExtension" argument "package": "@jxsuite/parser" is not declared — ' +
+        "declared: @acme/on",
+    );
     expect(state.calls.some(([name]) => name === "writeFile")).toBe(false);
   });
 });
@@ -237,7 +278,9 @@ describe("one operation at a time", () => {
   });
 
   test("a second operation is refused while the first is in flight", async () => {
-    resetStudioState({ projectConfig: { extensions: [] } });
+    // `@acme/on` is enabled so that disabling it is a DECLARED value: the schema is coerced before
+    // The latch is consulted, and a package the project does not have would be refused there.
+    resetStudioState({ projectConfig: { extensions: ["@acme/on"] } });
     let release: (() => void) | undefined;
     installMockPlatform({
       addPackage: () =>
@@ -251,9 +294,9 @@ describe("one operation at a time", () => {
     // Repaint every other switch as disabled.
     expect(extensionOpInFlight()).toBe("@jxsuite/parser");
     // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(
-      registry.run("project.disableExtension", { package: "@jxsuite/parser" }),
-    ).rejects.toThrow(/Another extension operation is running \(@jxsuite\/parser\)/);
+    await expect(registry.run("project.disableExtension", { package: "@acme/on" })).rejects.toThrow(
+      /Another extension operation is running \(@jxsuite\/parser\)/,
+    );
     release?.();
     await first;
     expect(extensionOpInFlight()).toBeNull();

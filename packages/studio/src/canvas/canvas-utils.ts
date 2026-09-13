@@ -509,11 +509,18 @@ export const DEFAULT_FIT: FitMode = "page";
 export const FIT_WORDS: readonly string[] = ["width", "page", "none"];
 
 /**
- * Coerce a `canvas.setFit` argument, refusing anything that is neither a named fit nor a scale.
+ * Read a `canvas.setFit` argument as a {@link FitMode}, refusing anything that is neither a named
+ * fit nor a scale.
  *
  * Written here rather than in `commands/command-args.ts` because the value space is this module's:
  * {@link FitMode} is declared three lines up, and a second copy of "which words are fits" in the
  * shared helpers is exactly the drift the registry projection exists to prevent.
+ *
+ * Through `registry.run` the record's `oneOf` schema is the validator, and it refuses FIRST: a
+ * number out of range reads `boundedNumberArg`'s range sentence and a string that is not a fit word
+ * reads `enumArg`'s `declared:` list, so the sentence below is never what a palette, a shot or the
+ * assistant sees. It stays as the typed read the body needs (`args.fit` is `unknown`) and as the
+ * refusal for a caller that reaches the body directly.
  */
 function fitArg(commandId: string, args: Record<string, unknown>, key: string): FitMode {
   const value = args[key];
@@ -1242,10 +1249,13 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Breakpoint",
     },
     {
-      args: argsSchema({
-        ...paneArg,
-        scheme: enumProperty(COLOR_SCHEMES, "Which color scheme the canvas renders in."),
-      }),
+      args: argsSchema(
+        {
+          ...paneArg,
+          scheme: enumProperty(COLOR_SCHEMES, "Which color scheme the canvas renders in."),
+        },
+        ["scheme"],
+      ),
       category: "View",
       id: "canvas.setColorScheme",
       level: "document",
@@ -1318,10 +1328,13 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Rendering Language",
     },
     {
-      args: argsSchema({
-        ...paneArg,
-        visible: booleanProperty("True to draw the page's layout elements, false to hide them."),
-      }),
+      args: argsSchema(
+        {
+          ...paneArg,
+          visible: booleanProperty("True to draw the page's layout elements, false to hide them."),
+        },
+        ["visible"],
+      ),
       category: "View",
       id: "canvas.setLayoutVisible",
       level: "document",
@@ -1348,16 +1361,23 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
        *
        * A VIEW state: `undo: "none"`, because it writes `session.ui` and never the document.
        */
-      args: argsSchema({
-        ...paneArg,
-        open: booleanProperty("True to draw the popover open, false to close it."),
-        path: {
-          description:
-            "Document path of the popover. Defaults to the popover the selection is in or at.",
-          items: { type: ["string", "number"] },
-          type: "array",
+      args: argsSchema(
+        {
+          ...paneArg,
+          open: booleanProperty("True to draw the popover open, false to close it."),
+          path: {
+            description:
+              "Document path of the popover. Defaults to the popover the selection is in or at.",
+            items: { type: ["string", "number"] },
+            type: "array",
+          },
         },
-      }),
+        /* Nothing is required. `argsSchema`'s default requires EVERY key, and this record used to
+           take it: `pane`, `open` and `path` all read as required while `run` defaults each — the
+           focused pane, `true`, the popover at the selection. `registry.run` now coerces against
+           the schema before `run`, so the declaration has to say what the implementation does. */
+        [],
+      ),
       category: "View",
       enablement: () => activeDocumentHasPopover(),
       group: "3_canvas",
@@ -1404,16 +1424,20 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
        *
        * A VIEW state: `undo: "none"`, because it writes `session.ui` and never the document.
        */
-      args: argsSchema({
-        ...paneArg,
-        open: booleanProperty("True to draw the dialog open, false to close it."),
-        path: {
-          description:
-            "Document path of the dialog. Defaults to the dialog the selection is in or at.",
-          items: { type: ["string", "number"] },
-          type: "array",
+      args: argsSchema(
+        {
+          ...paneArg,
+          open: booleanProperty("True to draw the dialog open, false to close it."),
+          path: {
+            description:
+              "Document path of the dialog. Defaults to the dialog the selection is in or at.",
+            items: { type: ["string", "number"] },
+            type: "array",
+          },
         },
-      }),
+        // Nothing is required, for the reason its popover twin gives.
+        [],
+      ),
       category: "View",
       enablement: () => activeDocumentHasDialog(),
       group: "3_canvas",

@@ -10,6 +10,7 @@ import type { AnyCommand, Command, CommandRegistry } from "../src/commands/regis
 import { emptyContext, makeContext } from "../src/commands/context";
 import type { CommandContext } from "../src/commands/context";
 import { KeybindingConflictError } from "../src/commands/keymap";
+import { argsSchema, enumProperty, stringProperty } from "../src/commands/command-args";
 
 /** A registry over a mutable context the test can move underneath it. */
 function harness(initial: CommandContext = emptyContext()) {
@@ -287,6 +288,111 @@ describe("run", () => {
     );
     await registry.run("a.one");
     expect(done).toBe(true);
+  });
+});
+
+describe("run coerces the args against the record's schema", () => {
+  /** `view.setActivity` in miniature: one enum argument, and a `run` that records what it got. */
+  function build() {
+    const h = harness(makeContext({ document: { open: true } }));
+    const received: unknown[] = [];
+    h.registry.register({
+      id: "view.setActivity",
+      title: "Show Panel",
+      category: "View",
+      level: "document",
+      args: argsSchema({ tab: enumProperty(["files", "layers", "page"], "Which panel.") }),
+      when: (ctx) => ctx.document.open,
+      requires: "an open document",
+      run: (_ctx, args: { tab: string }) => {
+        received.push(args);
+      },
+    });
+    return { ...h, received };
+  }
+
+  test("a bad argument is refused BEFORE run, with the sentence a palette shows", () => {
+    // Synchronously, whatever surface the call came from: the palette, `__jxAutomation`, the
+    // Assistant's tool and a chord all reach `run` through here, so this is the one validator.
+    const { registry, received } = build();
+    expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(
+      'command "view.setActivity" argument "tab": "head" is not declared — declared: ' +
+        "files, layers, page",
+    );
+    expect(() => registry.run("view.setActivity", { tab: "files", panel: "head" })).toThrow(
+      'command "view.setActivity" argument "panel": not declared — declared: tab',
+    );
+    expect(() => registry.run("view.setActivity")).toThrow(
+      'command "view.setActivity" argument "tab": missing is not declared',
+    );
+    expect(received).toEqual([]);
+  });
+
+  test("the refusal is a RangeError, the shape every argument gate already throws", () => {
+    const { registry } = build();
+    expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(RangeError);
+  });
+
+  test("availability is checked first — an unavailable command refuses on availability", () => {
+    // §12.4's order: "not available" before "bad argument", because the second refusal only
+    // Matters to a caller who could run the command at all.
+    const { registry, setContext, received } = build();
+    setContext(emptyContext());
+    expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(
+      CommandUnavailableError,
+    );
+    expect(received).toEqual([]);
+  });
+
+  test("run receives the coerced record, with an explicit undefined dropped", () => {
+    // `{ pane: undefined }` is what a conditional spread leaves behind; JSON cannot carry one and
+    // Every reader already treats it as absent, so it is neither refused nor passed on.
+    const { registry, received } = build();
+    void registry.run("view.setActivity", { pane: undefined, tab: "layers" });
+    expect(received).toEqual([{ tab: "layers" }]);
+    expect(Object.keys(received[0] as object)).toEqual(["tab"]);
+  });
+
+  test("a record with no schema takes whatever it was handed, as it always has", () => {
+    let seen: unknown;
+    const { registry } = harness();
+    registry.register(
+      command({
+        id: "a.one",
+        run: (_ctx, args) => {
+          seen = args;
+        },
+      }),
+    );
+    void registry.run("a.one", { anything: 1 });
+    expect(seen).toEqual({ anything: 1 });
+  });
+
+  test("a keybound record whose argument is optional runs from a chord with {}", () => {
+    // `handleKeyEvent` runs the hit with no args. The two `diff.*` steppers declared `pane`
+    // Required while falling back to the focused pane; the sweep in command-args.test.ts now
+    // Holds every keybound schema to an empty `required`, and this is the registry's half.
+    const ran: unknown[] = [];
+    const { registry, setContext } = harness();
+    registry.register({
+      id: "diff.nextChange",
+      title: "Next Change",
+      category: "View",
+      level: "document",
+      keybinding: "f7",
+      args: argsSchema({ pane: stringProperty("Which pane.") }, []),
+      run: (_ctx, args: { pane?: string }) => {
+        ran.push(args);
+      },
+    });
+    setContext(makeContext({ document: { open: true } }));
+    expect(
+      registry.handleKeyEvent(
+        { key: "F7", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false },
+        ["global"],
+      ),
+    ).toBe("diff.nextChange");
+    expect(ran).toEqual([{}]);
   });
 });
 

@@ -11,8 +11,12 @@
  *
  * **`enablement` is `ctx.project.open` and nothing else, on all three.** A precondition that
  * depends on an ARGUMENT cannot live there — `enablement` cannot see one — so "is this a real
- * extension?", "can this backend run it?" and "is it still enabled?" are refused inside `run` with
- * a `RangeError` naming the value, the shape §12.4 prescribes and `pane.derive` already uses.
+ * extension?", "can this backend run it?" and "is it still enabled?" are refused with a
+ * `RangeError` naming the value, the shape §12.4 prescribes and `pane.derive` already uses. The
+ * first two are answered by the derived enum that `registry.run` coerces `package` against — a
+ * value outside it reads `is not declared — declared: …` — and the sentences inside `run` remain
+ * for the callers that reach it directly (the Extensions section's switch) and for a row that
+ * changed between the schema being read and the verb running.
  *
  * **The in-flight latch lives here, not in the section**, because the assistant can run these too:
  * a latch the renderer owned would let a tool call and a click install concurrently.
@@ -47,10 +51,18 @@ export function extensionOpInFlight(): string | null {
   return _inFlight;
 }
 
-/** Names that could be turned on right now — the palette's and the agent's choice list. */
+/**
+ * Names this backend offers — the palette's and the agent's choice list, ENABLED rows included.
+ *
+ * The enum is what `registry.run` coerces `package` against before `run`, so it has to name the
+ * STATES the verb accepts rather than the changes it would make: a list that excluded enabled rows
+ * would refuse "enable what is already on" as an undeclared value, where {@link enableExtension}'s
+ * own early return keeps the verb idempotent. A row this backend cannot run stays out — a choice
+ * list that offered it would be offering a refusal.
+ */
 function enableable(): string[] {
   return buildRows()
-    .filter((row) => !row.enabled && row.unavailable === undefined)
+    .filter((row) => row.unavailable === undefined)
     .map((row) => row.name);
 }
 
@@ -139,7 +151,9 @@ export async function enableExtension(specifier: string): Promise<void> {
  *
  * Turning something off is always safe, so this refuses nothing but a no-op — including on a
  * backend that reports the extension as unrunnable, which is the case where being able to remove it
- * matters most.
+ * matters most. Through `registry.run` the no-op IS a refusal: `package` is coerced against
+ * `enabledSpecifiers()` before this is entered, so a name `project.json` does not hold reads `is
+ * not declared — declared: …`, which is what the palette already said by never offering it.
  *
  * @param {string} specifier
  * @returns {Promise<void>}

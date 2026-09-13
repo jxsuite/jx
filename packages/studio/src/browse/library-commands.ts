@@ -15,6 +15,7 @@
 
 import {
   argsSchema,
+  derivedEnumProperty,
   enumArg,
   enumProperty,
   optionalStringArg,
@@ -145,21 +146,16 @@ export function libraryCommands(): AnyCommand[] {
     },
     {
       args: argsSchema({
-        locale: {
-          /*
-           * A getter, for the reason `content/entry-commands.ts` gives at length: this record is
-           * built at module scope, before any project is open, so `enum: localeChoices()` would
-           * freeze at `["all"]` and the palette would offer that forever. The getter is read when
-           * the prompt opens and when the AI tool list is serialised.
-           */
-          get enum() {
-            return localeChoices();
-          },
-          description:
-            'Which language the Library lists, as a BCP 47 tag the project declares. "all" ' +
+        /* Derived, for the reason `content/entry-commands.ts` gives at length: this record is
+           built at module scope, before any project is open, so `enumProperty(localeChoices(), …)`
+           would freeze at `["all"]` and the palette would offer that forever. The getter is read
+           when the prompt opens, when the AI tool list is serialised, and when `registry.run`
+           coerces the value. */
+        locale: derivedEnumProperty(
+          localeChoices,
+          'Which language the Library lists, as a BCP 47 tag the project declares. "all" ' +
             "clears the language filter.",
-          type: "string",
-        },
+        ),
       }),
       category: "Project",
       id: "library.setLocale",

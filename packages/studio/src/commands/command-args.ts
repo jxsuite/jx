@@ -4,8 +4,12 @@
  * Every scriptable command carries an `args` JSON Schema (spec §13.1, plan §13.3): the palette
  * prompts from it, the AI tool's parameters are it, and `scripts/check-shot-contract.ts` validates
  * every manifest step against it in the `checks` job. This module is the RUNTIME half of that same
- * declaration — the four lines inside `run` that turn `Record<string, unknown>` into the typed
- * value the implementation wants.
+ * declaration, twice over: the typed readers a `run` body calls (`stringArg(...)` and its family),
+ * and {@link coerceArgs}, which `registry.run` applies to the received record BEFORE `run` for
+ * every caller — the palette, `__jxAutomation`, the assistant and a chord alike. The coercion
+ * dispatches each declared property to the reader its shape names, so a caller reads the same
+ * refusal sentence whether the schema or the `run` body caught it: they are the same functions
+ * reading the same values, and cannot disagree.
  *
  * Two rules, and they are the reason this is a module rather than twelve copies of `String(x)`:
  *
@@ -115,10 +119,12 @@ export function enumArg<T extends string>(
 ): T {
   const value = args[key];
   if (typeof value !== "string" || !(declared as readonly string[]).includes(value)) {
+    // `none` for an empty set: a derived enum (`derivedEnumProperty`) is honestly empty before the
+    // Project supplies its values, and "declared: " with nothing after it reads as a truncation.
     throw refuse(
       commandId,
       key,
-      `${describe(value)} is not declared — declared: ${declared.join(", ")}`,
+      `${describe(value)} is not declared — declared: ${declared.join(", ") || "none"}`,
     );
   }
   return value as T;
@@ -194,9 +200,11 @@ export function pathListArg(
 }
 
 // ─── Schema fragments ─────────────────────────────────────────────────────────
-// The declarations above are enforced at RUN time; these are the same facts in the form the palette
-// Prompt, the AI tool's parameter list and Lane 1's static check read. Keeping the pair adjacent is
-// Deliberate: a schema that disagrees with its coercion is the defect this module exists to prevent.
+// The readers above are what a `run` body calls; these are the same facts in the form the palette
+// Prompt, the AI tool's parameter list and Lane 1's static check read. The pair used to be kept
+// Adjacent so a reviewer could see that a schema agreed with its coercion; `coerceArgs` below made
+// Them ONE call site, so a schema that disagrees with its coercion is now a refusal rather than a
+// Defect a reviewer has to spot — which is what this module exists to prevent.
 
 /** `{ type: "object", properties, required, additionalProperties: false }` in one call. */
 export function argsSchema(
@@ -279,4 +287,352 @@ export function pathListProperty(description: string): object {
 /** A free-form string property. */
 export function stringProperty(description: string): object {
   return { description, type: "string" };
+}
+
+// ─── Schema-driven coercion ───────────────────────────────────────────────────
+// `registry.run` applies a record's `args` schema to the received values before `run`, for every
+// Caller. Each property is handed to the reader its SHAPE names, so the sentence a caller reads is
+// The one the `run` body would have produced — the readers are the same functions, not a second
+// Validator that agrees with them today. What the schema cannot say (a breakpoint the document
+// Defines, a path that addresses a node) stays in `run`; the schema owns the shape.
+
+/** The JSON Schema keywords a command property uses. Read loosely; unknown keywords are ignored. */
+interface PropertySchema {
+  type?: string | readonly string[];
+  enum?: readonly unknown[];
+  const?: unknown;
+  oneOf?: readonly PropertySchema[];
+  items?: PropertySchema;
+  minimum?: number;
+  maximum?: number;
+}
+
+/** The object schema `argsSchema` writes, as {@link coerceArgs} reads it. */
+interface ArgsSchemaShape {
+  properties?: Record<string, PropertySchema>;
+  required?: readonly string[];
+  additionalProperties?: boolean;
+}
+
+/**
+ * The rows of {@link coerceArgs}'s dispatch table, by name.
+ *
+ * Exported so a test can assert which row every shipped property lands in — `pass-through` is the
+ * row for a shape no reader exists for, and the sweep in `tests/command-args.test.ts` asserts no
+ * record in `appCommandSet()` reaches it. A property that would is a schema nothing coerces, which
+ * is the disagreement this section exists to close.
+ */
+export type CoercionRow =
+  | "enum"
+  | "const"
+  | "one-of"
+  | "typed"
+  | "boolean"
+  | "bounded-number"
+  | "number"
+  | "string"
+  | "path"
+  | "path-list"
+  | "pass-through";
+
+/** Whether an `items.type` list is `JxPath`'s `["string", "number"]`, in either order. */
+function isPathSegmentTypes(types: readonly string[]): boolean {
+  return types.length === 2 && types.includes("string") && types.includes("number");
+}
+
+/** A single JSON type name, or the list form `["number", "null"]`, as a list. */
+function typesOf(type: string | readonly string[]): readonly string[] {
+  return Array.isArray(type) ? type : [type as string];
+}
+
+/**
+ * Which reader a property's shape names.
+ *
+ * `"enum" in property`, not `property.enum`: a `derivedEnumProperty` carries its values behind a
+ * getter, and this function only classifies. The getter is read by the `enum` row when the value is
+ * coerced, which is what makes the list live at that moment rather than at classification.
+ */
+export function describeShape(property: object): CoercionRow {
+  const p = property as PropertySchema;
+  if ("enum" in p) {
+    return "enum";
+  }
+  if ("const" in p) {
+    return "const";
+  }
+  if (Array.isArray(p.oneOf)) {
+    return "one-of";
+  }
+  if (Array.isArray(p.type)) {
+    return "typed";
+  }
+  switch (p.type) {
+    case "boolean": {
+      return "boolean";
+    }
+    case "number":
+    case "integer": {
+      // Both bounds, as `numberProperty` writes them. A half-open interval is not a shape any
+      // Record declares, so it reads as a plain number and `run` owns the bound.
+      return p.minimum !== undefined && p.maximum !== undefined ? "bounded-number" : "number";
+    }
+    case "string": {
+      return "string";
+    }
+    case "array": {
+      const items = p.items?.type;
+      // The `path` row is the `JxPath` shape `pathProperty` writes — segments that are strings or
+      // Numbers, exactly — not any array whose items carry a type list. `pathArg` refuses a null
+      // Segment, so `items: { type: ["string", "null"] }` would be read by the wrong reader; it
+      // Lands in `pass-through` instead, where the sweep names it.
+      if (Array.isArray(items)) {
+        return isPathSegmentTypes(items) ? "path" : "pass-through";
+      }
+      return items === "array" ? "path-list" : "pass-through";
+    }
+    case "null":
+    case "object": {
+      return "typed";
+    }
+    default: {
+      return "pass-through";
+    }
+  }
+}
+
+/** Whether a value is of one JSON type. `number` means FINITE, as {@link numberArg} already insists. */
+function isJsonType(type: string, value: unknown): boolean {
+  switch (type) {
+    case "null": {
+      return value === null;
+    }
+    case "boolean": {
+      return typeof value === "boolean";
+    }
+    case "string": {
+      return typeof value === "string";
+    }
+    case "number": {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+    case "integer": {
+      return typeof value === "number" && Number.isInteger(value);
+    }
+    case "array": {
+      return Array.isArray(value);
+    }
+    case "object": {
+      return typeof value === "object" && value !== null && !Array.isArray(value);
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+/** `number or null`, `string, number, boolean, array, object or null` — a type list as prose. */
+function listTypes(types: readonly string[]): string {
+  if (types.length <= 1) {
+    return types.join("");
+  }
+  return `${types.slice(0, -1).join(", ")} or ${types.at(-1)}`;
+}
+
+/**
+ * A required argument admitted by JSON-type membership — the `type: ["number", "null"]` shape.
+ *
+ * `null` is admitted only when listed, which is the whole difference from a reader that treats it
+ * as "absent": `canvas.setEditWidth { width: null }` MEANS "back to the breakpoint's width", and
+ * `canvas.setTestProp { value: null }` means "clear it". Nothing is coerced between types.
+ */
+export function typedArg(
+  commandId: string,
+  args: CommandArgValues,
+  key: string,
+  types: readonly string[],
+): unknown {
+  const value = args[key];
+  if (!types.some((type) => isJsonType(type, value))) {
+    throw refuse(commandId, key, `expected ${listTypes(types)}, got ${describe(value)}`);
+  }
+  return value;
+}
+
+/** One line per row, for the sentence a `oneOf` refusal prints when no branch admits the value. */
+function shapeOf(property: PropertySchema): string {
+  switch (describeShape(property)) {
+    case "enum": {
+      return `one of ${(property.enum ?? []).map((v) => describe(v)).join(" | ")}`;
+    }
+    case "const": {
+      return `the constant ${describe(property.const)}`;
+    }
+    case "one-of": {
+      return (property.oneOf ?? []).map((branch) => shapeOf(branch)).join(" or ");
+    }
+    case "typed": {
+      return listTypes(typesOf(property.type ?? []));
+    }
+    case "boolean": {
+      return "a boolean";
+    }
+    case "bounded-number": {
+      return `a number from ${property.minimum} to ${property.maximum}`;
+    }
+    case "number": {
+      return "a finite number";
+    }
+    case "string": {
+      return "a non-empty string";
+    }
+    case "path": {
+      return "a document path";
+    }
+    case "path-list": {
+      return "a list of document paths";
+    }
+    default: {
+      return "anything";
+    }
+  }
+}
+
+/**
+ * A required argument matching one of several shapes — `canvas.setFit`'s word-or-number,
+ * `selection.set`'s path-or-null.
+ *
+ * A branch is TRIED only when it admits the value's JSON type, so the refusal a caller reads is
+ * that branch's own: `canvas.setFit { fit: 10 }` reads {@link boundedNumberArg}'s range sentence,
+ * `style.setSelector { selector: "" }` reads {@link stringArg}'s, exactly as the `run` bodies
+ * printed them. Only a value no branch could take is answered with the list of shapes.
+ */
+function oneOfArg(
+  commandId: string,
+  args: CommandArgValues,
+  key: string,
+  branches: readonly PropertySchema[],
+): unknown {
+  const value = args[key];
+  const refusals: unknown[] = [];
+  for (const branch of branches) {
+    if (
+      branch.type !== undefined &&
+      !typesOf(branch.type).some((type) => isJsonType(type, value))
+    ) {
+      continue;
+    }
+    try {
+      return coerceProperty(commandId, args, key, branch);
+    } catch (error) {
+      refusals.push(error);
+    }
+  }
+  if (refusals.length === 1) {
+    throw refusals[0];
+  }
+  throw refuse(
+    commandId,
+    key,
+    `expected ${branches.map((branch) => shapeOf(branch)).join(" or ")}, got ${describe(value)}`,
+  );
+}
+
+/** One property through the reader its row names. The value comes back as the reader returns it. */
+function coerceProperty(
+  commandId: string,
+  args: CommandArgValues,
+  key: string,
+  property: PropertySchema,
+): unknown {
+  switch (describeShape(property)) {
+    case "enum": {
+      // The read of `property.enum` is HERE — a derived list is resolved at coercion time.
+      return enumArg(commandId, args, key, (property.enum ?? []) as readonly string[]);
+    }
+    case "const": {
+      const value = args[key];
+      if (value !== property.const) {
+        throw refuse(
+          commandId,
+          key,
+          `expected the constant ${describe(property.const)}, got ${describe(value)}`,
+        );
+      }
+      return value;
+    }
+    case "one-of": {
+      return oneOfArg(commandId, args, key, property.oneOf ?? []);
+    }
+    case "typed": {
+      return typedArg(commandId, args, key, typesOf(property.type ?? []));
+    }
+    case "boolean": {
+      return booleanArg(commandId, args, key);
+    }
+    case "bounded-number": {
+      return boundedNumberArg(commandId, args, key, property.minimum!, property.maximum!);
+    }
+    case "number": {
+      return numberArg(commandId, args, key);
+    }
+    case "string": {
+      return stringArg(commandId, args, key);
+    }
+    case "path": {
+      return pathArg(commandId, args, key);
+    }
+    case "path-list": {
+      return pathListArg(commandId, args, key);
+    }
+    default: {
+      // `pass-through`: a shape no reader exists for. The sweep in `tests/command-args.test.ts`
+      // Asserts no shipped record reaches it, so this is a hand-built schema being handed on.
+      return args[key];
+    }
+  }
+}
+
+/**
+ * Apply a declared `args` schema to received values: every property to the reader its shape names.
+ *
+ * The rules, in the order they are applied:
+ *
+ * - A key the schema does not declare is refused when `additionalProperties` is `false` (every record
+ *   `argsSchema` writes), and the sentence lists what IS declared — the same family as
+ *   {@link enumArg}'s, because a misspelt key and a misspelt value are the same mistake.
+ * - A declared key that is absent is skipped when it is not `required`, and handed to its reader when
+ *   it is: the reader already says `missing`.
+ * - A present value goes through its row. An explicit `undefined` counts as absent — JSON cannot
+ *   carry one, and every reader above already treats it so.
+ *
+ * Returns a fresh record with the same present keys, each holding what its reader returned. The
+ * `run` body keeps its own `stringArg(...)` lines as typed readers and can never disagree with this
+ * pass, because they are the same functions reading the same values.
+ */
+export function coerceArgs(
+  commandId: string,
+  schema: object,
+  args: CommandArgValues,
+): CommandArgValues {
+  const spec = schema as ArgsSchemaShape;
+  const properties = spec.properties ?? {};
+  const declared = Object.keys(properties);
+  const required = spec.required ?? [];
+  const coerced: CommandArgValues = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (value === undefined || Object.hasOwn(properties, key)) {
+      continue;
+    }
+    if (spec.additionalProperties === false) {
+      throw refuse(commandId, key, `not declared — declared: ${declared.join(", ") || "none"}`);
+    }
+    coerced[key] = value;
+  }
+  for (const key of declared) {
+    if (args[key] === undefined && !required.includes(key)) {
+      continue;
+    }
+    coerced[key] = coerceProperty(commandId, args, key, properties[key]!);
+  }
+  return coerced;
 }

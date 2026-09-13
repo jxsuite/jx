@@ -695,10 +695,12 @@ describe("the app.preferences record", () => {
   });
 
   test("refuses a section it does not declare, naming the ones it does", () => {
+    // The schema's sentence: `section` is an enum, and `registry.run` coerces against it before
+    // `run` is entered, so every caller reads enumArg's refusal with the declared set in full.
     const registry = createCommandRegistry({ getContext: emptyContext });
     registerPreferencesCommands(registry);
     expect(() => registry.run("app.preferences", { section: "updates" })).toThrow(
-      'command "app.preferences" argument "section": "updates" is not a Preferences section — ' +
+      'command "app.preferences" argument "section": "updates" is not declared — ' +
         "declared: appearance, assistant, accounts, keyboard",
     );
   });
