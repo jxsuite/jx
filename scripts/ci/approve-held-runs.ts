@@ -29,6 +29,9 @@
  * - `schemas.yml` has NO actor refusal, on purpose (its header, item 3): it terminates on a FIXED
  *   POINT. The generators are deterministic, so the approved run regenerates the same bytes from
  *   the same tree and pushes nothing.
+ * - `release-specs.yml` is the same shape as `schemas.yml`: it mints the spec release fragments under
+ *   `specs/changes/` and pushes only when there was one; the run its own push triggers finds the
+ *   directory empty and pushes nothing.
  *
  * Approving one run by name and leaving the rest would also be the wrong shape: `ci` is an
  * aggregate, and a held run that never reports is what leaves a PR BLOCKED.
@@ -268,7 +271,7 @@ export function renderNote(outcome: Outcome, repo: string, sha: string): string 
         `${status > 0 ? ` (HTTP ${status}${message ? `: ${message}` : ""})` : ` (${message})`}`,
     ),
     ">",
-    "> Approving every held run is safe, by two different mechanisms: `screenshots.yml` declines its own head on `github.actor` (an approval leaves it alone), and `schemas.yml` regenerates deterministically, so on its own head it pushes nothing.",
+    "> Approving every held run is safe, by two different mechanisms: `screenshots.yml` declines its own head on `github.actor` (an approval leaves it alone), and `schemas.yml` and `release-specs.yml` regenerate deterministically, so on their own head they push nothing.",
     "",
   ];
   return lines.join("\n");
