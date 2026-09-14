@@ -318,7 +318,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41 # main @ 2026-08-21
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # main @ 2026-08-21
         with:
           extra-conf: |
             accept-flake-config = true
