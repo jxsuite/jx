@@ -11,6 +11,7 @@
     "type",
     "autofocus",
     "label",
+    "hint",
     "labelledby",
     "describedby",
     "popovertarget",
@@ -24,6 +25,9 @@
     },
     {
       "$ref": "./jx-spinner.json"
+    },
+    {
+      "$ref": "./jx-tooltip.json"
     }
   ],
   "state": {
@@ -54,7 +58,7 @@
       "type": "boolean",
       "default": false,
       "attribute": "disabled",
-      "description": "Cannot act. Disabled, never absent; a reason belongs in the surrounding text."
+      "description": "Cannot act. Disabled, never absent; a reason belongs in the surrounding text or in hint, which a disabled button draws as the control's native title because a disabled control can open no tip."
     },
     "loading": {
       "type": "boolean",
@@ -80,6 +84,12 @@
       "attribute": "label",
       "description": "The accessible name when the visible text is not it, or there is none. Forwarded to the inner control as aria-label."
     },
+    "hint": {
+      "type": "string",
+      "default": "",
+      "attribute": "hint",
+      "description": "A tooltip beside the name, for a button whose visible text is cut short or whose disabled state needs a reason; empty, the usual case, draws nothing. The same shape as jx-action-button's: while the button is ENABLED it is a jx-tooltip child of this element — shown on keyboard focus at once and on hover after the tip's delay, hoverable and dismissible with Escape (SC 1.4.13) — named on the control in aria-describedby so it describes rather than names; while the button is DISABLED it is the control's native title instead, the one affordance a control that receives no focus and no pointer still has. Never both at once."
+    },
     "labelledby": {
       "type": "string",
       "default": "",
@@ -90,7 +100,48 @@
       "type": "string",
       "default": "",
       "attribute": "describedby",
-      "description": "Forwarded to the inner control as aria-describedby."
+      "description": "Forwarded to the inner control as aria-describedby, after the hint's own tip when there is one."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This button's own id stem, minted on mount by the tooltip sidecar. The control's id, the tip's id and the three attributes that wire one to the other are all built from it, so a consumer writes none of them. Empty until the mount microtask, which is why every binding that reads it guards on it."
+    },
+    "hasTip": {
+      "$expression": {
+        "operator": "&&",
+        "target": {
+          "operator": "!",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/hint"
+            }
+          }
+        },
+        "value": {
+          "operator": "&&",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "operator": "!==",
+            "target": {
+              "$ref": "#/state/uid"
+            },
+            "value": ""
+          }
+        }
+      }
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "mintHintId",
+      "description": "Mints the id stem the hint's tooltip is wired by. A document cannot: the closed operator set has no counter and no identity."
     },
     "popovertarget": {
       "type": "string",
@@ -264,6 +315,9 @@
     },
     "& [part=\"spinner\"][hidden]": {
       "display": "none"
+    },
+    "& > [part=\"tooltip\"]": {
+      "display": "contents"
     }
   },
   "children": [
@@ -274,6 +328,7 @@
       },
       "attributes": {
         "part": "control",
+        "id": "${state.uid || null}",
         "type": "${state.type}",
         "disabled": {
           "$ref": "#/state/disabled"
@@ -281,8 +336,10 @@
         "aria-disabled": "${state.loading ? 'true' : null}",
         "aria-busy": "${state.loading ? 'true' : null}",
         "aria-label": "${state.label || null}",
+        "title": "${state.disabled && state.hint ? state.hint : null}",
+        "interestfor": "${state.hasTip ? state.uid + '-tip' : null}",
         "aria-labelledby": "${state.labelledby || null}",
-        "aria-describedby": "${state.describedby || null}",
+        "aria-describedby": "${[state.hasTip ? state.uid + '-tip' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
         "tabindex": "${state.tabindex || null}",
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
@@ -328,6 +385,34 @@
           }
         }
       ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "tooltip"
+      },
+      "$switch": {
+        "$ref": "#/state/hasTip"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-tooltip",
+          "attributes": {
+            "part": "tip",
+            "id": "${state.uid}-tip",
+            "for": "${state.uid}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "tip-text"
+              },
+              "textContent": "${state.hint}"
+            }
+          ]
+        }
+      }
     }
   ]
 }

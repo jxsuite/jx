@@ -10,6 +10,7 @@ import {
   resetWorkspaceWithTab,
   standUpPaneGrid,
 } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mountCanvasStage } from "../src/surfaces/canvas-stage";
 import type { CanvasStageHandle, CanvasStageView } from "../src/surfaces/canvas-stage";
@@ -244,7 +245,8 @@ describe("renderStylebookMode", () => {
     const toggle = customizedControl();
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(toggle.getAttribute("aria-label")).toBe("Customized");
-    expect(toggle.getAttribute("title")).toBeTruthy();
+    // Its hint is the tip the enabled kit button renders, not a title (ui.md §5.1).
+    expect(hintOf(toggle)).toBeTruthy();
     toggle.click();
     await flush();
     await renderStylebookMode(stage, ctx);

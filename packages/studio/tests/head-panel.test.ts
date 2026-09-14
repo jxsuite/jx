@@ -452,7 +452,10 @@ describe("the door to Search appearance", () => {
       const button = section(drawn.host, "page")!.querySelector<HTMLElement>(
         '[part="seo-button"]',
       )!;
-      expect(button.textContent?.trim()).toBe("Search appearance…");
+      // The label part: the host's text now also carries the tip its hint renders (ui.md §5.1).
+      expect(button.querySelector('[part="label"]')?.textContent?.trim()).toBe(
+        "Search appearance…",
+      );
       pointer(button, "click");
       expect(ran).toEqual(["document.openSeo"]);
       // Ran THROUGH the registry, which is still the active one: the button opened nothing itself.

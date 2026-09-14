@@ -498,25 +498,29 @@ describe("a multilingual project", () => {
 
 describe("a density switch", () => {
   test("re-measures the spacers without a scroll, from the tree's own resize", async () => {
-    // The same drift the Outline had, through the same primitive: the rows shrink in place under
-    // `[data-density=compact]`, nothing scrolls, the Navigator's box is unchanged, and the spacers
-    // Stood at 24px a row. Happy-dom cannot shrink a row, so the drawn rows' measurement is
-    // Stubbed and the tree's resize is delivered by hand, to the element the watch observed.
+    // The same drift the Outline had, through the same primitive: the rows change height in place
+    // Under a density switch, nothing scrolls, the Navigator's box is unchanged, and the spacers
+    // Stood at 24px a row. The switch that still MOVES a row is comfortable, 28px: compact is 24px
+    // Now, the same as the default, because WCAG 2.2 SC 2.5.8 asks 24 CSS px of a target and the
+    // Kit holds every density to it (ui.md §4.3) — so a compact switch would leave the spacers
+    // Right by accident and prove nothing here. Happy-dom cannot resize a row, so the drawn rows'
+    // Measurement is stubbed and the tree's resize is delivered by hand, to the element the watch
+    // Observed.
     tearDown();
     const ro = installResizeObserver();
     try {
       await mountWindowed();
       const list = host.querySelector<HTMLElement>('[part="tree"]')!;
       expect(ro.observes(list)).toBe(true);
-      const COMPACT = 20;
+      const COMFORTABLE = 28;
       for (const el of rows()) {
-        Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMPACT });
+        Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMFORTABLE });
       }
       ro.resize(list);
       await flush(3);
       const [padTop, padBottom] = pads();
       expect(padTop).toBe(0);
-      expect(padTop! + rows().length * COMPACT + padBottom!).toBe(ROW_COUNT * COMPACT);
+      expect(padTop! + rows().length * COMFORTABLE + padBottom!).toBe(ROW_COUNT * COMFORTABLE);
     } finally {
       ro.restore();
     }

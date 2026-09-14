@@ -17,6 +17,7 @@
  * fact a lens owns), and must draw a derivation chip where an ordinary pane draws tab chips.
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { documents as kitDocuments } from "@jxsuite/ui/documents";
 import type { Tab } from "../src/tabs/tab";
@@ -157,7 +158,7 @@ function zoomLabelOf(host: HTMLElement): string | undefined {
 /** One of the pod's two write controls, addressed by the tooltip the author reads. */
 function zoomControl(host: HTMLElement, title: string): HTMLElement {
   const button = [...host.querySelectorAll('[part="pod"] jx-action-button')].find((el) =>
-    el.querySelector('[part="control"]')?.getAttribute("title")?.startsWith(title),
+    hintOf(el)?.startsWith(title),
   );
   expect(button).toBeDefined();
   return button as HTMLElement;
