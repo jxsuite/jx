@@ -677,8 +677,10 @@ describe("selection.set", () => {
   });
 
   test("refuses a path that is not an array", () => {
+    // `path` is `oneOf: [path, null]`, and `registry.run` coerces against it before `run`: a string
+    // Fits neither branch, so the refusal lists both shapes rather than pathArg's alone.
     expect(() => registry.run("selection.set", { path: "children/0" })).toThrow(
-      "expected an array of path segments",
+      'command "selection.set" argument "path": expected a document path or null, got "children/0"',
     );
   });
 

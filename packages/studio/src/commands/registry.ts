@@ -30,6 +30,7 @@ import { createKeymap } from "./keymap";
 import type { KeyChordEvent, Keymap, KeymapMatch } from "./keymap";
 import { checkRecordPlacements } from "./levels";
 import type { Category, KeyScope, Level, Placement } from "./levels";
+import { coerceArgs } from "./command-args";
 import type { CommandContext } from "./context";
 
 /** Arguments as they arrive from a palette prompt, an automation manifest step or an AI tool call. */
@@ -64,7 +65,11 @@ export interface Command<A = void> {
   requires?: string;
   /** Default chord(s), e.g. `"mod+shift+p"`. User overrides layer on top. */
   keybinding?: string | readonly string[];
-  /** JSON Schema for {@link Command.run}'s args — the palette's prompt AND the AI tool's params. */
+  /**
+   * JSON Schema for {@link Command.run}'s args — the palette's prompt, the AI tool's params, the
+   * shot check's contract AND what {@link CommandRegistry.run} coerces the received record against
+   * before `run` sees it (`command-args.ts`'s `coerceArgs`). One object, four readers.
+   */
   args?: object;
   /** Surfaces this command renders in. Defaults to `["palette"]`. */
   menus?: readonly Placement[];
@@ -128,7 +133,11 @@ export interface CommandRegistry {
   disabledReason: (id: string) => string | undefined;
   /** The full refusal sentence, for an agent or a tooltip. `undefined` when the command is usable. */
   refusalMessage: (id: string) => string | undefined;
-  /** Run a command. Throws on an unknown id, or {@link CommandUnavailableError} when refused. */
+  /**
+   * Run a command. Throws on an unknown id, {@link CommandUnavailableError} when refused, or a
+   * `RangeError` naming the argument when `args` does not fit the record's schema — synchronously,
+   * before `run` is entered, whichever surface the call came from.
+   */
   run: (id: string, args?: CommandArgs) => void | Promise<void>;
   /** The chord index, conflict-checked at registration. */
   keymap: Keymap;
@@ -250,7 +259,14 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
       if (!enabledWith(command, ctx)) {
         throw new CommandUnavailableError(id, command.requires ?? GENERIC_REQUIREMENT);
       }
-      return command.run(ctx, args as never);
+      /* Availability first, argument second. The schema is coerced HERE, once, for every caller —
+         the palette, `__jxAutomation`, the assistant's tool and a chord — rather than inside each
+         `run` body, so a caller that passes a value the record does not declare is refused with the
+         sentence the palette would show before the implementation is entered. The `run` bodies keep
+         their typed readers; `coerceArgs` dispatches to the same functions, so the two cannot
+         disagree. A record with no `args` takes whatever it was handed, as it always has. */
+      const coerced = command.args ? coerceArgs(id, command.args, args) : args;
+      return command.run(ctx, coerced as never);
     },
     keymap,
     handleKeyEvent(event, scopeStack) {
@@ -284,6 +300,12 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
       if (!registry.isEnabled(hit.commandId)) {
         return hit.commandId;
       }
+      /* An ARGUMENT refusal is the one throw that still leaves here, on purpose. A chord runs its
+         record with `{}`, and `run` coerces that against the schema first, so a record whose
+         schema requires a key cannot be a chord — every shipped keybinding is held to
+         `required: []` by the sweep in `tests/command-args.test.ts`, and a user's own keymap
+         override that binds one anyway hears about it as a RangeError naming the command and the
+         key, rather than as a chord that silently does nothing. */
       void registry.run(hit.commandId);
       return hit.commandId;
     },

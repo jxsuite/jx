@@ -206,8 +206,19 @@ describe("document.setPinned states the pinned state rather than flipping it", (
     expect(workspace.tabs.get("a")!.pinned).toBe(false);
     expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["a"]);
 
-    // And a call with no `pinned` at all is still just a no-op: the arguments are never read.
-    expect(() => registry.run("document.setPinned", {})).not.toThrow();
+    // And the BODY, reached with no `pinned` at all, is still just a no-op: it never reads the
+    // Arguments when there is nothing under the id.
+    const record = registry.get("document.setPinned")!;
+    expect(() => record.run(registry.context(), {} as never)).not.toThrow();
+    expect(workspace.tabs.get("a")!.pinned).toBe(false);
+
+    /* Through the registry the same call is refused whatever the id points at: `registry.run`
+       coerces `args` against the record's schema BEFORE `run`, for every caller, and `pinned` is
+       required. That is the one place the order above cannot be observed from — a malformed call
+       is refused as malformed first, and the body's guard is what a well-formed call meets. */
+    expect(() => registry.run("document.setPinned", {})).toThrow(
+      'command "document.setPinned" argument "pinned": expected a boolean, got missing',
+    );
     expect(workspace.tabs.get("a")!.pinned).toBe(false);
 
     // The control: put a real tab back under the id and the SAME call refuses by name.
