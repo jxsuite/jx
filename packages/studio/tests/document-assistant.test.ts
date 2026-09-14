@@ -728,6 +728,43 @@ describe("document-assistant — cross-file wiring", () => {
     });
   });
 
+  /*
+   * The record the settings commit lays the file out with is the record of the file as the
+   * assistant left it — not the one the chokepoint read before the write (issue 331). The file
+   * starts on disk with every object expanded, the assistant rewrites it with `style` on one line
+   * and a blank line after the name, and the settings edit that follows must change one line of
+   * THAT file rather than re-expanding it.
+   */
+  test("a settings edit after the assistant's project.json write keeps the layout the assistant wrote", async () => {
+    const before = { name: "Old Name", style: { "--a": "1" } };
+    const { state } = installMockPlatform({}, { "project.json": JSON.stringify(before, null, 2) });
+    setWorkspaceProject("/proj", before);
+    resetStudioState({ dirs: new Map(), projectConfig: structuredClone(before) });
+    // A no-op commit first, so the chokepoint has read the file — and its expanded record — BEFORE
+    // The assistant rewrites it. Without this the seed would read the assistant's bytes anyway.
+    const seeded = await commitProjectConfig();
+    expect(seeded.ok).toBe(true);
+    expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+
+    const written = '{\n  "name": "New Name",\n\n  "style": { "--a": "1", "--b": "2" }\n}\n';
+    nextRounds = [
+      toolCallRound("c1", "write_file", { content: written, path: "project.json" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+    const a = createDocumentAssistant();
+    await a.sendMessage("rename the project and add a variable");
+    expect(state.files.get("project.json")).toBe(written);
+
+    (store.projectState!.projectConfig as { description?: string }).description = "from Settings";
+    const result = await commitProjectConfig();
+
+    expect(result.ok).toBe(true);
+    // One added line on the assistant's file; the inline object and the blank line survive.
+    expect(state.files.get("project.json")).toBe(
+      written.replace('"2" }', '"2" },\n  "description": "from Settings"'),
+    );
+  });
+
   test("write_file over the open clean tab reloads the document from disk", async () => {
     setWorkspaceProject("/proj");
     installMockPlatform();
