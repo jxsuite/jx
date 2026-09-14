@@ -8,6 +8,7 @@ import type { JxStyle } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
+import { describeHint } from "./hint-contract.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -248,3 +249,5 @@ describe("jx-button", () => {
     expect(el.querySelector('[part="spinner"]')!.querySelector('[part="glyph"]')).not.toBeNull();
   });
 });
+
+describeHint("jx-button", (attrs) => button(attrs));

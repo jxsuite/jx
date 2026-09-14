@@ -6,6 +6,7 @@
  * `settings/menu` placement. The surface is reactive, so the cases write `shell` and read the DOM.
  */
 import { flush, mountOverlayLayers, resetWorkspaceWithTab } from "./harness";
+import { hintOf } from "./kit-readers";
 import { nothing } from "lit-html";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -222,8 +223,10 @@ describe("renderActivityBar", () => {
       "Settings",
     ]);
     expect(controlOf(railButton("git"))?.getAttribute("aria-label")).toBe("Source Control");
-    // The label ellipses at 56px, so the full string survives as a tooltip too.
-    expect(controlOf(railButton("git"))?.getAttribute("title")).toBe("Source Control");
+    // The label ellipses at 56px, so the full string survives as a tooltip too — the tip an
+    // Enabled kit button renders for its hint, never a title (ui.md §5.1).
+    expect(hintOf(railButton("git"))).toBe("Source Control");
+    expect(controlOf(railButton("git"))?.hasAttribute("title")).toBe(false);
   });
 
   test("marks the current left tab pressed when the dock is open", async () => {

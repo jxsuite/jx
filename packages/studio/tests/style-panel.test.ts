@@ -20,6 +20,7 @@ import {
   resetWorkspaceWithTab,
   topDialog,
 } from "./harness";
+import { printedOf } from "./kit-readers";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as storeActual from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
@@ -363,7 +364,8 @@ describe("the Value Source ladder", () => {
     tab.session.selection = [["children", 0]];
     const c = await renderPanel();
     const source = sourceChip(row(c, "display"))!;
-    expect(source.textContent!.trim()).toBe("Fixed value");
+    // What the chip PRINTS: its label part, since an enabled hint is a tip child of the host.
+    expect(printedOf(source)).toBe("Fixed value");
     expect(source.dataset.source).toBe("literal");
     const offered = await openList(source);
     expect(offered.map((el) => el.dataset.commandId)).toEqual(["literal", "template"]);
@@ -387,7 +389,7 @@ describe("the Value Source ladder", () => {
     setupTab({ display: "${state.mode}" });
     const c = await renderPanel();
     const r = row(c, "display")!;
-    expect(r.querySelector('[part="source"]')!.textContent!.trim()).toBe("Mixed text");
+    expect(printedOf(r.querySelector('[part="source"]'))).toBe("Mixed text");
     const field = input(r)!;
     expect(field.value).toBe("${state.mode}");
     // Typing alone must not write: a half-finished `${state.m` is not a binding.
@@ -893,7 +895,7 @@ describe("the number + unit control", () => {
     const c = await renderPanel();
     const r = row(c, "width")!;
     expect(input(r)!.value).toBe("500");
-    expect(r.querySelector('[part="group-open"]')!.textContent!.trim()).toBe("px");
+    expect(printedOf(r.querySelector('[part="group-open"]'))).toBe("px");
   });
 
   test("a value that only partially parses shows its leading number and is left alone", async () => {
@@ -909,7 +911,7 @@ describe("the number + unit control", () => {
     const c = await renderPanel();
     const r = row(c, "width")!;
     expect(input(r)!.value).toBe("auto");
-    expect(r.querySelector('[part="group-open"]')!.textContent!.trim()).toBe("px");
+    expect(printedOf(r.querySelector('[part="group-open"]'))).toBe("px");
   });
 
   test("an inherited length contributes its NUMBER as the placeholder, not its unit", async () => {

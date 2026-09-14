@@ -11,6 +11,7 @@
  * - **`openInBrowserTarget` is a pure function** and is tested as one, route by route.
  */
 import { flush, installMockPlatform, mountOverlayLayers, pointer } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { Tab } from "../src/tabs/tab";
@@ -482,7 +483,9 @@ describe("dock toggles", () => {
       glyph(btn("Toggle Bottom Dock")),
     ];
     expect(new Set(shapes).size).toBe(shapes.length);
-    expect(control(navigatorToggle).getAttribute("title")).toBe("Toggle Navigator Dock (⌘B)");
+    // The hint of an ENABLED kit button is the tip it renders, never a title (ui.md §5.1).
+    expect(hintOf(navigatorToggle)).toBe("Toggle Navigator Dock (⌘B)");
+    expect(control(navigatorToggle).hasAttribute("title")).toBe(false);
 
     click(control(navigatorToggle));
     await flush();
@@ -584,8 +587,9 @@ describe("presence", () => {
 // ─── Window controls ──────────────────────────────────────────────────────────
 
 describe("window controls", () => {
+  /** Each control's hint, which for an enabled kit button is the tip it renders. */
   const titles = (group: Element) =>
-    [...group.querySelectorAll("jx-action-button")].map((b) => control(b).getAttribute("title"));
+    [...group.querySelectorAll("jx-action-button")].map((b) => hintOf(b));
 
   test("non-mac order is minimize, maximize, close — and they sit at the end", async () => {
     const controls = { close: mock(() => {}), maximize: mock(() => {}), minimize: mock(() => {}) };

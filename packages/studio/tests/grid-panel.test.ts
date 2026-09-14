@@ -120,6 +120,14 @@ function text(root: ParentNode & { textContent: string | null }): string {
   return (root.textContent ?? "").replaceAll(/\s+/g, " ").trim();
 }
 
+/**
+ * What a kit button PRINTS, whitespace-collapsed: its label part, not the host's text, because an
+ * enabled hint is a `jx-tooltip` child of the host and its words are light DOM too (ui.md §5.1).
+ */
+function printedBy(button: Element): string {
+  return text(button.querySelector('[part="label"]')!);
+}
+
 /** Answer the topmost `jx-dialog`: the confirm/cancel events both flows dispatch. */
 async function answerDialog(answer: "confirm" | "cancel", value?: string): Promise<void> {
   const dialog = document.querySelector<HTMLElement>("#layer-dialog jx-dialog");
@@ -561,14 +569,14 @@ describe("saved views", () => {
 
   test("the button says View until a view is applied, then names it and flags drift", async () => {
     const { wrap } = await mountGrid(viewSource());
-    expect(text(part(wrap, "views")!)).toBe("View");
+    expect(printedBy(part(wrap, "views")!)).toBe("View");
 
     const panel = await openViews(wrap);
     press(panel, "save-view");
     await flush(3);
     await answerDialog("confirm", "Recent");
     expect(listSavedViews(VIEW_GRID).map((v) => v.name)).toEqual(["Recent"]);
-    expect(text(part(wrap, "views")!)).toBe("Recent");
+    expect(printedBy(part(wrap, "views")!)).toBe("Recent");
 
     /* The engine writes storage too — a column drag goes straight to `saveGridLayout` from
        `grid-view.ts` — and storage is not reactive, so the drift dot lands on the next bump.
@@ -580,7 +588,7 @@ describe("saved views", () => {
     expect(viewsPanel()).toBeNull();
     press(wrap, "views");
     await flush(3);
-    expect(text(part(wrap, "views")!)).toBe("Recent •");
+    expect(printedBy(part(wrap, "views")!)).toBe("Recent •");
   });
 
   test("the panel names the applied view for assistive technology too", async () => {
@@ -810,7 +818,7 @@ describe("saved-view commands", () => {
     await byId("grid.applyView").run({} as never, { name: "By command" } as never);
     await flush(3);
     expect(loadGridLayout(VIEW_GRID)?.hidden).toEqual(["body"]);
-    expect(text(part(wrap, "views")!)).toBe("By command");
+    expect(printedBy(part(wrap, "views")!)).toBe("By command");
 
     await byId("grid.resetView").run({} as never, undefined as never);
     expect(loadGridLayout(VIEW_GRID)).toEqual({});
@@ -819,7 +827,7 @@ describe("saved-view commands", () => {
     await byId("grid.deleteView").run({} as never, { name: "By command" } as never);
     await flush(2);
     expect(listSavedViews(VIEW_GRID)).toEqual([]);
-    expect(text(part(wrap, "views")!)).toBe("View");
+    expect(printedBy(part(wrap, "views")!)).toBe("View");
   });
 
   test("an unknown view name is refused by name, listing what the grid has", async () => {
@@ -903,7 +911,7 @@ describe("saved views — the awkward corners", () => {
 
     expect(listSavedViews(VIEW_GRID)).toEqual([]);
     // The button must not name a view nothing remembers.
-    expect(text(part(wrap, "views")!)).toBe("View");
+    expect(printedBy(part(wrap, "views")!)).toBe("View");
     const warned = notifications.find((call) => call.options.key === "grid.saveView");
     expect(warned?.severity).toBe("warn");
     expect(warned?.message).toContain("local storage disabled");

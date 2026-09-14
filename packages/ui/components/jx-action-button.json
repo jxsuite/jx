@@ -33,6 +33,9 @@
     },
     {
       "$ref": "./jx-spinner.json"
+    },
+    {
+      "$ref": "./jx-tooltip.json"
     }
   ],
   "state": {
@@ -46,7 +49,7 @@
       "type": "string",
       "default": "",
       "attribute": "hint",
-      "description": "The tooltip, and the whole of it: title is this and nothing else. It used to fall back to label, so EVERY button got a tooltip whether or not its name was already on screen and a reader heard the name twice. Now each call site decides: pass hint on an icon-only button or one whose visible label ellipses, where a tooltip carrying the name is the standard affordance and hint equal to label is the right answer; leave it empty wherever the text is already fully visible."
+      "description": "The tooltip, and the whole of it. While the button is ENABLED it is drawn as a jx-tooltip child of this element — shown on keyboard focus at once and on hover after the tip's delay, hoverable and dismissible with Escape (SC 1.4.13) — and the control names it in aria-describedby, so it is a description beside the name and never the name itself. While the button is DISABLED it is the control's native title instead, because a disabled control receives no focus and no pointer event and could never open a tip, while the platform still shows a title on hover: that is the one affordance a button whose hint says why it cannot act still has. Never both at once. It used to fall back to label, so EVERY button got a tooltip whether or not its name was already on screen and a reader heard the name twice. Now each call site decides: pass hint on an icon-only button or one whose visible label ellipses, where a tooltip carrying the name is the standard affordance and hint equal to label is the right answer; leave it empty wherever the text is already fully visible."
     },
     "icon": {
       "type": "string",
@@ -111,7 +114,7 @@
       "type": "boolean",
       "default": false,
       "attribute": "disabled",
-      "description": "Cannot act. Disabled, never absent."
+      "description": "Cannot act. Disabled, never absent, and the hint moves from the tip to the control's title while it is: a disabled control cannot open a tip, and the reason it cannot act is exactly what the reader hovers to find out."
     },
     "loading": {
       "type": "boolean",
@@ -135,7 +138,7 @@
       "type": "string",
       "default": "",
       "attribute": "describedby",
-      "description": "Forwarded to the inner control as aria-describedby: the id of a description beside the name, which is where a jx-tooltip's id goes."
+      "description": "Forwarded to the inner control as aria-describedby: the id of a description beside the name, after the hint's own tip when there is one. A hint needs none of this — the element names its own tip — so it is for a description the host draws elsewhere."
     },
     "haspopup": {
       "type": "string",
@@ -178,6 +181,47 @@
       "default": "",
       "attribute": "commandfor",
       "description": "The element the command is sent to; forwarded to the inner control."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This button's own id stem, minted on mount by the tooltip sidecar. The control's id, the tip's id and the three attributes that wire one to the other are all built from it, so a consumer writes none of them and two hinted buttons in one toolbar cannot collide. Empty until the mount microtask, which is why every binding that reads it guards on it."
+    },
+    "hasTip": {
+      "$expression": {
+        "operator": "&&",
+        "target": {
+          "operator": "!",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/hint"
+            }
+          }
+        },
+        "value": {
+          "operator": "&&",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "operator": "!==",
+            "target": {
+              "$ref": "#/state/uid"
+            },
+            "value": ""
+          }
+        }
+      }
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "mintHintId",
+      "description": "Mints the id stem the hint's tooltip is wired by. A document cannot: the closed operator set has no counter and no identity."
     },
     "noIcon": {
       "$expression": {
@@ -436,6 +480,9 @@
     "& [part=\"badge-slot\"]": {
       "display": "contents"
     },
+    "& > [part=\"tooltip\"]": {
+      "display": "contents"
+    },
     "& [part=\"badge\"]": {
       "display": "inline-flex",
       "alignItems": "center",
@@ -474,8 +521,10 @@
         "disabled": {
           "$ref": "#/state/disabled"
         },
+        "id": "${state.uid || null}",
         "aria-label": "${state.label || null}",
-        "title": "${state.hint || null}",
+        "title": "${state.disabled && state.hint ? state.hint : null}",
+        "interestfor": "${state.hasTip ? state.uid + '-tip' : null}",
         "role": "${state.checked ? 'radio' : null}",
         "aria-checked": "${state.checked || null}",
         "aria-pressed": "${state.toggles && !state.checked ? (state.selected ? 'true' : 'false') : null}",
@@ -487,7 +536,7 @@
         "aria-haspopup": "${state.haspopup || null}",
         "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}",
         "aria-labelledby": "${state.labelledby || null}",
-        "aria-describedby": "${state.describedby || null}",
+        "aria-describedby": "${[state.hasTip ? state.uid + '-tip' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
         "aria-busy": "${state.loading ? 'true' : null}",
         "aria-disabled": "${state.loading ? 'true' : null}"
       },
@@ -560,6 +609,34 @@
           }
         }
       ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "tooltip"
+      },
+      "$switch": {
+        "$ref": "#/state/hasTip"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-tooltip",
+          "attributes": {
+            "part": "tip",
+            "id": "${state.uid}-tip",
+            "for": "${state.uid}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "tip-text"
+              },
+              "textContent": "${state.hint}"
+            }
+          ]
+        }
+      }
     }
   ]
 }

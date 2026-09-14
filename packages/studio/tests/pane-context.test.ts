@@ -28,6 +28,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Tab } from "../src/tabs/tab";
 
@@ -540,8 +541,9 @@ describe("canvas view", () => {
     ]);
     const toggle = part("preview-toggle")!;
     expect(control(toggle).getAttribute("aria-pressed")).toBe("true");
-    // And it says where "off" goes, rather than leaving the author to guess.
-    expect(control(toggle).getAttribute("title")).toContain("Design");
+    // And it says where "off" goes, rather than leaving the author to guess — in the tip an
+    // Enabled kit button renders for its hint, not a title (ui.md §5.1).
+    expect(hintOf(toggle)).toContain("Design");
   });
 
   test("the toggle sets the flag and clears it, over either base", async () => {
@@ -697,7 +699,7 @@ describe("rendering context", () => {
     await mountBar(withScheme());
 
     const toggle = segments("features").find(
-      (b) => control(b).getAttribute("title") === "(prefers-reduced-motion: reduce)",
+      (b) => hintOf(b) === "(prefers-reduced-motion: reduce)",
     )!;
     expect(nameOf(toggle)).toBe("Reduced Motion");
     // A feature is INDEPENDENTLY on or off, so the group is a plain group of pressed toggles —
@@ -709,9 +711,7 @@ describe("rendering context", () => {
     expect(tab.session.ui.featureToggles["--reduced-motion"]).toBe(true);
     expect(
       control(
-        segments("features").find(
-          (b) => control(b).getAttribute("title") === "(prefers-reduced-motion: reduce)",
-        )!,
+        segments("features").find((b) => hintOf(b) === "(prefers-reduced-motion: reduce)")!,
       ).getAttribute("aria-pressed"),
     ).toBe("true");
   });
@@ -790,10 +790,8 @@ describe("rendering context", () => {
     const french = offered.find((b) => nameOf(b) === localeLabel("fr"))!;
     expect(control(french).getAttribute("aria-checked")).toBe("true");
     // …and it says which one it is, because "no override" is not otherwise visible.
-    expect(control(french).getAttribute("title")).toContain(
-      "the language of the file this pane has open",
-    );
-    expect(control(offered[0]!).getAttribute("title")).not.toContain("the file this pane has open");
+    expect(hintOf(french)).toContain("the language of the file this pane has open");
+    expect(hintOf(offered[0]!)).not.toContain("the file this pane has open");
   });
 
   test("the trigger names the language only when it is not the document's own", async () => {

@@ -84,6 +84,15 @@ async function typeTag(container: HTMLElement, value: string): Promise<void> {
   await flush(2);
 }
 
+/**
+ * A language row's Remove button, by the accessible name its control carries. It was found by
+ * `[title="Remove fr"]`, which an enabled kit button no longer carries: its hint is a tooltip
+ * (ui.md §5.1), and its name is the attribute that was always the right handle.
+ */
+function removeButton(container: HTMLElement, tag: string): HTMLElement {
+  return container.querySelector<HTMLElement>(`[part="remove"] [aria-label="Remove ${tag}"]`)!;
+}
+
 /** Press Add. */
 function pressAdd(container: HTMLElement): void {
   pointer(container.querySelector('[part="add-button"]')!, "click");
@@ -224,7 +233,7 @@ describe("the Locales section", () => {
     const { container, state } = await setup({
       i18n: { defaultLocale: "en", locales: ["en", "fr", "de"] },
     });
-    pointer(container.querySelector('[title="Remove fr"]')!, "click");
+    pointer(removeButton(container, "fr"), "click");
     await flush(4);
     expect(config().i18n.locales).toEqual(["en", "de"]);
     expect(written(state).i18n.defaultLocale).toBe("en");
@@ -234,7 +243,7 @@ describe("the Locales section", () => {
     const { container, state } = await setup({
       i18n: { defaultLocale: "en", locales: ["en", "fr"] },
     });
-    pointer(container.querySelector('[title="Remove en"]')!, "click");
+    pointer(removeButton(container, "en"), "click");
     await flush(4);
     // Left alone, `resolveI18n` would unshift "en" back into the list and the removal would do
     // Nothing at all.
@@ -245,7 +254,7 @@ describe("the Locales section", () => {
     const { container, state } = await setup({
       i18n: { defaultLocale: "fr", locales: ["fr"], routing: "prefix-always" },
     });
-    pointer(container.querySelector('[title="Remove fr"]')!, "click");
+    pointer(removeButton(container, "fr"), "click");
     await flush(4);
     expect(config().i18n).toBeUndefined();
     expect("i18n" in written(state)).toBe(false);
@@ -277,7 +286,7 @@ describe("the Locales section", () => {
 
   test("a rejected write is shown under the title instead of being dropped", async () => {
     const { container } = await setup({ i18n: { locales: ["en", "fr"] } }, failing);
-    pointer(container.querySelector('[title="Remove fr"]')!, "click");
+    pointer(removeButton(container, "fr"), "click");
     await flush(4);
     expect(alertText(container)).toContain("EROFS: read-only file system");
     /* Not inside a field: the whole file failed to save, so the message belongs under the title
@@ -287,7 +296,7 @@ describe("the Locales section", () => {
 
   test("a later success clears the parked error", async () => {
     const { container, state } = await setup({ i18n: { locales: ["en", "fr"] } }, failing);
-    pointer(container.querySelector('[title="Remove fr"]')!, "click");
+    pointer(removeButton(container, "fr"), "click");
     await flush(4);
     expect(alertText(container)).not.toBeUndefined();
 
