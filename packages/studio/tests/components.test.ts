@@ -1,6 +1,15 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
-import { buildComponentInstance, computeRelativePath } from "../src/files/components";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  buildComponentInstance,
+  componentRegistry,
+  computeRelativePath,
+  loadComponentRegistry,
+  noteComponentSaved,
+} from "../src/files/components";
+import { installMockPlatform } from "./harness";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── buildComponentInstance ─────────────────────────────────────────────────
@@ -150,5 +159,70 @@ describe("computeRelativePath", () => {
     expect(computeRelativePath("src/pages/home.json", "src/components/nav.json")).toBe(
       "../components/nav.json",
     );
+  });
+});
+
+// ─── noteComponentSaved ─────────────────────────────────────────────────────
+
+describe("noteComponentSaved", () => {
+  const seed = async () => {
+    installMockPlatform({
+      discoverComponents: async () => [
+        {
+          $id: null,
+          hasElements: false,
+          path: "components/mas-service-card.json",
+          props: [{ default: "", name: "imageSrc", type: "string" }],
+          tagName: "mas-service-card",
+        },
+      ],
+    });
+    await loadComponentRegistry();
+  };
+
+  test("a saved definition rewrites its entry, so a prop's new format reaches the instances", async () => {
+    await seed();
+    const changed = noteComponentSaved("components/mas-service-card.json", {
+      state: { imageSrc: { default: "", format: "image" }, title: "" },
+      tagName: "mas-service-card",
+    });
+    expect(changed).toBe(true);
+    expect(componentRegistry).toHaveLength(1);
+    expect(componentRegistry[0]!.props).toEqual([
+      { default: "", format: "image", name: "imageSrc" },
+      { default: "", name: "title", type: "string" },
+    ]);
+  });
+
+  test("a component saved for the first time joins the registry", async () => {
+    await seed();
+    expect(noteComponentSaved("components/mas-hero.json", { state: {}, tagName: "mas-hero" })).toBe(
+      true,
+    );
+    expect(componentRegistry.map((c) => c.tagName)).toEqual(["mas-service-card", "mas-hero"]);
+    expect(componentRegistry[1]!.path).toBe("components/mas-hero.json");
+  });
+
+  test("a page, an unsaved draft and a definition that is no longer a component", async () => {
+    await seed();
+    // A page has no hyphenated tagName and was never in the registry: nothing to do.
+    expect(noteComponentSaved("pages/index.json", { children: [], tagName: "div" })).toBe(false);
+    // A draft has no path a scan could have reported.
+    expect(noteComponentSaved(null, { state: {}, tagName: "mas-hero" })).toBe(false);
+    expect(componentRegistry).toHaveLength(1);
+    // The definition lost its hyphen: the scan would drop it, so the registry does.
+    expect(noteComponentSaved("components/mas-service-card.json", { tagName: "div" })).toBe(true);
+    expect(componentRegistry).toEqual([]);
+  });
+});
+
+describe("the bootstrap wires the registry into the save", () => {
+  test("the saved-document listener calls noteComponentSaved and repaints its two readers", () => {
+    const bootstrap = readFileSync(join(import.meta.dir, "../src/studio.ts"), "utf8");
+    const listener = bootstrap.slice(bootstrap.indexOf("setDocumentSavedListener(("));
+    const body = listener.slice(0, listener.indexOf("});") + 3);
+    expect(body).toContain("noteComponentSaved(path, doc)");
+    expect(body).toContain("renderPropertiesPanel();");
+    expect(body).toContain("renderLeftPanel();");
   });
 });
