@@ -73,6 +73,7 @@ import {
 import { openCsvGridTab, openPagesGrid } from "../grid/grid-open";
 import { isViewableMedia, openMediaTab } from "../media/media-open";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported, runReported } from "../commands/run-reported";
 import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
 import { parseJsonDocument } from "./json-layout";
@@ -1582,7 +1583,7 @@ function placedFileRows(entry: { path: string; type: string }): MenuRowProjectio
     rows.push(
       reason === undefined
         ? treeMenuRow(command.id, command.title, () => {
-            void registry.run(command.id, args);
+            void runReported(registry, command.id, args, "Files");
           })
         : {
             destructive: false,
@@ -2498,7 +2499,7 @@ const FILE_ACTIONS: FilesPanelActions = {
     /* The DECLARED command, run through the registry — never a second opener of this surface's own
        (§12.5). It is the one the ⌘O chord, the palette and the status bar's PROJECT field already
        run, and it is the only one that knows about the picker modal and the "new window" target. */
-    void activeRegistry()?.run("project.open");
+    void runActiveReported("project.open", undefined, "Files");
   },
   refresh: () => {
     void refreshFileTree();

@@ -58,6 +58,7 @@
 import { nothing } from "lit-html";
 import { effect, effectScope } from "../reactivity";
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { clearProblems, dismiss, problemCount, problems } from "../services/notify";
 import { mountProblemsSurface } from "../surfaces/panel-problems";
 import { registerPanel } from "./panel-registry";
@@ -184,14 +185,17 @@ const ACTIONS: ProblemsActions = {
     openProblemPath(path);
   },
   /* By id, because a document can only hand back a value: the record and the registry are both
-     looked up at the moment of the click, which is also the moment the gate was last checked. */
+     looked up at the moment of the click, which is also the moment the gate was last checked.
+     The action's `actionArgs` were written by whoever filed the problem, against a schema that
+     may have moved since, so the run goes through `commands/run-reported.ts`: a refusal is a new
+     row in this same list, keyed by the command, rather than an exception out of the button. */
   runAction: (id) => {
     const record = problems.find((candidate) => candidate.id === id);
     const registry = activeRegistry();
     if (record?.action === undefined || !registry) {
       return;
     }
-    void registry.run(record.action, record.actionArgs);
+    void runReported(registry, record.action, record.actionArgs, "Problems");
   },
 };
 

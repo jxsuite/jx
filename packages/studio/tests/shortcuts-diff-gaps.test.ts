@@ -23,6 +23,7 @@ import {
 } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
+import type { NotifyCall } from "./notify-mock";
 import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
 import type { CommandContext } from "../src/commands/context";
 import type { CommandDeps } from "../src/commands/defaults";
@@ -51,7 +52,9 @@ void mock.module("../src/editor/context-menu.js", () => ({
   showContextMenu,
 }));
 
-void mock.module("../src/services/notify.js", () => notifyModule(() => {}));
+/** Every outcome reported while a test runs; `commands/run-reported.ts` files a run's failure here. */
+const notified: NotifyCall[] = [];
+void mock.module("../src/services/notify.js", () => notifyModule((call) => notified.push(call)));
 
 /**
  * The `CommandDeps` object `registerStudioCommands` builds, captured on its way to the default set.
@@ -193,10 +196,11 @@ beforeAll(() => {
     },
     title: "Refusal Probe",
   });
-  /* A refusal is the ONLY error the dispatcher absorbs; anything else is a bug in a `run` and has
-     to keep travelling. This probe is the other side of that `instanceof`: the error it throws even
-     carries a `commandId`, so absorbing it by DUCK type instead of by class would show up as a
-     claimed chord. */
+  /* The dispatcher absorbs NOTHING: the registry's own `handleKeyEvent` hands every run to
+     `commands/run-reported.ts`, which files whatever refuses or throws in Problems. This probe is
+     what a bug in a `run` looks like from a keydown: the error it throws even carries a
+     `commandId`, so a dispatcher that quietly absorbed it by DUCK type would be indistinguishable
+     here from the registry reporting it — the report is the assertion. */
   registry.register({
     category: "View",
     id: "test.throwOnRun",
@@ -374,31 +378,54 @@ describe("dispatcher", () => {
   });
 
   test("a command that refuses between the check and the run still claims the key", () => {
-    // Enabled when `handleKeyEvent` asks, refused when `run` re-reads the context: the registry
-    // Throws `CommandUnavailableError` out of `handleKeyEvent`, and the chord is still spoken for.
+    /* Enabled when `handleKeyEvent` asks, refused when `run` re-reads the context: the registry
+       runs the hit through `runReported`, which files the `CommandUnavailableError` in Problems
+       under "Keyboard", and the chord is still spoken for. The row is deliberate, not inherited —
+       a chord the person can SEE is disabled is claimed silently one line earlier, but a gate that
+       moved between the check and the run is state the person cannot see, and the `requires`
+       sentence is the only account of why nothing happened (`commands/registry.ts` says so beside
+       the call). */
     probeEnablement = [true, false];
+    notified.length = 0;
     const event = pressDoc("F9");
     expect(probeRuns).toBe(0);
     expect(event.defaultPrevented).toBe(true);
+    expect(notified).toEqual([
+      {
+        message:
+          'Command "test.refuseOnRun" is not available right now — it requires a different studio state.',
+        options: { key: "command.run:test.refuseOnRun", source: "Keyboard" },
+        severity: "error",
+      },
+    ]);
   });
 
-  test("any other error from a run keeps travelling", () => {
-    // The realm's error channel is where an escaped listener error lands; happy-dom reports it
-    // There rather than letting `dispatchEvent` rethrow, exactly as a browser does.
+  test("any other error from a run is filed in Problems, and the chord is claimed", () => {
+    /* It used to keep travelling — out of the keydown listener into the realm's error channel,
+       where happy-dom reports it and a browser prints it to a console nobody reads. Since issue
+       333 the registry runs a chord through `runReported`, so the same error is a Problems row
+       under "Keyboard" (and, being a crash rather than a refusal, still a `console.error` with its
+       stack — `tests/run-reported.test.ts` pins that half), and the chord IS claimed: the command
+       exists and ran, which is what claiming means, and the browser must not act on the key as
+       well. */
     const seen: string[] = [];
     const onError = (event: Event) => {
       seen.push((event as ErrorEvent).message);
     };
     window.addEventListener("error", onError);
-    const quiet = console.error;
-    console.error = () => {};
+    notified.length = 0;
     const event = pressDoc("F10");
-    console.error = quiet;
     window.removeEventListener("error", onError);
 
-    expect(seen).toEqual(["probe blew up"]);
-    // And the chord is NOT claimed: only a refusal — a command that exists and cannot act — is.
-    expect(event.defaultPrevented).toBe(false);
+    expect(seen).toEqual([]);
+    expect(notified).toEqual([
+      {
+        message: "probe blew up",
+        options: { key: "command.run:test.throwOnRun", source: "Keyboard" },
+        severity: "error",
+      },
+    ]);
+    expect(event.defaultPrevented).toBe(true);
   });
 });
 

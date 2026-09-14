@@ -41,6 +41,7 @@
  */
 
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { getEffectiveLocales } from "../site-context";
 import { getPlatform } from "../platform";
@@ -51,7 +52,6 @@ import {
   translationPathFor,
 } from "@jxsuite/schema/locale";
 import { mountI18nSurface } from "../surfaces/panel-i18n";
-import { notify } from "../services/notify";
 import { nothing } from "lit-html";
 import { projectState } from "../store";
 import { registerPanel } from "./panel-registry";
@@ -386,26 +386,19 @@ function cellTitle(cell: ParityCell, locale: string, refusal: string | undefined
  * already there, and a click that produced nothing and printed nothing would leave the author
  * looking at a grid that disagrees with the disk.
  *
- * Both shapes, as `panels/quick-search.ts`'s `runCommand` and `panels/settings-menu.ts`'s `runRow`
- * catch them: `registry.run` throws SYNCHRONOUSLY when the record refuses the arguments — it
- * coerces `{ locale, path }` against the record's schema before `run` is entered — and a
- * `Promise.resolve(...)` around a call that has already thrown catches nothing. That refusal was
- * every cell click for as long as the records did not declare `path`; the report is what makes the
- * next such drift a sentence in the Problems panel rather than an exception out of a click.
+ * Both shapes, through `commands/run-reported.ts`: `registry.run` throws SYNCHRONOUSLY when the
+ * record refuses the arguments — it coerces `{ locale, path }` against the record's schema before
+ * `run` is entered — and a `Promise.resolve(...)` around a call that has already thrown catches
+ * nothing. That refusal was every cell click for as long as the records did not declare `path`; the
+ * report is what makes the next such drift a sentence in the Problems panel rather than an
+ * exception out of a click.
  */
 function runByName(id: string, args: Record<string, unknown> = {}): void {
   const registry = activeRegistry();
   if (!registry?.get(id)) {
     return;
   }
-  const report = (error: unknown) => {
-    notify("error", errorMessage(error), { source: "Languages" });
-  };
-  try {
-    void Promise.resolve(registry.run(id, args)).catch(report);
-  } catch (error) {
-    report(error);
-  }
+  void runReported(registry, id, args, "Languages");
 }
 
 /**

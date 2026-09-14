@@ -27,7 +27,9 @@
  *
  * The registry takes its context by injection (`getContext`), so nothing here imports a state
  * module. That is what lets the CI checks import the command set in a bare Bun process and lets
- * every test build the exact state it wants to assert against.
+ * every test build the exact state it wants to assert against. The one store it reaches is the
+ * notification store, through `run-reported.ts`, and only from `handleKeyEvent`: a chord's refusal
+ * has no caller to hand it to, so the registry files it where every other surface's refusal goes.
  */
 
 import { createKeymap } from "./keymap";
@@ -35,6 +37,7 @@ import type { KeyChordEvent, Keymap, KeymapMatch } from "./keymap";
 import { checkRecordPlacements } from "./levels";
 import type { Category, KeyScope, Level, Placement } from "./levels";
 import { coerceArgs } from "./command-args";
+import { runReported } from "./run-reported";
 import type { CommandContext } from "./context";
 
 /** Arguments as they arrive from a palette prompt, an automation manifest step or an AI tool call. */
@@ -435,13 +438,20 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
       if (!registry.isEnabled(hit.commandId)) {
         return hit.commandId;
       }
-      /* An ARGUMENT refusal is the one throw that still leaves here, on purpose. A chord runs its
-         record with `{}`, and `run` coerces that against the schema first, so a record whose
-         schema requires a key cannot be a chord — every shipped keybinding is held to
-         `required: []` by the sweep in `tests/command-args.test.ts`, and a user's own keymap
-         override that binds one anyway hears about it as a RangeError naming the command and the
-         key, rather than as a chord that silently does nothing. */
-      void registry.run(hit.commandId);
+      /* An ARGUMENT refusal is the one refusal that can still happen here, and it is REPORTED
+         rather than thrown. A chord runs its record with `{}`, and `run` coerces that against the
+         schema first, so a record whose schema requires a key cannot be a chord — every shipped
+         keybinding is held to `required: []` by the sweep in `tests/command-args.test.ts`, and a
+         user's own keymap override that binds one anyway hears about it as a Problems row naming
+         the command and the key, rather than as a chord that silently does nothing. It used to
+         leave as a `RangeError` out of the keydown listener, which named the same things to the
+         console and to nobody; `run-reported.ts` is what catches that shape, and the rejection a
+         `run` body may produce later, for every surface alike. A gate that closes BETWEEN the
+         `isEnabled` above and `run`'s own re-read is reported the same way, and that is a choice:
+         the silent claim above is for a chord the person can see is disabled, while a gate that
+         moved under the chord is state the person cannot see, and the `requires` sentence in
+         Problems is the one account of why nothing happened. */
+      void runReported(registry, hit.commandId, undefined, "Keyboard");
       return hit.commandId;
     },
     context: options.getContext,
