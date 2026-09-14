@@ -5,6 +5,7 @@ spec:
   - studio.md#9.4
   - studio.md#17
 code:
+  - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/settings/settings-document.ts
   - packages/studio/src/panels/settings-menu.ts
   - packages/studio/src/settings/section-registry.ts
@@ -41,7 +42,7 @@ The tab you are editing is `project.json`, the file at the root of your project 
 - **A mistake is undoable.** Every change is recorded as a step, so :kbd[⌘Z] takes back the last one. Undoing leaves the document with unsaved changes, so press :kbd[⌘S] to write the value you went back to.
 - **A failed write is visible.** If the file cannot be written (a read-only project, a full disk, a backend that has gone away), the change is not quietly dropped. Studio raises a problem naming `project.json` in the [Problems list](/docs/studio/interface/problems-and-progress), and the document stays marked unsaved so :kbd[⌘S] is the retry.
 - **An edit that changes nothing writes nothing.** Re-committing a field's existing value leaves the file untouched, so your project's diff only ever shows what you actually changed.
-- **An edit that changes one field changes one line.** The file is written back in the layout it was read in, the same way [every document is saved](/docs/studio/interface/tabs#studio-saves-only-when-you-do), so a `project.json` your formatter keeps tidy stays tidy through a settings change, and through the :kbd[⌘S] that follows an undo: the form and the tab write the same bytes.
+- **An edit that changes one field changes one line.** The file is written back in the layout it was read in, the same way [every document is saved](/docs/studio/interface/tabs#studio-saves-only-when-you-do), so a `project.json` your formatter keeps tidy stays tidy through a settings change, and through the :kbd[⌘S] that follows an undo: the form and the tab write the same bytes. When the [assistant](/docs/studio/ai/chat) rewrites `project.json`, the layout it wrote is the one the next settings change keeps.
 
 :::doc-tip
 Because it is one document, the same tab can be read three ways: this form, [Project Styles](/docs/studio/design/stylebook) for design tokens and element defaults, and the Code editor for the raw file. All three share one undo history and one unsaved-changes flag.
