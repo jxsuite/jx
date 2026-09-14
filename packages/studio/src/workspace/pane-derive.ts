@@ -1211,10 +1211,8 @@ export function derivationCommands(deps: DerivationDeps): AnyCommand[] {
       enablement: () => deriveRefusal(activePane().id) === null,
       requires: DERIVE_REQUIRES,
       undo: "none",
-      aiTool: {
-        description: "Show a projection of the current document in the pane beside it.",
-        name: "show_beside",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
+         looking at. */
       run: (_ctx, args) => {
         const preset = enumArg("pane.derive", args, "preset", DERIVE_PRESETS);
         /* `??`, not `||`. `optionalStringArg` answers `undefined` or a non-empty string — it is

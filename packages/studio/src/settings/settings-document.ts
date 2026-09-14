@@ -362,13 +362,8 @@ export function settingsCommands(): AnyCommand[] {
          unchanged — `enabledWith` still refuses, so `registry.run` and the assistant's tool still
          throw `CommandUnavailableError` exactly as before. */
       enablement: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the project's Settings, optionally on a named section (overview, contexts, head, " +
-          "locales, cssVars, definitions, dependencies, extensions, deploy, rawJson, or a section " +
-          "an extension contributes) and optionally at a named entry within it.",
-        name: "open_settings",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the model
+         writes `project.json` through `write_file` and the extension verbs. */
       run: async (_commandCtx, args) => {
         const section = optionalStringArg("settings.open", args, "section");
         const entry = optionalStringArg("settings.open", args, "entry");
@@ -427,12 +422,7 @@ export function settingsCommands(): AnyCommand[] {
       requires: "an open project",
       // §12.4: two verbs over ONE document declare ONE availability rule, byte-identical.
       enablement: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the project's configuration document in its Project Styles editor — the design " +
-          "tokens and the default element styles that apply across every page.",
-        name: "open_project_styles",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
       run: () => {
         showSettingsDocument(PROJECT_STYLES_VIEW);
       },

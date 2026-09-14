@@ -13,6 +13,7 @@ import {
   MAX_TOASTS,
   notify,
   problemCount,
+  problemFindings,
   problems,
   resetNotifications,
   SEVERITIES,
@@ -176,6 +177,37 @@ describe("the stores", () => {
     resetNotifications();
     expect(toasts).toHaveLength(0);
     expect(problems).toHaveLength(0);
+  });
+
+  test("problemFindings projects one source's rows for a reader that cannot see the store", () => {
+    /* The assistant's check tools return this as `data`: the sentence, the long form, the file,
+       how bad it is and the repair command — never the id (a lit key) or the clock. Absent keys
+       are ABSENT, not `undefined`, because the model reads the JSON. */
+    notify.error("a", {
+      action: "fix.it",
+      actionArgs: { path: [0] },
+      detail: "long",
+      key: "k1",
+      path: "p.json",
+      source: "Check",
+    });
+    notify.warn("b", { source: "Check", tier: "problem" });
+    notify.error("c", { source: "Other" });
+    const findings = problemFindings("Check");
+    expect(findings).toEqual([
+      {
+        action: "fix.it",
+        actionArgs: { path: [0] },
+        detail: "long",
+        key: "k1",
+        message: "a",
+        path: "p.json",
+        severity: "error",
+      },
+      { message: "b", severity: "warn" },
+    ]);
+    expect(Object.keys(findings[1]!)).toEqual(["message", "severity"]);
+    expect(problemFindings("Nobody")).toEqual([]);
   });
 });
 

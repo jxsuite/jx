@@ -544,7 +544,8 @@ describe("the command record", () => {
 
   test("nothing restores a convert, and the record says so rather than pretending", () => {
     expect(record().undo).toBe("none");
-    expect(record().aiTool?.name).toBe("convert_file_format");
+    // And it is not an assistant tool: `run` awaits a confirm dialog the person answers (§12.4).
+    expect(record().aiTool).toBeUndefined();
   });
 
   test("run converts the file it names, with a stated format", async () => {

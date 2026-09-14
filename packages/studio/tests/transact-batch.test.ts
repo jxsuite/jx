@@ -417,12 +417,12 @@ describe("selection.delete / selection.duplicate over a mixed selection", () => 
     const tab = makeRepeaterTab();
     tab.session.selection = [MAP_TEMPLATE];
     const registry = commandTab(tab);
-    expect(registry.disabledReason("selection.delete")).toBe(
-      "an element selection that is not the document root",
-    );
-    expect(registry.disabledReason("selection.duplicate")).toBe(
-      "an element that has a sibling position",
-    );
+    // One sentence for both, naming the gate they share: the template selected here is neither
+    // The root nor a sibling, and the old wording sent a reader looking for a root.
+    const gate =
+      "an element selected on the canvas that has a sibling position: not the document root, a repeater's template or a switch case";
+    expect(registry.disabledReason("selection.delete")).toBe(gate);
+    expect(registry.disabledReason("selection.duplicate")).toBe(gate);
     disposeTab(tab);
   });
 

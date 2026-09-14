@@ -32,7 +32,7 @@
 
 import { getPlatform } from "../platform";
 import { getEffectiveLocales } from "../site-context";
-import { localeLabel, translationPathFor } from "@jxsuite/schema/locale";
+import { canonicalizeLocale, localeLabel, translationPathFor } from "@jxsuite/schema/locale";
 import { notify } from "../services/notify";
 import { setActivityTab } from "../shell";
 import { tabOfPane } from "../canvas/canvas-surface";
@@ -53,6 +53,19 @@ import type { Tab } from "../tabs/tab";
 function declaredLocales(): string[] {
   return getEffectiveLocales()?.locales ?? [];
 }
+
+/**
+ * Whether the last `i18n.addLocale` wrote `project.json`, for the report.
+ *
+ * A latch beside `run` rather than a fact on the context, because the context carries
+ * `isMultilingual` and not the list: going from one language to two flips it, going from two to
+ * three does not. The value is `addProjectLocale`'s own answer, not a second reading of "is it
+ * declared" made here: that reading compared against the RESOLVED locales, which carry a
+ * `defaultLocale` the raw array may not, so with `{ defaultLocale: "en", locales: ["fr"] }` the
+ * write declared `en` and the report said it was already there. One predicate, in the function that
+ * writes.
+ */
+let _lastAddLocaleWrote = false;
 
 /**
  * The document a translation verb acts on, as a project-relative path: the file `path` names, the
@@ -183,12 +196,8 @@ export function i18nCommands(): AnyCommand[] {
       group: "2_navigate",
       requires: "a document open in a project that declares more than one language",
       when: (ctx) => ctx.project.isMultilingual && ctx.document.open,
-      aiTool: {
-        description:
-          "Open this document's translation in another language — the sibling file under that " +
-          "locale's directory. Does not create one; use create_translation for that.",
-        name: "open_translation",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person, and the
+         model has `open_document` for the file it names. */
       run: async (_ctx, args) => {
         const source = addressedDocument("i18n.openTranslation", args);
         const locale = stringArg("i18n.openTranslation", args, "locale");
@@ -242,12 +251,10 @@ export function i18nCommands(): AnyCommand[] {
       /* The document history cannot hold this: the change is a file that did not exist, and
          `undo: "project"` would claim `project.json` moved, which it did not. */
       undo: "none",
-      aiTool: {
-        description:
-          "Create the missing translation of this document in another language, seeded with a " +
-          "copy of the document being translated, and open it.",
-        name: "create_translation",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: `createFileIn` awaits the New File prompt
+         for the name, which the loop does not count as interactive, and a cancel resolves `null`
+         with nothing thrown — a report would describe a file that was never made. An optional
+         `name` argument that skips the prompt is the way back in, and is a UX call (issue 273). */
       run: async (_ctx, args) => {
         const source = addressedDocument("i18n.createTranslation", args);
         const locale = stringArg("i18n.createTranslation", args, "locale");
@@ -302,12 +309,7 @@ export function i18nCommands(): AnyCommand[] {
       group: "2_view",
       requires: "a project that declares more than one language",
       when: (ctx) => ctx.project.isMultilingual,
-      aiTool: {
-        description:
-          "Show the Languages panel — every page in the project against every declared language, " +
-          "and which translations are missing or older than their source.",
-        name: "show_translation_parity",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: the panel is a surface for a person. */
       /* The panel is off the rail — it spends no rail slot and shifts no ⌘1-8 chord — so this
          command and the generated `panel.focus.i18n` are its only two doors, and both open the
          same one. The TITLES must differ even though the behaviour does not: the palette is a flat
@@ -340,11 +342,39 @@ export function i18nCommands(): AnyCommand[] {
       aiTool: {
         description:
           "Declare a language for this project, adding it to project.json's i18n.locales. Every " +
-          "other language surface reads that list.",
+          "other language surface reads that list. Canonicalizes the tag; a malformed one is " +
+          "refused.",
         name: "add_project_locale",
+        /* The read is the same one the translation verbs' enum makes — the effective locales —
+           so "what did that unlock" is answered from the list the next round's schemas are built
+           from. The already-declared case is a statement, not a change: `addProjectLocale` toasts
+           and returns `false`, the sentence here says so rather than reporting a declaration, and
+           `wrote: []` keeps the ledger from filing a `project.json` the run never touched. */
+        report: ({ args }) => {
+          const canonical = canonicalizeLocale(stringArg("i18n.addLocale", args, "locale")) ?? "";
+          const declared = declaredLocales().join(", ") || canonical;
+          return _lastAddLocaleWrote
+            ? `Declared ${canonical}; project locales are now ${declared}.`
+            : {
+                summary: `${localeLabel(canonical)} was already one of this project's languages; the locales are ${declared}.`,
+                wrote: [],
+              };
+        },
       },
       run: async (_ctx, args) => {
-        await addProjectLocale(stringArg("i18n.addLocale", args, "locale"));
+        const tag = stringArg("i18n.addLocale", args, "locale");
+        /* Refuse by THROWING, not by toasting. `addProjectLocale` notifies a malformed tag and
+           returns, because its other caller is the Locales form, which has already refused it under
+           the field — but a projected `run` is read by the model, and a toast is a refusal only the
+           person can read. The canonical check is the section's own (`canonicalizeLocale`), read
+           here rather than respelled. */
+        if (canonicalizeLocale(tag) === null) {
+          throw new RangeError(
+            `command "i18n.addLocale" argument "locale": "${tag}" is not a well-formed BCP 47 ` +
+              `tag — a language, optionally a script and a region: fr, pt-BR, zh-Hant`,
+          );
+        }
+        _lastAddLocaleWrote = await addProjectLocale(tag);
       },
       title: "Add Language",
     },

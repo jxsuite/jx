@@ -30,6 +30,14 @@ interface BuildSystemPromptOptions {
    */
   treeEditable?: boolean | undefined;
   /**
+   * The blurbs of the tools projected from command records this round —
+   * `services/ai-command-tools.ts`'s `commandToolBlurbs(activeRegistry())`. Rendered after the hand
+   * tools under every "Tools available right now" heading, one line each. Passed in rather than
+   * read here so this stays a pure function of its options: a caller that passes none sees the hand
+   * list it always did, and only `document-assistant.ts`, which holds the registry, adds them.
+   */
+  commandTools?: readonly string[] | undefined;
+  /**
    * Whether the platform can import a site. Defaults TRUE so this stays a pure function of what it
    * is given — a caller that knows nothing about the platform gets the full list, and only
    * `document-assistant.ts`, which does know, narrows it.
@@ -75,9 +83,14 @@ const EXTENSION_CATALOG_CAP = 20;
  * with Project Settings open, `project.json` drawn as a layer tree. The assistant's tier asked only
  * whether a tab existed, so in that exact state the agent was advertised `remove_node` and
  * `move_node` and executed them against the file that defines the project, while the human's
- * `delete_node` was refused. `remove_node` self-refuses only the document root (`path.length < 2`),
+ * `delete_node` was refused. `remove_node` self-refused only the document root (`path.length < 2`),
  * a weaker test than `structurallyEditable`, so a repeater template or `$switch` case was removable
- * by the agent and not by the person.
+ * by the agent and not by the person. A tier was the first fix; the second predicate went with
+ * `remove_node` itself, which is now `delete_node`, the projection of `selection.delete`
+ * (`services/ai-command-tools.ts`) — one record, one gate, and no tier row here at all.
+ *
+ * This union is the HAND table's vocabulary and nothing a record declares: a projected command's
+ * tier is derived from its `level` by the bridge.
  */
 export type AiToolTier = "always" | "no-project" | "project" | "document" | "document-tree";
 
@@ -97,9 +110,15 @@ export interface AiToolInfo {
 }
 
 /**
- * Every assistant tool with its availability tier and prompt blurb. document-assistant.ts derives
- * the gating predicates from the same rows, so the advertised tool list and the executable tool
- * list cannot drift (a test asserts the names match the registered tools).
+ * Every HAND-REGISTERED assistant tool with its availability tier and prompt blurb.
+ * document-assistant.ts derives the gating predicates from the same rows, so the advertised tool
+ * list and the executable tool list cannot drift (a test asserts the names match the registered
+ * tools, and that none is also a command record's projection).
+ *
+ * The other kind of tool is not here and must not be added here: a command record that declares
+ * `aiTool` is projected by `services/ai-command-tools.ts`, gated by the record's own `when` /
+ * `enablement`, and described by the record. `enable_extension`, `disable_extension` and
+ * `delete_node` (né `remove_node`) left this table for that one.
  */
 export const AI_TOOL_TIERS: AiToolInfo[] = [
   // Always — a question is not gated on what happens to be open
@@ -157,21 +176,6 @@ export const AI_TOOL_TIERS: AiToolInfo[] = [
     blurb: "search_files(query, extensions?) — find files by file NAME (not content).",
   },
   {
-    name: "enable_extension",
-    tier: "project",
-    blurb:
-      "enable_extension(package) — turn on a Jx extension: installs its npm package if missing and " +
-      'adds it to project.json "extensions". Call this BEFORE writing the project.json section it ' +
-      "owns; a section belonging to a disabled extension is a schema error.",
-  },
-  {
-    name: "disable_extension",
-    tier: "project",
-    blurb:
-      'disable_extension(package) — remove an extension from project.json "extensions". Its npm ' +
-      "package stays installed. Remove the sections it owns first.",
-  },
-  {
     name: "create_component",
     tier: "project",
     blurb: "create_component(path, content) — create a new .json component file on disk.",
@@ -216,11 +220,6 @@ export const AI_TOOL_TIERS: AiToolInfo[] = [
     tier: "document-tree",
     blurb:
       "add_child(parentPath, index, node) — insert a new node into the children of parentPath at index.",
-  },
-  {
-    name: "remove_node",
-    tier: "document-tree",
-    blurb: "remove_node(path) — remove the node at path.",
   },
   {
     name: "move_node",
@@ -680,6 +679,7 @@ export function buildSystemPrompt({
   hasProject = Boolean(projectRoot),
   treeEditable = true,
   canImport = true,
+  commandTools = [],
   fileInventory,
   extensionCatalog,
 }: BuildSystemPromptOptions = {}) {
@@ -687,11 +687,16 @@ export function buildSystemPrompt({
 
   // 1. Role, state-appropriate workflow, and the tool list for the current state.
   // The list the model is TOLD about and the list the gate will honour are the same filter, so a
-  // Refusal is never a surprise to it.
-  const toolList = AI_TOOL_TIERS.filter((t) =>
-    toolActive(t, { canImport, hasDocument, hasProject, treeEditable }),
-  )
-    .map((t) => `- ${t.blurb}`)
+  // Refusal is never a surprise to it. The command-projected tools arrive already filtered by
+  // Their records' own gates, for the same reason — one function answers both the prompt and the
+  // Executor (`advertisedCommandTools`).
+  const toolList = [
+    ...AI_TOOL_TIERS.filter((t) =>
+      toolActive(t, { canImport, hasDocument, hasProject, treeEditable }),
+    ).map((t) => t.blurb),
+    ...commandTools,
+  ]
+    .map((blurb) => `- ${blurb}`)
     .join("\n");
 
   const role = `You are an expert Jx builder assistant embedded in Jx Studio. You help users build websites, components, pages, and layouts using the Jx JSON schema. The live jxsuite.com marketing site is built entirely with Jx — you can produce production-quality Jx code.`;
@@ -786,7 +791,7 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
 If a tool call fails (returns { success: false }):
 1. Read the error message carefully — it includes a "→ Fix:" hint telling you exactly how to correct the error.
 2. Each error points to a specific path in the document and a specific rule violation.
-3. Apply the suggested fix using set_property, remove_node, or add_child as appropriate.
+3. Apply the suggested fix using set_property, delete_node, or add_child as appropriate.
 4. Do NOT re-issue the exact same tool call with the same arguments — you must CHANGE something.
 5. If you see the SAME error after 2 attempts, try a completely different approach (e.g., remove and re-add the node instead of patching it).
 
@@ -804,7 +809,7 @@ If a tool call fails (returns { success: false }):
 
 ### If you keep getting errors:
 - Call read_document again — the document may have changed since you last read it.
-- Remove the problematic node entirely with remove_node, then re-create it correctly with add_child.
+- Remove the problematic node entirely with delete_node, then re-create it correctly with add_child.
 - If the error message points to a different path than you expected, the node might have moved due to previous edits.`);
 
   return sections.join("\n\n---\n\n");

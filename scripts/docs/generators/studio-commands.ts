@@ -98,6 +98,8 @@ export function generateCommands(): string {
     "",
     "**Level** says what a command acts on — the application, the project, the open document, or the current selection. **Requires** is the sentence a greyed-out row shows you: it is the reason the command is not available yet, not an error after the fact.",
     "",
+    "**Assistant** names the tool the [AI assistant](/docs/studio/ai) calls when it runs the command for you. A tool is the command itself: it is offered exactly while the command is available, and a refusal reads the same sentence you would see.",
+    "",
     commandsMarkdown(rows),
     "",
     "## Related",
