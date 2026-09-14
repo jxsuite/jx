@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.1](https://github.com/jxsuite/jx/compare/site-v2.0.0...site-v2.0.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0e2856c](https://github.com/jxsuite/jx/commit/0e2856c10e5623d1a4416007ca2043781f119899))
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([e456b80](https://github.com/jxsuite/jx/commit/e456b80b2e0ef5fc9af900077ae7ad8ab42a7746)), closes [#329](https://github.com/jxsuite/jx/issues/329)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.1
+
 ## [2.0.0](https://github.com/jxsuite/jx/compare/site-v1.1.0...site-v2.0.0) (2026-09-14)
 
 

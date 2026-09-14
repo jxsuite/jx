@@ -1,5 +1,28 @@
 # Changelog
 
+## [4.0.1](https://github.com/jxsuite/jx/compare/compiler-v4.0.0...compiler-v4.0.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0e2856c](https://github.com/jxsuite/jx/commit/0e2856c10e5623d1a4416007ca2043781f119899))
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([e456b80](https://github.com/jxsuite/jx/commit/e456b80b2e0ef5fc9af900077ae7ad8ab42a7746)), closes [#329](https://github.com/jxsuite/jx/issues/329)
+* **compiler:** a shared component dependency is inlined and loaded once per page ([6f6d39e](https://github.com/jxsuite/jx/commit/6f6d39e12a7e70cd911d58f51f297d957d1a3f37))
+* **compiler:** a shared component dependency is inlined and loaded once per page ([d1f7dc9](https://github.com/jxsuite/jx/commit/d1f7dc9e15e0c57942bc5047fcdf2f628032d172)), closes [#330](https://github.com/jxsuite/jx/issues/330)
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([2988975](https://github.com/jxsuite/jx/commit/2988975365bb7986d718657ab525819c9a513648))
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([3a30921](https://github.com/jxsuite/jx/commit/3a30921644a048e93ddc5e572b85ec38399f4abb)), closes [#320](https://github.com/jxsuite/jx/issues/320)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/runtime bumped to 4.0.1
+    * @jxsuite/site bumped to 2.0.1
+  * devDependencies
+    * @jxsuite/parser bumped to 1.8.1
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/compiler-v3.1.0...compiler-v4.0.0) (2026-09-14)
 
 
