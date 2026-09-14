@@ -113,6 +113,14 @@
     },
     "&[data-compact] > jx-action-button > [part=\"control\"]:focus-visible": {
       "zIndex": "1"
+    },
+    "&[data-compact] > jx-action-button[data-size=\"sm\"] > [part=\"control\"]::before": {
+      "$description": "A small action button carries a `::before` that extends its hit area 2px past its drawn box on every side (an inset of -3px: the button's 1px border, then half the 4px it is under, because an absolutely positioned box is offset from the padding edge), so that a 20px picture accepts the pointer over the kit's 24px control height (WCAG 2.2 SC 2.5.8, ui.md §4.3). In a compact group the boxes TOUCH on the packed axis — no gap, and each border drawn over the last — so an extension there could reach nothing but the neighbour's own box, and the later sibling paints above the earlier one: the last 2px of every button but the last would activate the button after it. The criterion gives an overlapped area to the target on TOP, so the extension would buy the earlier button nothing and cost it a stolen strip. The default 2px gap is the other case: two extensions overlap by 2px there, the later member keeps the strip, and every small member but the last counts 22px on the packed axis, which is under the floor and which ui.md §11 names beside this one. The packed axis is therefore zeroed here — `0` is the padding edge, 1px inside the drawn border, and the button's own box accepts the pointer over that pixel — and the cross axis keeps its 2px past the drawn box, which reaches only the gap around the group: a compact group's small members are 24px tall and as wide as they draw, which ui.md §11 records as the one thing the technique cannot reach. The vertical variant swaps the axes, and its inline value is the button's own -3px for the same reason.",
+      "insetInline": "0"
+    },
+    "&[data-compact][data-orientation=\"vertical\"] > jx-action-button[data-size=\"sm\"] > [part=\"control\"]::before": {
+      "insetInline": "-3px",
+      "insetBlock": "0"
     }
   },
   "children": [
