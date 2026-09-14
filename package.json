@@ -66,6 +66,8 @@
     "screenshots": "bun scripts/screenshots/run.ts",
     "screenshots:thumbnails": "bun scripts/screenshots/thumbnails.ts",
     "spec:bump": "bun scripts/docs/spec-bump.ts",
+    "spec:change": "bun scripts/docs/spec-change.ts",
+    "spec:release": "bun scripts/docs/spec-release.ts",
     "test": "bun test --isolate",
     "test:workspaces": "bun run --workspaces test --isolate",
     "templates:check": "bun scripts/check-template-versions.ts",
