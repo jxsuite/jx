@@ -205,6 +205,10 @@
           },
           "generated": {
             "type": "boolean"
+          },
+          "search": {
+            "type": "boolean",
+            "description": "false keeps the page out of search-index.json and out of nothing else; only the boolean opts out."
           }
         },
         "required": ["title"]
