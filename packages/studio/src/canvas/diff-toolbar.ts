@@ -254,6 +254,16 @@ function paneOfArgs(args: CommandArgValues): string {
 const paneProperty = stringProperty("Which pane to act on. Defaults to the focused one.");
 
 /**
+ * The stepper verbs' schema: `pane` declared, nothing required.
+ *
+ * `argsSchema`'s default requires every key, and the two keybound records took it, so their schemas
+ * said `pane` was required while `paneOfArgs` fell back to the focused pane and F7 ran them with
+ * `{}`. `registry.run` now coerces against the schema before `run`, for a chord as much as for the
+ * palette, so a required `pane` would have made F7 a refusal.
+ */
+const stepperArgs = argsSchema({ pane: paneProperty }, []);
+
+/**
  * Walking a comparison, and choosing which half of it to read.
  *
  * **`keyScope` is `global`, not `canvas`**, and that is not a preference. `keyScopeStack` switches
@@ -268,7 +278,7 @@ export function diffCommands(): AnyCommand[] {
   const onDiff = (paneId: string) => diffChangeCount(paneId) > 0;
   return [
     {
-      args: argsSchema({ pane: paneProperty }),
+      args: stepperArgs,
       category: "View",
       group: "3_canvas",
       id: "diff.nextChange",
@@ -287,7 +297,7 @@ export function diffCommands(): AnyCommand[] {
       run: (_ctx, args) => stepDiffAndReveal(paneOfArgs(args), 1),
     },
     {
-      args: argsSchema({ pane: paneProperty }),
+      args: stepperArgs,
       category: "View",
       group: "3_canvas",
       id: "diff.previousChange",
