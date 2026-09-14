@@ -431,6 +431,15 @@ describe("execution", () => {
         undo: "project",
       },
       {
+        aiTool: { description: "d", name: "disk_unnamed", report: () => "Wrote something." },
+        category: "Project",
+        id: "disk.unnamed",
+        level: "project",
+        run: () => {},
+        title: "Write Somewhere",
+        undo: "none",
+      },
+      {
         aiTool: {
           description: "d",
           name: "read_thing",
@@ -530,6 +539,24 @@ describe("execution", () => {
       { disk: true, ok: true, path: "a.json", tool: "Write Disk" },
       { disk: true, ok: true, path: "b.json", tool: "Write Disk" },
       { disk: false, ok: true, path: "project.json", tool: "Write Project" },
+    ]);
+  });
+
+  test("undo: none with no wrote files (unknown file), which is the sentence a missing wrote earns", async () => {
+    /* A disk write has no default path: only the record knows what it touched, and one that says
+       nothing is filed under a name a reader will question rather than left out of the ledger. The
+       kept records all name their paths (asserted below); this is what the bridge does for one
+       that forgets. */
+    const tab = resetWorkspaceWithTab();
+    setActiveRegistry(fakeRegistry(tab));
+    const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
+    beginTurn("t");
+    expect(await tools.execute("disk_unnamed", {})).toEqual({
+      success: true,
+      summary: "Wrote something.",
+    });
+    expect(endTurn("t")).toEqual([
+      { disk: true, ok: true, path: "(unknown file)", tool: "Write Somewhere" },
     ]);
   });
 
@@ -761,6 +788,31 @@ describe("the assistant's tool budget", () => {
       expect([id, command !== undefined]).toEqual([id, true]);
       expect([id, command!.aiTool]).toEqual([id, undefined]);
     }
+  });
+
+  test("select_node reports what it pointed at, or that it cleared the selection", () => {
+    const { report } = DECLARED.get("select_node")!.aiTool!;
+    expect(
+      report({
+        after: makeContext({ selection: { count: 0, kind: "", paths: [] } }),
+        args: { path: null } as never,
+        before: emptyContext(),
+      }),
+    ).toBe("Cleared the selection.");
+    expect(
+      report({
+        after: makeContext({ selection: { count: 1, kind: "p", paths: [["children", 2]] } }),
+        args: { path: ["children", 2] } as never,
+        before: emptyContext(),
+      }),
+    ).toBe("Selected p at [children, 2]; the Inspector and the Outline now address it.");
+    expect(
+      report({
+        after: makeContext({ selection: { count: 1, kind: "", paths: [["children", 0]] } }),
+        args: { path: ["children", 0] } as never,
+        before: emptyContext(),
+      }),
+    ).toBe("Selected the element at [children, 0]; the Inspector and the Outline now address it.");
   });
 
   test("every kept undo: none projection returns wrote, so the ledger never files (unknown file)", () => {
