@@ -19,7 +19,11 @@ import type { GitStatusResult } from "../types";
 
 const PKG_PATHS = ["package.json", "bun.lock", "bun.lockb"];
 
-/** Untracked markers across backends: desktop porcelain v1 emits "??", server porcelain v2 "U". */
+/**
+ * Untracked markers across backends. Every backend says `U` now — the desktop used to pass
+ * porcelain v1's raw `??` through, and this set is what kept package sync working while it did.
+ * `??` stays accepted so a Studio bundle ahead of its desktop host keeps working.
+ */
 const UNTRACKED_STATUSES = new Set(["??", "U"]);
 
 /** Above this many dirty files, skip the per-file upstream comparison and leave the error as-is. */

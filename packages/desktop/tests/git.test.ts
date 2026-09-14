@@ -81,7 +81,9 @@ describe("gitStatus", () => {
     const result = await gitStatus();
     const untracked = result.files.find((f) => f.path === "untracked.txt");
     expect(untracked).toBeDefined();
-    expect(untracked!.status).toBe("??");
+    // `U`, the letter the git panel opens — not the raw `??` column pair, which it could not.
+    expect(untracked!.status).toBe("U");
+    expect(untracked!.staged).toBe(false);
     rmSync(join(FIXTURES, "untracked.txt"));
   });
 });
@@ -132,6 +134,7 @@ describe("gitStage / gitUnstage", () => {
     const file = status.files.find((f) => f.path === "staged.txt");
     expect(file).toBeDefined();
     expect(file!.status).toBe("A");
+    expect(file!.staged).toBe(true);
   });
 
   test("unstages a file", async () => {
@@ -139,7 +142,8 @@ describe("gitStage / gitUnstage", () => {
     const status = await gitStatus();
     const file = status.files.find((f) => f.path === "staged.txt");
     expect(file).toBeDefined();
-    expect(file!.status).toBe("??");
+    expect(file!.status).toBe("U");
+    expect(file!.staged).toBe(false);
     rmSync(join(FIXTURES, "staged.txt"));
   });
 });
