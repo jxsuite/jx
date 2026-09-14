@@ -45,3 +45,10 @@ docs/framework/reference/operators.md
 docs/studio/interface/commands.md
 docs/studio/interface/shortcuts.md
 docs/studio/projects/starters.md
+
+# A test's own git repository. `git-new-endpoints.test.ts` creates it in `beforeAll` and removes it
+# in `afterAll`; a `git add -A` while a run was in flight once committed the leftover as a GITLINK
+# with no `.gitmodules` entry, so every CI job's checkout cleanup warned "No url found for
+# submodule path", and every local run of the server suite deleted a tracked path.
+packages/server/tests/_git_new_endpoints_fixture/
+packages/server/tests/_git_remote_fixture/
