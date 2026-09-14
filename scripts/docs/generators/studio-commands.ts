@@ -16,7 +16,7 @@ import {
   shortcutReference,
   shortcutsMarkdown,
 } from "../../../packages/studio/src/commands/reference.ts";
-import { BANNER } from "./shared.ts";
+import { BANNER, GENERATED_FIELD } from "./shared.ts";
 
 /**
  * Frontmatter for a generated page, with the association fields the plain
@@ -35,7 +35,7 @@ function frontmatterWith(fields: {
   if (fields.code && fields.code.length > 0) {
     lines.push("code:", ...fields.code.map((entry) => `  - ${entry}`));
   }
-  lines.push("generated: true", "---");
+  lines.push(GENERATED_FIELD, "---");
   return lines.join("\n");
 }
 
