@@ -117,8 +117,8 @@ export interface AiToolInfo {
  *
  * The other kind of tool is not here and must not be added here: a command record that declares
  * `aiTool` is projected by `services/ai-command-tools.ts`, gated by the record's own `when` /
- * `enablement`, and described by the record. `enable_extension`, `disable_extension` and
- * `delete_node` (né `remove_node`) left this table for that one.
+ * `enablement`, and described by the record. `enable_extension`, `disable_extension`, `delete_node`
+ * (né `remove_node`) and `open_document` left this table for that one.
  */
 export const AI_TOOL_TIERS: AiToolInfo[] = [
   // Always — a question is not gated on what happens to be open
@@ -185,12 +185,8 @@ export const AI_TOOL_TIERS: AiToolInfo[] = [
     tier: "project",
     blurb: "create_page(path, content) — create a new .json page file on disk.",
   },
-  {
-    name: "open_document",
-    tier: "project",
-    blurb:
-      "open_document(path) — open a file on the canvas as the active document; the document tools then operate on it. Use when the user should SEE the page, or for iterative visual refinement.",
-  },
+  /* `open_document` is not a row: it is the projection of the `document.open` record
+     (`workspace/workspace.ts`), advertised by the record's own gate and described by the record. */
   // Document (an active document on the canvas)
   {
     name: "read_document",

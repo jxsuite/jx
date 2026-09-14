@@ -32,6 +32,25 @@
  * the model is told "changed nothing" rather than congratulated. This is what closes the
  * phantom-success finding for every bridged document write, not just the one tool it was found on.
  *
+ * **The project witness** is the same comparison over `project.json`. Every configuration write is
+ * a transaction on the configuration document (`tabs/project-config.ts`), whose bind effect keeps
+ * `projectState.projectConfig` equal to `toRaw(document.doc.document)` — so a record with `undo:
+ * "project"` that left that reference alone wrote nothing, whatever its report says. The ledger
+ * then files nothing (`wrote: []`, mechanically, for every project record), and a report that
+ * named no `wrote` of its own — one with no latch to know it was a no-op — has its sentence
+ * replaced by "changed nothing", because "Wrote project.json" over an untouched file is the
+ * phantom the ledger exists to keep out. A record whose report answered `wrote: []` itself is one
+ * that KNEW, and its sentence ("already enabled") is the one the witness cannot write. That is why
+ * `add_project_locale` keeps its latch: the sentence, not the ledger, is what the latch is for.
+ *
+ * **A tool with nothing it could be called with is withheld.** A `derivedEnumProperty` on a
+ * REQUIRED argument serialises `enum: []` when the list behind it is empty — `enable_extension`
+ * with no catalogue — and `@jxsuite/ai`'s validator tolerates that only because every projected
+ * tool is `strict: false`. The record's gate cannot see its own argument list, so the bridge reads
+ * it: an enabled record whose required enum is empty is not advertised this round, and comes back
+ * the round the list does. `getDefinition` still answers, so a call the model makes anyway meets
+ * the coercion's own refusal (`is not declared — declared: none`) rather than `Unknown tool`.
+ *
  * **`validate()` is a no-op, on purpose.** `@jxsuite/ai`'s validator never checks `enum` and treats
  * a required `null` as missing (`packages/ai/src/tools.ts`), which would refuse `select_node
  * { path: null }`. The registry's coercion is the single validator, so every projected tool is
@@ -46,6 +65,7 @@ import { activeRegistry } from "../commands/active-registry";
 import { argsSchema } from "../commands/command-args";
 import { inCanvas } from "../commands/context";
 import { toRaw } from "../reactivity";
+import { projectState } from "../state";
 import { recordWrite } from "./ai-writes";
 import { reportDocumentWrite, snapshotBeforeWrite } from "./ai-write-report";
 import type { WriteReportDeps, WriteSnapshot } from "./ai-write-report";
@@ -76,8 +96,23 @@ const EMPTY_ARGS = argsSchema({});
 
 /** The loosely-typed view of a record's `args` this module reads. */
 interface ArgsShape {
-  properties?: Record<string, object>;
+  properties?: Record<string, { enum?: unknown }>;
   required?: readonly string[];
+}
+
+/**
+ * Whether a required argument's choice list is empty right now.
+ *
+ * Reading `enum` is what serialises a `derivedEnumProperty` — the getter runs here exactly as it
+ * runs on the wire — so this is the same answer the model would have been shown. Only a REQUIRED
+ * property counts: an optional enum that is empty is an argument the model can leave out.
+ */
+function hasEmptyRequiredEnum(args: object | undefined): boolean {
+  const shape = (args ?? EMPTY_ARGS) as ArgsShape;
+  return (shape.required ?? []).some((key) => {
+    const declared = shape.properties?.[key]?.enum;
+    return Array.isArray(declared) && declared.length === 0;
+  });
 }
 
 /**
@@ -141,12 +176,14 @@ function selectionAdvertised(registry: CommandRegistry): boolean {
 /**
  * Whether one record's tool is advertised this round. For a project- or document-level record it is
  * the record's own gate, evaluated as the palette evaluates it — a module-state `enablement`
- * closure included. Selection-level records are the one derived case, above.
+ * closure included. Selection-level records are the one derived case, above. And a record the gate
+ * admits is still withheld while a required argument has an empty choice list: there is nothing it
+ * could be called with, and a tool advertised with `enum: []` costs a round to discover that.
  */
 function advertised(registry: CommandRegistry, command: AnyCommand): boolean {
-  return command.level === "selection"
-    ? selectionAdvertised(registry)
-    : registry.isEnabled(command.id);
+  const open =
+    command.level === "selection" ? selectionAdvertised(registry) : registry.isEnabled(command.id);
+  return open && !hasEmptyRequiredEnum(command.args);
 }
 
 /** Every record carrying a projection, enabled or not. */
@@ -252,6 +289,19 @@ function normaliseReport(report: string | AiToolReport): AiToolReport {
 }
 
 /**
+ * The configuration object the app is live on, unwrapped, or `null` before a project has one.
+ *
+ * The same read `tabs/project-config.ts`'s `liveConfig()` makes: `projectState.projectConfig` is
+ * held to `toRaw(document.doc.document)` by the bind effect, so a `transactDoc` on the
+ * configuration document is a new reference here — and an unchanged reference is a run that never
+ * transacted, however the record's report reads.
+ */
+function projectConfigRef(): object | null {
+  const config = projectState?.projectConfig;
+  return config ? toRaw(config as unknown as object) : null;
+}
+
+/**
  * The ledger paths a record's write defaults to when `report` names none, by undo scope. `"none"`
  * has no default on purpose — see {@link AiToolReport.wrote}.
  */
@@ -322,6 +372,10 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
        what `transactDoc` replaces, and the snapshot is what the verdict compares against. */
     const tab = command.undo === "document" ? deps.getTab() : null;
     const rootBefore = tab ? toRaw(tab.doc.document) : null;
+    /* The project witness's half: the configuration object the chokepoint holds, which every
+       applied `project.json` transaction replaces. Read for `undo: "project"` records only — the
+       comparison is meaningless for a record that does not claim the file. */
+    const configBefore = command.undo === "project" ? projectConfigRef() : null;
     let snapshot: WriteSnapshot | null = null;
     let before: CommandContext;
     try {
@@ -357,6 +411,12 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
       };
     }
 
+    /* The project witness's verdict, decided before the report so a report that throws is filed
+       against it too. Unlike the document witness this is not a refusal: an idempotent project verb
+       asked for a state it already had is an ordinary answer, and the record's own sentence may
+       say why. What the witness owns is the LEDGER — nothing landed, so nothing is filed. */
+    const projectUnchanged = command.undo === "project" && projectConfigRef() === configBefore;
+
     const after = registry.context();
     let report: AiToolReport;
     try {
@@ -366,13 +426,23 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
          Left to the loop, the throw would be labelled "Failed to parse arguments" and the ledger
          would never be filed. So the ledger is filed from `undo`'s defaults — the report that would
          have named the paths is the thing that failed — and the model is told both halves. */
-      fileLedger(command, tab);
+      fileLedger(command, tab, projectUnchanged ? [] : undefined);
       const message = error instanceof Error ? error.message : String(error);
       return { error: `${command.title} ran, but its report failed: ${message}`, success: false };
     }
-    fileLedger(command, tab, report.wrote);
 
-    let { summary } = report;
+    let { summary, wrote } = report;
+    if (projectUnchanged) {
+      /* The ledger files nothing whatever the report named. A report that did not itself know it
+         was a no-op has its sentence replaced — a claim of a write over an untouched file is
+         exactly the phantom this exists to catch. A report that answered `wrote: []` knew, and its
+         sentence is kept: it says WHY nothing changed, which the witness cannot. */
+      wrote = [];
+      if (report.wrote === undefined || report.wrote.length > 0) {
+        summary = `${command.title} changed nothing: project.json is exactly as it was.`;
+      }
+    }
+    fileLedger(command, tab, wrote);
     if (tab && snapshot) {
       const verdict = await reportDocumentWrite(tab, snapshot, summary, deps);
       if (!verdict.success) {

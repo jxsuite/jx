@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.13-draft\
+**Version:** 0.1.14-draft\
 **Status:** Partial\
-**Updated:** 2026-09-13\
+**Updated:** 2026-09-14\
 **License:** MIT
 
 ---
@@ -125,9 +125,11 @@ An assistant that must guess, or apologise for not knowing, is worse than one th
 
 The assistant's tools are two kinds, and the difference is who wrote the tool.
 
-**Hand tools** are registered in `packages/studio/src/services/ai-*.ts` and gated by tier: `AI_TOOL_TIERS` in `ai-system-prompt.ts` is the one table of them, carrying each tool's tier (`always`, `no-project`, `project`, `document`, `document-tree`) and its prompt blurb, and `document-assistant.ts` derives the gating predicates from the same rows. They exist for a write no person-verb makes: the seven tree writers address a node by path (the Inspector's job, not a command's), the file tools write arbitrary paths wholesale (`studio.md` §13.5's Remote Rule), and `create_project` / `import_site` re-key the conversation as a side effect a command must not know about. `ask_user` is a loop primitive, ungated.
+**Hand tools** are registered in `packages/studio/src/services/ai-*.ts` and gated by tier: `AI_TOOL_TIERS` in `ai-system-prompt.ts` is the one table of them, carrying each tool's tier (`always`, `no-project`, `project`, `document`, `document-tree`) and its prompt blurb, and `document-assistant.ts` derives the gating predicates from the same rows. They exist for a write no person-verb makes: the seven tree writers address a node by path (the Inspector's job, not a command's), the file tools write arbitrary paths wholesale (`studio.md` §13.5's Remote Rule), and `create_project` / `import_site` re-key the conversation as a side effect a command must not know about. `ask_user` is a loop primitive, ungated. `open_document` is not a hand tool: it is the projection of the `document.open` record, whose `run` refuses by throwing when no tab holds the path and whose report names the document that IS active and whether the tree tools reach it.
 
-**Command tools** are the command records that declare `aiTool` (`studio.md` §13.1), projected by `services/ai-command-tools.ts` as a view over the window's registry. Nothing registers them: each record IS its tool, `execute` is `registry.run`, `parameters` is the record's `args`, the gate is the record's own `when` / `enablement`, and `report` is what the model reads afterwards. The bridge's only additions are the write witness for `undo: "document"` records — an unchanged document root after `run` is "changed nothing", never success — the ledger entry `undo` implies, and the schema verdict every document write already gets (`ai-write-report.ts`: new schema errors with fix hints, the render check, the token hints). The ledger's default is what the record writes, so an idempotent run that found its state already so answers `wrote: []` and files nothing (`enable_extension` on an enabled package, `add_project_locale` on a declared tag). A `report` that throws after `run` resolved is answered as a failure that says the run happened, with the ledger filed from the record's defaults — the write must not vanish behind the sentence about it. A selection-level record takes `paths` and is run as `selection.setPaths` then the verb, both under their own gates.
+**Command tools** are the command records that declare `aiTool` (`studio.md` §13.1), projected by `services/ai-command-tools.ts` as a view over the window's registry. Nothing registers them: each record IS its tool, `execute` is `registry.run`, `parameters` is the record's `args`, the gate is the record's own `when` / `enablement`, and `report` is what the model reads afterwards. The bridge's only additions are the two write witnesses, the ledger entry `undo` implies, and the schema verdict every document write already gets (`ai-write-report.ts`: new schema errors with fix hints, the render check, the token hints). The document witness holds an `undo: "document"` record to having written — an unchanged document root after `run` is "changed nothing", never success. The project witness is the same comparison over `project.json` for an `undo: "project"` record: every configuration write is a transaction on the configuration document (`tabs/project-config.ts`), so an unchanged configuration reference after `run` is a run that transacted nothing, and the ledger files nothing — `wrote: []`, mechanically, for every project record, whatever its report named. It is not a refusal: an idempotent verb asked for a state it already had is an ordinary answer, and a report that itself answered `wrote: []` keeps its sentence, because it says WHY nothing changed ("already enabled", "already one of this project's languages"), which the witness cannot; a report that claimed a write over an untouched file has its sentence replaced by "changed nothing". The per-record latches survive for that sentence alone, not for the ledger. A `report` that throws after `run` resolved is answered as a failure that says the run happened, with the ledger filed from the record's defaults, under the project witness too — the write must not vanish behind the sentence about it. A selection-level record takes `paths` and is run as `selection.setPaths` then the verb, both under their own gates.
+
+**A tool with nothing it could be called with is withheld from the round.** A `derivedEnumProperty` on a REQUIRED argument serialises `enum: []` while the list behind it is empty — `enable_extension` with no catalogue, `disable_extension` with nothing enabled — and the record's gate cannot see its own argument list. So the bridge reads it: an enabled record whose required enum is empty is not advertised that round, in the prompt or on the wire, and returns the round the list does. An optional argument's empty enum withholds nothing, because the model can leave it out. The tool stays resolvable, so a call the model makes anyway meets the coercion's own refusal (`is not declared — declared: none`) rather than `Unknown tool`.
 
 **Every projected tool is `strict: false`, deliberately.** `@jxsuite/ai`'s registry validator never checks `enum` and treats a required `null` as missing, which would refuse `select_node { path: null }` — a legal call. The registry's coercion (`coerceArgs`, applied inside `registry.run` for every caller) is the single validator, and its `RangeError` sentence is what the model reads.
 
@@ -150,6 +152,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.14-draft** (2026-09-14) — §3.6 open_document is the projection of document.open, the bridge holds an undo: project record to a project.json witness as it holds a document record to the document root, and a tool with an empty required enum is withheld from the round.
 - **0.1.13-draft** (2026-09-13) — §3.6 Command tools: the two kinds of tool, strict: false and why, the empty-`wrote` no-op and the throwing-report answer, and the composite registry.
 - **0.1.12-draft** (2026-08-31) — Provider contract §2.2: never send an empty assistant turn, and replay a thinking model's reasoning_content.
 - **0.1.11-draft** (2026-08-30) — 2.1: a lapsed grant is not a completed connect; cf_account_required; probe invalidation; per-model toolSupport and contextWindow.
@@ -167,4 +170,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.13-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.14-draft — a stub, subject to expansion._

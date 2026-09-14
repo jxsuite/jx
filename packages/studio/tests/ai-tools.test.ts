@@ -207,60 +207,16 @@ describe("ai-tools — style & structure", () => {
   });
 });
 
-describe("ai-tools — open_document", () => {
-  test("open_document switches the active document via openDocument callback", async () => {
-    let openedPath: string | null = null;
-    const secondDoc = { tagName: "section", children: [] };
-    const secondTab = createTab({ document: secondDoc, id: "second" });
-
-    const { tab, registry } = harness(
-      { tagName: "div", children: [] },
-      {
-        openDocument: async (path: string) => {
-          openedPath = path;
-        },
-      },
-    );
-
-    const res = await registry.execute("open_document", { path: "pages/about.json" });
-
-    expect(res.success).toBe(true);
-    expect(openedPath as string | null).toBe("pages/about.json");
-    expect(res.summary).toContain("pages/about.json");
-    disposeTab(tab);
-    disposeTab(secondTab);
-  });
-
-  test("open_document errors when openDocument is not available", async () => {
-    const { tab, registry } = harness({ tagName: "div", children: [] });
-
-    const res = await registry.execute("open_document", { path: "pages/about.json" });
-
-    expect(res.success).toBe(false);
-    expect(res.error).toContain("not available");
-    disposeTab(tab);
-  });
-
-  test("open_document surfaces file-not-found errors", async () => {
-    const { tab, registry } = harness(
-      { tagName: "div", children: [] },
-      {
-        openDocument: async () => {
-          throw new Error("File not found: pages/missing.json");
-        },
-      },
-    );
-
-    const res = await registry.execute("open_document", { path: "pages/missing.json" });
-
-    expect(res.success).toBe(false);
-    expect(res.error).toContain("File not found");
-    disposeTab(tab);
-  });
-
+/*
+ * There is no `open_document` block here any more: the tool is the projection of the
+ * `document.open` record (`tests/document-open-command.test.ts`). The batching test below stays,
+ * with the tab switch made the way the loop now sees it — `tool-executor.ts` re-anchors the batch
+ * after EVERY tool, so the switch is a plain change of the active tab.
+ */
+describe("ai-tools — batching across a tab switch", () => {
   test("cross-document edits stay undoable inside a batch (mid-loop tab switch)", async () => {
     // Reproduces the batching bug: the agent loop opens ONE batch on the tab active at start.
-    // Without the open_document flush, edits to a tab opened mid-loop get no history snapshot.
+    // Without the re-anchor, edits to a tab opened mid-loop get no history snapshot.
     const tabA = createTab({
       document: { tagName: "div", children: [{ tagName: "h1", textContent: "A" }] },
       id: "pages/index.json",
@@ -276,9 +232,6 @@ describe("ai-tools — open_document", () => {
     registerAiTools(registry, {
       getTab: () => active,
       validate: async () => [],
-      openDocument: async (path) => {
-        active = tabs[path]!;
-      },
     });
 
     // Simulate the agent loop: one batch opened on the tab active at loop start (tab A).
@@ -286,8 +239,11 @@ describe("ai-tools — open_document", () => {
 
     // Edit tab A.
     await registry.execute("set_text", { path: ["children", 0], value: "A edited" });
-    // Switch to tab B mid-loop — should flush A's batch and open one on B.
-    await registry.execute("open_document", { path: "pages/about.json" });
+    // Switch to tab B mid-loop, as the loop's `reanchorBatch` does after any tool moved the
+    // Active tab: flush A's batch and open one on B.
+    active = tabs["pages/about.json"]!;
+    endBatch();
+    beginBatch(active);
     // Edit tab B.
     await registry.execute("set_text", { path: ["children", 0], value: "B edited" });
 
@@ -549,21 +505,6 @@ describe("ai-tools — file creation", () => {
     ).toContain("not available");
     disposeTab(tab);
     disposeTab(t2);
-  });
-
-  test("open_document reports when navigation leaves no active tab", async () => {
-    let active: Tab | null = createTab({ document: { tagName: "div", children: [] }, id: "z" });
-    const registry = createToolRegistry();
-    registerAiTools(registry, {
-      getTab: () => active,
-      openDocument: async () => {
-        active = null;
-      },
-      validate: async () => [],
-    });
-    const res = await registry.execute("open_document", { path: "p.json" });
-    expect(res.success).toBe(false);
-    expect(res.error).toContain("no active tab");
   });
 });
 

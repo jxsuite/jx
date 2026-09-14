@@ -1024,8 +1024,35 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       group: "3_canvas",
       requires: "an open document",
       when: documentOpen,
-      /* No `aiTool`, by §12.4's first deletion rule: chrome. `open_document` lands on the canvas,
-         and the tree tools key on `editor.kind`, not the mode. */
+      /*
+       * Projected, and it was deleted once under §12.4's first rule (chrome). The rule is about a
+       * verb whose WHOLE effect is what the person is looking at, and this one's is not: the tree
+       * tools are gated on `editor.kind`, which is derived from the mode (`editorKindForMode`), so
+       * a document the person left in Code — or the model itself moved — refuses every tree write
+       * with "requires an open document whose element tree the canvas is editing", and without this
+       * verb the model had no way back to a state it can read. `run` acts on the active tab and
+       * the model reads the result: `after.editor.kind` is the same fact the gate reads.
+       */
+      aiTool: {
+        description:
+          "Switch the active document's editor mode. edit and design put its element tree on " +
+          "the canvas, where the document tools work; preview renders it as a visitor sees it; " +
+          "source shows the JSON; stylebook, grid and git-diff open other editors. Use it to " +
+          "return a document to edit or design when the tree tools are refused.",
+        name: "set_canvas_mode",
+        /* `after.editor.kind` rather than the tab's own field: it is the gate's read (`treeEditable`
+           in `document-assistant.ts` is `editor.kind === "canvas"`), so the sentence and the gate
+           cannot disagree. The mode named is the one requested — `run` resolved, so it is the mode
+           the tab is in. */
+        report: ({ after, args }) => {
+          const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
+          const reach =
+            after.editor.kind === "canvas"
+              ? "the document tools address its element tree"
+              : "the tree-editing tools are unavailable until it returns to edit or design";
+          return `The active document is in ${mode} mode; ${reach}.`;
+        },
+      },
       run: (_commandCtx, args) => {
         const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
         const tab = requireTab("canvas.setMode");
