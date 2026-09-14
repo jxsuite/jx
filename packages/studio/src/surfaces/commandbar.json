@@ -78,7 +78,7 @@
       "gap": "2px",
       "flexShrink": "0"
     },
-    "& [part=\"layout\"], & [part=\"layout-add\"]": {
+    "& [part=\"layout\"]": {
       "padding": "2px var(--jx-space-3)",
       "border": "none",
       "borderRadius": "var(--jx-radius-sm)",
@@ -100,9 +100,6 @@
     "& [part=\"layout\"][data-active]": {
       "color": "var(--jx-fg)",
       "background": "var(--jx-hover-bg)"
-    },
-    "& [part=\"layout-add\"]": {
-      "padding": "2px var(--jx-space-2)"
     },
     "& [part=\"center\"]": {
       "display": "flex",
@@ -479,14 +476,16 @@
               }
             },
             {
-              "tagName": "button",
-              "attributes": {
-                "part": "layout-add",
-                "type": "button",
-                "title": "Save the current arrangement as a layout",
-                "aria-label": "Save layout"
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Save layout",
+                "hint": "Save the current arrangement as a layout",
+                "icon": "plus",
+                "size": "sm"
               },
-              "textContent": "+",
+              "attributes": {
+                "part": "layout-add"
+              },
               "onclick": {
                 "$prototype": "Function",
                 "body": [
@@ -657,6 +656,9 @@
               "label": {
                 "$ref": "$map/item/title"
               },
+              "hint": {
+                "$ref": "$map/item/tooltip"
+              },
               "disabled": {
                 "$ref": "$map/item/disabled"
               },
@@ -664,8 +666,7 @@
               "quiet": true
             },
             "attributes": {
-              "data-command-id": "${$map.item.id}",
-              "title": "${$map.item.tooltip}"
+              "data-command-id": "${$map.item.id}"
             },
             "onclick": {
               "$prototype": "Function",

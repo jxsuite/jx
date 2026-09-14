@@ -11,7 +11,7 @@
  * - **`openInBrowserTarget` is a pure function** and is tested as one, route by route.
  */
 import { flush, installMockPlatform, mountOverlayLayers, pointer } from "./harness";
-import { hintOf } from "./kit-readers";
+import { hintOf, printedOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { Tab } from "../src/tabs/tab";
@@ -217,10 +217,14 @@ describe("the primary cluster", () => {
     await mountBar();
 
     const save = btn("Save");
-    expect(save.getAttribute("title")).toBe("Save (⌘S)");
+    /* An enabled record's tooltip is the kit's `jx-tooltip`, read through the control's own
+       `aria-describedby`; a `title` on the host was the mouse-only affordance (#332). */
+    expect(hintOf(save)).toBe("Save (⌘S)");
+    expect(save.hasAttribute("title")).toBe(false);
     const icon = save.querySelector("jx-icon") as (HTMLElement & { name: string }) | null;
     expect(icon?.name).toBe("floppy-disk");
-    expect(save.textContent).toContain("Save");
+    // The printed label, not `textContent`: the tip's text is light DOM under the same host.
+    expect(printedOf(save)).toContain("Save");
     click(control(save));
     expect(ran).toEqual(["save"]);
   });
@@ -230,7 +234,9 @@ describe("the primary cluster", () => {
     await mountBar();
     const undo = btn("Undo");
     expect(control(undo).disabled).toBe(true);
-    expect(undo.getAttribute("title")).toBe("Undo — requires a change to undo");
+    // Disabled, so the reason is the CONTROL's native title — the one affordance it still has.
+    expect(hintOf(undo)).toBe("Undo — requires a change to undo");
+    expect(undo.hasAttribute("title")).toBe(false);
   });
 
   test("commandTooltip is empty for an id no registry declares", () => {
@@ -270,7 +276,9 @@ describe("the primary cluster", () => {
     // The keyed row reconciles: the same element, now enabled.
     expect(btn("Undo") === undo).toBe(true);
     expect(control(undo).disabled).toBe(false);
-    expect(undo.getAttribute("title")).toBe("Undo (⌘Z)");
+    // And the hint moved with the state: from the control's title to a tip, in place.
+    expect(hintOf(undo)).toBe("Undo (⌘Z)");
+    expect(control(undo).hasAttribute("title")).toBe(false);
   });
 });
 
