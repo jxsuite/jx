@@ -13,16 +13,14 @@ import {
   booleanAttrValue,
   buildStyleRules,
   enumeratedAttrNames,
-  isDeclarationAtRule,
-  isKeyframesAtRule,
   isNestedSelectorKey,
   camelToKebab,
   isSingleExpression,
-  pureSchemeOf,
   splitSelectorList,
 } from "@jxsuite/runtime";
 import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
+import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
   bodyReturnsValue,
   childrenContainArray,
@@ -1110,15 +1108,28 @@ function pushStyleRules(
        against a live scope, which a compiled page has only where the runtime is present, so a
        static emitter has always dropped it. Silently, which is the defect: a document is correct
        in Studio and simply unstyled in the built page, with nothing said. */
-    resolveValue: (property, value) => {
-      const source = typeof value === "string" ? value : (value as { $ref: string }).$ref;
-      _droppedReactive.push({ property, selector, source });
-      return null;
-    },
+    resolveValue: (property, value) => recordDroppedReactive(property, value, selector),
     scope: selector,
   })) {
     rules.push(rule.text);
   }
+}
+
+/**
+ * Record a reactive declaration a static build drops, and answer `null` so it is dropped.
+ *
+ * One recorder for both emitters the build reaches — `pushStyleRules` for element styles, and
+ * `buildSiteStyleCSS` for the project block, which takes it as its resolver — so a `${…}` in
+ * `project.json#/style` is reported the way one in an element's `style` is.
+ */
+function recordDroppedReactive(
+  property: string,
+  value: string | JxRef,
+  selector: string | null,
+): null {
+  const source = typeof value === "string" ? value : value.$ref;
+  _droppedReactive.push({ property, selector, source });
+  return null;
 }
 
 /** One entry per reactive declaration a static build dropped, since the last drain. */
@@ -1188,6 +1199,21 @@ export function attrHelperSource(): string {
 /**
  * Walk the entire document tree and collect all static nested CSS rules.
  *
+ * The project block is NOT split here. `buildSiteStyleCSS` (`@jxsuite/site/site-style`) is the one
+ * definition of how `project.json#/style` becomes a page's stylesheet — custom properties and
+ * `color-scheme` on `:root`, other declarations on `body`, `&`-keyed blocks as states of `:root`,
+ * selector keys as their own rules, `@`-blocks resolved and dual-emitted, then the forced-scheme
+ * `color-scheme` triplet — and the built page calls it with an identity transposer, so the canvas
+ * and the live preview show what the build ships by construction. This function used to carry its
+ * own copy of that split, and the two copies disagreed on two shapes the site builder had right: a
+ * top-level `&[data-theme="light"]` reached the page as a raw `&` selector, which no engine
+ * matches, and a top-level `colorScheme` went to `body`, where `light-dark()` on the root reads the
+ * UA default instead (#329, spec.md §9.5).
+ *
+ * The one thing the build adds is the resolver: a host drops a reactive project declaration in
+ * silence because it has nothing to evaluate it against, and a static build drops it for the same
+ * reason but SAYS SO, through the same recorder `pushStyleRules` uses for element styles.
+ *
  * @param {JxElement | JxMutableNode} doc
  * @param {Record<string, string>} [mediaQueries]
  * @param {JxStyle | null} [projectStyle]
@@ -1200,92 +1226,17 @@ export function compileStyles(
 ) {
   const rules: string[] = [];
 
-  // Emit project-level (site-wide) styles — CSS custom properties go on :root,
-  // Everything else on body.  Project-level style is implicitly :root, so a
-  // Flat object like { "--bg": "#000", "margin": "0" } is the expected format.
-  if (projectStyle && typeof projectStyle === "object") {
-    /* The project's own style is implicitly `:root`, but only half of it: a custom property has to
-       land on `:root` so a forced-scheme selector can override it, while an ordinary property is
-       page chrome and belongs on `body`. That split is the one thing the shared builder cannot do
-       for us, so it is done here and each half is handed over whole. */
-    const rootProps: JxStyle = {};
-    const bodyProps: JxStyle = {};
-    const selectorBlocks: [string, JxStyle][] = [];
-    const conditionalBlocks: [string, JxStyle][] = [];
-    for (const [key, val] of Object.entries(projectStyle)) {
-      if (val !== null && typeof val === "object" && !Array.isArray(val)) {
-        if (key.startsWith("@")) {
-          conditionalBlocks.push([key, val]);
-        } else if (!key.startsWith("--")) {
-          selectorBlocks.push([key, val]);
-        }
-        continue;
-      }
-      if (isNestedSelectorKey(key) || key.startsWith("@")) {
-        continue;
-      }
-      if (key.startsWith("--")) {
-        rootProps[key] = val;
-      } else {
-        bodyProps[key] = val;
-      }
-    }
-
-    // Base rules precede conditional blocks so equal-specificity overrides win by source order.
-    pushStyleRules(rules, rootProps, ":root", mediaQueries);
-    pushStyleRules(rules, bodyProps, "body", mediaQueries);
-
-    for (const [key, val] of selectorBlocks) {
-      // A top-level selector key IS the selector — `.card` styles `.card`, not `:root .card`.
-      pushStyleRules(rules, val, key, mediaQueries);
-    }
-
-    for (const [key, val] of conditionalBlocks) {
-      /* An unscoped at-rule has no selector to split across, and its name is global —
-         `@font-face` at project level is one block, not one per target. `@keyframes` is here for
-         a stronger reason than tidiness: splitting it would emit one same-named block per stop,
-         and the last definition of a name replaces every earlier one, so the animation would keep
-         only its final stop. */
-      if (isDeclarationAtRule(key) || isKeyframesAtRule(key)) {
-        pushStyleRules(rules, { [key]: val }, null, mediaQueries);
-        continue;
-      }
-      // Conditional block at project top level: custom properties override :root, direct
-      // Properties override body, selector-keyed sub-objects their own selector.
-      const condRoot: JxStyle = {};
-      const condBody: JxStyle = {};
-      const condSubs: [string, JxStyle][] = [];
-      for (const [k, v] of Object.entries(val)) {
-        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-          if (!k.startsWith("@")) {
-            condSubs.push([k, v]);
-          }
-          continue;
-        }
-        if (k.startsWith("--")) {
-          condRoot[k] = v;
-        } else {
-          condBody[k] = v;
-        }
-      }
-      pushStyleRules(rules, { [key]: condRoot }, ":root", mediaQueries);
-      pushStyleRules(rules, { [key]: condBody }, "body", mediaQueries);
-      for (const [sel, sub] of condSubs) {
-        pushStyleRules(rules, { [key]: sub }, sel, mediaQueries);
-      }
-    }
-  }
-
-  // Forced-scheme UA hint: native widgets follow the forced attribute, not only the OS scheme.
-  if (
-    Object.values(mediaQueries).some((q) => pureSchemeOf(q) !== null) &&
-    !(projectStyle && typeof projectStyle === "object" && "colorScheme" in projectStyle)
-  ) {
-    rules.push(
-      ":root { color-scheme: light dark }",
-      `:root:where([${COLOR_SCHEME_ATTR}="light"]) { color-scheme: light }`,
-      `:root:where([${COLOR_SCHEME_ATTR}="dark"]) { color-scheme: dark }`,
-    );
+  /* An absent project block is an empty one: the builder emits nothing for `{}` except the
+     `color-scheme` triplet a scheme query in `$media` still calls for, which is exactly what a
+     page with a scheme query and no project style has always carried. */
+  const projectSheet = buildSiteStyleCSS(
+    projectStyle && typeof projectStyle === "object" ? projectStyle : {},
+    mediaQueries,
+    (value) => value,
+    recordDroppedReactive,
+  );
+  if (projectSheet !== "") {
+    rules.push(projectSheet);
   }
 
   const counter = { n: 0 };

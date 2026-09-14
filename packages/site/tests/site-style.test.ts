@@ -164,18 +164,23 @@ describe("buildSiteStyleCSS", () => {
          builder's whole output for one block that exercises every shape both accept — tokens, body
          declarations, a selector list with a nested pseudo and a nested breakpoint, an element, a
          class, a scheme block with a selector sub-block, `@font-face`, `@keyframes` — under a media
-         map with a scheme query, so the `color-scheme` triplet is compared too.
+         map with a scheme query.
 
-         Two shapes are deliberately absent, because the COMPILER still gets them wrong and this
-         test must not pin a defect: a top-level `&` key, which it passes through as a raw `&`
-         selector where this builder splices `:root`, and a top-level `colorScheme`, which it routes
-         to `body` where spec.md §9.5 says `:root`. Both are the compiler's to fix; the day it does,
-         they belong in this block. */
+         Two shapes used to be deliberately absent, because the compiler carried its own copy of
+         the split and got them wrong: a top-level `&` key, which it passed through as a raw `&`
+         selector where this builder splices `:root`, and a top-level `colorScheme`, which it routed
+         to `body` where spec.md §9.5 says `:root`. `compileStyles` now CALLS this builder for its
+         project half (#329), so both are in the block — and because an authored `colorScheme`
+         suppresses the triplet, the triplet is compared by the sibling test below rather than
+         here. This test is what keeps the delegation from being undone: a second copy of the
+         split would have to reproduce every one of these bytes to stay green. */
       const style = {
         "--font-display": "Forum, Georgia, serif",
         "--bg": "light-dark(#fff, #111)",
+        colorScheme: "light dark",
         fontFamily: "system-ui, sans-serif",
         margin: "0",
+        '&[data-theme="light"]': { "--bg": "#fff", a: { color: "navy" } },
         "h1, h2": {
           fontFamily: "var(--font-display)",
           textTransform: "uppercase",
@@ -198,7 +203,60 @@ describe("buildSiteStyleCSS", () => {
         "\nh1, h2 { font-family: var(--font-display); text-transform: uppercase }\n",
       );
       expect(pageSheet).toContain("\na { text-decoration: none }\n");
+      // And the two shapes the compiler used to get wrong are now the builder's answer in both.
+      expect(pageSheet).toContain(
+        ":root { --font-display: Forum, Georgia, serif; --bg: light-dark(#fff, #111); color-scheme: light dark }",
+      );
+      expect(pageSheet).toContain('\n:root[data-theme="light"] { --bg: #fff }\n');
+      expect(pageSheet).toContain('\n:root[data-theme="light"] a { color: navy }\n');
+      expect(pageSheet).not.toContain("\n&");
+      expect(pageSheet).not.toContain("body { color-scheme");
     });
+
+    test("the color-scheme triplet is byte-for-byte what the build writes, too", () => {
+      /* The parity fixture authors `colorScheme`, which suppresses the triplet in both emitters,
+         so this holds the other branch: a scheme query and no authored value. */
+      const style = { "--bg": "light-dark(#fff, #111)", margin: "0" };
+      const media = { "--dark": "(prefers-color-scheme: dark)" };
+      const built = compileStyles({ tagName: "div" }, media, style);
+      const pageSheet = built.slice("<style>\n".length, -"\n</style>".length);
+      expect(buildSiteStyleCSS(style, media, id)).toBe(pageSheet);
+      expect(pageSheet).toContain(":root { color-scheme: light dark }");
+    });
+
+    test("a build with no project block still gets the triplet from the builder", () => {
+      // `compileStyles` passes `{}` for a null block, and `{}` under a scheme query is the triplet.
+      const media = { "--dark": "(prefers-color-scheme: dark)" };
+      const built = compileStyles({ tagName: "div" }, media, null);
+      const pageSheet = built.slice("<style>\n".length, -"\n</style>".length);
+      expect(buildSiteStyleCSS({}, media, id)).toBe(pageSheet);
+    });
+  });
+
+  test("a reactive project declaration is dropped without a resolver, and the resolver sees its selector", () => {
+    /* A host has no scope to evaluate `${…}` against, so it drops the declaration; the compiler
+       passes a recorder so the same drop is reported by the build. The selector is what the report
+       names, and it is the rule the declaration WOULD have landed on, not `buildStyleRules`' own
+       target — `:root` for a custom property, `body` for a plain one, the key for a selector block. */
+    const style = {
+      "--tint": "${state.tint}",
+      color: "${state.fg}",
+      ".card": { padding: "${state.pad}", margin: "0", ":hover": { color: { $ref: "#/state/h" } } },
+    };
+    expect(buildSiteStyleCSS(style, {}, id)).toBe(".card { margin: 0 }");
+
+    const seen: [string, string, string | null][] = [];
+    const css = buildSiteStyleCSS(style, {}, id, (property, value, selector) => {
+      seen.push([property, typeof value === "string" ? value : value.$ref, selector]);
+      return property === "--tint" ? "hotpink" : null;
+    });
+    expect(css).toBe(":root { --tint: hotpink }\n.card { margin: 0 }");
+    expect(seen).toEqual([
+      ["--tint", "${state.tint}", ":root"],
+      ["color", "${state.fg}", "body"],
+      ["padding", "${state.pad}", ".card"],
+      ["color", "#/state/h", ".card"],
+    ]);
   });
 
   test("color-scheme lands on :root, where light-dark() can see it", () => {

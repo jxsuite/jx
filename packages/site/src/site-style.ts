@@ -17,10 +17,16 @@
  * `@media` inside a selector inside an `@supports` means.
  *
  * The sheet is the build's. `compileStyles` (`@jxsuite/compiler`, `src/shared.ts`) writes the same
- * project block into every built page's `<style>`, and this builder emits the same rules in the
- * same order for the same block — `site-style.test.ts` holds the two byte-for-byte — because a host
- * that shows a page is showing what the build will ship. The one place the two were allowed to
- * differ was a nested element key, on the belief that "the document's own style pass covers page
+ * project block into every built page's `<style>`, and it does so BY CALLING THIS BUILDER — the
+ * compiler depends on the site package, so its project half is this function with an identity
+ * transposer and a resolver that records what a static build drops. A host that shows a page is
+ * showing what the build will ship because the two are one emitter, not because a test says so;
+ * `site-style.test.ts` still holds them byte-for-byte, as the guard that keeps the delegation from
+ * being undone. It used to be a second copy of the `:root` / `body` / selector / `@`-block split,
+ * and the copies disagreed twice: the compiler passed a top-level `&[...]` key through as a raw `&`
+ * selector, which no engine matches, and routed a top-level `colorScheme` to `body`, where
+ * `light-dark()` on the root cannot see it (#329). The one place the two were DELIBERATELY allowed
+ * to differ was a nested element key, on the belief that "the document's own style pass covers page
  * content": nothing else reads `project.json#/style`, so the canvas simply dropped a site's
  * typography and link rules while the build kept them (#296).
  */
@@ -33,10 +39,26 @@ import {
   isNestedSelectorKey,
   pureSchemeOf,
 } from "@jxsuite/runtime/css";
-import type { JxStyle } from "@jxsuite/schema/types";
+import type { JxRef, JxStyle } from "@jxsuite/schema/types";
 
 /** Id of the injected site-style tag (replace-in-place, never accumulate). */
 export const SITE_STYLE_ID = "jx-site-style";
+
+/**
+ * Resolve a reactive declaration — a `${…}` template or a `{ $ref }` — to what the sheet should
+ * say, or `null` to emit no declaration. `selector` is the rule it would have landed on (`:root`,
+ * `body`, a selector key, or `null` for an unscoped at-rule), which is what a report of a dropped
+ * declaration needs to name.
+ *
+ * The hosts omit it: a canvas or a preview tab has no scope to evaluate a project-level template
+ * against, so a reactive project declaration is dropped. The compiler passes a recorder so the same
+ * drop is REPORTED by the build (`takeDroppedReactiveStyles`) rather than silent.
+ */
+export type SiteStyleValueResolver = (
+  property: string,
+  value: string | JxRef,
+  selector: string | null,
+) => string | null;
 
 /**
  * Build the site-style sheet text: custom properties on `:root`, plain properties on `body`,
@@ -59,6 +81,8 @@ export const SITE_STYLE_ID = "jx-site-style";
  * @param {Record<string, unknown>} siteStyle
  * @param {Record<string, string>} mediaQueries
  * @param {(value: string) => string} transpose - Unit transposer (canvas vh→cqh etc.)
+ * @param {SiteStyleValueResolver} [resolveValue] - What a reactive declaration becomes; absent, it
+ *   is dropped, which is what every host does
  * @returns {string}
  * @docs studio/interface/canvas
  */
@@ -66,6 +90,7 @@ export function buildSiteStyleCSS(
   siteStyle: Record<string, unknown>,
   mediaQueries: Record<string, string>,
   transpose: (value: string) => string,
+  resolveValue?: SiteStyleValueResolver,
 ): string {
   const rules: string[] = [];
   const push = (style: JxStyle, selector: string | null) => {
@@ -73,6 +98,13 @@ export function buildSiteStyleCSS(
       mediaQueries,
       scope: selector,
       transposeValue: transpose,
+      /* The selector is closed over here rather than threaded through `buildStyleRules`, whose own
+         hook sees a rule TARGET (self / descendant / unscoped) and not the selector it hangs off;
+         the compiler's report names the selector, so this is where it is known. Conditionally
+         spread: `exactOptionalPropertyTypes` refuses an explicit `undefined` for an optional hook. */
+      ...(resolveValue
+        ? { resolveValue: (property, value) => resolveValue(property, value, selector) }
+        : {}),
     })) {
       rules.push(rule.text);
     }
