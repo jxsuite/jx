@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.45-draft\
+**Version:** 0.1.46-draft\
 **Status:** Partial\
-**Updated:** 2026-09-12\
+**Updated:** 2026-09-13\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -178,7 +178,7 @@ Each entry records: `tagName`; props (typed `state` entries); events (`emits`); 
 
 **A popover restores focus relative to its INVOKER**, which HTML establishes through `popovertarget` or through `showPopover({ source })`. A call with no source leaves focus where it was, so a reader who closes a menu tabs from the top of the document. `openAt(host, anchor)` passes the source inside a `try`/`catch`, since the options bag is newer than the method.
 
-**`jx-tooltip` answers SC 1.4.13 rather than eliding it**: the panel is hoverable (`pointer-events: auto`, and it stays shown while the pointer is on it), dismissible with Escape, and persistent while hovered or focused. `interestfor` with `interest-delay-start` is the platform's own version of that pairing and is the primary path where it exists; a small sidecar covers the engines without it, because the kit ships to site authors and one engine has it. The element writes no `aria-describedby`: it cannot without touching another element, so the host names it onto its control with two id references, which resolves only because the kit is light DOM. It is placed the way `jx-popover` is: against the control as the platform's implicit anchor — an `interestfor` trigger and the binding's `showPopover({ source })` both establish it — under `placement` (`block-end span-inline-end` by default) with the 6px gap the arrow fills, and flipped above the control through a `@position-try` option (`--jx-tooltip-above`) rather than a bare `flip-block`, so the gap moves to the other side with it; a frame later the element reads back which side the platform chose, because the arrow is pinned in CSS and has to follow a flip the element did not make. A tip shown from nothing, and every engine without anchor positioning, is placed and flipped by the element at `x` and `y`, unchanged.
+**`jx-tooltip` answers SC 1.4.13 rather than eliding it**: the panel is hoverable (`pointer-events: auto`, and it stays shown while the pointer is on it), dismissible with Escape, and persistent while hovered or focused. `interestfor` with `interest-delay-start` is the platform's own version of that pairing and is the primary path where it exists; a small sidecar covers the engines without it, because the kit ships to site authors and one engine has it. The element writes no `aria-describedby`: it cannot without touching another element, so the host names it onto its control with two id references, which resolves only because the kit is light DOM. It is placed the way `jx-popover` is: against the control as the platform's implicit anchor — an `interestfor` trigger and the binding's `showPopover({ source })` both establish it — under `placement` (`block-end span-inline-end` by default) with the 6px gap the arrow fills, and flipped above the control through a `@position-try` option (`--jx-tooltip-above`) rather than a bare `flip-block`, so the gap moves to the other side with it; the element then reads back which side the platform chose, because the arrow is pinned in CSS and has to follow a flip the element did not make — and it keeps reading for as long as the tip is showing, because the platform re-places the tip through scroll and resize and can take the try option later than the first frame, which one measurement left the arrow on the wrong side of (#310). The reading is made a frame after the tip shows, and again on every cause that can move an anchored box — `scroll` taken at the window in the capture phase, so a nested scroller counts; the window's `resize`; and a `ResizeObserver` on the tip and its control where the engine has one — coalesced to one measurement per animation frame, and torn down when the tip closes or leaves the document. `measureAnchoredFlip` returns the disposer for a host that measures a tip it showed itself. A tip shown from nothing, and every engine without anchor positioning, is placed and flipped by the element at `x` and `y`, unchanged.
 
 **`jx-spinner`'s rotation is exempt from §4's reduced-motion rule, deliberately.** `--jx-dur-*` is zeroed under `prefers-reduced-motion: reduce`, which is right for a transition and wrong for a busy indicator: a zero-duration spin is a frozen spinner, and a frozen spinner reads as a hang. So the rotation carries its own `--jx-spin-dur` and the preference SLOWS it instead of stopping it. Its keyframes name is `jx-spin`, the first the kit mints, and the prefix is the whole mitigation for a name the style builder hoists document-global.
 
@@ -417,6 +417,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.46-draft** (2026-09-13) — jx-tooltip keeps reading which side the platform placed it on while it shows, so the arrow follows a later flip (#310).
 - **0.1.45-draft** (2026-09-12) — jx-option and jx-select rows carry five typographic channels (weight, slant, variant, transform, decoration) beside face, swatch and line; jx-color-field takes resolved, the colour behind a reference the page cannot resolve, for its chip and its picker; the Style tab's font row is a jx-combobox of specimen rows and the unit row is the last menu composite.
 - **0.1.44-draft** (2026-09-11) — §11: WCAG 2.2 is a Subset with a test per criterion, and SC 2.4.7 is a gate (every focusable control has the kit's focus ring); CSS Scoping is a Subset now that the light-DOM decision is held by the conformance test, and gap:ui-scoping is retired (§11).
 - **0.1.43-draft** (2026-09-11) — jx-tooltip is anchor-positioned against the control it was shown from, flipped through a named @position-try option so the arrow's gap moves with it; every overlay that hangs from something is the platform's to place, and §11 retires gap:ui-anchor (§5.2, §6, §11).
@@ -466,4 +467,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.45-draft_
+_Jx UI Kit Specification v0.1.46-draft_
