@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/jxsuite/jx/compare/search-v0.2.6...search-v0.3.0) (2026-09-14)
+
+
+### Features
+
+* **search,docs:** a page can say search: false, and the three spec-derived reference pages do ([4ca8e37](https://github.com/jxsuite/jx/commit/4ca8e37a5ea60d7cb22ab394cbd3ec5145ef4f16))
+* **search,docs:** a page can say search: false, and the three spec-derived reference pages do ([8747f4c](https://github.com/jxsuite/jx/commit/8747f4c2ca4eb55646384a9379b196075a1afcb6)), closes [#305](https://github.com/jxsuite/jx/issues/305)
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.2.0
+
 ## [0.2.6](https://github.com/jxsuite/jx/compare/search-v0.2.5...search-v0.2.6) (2026-08-30)
 
 
