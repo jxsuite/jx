@@ -455,9 +455,15 @@
       "color": "var(--jx-accent-fg)"
     },
     "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "$description": "The small action button is the kit's most packed control — Studio's toolbars, block action bar and inspector rows declare it some four hundred times — and it draws 4px under the kit's control height, which is the WCAG 2.2 SC 2.5.8 floor (ui.md §4.3). The `::before` is the hit area, jx-tab's close-button technique: an empty pseudo-element that reaches 2px past the drawn box on every side, so the region that accepts the pointer is exactly `--jx-control-h` square while the picture stays 20px. The inset is -3px and not -2px because an absolutely positioned box is offset from its containing block's PADDING edge, and this control draws a 1px border: the border width comes first, then half of the 4px the box is under (jx-tab's close button is borderless, so -4px was exact there). The control is already `position: relative` for the badge, so the pseudo-element needs nothing more. A 4px gap (jx-toolbar's) lets two extended neighbours abut; a compact jx-action-group packs its members touching, and its sheet zeroes the extension on that axis, because an extension over a neighbour's box would take the neighbour's clicks, and the criterion gives an overlapped strip to the target on top rather than to both; a default group's 2px gap leaves every member but the last at 22px on that axis, which ui.md §11 names as a non-claim. Held by target-size.test.ts and the conformance gate, both of which read the border and subtract it.",
       "minWidth": "calc(var(--jx-control-h) - 4px)",
       "minHeight": "calc(var(--jx-control-h) - 4px)",
-      "padding": "0 var(--jx-space-1)"
+      "padding": "0 var(--jx-space-1)",
+      "::before": {
+        "content": "\"\"",
+        "position": "absolute",
+        "inset": "-3px"
+      }
     },
     "&[data-size=\"lg\"] > [part=\"control\"]": {
       "minWidth": "calc(var(--jx-control-h) + 8px)",
