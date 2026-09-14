@@ -9,6 +9,7 @@
  * gesture goes through a command, and applying a layout never removes a surface.
  */
 import { flush, installMockPlatform } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 /** What the next prompt resolves to. `null` is the user cancelling. */
@@ -158,6 +159,17 @@ describe("the tabs", () => {
 });
 
 describe("+ saves the current arrangement", () => {
+  test("is a kit button whose hint is a tooltip, not a native title on the host (#332)", async () => {
+    toolbar.mount(root);
+    await flush();
+    await flush();
+    const add = root.querySelector('[part="layout-add"]')!;
+    expect(add.localName).toBe("jx-action-button");
+    expect(add.hasAttribute("title")).toBe(false);
+    expect(add.querySelector('[part="control"]')!.getAttribute("aria-label")).toBe("Save layout");
+    expect(hintOf(add)).toBe("Save the current arrangement as a layout");
+  });
+
   test("prompts, then runs view.saveLayout with the answer", async () => {
     shell.leftTab = "git";
     promptResult = "Triage";

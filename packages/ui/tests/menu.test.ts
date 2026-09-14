@@ -191,6 +191,37 @@ describe("jx-menu", () => {
     expect(copy!.getAttribute("style")).toContain("inherit");
   });
 
+  test("requires is the disabled reason and nothing else: an ENABLED row draws it nowhere", async () => {
+    /* The hint hybrid the buttons and the switch ship (ui.md §5.1) does not reach a menu row, and
+       the reason is the shape of `requires` rather than a gap. It is the sentence saying why a
+       DISABLED row cannot act — every Studio projection fills it from `disabledReason(id)`, which
+       is undefined for a usable command — and a disabled row can open no tip, so the hybrid
+       collapses to the title. Were an enabled row ever handed one, the right answer is still not a
+       tooltip: `requires` on a row that can act is a contradiction, and this test is what keeps it
+       from quietly becoming a second tooltip channel. The row's own `title` binding gates on
+       `disabled` for the same reason, which is what this asserts from both sides. */
+    const { rows } = await open();
+    const [copy, paste] = rows as (RowEl & { disabled: boolean; requires: string })[];
+    expect(copy!.getAttribute("title")).toBeNull();
+    copy!.requires = "a reason it was never given";
+    await flush();
+    expect(copy!.hasAttribute("title")).toBe(false);
+    expect(copy!.querySelector("jx-tooltip")).toBeNull();
+    expect(copy!.hasAttribute("aria-describedby")).toBe(false);
+    // Disabled under the reader: the same sentence becomes the title, at once and only then.
+    copy!.disabled = true;
+    await flush();
+    expect(copy!.getAttribute("title")).toBe("a reason it was never given");
+    // And re-enabled, it goes: the title never outlives the state it explains.
+    copy!.disabled = false;
+    await flush();
+    expect(copy!.hasAttribute("title")).toBe(false);
+    // A disabled row with no sentence carries no blank title either.
+    paste!.requires = "";
+    await flush();
+    expect(paste!.hasAttribute("title")).toBe(false);
+  });
+
   test("a row's five slots leave no node, and the parts its rules key on still do", async () => {
     /* Five `-slot` parts on jx-menu-item, and every one of them is a real `<slot>`, so after
        distribution none of them names a node. Nothing is lost, because no rule ever keyed on one:

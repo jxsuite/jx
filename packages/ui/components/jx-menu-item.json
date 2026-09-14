@@ -31,7 +31,7 @@
       "type": "string",
       "default": "",
       "attribute": "requires",
-      "description": "The one-sentence reason a disabled row cannot act, printed as its tooltip."
+      "description": "The one-sentence reason a DISABLED row cannot act, drawn as the row's native title while it is disabled and nowhere at all while it is not. The title is the whole contract here, and deliberately not the tooltip hybrid jx-button, jx-action-button and jx-switch ship: a disabled row can open no tip, so the hybrid collapses to its disabled half, and an ENABLED row never carries a requires — every Studio projection fills it from the registry's disabledReason, which is undefined for a command that can run, and a reason on a row that can act is a contradiction rather than a hint. Studio's menu surface also prints the same sentence as the row's visible description (`Needs …`), so a keyboard reader hears it without the title."
     },
     "checked": {
       "type": "string",

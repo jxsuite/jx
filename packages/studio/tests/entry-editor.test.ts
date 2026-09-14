@@ -16,6 +16,7 @@
  * pill is a projection and the test that named its class names its values.
  */
 import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { MARKDOWN_FORMAT, mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { activeTab, closeAllTabs, workspace } from "../src/workspace/workspace";
@@ -368,13 +369,12 @@ describe("drafts", () => {
 
   /**
    * The switch's tooltip is the whole contract the pill carries: it names what a draft IS, and
-   * deliberately does not promise the build excludes it. `jx-switch` draws `hint` on the control.
+   * deliberately does not promise the build excludes it. `jx-switch` draws an enabled `hint` as a
+   * `jx-tooltip` child (ui.md §5.1), which is what `hintOf` reads.
    */
   test("the switch says what a draft means, and appears on no collection without the axis", async () => {
     const withAxis = await mount(await openAda());
-    expect(
-      part(withAxis, "draft")?.querySelector('[part="control"]')?.getAttribute("title"),
-    ).toContain("does not exclude");
+    expect(hintOf(part(withAxis, "draft"))).toContain("does not exclude");
 
     detachEntryPane("primary");
     resetStudioState({
