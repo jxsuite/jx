@@ -48,12 +48,15 @@
  * write, and therefore with an empty diff.
  *
  * **A real edit is a one-line diff.** The file's layout — which objects sit on one line, where a
- * blank line falls — is read once per binding ({@link seedCommitted}) and every serialisation here
- * honours it, so what changes on disk is the field that changed.
+ * blank line falls — is read once per binding ({@link seedCommitted}), replaced by the record of
+ * whatever bytes reached the file another way ({@link adoptProjectConfig}), and every serialisation
+ * here honours it, so what changes on disk is the field that changed.
  *
  * **Collaboration.** `project.json` is out of collab replication; the gate is in
  * `collab/collab-session.ts`'s `ensureCollab`, which is what would otherwise register the Yjs
  * history delegate over this tab.
+ *
+ * @docs studio/projects/settings
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
@@ -64,7 +67,7 @@ import { requireProjectState, setProjectState } from "../state";
 import { setWorkspaceProject, workspace } from "../workspace/workspace";
 import { PROJECT_CONFIG_PATH, createTab, disposeTab } from "./tab";
 import { transactDoc } from "./transact";
-import { parseJsonDocument, serializeJson } from "../files/json-layout";
+import { deriveJsonLayout, parseJsonDocument, serializeJson } from "../files/json-layout";
 import type { JsonLayout } from "../files/json-layout";
 
 import type { Tab } from "./tab";
@@ -114,8 +117,9 @@ let _detached: Tab | null = null;
 let _committed: string | null = null;
 
 /**
- * The layout the file was read in ({@link seedCommitted}), for a binding with no open tab to carry
- * it. Reset with the binding: a different project is a different file.
+ * The layout the file was read in ({@link seedCommitted}) or last written in ({@link
+ * adoptProjectConfig}), for a binding with no open tab to carry it. Reset with the binding: a
+ * different project is a different file.
  */
 let _layout: JsonLayout | null = null;
 
@@ -241,16 +245,28 @@ function liveConfig(): ProjectConfig | null {
 }
 
 /**
- * Make `target` hold exactly `source`'s keys — assignment alone would leave the removals behind.
+ * Make `target` hold exactly `source`'s keys, in `source`'s ORDER.
+ *
+ * Every key goes, the ones `source` keeps included, before `source` is assigned over the empty
+ * object. Assignment alone would leave the removals behind; deleting only the removals would leave
+ * the ORDER behind, because a key that survives keeps the position it had and only a new one takes
+ * `source`'s. Key order is what the serializer writes the file in, so a document holding the
+ * assistant's configuration in the previous file's order re-lays the file the assistant just wrote
+ * on the next commit — even a no-op one, which then disagrees with {@link _committed} (issue 331).
+ * The rival handover in {@link commitProjectConfig} is the same case from the other side: the
+ * object of record is the source, and its order is the file's.
+ *
+ * The transient — an observer of a single key would see it gone and back within the transaction —
+ * is one the removals already had, and nothing observes the configuration document key by key: the
+ * settings surfaces render from `projectState` and mutate it in place, and every reader of the
+ * document follows the root reference {@link transactDoc} replaces when the transaction ends.
  *
  * @param {Record<string, unknown>} target
  * @param {ProjectConfig} source
  */
 function replaceContents(target: Record<string, unknown>, source: ProjectConfig): void {
   for (const key of Object.keys(target)) {
-    if (!Object.hasOwn(source, key)) {
-      delete target[key];
-    }
+    delete target[key];
   }
   Object.assign(target, source);
 }
@@ -444,14 +460,26 @@ export async function commitProjectConfig(
  * assistant's write back out of existence. Putting the bytes into the document instead keeps the
  * one-object rule true, and the state sync follows from the bind effect like every other change.
  *
+ * **The layout record travels with the write.** The assistant authored the whole file, and the text
+ * it wrote is the file now — so the record the next commit honours is derived from THAT text
+ * (`json-layout.ts`'s `deriveJsonLayout`), exactly as a reload from disk would derive it, and it
+ * replaces both the seed's record and the open tab's. Keeping the record the chokepoint read BEFORE
+ * the write is what turned the settings edit after an assistant rewrite into a whole-file diff: the
+ * file was on disk in the assistant's layout and the commit re-laid it in the previous one (issue
+ * 331). The key order travels the same way: {@link replaceContents} installs `config`'s order on
+ * the document, so a rewrite that moved a top-level key stays moved. Nothing here re-reads the file
+ * to learn any of this: the caller just produced the bytes, and a second parse of `project.json` is
+ * the rival object this door exists to prevent.
+ *
  * `skipHistory`, because this is a RELOAD and not an edit: the file already says this, and
  * `write_file` tells the model in as many words that its disk writes are not undoable. A history
  * entry here would offer ⌘Z a change it could not take back from the file.
  *
  * @param {ProjectConfig} config The configuration as written — already past the schema gate.
+ * @param {string} text The bytes that reached the file, which `config` is the parse of.
  * @returns {Promise<void>}
  */
-export async function adoptProjectConfig(config: ProjectConfig): Promise<void> {
+export async function adoptProjectConfig(config: ProjectConfig, text: string): Promise<void> {
   if (!requireProjectState()) {
     // No project state is no configuration document either ({@link projectConfigDocument} reads
     // One). The workspace copy is then the only thing there is to keep true.
@@ -466,7 +494,13 @@ export async function adoptProjectConfig(config: ProjectConfig): Promise<void> {
   );
   tab.doc.dirty = false;
   // Settle a read already in flight before saying what the file holds, or it would resolve after
-  // This line with the PREVIOUS bytes and make the next real commit look like a no-op.
+  // These lines with the PREVIOUS bytes and record, and make the next real commit look like a
+  // No-op — or re-lay the file the assistant just formatted.
   await seedCommitted();
+  // The record of the bytes just written, on the tab as well as on the seed: `configLayout`
+  // Prefers the open tab's, and the tab's is the record of the file it opened, which the write has
+  // Just replaced. The tab holds the config now; it holds the config's layout too.
+  _layout = deriveJsonLayout(text);
+  tab.doc.layout = _layout;
   _committed = serializeProjectConfig(config);
 }

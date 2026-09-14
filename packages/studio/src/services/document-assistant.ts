@@ -130,12 +130,15 @@ export function createDocumentAssistant() {
         sessionStore.moveSession("", root, sessionId);
       }
     },
-    onProjectConfigWritten: async (config: ProjectConfig) => {
+    onProjectConfigWritten: async (config: ProjectConfig, text: string) => {
       /* Into the configuration document, not beside it. This used to assign a fresh object to
          `projectState.projectConfig`, leaving the document holding the previous configuration —
          and the next settings commit wrote that stale document back over the assistant's file.
-         `adoptProjectConfig` is the one door for a config that reached disk another way. */
-      await adoptProjectConfig(config);
+         `adoptProjectConfig` is the one door for a config that reached disk another way. The text
+         goes with it: the document derives the file's layout record from the bytes the tool wrote,
+         so the next settings commit is a one-line diff on the file as the model laid it out, not a
+         re-layout of it with the record of the file it read before (issue 331). */
+      await adoptProjectConfig(config, text);
       /* An `extensions` edit changes what the generated entry documents compose, and the backends
          regenerate them from project.json on demand — so without this the editor and the assistant
          both keep judging by the PREVIOUS project's schemas until the window reopens. */
