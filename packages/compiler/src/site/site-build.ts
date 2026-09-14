@@ -456,11 +456,24 @@ export async function buildSite(
           // The full drive path on Windows, so resolve() then wrote the sidecar back into the
           // Source tree instead of dist.
           const outName = f.tagName ? `${f.tagName}.js` : basename(f.path);
-          writeFileSync(resolve(componentOutDir, outName), f.content, "utf8");
-          if (f.tagName) {
+          /*
+           * Written and recorded ONCE per tag, in first-seen order. `compileElement` returns a
+           * component's `$elements` dependencies as extra files, so a dependency two parents name
+           * arrives here once per parent and once more for its own compile — and
+           * `injectComponentScripts` inlines a tag's stylesheet and loads its module once per
+           * record: three copies of `lcb-icon { display: inline-block }` in one head on a
+           * card → button → icon page (#330). The FIRST position is the one kept, because
+           * equal-specificity component rules cascade by source order and a later duplicate must
+           * not move a sheet that already landed. The write is skipped with the record: every
+           * arrival is the same file compiled with the same options (a fresh `visited` set each
+           * call), so the bytes are identical and a second write only inflates `fileCount`, which
+           * reports files produced rather than writes attempted.
+           */
+          if (!compiledComponentTags.includes(f.tagName)) {
+            writeFileSync(resolve(componentOutDir, outName), f.content, "utf8");
             compiledComponentTags.push(f.tagName);
+            fileCount += 1;
           }
-          fileCount += 1;
         }
 
         // Pre-render component HTML scaffold and CSS sidecar
