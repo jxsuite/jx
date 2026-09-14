@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.11.4-draft\
+**Version:** 0.11.5-draft\
 **Status:** Partial\
 **Updated:** 2026-09-13\
 **License:** MIT
@@ -1077,6 +1077,18 @@ A backend MAY declare `assetCapabilities`: `maxUploadBytes`, and an `accept` str
 
 A declared limit is different. Studio refuses an oversized file before spending the round trip and names the number in the refusal; the rest of the batch still lands. A declared `accept` NARROWS the file picker's own list and never widens it, because offering a type Studio cannot place in a document helps nobody.
 
+### 9.4 Saving a JSON document keeps its layout
+
+> **Status: Implemented.** `packages/studio/src/files/json-layout.ts`; `packages/studio/tests/json-layout.test.ts` proves byte identity over every formatted document in this repository.
+
+A `.json` document is written back in the layout its file was read in, so a one-value edit is a one-line diff. The native JSON branch of `serializeDocument` used to be `JSON.stringify(document, null, 2)`, which is not the layout any formatted project is kept in: the repository's formatter keeps a short object on the one line its author wrote it on, and a save expanded every one of them and buried the changed line in a few hundred reflowed ones (#308).
+
+**What is preserved is what the formatter preserves, by JSON Pointer.** When a JSON file is read into a tab — from the Files tree, the file picker, a project URL, a reload from disk, the Code view's buffer or a collaborator's shared text — Studio records three facts about its text and keeps them on the tab's document record: whether each object's `{` and first key shared a line; which members a blank line followed; and which non-ASCII characters a string spelt as `\uXXXX` escapes. The record is keyed by pointer, so it survives every edit that leaves a node where it was, and it is replaced whenever the tab reads a different text. Nothing else about the source is kept: an array's own line break is a fact the formatter discards, so recording it would make the save disagree with the formatter.
+
+**The layout rule.** An object stays on one line when it was written on one and the whole line, its trailing comma included, fits the print width (100 columns, two-space indentation, measured in display columns as the formatter measures them: a CJK or fullwidth character and an emoji count two, a combining mark or a format character none); one whose first key sat on its own line stays expanded however short it is. An object the edit created takes its parent's answer, so a new `{ "$ref": … }` inside an inline `attributes` lands inline beside its siblings, and a new object at an expanded level expands. Arrays are laid by fit: inline when they fit, one element per line otherwise, always open when two or more elements are all objects with more than one key or all arrays with more than one element, and a run of numbers fills its lines. A break propagates outward: a container holding an expanded object or a blank line expands. Empty containers are `{}` and `[]`, one blank line survives between two members and none against a bracket, and the text ends with exactly one newline. Scalars are spelt as `JSON.stringify` spells them.
+
+**One serialization, every reader.** The save, the Code view's buffer, the live-preview overlay (§9.2), the collaboration mirror and the `project.json` chokepoint (§17) all go through it with the same record, so what the reader sees, what a peer receives and what lands on disk are the same bytes. The `project.json` tab that Project Settings or Project Styles opens is built over the configuration object rather than read from a file, so it has no text to take a record from; the chokepoint reads the file once and lends that tab the record, and a ⌘S on it writes the bytes a settings commit writes. A document with no JSON source — a format-class file, a conversion, a new file the assistant creates, a seeded entry — has no record: every object expands and every array is laid by fit, which is what the formatter makes of fresh output, so the file needs no reformat and the tab it opens in reads its layout straight back.
+
 ---
 
 ## 10. Keyboard Shortcuts
@@ -1627,7 +1639,7 @@ Every finding that can be repaired carries the command that repairs it, and the 
 
 ## 17. Project Documents (Settings and Styles)
 
-> **Status: Partial.** `project.json` is a document under the transaction log and both surfaces render from it; the formatting-preserving writer described in §17.2 is not built.
+> **Status: Implemented.** `project.json` is a document under the transaction log, both surfaces render from it, and the chokepoint writes through §9.4's layout-preserving serializer (`packages/studio/src/tabs/project-config.ts`).
 
 Project configuration used to be edited through a modal by **29 fire-and-forget call sites across eight files**, twenty-one of which dropped a rejected write on the floor — `void saveProjectConfig()`, or an `await` inside an un-awaited click handler. It was the app's highest-consequence silent-failure path, and it wrote the file that defines the project.
 
@@ -1645,11 +1657,11 @@ Three rules follow, and they are the section's whole content:
 
 ### 17.2 A no-op edit writes nothing
 
-The committed `project.json` files in a repository are formatted by whatever formatter the project uses, not by `JSON.stringify`. Re-serializing a parsed config therefore does **not** reproduce the bytes on disk — short arrays get expanded, authored line breaks are lost — so a writer that compares bytes would rewrite the entire file's indentation on the first settings edit, and every settings edit would arrive as a whole-file diff that hides what actually changed.
+The committed `project.json` files in a repository are formatted by whatever formatter the project uses, not by `JSON.stringify`. Re-serializing a parsed config with no knowledge of its file would not reproduce the bytes on disk — short arrays get expanded, authored line breaks are lost — so a writer that compared bytes against such a rendering would rewrite the entire file's indentation on the first settings edit, and every settings edit would arrive as a whole-file diff that hides what actually changed.
 
-**The commit compares semantically and writes nothing when nothing changed.** That is formatting-independent, and it is what makes a settings edit reviewable.
+**The commit compares semantically and writes nothing when nothing changed.** Both sides of the comparison are the same serializer over the same layout record, so the test is formatting-independent, and it is what makes a settings edit reviewable.
 
-A real one-field edit still re-serializes the whole file, so it still reformats. Preserving the author's formatting through a genuine edit needs a key-span splice over the original text and is **not built**; until it is, a configuration edit is a whole-file diff, and this section says so rather than implying otherwise.
+**A real one-field edit is a one-line diff.** The chokepoint serializes through §9.4's layout-preserving serializer with the record the file was read in — the open `project.json` tab's when there is one, otherwise the one the chokepoint reads from disk once per binding — so what changes on disk is the field that changed. A key-span splice over the original text was the alternative and is not needed: the formatter preserves exactly the facts the record holds, so the re-serialization is the formatted file.
 
 ### 17.3 What the surfaces may assume
 
@@ -1837,6 +1849,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.5-draft** (2026-09-13) — §9.4 a JSON document is saved in the layout its file was read in — inline objects, blank lines and escapes preserved by pointer, arrays and everything else laid out as the formatter would, the print width measured in display columns; §17.2's settings commit goes through the same serializer with the file's record, so an edit is a one-line diff, and §17 is Implemented (#308).
 - **0.11.4-draft** (2026-09-13) — §4.1 the canvas site-style sheet emits selector-keyed blocks (element, list, class) unscoped and the color-scheme hint triplet, byte-for-byte what jx build writes from project.json#/style; it used to drop element-selector rules (#296).
 - **0.11.3-draft** (2026-09-12) — The Style tab's font row is a jx-combobox whose rows are their own specimens over the project's font tokens (site and document) and the unminted presets, minting on the commit only; the typography keyword rows draw each value as itself in the element's own face; the colour chip is handed the literal behind a token.
 - **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
@@ -1970,4 +1983,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.11.4-draft_
+_`@jxsuite/studio` Specification v0.11.5-draft_

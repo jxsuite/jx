@@ -11,6 +11,7 @@ import {
   stringProperty,
 } from "../commands/command-args";
 import type { Tab, TabOrigin } from "../tabs/tab";
+import type { JsonLayout } from "../files/json-layout";
 
 import type { ComponentEntry } from "../files/components";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -824,6 +825,7 @@ function setActiveTab(tabId: string, opts: { cycling?: boolean; focus?: boolean 
  *   preview?: boolean;
  *   paneId?: string;
  *   focus?: boolean;
+ *   layout?: JsonLayout | null;
  * }} opts
  * @returns {Tab}
  */
@@ -839,6 +841,7 @@ export function openTab(opts: {
   preview?: boolean;
   paneId?: string;
   focus?: boolean;
+  layout?: JsonLayout | null;
 }) {
   const previous = workspace.tabs.get(opts.id);
   const preview = opts.preview === true && previous?.pinned !== true;
