@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.11.3-draft\
+**Version:** 0.11.4-draft\
 **Status:** Partial\
-**Updated:** 2026-09-12\
+**Updated:** 2026-09-13\
 **License:** MIT
 
 ---
@@ -161,7 +161,7 @@ The canvas renders the current document using `@jxsuite/runtime`. It shows exact
 
 **Escalation to a full render** is the fallback when an edit cannot be applied surgically, and it is expensive: it re-runs the runtime, rebuilding every binding effect and reloading any embedded iframe. Structural splices (insert / remove / move) therefore escalate only on conditions that can actually break them — a `$switch` case or repeater-template path, an `innerHTML` parent, a missing children array, or an **immediate** parent that is a component instance (whose children may be rendered by the component rather than as light DOM). A component _ancestor_ is not a reason to escalate: these ops locate their target by its stamped path, and the one index-sensitive step reads the immediate parent's own children. This matters for real content, where markdown class-directive pages place every editable block inside a component.
 
-Site style is injected into the canvas as a real stylesheet (custom properties in a `:root` rule, direct properties in a `body` rule, conditional `@--name` blocks resolved and — for scheme queries — dual-emitted per spec.md §9.5), never as inline root properties, so forced-scheme override selectors can win the cascade.
+Site style is injected into the canvas as a real stylesheet (custom properties in a `:root` rule, direct properties in a `body` rule, selector-keyed blocks such as `"h1, h2"`, `a` and `.card` as unscoped rules of their own, `&`-keyed blocks as states of `:root`, conditional `@--name` blocks resolved and — for scheme queries — dual-emitted per spec.md §9.5, and the `color-scheme` hint triplet unless the project sets `colorScheme`), never as inline root properties, so forced-scheme override selectors can win the cascade. **The sheet is the build's, byte for byte:** `jx build` writes the same project block into every page's stylesheet through the same emitter contract, and the canvas is the page — the iframe carries the project's `$head` and the rendered document — so an element-selector rule is emitted unscoped exactly as the build emits it, and nothing the canvas shows is styled differently from what the build ships. The sheet used to drop every selector-keyed block that was not `&` or `@`, on the belief that the document's own style pass covered page content; nothing else reads `project.json#/style`, so a site's typography and link rules were in the built output and absent from the canvas (#296).
 
 **Color-scheme preview.** When the effective `$media` declares a pure `prefers-color-scheme` query, the tab bar shows an Auto/Light/Dark control (one per tab; available in edit, design, and stylebook modes). Light/Dark force the scheme by setting `data-color-scheme` on the canvas iframe's root element — a patch-free document-level attribute flip that never re-renders; Auto removes the attribute and follows the OS. Scheme queries no longer render as generic feature toggles. The same tri-state also selects which scheme layer style-sidebar edits target (§6.2).
 
@@ -1837,6 +1837,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.4-draft** (2026-09-13) — §4.1 the canvas site-style sheet emits selector-keyed blocks (element, list, class) unscoped and the color-scheme hint triplet, byte-for-byte what jx build writes from project.json#/style; it used to drop element-selector rules (#296).
 - **0.11.3-draft** (2026-09-12) — The Style tab's font row is a jx-combobox whose rows are their own specimens over the project's font tokens (site and document) and the unminted presets, minting on the commit only; the typography keyword rows draw each value as itself in the element's own face; the colour chip is handed the literal behind a token.
 - **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
 - **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
@@ -1969,4 +1970,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.11.3-draft_
+_`@jxsuite/studio` Specification v0.11.4-draft_
