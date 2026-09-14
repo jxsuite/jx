@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/jxsuite/jx/compare/ui-v0.1.0...ui-v0.2.0) (2026-09-14)
+
+
+### Features
+
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([fa176d3](https://github.com/jxsuite/jx/commit/fa176d317ee5b1f2f4892a3e6027090bf60d6fe1))
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([#332](https://github.com/jxsuite/jx/issues/332)) ([f3826ee](https://github.com/jxsuite/jx/commit/f3826ee79fa43066f9d5b41c9621d7dbdc1eeea2))
+* **ui:** size=sm controls accept the pointer over the 24px floor without growing ([6089692](https://github.com/jxsuite/jx/commit/6089692901d4d89ca046a060d51e33a82fd98d1b))
+* **ui:** size=sm controls accept the pointer over the 24px floor without growing ([#324](https://github.com/jxsuite/jx/issues/324)) ([24c93a0](https://github.com/jxsuite/jx/commit/24c93a0dd3d589c0b9f63ab74ef6e4ded5d60092))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.1
+
 ## 0.1.0 (2026-09-14)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [5.1.1](https://github.com/jxsuite/jx/compare/desktop-v5.1.0...desktop-v5.1.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **desktop:** the first changed file's path no longer loses its first character ([ff03c52](https://github.com/jxsuite/jx/commit/ff03c52c20393788c093c01320fcb010e0425283))
+* **desktop:** the first changed file's path no longer loses its first character ([8278dc8](https://github.com/jxsuite/jx/commit/8278dc81d8ba8d1d903078c8d6b2a062216f5d7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 4.0.1
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/parser bumped to 1.8.1
+    * @jxsuite/server bumped to 4.2.1
+    * @jxsuite/starters bumped to 1.8.1
+    * @jxsuite/studio bumped to 5.1.0
+  * devDependencies
+    * @jxsuite/server bumped to 4.2.1
+    * @jxsuite/ui bumped to 0.2.0
+
 ## [5.1.0](https://github.com/jxsuite/jx/compare/desktop-v5.0.1...desktop-v5.1.0) (2026-09-14)
 
 

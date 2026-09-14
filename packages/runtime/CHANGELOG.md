@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.0.1](https://github.com/jxsuite/jx/compare/runtime-v4.0.0...runtime-v4.0.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([2988975](https://github.com/jxsuite/jx/commit/2988975365bb7986d718657ab525819c9a513648))
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([3a30921](https://github.com/jxsuite/jx/commit/3a30921644a048e93ddc5e572b85ec38399f4abb)), closes [#320](https://github.com/jxsuite/jx/issues/320)
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/runtime-v3.1.0...runtime-v4.0.0) (2026-09-14)
 
 
