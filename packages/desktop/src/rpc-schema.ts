@@ -72,8 +72,14 @@ export interface CodeServiceResult {
 // ─── Git types ───────────────────────────────────────────────────────────────
 
 export interface GitFileStatus {
+  /**
+   * One porcelain letter — `M`, `A`, `D`, `R`, `U` — never a word and never the raw two-column
+   * code.
+   */
   status: string;
   path: string;
+  /** Whether this change is in the index. Absent reads as unstaged. */
+  staged?: boolean;
 }
 
 export interface GitStatusResult {
