@@ -2,12 +2,15 @@
 title: "Documents and panes"
 description: "How open documents work in Jx Studio: the pane's strip, labels, preview and pinned documents, explicit saving, two panes, and the pane's own bars."
 spec:
+  - studio.md#9.4
   - studio.md#14
   - studio.md#14.7
   - studio.md#18
 code:
   - packages/studio/src/panels/tab-strip.ts
   - packages/studio/src/files/file-ops.ts
+  - packages/studio/src/files/serialize-document.ts
+  - packages/studio/src/files/json-layout.ts
   - packages/studio/src/commands/context.ts
   - packages/studio/src/tabs/tab.ts
   - packages/studio/src/tabs/project-config.ts
@@ -63,6 +66,8 @@ Undo and redo are per document as well: each keeps its own history, so :kbd[⌘Z
 :::doc-note
 Saving writes the file in place, in your project folder, as plain Markdown, JSON, or CSV. Nothing is held in a database; what you save is what git sees. See [Publish](/docs/studio/publish).
 :::
+
+**A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelt as an escape stays an escape. Studio reads those facts when it opens the file and honours them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
 
 ## Each document remembers its view
 

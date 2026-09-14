@@ -35,9 +35,11 @@ import { getPlatform } from "../platform";
 import { getGridController } from "../grid/grid-controller";
 import { activeTab, openTab } from "../workspace/workspace";
 import { collabReadOnly, collabSave } from "../collab/collab-session";
+import type { CollabParser } from "../collab/collab-session";
 import { flushCanvasEdits } from "../canvas/iframe-host";
 import { flushPreviewOverlay } from "../preview/preview-overlay";
 import { serializeDocument } from "./serialize-document";
+import { parseJsonDocument } from "./json-layout";
 import {
   defaultContentFormat,
   formatByName,
@@ -83,6 +85,32 @@ export async function parseSourceForPath(path: string, source: string) {
   return { ...result, format };
 }
 
+/**
+ * A peer's shared source text, back into the structure tree — the collab source reconciler's parser
+ * (`collab/collab-session.ts`'s `configureCollabParser`, injected at studio init).
+ *
+ * A format file goes through its format's parser, as {@link parseSourceForPath} does. A JSON file
+ * goes through `parseJsonDocument`, and the layout it read is written onto the tab: the text a peer
+ * typed is also the layout this client will save in — the record is keyed by pointer and the
+ * document is about to become that text's — so recording it here is what keeps the next
+ * structure-to-source mirror from rewriting lines the peer never touched (issue 308). A side effect
+ * rather than a return value, because the parser's contract is the document, and the reconciler may
+ * still discard the parse when the canonical lock flipped while it ran; a record taken from a
+ * discarded text describes the file the next parse will read, and that parse replaces it.
+ *
+ * @param {Tab} tab
+ * @param {string} text
+ */
+export const parseCollabSource: CollabParser = async (tab, text) => {
+  if (tab.documentPath && formatForPath(tab.documentPath)) {
+    const parsed = await parseSourceForPath(tab.documentPath, text);
+    return { document: parsed.document as JxMutableNode, frontmatter: parsed.frontmatter };
+  }
+  const parsed = parseJsonDocument(text);
+  tab.doc.layout = parsed.layout;
+  return { document: parsed.document as JxMutableNode };
+};
+
 /** Open a file via the File System Access API (or fallback input). */
 export async function openFile() {
   try {
@@ -122,8 +150,10 @@ export async function openFile() {
           sourceFormat: format.name,
         });
       } else if (name.endsWith(".json")) {
-        const document = JSON.parse(text) as Record<string, unknown>;
-        openTab({ document, documentPath, fileHandle: handle, id: name });
+        // The layout travels with the document so a save writes the file back the way it was laid
+        // Out (`json-layout.ts`), not the way `JSON.stringify` would lay it.
+        const { document, layout } = parseJsonDocument(text);
+        openTab({ document, documentPath, fileHandle: handle, id: name, layout });
       } else {
         throw noFormatError(name);
       }

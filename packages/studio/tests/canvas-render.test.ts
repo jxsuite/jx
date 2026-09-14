@@ -36,6 +36,7 @@ import { commitTabBuffers, tabBufferUnsaved } from "../src/services/monaco-buffe
 import { toRaw } from "../src/reactivity";
 import { shell } from "../src/shell";
 import { setFormats } from "../src/format/format-host";
+import { serializeJson } from "../src/files/json-layout";
 import { setEditZoom } from "../src/canvas/canvas-utils";
 import { resetEditWidths, setEditWidth } from "../src/canvas/edit-width";
 import { diffChangeMapOf, diffViewOf, resetDiffViews, setDiffView } from "../src/canvas/diff-view";
@@ -934,7 +935,8 @@ describe("source mode", () => {
     expect(stageEl().querySelector('[part="source-editor"]')).not.toBeNull();
     await waitForEditors(1);
     expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[0] as never);
-    expect(createdModels[0]!._value).toBe(JSON.stringify(tab.doc.document, null, 2));
+    // The bytes a save writes — the layout serializer's, not `JSON.stringify`'s (issue 308).
+    expect(createdModels[0]!._value).toBe(serializeJson(tab.doc.document, tab.doc.layout));
     expect(createdModels[0]!.lang).toBe("json");
     // The load set `_ignoreNextChange` and its own `setValue` CONSUMED it — that is the whole
     // Mechanism, and the flag being false afterwards is the proof it worked. The document's own
@@ -958,11 +960,17 @@ describe("source mode", () => {
       await waitForEditors(1);
       const [editor] = createdEditors;
       editor!._ignoreNextChange = false;
-      editor!._model!._value = JSON.stringify({ children: [], tagName: "main" });
+      editor!._model!._value = '{ "children": [], "tagName": "main" }';
       fireModelChange(editor!);
       await runPending();
       expect(tab.doc.document.tagName).toBe("main");
       expect(tab.doc.dirty).toBe(true);
+      // The buffer's layout is the document's now: the root was typed on one line, and the next
+      // Save keeps it there (issue 308).
+      expect(tab.doc.layout?.inline.get("")).toBe(true);
+      expect(serializeJson(tab.doc.document, tab.doc.layout)).toBe(
+        '{ "children": [], "tagName": "main" }\n',
+      );
     });
   });
 
@@ -1012,7 +1020,7 @@ describe("source mode", () => {
     renderCanvas();
     await waitForEditors(1);
     expect(createdModels[0]!.lang).toBe("json");
-    expect(createdModels[0]!._value).toBe(JSON.stringify(tab.doc.document, null, 2));
+    expect(createdModels[0]!._value).toBe(serializeJson(tab.doc.document, tab.doc.layout));
   });
 
   /* A model carries the file identity Monaco validates against: its URI is what the JSON language
@@ -1197,7 +1205,7 @@ describe("source mode", () => {
     renderCanvas();
     await flush();
     expect(createdEditors.length).toBe(1);
-    expect(editor!.getValue()).toBe(JSON.stringify(tab.doc.document, null, 2));
+    expect(editor!.getValue()).toBe(serializeJson(tab.doc.document, tab.doc.layout));
     // The repaint's own `setValue` fired the change listener and the flag it set absorbed it, so
     // The repaint did not read as a keystroke: nothing armed, and the buffer is not ahead.
     expect(editor!._ignoreNextChange).toBe(false);

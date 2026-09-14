@@ -8,6 +8,7 @@ import { editorKindForMode } from "../commands/context";
 import type { EditorKind } from "../commands/context";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
+import type { JsonLayout } from "../files/json-layout";
 
 /**
  * The project's configuration file, project-relative.
@@ -185,6 +186,18 @@ export interface Tab {
     sourceFormat: string | null;
     handlersSource: string | null;
     dirty: boolean;
+    /**
+     * The layout the document's JSON file was written in (`files/json-layout.ts`), or null for a
+     * document with no JSON source — a format-class file, a new document, a stub.
+     *
+     * On the document record because it is a fact about the FILE the document came from, and it
+     * lives exactly as long as that fact does: every edit leaves it alone (the pointers it is keyed
+     * by survive a changed value, a new sibling, a removed one), a reload from disk or a
+     * source-view commit replaces it with the layout of the text just read, and opening a different
+     * file makes a new tab. The history ring never snapshots it — undo restores a document, not a
+     * file.
+     */
+    layout: JsonLayout | null;
   };
   session: {
     /**
@@ -288,6 +301,7 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff
  *   capabilities?: { modes?: string[] };
  *   openedFrom?: TabOrigin | null;
  *   preview?: boolean;
+ *   layout?: JsonLayout | null;
  * }} opts
  * @returns {Tab}
  */
@@ -301,6 +315,7 @@ export function createTab({
   capabilities,
   openedFrom = null,
   preview: previewTab = false,
+  layout = null,
 }: {
   id: string;
   documentPath?: string | null;
@@ -311,6 +326,7 @@ export function createTab({
   capabilities?: { modes?: string[] };
   openedFrom?: TabOrigin | null;
   preview?: boolean;
+  layout?: JsonLayout | null;
 }) {
   const scope = effectScope();
 
@@ -333,6 +349,7 @@ export function createTab({
       dirty: false,
       document,
       handlersSource: null,
+      layout,
       mode: inferDocumentMode(documentPath, sourceFormat),
       sourceFormat,
     }),

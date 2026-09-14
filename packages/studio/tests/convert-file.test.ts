@@ -289,6 +289,10 @@ describe("the open tab", () => {
        reloaded tab would keep the OLD format's modes and its serializer — and the next ⌘S would
        write markdown into a `.json` file. */
     expect(tab?.doc.sourceFormat).toBeNull();
+    /* And it read the file's layout like every other JSON reader does (issue 308): the text is
+       the serializer's own, so the record and a layout-less write agree — but the tab holds the
+       record rather than assuming it. The root is written expanded, so the pointer "" is false. */
+    expect(tab?.doc.layout?.inline.get("")).toBe(false);
   });
 
   test("a tab converted INTO a format is rebuilt through that format's parser", async () => {

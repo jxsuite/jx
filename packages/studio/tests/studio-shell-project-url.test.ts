@@ -9,6 +9,8 @@ import { describe, expect, test } from "bun:test";
 import { bootStudio, waitFor } from "./studio-shell-fixture";
 import { activeTab } from "../src/workspace/workspace";
 import { requireProjectState } from "../src/store";
+import { toRaw } from "../src/reactivity";
+import { deriveJsonLayout } from "../src/files/json-layout";
 
 const SITE = "/abs/site";
 
@@ -77,5 +79,13 @@ describe("?project= bootstrap (site project)", () => {
     expect((activeTab.value!.doc.document as any).tagName).toBe("main");
     // The redirect means the stylebook default for project.json must NOT kick in.
     expect(activeTab.value?.session.ui.canvasMode).not.toBe("stylebook");
+  });
+
+  test("the tab it opens carries the file's layout, so a save writes the file back as it was", () => {
+    // The seed is `JSON.stringify` output: one line, root inline (issue 308).
+    expect(toRaw(activeTab.value!.doc.layout)).toEqual(
+      deriveJsonLayout(JSON.stringify({ children: [], tagName: "main" })),
+    );
+    expect(activeTab.value?.doc.layout?.inline.get("")).toBe(true);
   });
 });
