@@ -237,3 +237,5 @@ Props are passed via `$props` on an instance node, which is the only mechanism f
 ```
 
 Signal scope is bounded at the component level. No implicit scope leaking.
+
+An instance can sit inside another component's own `children` as well as on a page or in a slot, and the build expands it at every level, props resolved against the enclosing component's state. See [Components inside components](/docs/framework/build#components-inside-components) for what the compiler writes and the one shape it refuses (a component that renders itself with the same props).
