@@ -20,6 +20,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { renderExtensionsSection } from "../src/settings/extensions-section";
@@ -94,9 +95,13 @@ function toggles(): HTMLInputElement[] {
   return [...container.querySelectorAll('[part="toggle"] [part="input"]')] as HTMLInputElement[];
 }
 
-/** A switch's tooltip, which `jx-switch` draws on the label it wraps the control in. */
+/**
+ * A switch's hint, from wherever `jx-switch` put it: a `jx-tooltip` while it can be flipped, the
+ * wrapping label's `title` while it is disabled (ui.md §5.1). Both reads below are of disabled
+ * rows.
+ */
 function switchHint(row: HTMLElement | undefined): string | null {
-  return part(row, "toggle")?.querySelector('[part="control"]')?.getAttribute("title") ?? null;
+  return hintOf(part(row, "toggle"));
 }
 
 /** Flip a switch the way a reader does: move the control, then let it announce the move. */

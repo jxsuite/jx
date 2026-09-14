@@ -1,22 +1,54 @@
 /**
- * Readers for what a kit button says about itself, kept out of `harness.ts` because that file is
+ * Readers for what a kit control says about itself, kept out of `harness.ts` because that file is
  * read-only while a test-writing wave is in flight.
  *
- * A `hint` on `jx-action-button` and `jx-button` has two homes (ui.md §5.1): while the button can
- * act it is the text of a `jx-tooltip` the element renders as its own child, wired to the control
- * by `aria-describedby`; while the button is disabled it is the control's native `title`, because a
- * disabled control can open no tip. A test that read every hint through `getAttribute("title")` was
- * therefore reading the wrong place for every enabled button, and these are what it reads instead.
+ * A `hint` on `jx-action-button`, `jx-button` and `jx-switch` has two homes (ui.md §5.1): while the
+ * control can act it is the text of a `jx-tooltip` the element renders as its own child, wired to
+ * the control by `aria-describedby`; while the control is disabled it is a native `title`, because
+ * a disabled control can open no tip. A test that read every hint through `getAttribute("title")`
+ * was therefore reading the wrong place for every enabled control, and these are what it reads
+ * instead.
+ *
+ * The two ends are one node on a button and two on a switch. A button's `<button part="control">`
+ * takes the focus, carries `aria-describedby` and, while disabled, the `title`. A switch's `<label
+ * part="control">` WRAPS an `<input part="input">`: the input is what is described, and the label
+ * is the row the reader hovers, so the label is what carries the title (#332).
  */
 
-/** The element's own `<button part="control">`, or the element itself when it is one. */
-function controlOf(el: Element | null): Element | null {
-  if (!el) {
+/** The kit hosts these readers know, and the selector of the node each one describes. */
+const HOSTS = "jx-action-button, jx-button, jx-switch";
+
+/** The kit element `el` is or is inside, or `el` itself for a bare control. */
+function hostOf(el: Element | null): Element | null {
+  return el?.closest(HOSTS) ?? el;
+}
+
+/**
+ * The node the kit DESCRIBES with the tip: the control that takes the focus and carries
+ * `aria-describedby` and `disabled` — a button's `[part="control"]`, a switch's `[part="input"]`.
+ */
+function describedOf(el: Element | null): Element | null {
+  const host = hostOf(el);
+  if (!host) {
     return null;
   }
-  return el.getAttribute("part") === "control"
-    ? el
-    : (el.querySelector('[part="control"]') ?? null);
+  if (host.localName === "jx-switch") {
+    return host.querySelector('[part="input"]');
+  }
+  return host.getAttribute("part") === "control"
+    ? host
+    : (host.querySelector('[part="control"]') ?? null);
+}
+
+/** The node the kit puts the `title` on while disabled: `[part="control"]` on every host. */
+function titledOf(el: Element | null): Element | null {
+  const host = hostOf(el);
+  if (!host) {
+    return null;
+  }
+  return host.getAttribute("part") === "control"
+    ? host
+    : (host.querySelector('[part="control"]') ?? null);
 }
 
 /**
@@ -25,10 +57,10 @@ function controlOf(el: Element | null): Element | null {
  * mistaken for the hint's.
  */
 export function tooltipOf(el: Element | null): HTMLElement | null {
-  const control = controlOf(el);
+  const control = describedOf(el);
   /* The tip is the HOST's child, beside the control rather than inside it, so a reader handed the
      control looks up to the element that rendered both. */
-  const host = control?.closest("jx-action-button, jx-button") ?? el;
+  const host = hostOf(el);
   const ids = control?.getAttribute("aria-describedby")?.split(/\s+/) ?? [];
   for (const id of ids) {
     const tip = host?.querySelector<HTMLElement>(`jx-tooltip[id="${id}"]`);
@@ -40,23 +72,23 @@ export function tooltipOf(el: Element | null): HTMLElement | null {
 }
 
 /**
- * The hint a kit button carries, read from wherever the kit put it: the tip's text while the button
- * is enabled, the control's `title` while it is disabled, and null when it has neither.
+ * The hint a kit control carries, read from wherever the kit put it: the tip's text while the
+ * control is enabled, the native `title` while it is disabled, and null when it has neither.
  *
  * It THROWS on an enabled control that carries a `title`, rather than reading it. One affordance
  * per state is the contract (ui.md §5.1), and a reader that fell back to the title would let a
- * Studio assertion pass on a kit that had regressed to the mouse-only affordance for a button that
+ * Studio assertion pass on a kit that had regressed to the mouse-only affordance for a control that
  * can act — the exact regression the retargeting was for.
  *
- * @param el The `jx-action-button` or `jx-button` host (or its control).
+ * @param el The `jx-action-button`, `jx-button` or `jx-switch` host (or its control).
  */
 export function hintOf(el: Element | null): string | null {
   const tip = tooltipOf(el);
   if (tip) {
     return tip.textContent;
   }
-  const control = controlOf(el);
-  const title = control?.getAttribute("title") ?? null;
+  const control = describedOf(el);
+  const title = titledOf(el)?.getAttribute("title") ?? null;
   if (title !== null && !control?.hasAttribute("disabled")) {
     throw new Error(
       `hintOf: an enabled control carries title="${title}" and no tooltip; an enabled hint is a jx-tooltip (ui.md 5.1)`,
