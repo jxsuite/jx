@@ -23,6 +23,7 @@ import { projectState, setProjectState } from "../src/store";
 import { canUndo, undo } from "../src/tabs/transact";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
+import { deriveJsonLayout, parseJsonDocument, serializeJson } from "../src/files/json-layout";
 
 import type { MockPlatformState } from "./harness";
 import type { ProjectConfig } from "@jxsuite/schema/types";
@@ -112,16 +113,25 @@ afterEach(() => {
 // ─── One serialisation ───────────────────────────────────────────────────────
 
 describe("serializeProjectConfig", () => {
-  test("is two-space JSON — the form every project.json in this repo is on disk with", () => {
+  test("is two-space JSON ending in a newline — the form every project.json in this repo is on disk with", () => {
     const text = serializeProjectConfig({ $defs: { A: {} }, name: "site" } as ProjectConfig);
     expect(text).not.toContain("\t");
     expect(text).toContain('\n  "$defs"');
-    expect(text.endsWith("}")).toBe(true);
+    expect(text.endsWith("}\n")).toBe(true);
   });
 
-  test("is exactly what files/file-ops.ts writes for a native JSON document", () => {
+  test("is exactly what files/serialize-document.ts writes for a native JSON document", () => {
     const cfg = { name: "site", style: { "--a": "1" } } as unknown as ProjectConfig;
-    expect(serializeProjectConfig(cfg)).toBe(JSON.stringify(cfg, null, 2));
+    expect(serializeProjectConfig(cfg)).toBe(serializeJson(cfg, null));
+  });
+
+  test("honours the open project.json tab's layout, so a settings write keeps the file's shape", () => {
+    const onDisk =
+      '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
+    const { document, layout } = parseJsonDocument(onDisk);
+    openTab({ document, documentPath: PROJECT_CONFIG_PATH, id: PROJECT_CONFIG_PATH, layout });
+    const cfg = { ...document, name: "renamed" } as unknown as ProjectConfig;
+    expect(serializeProjectConfig(cfg)).toBe(onDisk.replace('"site"', '"renamed"'));
   });
 });
 
@@ -175,15 +185,26 @@ describe("a no-op settings edit produces an empty diff", () => {
     expect(COMMITTED_CONFIGS.length).toBeGreaterThan(5);
   });
 
+  test("a layout-less rendering differs from disk for at least one committed file", () => {
+    const differs = COMMITTED_CONFIGS.filter((path) => {
+      const onDisk = readFileSync(path, "utf8");
+      return serializeJson(JSON.parse(onDisk), null) !== onDisk;
+    });
+    expect(differs.length).toBeGreaterThan(0);
+  });
+
   test("no writer touches a committed project.json when nothing changed", async () => {
     for (const path of COMMITTED_CONFIGS) {
       const onDisk = readFileSync(path, "utf8");
       const parsed = JSON.parse(onDisk) as AnyConfig;
 
-      /* The premise, asserted rather than assumed: none of these files is byte-identical to its own
-         re-serialisation, because `oxfmt` keeps short arrays on one line and ends the file with a
-         newline. A writer that compared TEXT against the file would rewrite every one of them. */
-      expect(serializeProjectConfig(parsed as ProjectConfig), path).not.toBe(onDisk);
+      /* The premise, asserted rather than assumed: with the layout the file was written in, its
+         re-serialisation IS the file — `oxfmt` keeps short objects on one line and ends the file
+         with a newline, and `json-layout.ts` reproduces both — and without that layout it is not,
+         for at least one of them. A writer that compared TEXT against a layout-less rendering would
+         rewrite such a file on every edit; the chokepoint reads the layout once per binding and
+         compares like with like. */
+      expect(serializeJson(parsed, deriveJsonLayout(onDisk)), path).toBe(onDisk);
 
       // The patch door: re-commit values the file already holds.
       resetProjectConfigDocument();
@@ -201,14 +222,21 @@ describe("a no-op settings edit produces an empty diff", () => {
     }
   });
 
-  test("a real edit to one of those files still writes", async () => {
+  test("a real edit to one of those files still writes — and writes a one-line diff", async () => {
     const path = COMMITTED_CONFIGS[0]!;
     const onDisk = readFileSync(path, "utf8");
-    const state = setup(JSON.parse(onDisk) as AnyConfig, { onDisk });
+    const parsed = JSON.parse(onDisk) as AnyConfig;
+    const state = setup(parsed, { onDisk });
     await updateSiteConfig({ name: "Renamed" } as Partial<ProjectConfig>);
 
     expect(writes(state)).toHaveLength(1);
-    expect(JSON.parse(state.files.get(PROJECT_CONFIG_PATH)!).name).toBe("Renamed");
+    const written = state.files.get(PROJECT_CONFIG_PATH)!;
+    expect(JSON.parse(written).name).toBe("Renamed");
+    /* The file's own layout, read by the chokepoint when it seeded, is what the write honours: the
+       only line that differs is the name's. (`project-config.ts`'s header, "A real edit is a
+       one-line diff".) */
+    const changed = written.split("\n").filter((line, i) => line !== onDisk.split("\n")[i]);
+    expect(changed).toEqual([`  "name": "Renamed",`]);
   });
 
   test("an unparseable project.json is 'unknown', so every commit writes", async () => {

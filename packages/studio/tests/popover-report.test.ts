@@ -256,4 +256,26 @@ describe("document.checkPopovers", () => {
     void run("document.checkPopovers");
     expect(filed()).toHaveLength(0);
   });
+
+  test("the assistant's report is the filed list as data, with a count or a clean sentence", () => {
+    // `check_popovers` is this record; the report reads the Problems store by this source.
+    const command = popoverCommands().find((c) => c.id === "document.checkPopovers")!;
+    const facts = { after: makeContext(), args: undefined as never, before: makeContext() };
+    openTab(docWith({ ...GOOD, display: "flex" }));
+    void run("document.checkPopovers");
+    const report = command.aiTool!.report(facts) as {
+      data: { message: string; action?: string }[];
+      summary: string;
+    };
+    expect(report.summary).toMatch(/^Filed \d+ popover problems? in Problems\.$/);
+    expect(report.data.length).toBe(filed().length);
+    expect(report.data[0]!.message).toBe(filed()[0]!.message);
+
+    openTab(docWith(GOOD));
+    void run("document.checkPopovers");
+    expect(command.aiTool!.report(facts)).toEqual({
+      data: [],
+      summary: "No popover problems found in this document.",
+    });
+  });
 });

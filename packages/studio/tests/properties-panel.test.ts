@@ -24,6 +24,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { capsForPosition } from "../src/ui/value-source";
@@ -219,8 +220,13 @@ async function offeredRungs(root: Element, prop: string): Promise<string[]> {
 }
 
 /** The rung a row is currently at, in the ladder's own words. */
+/**
+ * The rung the Value Source chip PRINTS: its label part. The chip is a kit button whose hint is a
+ * `jx-tooltip` child while it is enabled (ui.md §5.1), so the host's text is no longer only the
+ * rung.
+ */
 function sourceLabel(root: Element, prop: string): string {
-  return row(root, prop).querySelector('[part="source"]')!.textContent!.trim();
+  return row(root, prop).querySelector('[part="source"] [part="label"]')!.textContent!.trim();
 }
 
 function sleep(ms: number) {
@@ -1142,10 +1148,9 @@ describe("attribute dynamic slots", () => {
     openDoc(linkDoc(), ["children", 0]);
     const c = await renderPanel();
     const mode = row(c, "href").querySelector('[part="source"]')!;
-    expect(mode.textContent!.trim()).toBe("Fixed value");
-    expect(mode.querySelector('[part="control"]')!.getAttribute("title")).toBe(
-      "Value source: Fixed value — click to change",
-    );
+    expect(sourceLabel(c, "href")).toBe("Fixed value");
+    // The chip is enabled, so its hint is the tip it renders rather than a title (ui.md §5.1).
+    expect(hintOf(mode)).toBe("Value source: Fixed value — click to change");
   });
 
   test("switching to ref mode binds the first signal; the picker rebinds", async () => {

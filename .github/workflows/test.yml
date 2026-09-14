@@ -45,6 +45,10 @@ jobs:
       # rather than skip. `--init` never moves the gitlink, so it cannot mask a pin/submodule
       # disagreement — the check inside it still reports one.
       - run: bun scripts/check-electrobun-vendor.ts --init
+      # The derived docs pages are gitignored build outputs (`scripts/docs/generators/pages.ts`),
+      # and the link and nav tests under scripts/docs read the page set off disk; `postinstall`
+      # skips the generator under CI, so it runs here. Under a second.
+      - run: bun run docs:generate
       # The gate proves itself before it gates. This also gives scripts/*.test.ts its only home in
       # CI: scripts/ is not a coverage workspace and the matrix below only runs `bun test` with
       # cwd INSIDE a workspace, so these files previously ran nowhere.
@@ -349,8 +353,9 @@ jobs:
       # Type-aware (tsgolint) pass — Flow-soundness rules in .oxlintrc.strict.json.
       # The tsgolint binary ships with the oxlint-tsgolint dev dep (installed above).
       - run: bun run lint:typecheck
-      # Docs: generated reference pages must match their sources (diff gate), and
-      # /docs frontmatter ↔ specs/code/screenshots/nav must agree.
+      # Docs: the derived reference pages are gitignored build outputs, so this WRITES them first
+      # (docs:check does; every later docs gate reads the same set), then /docs frontmatter ↔
+      # specs/code/screenshots/nav must agree, and every referenced image must be in the lock.
       - run: bun run docs:verify
       # Marketing copy + README: no unbacked claims, dead download links, or wrong
       # starter counts; LICENSE files present. See scripts/docs/check-site-claims.ts.

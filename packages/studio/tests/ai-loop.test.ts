@@ -189,12 +189,18 @@ describe("ai agent loop — integration", () => {
     const tab = makeTab();
     const { chatState, toolRegistry } = harness(tab, async () => []);
     // Every round emits an unrecognized event (default switch case) followed by a tool call that
-    // Always fails (removing the document root), so errors accumulate until the round cap is hit.
+    // Always fails (a text write to a path no node holds), so errors accumulate until the round cap
+    // Is hit. `set_text` rather than the retired `remove_node`: deletion is `delete_node` now, a
+    // Command projection this hand-only registry does not carry.
     const client = fakeClient(
       Array.from({ length: 6 }, () => [
         { type: "noop" } as unknown as StreamEvent, // Unknown event → default case
-        { type: "tool_call_start", id: "c", name: "remove_node" },
-        { type: "tool_call_delta", id: "c", args: JSON.stringify({ path: [] }) },
+        { type: "tool_call_start", id: "c", name: "set_text" },
+        {
+          type: "tool_call_delta",
+          id: "c",
+          args: JSON.stringify({ path: ["children", 9], value: "x" }),
+        },
         { type: "tool_call_end", id: "c" },
         { type: "done", stopReason: "tool_calls" },
       ]),
@@ -206,7 +212,7 @@ describe("ai agent loop — integration", () => {
     expect(chatState.status).toBe("error");
     expect(chatState.error).toContain("ran out of tool-call rounds");
     expect(chatState.error).toContain("Errors encountered");
-    expect(chatState.error).toContain("Cannot remove the document root");
+    expect(chatState.error).toContain("No node exists at path");
     disposeTab(tab);
   });
 

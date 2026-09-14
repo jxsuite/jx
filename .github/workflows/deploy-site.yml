@@ -30,6 +30,15 @@ on:
       - "scripts/docs/**"
       - "packages/compiler/**"
       - "scripts/check-site-perf-budget.ts"
+      # The sources of the derived docs pages (`scripts/docs/generators/pages.ts`). The pages are
+      # gitignored build outputs, so a spec release, a formula, a route, a starter or a command
+      # no longer carries a page under docs/** — the build has to be asked for by its inputs.
+      - "specs/**"
+      - "packages/formulas/**"
+      - "packages/protocol/**"
+      - "packages/starters/registry.json"
+      - "packages/studio/src/commands/**"
+      - "packages/schema/schema.json"
   push:
     branches: [main]
     paths:
@@ -38,6 +47,15 @@ on:
       - "scripts/docs/**"
       - "packages/compiler/**"
       - "scripts/check-site-perf-budget.ts"
+      # The sources of the derived docs pages (`scripts/docs/generators/pages.ts`). The pages are
+      # gitignored build outputs, so a spec release, a formula, a route, a starter or a command
+      # no longer carries a page under docs/** — the build has to be asked for by its inputs.
+      - "specs/**"
+      - "packages/formulas/**"
+      - "packages/protocol/**"
+      - "packages/starters/registry.json"
+      - "packages/studio/src/commands/**"
+      - "packages/schema/schema.json"
   workflow_call:
     inputs:
       ref:

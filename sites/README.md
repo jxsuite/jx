@@ -13,7 +13,7 @@ The only Bun workspace member here (`@jxsuite/site-jxsuite.com`, private). Edit 
 
 ```sh
 bun run generate:schema && bun run build:parser && bun run build:compiler
-bun run --cwd sites/jxsuite.com build            # bunx jx build + the llms.txt post-step
+bun run --cwd sites/jxsuite.com build            # the derived docs pages, bunx jx build, then the llms.txt post-step
 ```
 
 That first line is the prerequisite sequence [deploy-site.yml](../.github/workflows/deploy-site.yml) runs before the site build; `bunx jx` loads `packages/compiler/dist`.
@@ -52,7 +52,7 @@ Deployment is [.github/workflows/deploy-site.yml](../.github/workflows/deploy-si
 - **No site here is in the CI coverage matrix.** `scripts/lib/workspaces.ts` restricts `WORKSPACE_ROOTS` to `packages` and `extensions`, and no site here has a `bunfig.toml`, so CLAUDE.md's per-file coverage ratchet does not reach here. `jxsuite.com/tests/placeholder.test.js` exists only so `bun run test:workspaces` does not fail on a workspace with a `test` script and no test file.
 - **`test-blank` is not a workspace member** despite the `sites/*` glob in the root `package.json`. It has no `package.json` at all, and no entry in `bun.lock`.
 - **Editing pages triggers zero test workspaces.** `scripts/ci/affected.ts` lists `sites/**` under `NO_TESTS`; only a change to a `project.json` or anywhere under `test-blank/` seeds `packages/studio`, via an `EXTRA_EDGES` entry whose cited evidence files are `existsSync`-asserted by the `changes` job that builds the matrix. The claims and docs gates live in the ungated `checks` job and still run.
-- **Core-package changes do not redeploy the site.** `deploy-site.yml` fires only on pushes to `main` touching `sites/jxsuite.com/**`, `docs/**`, or `scripts/docs/**`; a schema, compiler, or runtime change that alters rendered output needs a manual `workflow_dispatch`.
+- **Most core-package changes do not redeploy the site.** `deploy-site.yml` fires on pushes to `main` touching `sites/jxsuite.com/**`, `docs/**`, `scripts/docs/**`, `packages/compiler/**`, and the sources of the derived docs pages (`specs/**`, `packages/formulas/**`, `packages/protocol/**`, `packages/starters/registry.json`, `packages/studio/src/commands/**`, `packages/schema/schema.json`), because those pages are gitignored build outputs and no longer carry their change under `docs/**`; a runtime change that alters rendered output still needs a manual `workflow_dispatch`.
 - **`bunx jx build` runs the prebuilt compiler** (`packages/compiler/bin/jx.js` → `../dist/cli.js`). Building locally without `bun run build:compiler` first silently uses stale compiler output. The extensions are exempt because `@jxsuite/parser` and `@jxsuite/search` export `./src/*.ts` directly.
 - **Renaming a file named in docs `code:` frontmatter reds `bun run docs:check`**: `jxsuite.com/components/site-search.json`, `jxsuite.com/project.json`, and `jxsuite.com/project.schema.json` are named in the `code:` frontmatter of [docs/framework/site/search.md](../docs/framework/site/search.md), [docs/framework/agents/machine-readable.md](../docs/framework/agents/machine-readable.md), and [docs/extending/extensions/schema-composition.md](../docs/extending/extensions/schema-composition.md).
 - **`jxsuite.com/concept_homepage.md` is not scanned.** It sits outside `pages/`, so the claims gate never sees it; it is a strategy brief full of unvetted marketing language, and copying a line from it into `pages/` will likely trip a pattern.

@@ -18,6 +18,7 @@ import {
   seedSettings,
   setValue,
 } from "./harness";
+import { hintOf } from "./kit-readers";
 import { reactive } from "@vue/reactivity";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Message } from "@jxsuite/ai/chat-state";
@@ -1092,8 +1093,10 @@ describe("the assistant as a mounted document", () => {
     expect(control.getAttribute("aria-label")).toBe("New Chat");
     expect(newChat.querySelector("jx-icon")).not.toBeNull();
 
-    const settings = q('[part="composer-settings"] [part="control"]')!;
-    expect(settings.getAttribute("title")).toBe("API key & endpoint");
+    // An enabled button's hint is the tip it renders, read through the control's own description.
+    const settings = q('[part="composer-settings"]')!;
+    expect(hintOf(settings)).toBe("API key & endpoint");
+    expect(settings.querySelector('[part="control"]')!.hasAttribute("title")).toBe(false);
   });
 
   test("the transcript is a labelled log a keyboard can reach", async () => {

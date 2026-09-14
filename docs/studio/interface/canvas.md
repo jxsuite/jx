@@ -2,10 +2,12 @@
 title: "The canvas"
 description: "Working on the Jx Studio canvas: pan, zoom, selection, the block action bar, inserting, drag and drop, and the context menu."
 spec:
+  - studio.md#4.1
   - studio.md#4.4
   - studio.md#6.7
   - studio-ui-guidelines.md#8.1
 code:
+  - packages/site/src/site-style.ts
   - packages/studio/src/canvas/edit-width-drag.ts
   - packages/studio/src/surfaces/canvas-stage.ts
   - packages/studio/src/editor/shortcuts.ts
@@ -119,6 +121,14 @@ Right-clicking **empty space** around the page gives you the browser's own menu,
 ## Editing text
 
 Click any text to put the cursor there and start typing. Everything about writing on the canvas is covered in **[Edit mode](/docs/studio/editing)**: formatting, the slash menu, links.
+
+## Your site's styles
+
+The canvas is a page of your site, not a picture of one. Everything a published page carries, the page on the canvas carries too: the fonts, links and scripts from your project's **Head** settings, its breakpoints, and the whole of its `style` block, applied as one stylesheet. That block is where your design tokens live, and it is also where **[Project Styles](/docs/studio/design/stylebook)** saves the default look of every heading, link and button. A rule you write there for `h1, h2` or for `a` styles the headings and links on the canvas exactly as it styles them on the built page: the same rule text, in the same order, so a heading in your display face and a link with no underline look that way here before you ever run a build.
+
+:::doc-note
+The canvas stylesheet and the one `jx build` writes are produced from the same rules and compared byte for byte in the test suite, so the two cannot drift apart quietly. If the canvas and a built page ever do disagree about a project-level style, that is a bug worth reporting rather than a limit of the editor.
+:::
 
 ## Next
 

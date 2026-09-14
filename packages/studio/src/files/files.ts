@@ -75,6 +75,8 @@ import { isViewableMedia, openMediaTab } from "../media/media-open";
 import { activeRegistry } from "../commands/active-registry";
 import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
+import { parseJsonDocument } from "./json-layout";
+import type { JsonLayout } from "./json-layout";
 import { invalidateUsages } from "../services/references";
 import {
   documentExtensions,
@@ -2345,13 +2347,16 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
     await loadFormats();
     let document: Record<string, unknown>;
     let frontmatter: Record<string, unknown> | undefined;
+    // The layout the JSON was written in, so a save reproduces it (`json-layout.ts`, issue 308). A
+    // Format-class file has none: its serializer owns its layout.
+    let layout: JsonLayout | null = null;
     const format = formatForPath(path);
     if (format) {
       const result = await parseSourceForPath(path, content);
       ({ document } = result);
       ({ frontmatter } = result);
     } else if (path.endsWith(".json")) {
-      document = JSON.parse(content) as Record<string, unknown>;
+      ({ document, layout } = parseJsonDocument(content));
     } else {
       throw noFormatError(path);
     }
@@ -2362,6 +2367,7 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
       documentPath: path,
       document,
       ...(frontmatter != null && { frontmatter }),
+      layout,
       sourceFormat: format?.name ?? null,
       ...(opts.paneId !== undefined && { paneId: opts.paneId }),
       ...(opts.preview === true && { preview: true }),
@@ -2434,7 +2440,10 @@ export async function reloadFileInTab(path: string) {
           tab.doc.document = document;
           tab.doc.content.frontmatter = frontmatter;
         } else if (path.endsWith(".json")) {
-          tab.doc.document = JSON.parse(content) as JxMutableNode;
+          // The file changed under the tab, so its layout is whatever the new text says.
+          const parsed = parseJsonDocument(content);
+          tab.doc.document = parsed.document as JxMutableNode;
+          tab.doc.layout = parsed.layout;
         }
         tab.doc.dirty = false;
       } catch (error) {

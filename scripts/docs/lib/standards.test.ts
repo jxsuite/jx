@@ -3,7 +3,8 @@
  *
  * Fixtures are inline strings, because the parser's job is to read markdown that does not exist in
  * the repo yet. The one exception is the determinism pair at the bottom, which runs against the
- * real `specs/` — a generated page that is diffed by CI must not depend on iteration order.
+ * real `specs/` — a generated page must not depend on iteration order, so two builds agree byte for
+ * byte.
  */
 
 import { describe, expect, test } from "bun:test";

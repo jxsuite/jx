@@ -279,4 +279,7 @@ if (raised) {
 }
 console.log(`specs/${file}: ${parsed.headerVersion} → ${nextVersion} (${today})`);
 console.log(`  ${entry}`);
-console.log("\nNext: `bun run docs:generate` so the derived reference pages match.");
+console.log(
+  "\nThe derived reference pages (implementation status, spec changelog) are build outputs: " +
+    "`bun run docs:generate` previews them locally; nothing to commit.",
+);

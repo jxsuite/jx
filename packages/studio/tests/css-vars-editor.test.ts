@@ -19,6 +19,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
 import { renderCssVarsEditor } from "../src/settings/css-vars-editor";
@@ -478,7 +479,8 @@ describe("color scheme overrides", () => {
     expect(colors.querySelectorAll('[part="override"][data-kind="scheme"]')).toHaveLength(0);
     const link = colors.querySelector('[part="manage"] [part="control"]')!;
     expect(link.textContent).toContain("Manage contexts");
-    expect(link.getAttribute("title")).toContain("Project Settings");
+    // Enabled, so the hint is the tip the kit button renders rather than a title.
+    expect(hintOf(link)).toContain("Project Settings");
   });
 
   test("pressing it moves the settings document to Contexts — it never defines one", async () => {

@@ -11,6 +11,7 @@ import {
   stringProperty,
 } from "../commands/command-args";
 import type { Tab, TabOrigin } from "../tabs/tab";
+import type { JsonLayout } from "../files/json-layout";
 
 import type { ComponentEntry } from "../files/components";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -824,6 +825,7 @@ function setActiveTab(tabId: string, opts: { cycling?: boolean; focus?: boolean 
  *   preview?: boolean;
  *   paneId?: string;
  *   focus?: boolean;
+ *   layout?: JsonLayout | null;
  * }} opts
  * @returns {Tab}
  */
@@ -839,6 +841,7 @@ export function openTab(opts: {
   preview?: boolean;
   paneId?: string;
   focus?: boolean;
+  layout?: JsonLayout | null;
 }) {
   const previous = workspace.tabs.get(opts.id);
   const preview = opts.preview === true && previous?.pinned !== true;
@@ -1429,12 +1432,8 @@ export function paneCommands(deps: TabCommandDeps): AnyCommand[] {
       enablement: () => workspace.activeTabId !== null,
       requires: "an open document",
       undo: "none",
-      aiTool: {
-        description:
-          "Open a second document in the pane beside the current one, without moving the document " +
-          "you are in.",
-        name: "compare_with",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
+         looking at. */
       run: async (_ctx, args) => {
         const path = stringArg("pane.compareWith", args, "path");
         const here = activePane();

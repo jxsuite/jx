@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.12-draft\
+**Version:** 0.1.13-draft\
 **Status:** Partial\
-**Updated:** 2026-08-31\
+**Updated:** 2026-09-13\
 **License:** MIT
 
 ---
@@ -121,6 +121,18 @@ An assistant that must guess, or apologise for not knowing, is worse than one th
 
 **The pipeline reports; the agent asks.** The import stream is one-way, so nothing pauses mid-crawl. What the run found — pages skipped by robots or by the node cap, the layout it did not detect, the components it may have split wrongly, per-page render fidelity — travels on the terminal line and becomes the material for §3.4, against real numbers rather than a guess made before the browser launched. The run's own account of itself outlives it: the transcript keeps the whole log under the tool call that produced it, scrollable and collapsed once the run is over, rather than showing a fixed tail of it and discarding the record on success.
 
+### 3.6 Command tools
+
+The assistant's tools are two kinds, and the difference is who wrote the tool.
+
+**Hand tools** are registered in `packages/studio/src/services/ai-*.ts` and gated by tier: `AI_TOOL_TIERS` in `ai-system-prompt.ts` is the one table of them, carrying each tool's tier (`always`, `no-project`, `project`, `document`, `document-tree`) and its prompt blurb, and `document-assistant.ts` derives the gating predicates from the same rows. They exist for a write no person-verb makes: the seven tree writers address a node by path (the Inspector's job, not a command's), the file tools write arbitrary paths wholesale (`studio.md` §13.5's Remote Rule), and `create_project` / `import_site` re-key the conversation as a side effect a command must not know about. `ask_user` is a loop primitive, ungated.
+
+**Command tools** are the command records that declare `aiTool` (`studio.md` §13.1), projected by `services/ai-command-tools.ts` as a view over the window's registry. Nothing registers them: each record IS its tool, `execute` is `registry.run`, `parameters` is the record's `args`, the gate is the record's own `when` / `enablement`, and `report` is what the model reads afterwards. The bridge's only additions are the write witness for `undo: "document"` records — an unchanged document root after `run` is "changed nothing", never success — the ledger entry `undo` implies, and the schema verdict every document write already gets (`ai-write-report.ts`: new schema errors with fix hints, the render check, the token hints). The ledger's default is what the record writes, so an idempotent run that found its state already so answers `wrote: []` and files nothing (`enable_extension` on an enabled package, `add_project_locale` on a declared tag). A `report` that throws after `run` resolved is answered as a failure that says the run happened, with the ledger filed from the record's defaults — the write must not vanish behind the sentence about it. A selection-level record takes `paths` and is run as `selection.setPaths` then the verb, both under their own gates.
+
+**Every projected tool is `strict: false`, deliberately.** `@jxsuite/ai`'s registry validator never checks `enum` and treats a required `null` as missing, which would refuse `select_node { path: null }` — a legal call. The registry's coercion (`coerceArgs`, applied inside `registry.run` for every caller) is the single validator, and its `RangeError` sentence is what the model reads.
+
+**The loop sees one registry**, `composeToolRegistries(hand, commands)`: the hand side gated by tier, the command side gated by the record, listed hand-first, routed by name, with an unknown name answered as `@jxsuite/ai` answers it. The two name sets are disjoint and their sum is the composite's length, asserted with counts, because `ToolRegistry.register` only warns on a duplicate name. The prompt's tool list is the same two filters — `toolActive` for the hand rows and `advertisedCommandTools` for the records — so it advertises exactly what the gate will honour.
+
 ## 4. Security & Trust
 
 The assistant executes only through the same file/RPC surfaces a human uses, behind the server's Origin/Host gate and path containment (`@jxsuite/server` §4.2). It has no independent network or filesystem access beyond the connected provider endpoint.
@@ -138,6 +150,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.13-draft** (2026-09-13) — §3.6 Command tools: the two kinds of tool, strict: false and why, the empty-`wrote` no-op and the throwing-report answer, and the composite registry.
 - **0.1.12-draft** (2026-08-31) — Provider contract §2.2: never send an empty assistant turn, and replay a thinking model's reasoning_content.
 - **0.1.11-draft** (2026-08-30) — 2.1: a lapsed grant is not a completed connect; cf_account_required; probe invalidation; per-model toolSupport and contextWindow.
 - **0.1.10-draft** (2026-08-26) — import_site adopts the project when it exists, not when the run ends; the run's log outlives it (§3.5).
@@ -154,4 +167,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.12-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.13-draft — a stub, subject to expansion._

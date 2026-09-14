@@ -73,7 +73,7 @@ Two other consumers read the registry live: the dev server exposes it to Studio'
 
 1. Add the `sites/<id>/` tree and a `registry.json` entry with all eight fields.
 2. `bun run schema:generate-all` regenerates every `project.schema.json` and `document.schema.json`. **Always via this script**, never by hand: it runs `schema:clean-roots` first (see below). `bun run schema:verify` proves the result in CI, so a stale entry schema is a red build. `.github/workflows/schemas.yml` also regenerates it and pushes the fix to your branch, with a comment naming the JSON Pointers that moved.
-3. `bun run docs:generate`, because `docs/studio/projects/starters.md` is rendered from `registry.json` by `scripts/docs/generators/starters.ts`. Hand-editing it is a bug; CI diffs the page.
+3. Nothing for the docs: `docs/studio/projects/starters.md` is rendered from `registry.json` by `scripts/docs/generators/starters.ts` when the site builds, and is never committed (`bun run docs:generate` previews it).
 4. `bun run screenshots:thumbnails`. The `thumbnail` data URI is not hand-authored. The script builds the starter with image optimization off, serves `dist/`, screenshots the hero viewport in headless Chromium, and writes the small JPEG into `registry.json` plus a full-res JPEG into `sites/jxsuite.com/public/starters/<id>.jpg`. (This is why `registry.json` is large.)
 5. Photos, if the starter ships any:
 
