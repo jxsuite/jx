@@ -1818,6 +1818,23 @@ describe("remaining wiring arrows", () => {
     expect(state.calls.filter((c) => c[0] === "writeFile").length).toBe(before + 1);
   });
 
+  test("saving a component definition rewrites its registry entry for the instances", async () => {
+    /* The registry is a snapshot the scan took at open, and the Content tab's Component Settings
+       for an INSTANCE read a prop's `format` from it: `format: "image"` added to the definition
+       drew a text box on every instance until the project was reopened. A save rewrites the entry
+       through the extractor the scan uses, and tells the two non-reactive readers. */
+    const { componentRegistry } = await import("../src/files/components");
+    const tab = openShellTab(
+      { state: { imageSrc: { default: "", format: "image" } }, tagName: "mas-service-card" },
+      { documentPath: "components/mas-service-card.json" },
+    );
+    tab.doc.dirty = true;
+    await toolbarCtx.saveFile();
+    const entry = componentRegistry.find((c) => c.tagName === "mas-service-card");
+    expect(entry?.path).toBe("components/mas-service-card.json");
+    expect(entry?.props).toEqual([{ default: "", format: "image", name: "imageSrc" }]);
+  });
+
   test("welcome openRecentProject opens the project directly", async () => {
     await welcomeCtx.openRecentProject("/recent/site");
     expect(statusMessages).toHaveLength(0);

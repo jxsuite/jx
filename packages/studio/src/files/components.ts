@@ -3,6 +3,7 @@
 import { getPlatform } from "../platform";
 import { projectState } from "../store";
 import type { ComponentMeta } from "../types";
+import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** A discovered component: project components carry a file path; package components may not. */
@@ -24,6 +25,44 @@ export async function loadComponentRegistry() {
   } catch {
     _componentRegistryLoaded = true;
   }
+}
+
+/**
+ * Bring the registry up to date with a document that was just saved.
+ *
+ * The registry is the snapshot the platform's scan took when the project opened, and a saved
+ * component definition used to leave it behind: give a prop `format: "image"` in the definition and
+ * every instance's Component Settings kept drawing the text box the snapshot knew, until the
+ * project was reopened. The saved document is the same input the scan reads, through the same
+ * extractor (`componentMetaFrom`, shared by all three backends), so the entry is rebuilt from it
+ * here rather than by a rescan of every JSON file in the project. A definition that stopped being a
+ * component (its `tagName` lost its hyphen) leaves the registry by the same rule the scan applies.
+ *
+ * @param {string | null} path - The saved document's project-relative path; `null` for an unsaved
+ *   draft, which no scan would have seen either.
+ * @param {unknown} doc - The saved document.
+ * @returns {boolean} Whether the registry changed, so a caller knows to repaint what reads it.
+ */
+export function noteComponentSaved(path: string | null, doc: unknown): boolean {
+  if (!path) {
+    return false;
+  }
+  const index = componentRegistry.findIndex((c) => c.path === path);
+  const meta = componentMetaFrom(doc, path);
+  if (!meta) {
+    if (index === -1) {
+      return false;
+    }
+    componentRegistry.splice(index, 1);
+    return true;
+  }
+  const entry = meta as ComponentEntry;
+  if (index === -1) {
+    componentRegistry.push(entry);
+  } else {
+    componentRegistry[index] = entry;
+  }
+  return true;
 }
 
 /**

@@ -160,7 +160,7 @@ import {
   mountSignalsPanel,
   registerSignalsCommands,
 } from "./panels/signals-panel";
-import { loadComponentRegistry } from "./files/components";
+import { loadComponentRegistry, noteComponentSaved } from "./files/components";
 import { ensureDependenciesInstalled } from "./packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
 import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
@@ -234,7 +234,11 @@ import {
   platformUsesRepoPicker,
 } from "./new-project/add-repo-modal";
 import { openNewProjectModal, registerNewProjectCommands } from "./new-project/new-project-modal";
-import { invalidatePageRouteCache, registerInspectorCommands } from "./panels/properties-panel";
+import {
+  invalidatePageRouteCache,
+  registerInspectorCommands,
+  renderPropertiesPanel,
+} from "./panels/properties-panel";
 import { liveElementCommands, setContextMenuNavigate } from "./editor/context-menu";
 import { registerSeoCommands, renderSeoModal } from "./panels/seo-modal";
 import { ensurePopoverRevealWatch, setOpenPopover } from "./canvas/popover-state";
@@ -1497,9 +1501,17 @@ const liveChrome = createLiveSurfaceSaver({
   redefineOnCanvases: redefineElementOnCanvases,
   workspace,
 });
+/* The third is the component registry: a saved definition rewrites its own entry, so an instance's
+   Component Settings and the Library read the props the file has now rather than the ones the scan
+   saw when the project opened. The Content tab and the Library are told, because neither reads the
+   registry reactively. */
 setDocumentSavedListener((path, doc) => {
   void noteFileSaved(path);
   void liveChrome(path, doc as unknown as JxDocument);
+  if (noteComponentSaved(path, doc)) {
+    renderPropertiesPanel();
+    renderLeftPanel();
+  }
 });
 /* Walking a comparison. No deps: the stepper reads the pane-keyed diff store directly and the
    toolbar redraws itself, so there is nothing for the bootstrap to inject. */

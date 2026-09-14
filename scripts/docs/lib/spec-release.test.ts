@@ -65,7 +65,9 @@ describe("nextSpecVersion", () => {
     expect(nextSpecVersion(v("1.2.3"), null, "major", false).version).toBe("2.0.0");
     expect(nextSpecVersion(v("1.2.3"), null, "minor", false).version).toBe("1.3.0");
     expect(nextSpecVersion(v("1.2.3"), null, "patch", false).version).toBe("1.2.4");
-    expect(() => nextSpecVersion(v("1.2.3"), null, "stable", false)).toThrow("is already stable at 1.2.3");
+    expect(() => nextSpecVersion(v("1.2.3"), null, "stable", false)).toThrow(
+      "is already stable at 1.2.3",
+    );
   });
 
   test("a base that has moved past the working file is the floor", () => {
