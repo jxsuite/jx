@@ -47,7 +47,7 @@ Every substantive edit is a release. Do not hand-edit the version, the date, or 
 
 ```sh
 bun run spec:bump <spec.md> <major|minor|patch|stable> -m "<what changed>"
-bun run docs:generate   # refresh the derived reference pages
+bun run docs:generate   # preview the derived reference pages locally (build outputs; never committed)
 ```
 
 That advances the header **and** footer version, restamps `**Updated:**` to today, and prepends a `## Changelog` entry.
@@ -87,8 +87,8 @@ They are deliberately bullets rather than headings so changelog versions never c
 | bun run docs:spec-release | A spec whose body changed also advanced its version (this is what keeps versions meaningful)                                               |
 | bun run docs:standards    | The `## N. Standards Alignment` tables: vocabulary, canonical citations, resolvable bindings, committed evidence, and the tracked gap list |
 | bun run docs:check        | Docs spec: anchors resolve to real numbered headings                                                                                       |
-| bun run docs:verify       | The generated reference pages match the specs they derive from                                                                             |
+| bun run docs:verify       | `docs:check` over a freshly generated page set, plus the screenshot image lock                                                             |
 
 A spec's "body" is everything except the release metadata — the `**Version:**` and `**Updated:**` lines, the `## Changelog` section, and the footer version. Header `**Status:**` and the per-section `> **Status: …**` markers _are_ body: changing what is built is a change worth releasing.
 
-Three pages are generated from the metadata here and must never be hand-edited: [implementation status](../docs/extending/reference/implementation-status.md) from the `**Status:**` markers, [spec changelog](../docs/extending/reference/spec-changelog.md) from the `## Changelog` sections, and [standards](../docs/extending/reference/standards.md) from the `## N. Standards Alignment` tables.
+Three pages are generated from the metadata here and are never hand-edited, because they are never committed: [implementation status](https://jxsuite.com/docs/extending/reference/implementation-status) from the `**Status:**` markers, [spec changelog](https://jxsuite.com/docs/extending/reference/spec-changelog) from the `## Changelog` sections, and [standards](https://jxsuite.com/docs/extending/reference/standards) from the `## N. Standards Alignment` tables. They are build outputs of the site (`scripts/docs/generators/pages.ts`), gitignored, and written by `bun run docs:generate`; a release here reaches them at the next build, with nothing to regenerate in the pull request.
