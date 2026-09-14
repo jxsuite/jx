@@ -1,5 +1,66 @@
 import { getProjectRoot } from "./handlers";
-import type { GitBranchesResult, GitLogEntry, GitStatusResult } from "./rpc-schema";
+import type { GitBranchesResult, GitFileStatus, GitLogEntry, GitStatusResult } from "./rpc-schema";
+
+/**
+ * The porcelain code → the one letter Studio's git panel understands. Copied from the dev server's
+ * `parseGitStatus` so the two backends say the same thing about the same change; anything not here
+ * passes through as itself.
+ */
+const STATUS_LETTERS: Record<string, string> = {
+  A: "A",
+  C: "C",
+  D: "D",
+  M: "M",
+  R: "R",
+  T: "T",
+  U: "U",
+};
+
+/**
+ * `git status --porcelain=v1` → the panel's rows.
+ *
+ * A v1 line is `XY<space>path`: column X is the index, column Y the working tree, and either may be
+ * a SPACE. That is the bug this function replaces. The old code trimmed the whole output before
+ * splitting it into lines, which ate the leading space of the FIRST line only — ` M pages/index.md`
+ * became `M pages/index.md`, `slice(3)` then landed one character late, and the panel showed
+ * `index.md` under a folder called `ages` and asked git for a file that did not exist. The second
+ * changed file in a list was fine; the first was always wrong when its change was unstaged.
+ *
+ * Lines are split first and never trimmed. Then, as the dev server does with v2: one row per
+ * non-space column, so a file both staged and modified again is two rows, `staged` says which. `??`
+ * is one untracked row, `!!` is nothing, and a rename's path is the NEW name — the one the working
+ * tree has, and the one a click will read.
+ *
+ * @param {string} out - Raw stdout of `git status --porcelain=v1`
+ * @returns {GitFileStatus[]}
+ */
+export function parsePorcelainV1(out: string): GitFileStatus[] {
+  const files: GitFileStatus[] = [];
+  for (const line of out.split("\n")) {
+    if (line.length < 4) {
+      continue;
+    }
+    const xy = line.slice(0, 2);
+    const rest = line.slice(3);
+    if (xy === "!!") {
+      continue;
+    }
+    if (xy === "??") {
+      files.push({ path: rest, staged: false, status: "U" });
+      continue;
+    }
+    const arrow = rest.indexOf(" -> ");
+    const path = arrow === -1 ? rest : rest.slice(arrow + " -> ".length);
+    const [x = " ", y = " "] = xy;
+    if (x !== " ") {
+      files.push({ path, staged: true, status: STATUS_LETTERS[x] ?? x });
+    }
+    if (y !== " ") {
+      files.push({ path, staged: false, status: STATUS_LETTERS[y] ?? y });
+    }
+  }
+  return files;
+}
 
 /** Build git operations bound to one project session (its projectRoot is the git cwd). */
 export function createGitOps(session: { readonly projectRoot: string | null }) {
@@ -42,15 +103,7 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
 
     const branchRaw = await git("branch", "--show-current");
     const branch = branchRaw.trim();
-    const porcelain = await git("status", "--porcelain=v1");
-    const files = porcelain
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => ({
-        path: line.slice(3),
-        status: line.slice(0, 2).trim(),
-      }));
+    const files = parsePorcelainV1(await git("status", "--porcelain=v1"));
 
     let ahead = 0;
     let behind = 0;
