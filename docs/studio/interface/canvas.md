@@ -127,7 +127,7 @@ Click any text to put the cursor there and start typing. Everything about writin
 The canvas is a page of your site, not a picture of one. Everything a published page carries, the page on the canvas carries too: the fonts, links and scripts from your project's **Head** settings, its breakpoints, and the whole of its `style` block, applied as one stylesheet. That block is where your design tokens live, and it is also where **[Project Styles](/docs/studio/design/stylebook)** saves the default look of every heading, link and button. A rule you write there for `h1, h2` or for `a` styles the headings and links on the canvas exactly as it styles them on the built page: the same rule text, in the same order, so a heading in your display face and a link with no underline look that way here before you ever run a build.
 
 :::doc-note
-The canvas stylesheet and the one `jx build` writes are produced from the same rules and compared byte for byte in the test suite, so the two cannot drift apart quietly. If the canvas and a built page ever do disagree about a project-level style, that is a bug worth reporting rather than a limit of the editor.
+The canvas stylesheet and the one `jx build` writes are produced by the same builder and compared byte for byte in the test suite, so the two cannot drift apart quietly. If the canvas and a built page ever do disagree about a project-level style, that is a bug worth reporting rather than a limit of the editor.
 :::
 
 ## Next
