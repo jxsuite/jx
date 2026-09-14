@@ -106,7 +106,14 @@ jobs:
         # Test Analytics: Bun's JUnit reporter (written above) feeds Codecov's
         # flaky-test / failure tracking. Runs even when tests fail so failures
         # are recorded — only skipped if the job is cancelled.
+        #
+        # And it can NEVER fail the job. The tests above are the verdict; this is a report about
+        # them, sent to a third party over the network, and a `read ECONNRESET` from Codecov's
+        # side once turned a green `catalog` suite into a red required `ci` on a PR that touched
+        # neither. `codecov-action` above carries `fail_ci_if_error: false` by default for the
+        # same reason; this action has no such input, so the step says it at the workflow level.
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: codecov/test-results-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
