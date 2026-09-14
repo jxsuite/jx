@@ -70,6 +70,7 @@ import { showSlashMenu } from "../editor/slash-menu";
 import { getConvertTargets } from "../editor/convert-targets";
 import { rectOf } from "../utils/geometry";
 import { createCommandRegistry } from "../commands/registry";
+import { runReported } from "../commands/run-reported";
 import { editorKindForMode, makeContext } from "../commands/context";
 import { defaultCommands, noopCommandDeps } from "../commands/defaults";
 import { emptyBlockBarView, mountBlockActionBar } from "../surfaces/block-action-bar";
@@ -845,11 +846,15 @@ export function commandTooltip(registry: CommandRegistry, command: AnyCommand): 
   return chord ? `${command.title} (${chord})` : command.title;
 }
 
-/** Run a command, swallowing the refusal a disabled control should never have produced. */
+/**
+ * Run a command, swallowing the refusal a disabled control should never have produced — and
+ * reporting, through `commands/run-reported.ts`, the one an enabled control can still meet: a `run`
+ * body that throws or rejects.
+ */
 export function runCommand(registry: CommandRegistry, id: string, target?: JxPath | null): void {
   const invoke = () => {
     if (registry.isEnabled(id)) {
-      void registry.run(id);
+      void runReported(registry, id, undefined, "Editor");
     }
   };
   if (target) {

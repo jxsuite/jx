@@ -53,6 +53,7 @@ import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { EDITOR_KIND_LABELS } from "../commands/context";
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { deployStatusItem } from "../publish/deploy-checklist";
 import { collabState } from "../collab/collab-state";
 import { problemCount, problems } from "../services/notify";
@@ -378,7 +379,7 @@ function state(): StatusbarScope {
       const item = _state?.fields.flatMap((field) => field.items).find((i) => i.key === key);
       const registry = activeRegistry();
       if (item?.command && registry) {
-        void registry.run(item.command, item.args as never);
+        void runReported(registry, item.command, item.args as never, "Status Bar");
       }
     },
   }) as StatusbarScope;

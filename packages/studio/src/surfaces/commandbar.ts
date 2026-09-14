@@ -43,6 +43,7 @@ import { armPreviewOverlay, flushPreviewOverlay } from "../preview/preview-overl
 import { documentUrlPattern, dynamicRouteParams } from "../page-params";
 import { getNodeAtPath, nodeLabel, projectState } from "../store";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported, runReported } from "../commands/run-reported";
 import { notify } from "../services/notify";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { rectOf } from "../utils/geometry";
@@ -521,7 +522,7 @@ export async function saveLayoutPrompt(registry: CommandRegistry): Promise<void>
     placeholder: "Layout name",
   });
   if (name) {
-    await registry.run("view.saveLayout", { name });
+    await runReported(registry, "view.saveLayout", { name }, "Command Bar");
   }
 }
 
@@ -533,7 +534,7 @@ export async function renameLayoutPrompt(
 ): Promise<void> {
   const name = await showPromptDialog("Rename layout", { confirmLabel: "Rename", value: current });
   if (name) {
-    await registry.run("view.renameLayout", { layout, name });
+    await runReported(registry, "view.renameLayout", { layout, name }, "Command Bar");
   }
 }
 
@@ -707,7 +708,7 @@ function openStudioMenu(opener: HTMLElement): void {
     rows: overflowRows(registry),
     run: (id) => {
       if (registry.isEnabled(id)) {
-        void registry.run(id);
+        void runReported(registry, id, undefined, "Command Bar");
       }
     },
   });
@@ -751,7 +752,7 @@ function state(): CommandBarScope {
     run: (id) => {
       const registry = activeRegistry();
       if (registry?.isEnabled(id)) {
-        void registry.run(id);
+        void runReported(registry, id, undefined, "Command Bar");
       }
     },
     saveLayout: () => {
@@ -762,7 +763,7 @@ function state(): CommandBarScope {
     },
     segments: [],
     setLayout: (id) => {
-      void activeRegistry()?.run("view.setLayout", { layout: id });
+      void runActiveReported("view.setLayout", { layout: id }, "Command Bar");
     },
     windowControl: (action) => {
       windowControls()?.[action]();

@@ -36,10 +36,9 @@
  * @docs studio/projects/settings
  */
 
-import { errorMessage } from "@jxsuite/schema/parse";
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { LEVELS } from "../commands/levels";
-import { notify } from "../services/notify";
 import { onSettingsDocumentChanged, sortedSettingsSections } from "../settings/section-registry";
 import { PREFERENCES_SECTIONS } from "../settings/preferences-sections";
 import { openMenu } from "../surfaces/menu";
@@ -92,25 +91,16 @@ function menuSectionsFor(id: string): readonly MenuSection[] {
  * Run a row's command, surfacing a refusal instead of stranding it.
  *
  * `settings.open`'s `run` is async and throws a `RangeError` AFTER awaiting the contributed-section
- * sync, and `registry.run` does not catch. `editor/context-menu.ts`'s bare `void result` is safe
- * only because every element verb is synchronous; here an unknown section would reject into
- * nothing.
+ * sync, and `registry.run` does not catch; a gate that turned false between the render and the
+ * click throws BEFORE `run`, synchronously. `commands/run-reported.ts` catches both and files the
+ * sentence in Problems, under this menu's name.
  */
 function runRow(id: string, args?: Record<string, unknown>): void {
   const registry = activeRegistry();
   if (!registry) {
     return;
   }
-  let result: unknown;
-  try {
-    result = registry.run(id, args as never);
-  } catch (error) {
-    notify.error(errorMessage(error), { source: id });
-    return;
-  }
-  void Promise.resolve(result).catch((error: unknown) => {
-    notify.error(errorMessage(error), { source: id });
-  });
+  void runReported(registry, id, args, "Settings");
 }
 
 // ─── Rows ─────────────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.6-draft\
+**Version:** 0.8.7-draft\
 **Status:** Partial\
-**Updated:** 2026-09-13\
+**Updated:** 2026-09-14\
 **Applies to:** `packages/studio/`
 
 ---
@@ -814,7 +814,7 @@ Corollaries:
 
 - **An `enablement` never restates its own `when`.** The same rule written twice is two places to drift, and the drift is invisible because both spellings look deliberate.
 - **A `requires` sentence names the gate it actually has.** `canvas.setFit` said "an open document" while refusing for the MODE, which sends the reader to open a document they already have open; `selection.delete` said "not the document root" for a gate that also refuses a repeater's template and a switch case, and now names all three.
-- **When a precondition depends on an ARGUMENT, refuse the argument.** `enablement` cannot see one. The SHAPE is the schema's: `registry.run` coerces every received record against `args` through `coerceArgs`, for every caller, before `run` is entered, so a value outside a `derivedEnumProperty` or a key the schema does not declare is refused with the sentence the palette's choice list implied. What the schema cannot say — a breakpoint the document defines, a path that addresses a node, a preset the document cannot support — the `run` body refuses itself with a `RangeError` naming the value, the shape `pane.derive` uses.
+- **When a precondition depends on an ARGUMENT, refuse the argument.** `enablement` cannot see one. The SHAPE is the schema's: `registry.run` coerces every received record against `args` through `coerceArgs`, for every caller, before `run` is entered, so a value outside a `derivedEnumProperty` or a key the schema does not declare is refused with the sentence the palette's choice list implied. What the schema cannot say — a breakpoint the document defines, a path that addresses a node, a preset the document cannot support — the `run` body refuses itself with a `RangeError` naming the value, the shape `pane.derive` uses. Both refusals are SYNCHRONOUS out of `registry.run`, so a surface does not call it bare: a click, chord or notice action runs through `commands/run-reported.ts`'s `runReported`, which catches the throw and the later rejection alike and files the sentence in Problems under the surface's name — the one place a refusal is read, whichever surface it came from. A crash out of a `run` body (anything but the two refusal shapes) is filed the same way and ALSO reaches the console with its stack, because a refusal is a whole sentence and a bug is not. The sweep in `tests/run-reported.test.ts` holds the tree to that spelling; the `?.run(` sites it has not reached yet are a ratchet there, named one by one, that only shrinks.
 
 ### 12.5 A second list of actions is a defect
 
@@ -894,6 +894,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.7-draft** (2026-09-14) — §12.4 a surface runs a command through runReported, which files a synchronous refusal and a later rejection alike in Problems under the surface's name, and a crash also reaches the console.
 - **0.8.6-draft** (2026-09-13) — §12.4 the agent's tool IS the command: the projection contract, the four deletion rules and the three review rules; the argument corollary names the schema coercion; §12.2 gains the assistant tool cap.
 - **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.
 - **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.

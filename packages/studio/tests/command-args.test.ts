@@ -736,13 +736,11 @@ describe("every shipped args schema", () => {
 
   test("admits every step of the shipped screenshot manifest", async () => {
     /* `scripts/check-shot-contract.ts` validates each manifest step against the same schema in the
-       `checks` job — required keys, unknown keys, type, const and enum — but not everything the
-       rows above read: it admits `""` for a string `stringArg` refuses, ignores `minimum` and
-       `maximum`, and does not descend into `oneOf`. So a step that passes the static check does
-       NOT pass the runtime pass by construction; this sweep over the real manifest with the real
-       records is the proof for the manifest as shipped, and a step that opens one of those three
-       gaps fails here rather than in a capture. Quarantined shots are read past, as the checker
-       and the runner read past them. */
+       `checks` job, by the rows above's own rules (`tests/shot-contract-args.test.ts` holds the two
+       passes to agreement). This sweep over the real manifest with the real records is the proof
+       for the manifest as shipped, and a step the static check somehow admitted fails here rather
+       than in a capture. Quarantined shots are read past, as the checker and the runner read past
+       them. */
     const manifest = (await Bun.file(
       resolve(import.meta.dir, "../../../scripts/screenshots/manifest.json"),
     ).json()) as {

@@ -77,7 +77,7 @@ import { clipboardCommands, pasteNode } from "./context-menu";
 import { hasElementSelection, hasSelection, inCanvas, keyScopeStack } from "../commands/context";
 import { defaultCommands } from "../commands/defaults";
 import { setActiveRegistry } from "../commands/active-registry";
-import { CommandUnavailableError } from "../commands/registry";
+import { runReported } from "../commands/run-reported";
 import type { CommandContext } from "../commands/context";
 import type { DockId as CommandDockId } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -388,11 +388,12 @@ function toggleShellDock(registry: CommandRegistry, dock: CommandDockId): void {
  *
  * `view.setAssistant` and `view.setRightTab` are `shell.ts`'s, composed into the app's registry by
  * the bootstrap — a reduced registry (a test, a future second window kind) may not carry them, and
- * a missing id must be inert rather than an exception thrown out of a keydown handler.
+ * a missing id must be inert rather than an exception thrown out of a keydown handler. A present
+ * one that refuses its arguments is not inert: `commands/run-reported.ts` files it in Problems.
  */
 function runIfPresent(registry: CommandRegistry, id: string, args: Record<string, unknown>): void {
   if (registry.get(id) && registry.isEnabled(id)) {
-    void registry.run(id, args);
+    void runReported(registry, id, args, "Keyboard");
   }
 }
 
@@ -901,32 +902,19 @@ export function registerStudioCommands(
  *
  * `preventDefault()` iff a command claimed the chord. A command that is VISIBLE but disabled — ⌘Z
  * with nothing to undo, Delete on the document element — still counts as claiming it: the registry
- * throws {@link CommandUnavailableError} from `run`, and swallowing the key is the honest outcome,
- * because the chord is spoken for and letting the browser act on it instead would be a surprise.
- *
- * HANDOFF: `registry.handleKeyEvent` reports the hit and runs it in one step, so a refusal can only
- * be observed by catching. It would be better for it to consult `isEnabled` itself and return the
- * id without running; `commands/registry.ts` is another workstream's file this wave.
+ * consults `isEnabled` itself and returns the id without running, and swallowing the key is the
+ * honest outcome, because the chord is spoken for and letting the browser act on it instead would
+ * be a surprise. Nothing is caught here, because nothing leaves: `handleKeyEvent` runs the hit
+ * through `commands/run-reported.ts`, so a record that refuses its arguments, a gate that closed
+ * between the check and the run, or a `run` body that throws is a Problems row under "Keyboard"
+ * rather than an exception out of the keydown listener.
  */
 function dispatchKey(registry: CommandRegistry, event: KeyboardEvent): string | undefined {
-  const commandId = claimChord(registry, event);
+  const commandId = registry.handleKeyEvent(event, keyScopeStack(registry.context()));
   if (commandId) {
     event.preventDefault();
   }
   return commandId;
-}
-
-/** The id of the command that claimed the chord, whether it ran or refused. */
-function claimChord(registry: CommandRegistry, event: KeyboardEvent): string | undefined {
-  const stack = keyScopeStack(registry.context());
-  try {
-    return registry.handleKeyEvent(event, stack);
-  } catch (error) {
-    if (error instanceof CommandUnavailableError) {
-      return error.commandId;
-    }
-    throw error;
-  }
 }
 
 // ─── Pointer and wheel gestures ───────────────────────────────────────────────

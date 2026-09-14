@@ -58,6 +58,7 @@ import { derivationOfPane, tabOfPane } from "../canvas/canvas-surface";
 import { paneRegion } from "../ui/regions";
 import { primarySelection } from "../tabs/selection";
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { openMenu } from "../surfaces/menu";
 import { mountJumpBarSurface } from "../surfaces/jump-bar";
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
@@ -427,7 +428,7 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
     dividerAbove: false,
     id: String(i),
     run: () => {
-      void registry.run(choice.command, choice.args);
+      void runReported(registry, choice.command, choice.args, "Jump Bar");
     },
     title: choice.label,
   }));
@@ -544,7 +545,7 @@ export function attachJumpBarHost(paneId: string, host: HTMLElement | null): voi
         const segment = _bars.get(paneId)?.segments.get(key);
         const registry = activeRegistry();
         if (segment?.command && registry) {
-          void registry.run(segment.command, segment.args);
+          void runReported(registry, segment.command, segment.args, "Jump Bar");
         }
       },
     }),

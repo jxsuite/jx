@@ -6,6 +6,7 @@ code:
   - packages/studio/src/services/notify.ts
   - packages/studio/src/panels/bottom-dock.ts
   - packages/studio/src/panels/problems-panel.ts
+  - packages/studio/src/commands/run-reported.ts
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/panels/activity-panel.ts
   - packages/studio/src/ui/progress-modal.ts
@@ -41,6 +42,8 @@ Toasts are for outcomes you don't have to act on. Anything you _do_ have to act 
 ## Problems
 
 A Problem is something that must be fixed, kept on a list until it is. Failed saves, validation errors, a render that didn't work and a push that was refused all land here with the file they came from.
+
+A command that refuses also lands here, whichever surface you ran it from: a menu row, a keyboard shortcut, a palette entry, a status bar item or a Retry button on another Problem. The row names the command and what it needed, and it is grouped under the surface that ran it (**Keyboard**, **Palette**, **Command Bar**, **Problems**), so a shortcut that does nothing is a row you can read rather than a key that went quiet.
 
 Open the list two ways, both showing the same rows:
 
