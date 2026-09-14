@@ -14,9 +14,6 @@ import type { JxMutableNode, JxPath, JxStateDefinition } from "@jxsuite/schema/t
 import { getNodeAtPath } from "../state";
 import type { Tab } from "../tabs/tab";
 import {
-  beginBatch,
-  endBatch,
-  isBatching,
   mutateInsertNode,
   mutateMoveNode,
   mutateUpdateProperty,
@@ -110,7 +107,6 @@ async function applyAndValidate(
  *   validate?: (doc: unknown) => Promise<string[]>;
  *   saveFile?: (relPath: string, content: string) => Promise<void>;
  *   renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
- *   openDocument?: (path: string) => Promise<void>;
  *   projectStyle?: Record<string, string>;
  *   getProjectStyle?: () => Record<string, string> | undefined;
  *   findOpenTab?: (path: string) => import("../tabs/tab").Tab | null;
@@ -124,7 +120,6 @@ export function registerAiTools(
     validate = validateDoc,
     saveFile,
     renderCheck,
-    openDocument,
     projectStyle,
     getProjectStyle,
     findOpenTab,
@@ -134,7 +129,6 @@ export function registerAiTools(
     validate?: (doc: unknown) => Promise<string[]>;
     saveFile?: (relPath: string, content: string) => Promise<void>;
     renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
-    openDocument?: (path: string) => Promise<void>;
     projectStyle?: Record<string, string> | undefined;
     /**
      * Live variant of `projectStyle` — takes precedence; re-read per tool call so a project
@@ -776,67 +770,12 @@ export function registerAiTools(
     }),
   );
 
-  // ── open_document ─────────────────────────────────────────────────────
-
-  registry.register(
-    createToolDefinition({
-      name: "open_document",
-      description:
-        "Switch the active document to another file in the project. After opening, all " +
-        "tools (read_document, set_property, add_child, etc.) operate on the newly-active " +
-        "document. Use this to iteratively refine pages or components after creating them " +
-        "with create_page or create_component.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description:
-              'File path relative to the project root, e.g. "pages/about.json" or ' +
-              '"components/nav-bar.json". Must be an existing file.',
-          },
-        },
-        required: ["path"],
-      },
-      async execute(args) {
-        if (!openDocument) {
-          return {
-            success: false,
-            error: "File navigation is not available in this environment.",
-          };
-        }
-        const { path: relPath } = args as { path: string };
-        try {
-          await openDocument(relPath);
-          const tab = getTab();
-          if (!tab) {
-            return {
-              success: false,
-              error: `File "${relPath}" could not be opened — no active tab after navigation.`,
-            };
-          }
-          /*
-           * The agent loop opens a single undo batch on the tab that was active at loop start
-           * (tool-executor.js → beginBatch). Switching the active document mid-loop would strand
-           * the new tab's edits with no history snapshot — undo would have nothing to roll back.
-           * Flush the previous tab's batch and re-open one on the newly-active tab so edits in
-           * each document remain individually undoable.
-           */
-          if (isBatching()) {
-            endBatch();
-            beginBatch(tab);
-          }
-          return {
-            success: true,
-            summary: `Switched to "${relPath}". All tools now operate on this document.`,
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: `Failed to open "${relPath}": ${error instanceof Error ? error.message : String(error)}`,
-          };
-        }
-      },
-    }),
-  );
+  /*
+   * `open_document` is NOT here any more. It is the projection of the `document.open` record
+   * (`workspace/workspace.ts`'s `tabCommands`), so the person's palette row and the model's tool
+   * are one `run` and one gate (§12.4). The hand tool read `getTab()` after the open and called
+   * whatever it found a success — a missing file left the previous document active and reported
+   * "Switched to" — and it re-anchored the undo batch itself, which `tool-executor.ts` has done
+   * after EVERY tool since project adoption started replacing tabs mid-loop.
+   */
 }

@@ -40,7 +40,7 @@ import { preferredModel } from "./ai-models";
 import { pruneOrphanToolMessages, trimContext } from "./context-manager";
 import { renderCheck } from "./render-critic";
 import { validateDoc } from "./jx-validate";
-import { openFileInTab, reloadFileInTab } from "../files/files";
+import { reloadFileInTab } from "../files/files";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
 import * as sessionStore from "./ai-session-store";
 
@@ -98,7 +98,6 @@ export function createDocumentAssistant() {
     renderCheck: renderCheck as (
       doc: unknown,
     ) => Promise<{ ok: true } | { ok: false; error: string }>,
-    openDocument: openFileInTab,
     getProjectStyle,
     findOpenTab,
     reloadTab: reloadFileInTab,
@@ -160,7 +159,8 @@ export function createDocumentAssistant() {
     document: "an open document (use open_document first)",
     "document-tree":
       "an open document whose element tree the canvas is editing — Project Settings and the " +
-      "grid editors are documents, but not trees to restructure",
+      "grid editors are documents, but not trees to restructure, and a page left in Code view " +
+      "returns to the canvas with set_canvas_mode",
   } as const;
 
   /**

@@ -132,7 +132,11 @@ describe("ai-system-prompt — state-aware modes", () => {
     expect(prompt).toContain("no document is on the canvas");
     expect(prompt).toContain("- list_files(");
     expect(prompt).toContain("- write_file(");
-    expect(prompt).toContain("- open_document(");
+    /* `open_document` is no longer a hand row: it is the projection of `document.open`, so it
+       reaches the prompt through `commandTools` (the next block) and not through the tier table.
+       The workflow prose still names it, so the model is steered to a tool the record advertises. */
+    expect(prompt).not.toContain("- open_document(");
+    expect(prompt).toContain("Use open_document only when");
     expect(prompt).not.toContain("- create_project(");
     expect(prompt).not.toContain("- set_property(");
   });
@@ -256,6 +260,21 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
     const { createCommandRegistry } = await import("../src/commands/registry");
     const { makeContext } = await import("../src/commands/context");
     const { setActiveRegistry } = await import("../src/commands/active-registry");
+    const { setExtensionCatalog } = await import("../src/format/format-host");
+    const { setProjectState } = await import("../src/store");
+
+    /* A project with an enabled extension and a catalogue behind it, so the two derived enums
+       (`enable_extension`'s catalogue, `disable_extension`'s enabled set) are non-empty: a record
+       whose required enum is empty is withheld from the round, and this test is about the full
+       set the declarations project, not about that rule. */
+    setExtensionCatalog([
+      { name: "@jxsuite/parser", sections: [{ key: "content" }], source: "first-party" },
+    ]);
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      projectConfig: { extensions: ["@jxsuite/parser"] },
+    } as never);
 
     const hand = createToolRegistry();
     registerAskTool(hand);
@@ -296,11 +315,14 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
 
       expect([...handNames].filter((name) => projectedNames.has(name))).toEqual([]);
       expect(composite.list()).toHaveLength(handNames.size + projectedNames.size);
-      // The counts the design was measured against: 19 hand rows, 9 projected records.
-      expect(handNames.size).toBe(19);
-      expect(projectedNames.size).toBe(9);
+      // The counts the design was measured against: 19 hand rows, 9 projected records; then
+      // `open_document` crossed from hand to record and `set_canvas_mode` was projected (#334).
+      expect(handNames.size).toBe(18);
+      expect(projectedNames.size).toBe(11);
     } finally {
       setActiveRegistry(null);
+      setProjectState(null);
+      setExtensionCatalog([]);
     }
   });
 
