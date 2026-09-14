@@ -43,14 +43,17 @@ Numbered headings (`## 5`, `### 5.1`, `#### 19.4a`) are anchors: docs pages refe
 
 ## Releasing a spec
 
-Every substantive edit is a release. Do not hand-edit the version, the date, or the changelog — run:
+Every substantive edit is a release. Do not hand-edit the version, the date, or the changelog — record the release, in one of two forms:
 
 ```sh
-bun run spec:bump <spec.md> <major|minor|patch|stable> -m "<what changed>"
+bun run spec:change <spec.md> <major|minor|patch|stable> -m "<what changed>"   # a fragment, minted on the release branch (preferred)
+bun run spec:bump   <spec.md> <major|minor|patch|stable> -m "<what changed>"   # in place, now
 bun run docs:generate   # preview the derived reference pages locally (build outputs; never committed)
 ```
 
-That advances the header **and** footer version, restamps `**Updated:**` to today, and prepends a `## Changelog` entry.
+`spec:change` writes one small file under `specs/changes/` naming the spec, the level and the changelog sentence, and touches nothing else. It exists because the in-place form is where two pull requests releasing the same spec collide: both rewrite the `**Version:**` line and both prepend at the top of `## Changelog`, so whichever merges second conflicts on lines that carry nothing of its own. Two fragments never conflict. `.github/workflows/release-specs.yml` mints every fragment on the release pull request, in the order each landed on `main` (`bun run spec:release` does the same locally, `--dry` to preview), so the version a change gets is decided by when it merged, and the spec changelog page shows a recorded-but-unminted release as **unreleased** until then. The gate (`docs:spec-release`) accepts either form.
+
+`spec:bump` advances the header **and** footer version, restamps `**Updated:**` to today, and prepends a `## Changelog` entry, in the pull request. Use it when you know no other open pull request releases the same spec, or when the number must be visible in the pull request itself.
 
 | Level  | Use when                                                                                                    |
 | ------ | ----------------------------------------------------------------------------------------------------------- |
@@ -84,7 +87,7 @@ They are deliberately bullets rather than headings so changelog versions never c
 | Command                   | Enforces                                                                                                                                   |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | bun run docs:status       | Header fields, status vocabulary, footer/header version agreement, changelog ordering and consistency                                      |
-| bun run docs:spec-release | A spec whose body changed also advanced its version (this is what keeps versions meaningful)                                               |
+| bun run docs:spec-release | A spec whose body changed also released it, in place or as a fragment under `specs/changes/` (keeps versions meaningful)                   |
 | bun run docs:standards    | The `## N. Standards Alignment` tables: vocabulary, canonical citations, resolvable bindings, committed evidence, and the tracked gap list |
 | bun run docs:check        | Docs spec: anchors resolve to real numbered headings                                                                                       |
 | bun run docs:verify       | `docs:check` over a freshly generated page set, plus the screenshot image lock                                                             |

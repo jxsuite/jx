@@ -1,6 +1,9 @@
-// The spec release gate: a spec whose body changed must also be released — version advanced,
-// **Updated:** restamped, and a new `## Changelog` entry. This is what stops many revisions from
-// Landing under one version number, which is exactly how the spec versions became meaningless.
+// The spec release gate: a spec whose body changed must also be released — EITHER in place (version
+// Advanced, **Updated:** restamped, a new `## Changelog` entry: `spec:bump`) OR as a fragment under
+// Specs/changes/ naming the spec, the level and the sentence (`spec:change`), which the release
+// Lane mints in merge order. This is what stops many revisions from landing under one version
+// Number, which is exactly how the spec versions became meaningless. A fragment is judged too: one
+// That names no spec, or a spec that does not exist, or a level that is not a level, is a violation.
 //
 // A spec's "body" is everything except its release metadata: the **Version:** and **Updated:**
 // Lines, the `## Changelog` heading and its entries, and the footer version line. The header
@@ -21,6 +24,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { unwrapProse } from "../lib/unwrap-prose.ts";
+import { FRAGMENTS_DIR, parseFragment } from "./lib/spec-release.ts";
 import { compareSpecVersion, parseSpecSource } from "./lib/spec-status.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -66,8 +70,6 @@ function resolveBase(): string {
   return "HEAD";
 }
 
-const base = resolveBase();
-
 // Release metadata — invisible to the body comparison (changing it IS the release).
 const METADATA = [
   /^\*\*Version:\*\*/,
@@ -91,7 +93,7 @@ const METADATA = [
  * The trailing `\` of an explicit hard break goes too: the formatter writes those into a labelled
  * run, and a marker that only exists to hold a line break is not body.
  */
-function normalizedBody(source: string): string {
+export function normalizedBody(source: string): string {
   return unwrapProse(source)
     .text.split("\n")
     .filter((line) => !METADATA.some((re) => re.test(line)))
@@ -100,85 +102,165 @@ function normalizedBody(source: string): string {
     .join("\n");
 }
 
-const changed =
-  (staged
-    ? gitSafe(["diff", "--name-only", "--cached", "--", "specs"])
-    : gitSafe(["diff", "--name-only", base, "--", "specs"])
-  )
-    ?.split("\n")
-    .filter(Boolean) ?? [];
-
-const specFiles = changed.filter((f) => /^specs\/[^/]+\.md$/.test(f) && f !== "specs/README.md");
-if (specFiles.length === 0) {
-  process.exit(0);
-}
-
-interface Violation {
+export interface Violation {
   file: string;
   message: string;
 }
-const violations: Violation[] = [];
-const released: string[] = [];
 
-for (const file of specFiles) {
-  const name = file.slice("specs/".length);
-
-  const baseText = gitSafe(["show", `${base}:${file}`]);
-  if (baseText === null) {
-    continue; // New spec — check-spec-status.ts requires it to ship a version + changelog baseline.
-  }
-  const headText = staged
-    ? gitSafe(["show", `:${file}`])
-    : existsSync(join(ROOT, file))
-      ? readFileSync(join(ROOT, file), "utf8")
-      : null;
-  if (headText === null) {
-    continue; // Deleted.
-  }
-
-  if (normalizedBody(baseText) === normalizedBody(headText)) {
-    continue; // Metadata-only change (a re-release, or no substantive edit).
-  }
-
-  const before = parseSpecSource(baseText, name).headerVersion;
-  const after = parseSpecSource(headText, name).headerVersion;
-  if (!before || !after) {
-    violations.push({ file, message: "missing a header **Version:** line (see `docs:status`)" });
-    continue;
-  }
-  const cmp = compareSpecVersion(after, before);
-  if (cmp === null) {
-    violations.push({
-      file,
-      message: `version "${before}" → "${after}" is not MAJOR.MINOR.PATCH (optionally -draft)`,
-    });
-  } else if (cmp <= 0) {
-    violations.push({
-      file,
-      message: `body changed but the version did not advance (still "${after}")`,
-    });
-  } else {
-    released.push(`${name} ${before} → ${after}`);
-  }
+/** What the gate reads: the changed paths, and each side's text (null when absent on that side). */
+export interface ReleaseDiff {
+  changed: readonly string[];
+  /** The file's text on the base (before) — null for a new file. */
+  before: (file: string) => string | null;
+  /** The file's text now — null for a deleted file. */
+  after: (file: string) => string | null;
+  /** Whether a spec file exists now (a fragment must name one). */
+  specExists: (spec: string) => boolean;
 }
 
-if (violations.length > 0) {
-  console.error(`\nspec release: ${violations.length} spec(s) changed without a release:`);
-  for (const { file, message } of violations) {
-    console.error(`  ${file}: ${message}`);
-  }
-  console.error(
-    "\nEvery substantive spec edit is a release. Record it with:\n" +
-      '  bun run spec:bump <spec.md> <major|minor|patch> -m "<what changed>"\n' +
-      "which bumps the header + footer version, restamps **Updated:**, and prepends a `## Changelog`\n" +
-      "entry. major = breaking contract change, minor = additive, patch = editorial.\n" +
-      "The derived reference pages are build outputs; nothing else to commit.",
+/**
+ * The gate's judgement over a diff: which specs were released (in place or by fragment) and which
+ * body changes have no release. Pure, so the test can hand it a diff without a git repository.
+ */
+export function judgeSpecReleases(diff: ReleaseDiff): {
+  violations: Violation[];
+  released: string[];
+} {
+  const specFiles = diff.changed.filter(
+    (f) => /^specs\/[^/]+\.md$/.test(f) && f !== "specs/README.md",
   );
-  process.exit(1);
+  const fragmentFiles = diff.changed.filter(
+    (f) => f.startsWith(`${FRAGMENTS_DIR}/`) && f.endsWith(".md"),
+  );
+  const violations: Violation[] = [];
+  const released: string[] = [];
+
+  /** The specs the diff's fragments release, by spec file name; a malformed fragment is a violation. */
+  const fragmented = new Set<string>();
+  for (const file of fragmentFiles) {
+    if (file === `${FRAGMENTS_DIR}/README.md`) {
+      continue; // The directory's own readme, which `readFragments` skips too.
+    }
+    const text = diff.after(file);
+    if (text === null) {
+      continue; // Deleted: the release lane consumed it, which is the fragment's whole life.
+    }
+    if (diff.before(file) !== null) {
+      // A fragment that was already on the base is someone else's release, and editing it does
+      // Not release anything here: only a fragment this diff ADDS excuses a body change.
+      continue;
+    }
+    try {
+      const fragment = parseFragment(text, file.slice(FRAGMENTS_DIR.length + 1));
+      if (!diff.specExists(fragment.spec)) {
+        violations.push({ file, message: `names specs/${fragment.spec}, which does not exist` });
+        continue;
+      }
+      fragmented.add(fragment.spec);
+      released.push(`${fragment.spec} (${fragment.level} fragment: ${fragment.summary})`);
+    } catch (error) {
+      violations.push({ file, message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  for (const file of specFiles) {
+    const name = file.slice("specs/".length);
+    const baseText = diff.before(file);
+    if (baseText === null) {
+      continue; // New spec — check-spec-status.ts requires it to ship a version + changelog baseline.
+    }
+    const headText = diff.after(file);
+    if (headText === null) {
+      continue; // Deleted.
+    }
+    if (normalizedBody(baseText) === normalizedBody(headText)) {
+      continue; // Metadata-only change (a re-release, or no substantive edit).
+    }
+    if (fragmented.has(name)) {
+      continue; // Released as a fragment; the lane mints the version in merge order.
+    }
+    const before = parseSpecSource(baseText, name).headerVersion;
+    const after = parseSpecSource(headText, name).headerVersion;
+    if (!before || !after) {
+      violations.push({ file, message: "missing a header **Version:** line (see `docs:status`)" });
+      continue;
+    }
+    const cmp = compareSpecVersion(after, before);
+    if (cmp === null) {
+      violations.push({
+        file,
+        message: `version "${before}" → "${after}" is not MAJOR.MINOR.PATCH (optionally -draft)`,
+      });
+    } else if (cmp <= 0) {
+      violations.push({
+        file,
+        message: `body changed but the version did not advance (still "${after}")`,
+      });
+    } else {
+      released.push(`${name} ${before} → ${after}`);
+    }
+  }
+  return { released, violations };
 }
 
-console.log(
-  released.length > 0
-    ? `spec release: ${released.length} spec(s) released — ${released.join(", ")}.`
-    : `spec release: ${specFiles.length} spec file(s) touched, no body changes needing a release.`,
-);
+if (import.meta.main) {
+  const base = resolveBase();
+  const changed =
+    (staged
+      ? gitSafe(["diff", "--name-only", "--cached", "--", "specs"])
+      : gitSafe(["diff", "--name-only", base, "--", "specs"])
+    )
+      ?.split("\n")
+      .filter(Boolean) ?? [];
+  if (!staged) {
+    // A fragment `spec:change` just wrote is untracked, and `git diff` never lists an untracked
+    // File — so the preferred release form would read as "no release" until `git add`. The Stop
+    // Hook and the pre-commit advisory both run this mode.
+    for (const file of gitSafe(["ls-files", "--others", "--exclude-standard", "--", FRAGMENTS_DIR])
+      ?.split("\n")
+      .filter(Boolean) ?? []) {
+      changed.push(file);
+    }
+  }
+  const specFiles = changed.filter((f) => /^specs\/[^/]+\.md$/.test(f) && f !== "specs/README.md");
+  if (changed.length === 0) {
+    process.exit(0);
+  }
+  const { violations, released } = judgeSpecReleases({
+    after: (file) =>
+      staged
+        ? gitSafe(["show", `:${file}`])
+        : existsSync(join(ROOT, file))
+          ? readFileSync(join(ROOT, file), "utf8")
+          : null,
+    before: (file) => gitSafe(["show", `${base}:${file}`]),
+    changed,
+    specExists: (spec) => existsSync(join(ROOT, "specs", spec)),
+  });
+  report(violations, released, specFiles.length);
+}
+
+function report(violations: Violation[], released: string[], touched: number): void {
+  if (violations.length > 0) {
+    console.error(`\nspec release: ${violations.length} spec(s) changed without a release:`);
+    for (const { file, message } of violations) {
+      console.error(`  ${file}: ${message}`);
+    }
+    console.error(
+      "\nEvery substantive spec edit is a release. Record it with:\n" +
+        '  bun run spec:change <spec.md> <major|minor|patch> -m "<what changed>"\n' +
+        "which writes a fragment under specs/changes/ that the release lane mints in merge order, so\n" +
+        "two pull requests releasing one spec never conflict; or mint in place, now, with\n" +
+        '  bun run spec:bump <spec.md> <major|minor|patch> -m "<what changed>"\n' +
+        "major = breaking contract change, minor = additive, patch = editorial.\n" +
+        "The derived reference pages are build outputs; nothing else to commit.",
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    released.length > 0
+      ? `spec release: ${released.length} release(s) recorded — ${released.join(", ")}.`
+      : `spec release: ${touched} spec file(s) touched, no body changes needing a release.`,
+  );
+}
