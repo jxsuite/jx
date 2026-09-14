@@ -41,6 +41,7 @@ const { defaultCommands, noopCommandDeps } = await import("../src/commands/defau
 const { makeContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { closeAllTabs, openTab } = await import("../src/workspace/workspace");
+const { problems, resetNotifications } = await import("../src/services/notify");
 
 type CommandContext = ReturnType<typeof makeContext>;
 
@@ -598,20 +599,18 @@ describe("command mode", () => {
     expect(ran).toEqual([]);
   });
 
-  test("a command that throws is reported, not swallowed into a broken overlay", async () => {
-    const errors: unknown[][] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => errors.push(args);
-    try {
-      await open("commands");
-      await type("Explode");
-      keydown("Enter");
-      await flush();
-      expect(overlay()).toBeNull();
-      expect(errors.some(([first]) => String(first).includes("test.explodes"))).toBe(true);
-    } finally {
-      console.error = originalError;
-    }
+  test("a command that throws is reported in Problems, not swallowed into a broken overlay", async () => {
+    // Problems, not the console: `commands/run-reported.ts` is the palette's catcher now, and a
+    // Refusal printed to the console was one the person never read.
+    resetNotifications();
+    await open("commands");
+    await type("Explode");
+    keydown("Enter");
+    await flush();
+    expect(overlay()).toBeNull();
+    expect(problems.map((record) => [record.source, record.message])).toEqual([
+      ["Palette", "boom"],
+    ]);
   });
 
   test("with no registry published, command mode is empty rather than broken", async () => {

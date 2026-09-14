@@ -19,6 +19,7 @@ import { mountSurface, registerSurface } from "./surface";
 import toastsDoc from "../surfaces/toasts.json";
 import { dismiss, toasts } from "../services/notify";
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { effect, effectScope, reactive } from "../reactivity";
 import type { DialogChoiceOption, DialogSurfaceOptions } from "../surfaces/dialog";
 import type { Notification, Severity } from "../services/notify";
@@ -602,7 +603,9 @@ function toastScope(): ToastScope {
         return;
       }
       retireToast(id);
-      void registry.run(record.action, record.actionArgs);
+      // The toast is gone by the time the action refuses, so the refusal has to land somewhere the
+      // Person can still read it: Problems, through `commands/run-reported.ts`.
+      void runReported(registry, record.action, record.actionArgs, "Notifications");
     },
     toasts: [],
   }) as ToastScope;

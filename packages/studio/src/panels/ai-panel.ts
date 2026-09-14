@@ -44,6 +44,7 @@ import { onCredentialsChanged } from "../settings/preferences-accounts";
 import { setDockCollapsed } from "../shell";
 import { hasSelection } from "../commands/context";
 import { activeRegistry } from "../commands/active-registry";
+import { runReported } from "../commands/run-reported";
 import { clearMarkdownCache } from "./ai-chat/chat-markdown";
 import {
   formatErrorAdvice,
@@ -158,12 +159,14 @@ export function renderAiPanel(): void {
  * Re-asked at click time, not trusted from the projection: state moves between the two, and
  * `registry.run` THROWS on a refusal. Same bargain `registry.handleKeyEvent` strikes for a chord
  * bound to a disabled command — swallow it here rather than make every surface wrap a dispatch in
- * try/catch.
+ * try/catch. What the gate lets through still runs through `commands/run-reported.ts`: a `run` body
+ * that rejects, or a schema the record has drifted from, is a sentence in Problems rather than an
+ * exception out of the click.
  */
 function runCommand(id: string): void {
   const registry = activeRegistry();
   if (registry?.isEnabled(id)) {
-    void registry.run(id);
+    void runReported(registry, id, undefined, "Assistant");
   }
 }
 

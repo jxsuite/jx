@@ -41,6 +41,7 @@ import { reactive } from "../reactivity";
 import paletteDoc from "../surfaces/palette.json";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported, runReported } from "../commands/run-reported";
 import type { PaletteMode } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
@@ -671,17 +672,11 @@ function runCommand(command: AnyCommand, args?: Record<string, unknown>) {
   }
   trackRecentCommand(command.id);
   closeQuickSearch();
-  const report = (error: unknown) => {
-    console.error(`palette: command "${command.id}" failed`, error);
-  };
-  // Both shapes, deliberately: `run` may throw synchronously (a coercion refusal from
+  // Both shapes, through the one helper: `run` may throw synchronously (a coercion refusal from
   // `command-args.ts` does) or reject later. A palette that let either escape would take the
-  // Keydown listener down with it, and the overlay is already closed by then.
-  try {
-    void Promise.resolve(registry.run(command.id, args)).catch(report);
-  } catch (error) {
-    report(error);
-  }
+  // Keydown listener down with it, and the overlay is already closed by then — and a refusal that
+  // Went to the console, as this one did, was read by nobody. Problems is where it is read.
+  void runReported(registry, command.id, args, "Palette");
 }
 
 function selectRow(row: PaletteRow) {
@@ -702,9 +697,8 @@ function selectRow(row: PaletteRow) {
       return;
     }
     case "node": {
-      const registry = activeRegistry();
       closeQuickSearch();
-      void registry?.run("selection.set", { path: row.path });
+      void runActiveReported("selection.set", { path: row.path }, "Palette");
       return;
     }
     case "arg": {
