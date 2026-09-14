@@ -31,8 +31,11 @@ import {
 } from "../src/services/ai-command-tools";
 import { beginTurn, endTurn } from "../src/services/ai-writes";
 import { mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
+import { resetProjectConfigDocument } from "../src/tabs/project-config";
+import { updateSiteConfig } from "../src/site-context";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { createToolRegistry } from "@jxsuite/ai";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /** The declarations the app ships, keyed by tool name. */
 const DECLARED = new Map(
@@ -100,13 +103,19 @@ beforeEach(() => {
       title: "Content & Markdown",
     },
   ]);
-  resetStudioState({ projectConfig: { extensions: [] } });
+  /* Parser ENABLED, not merely offered: `disable_extension`'s `package` enum is the enabled set,
+     and a projected record whose required enum is empty is withheld from the round (asserted
+     below, under its own heading). The tests that read the full set of declarations need every
+     enum non-empty. */
+  resetStudioState({ projectConfig: { extensions: ["@jxsuite/parser"] } });
 });
 
 afterEach(() => {
   // `active-registry.ts` documents this as the unmount contract.
   setActiveRegistry(null);
   refreshFormats();
+  // A fake project record wrote through the chokepoint; the next test binds its own document.
+  resetProjectConfigDocument();
 });
 
 // ─── The declaration IS the tool ─────────────────────────────────────────────
@@ -154,7 +163,10 @@ describe("every declaration reaches run, by id, and the refusal comes back verba
     });
   }
 
-  test("the nine declarations (seven completed, two migrated) are exactly these, and each is one record", () => {
+  test("the eleven declarations are exactly these, and each is one record", () => {
+    /* Nine from the projection (seven completed, two migrated), then #334: `open_document`
+       crossed from the hand table to the `document.open` record, and `canvas.setMode` was
+       projected because the mode decides `editor.kind`, the fact the tree tools are gated on. */
     expect([...DECLARED.keys()].toSorted()).toEqual([
       "add_project_locale",
       "check_accessibility",
@@ -163,7 +175,9 @@ describe("every declaration reaches run, by id, and the refusal comes back verba
       "disable_extension",
       "duplicate_node",
       "enable_extension",
+      "open_document",
       "select_node",
+      "set_canvas_mode",
       "validate_redirects",
     ]);
   });
@@ -426,8 +440,20 @@ describe("execution", () => {
         category: "Project",
         id: "proj.write",
         level: "project",
-        run: () => {},
+        /* Through the chokepoint, as every real project record writes: the project witness
+           compares the configuration reference the chokepoint holds, so a run that only claims
+           to write is exactly what it catches (`proj_phantom` below). */
+        run: () => updateSiteConfig({ name: "written" } as Partial<ProjectConfig>),
         title: "Write Project",
+        undo: "project",
+      },
+      {
+        aiTool: { description: "d", name: "proj_phantom", report: () => "Wrote project.json." },
+        category: "Project",
+        id: "proj.phantom",
+        level: "project",
+        run: () => {},
+        title: "Phantom Project",
         undo: "project",
       },
       {
@@ -475,8 +501,23 @@ describe("execution", () => {
         category: "Project",
         id: "proj.badReport",
         level: "project",
-        run: () => {},
+        run: () => updateSiteConfig({ name: "written" } as Partial<ProjectConfig>),
         title: "Bad Report",
+        undo: "project",
+      },
+      {
+        aiTool: {
+          description: "d",
+          name: "proj_bad_report_noop",
+          report: () => {
+            throw new TypeError("sections is not iterable");
+          },
+        },
+        category: "Project",
+        id: "proj.badReportNoop",
+        level: "project",
+        run: () => {},
+        title: "Bad Report No-op",
         undo: "project",
       },
     ] as AnyCommand[]);
@@ -522,6 +563,58 @@ describe("execution", () => {
     );
   });
 
+  test("a project record whose run left the configuration alone is 'changed nothing', and files nothing", async () => {
+    /* The project witness: `projectState.projectConfig` is the configuration document's root and
+       every applied `project.json` transaction replaces it, so an unchanged reference after `run`
+       is a run that never transacted. This record REPORTS a write; the report's claim does not
+       reach the model, and the ledger stays empty — mechanically, with no latch in the record. */
+    const tab = resetWorkspaceWithTab();
+    setActiveRegistry(fakeRegistry(tab));
+    const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
+    beginTurn("t");
+    expect(await tools.execute("proj_phantom", {})).toEqual({
+      success: true,
+      summary: "Phantom Project changed nothing: project.json is exactly as it was.",
+    });
+    expect(endTurn("t")).toEqual([]);
+  });
+
+  test("…and one that wrote through the chokepoint passes the witness: its sentence and one ledger entry", async () => {
+    const tab = resetWorkspaceWithTab();
+    setActiveRegistry(fakeRegistry(tab));
+    const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
+    beginTurn("t");
+    expect(await tools.execute("proj_write", {})).toEqual({
+      success: true,
+      summary: "Wrote project.json.",
+    });
+    expect(endTurn("t")).toEqual([
+      { disk: false, ok: true, path: "project.json", tool: "Write Project" },
+    ]);
+    // The second run of the same patch is the idempotent case: the chokepoint compares the
+    // Serialised result against the file and transacts nothing, and the witness says so.
+    beginTurn("u");
+    expect(await tools.execute("proj_write", {})).toEqual({
+      success: true,
+      summary: "Write Project changed nothing: project.json is exactly as it was.",
+    });
+    expect(endTurn("u")).toEqual([]);
+  });
+
+  test("a throwing report on a run that changed nothing files nothing either", async () => {
+    // The witness is decided BEFORE the report, so the defaults-filed ledger of the throwing path
+    // Is held to it too: `project.json` is not filed for a run that never touched it.
+    const tab = resetWorkspaceWithTab();
+    setActiveRegistry(fakeRegistry(tab));
+    const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
+    beginTurn("t");
+    expect(await tools.execute("proj_bad_report_noop", {})).toEqual({
+      error: "Bad Report No-op ran, but its report failed: sections is not iterable",
+      success: false,
+    });
+    expect(endTurn("t")).toEqual([]);
+  });
+
   test("undo: none with wrote records one { disk: true } per path; undo: project defaults to project.json", async () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
@@ -563,7 +656,9 @@ describe("execution", () => {
   test("an empty wrote is a run that changed nothing: the sentence stands, the ledger stays empty", async () => {
     /* The default for `undo: "project"` is `project.json`, and it is the RECORD's default — what
        this record writes — not this run's. An idempotent verb asked for a state it already had
-       says so with `wrote: []`, and no "Changed 1 file" entry is filed for a file nobody touched. */
+       says so with `wrote: []`, and no "Changed 1 file" entry is filed for a file nobody touched.
+       The project witness agrees (nothing transacted) and, because the report KNEW, keeps its
+       sentence: "Already so." says why, which the witness cannot. */
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
@@ -691,6 +786,71 @@ describe("execution", () => {
       error: `Tool "${first!.name}" was listed without an executor.`,
       success: false,
     });
+  });
+});
+
+// ─── A tool with nothing it could be called with ────────────────────────────
+
+describe("a required argument with an empty derived enum withholds the tool", () => {
+  test("disable_extension is absent while nothing is enabled, and back when something is", () => {
+    /* `disable_extension`'s `package` enum is the enabled set. With `extensions: []` it serialised
+       `enum: []` — a tool the model could only call wrongly — and the `@jxsuite/ai` validator let
+       it through only because projected tools are `strict: false`. */
+    resetStudioState({ projectConfig: { extensions: [] } });
+    const { registry } = appRegistry(RICH);
+    setActiveRegistry(registry);
+    const tools = createCommandToolRegistry(noDeps);
+    // The record's own gate holds; the bridge withholds anyway.
+    expect(registry.isEnabled("project.disableExtension")).toBe(true);
+    expect(advertisedCommandTools(registry).map((t) => t.name)).not.toContain("disable_extension");
+    expect(tools.list().map((t) => t.name)).not.toContain("disable_extension");
+    expect(commandToolBlurbs(registry).some((l) => l.startsWith("disable_extension("))).toBe(false);
+    // `enable_extension` has a catalogue behind it and stays.
+    expect(tools.list().map((t) => t.name)).toContain("enable_extension");
+
+    resetStudioState({ projectConfig: { extensions: ["@jxsuite/parser"] } });
+    expect(tools.list().map((t) => t.name)).toContain("disable_extension");
+  });
+
+  test("enable_extension is absent with no catalogue", () => {
+    setExtensionCatalog([]);
+    resetStudioState({ projectConfig: { extensions: [] } });
+    const { registry } = appRegistry(RICH);
+    setActiveRegistry(registry);
+    const tools = createCommandToolRegistry(noDeps);
+    const listed = tools.listForLLM() as { function: { name: string } }[];
+    expect(listed.map((t) => t.function.name)).not.toContain("enable_extension");
+  });
+
+  test("a withheld tool is still resolvable, so a call the model makes anyway meets the coercion", async () => {
+    resetStudioState({ projectConfig: { extensions: [] } });
+    const { registry } = appRegistry(RICH);
+    setActiveRegistry(registry);
+    const tools = createCommandToolRegistry(noDeps);
+    expect(tools.getDefinition("disable_extension")).toBeDefined();
+    const result = await tools.execute("disable_extension", { package: "@jxsuite/parser" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("is not declared — declared: none");
+  });
+
+  test("an OPTIONAL argument with an empty enum withholds nothing", () => {
+    const registry = createCommandRegistry({ getContext: () => RICH });
+    registry.register({
+      aiTool: { description: "d", name: "optional_choice", report: () => "r" },
+      args: {
+        additionalProperties: false,
+        properties: { choice: { enum: [], type: "string" } },
+        required: [],
+        type: "object",
+      },
+      category: "Project",
+      id: "project.optionalChoice",
+      level: "project",
+      run: () => {},
+      title: "Optional Choice",
+    } as AnyCommand);
+    setActiveRegistry(registry);
+    expect(advertisedCommandTools(registry).map((t) => t.name)).toEqual(["optional_choice"]);
   });
 });
 

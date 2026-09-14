@@ -98,6 +98,14 @@ describe("the hand-writers table", () => {
     expect(text).toContain("registry.run(");
   });
 
+  test("ai-tools.ts no longer opens a document of its own", () => {
+    // `open_document` became the projection of `document.open` (#334); the hand tool that read
+    // `getTab()` after the open and called whatever it found a success must not come back.
+    const text = readFileSync(join(SERVICES, "ai-tools.ts"), "utf8");
+    expect(text).not.toContain('name: "open_document"');
+    expect(text).not.toContain("openDocument");
+  });
+
   test("ai-tools.ts no longer carries a deletion of its own", () => {
     // `remove_node` guarded only the document root, a weaker test than `structurallyEditable`; its
     // Replacement is `delete_node`, the projection of `selection.delete`, so the mutator it used
