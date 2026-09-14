@@ -162,12 +162,14 @@ if (fmt.exitCode !== 0) {
 
 if (released.raised && base) {
   console.log(
-    `specs/${file}: ${base.ref} has already released past the local ${released.from}, so this ` +
-      "bumps from the base's version rather than from the working file's.",
+    `specs/${file}: ${base.ref} already released ${released.floor}, so this bumps from there rather ` +
+      `than from the local ${released.from}.`,
   );
 }
 console.log(`specs/${file}: ${released.from} → ${nextVersion} (${today})`);
-console.log(`  ${summary}`);
+console.log(
+  `  - **${nextVersion}** (${today}) — ${summary.endsWith(".") ? summary : `${summary}.`}`,
+);
 console.log(
   "\nThe derived reference pages (implementation status, spec changelog) are build outputs: " +
     "`bun run docs:generate` previews them locally; nothing to commit. If someone else may be " +

@@ -109,7 +109,8 @@ if (reports.length > 0) {
   console.error(
     `${reports.join("\n\n")}\n\nBefore finishing: update the listed docs page(s) and spec ` +
       `section(s) if this session's changes altered behavior, release any spec whose body ` +
-      `changed (\`bun run spec:bump\`), or state explicitly that no update is needed.`,
+      `changed (\`bun run spec:change\` for a fragment, or \`spec:bump\` in place), or state ` +
+      `explicitly that no update is needed.`,
   );
   process.exit(2);
 }

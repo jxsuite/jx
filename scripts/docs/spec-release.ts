@@ -7,52 +7,25 @@
 //   `bun run spec:release`          mint every fragment into its spec, delete the fragments
 //   `bun run spec:release --dry`    print what would be minted, change nothing
 //
-// The order is the commit that ADDED each fragment (its author date), so two fragments for one
-// Spec release in the order their pull requests merged; a fragment git has not seen yet (a local
-// Preview) sorts last, by name. Each spec is read once and released once per fragment, so three
+// The order is when each fragment LANDED (the first-parent commit that added it, which for a merged
+// Pull request is the merge commit), so two fragments for one spec release in the order their pull
+// Requests merged; a fragment git has not seen yet (a local preview) sorts last, by name. Each spec is read once and released once per fragment, so three
 // Fragments for `studio.md` become three consecutive versions and three changelog lines.
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   FRAGMENTS_DIR,
+  fragmentLandingClock,
   orderFragments,
   readFragments,
   releaseSpecSource,
 } from "./lib/spec-release.ts";
-import type { Fragment } from "./lib/spec-release.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const dry = process.argv.includes("--dry");
 
-function gitSafe(gitArgs: string[]): string | null {
-  try {
-    return execFileSync("git", gitArgs, {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  } catch {
-    return null;
-  }
-}
-
-/** When the commit that added a fragment was authored; Infinity for one git has not seen. */
-function landedAt(fragment: Fragment): number {
-  const out = gitSafe([
-    "log",
-    "--diff-filter=A",
-    "--format=%at",
-    "-n",
-    "1",
-    "--",
-    `${FRAGMENTS_DIR}/${fragment.name}`,
-  ])?.trim();
-  return out ? Number(out) : Number.POSITIVE_INFINITY;
-}
-
-const fragments = orderFragments(readFragments(ROOT), landedAt);
+const fragments = orderFragments(readFragments(ROOT), fragmentLandingClock(ROOT));
 if (fragments.length === 0) {
   console.log("spec release: no fragments under specs/changes/; nothing to mint.");
   process.exit(0);
