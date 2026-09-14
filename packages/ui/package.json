@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/ui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Jx UI kit: interface elements authored as Jx documents, with their theme and icons",
   "license": "MIT",
   "repository": {
