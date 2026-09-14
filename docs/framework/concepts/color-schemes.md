@@ -61,7 +61,7 @@ Declaring a scheme query opts the site into the forced-scheme contract:
 
 - Every `@--dark` block is emitted twice: once inside `@media (prefers-color-scheme: dark)` (applies in **auto** mode), and once under `:root[data-color-scheme="dark"]` (applies when the scheme is **forced**). Both copies are specificity-neutral, so your cascade is unchanged.
 - A [`@keyframes`](/docs/framework/concepts/styling) block inside a scheme block is the one exception: it is emitted once, under the media-guarded copy. The forced copy works by re-pointing a selector, an animation name has none, and a second copy of one name would replace the first for every visitor.
-- `color-scheme: light dark` is declared on `:root`, with forced-mode overrides, so native form controls and scrollbars follow along.
+- `color-scheme: light dark` is declared on `:root`, with forced-mode overrides, so native form controls and scrollbars follow along. Set `colorScheme` in the project `style` yourself and your value replaces that declaration, on `:root` as well: `light-dark()` resolves against the element carrying `color-scheme`, so a value on `body` would leave every token on `:root` reading the browser default. A block keyed `&[...]` at the top of the project `style` is a state of the root element, so `&[data-theme="light"]` becomes `:root[data-theme="light"]` in the built page and on the Studio canvas alike.
 - A tiny inline script is injected at the top of `<head>` that restores the visitor's persisted choice before first paint, so a forced scheme never flashes.
 
 ## The visitor override contract
