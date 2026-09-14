@@ -358,6 +358,7 @@ function itWiresTheApproval(
   workflow: Workflow,
   job: string,
   commentStep: string,
+  cancels = true,
 ): void {
   test(`${lane} carries actions: write, which the approve endpoint needs`, () => {
     expect(workflow.permissions.actions).toBe("write");
@@ -382,20 +383,30 @@ function itWiresTheApproval(
     expect(steps[comment]!.env?.NOTE_FILE).toBe(step!.env?.NOTE_FILE);
   });
 
-  test(`${lane} keys the concurrency group on bot-versus-human, so the approved bot run cannot cancel its approver`, () => {
-    /*
-     * `cancel-in-progress` on a group shared by the run doing the approving and the run it just
-     * approved would cancel the former seconds before it posts the comment. The approved run's
-     * actor is the bot's and the approver's is a human's, so bot-versus-human in the group name is
-     * what keeps them apart — and NOT the actor's identity, which would split two humans' pushes
-     * on one PR into groups that no longer cancel each other and race the push step.
-     */
-    expect(workflow.concurrency.group).toContain(
-      "${{ github.actor == 'github-actions[bot]' && 'bot' || 'human' }}",
-    );
-    expect(workflow.concurrency.group).not.toContain("${{ github.actor }}");
-    expect(workflow.concurrency["cancel-in-progress"]).toBe(true);
-  });
+  if (cancels) {
+    test(`${lane} keys the concurrency group on bot-versus-human, so the approved bot run cannot cancel its approver`, () => {
+      /*
+       * `cancel-in-progress` on a group shared by the run doing the approving and the run it just
+       * approved would cancel the former seconds before it posts the comment. The approved run's
+       * actor is the bot's and the approver's is a human's, so bot-versus-human in the group name
+       * is what keeps them apart — and NOT the actor's identity, which would split two humans'
+       * pushes on one PR into groups that no longer cancel each other and race the push step.
+       */
+      expect(workflow.concurrency.group).toContain(
+        "${{ github.actor == 'github-actions[bot]' && 'bot' || 'human' }}",
+      );
+      expect(workflow.concurrency.group).not.toContain("${{ github.actor }}");
+      expect(workflow.concurrency["cancel-in-progress"]).toBe(true);
+    });
+  } else {
+    test(`${lane} does not cancel in progress: its own actor is the bot, so no suffix could keep the approver apart`, () => {
+      // The release pull request is authored by a bot push, so the approving run's `github.actor`
+      // Is `github-actions[bot]` too; a cancel-in-progress group would cancel it with the run it
+      // Just approved, leaving `Test` held. Both runs are fixed points, so both may finish.
+      expect(workflow.concurrency["cancel-in-progress"]).toBe(false);
+      expect(workflow.concurrency.group).not.toContain("github.actor");
+    });
+  }
 }
 
 describe("screenshots.yml wires it", () => {
@@ -428,6 +439,7 @@ describe("release-specs.yml wires it", () => {
     workflow,
     "mint",
     "Say what happened, on the pull request",
+    false,
   );
 
   test("has no actor refusal either: it pushes only when a fragment was minted", () => {

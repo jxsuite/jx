@@ -9,15 +9,14 @@ import { parseSpecStatuses } from "../lib/spec-status.ts";
 import { BANNER, frontmatter } from "./shared.ts";
 
 const ROOT = resolve(import.meta.dir, "../../..");
-const SPECS_DIR = resolve(ROOT, "specs");
 
-export function generateSpecChangelog(): string {
-  const specs = parseSpecStatuses(SPECS_DIR);
+export function generateSpecChangelog(root: string = ROOT): string {
+  const specs = parseSpecStatuses(resolve(root, "specs"));
   /* Fragments under specs/changes/ are releases recorded but not yet minted (the release lane mints
      them on the release branch), so they show as "unreleased" above the versions they will follow;
      a reader on main sees what the next release carries. */
   const pending = new Map<string, { level: string; summary: string }[]>();
-  for (const fragment of readFragments(ROOT)) {
+  for (const fragment of readFragments(root)) {
     const list = pending.get(fragment.spec) ?? [];
     list.push({ level: fragment.level, summary: fragment.summary });
     pending.set(fragment.spec, list);
@@ -47,7 +46,8 @@ export function generateSpecChangelog(): string {
   for (const spec of specs) {
     lines.push(`## \`${spec.file}\``, "");
     for (const entry of pending.get(spec.file) ?? []) {
-      lines.push(`- **unreleased** (${entry.level}) — ${entry.summary}`);
+      const sentence = entry.summary.endsWith(".") ? entry.summary : `${entry.summary}.`;
+      lines.push(`- **unreleased** (${entry.level}) — ${sentence}`);
     }
     if (spec.changelog.length === 0 && !pending.has(spec.file)) {
       lines.push("_No changelog entries._", "");

@@ -18,6 +18,7 @@
  * {@link applySpecRelease}; the gate (`check-spec-release.ts`) accepts either form.
  */
 
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { endsInHardBreak } from "../../lib/unwrap-prose.ts";
@@ -59,7 +60,7 @@ export function nextSpecVersion(
   let next: { major: number; minor: number; patch: number };
   if (level === "stable") {
     if (!preMajor) {
-      throw new Error(`already stable at ${floor.raw}`);
+      throw new Error(`is already stable at ${floor.raw}`);
     }
     next = { major: 1, minor: 0, patch: 0 };
   } else if (level === "major") {
@@ -167,7 +168,7 @@ export function releaseSpecSource(
   summary: string,
   baseSource: string | null,
   today: string,
-): { source: string; version: string; from: string; raised: boolean } {
+): { source: string; version: string; from: string; floor: string; raised: boolean } {
   const parsed = parseSpecSource(source, file);
   if (!parsed.headerVersion) {
     throw new Error(`specs/${file} has no **Version:** line`);
@@ -181,8 +182,17 @@ export function releaseSpecSource(
   const baseHeader = baseSource ? parseSpecSource(baseSource, file).headerVersion : undefined;
   const base = baseHeader ? splitVersion(baseHeader) : null;
   const draft = parsed.headerStatus !== "Implemented";
-  const { version, raised } = nextSpecVersion(current, base, level, draft);
+  let next: ReturnType<typeof nextSpecVersion>;
+  try {
+    next = nextSpecVersion(current, base, level, draft);
+  } catch (error) {
+    throw new Error(`specs/${file} ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    });
+  }
+  const { version, raised, floor } = next;
   return {
+    floor: floor.raw,
     from: current.raw,
     raised,
     source: applySpecRelease(source, file, { nextVersion: version, summary, today }),
@@ -273,9 +283,42 @@ export function readFragments(root: string): Fragment[] {
 }
 
 /**
+ * When a fragment LANDED on the branch: the committer date of the first-parent commit that added
+ * it, which for a merged pull request is the merge commit — so the order is merge order, not the
+ * author's clock. Without `--first-parent`, `--diff-filter=A` finds the pull-request commit that
+ * wrote the fragment, and `%at` is when the developer typed it: a fragment written nine days before
+ * it merged would mint before one written yesterday and merged an hour ago. `%ct` rather than `%at`
+ * because a rebase-merge re-stamps the committer date to the landing and leaves the author date
+ * alone. A fragment git has not seen yet (a local preview) is `Infinity`, and sorts last.
+ */
+export function fragmentLandingClock(root: string): (fragment: Fragment) => number {
+  return (fragment) => {
+    try {
+      const out = execFileSync(
+        "git",
+        [
+          "log",
+          "--first-parent",
+          "--diff-filter=A",
+          "--format=%ct",
+          "-n",
+          "1",
+          "--",
+          `${FRAGMENTS_DIR}/${fragment.name}`,
+        ],
+        { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+      return out ? Number(out) : Number.POSITIVE_INFINITY;
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  };
+}
+
+/**
  * Fragments in the order they should mint: by when each landed (the caller supplies the clock,
- * normally the author date of the commit that added the file, `Infinity` for one git has not seen),
- * then by name, so the result is stable for two fragments that landed in one commit.
+ * normally {@link fragmentLandingClock}, `Infinity` for one git has not seen), then by name, so the
+ * result is stable for two fragments that landed in one commit.
  */
 export function orderFragments(fragments: Fragment[], at: (f: Fragment) => number): Fragment[] {
   return fragments

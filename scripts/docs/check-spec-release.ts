@@ -138,9 +138,17 @@ export function judgeSpecReleases(diff: ReleaseDiff): {
   /** The specs the diff's fragments release, by spec file name; a malformed fragment is a violation. */
   const fragmented = new Set<string>();
   for (const file of fragmentFiles) {
+    if (file === `${FRAGMENTS_DIR}/README.md`) {
+      continue; // The directory's own readme, which `readFragments` skips too.
+    }
     const text = diff.after(file);
     if (text === null) {
       continue; // Deleted: the release lane consumed it, which is the fragment's whole life.
+    }
+    if (diff.before(file) !== null) {
+      // A fragment that was already on the base is someone else's release, and editing it does
+      // Not release anything here: only a fragment this diff ADDS excuses a body change.
+      continue;
     }
     try {
       const fragment = parseFragment(text, file.slice(FRAGMENTS_DIR.length + 1));
@@ -204,6 +212,16 @@ if (import.meta.main) {
     )
       ?.split("\n")
       .filter(Boolean) ?? [];
+  if (!staged) {
+    // A fragment `spec:change` just wrote is untracked, and `git diff` never lists an untracked
+    // File — so the preferred release form would read as "no release" until `git add`. The Stop
+    // Hook and the pre-commit advisory both run this mode.
+    for (const file of gitSafe(["ls-files", "--others", "--exclude-standard", "--", FRAGMENTS_DIR])
+      ?.split("\n")
+      .filter(Boolean) ?? []) {
+      changed.push(file);
+    }
+  }
   const specFiles = changed.filter((f) => /^specs\/[^/]+\.md$/.test(f) && f !== "specs/README.md");
   if (changed.length === 0) {
     process.exit(0);
