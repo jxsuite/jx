@@ -1,5 +1,37 @@
 # Changelog
 
+## [5.1.0](https://github.com/jxsuite/jx/compare/studio-v5.0.0...studio-v5.1.0) (2026-09-14)
+
+
+### Features
+
+* **studio:** open_document and set_canvas_mode are projections; project writes get a witness ([782e70e](https://github.com/jxsuite/jx/commit/782e70ee1ee3be9f754d566427aa830c8ecaa910))
+* **studio:** open_document and set_canvas_mode are projections; project writes get a witness ([4bfb727](https://github.com/jxsuite/jx/commit/4bfb727308238017f033e23e1ba5234a8d276309)), closes [#334](https://github.com/jxsuite/jx/issues/334)
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([fa176d3](https://github.com/jxsuite/jx/commit/fa176d317ee5b1f2f4892a3e6027090bf60d6fe1))
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([#332](https://github.com/jxsuite/jx/issues/332)) ([f3826ee](https://github.com/jxsuite/jx/commit/f3826ee79fa43066f9d5b41c9621d7dbdc1eeea2))
+
+
+### Bug Fixes
+
+* **desktop:** the first changed file's path no longer loses its first character ([ff03c52](https://github.com/jxsuite/jx/commit/ff03c52c20393788c093c01320fcb010e0425283))
+* **studio:** every surface runs a command through runReported, and the shot check matches coercion ([f23283c](https://github.com/jxsuite/jx/commit/f23283c020deacc503c93355138b998824e458cd))
+* **studio:** every surface runs a command through runReported, and the shot check matches coercion ([4a9a24b](https://github.com/jxsuite/jx/commit/4a9a24be3e036f157f154897f142c384cf1e9903)), closes [#333](https://github.com/jxsuite/jx/issues/333)
+* **studio:** saving a component definition updates its registry entry for the instances ([2581b84](https://github.com/jxsuite/jx/commit/2581b841c545721931ad0a07b222dd8ca7b05e71))
+* **studio:** saving a component definition updates its registry entry for the instances ([56d6425](https://github.com/jxsuite/jx/commit/56d64250fea5a6d8181822e9d556c95e80d2d9c4))
+* **studio:** the layout record and key order travel with the assistant's project.json write ([bb2972c](https://github.com/jxsuite/jx/commit/bb2972cfabd91be78ac5a1000af8b8bbad586307))
+* **studio:** the layout record and key order travel with the assistant's project.json write ([a44ca5a](https://github.com/jxsuite/jx/commit/a44ca5a13412f7634039966fc56a5a2840c8404a)), closes [#331](https://github.com/jxsuite/jx/issues/331)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/formulas bumped to 0.0.18
+    * @jxsuite/runtime bumped to 4.0.1
+    * @jxsuite/site bumped to 2.0.1
+    * @jxsuite/ui bumped to 0.2.0
+
 ## [5.0.0](https://github.com/jxsuite/jx/compare/studio-v4.1.0...studio-v5.0.0) (2026-09-14)
 
 
