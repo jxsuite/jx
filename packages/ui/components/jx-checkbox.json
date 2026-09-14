@@ -146,9 +146,16 @@
       "color": "var(--jx-fg-dim)"
     },
     "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "$description": "The control is the `<label>` wrapping the input, and the label is the pointer target: a click anywhere on it toggles the box. At `sm` it draws 4px under the kit's control height, the WCAG 2.2 SC 2.5.8 floor (ui.md \u00a74.3), so the `::before` extends the hit area 2px beyond the box on every side — jx-tab's close-button technique, the same shape jx-button carries — and the region that accepts the pointer is `--jx-control-h` tall while the row stays 20px. -2px is exact here where jx-button needs -3px: an absolutely positioned box is offset from the PADDING edge, and the label draws no border, so its padding edge is its drawn edge. The label needs `position: relative` here for the pseudo-element to measure against; the input inside is 14px and needs nothing of its own, because the label around it is the target. Held by target-size.test.ts and the conformance gate.",
+      "position": "relative",
       "minHeight": "calc(var(--jx-control-h) - 4px)",
       "fontSize": "var(--jx-text-sm)",
-      "lineHeight": "var(--jx-leading-sm)"
+      "lineHeight": "var(--jx-leading-sm)",
+      "::before": {
+        "content": "\"\"",
+        "position": "absolute",
+        "inset": "-2px"
+      }
     },
     "&[data-size=\"sm\"] [part=\"input\"]": {
       "width": "calc(var(--jx-icon-size) - 2px)",

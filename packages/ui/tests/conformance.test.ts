@@ -506,8 +506,9 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
      which put every compact row under the criterion and left ui.md §11 unable to claim it (#309).
      So the token is gated like the focus ring is: the root value and every `[data-density]`
      re-declaration must be a pixel length of at least 24. A density that omits the token inherits
-     the root's, which the same loop checks. What this does NOT cover, and the spec says so, is an
-     element's own `size="sm"`, which is `calc(var(--jx-control-h) - 4px)` and a host's choice. */
+     the root's, which the same loop checks. An element's own `size="sm"` draws 4px under the token
+     and is gated by HIT area below: the criterion measures the region that accepts the pointer,
+     and a `::before` inset past the box is that region (#324). */
   const MINIMUM = 24;
   const densities = Object.entries(themeTokens).filter(([key]) =>
     key.startsWith("&[data-density="),
@@ -528,6 +529,128 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
       expect(Number(px![1]), `${label}: --jx-control-h is ${declared}`).toBeGreaterThanOrEqual(
         MINIMUM,
       );
+    });
+  }
+
+  /**
+   * The `sm` branches that size a NATIVE input or select through a custom property on the host,
+   * where the technique below cannot reach: a replaced element renders no pseudo-element, so the
+   * field's own box stays 4px under the token and ui.md §11 names it as the criterion's non-claim.
+   * A tag here whose `sm` rule no longer shrinks anything fails, so the list cannot go stale; a tag
+   * NOT here whose `sm` rule shrinks a control fails unless the control carries its hit area.
+   */
+  const REPLACED = new Set(["jx-combobox", "jx-number-field", "jx-select", "jx-textfield"]);
+
+  /** A `calc(var(--jx-control-h) - Npx)`, as the number of pixels it takes off the token. */
+  const shrinkOf = (value: unknown): number | null => {
+    const m = /^calc\(var\(--jx-control-h\) - (\d+)px\)$/.exec(String(value));
+    return m ? Number(m[1]) : null;
+  };
+
+  /** `-Npx`, as N; an inset that is not one negative pixel length on every side is no hit area. */
+  const outsetOf = (value: unknown): number | null => {
+    const m = /^-(\d+)px$/.exec(String(value));
+    return m ? Number(m[1]) : null;
+  };
+
+  /**
+   * The pixel width of a rule's `border` (or `borderWidth`), 0 when it declares none or `0`. An
+   * absolutely positioned pseudo-element is offset from its containing block's PADDING edge, so on
+   * a control that draws a border the outset owes the border width before it reaches past the drawn
+   * box at all: jx-button's `inset: -2px` was a 22px hit area over its 1px border, and this gate
+   * said 24 for it, because it measured from the border box. Read, not assumed, so a control that
+   * grows a border without moving its inset fails here with the number that broke.
+   */
+  const borderWidthOf = (rule: Record<string, unknown> | undefined): number | null => {
+    const declared = rule?.["borderWidth"] ?? rule?.["border"];
+    if (declared === undefined) {
+      return 0;
+    }
+    const m = /^(\d+)px\b|^0$/.exec(String(declared));
+    return m ? Number(m[1] ?? 0) : null;
+  };
+
+  /* Every `sm` rule that takes pixels off the token is a shrink of the box under it, and a shrunk
+     box owes the difference back as a `::before` outset, so the hit area is the token, which the
+     loop above holds at the floor. A document whose `sm` rules shrink nothing (jx-swatch resizes
+     its chip, jx-switch its track, jx-action-group overrides a member's inset) registers no test:
+     a test that asserts nothing would read as a claim. The rules are gathered at collection time
+     for the same reason the loop above is: the sheet is data, and a test per document names the
+     document that broke. */
+  const shrinking = Object.entries(documents).flatMap(([tag, doc]) => {
+    const style = (doc.style ?? {}) as Record<string, unknown>;
+    const smRules = Object.entries(style)
+      .filter(([key]) => key.includes('[data-size="sm"]'))
+      .map(([key, block]) => {
+        const declarations = block as Record<string, unknown>;
+        const taken = Object.values(declarations)
+          .map((value) => shrinkOf(value))
+          .filter((n): n is number => n !== null);
+        return { key, declarations, taken };
+      })
+      .filter(({ taken }) => taken.length > 0);
+    return smRules.length > 0 || REPLACED.has(tag) ? [{ tag, style, smRules }] : [];
+  });
+
+  for (const { tag, style, smRules } of shrinking) {
+    test(`${tag}'s sm size accepts the pointer over ${MINIMUM}px at every density`, () => {
+      /* The check is per declaration so a second shrink hidden beside the first cannot ride on
+         its pseudo-element. */
+      let shrinks = 0;
+      for (const { key, declarations, taken } of smRules) {
+        shrinks += taken.length;
+        if (REPLACED.has(tag)) {
+          continue;
+        }
+        expect(key, `${tag}: an sm shrink of something other than the control`).toContain(
+          '[part="control"]',
+        );
+        const before = declarations["::before"] as Record<string, unknown> | undefined;
+        expect(before, `${tag}: ${key} shrinks the control and carries no ::before`).toBeDefined();
+        expect(before!["content"], `${tag}: ${key}::before generates no box`).toBe('""');
+        expect(before!["position"], `${tag}: ${key}::before is in the layout`).toBe("absolute");
+        const outset = outsetOf(before!["inset"]);
+        expect(
+          outset,
+          `${tag}: ${key}::before has inset ${String(before!["inset"])}`,
+        ).not.toBeNull();
+        /* An absolutely positioned pseudo-element measures against its nearest POSITIONED
+           ancestor, so an inset on a static control would extend the host or whatever stands
+           above it, not the control; the shrunk control must be `position: relative` itself, in
+           the sm rule or already in the base control rule (jx-action-button's is, for its badge). */
+        const controlRule = style[key.replace(/^&\[data-size="sm"\]/, "&")] as
+          | Record<string, unknown>
+          | undefined;
+        expect(
+          [declarations["position"], controlRule?.["position"]],
+          `${tag}: ${key} carries a hit area on a control that is not position: relative`,
+        ).toContain("relative");
+        /* The sm rule's own border if it declares one, else the base control rule's: the border
+           the shrunk box actually draws, which the outset is measured from the inside of. */
+        const border = borderWidthOf(
+          "border" in declarations || "borderWidth" in declarations ? declarations : controlRule,
+        );
+        expect(border, `${tag}: ${key} draws a border this gate cannot read`).not.toBeNull();
+        const reach = outset! - border!;
+        for (const shrink of taken) {
+          for (const [label, base] of [[":root", themeTokens], ...densities] as const) {
+            const token = Number(
+              /^(\d+)px$/.exec(String(base["--jx-control-h"] ?? themeTokens["--jx-control-h"]))![1],
+            );
+            const hit = token - shrink + 2 * reach;
+            expect(
+              hit,
+              `${tag} at ${label}: ${token - shrink}px drawn, ${hit}px hit (inset -${outset}px past a ${border}px border)`,
+            ).toBeGreaterThanOrEqual(MINIMUM);
+          }
+        }
+      }
+      if (REPLACED.has(tag)) {
+        expect(
+          shrinks,
+          `${tag} is listed as a replaced-element field and shrinks nothing`,
+        ).toBeGreaterThan(0);
+      }
     });
   }
 });
