@@ -42,6 +42,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `compiler.md`
 
+- **0.4.4-draft** (2026-09-13) — §8.1: a component instance nested inside another component's definition is expanded — props, host style, stamping — recursively, with a cycle diagnostic and a depth cap; a template host style resolves for every instance, props or not.
 - **0.4.3-draft** (2026-09-01) — CSS extraction delegates its nesting to buildStyleRules, the one definition the runtime and the site builder also use; 4.5's example shows the emitted rule form.
 - **0.4.2-draft** (2026-08-31) — CSS extraction emits the popover states and the declaration-body at-rules; attrHelperSource inlines the boolean-attribute rule for the generated-module targets.
 - **0.4.1-draft** (2026-08-27) — §12: the client-runtime asset set is derived from the emitted HTML, so every import map a build ships names files it wrote.

@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.4.3-draft\
+**Version:** 0.4.4-draft\
 **Status:** Partial\
-**Updated:** 2026-09-01\
+**Updated:** 2026-09-13\
 **License:** MIT
 
 ---
@@ -603,6 +603,12 @@ Two things are specific to the static emitter. Absence has to be expressible HER
 
 **An array is only stripped when nothing still reads it.** A build-time repeater expansion consumes its `items`, after which the array would be dead weight in client state. But a map expansion is one consumer, not the only one: the same array is routinely also read by a computed at runtime. An array state entry is therefore dropped only when no surviving state definition and no surviving node in the document still references it — as `${state.x}`, as a bare `state.x` in a handler or computed body, or as a `#/state/x` pointer — iterated to a fixpoint, since rescuing one array can reveal a read of another. An entry the author marked `timing: "compiler"` is exempt and is always stripped: that declaration is the author saying the data is build-time only.
 
+**A component instance is expanded wherever it is written.** The site build expands a registered custom element it meets in the page tree: the instance's `$props` (and any literal `props.*` attributes) laid over the definition's `state`, the definition's template-string host styles resolved against that instance, the instance's own children as its slot content, and a stamp — `data-jx-static` when the definition is fully static, `data-jx-prerendered` with a `data-jx-props` payload (§4.4) when it is not. An instance written inside another component's own `children` gets exactly that expansion, recursively: the definition walk carries the same component registry, so a card that renders a button that renders an icon prerenders all three levels, each against its own props. A `$props` value that is a template resolves against the parent's scope; the instance's own children are rendered in the parent's scope, and a `<slot>` among them passes the grandparent's slot content through; a shadow-mode instance gets its declarative root (spec.md §16.6). A template-string host style is resolved against every instance, whether or not it passes props — a static build drops a reactive declaration from the component stylesheet (it has no scope to resolve it against), so the value resolved at expansion is the only one a static page has, and an instance that takes the definition's defaults gets the defaults. The one difference is where the resolved value lands: a page-level instance's goes through the page's style pass as a class rule, a nested instance's is written on the element as an inline `style` (escaped like every attribute, so a prop carrying a quote cannot end it), with the same values in the same precedence (the definition's over the instance's own). Static-ness is decided per definition and never inherited — a live component nested inside a static one is a prerendered shell that loads its own module and upgrades in place, and the static parent still ships none.
+
+Until 0.4.4 the definition walk had no registry. A nested instance went through the generic element path and came out as a bare tag — no content, no host style — under a parent still stamped static, so no module ever loaded to fill it and the content was simply gone (issue #286). Whether a component library rendered therefore depended on whether some unrelated part of the parent happened to need JavaScript.
+
+**A definition that names itself is a build error, not a stack overflow.** The expansion path is tracked per instance — tag and resolved props — and meeting a frame already on the path is the instance rendering itself with the same props, the one shape that can never terminate. The route fails with a diagnostic naming the chain (`a-loop → b-loop → a-loop`) and the other routes still build. A self-reference whose props change at every level is data-driven recursion — a tree node rendering its children until a `$switch` on its depth says stop — and is allowed, bounded by a depth cap of 32 levels; exceeding it is the same kind of error, with the same chain.
+
 ### 8.2 CSS Extraction
 
 All static `style` definitions are extracted into a single `<style>` block in `<head>`.
@@ -738,6 +744,7 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.4.4-draft** (2026-09-13) — §8.1: a component instance nested inside another component's definition is expanded — props, host style, stamping — recursively, with a cycle diagnostic and a depth cap; a template host style resolves for every instance, props or not.
 - **0.4.3-draft** (2026-09-01) — CSS extraction delegates its nesting to buildStyleRules, the one definition the runtime and the site builder also use; 4.5's example shows the emitted rule form.
 - **0.4.2-draft** (2026-08-31) — CSS extraction emits the popover states and the declaration-body at-rules; attrHelperSource inlines the boolean-attribute rule for the generated-module targets.
 - **0.4.1-draft** (2026-08-27) — §12: the client-runtime asset set is derived from the emitted HTML, so every import map a build ships names files it wrote.
@@ -780,4 +787,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.4.3-draft_
+_`@jxsuite/compiler` Specification v0.4.4-draft_
