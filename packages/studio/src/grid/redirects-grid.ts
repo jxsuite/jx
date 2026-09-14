@@ -26,7 +26,7 @@
 
 import { getPlatform } from "../platform";
 import { projectState } from "../store";
-import { clearProblems, notify } from "../services/notify";
+import { clearProblems, notify, problemFindings } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
 import { activateTab, openTab, workspace } from "../workspace/workspace";
 import { PROJECT_CONFIG_PATH, commitProjectConfig } from "../tabs/project-config";
@@ -503,11 +503,8 @@ export function redirectsCommands(): AnyCommand[] {
       group: "5_data",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the site's redirect rules as an editable table, validated for chains, loops and rules shadowed by a real page.",
-        name: "open_redirects",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person, and the
+         check it runs on the way is `validate_redirects`, which is projected. */
       run: async () => {
         await openRedirectsGrid();
         reportRedirectProblems(rulesFromConfig(currentConfig()), await projectRoutes());
@@ -524,8 +521,22 @@ export function redirectsCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       aiTool: {
         description:
-          "Check the site's redirect rules for chains, loops and rules shadowed by a real page. Reports each finding as a Problem.",
+          "Check the site's redirect rules for chains, loops and rules shadowed by a real page. " +
+          "Reports each finding as a Problem, and returns the findings as data.",
         name: "validate_redirects",
+        /* The only way to check redirects without reading the routes yourself: the Problems store
+           filtered by this source, which is what the panel renders. */
+        report: () => {
+          const findings = problemFindings(REDIRECTS_PROBLEM_SOURCE);
+          const n = findings.length;
+          return {
+            data: findings,
+            summary:
+              n === 0
+                ? "No redirect problems: no chains, loops or shadowed rules."
+                : `Filed ${n} redirect problem${n === 1 ? "" : "s"} in Problems.`,
+          };
+        },
       },
       run: async () => {
         const rules = rulesFromConfig(currentConfig());
@@ -557,11 +568,8 @@ export function redirectsCommands(): AnyCommand[] {
       group: "5_data",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Import redirect rules from _redirects or CSV text. Rows are staged in the redirect table for review, not written.",
-        name: "import_redirects",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: without `text`, `run` awaits a paste dialog
+         the person answers, and the staged rows are a surface for that person to review. */
       run: async (_ctx, args) => {
         const given = optionalStringArg("redirects.import", args, "text");
         const text = given ?? (await promptRedirectImport());

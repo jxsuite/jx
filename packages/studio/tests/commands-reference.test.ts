@@ -37,7 +37,7 @@ const FIXTURE: AnyCommand[] = [
     keybinding: "delete",
     destructive: true,
     menus: ["blockbar", "palette"],
-    aiTool: { name: "delete_node", description: "…" },
+    aiTool: { name: "delete_node", description: "…", report: () => "…" },
     run: () => {},
   },
   {
@@ -162,10 +162,18 @@ describe("the generated markdown", () => {
   test("the command page is one section per category, with an em dash for the absent", () => {
     const markdown = commandsMarkdown(commandReference(FIXTURE));
     expect(markdown).toContain("## View");
-    expect(markdown).toContain("| Zen Mode | `view.zen` | — | application | — |");
+    expect(markdown).toContain("| Zen Mode | `view.zen` | — | application | — | — |");
     expect(markdown).toContain(
-      "| Redo | `edit.redo` | `⌘⇧Z` or `⌘Y` | document | a change to redo |",
+      "| Redo | `edit.redo` | `⌘⇧Z` or `⌘Y` | document | a change to redo | — |",
     );
+  });
+
+  test("the Assistant column prints the projected tool, and the empty-cell dash otherwise", () => {
+    // `CommandRow.aiTool` was computed and printed nowhere. A declaration MAKES a tool now, so the
+    // Reference says which command the model is calling when a chip names `delete_node`.
+    const markdown = commandsMarkdown(commandReference(FIXTURE));
+    expect(markdown).toContain("| Command | Id | Shortcut | Level | Requires | Assistant |");
+    expect(markdown).toContain("| selection | — | `delete_node` |");
   });
 
   test("a pipe in a title cannot break out of its cell", () => {

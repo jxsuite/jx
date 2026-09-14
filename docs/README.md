@@ -47,7 +47,7 @@ Markup beyond CommonMark: `:::doc-note`, `:::doc-tip` and `:::doc-warning` conta
 
 ## Generated pages
 
-These pages are written by `bun run docs:generate` and must never be hand-edited — CI regenerates and diffs them. The generator's own map of page → source is the list; this table tracks it.
+These pages are build outputs: gitignored, written by `bun run docs:generate` (which `postinstall`, the docs gates and the site build all run), and never hand-edited because there is nothing to edit under version control. `scripts/docs/generators/pages.ts` is the list; this table tracks it. They were committed once, and every spec release rewrote the same nine files, so any two open pull requests that released a spec conflicted on them by construction.
 
 | Page                                           | Generated from                                                                |
 | ---------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -61,9 +61,9 @@ These pages are written by `bun run docs:generate` and must never be hand-edited
 | `studio/interface/commands.md`                 | `packages/studio/src/commands/app-commands.ts`                                |
 | `studio/interface/shortcuts.md`                | The same command set                                                          |
 
-The generator runs oxfmt over what it writes, so committed output is already formatted — required, because `docs:verify` diffs it and a later repo-wide `bun run format` must not change it.
+The generator runs oxfmt over what it writes, so what the site builds and the docs gates read is formatted the same way as every hand-written page beside it.
 
-Releasing a spec is therefore a docs change: `bun run spec:bump` bumps the version and prepends a changelog entry, which feeds the spec-changelog page, and the `**Status:**` markers a release moves by hand feed the other two. Regenerate in the same PR.
+Releasing a spec therefore changes these pages at the next build: `bun run spec:bump` bumps the version and prepends a changelog entry, which feeds the spec-changelog page, and the `**Status:**` markers a release moves by hand feed the other two. There is nothing to regenerate in the PR.
 
 ## Images
 
@@ -81,14 +81,14 @@ These commands guard this directory, but none of them live in it: each is a scri
 | ------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | bun run docs:check        | Frontmatter, `spec:` anchors, `code:` paths, image refs, the nav bijection, and the reverse `@docs` tags   |
 | bun run docs:images:check | The bytes: every PNG is one the lock names, and each shot's definition hash still matches the working tree |
-| bun run docs:generate     | Rewrites the generated pages                                                                               |
-| bun run docs:verify       | The CI chain — generate, `git diff --exit-code -- docs`, then both checks above                            |
+| bun run docs:generate     | Writes the generated pages (gitignored build outputs) so the gates and the site build can read them        |
+| bun run docs:verify       | The CI chain — `docs:check` (which generates first) and `docs:images:check`                                |
 | bun run docs:links        | Every internal link: the slug against `nav.json`, and every `#anchor` against the target's headings        |
 | bun run docs:prose        | No em dash, curly quote, decorative emoji or stock AI vocabulary; the em-dash debt only falls              |
 | bun run docs:markdown     | Visual-editor escapes — an escaped heading number, an escaped inner underscore — every tracked `*.md`      |
 | bun run docs:sync         | Advisory only: maps a diff to the pages and spec sections declared for the files it touched                |
 
-`docs:verify` requires a **clean** `docs/` tree — it diffs after regenerating, so any uncommitted docs edit fails it, generated or not. Iterate with `docs:check`; run `docs:verify` after committing. `docs:markdown` is repo-wide, so a spec or a package README can turn it red; `bun run format:md` fixes it.
+`docs:check`, `docs:links` and `docs:sync` write the generated pages before they read the page set, so a fresh checkout needs nothing run by hand (`postinstall` writes them too). `docs:markdown` is repo-wide, so a spec or a package README can turn it red; `bun run format:md` fixes it.
 
 `docs:sync` runs on its own in two places — the Claude Code Stop hook and a non-blocking pre-commit advisory — and it also joins in the screenshot manifest, so a report can name the page whose picture, and therefore whose surrounding prose, your change just aged. It never blocks and it only knows about declared associations: silence is not proof the docs are current.
 

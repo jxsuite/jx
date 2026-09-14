@@ -309,7 +309,7 @@ describe("tool chips carry outcomes", () => {
           {
             arguments: "{}",
             id: "b",
-            name: "remove_node",
+            name: "delete_node",
             result: { error: "No such path.", success: false },
           },
           { arguments: "{}", id: "c", name: "read_file" },

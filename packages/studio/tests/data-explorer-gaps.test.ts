@@ -225,13 +225,14 @@ describe("the Refresh button", () => {
     const { container, ctx } = await mountData({ a: {} }, {});
     const btn = () => container.querySelector('[part="refresh"]') as HTMLElement;
     const control = () => btn().querySelector('[part="control"]') as HTMLElement;
-    expect(btn().textContent?.trim()).toBe("Refresh");
+    // The control's text, not the host's: an enabled hint is a tip child of the host now.
+    expect(control().textContent?.trim()).toBe("Refresh");
     expect(control().hasAttribute("disabled")).toBe(false);
 
     activeTab.value!.session.canvas.refreshing = true;
     ctx.renderLeftPanel();
     await settle();
-    expect(btn().textContent).toContain("Refreshing");
+    expect(control().textContent).toContain("Refreshing");
     // The kit's own spinner, swapped in for the glyph — the panel carries no second one.
     expect(btn().querySelector('[part="spinner"]')?.hasAttribute("hidden")).toBe(false);
     expect(control().hasAttribute("disabled")).toBe(true);
@@ -239,7 +240,7 @@ describe("the Refresh button", () => {
     activeTab.value!.session.canvas.refreshing = false;
     ctx.renderLeftPanel();
     await settle();
-    expect(btn().textContent?.trim()).toBe("Refresh");
+    expect(control().textContent?.trim()).toBe("Refresh");
     expect(btn().querySelector('[part="spinner"]')?.hasAttribute("hidden")).toBe(true);
   });
 

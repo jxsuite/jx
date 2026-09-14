@@ -21,7 +21,11 @@ import { componentRegistry } from "../files/components";
 import { activeRegistry } from "../commands/active-registry";
 import { registerAiTools } from "./ai-tools";
 import { cancelAsk, registerAskTool, resetAsk } from "./ai-ask";
-import { registerExtensionTools } from "./ai-extension-tools";
+import {
+  commandToolBlurbs,
+  composeToolRegistries,
+  createCommandToolRegistry,
+} from "./ai-command-tools";
 import { registerProjectTools } from "./ai-project-tools";
 import { registerImportTools, resetImportGuard } from "./ai-import-tools";
 import { createGatedToolRegistry } from "./gated-registry";
@@ -35,6 +39,7 @@ import { getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
 import { pruneOrphanToolMessages, trimContext } from "./context-manager";
 import { renderCheck } from "./render-critic";
+import { validateDoc } from "./jx-validate";
 import { openFileInTab, reloadFileInTab } from "../files/files";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
 import * as sessionStore from "./ai-session-store";
@@ -109,9 +114,6 @@ export function createDocumentAssistant() {
       }
     },
   });
-  /* No context: both verbs run the human's own command records, so the gate is read rather than
-     recomputed (§12.4, "the agent counts as a surface"). */
-  registerExtensionTools(innerRegistry);
   registerProjectTools(innerRegistry, {
     getTab: () => activeTab.value,
     renderCheck: renderCheck as (
@@ -194,7 +196,26 @@ export function createDocumentAssistant() {
       },
     ]),
   );
-  const toolRegistry = createGatedToolRegistry(innerRegistry, availability);
+  /*
+   * The other kind of tool: every command record that declares `aiTool`, as a VIEW over the active
+   * registry (`services/ai-command-tools.ts`). Nothing is registered — the record IS the tool, its
+   * `when` / `enablement` is the gate, `registry.run` is the executor — so `enable_extension`,
+   * `delete_node` and the rest need no row in the tier table and no registrar here. The deps are
+   * the write reporter's, the same three the hand tree tools take, because a bridged document write
+   * is held to the same verdict (new schema errors, the render check, the token hints).
+   */
+  const commandTools = createCommandToolRegistry({
+    getProjectStyle,
+    getTab: () => activeTab.value,
+    renderCheck: renderCheck as (
+      doc: unknown,
+    ) => Promise<{ ok: true } | { ok: false; error: string }>,
+    validate: validateDoc,
+  });
+  const toolRegistry = composeToolRegistries(
+    createGatedToolRegistry(innerRegistry, availability),
+    commandTools,
+  );
 
   let controller: AbortController | null = null;
 
@@ -226,6 +247,14 @@ export function createDocumentAssistant() {
       projectRoot: workspace.projectRoot || undefined,
       hasProject: Boolean(workspace.projectRoot),
       canImport: Boolean(getPlatform().importSite),
+      /* The same reading the gate makes, so the prompt advertises exactly what `execute` will
+         honour. This was never passed: with Project Settings focused the prompt listed the seven
+         hand tree writers while the `document-tree` gate refused every one of them, and the model
+         spent a round learning it. */
+      treeEditable: treeEditable(),
+      /* Read per turn from the live registry — a projected tool the gate will honour this round is
+         listed this round, and one it will not is not. */
+      commandTools: commandToolBlurbs(activeRegistry()),
       ...(inventory && inventory.length > 0 ? { fileInventory: inventory } : {}),
       ...(catalog.length > 0 ? { extensionCatalog: catalog } : {}),
     });

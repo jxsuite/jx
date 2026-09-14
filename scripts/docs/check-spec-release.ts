@@ -172,7 +172,7 @@ if (violations.length > 0) {
       '  bun run spec:bump <spec.md> <major|minor|patch> -m "<what changed>"\n' +
       "which bumps the header + footer version, restamps **Updated:**, and prepends a `## Changelog`\n" +
       "entry. major = breaking contract change, minor = additive, patch = editorial.\n" +
-      "Then run `bun run docs:generate` so the derived pages match.",
+      "The derived reference pages are build outputs; nothing else to commit.",
   );
   process.exit(1);
 }

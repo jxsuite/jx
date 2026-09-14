@@ -31,6 +31,7 @@ import { optionalStringArg, stringProperty } from "../commands/command-args";
 import { notify } from "../services/notify";
 import { requireProjectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { lendProjectConfigLayout } from "../tabs/project-config";
 import { activeTab, focusPane, openTab, workspace } from "../workspace/workspace";
 import {
   notifySettingsDocument,
@@ -229,6 +230,12 @@ export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
      Editor control offers the modes in that order. */
   tab.session.ui.canvasMode = mode;
   tab.session.ui.preview = false;
+  /* The tab was opened over the configuration OBJECT — the platform parsed it, so there is no text
+     here to read a layout from, and `doc.layout` is null. A ⌘S on it would then write the
+     formatter's layout for fresh output while a settings commit on the same document wrote the
+     file's (`tabs/project-config.ts`, issue 308). The chokepoint reads the file once anyway; it
+     lends the tab that record, and the Code view re-renders when it lands (`doc` is reactive). */
+  void lendProjectConfigLayout(tab);
   return tab;
 }
 
@@ -355,13 +362,8 @@ export function settingsCommands(): AnyCommand[] {
          unchanged — `enabledWith` still refuses, so `registry.run` and the assistant's tool still
          throw `CommandUnavailableError` exactly as before. */
       enablement: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the project's Settings, optionally on a named section (overview, contexts, head, " +
-          "locales, cssVars, definitions, dependencies, extensions, deploy, rawJson, or a section " +
-          "an extension contributes) and optionally at a named entry within it.",
-        name: "open_settings",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the model
+         writes `project.json` through `write_file` and the extension verbs. */
       run: async (_commandCtx, args) => {
         const section = optionalStringArg("settings.open", args, "section");
         const entry = optionalStringArg("settings.open", args, "entry");
@@ -420,12 +422,7 @@ export function settingsCommands(): AnyCommand[] {
       requires: "an open project",
       // §12.4: two verbs over ONE document declare ONE availability rule, byte-identical.
       enablement: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the project's configuration document in its Project Styles editor — the design " +
-          "tokens and the default element styles that apply across every page.",
-        name: "open_project_styles",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
       run: () => {
         showSettingsDocument(PROJECT_STYLES_VIEW);
       },

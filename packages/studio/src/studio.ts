@@ -99,11 +99,14 @@ import { createLiveSurfaceSaver } from "./services/live-surfaces";
 import { beginActivity } from "./panels/activity-panel";
 import {
   exportFile,
+  parseCollabSource,
   parseSourceForPath,
   saveFile,
   setDocumentSavedListener,
 } from "./files/file-ops";
 import { serializeDocument } from "./files/serialize-document";
+import { parseJsonDocument } from "./files/json-layout";
+import type { JsonLayout } from "./files/json-layout";
 import {
   formatForPath,
   loadFormats,
@@ -897,13 +900,8 @@ function safeRenderRightPanel() {
 // Collab sessions serialize/parse through the format host when mirroring between the structure
 // Tree and the shared source text, and surface freezes via the status bar.
 configureCollabSerializer(serializeDocument);
-configureCollabParser(async (tab, text) => {
-  if (tab.documentPath && formatForPath(tab.documentPath)) {
-    const parsed = await parseSourceForPath(tab.documentPath, text);
-    return { document: parsed.document as JxMutableNode, frontmatter: parsed.frontmatter };
-  }
-  return { document: JSON.parse(text) as JxMutableNode };
-});
+// `parseCollabSource` also records a JSON text's layout on the tab — see its docstring.
+configureCollabParser(parseCollabSource);
 // The source-canonical freeze is a STATE the author is being held in, not an error: a toast that
 // Says so, keyed so a run of freezes is one message rather than a stack of identical ones.
 configureCollabNotifier((message) => {
@@ -1083,6 +1081,7 @@ if (_projectParam) {
           let frontmatter;
           let parsedDoc;
           let parsedMode;
+          let layout: JsonLayout | null = null;
           await loadFormats();
           const fileFormat = formatForPath(fileRelPath);
           if (fileFormat || !fileRelPath.endsWith(".json")) {
@@ -1093,7 +1092,8 @@ if (_projectParam) {
             ({ frontmatter } = result);
             parsedMode = result.mode;
           } else {
-            parsedDoc = JSON.parse(content) as JxMutableNode;
+            // With the file's layout, so a save writes it back as it was laid out (issue 308).
+            ({ document: parsedDoc, layout } = parseJsonDocument(content));
           }
 
           // Open in a tab
@@ -1102,6 +1102,7 @@ if (_projectParam) {
             documentPath: fileRelPath,
             document: parsedDoc as JxMutableNode,
             ...(frontmatter != null && { frontmatter }),
+            layout,
             sourceFormat: fileFormat?.name ?? null,
           });
 

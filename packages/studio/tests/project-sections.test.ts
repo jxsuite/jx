@@ -208,8 +208,9 @@ describe("the Deploy section", () => {
 describe("the Raw JSON section", () => {
   test("shows the file exactly as the chokepoint serialises it", async () => {
     const { container } = await setup({ extensions: [], name: "Bistro" }, renderRawJsonSection);
+    // The file's bytes, trailing newline included: what a save writes.
     expect(container.querySelector('[part="json"]')?.textContent).toBe(
-      '{\n  "extensions": [],\n  "name": "Bistro"\n}',
+      '{\n  "extensions": [],\n  "name": "Bistro"\n}\n',
     );
   });
 
@@ -221,7 +222,7 @@ describe("the Raw JSON section", () => {
 
   test("with no project open it renders an empty object rather than throwing", async () => {
     const { container } = await setup(null, renderRawJsonSection);
-    expect(container.querySelector('[part="json"]')?.textContent).toBe("{}");
+    expect(container.querySelector('[part="json"]')?.textContent).toBe("{}\n");
   });
 
   test("a redraw re-reads the file into the standing document", async () => {

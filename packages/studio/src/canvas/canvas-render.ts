@@ -44,6 +44,7 @@ import type { BindingAwareness } from "../collab/monaco-binding";
 import { monacoTheme, shell } from "../shell";
 import { parseSourceForPath } from "../files/file-ops";
 import { serializeDocument } from "../files/serialize-document";
+import { parseJsonDocument, serializeJson } from "../files/json-layout";
 import { detachGridPanel, gridPanelMounted, renderGridMode } from "../grid/grid-panel";
 import { detachLibraryPane, libraryPaneMounted, renderLibraryMode } from "../browse/library-pane";
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
@@ -164,7 +165,9 @@ async function sourceContent(tab: Tab) {
   if (formatByName(tab.doc.sourceFormat)) {
     return serializeDocument(tab);
   }
-  return JSON.stringify(tab.doc.document, null, 2);
+  // The file's own layout (`files/json-layout.ts`), so the buffer shows the bytes a save writes and
+  // A commit from it reads the same layout back — what `serializeDocument`'s JSON branch does.
+  return serializeJson(tab.doc.document, tab.doc.layout ?? null);
 }
 
 // Single-RAF scheduling; concurrent schedule requests within the same frame are deduped.
@@ -844,7 +847,11 @@ async function mountSourceEditor(
         }
       } else if (lang === "json") {
         try {
-          tab.doc.document = JSON.parse(sourceEditor.getValue()) as JxMutableNode;
+          // The buffer's text is the author's own layout now — the objects they opened up or
+          // Closed, the blank lines they left — so it is what the next save preserves.
+          const parsed = parseJsonDocument(sourceEditor.getValue());
+          tab.doc.document = parsed.document as JxMutableNode;
+          tab.doc.layout = parsed.layout;
           tab.doc.dirty = true;
           writes.markSettled();
         } catch {
@@ -2062,6 +2069,13 @@ export function selectionCommands(): AnyCommand[] {
           "Select the element at a document path so the Inspector, the Outline and the canvas " +
           "overlay all address it. Pass null to clear the selection.",
         name: "select_node",
+        /* The one pointing verb: how the assistant shows the person which element it means. The
+           report reads the context's own `selection.kind` — the tag the status bar prints — so the
+           model learns what it pointed at without a second read. */
+        report: ({ after }) =>
+          after.selection.count === 0
+            ? "Cleared the selection."
+            : `Selected ${after.selection.kind || "the element"} at [${(after.selection.paths.at(-1) ?? []).join(", ")}]; the Inspector and the Outline now address it.`,
       },
       run: (_commandCtx, args) => {
         const path = nullablePathArg("selection.set", args, "path");
@@ -2094,12 +2108,12 @@ export function selectionCommands(): AnyCommand[] {
       group: "2_navigate",
       requires: "an open document",
       when: (ctx) => ctx.document.open,
-      aiTool: {
-        description:
-          "Select several elements at once so one decision — a style paste, a delete, a duplicate " +
-          "— applies to all of them as a single undoable step. Pass [] to select nothing.",
-        name: "select_nodes",
-      },
+      /*
+       * No `aiTool`, by §12.4's fourth deletion rule (redundant with a tool the model has): the
+       * assistant's bridge runs THIS record by id as the selector step of every selection-level
+       * tool — `delete_node(paths)` is `selection.setPaths` then `selection.delete` — so a second
+       * selection tool beside `select_node` would be prompt cost with no second job.
+       */
       /**
        * The idempotent SET for the whole selection, beside `selection.set`'s single path.
        *
@@ -2155,12 +2169,8 @@ export function selectionCommands(): AnyCommand[] {
          — `postApplyFormat` would no-op against a frame with no session and the palette row would
          read as available. The `format.*` family is gated the same way, for the same reason. */
       when: (ctx) => ctx.caret.inCanvas,
-      aiTool: {
-        description:
-          "Insert a live data placeholder at the text caret, binding that run of text to a state " +
-          "entry or, inside a repeater template, to the current item.",
-        name: "insert_data_token",
-      },
+      /* No `aiTool`: `when` is the CARET's, and the caret is the person's — never true for the
+         agent, so a projection would be a tool advertised in no state the model can reach. */
       run: (_commandCtx, args) => {
         const token = stringArg("insert.data", args, "token");
         refuseUnresolvableToken(token);

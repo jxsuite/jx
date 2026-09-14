@@ -289,6 +289,10 @@ describe("the open tab", () => {
        reloaded tab would keep the OLD format's modes and its serializer — and the next ⌘S would
        write markdown into a `.json` file. */
     expect(tab?.doc.sourceFormat).toBeNull();
+    /* And it read the file's layout like every other JSON reader does (issue 308): the text is
+       the serializer's own, so the record and a layout-less write agree — but the tab holds the
+       record rather than assuming it. The root is written expanded, so the pointer "" is false. */
+    expect(tab?.doc.layout?.inline.get("")).toBe(false);
   });
 
   test("a tab converted INTO a format is rebuilt through that format's parser", async () => {
@@ -540,7 +544,8 @@ describe("the command record", () => {
 
   test("nothing restores a convert, and the record says so rather than pretending", () => {
     expect(record().undo).toBe("none");
-    expect(record().aiTool?.name).toBe("convert_file_format");
+    // And it is not an assistant tool: `run` awaits a confirm dialog the person answers (§12.4).
+    expect(record().aiTool).toBeUndefined();
   });
 
   test("run converts the file it names, with a stated format", async () => {

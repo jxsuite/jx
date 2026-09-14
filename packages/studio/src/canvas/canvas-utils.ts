@@ -1024,12 +1024,8 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       group: "3_canvas",
       requires: "an open document",
       when: documentOpen,
-      aiTool: {
-        description:
-          "Switch the active pane's canvas to a mode: edit, design, preview, source, stylebook, " +
-          "grid or git-diff. Fails when the open document does not support that mode.",
-        name: "set_canvas_mode",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome. `open_document` lands on the canvas,
+         and the tree tools key on `editor.kind`, not the mode. */
       run: (_commandCtx, args) => {
         const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
         const tab = requireTab("canvas.setMode");

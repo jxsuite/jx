@@ -679,11 +679,8 @@ export function newProjectCommands(): AnyCommand[] {
       level: "application",
       menus: ["commandbar/overflow", "palette"],
       group: "1_file",
-      aiTool: {
-        description:
-          "Open the New Project wizard, optionally on the Starters, Import or Agent tab.",
-        name: "open_new_project",
-      },
+      /* No `aiTool`: application-level, refused at registration; it opens the wizard, and the
+         model's own door is `create_project` / `import_site` (§12.4). */
       run: (_commandCtx, args) => {
         const tab =
           (args as { tab?: unknown }).tab === undefined

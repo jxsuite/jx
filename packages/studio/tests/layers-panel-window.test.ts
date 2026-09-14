@@ -390,26 +390,31 @@ describe("the reveal that follows a selection made elsewhere", () => {
 
 describe("a density switch", () => {
   test("re-measures the spacers without a scroll, from the tree's own resize", async () => {
-    // `[data-density=compact]` makes `--jx-control-h` 20px: every drawn row shrinks in place, the
+    // `[data-density=comfortable]` makes `--jx-control-h` 28px: every drawn row grows in place, the
     // Navigator's box is exactly what it was, and no scroll arrives. The browser measured the
-    // Spacers still standing at 24px a row until the next scroll — a scrollbar three rows too long
-    // Over rows that had already shrunk. Happy-dom cannot shrink a row, so the rows' measurement
-    // Is stubbed and the tree's resize is delivered by hand, to the element the watch observed.
+    // Spacers still standing at 24px a row until the next scroll — a scrollbar rows too short over
+    // Rows that had already grown (the original sighting was the other direction, compact at 20px;
+    // Compact is 24px now, the same as the default, because WCAG 2.2 SC 2.5.8 asks 24 CSS px of a
+    // Target and the kit holds every density to it — ui.md §4.3 — so it no longer moves a row).
+    // Happy-dom cannot resize a row, so the rows' measurement is stubbed and the tree's resize is
+    // Delivered by hand, to the element the watch observed.
     tearDown();
     const ro = installResizeObserver();
     try {
       await mountWindowed();
       const list = tree(host);
       expect(ro.observes(list)).toBe(true);
-      const COMPACT = 20;
+      const COMFORTABLE = 28;
       for (const el of allRows(host)) {
-        Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMPACT });
+        Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMFORTABLE });
       }
       ro.resize(list);
       await flush(3);
       const [padTop, padBottom] = pads();
       expect(padTop).toBe(0);
-      expect(padTop! + allRows(host).length * COMPACT + padBottom!).toBe(ROW_COUNT * COMPACT);
+      expect(padTop! + allRows(host).length * COMFORTABLE + padBottom!).toBe(
+        ROW_COUNT * COMFORTABLE,
+      );
     } finally {
       ro.restore();
     }

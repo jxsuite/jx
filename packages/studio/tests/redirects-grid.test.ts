@@ -526,7 +526,12 @@ describe("commands", () => {
       expect(record.menus).toEqual(["palette"]);
       expect(record.when!(openCtx)).toBeTrue();
       expect(record.when!({ project: { open: false } } as never)).toBeFalse();
-      expect(record.aiTool).toBeDefined();
+      // Only the check projects to the assistant: opening the table is a surface for a person, and
+      // Importing waits on a paste dialog (§12.4's first and second deletion rules).
+      expect([record.id, record.aiTool?.name]).toEqual([
+        record.id,
+        record.id === "redirects.validate" ? "validate_redirects" : undefined,
+      ]);
     }
   });
 
@@ -542,6 +547,27 @@ describe("commands", () => {
     setup({ "/old": "/new" });
     await byId("redirects.validate").run(openCtx, undefined as never);
     expect(problems.filter((p) => p.source === "Redirects")).toEqual([]);
+  });
+
+  test("validate_redirects reports the filed list as data, or the clean sentence", async () => {
+    /* `validate_redirects` is this record — a declaration makes a tool — and the report is the
+       Problems store by this source: the only way to check redirects without reading the routes. */
+    const facts = { after: openCtx, args: undefined as never, before: openCtx };
+    setup({ "/about": "/contact" });
+    await byId("redirects.validate").run(openCtx, undefined as never);
+    const report = byId("redirects.validate").aiTool!.report(facts) as {
+      data: { key?: string; message: string }[];
+      summary: string;
+    };
+    expect(report.summary).toBe("Filed 1 redirect problem in Problems.");
+    expect(report.data.map((finding) => finding.key)).toEqual(["redirects.shadow:/about"]);
+
+    setup({ "/old": "/new" });
+    await byId("redirects.validate").run(openCtx, undefined as never);
+    expect(byId("redirects.validate").aiTool!.report(facts)).toEqual({
+      data: [],
+      summary: "No redirect problems: no chains, loops or shadowed rules.",
+    });
   });
 
   test("redirects.import takes its text as an argument, for automation and the assistant", async () => {

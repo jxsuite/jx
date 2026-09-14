@@ -5,7 +5,7 @@ code:
   - packages/studio/src/panels/chat-panel.ts
   - packages/studio/src/services/ai-ask.ts
   - packages/studio/src/services/ai-import-tools.ts
-  - packages/studio/src/services/ai-extension-tools.ts
+  - packages/studio/src/services/ai-command-tools.ts
   - packages/studio/src/services/ai-system-prompt.ts
   - packages/studio/src/services/ai-settings.ts
   - packages/studio/src/services/tool-executor.ts
@@ -31,7 +31,11 @@ The assistant is the **fourth tab of the Inspector**, beside Content, Style and 
 
 It also knows which extensions your project has turned on and which ones your setup can run, so a request that needs a capability Jx does not have on its own can be answered by turning one on rather than by hand-building it. Ask for a blog and it enables the content extension before writing your first collection. It installs the package and enables it in one step, the same way the **[Extensions](/docs/studio/projects/settings)** section does, and it tells you which it turned on. Installing is not undoable, and it will not uninstall anything without asking.
 
-**With a page on the canvas**, the assistant edits that page live: text, styles, element properties, adding, moving, and removing elements, and the page's state entries. This is the most precise mode, and the one you can watch and undo; see **[Document assistant](/docs/studio/ai/document-assistant)**.
+Two more project-wide commands are the same ones you would run yourself. It can validate your redirect rules for chains, loops and rules a real page shadows, and what it finds is filed under Redirects in the Problems tab, exactly as the palette command files it. It can also declare a new language for the project: that writes `i18n.locales` in `project.json` and unlocks the translation surfaces for its next step. Asking for a language the project already declares changes nothing, and the assistant is told so.
+
+**With a page on the canvas**, the assistant edits that page live: text, styles, element properties, adding, moving, and removing elements, and the page's state entries. This is the most precise mode, and the one you can watch and undo; see **[Document assistant](/docs/studio/ai/document-assistant)**. Removing and duplicating elements go through the same commands the Outline's rows use, so what is refused for you (the document root, a repeater's template, a switch case) is refused for it in the same words, and a batch removal is one undo step. It can also run the accessibility and popover checks on the open page for you and read back what they filed.
+
+Every command the assistant can run is listed in the **Assistant** column of the **[Commands](/docs/studio/interface/commands)** reference. A tool there is the command itself: it is offered exactly while the command is available to you, and a refusal reads the same sentence a greyed-out row shows.
 
 In every state it also answers questions ("what does this page's state do?", "which component renders the header?") by reading the same files you see.
 
