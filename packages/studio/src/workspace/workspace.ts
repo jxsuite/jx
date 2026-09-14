@@ -10,6 +10,7 @@ import {
   stringArg,
   stringProperty,
 } from "../commands/command-args";
+import { EDITOR_KIND_LABELS } from "../commands/context";
 import type { Tab, TabOrigin } from "../tabs/tab";
 import type { JsonLayout } from "../files/json-layout";
 
@@ -1295,6 +1296,65 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
       requires: "a second open document",
       run: () => {
         cycleTab(-1);
+      },
+    },
+    {
+      args: argsSchema({
+        path: stringProperty(
+          'Project-relative path of the file to open, e.g. "pages/about.json" or ' +
+            '"components/nav-bar.json". It must exist.',
+        ),
+      }),
+      id: "document.open",
+      title: "Open Document",
+      category: "Document",
+      /* PROJECT level, though the namespace says document: the level is what a record acts on, and
+         this one acts on the workspace — it adds a tab — from a state where no document is open
+         at all. A document-level record would be gated on the one thing it exists to produce. */
+      level: "project",
+      menus: ["palette"],
+      group: "1_file",
+      when: (ctx) => ctx.project.open,
+      requires: "an open project",
+      aiTool: {
+        description:
+          "Open a project file as the active document; the document tools then operate on it. " +
+          "Use it when the user should SEE the page, or for iterative visual refinement after " +
+          "creating a page or component.",
+        name: "open_document",
+        /* The person's own read: `activeTab` is what the tab strip highlights, and `editor.kind`
+           is the fact the document-tree tier is gated on. Both are named so the model learns in one
+           round whether the tree tools reach the file it opened — a `.csv` lands in the Grid, a
+           `.png` in the Media viewer, and neither is an element tree. The `.value` read is module
+           state, which a projected `report` may close over (§12.4); `after` alone cannot say WHICH
+           document is active. */
+        report: ({ after, args }) => {
+          const path = stringArg("document.open", args, "path");
+          const active = activeTab.value?.documentPath ?? null;
+          if (active !== path) {
+            return `Opened "${path}", but the active document is ${active === null ? "none" : `"${active}"`}.`;
+          }
+          const where =
+            after.editor.kind === "canvas"
+              ? "on the canvas; the document tools now operate on it"
+              : `in the ${EDITOR_KIND_LABELS[after.editor.kind]} editor, which is not an element tree the document tools can edit`;
+          return `"${path}" is the active document, ${where}.`;
+        },
+      },
+      /* Refuses by THROWING (§12.4's first review rule). `openFileInTab` reports a file it cannot
+         open as a Problem and returns normally — the right answer for a click in the Files tree,
+         where the toast is in front of the person — so the record has to look for the tab itself.
+         The hand tool this replaced read `getTab()` after the open and called whatever it found a
+         success, so a missing file left the PREVIOUS document active and reported "Switched to". */
+      run: async (_ctx, args) => {
+        const path = stringArg("document.open", args, "path");
+        await deps.openFile(path);
+        if (![...workspace.tabs.values()].some((tab) => tab.documentPath === path)) {
+          throw new RangeError(
+            `command "document.open" argument "path": "${path}" could not be opened — it does ` +
+              `not exist, or no editor claims its format. Problems has the reason.`,
+          );
+        }
       },
     },
     {
