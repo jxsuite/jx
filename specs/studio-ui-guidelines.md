@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.5-draft\
+**Version:** 0.8.6-draft\
 **Status:** Partial\
-**Updated:** 2026-09-11\
+**Updated:** 2026-09-13\
 **Applies to:** `packages/studio/`
 
 ---
@@ -742,12 +742,13 @@ The check validates placement only. Whether a panel _reads_ state above its leve
 
 Chrome is earned by frequency and capped by a build check (`scripts/check-chrome-budget.ts`, thresholds in `src/commands/budget.ts`):
 
-| Cap                                                | Limit |
-| -------------------------------------------------- | ----- |
-| Commands declaring `menus: ["commandbar/primary"]` | 5     |
-| Tabs in any one dock or rail group                 | 4     |
+| Cap                                                                                   | Limit |
+| ------------------------------------------------------------------------------------- | ----- |
+| Commands declaring `menus: ["commandbar/primary"]`                                    | 5     |
+| Tabs in any one dock or rail group                                                    | 4     |
+| Assistant tools in the richest state — hand rows plus every record declaring `aiTool` | 30    |
 
-Raising a cap is a design decision and happens in `budget.ts`, in one place, deliberately.
+Raising a cap is a design decision and happens in `budget.ts`, in one place, deliberately. The assistant's cap is chrome for a model: every advertised tool costs attention, and a naive projection of every declaration would have taken the list from 22 to 67. It is asserted in `packages/studio/tests/ai-command-tools.test.ts` rather than by the bare-Bun budget script, because the hand table lives in a module that imports the store; the number lives in `budget.ts` either way.
 
 **Retiring a control costs three things**: (a) a discoverable command name, (b) a bindable chord, and usually (c) a status-bar or context-menu residue. Retiring without all three is deletion, not consolidation. Moving a command to `commandbar/overflow` satisfies (a) and (c) for free — it keeps its name, its chord and its palette row.
 
@@ -790,13 +791,30 @@ Six families disagreed with themselves, and in every one the loose member was th
 
 Two rules over one surface is not caution. The strict member's refusal is evidence that the state is unsafe to write, and the loose member writes it anyway — so the disagreement converts a refusal that protects into a refusal that merely annoys, while the damage goes through the other door.
 
-**The agent counts as a surface.** `Command.aiTool` says "the human's gate and the agent's gate stay one predicate", so an assistant tool that writes what a command writes is bound by the command's rule — and binds to it by READING the same `CommandContext`, not by recomputing the same test. Two predicates that agree today drift the first time either is edited. The assistant's `document` tier asked only whether a tab was open, so with Project Settings focused the agent was advertised `remove_node` and `move_node` and ran them against `project.json` while the person's `delete_node` was refused; `remove_node`'s own guard stops at the document root, which is weaker than `structurallyEditable`, so a repeater template was removable by the agent and not by the person. Element-tree writers now sit in a `document-tree` tier whose predicate is the registry's own `editor.kind === "canvas"`. Reads are not affected: the rule is about writing.
+**The agent counts as a surface, and its tool IS the command.** A record that declares `aiTool` is projected to the assistant by `services/ai-command-tools.ts`, a view over the window's registry: the tool's `execute` is `registry.run(id, args)`, its `parameters` is the record's own `args` object, its description is the record's, and it is advertised exactly while the record's own `when` / `enablement` holds — the same closures the palette evaluates, module-state included. A selection-level verb composes through `selection.setPaths` with `paths` REQUIRED, because the model addresses nodes by path and "act on whatever is selected" would be a verb over state it cannot observe. There is no registration step between the declaration and the tool, so there is nothing to omit; what cannot be honoured is refused at registration (`studio.md` §13.1). The refusal the model reads is the person's own sentence: `CommandUnavailableError` from the gate, or the `RangeError` the schema coercion or the `run` body throws.
+
+The model reads `report`, a projection of post-run state written beside `run` — one sentence over the same reads the UI makes, optionally structured `data` (a findings list) and the `wrote` paths — and the ledger reads `undo`: `"document"` files the active document, `"project"` files `project.json`, `"none"` files whatever `wrote` names and is held to naming it. A record with `undo: "document"` is also held to having WRITTEN: `transactDoc` replaces the document's root reference on every applied transaction, so an unchanged reference after `run` answers "changed nothing" rather than success. That witness is why a tier alone was not enough. Before the projection, `delete_node` was declared on `selection.delete` and the model received `remove_node`, a hand-written tool whose guard stopped at the document root — weaker than `structurallyEditable`, so a repeater template was removable by the agent and not by the person — and which reported a removal the collab freeze had refused as a success. The first fix was a `document-tree` tier reading the registry's `editor.kind`; the second predicate went with the hand tool. The seven hand tree writers that remain (`set_property`, `set_style`, `set_text`, `add_child`, `move_node`, `add_state`, `update_state`) stay in that tier because each addresses a node by PATH with no command twin — the person writes these through the Inspector, which is not a command surface — and `packages/studio/tests/ai-hand-writers.test.ts` is the closed table that says so, one reason per file.
+
+**Not every record projects, and the four rules that decide it** are what keep the prompt from growing by forty-seven tools:
+
+1. **Chrome and navigation.** A verb whose whole effect is what the person is looking at — opening a surface, arranging panes, a listing filter — is not a tool. The model has `open_document` and `read_file` for the file itself.
+2. **`run` waits on a person.** A dialog, a prompt, a confirm. The loop does not count it as interactive, the turn hangs on the author, and a cancel returns nothing a report could describe. `selection.repeat`, `content.newEntry`, `i18n.createTranslation`, `library.newEntry`, `grid.saveView`, `redirects.import`, `file.convertFormat`, `publish.setUp` and `project.new` are that set, and the test holds it closed.
+3. **Outside the tree, irreversible, and the model has no read to judge by.** The `git.*` family and `publish.deploy`; reconsidered together when `git.commit` becomes a record, since without it the agent could not ship its own edits anyway.
+4. **Redundant with a tool it already has.** `selection.setPaths` is the bridge's own selector step; a second selection tool would be prompt cost with no second job.
+
+Three review rules follow for a record that does project:
+
+- **A projected `run` refuses by THROWING.** A `notify.error` plus `return` is a refusal only the person can read; `i18n.addLocale` used to toast a malformed tag and now throws the `RangeError` the model reads.
+- **A projected `run` may not await a dialog** — rule 2, applied to a record that already projects.
+- **A projected record's `args` getters and `report` may close over module state, never over injected deps.** The view reads the LIVE record, so this is hygiene rather than correctness, and it stays because `appCommandSet()`'s no-op instances are what the tests read.
+
+Reads are not affected by the surface rule: it is about writing.
 
 Corollaries:
 
 - **An `enablement` never restates its own `when`.** The same rule written twice is two places to drift, and the drift is invisible because both spellings look deliberate.
-- **A `requires` sentence names the gate it actually has.** `canvas.setFit` said "an open document" while refusing for the MODE, which sends the reader to open a document they already have open.
-- **When a precondition depends on an ARGUMENT, refuse the argument.** `enablement` cannot see one, so a setter taking an enum checks the target's own predicate inside `run` and throws a `RangeError` naming the value — the shape `pane.derive` uses for a preset the document cannot support.
+- **A `requires` sentence names the gate it actually has.** `canvas.setFit` said "an open document" while refusing for the MODE, which sends the reader to open a document they already have open; `selection.delete` said "not the document root" for a gate that also refuses a repeater's template and a switch case, and now names all three.
+- **When a precondition depends on an ARGUMENT, refuse the argument.** `enablement` cannot see one. The SHAPE is the schema's: `registry.run` coerces every received record against `args` through `coerceArgs`, for every caller, before `run` is entered, so a value outside a `derivedEnumProperty` or a key the schema does not declare is refused with the sentence the palette's choice list implied. What the schema cannot say — a breakpoint the document defines, a path that addresses a node, a preset the document cannot support — the `run` body refuses itself with a `RangeError` naming the value, the shape `pane.derive` uses.
 
 ### 12.5 A second list of actions is a defect
 
@@ -876,6 +894,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.6-draft** (2026-09-13) — §12.4 the agent's tool IS the command: the projection contract, the four deletion rules and the three review rules; the argument corollary names the schema coercion; §12.2 gains the assistant tool cap.
 - **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.
 - **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.
 - **0.8.3-draft** (2026-09-11) — §9.3 records the live chrome lane: a saved surface or kit component re-mounts the roots it draws in the shell, keyed on the path under packages/studio or packages/ui, and names the canvas half that waits on the frame seeding the kit's modules.

@@ -302,3 +302,115 @@ describe("one operation at a time", () => {
     expect(extensionOpInFlight()).toBeNull();
   });
 });
+
+describe("what the assistant is told afterwards (aiTool.report)", () => {
+  /*
+   * The two verbs ARE the assistant's `enable_extension` / `disable_extension` — a declaration
+   * makes a tool (`services/ai-command-tools.ts`) — and what the record cannot say for itself is
+   * what to tell the model afterwards. These sentences used to live in a hand-registered tool
+   * beside the records; they are the records' own now, read through the same `buildRows()` the
+   * Extensions section reads.
+   */
+  const facts = (name: string) => ({
+    after: emptyContext(),
+    args: { package: name } as never,
+    before: emptyContext(),
+  });
+
+  test("enable names the sections the extension made valid and the enabled set", async () => {
+    resetStudioState({ projectConfig: { extensions: [] } });
+    // The config commit re-reads the catalogue from the platform; the report reads what it left.
+    installMockPlatform({ listExtensionCatalog: async () => [PARSER] });
+    const registry = registryWith(true);
+    await registry.run("project.enableExtension", { package: "@jxsuite/parser" });
+    const report = registry
+      .get("project.enableExtension")!
+      .aiTool!.report(facts("@jxsuite/parser"));
+    expect(report).toEqual({
+      summary:
+        "Enabled @jxsuite/parser. Its project.json sections are now valid: content. Enabled " +
+        "extensions: @jxsuite/parser.",
+      // `undo: "none"` cannot default a ledger path, so the report names what it wrote — and
+      // `package.json` only for a run that installed, which the mock platform's addPackage did.
+      wrote: ["project.json", "package.json"],
+    });
+  });
+
+  test("an enable that only wrote project.json says so in its ledger paths", async () => {
+    setExtensionCatalog([{ ...PARSER, installed: true }]);
+    resetStudioState({ projectConfig: { extensions: [] } });
+    const { state } = installMockPlatform({
+      listExtensionCatalog: async () => [{ ...PARSER, installed: true }],
+    });
+    const registry = registryWith(true);
+    await registry.run("project.enableExtension", { package: "@jxsuite/parser" });
+    expect(state.calls.some(([name]) => name === "addPackage")).toBe(false);
+    const report = registry
+      .get("project.enableExtension")!
+      .aiTool!.report(facts("@jxsuite/parser"));
+    expect(typeof report === "string" ? undefined : report.wrote).toEqual(["project.json"]);
+  });
+
+  test("an extension with no sections still reports the enabled set", async () => {
+    const bare = { ...PARSER, installed: true, sections: [] };
+    setExtensionCatalog([bare]);
+    resetStudioState({ projectConfig: { extensions: [] } });
+    installMockPlatform({ listExtensionCatalog: async () => [bare] });
+    const registry = registryWith(true);
+    // The run is what the report describes: read without one, the sentence is the last run's.
+    await registry.run("project.enableExtension", { package: "@jxsuite/parser" });
+    const report = registry
+      .get("project.enableExtension")!
+      .aiTool!.report(facts("@jxsuite/parser"));
+    expect(typeof report === "string" ? report : report.summary).toBe(
+      "Enabled @jxsuite/parser. Enabled extensions: @jxsuite/parser.",
+    );
+  });
+
+  test("enabling what is already on is a statement with no ledger paths, not a phantom write", async () => {
+    /* `enableExtension` returns before writing when the row is already enabled (its enum offers
+       enabled rows on purpose, see above). The report has to say THAT: "Enabled X" with
+       `project.json` in `wrote` would file a "Changed 1 file — undo cannot reach it" entry for a
+       run that touched nothing, which is the phantom-write shape the ledger exists to keep out.
+       `wrote: []` is how a record says "this run changed nothing" and the bridge files none. */
+    resetStudioState({ projectConfig: { extensions: ["@jxsuite/parser"] } });
+    const { state } = installMockPlatform();
+    const registry = registryWith(true);
+    await registry.run("project.enableExtension", { package: "@jxsuite/parser" });
+    expect(state.calls.some(([name]) => name === "writeFile")).toBe(false);
+    const report = registry
+      .get("project.enableExtension")!
+      .aiTool!.report(facts("@jxsuite/parser"));
+    expect(report).toEqual({
+      summary:
+        "@jxsuite/parser was already enabled. Its project.json sections are valid: content. " +
+        "Enabled extensions: @jxsuite/parser.",
+      wrote: [],
+    });
+  });
+
+  test("the no-op's empty ledger is per run: it does not inherit the install before it", async () => {
+    // Install-then-enable, then enable again: the second report must not repeat `package.json`.
+    resetStudioState({ projectConfig: { extensions: [] } });
+    installMockPlatform({ listExtensionCatalog: async () => [PARSER] });
+    const registry = registryWith(true);
+    await registry.run("project.enableExtension", { package: "@jxsuite/parser" });
+    await registry.run("project.enableExtension", { package: "@jxsuite/parser" });
+    const report = registry
+      .get("project.enableExtension")!
+      .aiTool!.report(facts("@jxsuite/parser"));
+    expect(typeof report === "string" ? undefined : report.wrote).toEqual([]);
+  });
+
+  test("disable says the package is still installed, and to ask before uninstalling", () => {
+    resetStudioState({ projectConfig: { extensions: [] } });
+    const registry = registryWith(true);
+    const report = registry
+      .get("project.disableExtension")!
+      .aiTool!.report(facts("@jxsuite/parser"));
+    expect(report).toBe(
+      "Disabled @jxsuite/parser; its npm package is still installed. Ask before uninstalling it. " +
+        "Enabled extensions: none.",
+    );
+  });
+});

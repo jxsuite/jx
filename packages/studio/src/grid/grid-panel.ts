@@ -693,11 +693,7 @@ export function gridViewCommands(): AnyCommand[] {
       requires: "a grid on screen",
       when: (ctx) => ctx.project.open,
       enablement: () => activeGridSurface() !== null,
-      aiTool: {
-        description:
-          "Save the open grid's columns, sort, grouping and filter as a named view. Prompts for the name.",
-        name: "save_grid_view",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: it prompts for a name. */
       run: async () => {
         const { controller, panel } = requireSurface("grid.saveView");
         await promptSaveView(controller, panel);
@@ -714,10 +710,7 @@ export function gridViewCommands(): AnyCommand[] {
       requires: "a grid on screen",
       when: (ctx) => ctx.project.open,
       enablement: () => activeGridSurface() !== null,
-      aiTool: {
-        description: "Apply a saved view to the open grid by name.",
-        name: "apply_grid_view",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome. */
       run: (_ctx, args) => {
         const { gridId, name } = viewNameArg("grid.applyView", args);
         const { panel } = requireSurface("grid.applyView");

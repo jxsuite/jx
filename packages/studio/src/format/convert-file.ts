@@ -497,14 +497,8 @@ export function fileFormatCommands(): AnyCommand[] {
       // Nothing restores it: the file has moved and its references have been rewritten with it.
       // The confirmation carrying the count is what stands in for an undo.
       undo: "none",
-      aiTool: {
-        description:
-          "Convert a document between formats in place — Markdown to JSON and back. The file is " +
-          "renamed to the new extension and every reference to it is rewritten. Refused for " +
-          "layouts, for anything inside a content collection, and while the file is open with " +
-          "unsaved changes.",
-        name: "convert_file_format",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: `run` awaits a confirm dialog the person
+         answers. */
       run: async (_ctx, args: Record<string, unknown>) => {
         const target = typeof args.format === "string" ? args.format : undefined;
         await convertFile(

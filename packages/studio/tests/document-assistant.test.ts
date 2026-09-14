@@ -68,10 +68,70 @@ const { createDocumentAssistant } = await import("../src/services/document-assis
 const { getActiveSessionId, listSessions, loadSession } =
   await import("../src/services/ai-session-store");
 const { setProjectAdopter } = await import("../src/services/project-adoption");
-const { closeAllTabs, setWorkspaceProject, workspace } = await import("../src/workspace/workspace");
+const { activeTab, closeAllTabs, setWorkspaceProject, workspace } =
+  await import("../src/workspace/workspace");
 const { commitProjectConfig, resetProjectConfigDocument } =
   await import("../src/tabs/project-config");
 const store = await import("../src/store");
+const { createCommandRegistry } = await import("../src/commands/registry");
+const { hasSelection, makeContext } = await import("../src/commands/context");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
+const { selectionCommands } = await import("../src/canvas/canvas-render");
+const { isSpliceablePath } = await import("../src/tabs/selection");
+const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
+const { writesForTurn } = await import("../src/services/ai-writes");
+
+/** Which editor the registry fixture reports the focused pane as showing. */
+let editorKind: "canvas" | "config" = "canvas";
+
+/**
+ * A registry over the LIVE workspace, so the assistant's bridge (`services/ai-command-tools.ts`)
+ * has records to project: the two selection verbs from `canvas-render.ts` and an inline
+ * `selection.delete` whose implementation is the app's own batch removal. The context reads the
+ * same state the tools do — the active tab, its selection, the project root — and `editorKind` is
+ * the one knob a test turns to put Project Settings in front of the assistant.
+ */
+function installRegistryFixture() {
+  const registry = createCommandRegistry({
+    getContext: () => {
+      const tab = activeTab.value;
+      const paths = tab?.session.selection ?? [];
+      return makeContext({
+        document: { open: Boolean(tab) },
+        editor: { kind: editorKind },
+        project: { open: Boolean(workspace.projectRoot) },
+        selection: {
+          count: paths.length,
+          isRoot: paths.some((path) => path.length === 0),
+          paths,
+        },
+      });
+    },
+  });
+  registry.registerAll(selectionCommands());
+  registry.register({
+    aiTool: {
+      description: "Delete elements from the document as one undoable step.",
+      name: "delete_node",
+      report: ({ before }) => `Deleted ${before.selection.paths.length} element(s).`,
+    },
+    category: "Selection",
+    destructive: true,
+    enablement: (ctx) =>
+      !ctx.selection.isRoot && ctx.selection.paths.every((path) => isSpliceablePath(path)),
+    id: "selection.delete",
+    level: "selection",
+    requires: "an element selected on the canvas that has a sibling position",
+    run: () => {
+      const tab = activeTab.value!;
+      transactDoc(tab, (t) => mutateRemoveNodes(t, tab.session.selection));
+    },
+    title: "Delete",
+    undo: "document",
+    when: hasSelection,
+  });
+  setActiveRegistry(registry);
+}
 
 /** The messages persisted for the assistant's active session (tests run with no project root). */
 function persistedMessages() {
@@ -92,11 +152,15 @@ beforeEach(() => {
   lastClientOpts = null;
   capturedTools = [];
   capturedSystemPrompts = [];
+  editorKind = "canvas";
+  installRegistryFixture();
 });
 
 afterEach(() => {
   localStorage.clear();
   clearSeededSettings();
+  // `active-registry.ts` documents this as the unmount contract.
+  setActiveRegistry(null);
 });
 
 describe("document-assistant", () => {
@@ -322,6 +386,123 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     expect(capturedTools[0]).toContain("set_property");
     expect(capturedTools[0]).toContain("write_file");
     expect(capturedTools[0]).not.toContain("create_project");
+  });
+
+  /*
+   * The prompt advertises exactly what the gate will honour, for BOTH kinds of tool. The hand
+   * tree writers are gated on `treeEditable`, which `buildPrompt` never passed — so with Project
+   * Settings focused the prompt listed `set_property` while the gate refused it, and the model
+   * spent a round learning that. The command projections are one function for the prompt line and
+   * the schema (`advertisedCommandTools`), so `delete_node(paths)` is in the text iff its schema
+   * was sent.
+   */
+  test("the prompt lists a tool iff its schema was sent, in each of the four states", async () => {
+    const states: [string, () => void, { tree: boolean; deleteNode: boolean }][] = [
+      ["no document", () => closeAllTabs(), { deleteNode: false, tree: false }],
+      ["a canvas document", () => {}, { deleteNode: true, tree: true }],
+      [
+        "Project Settings focused",
+        () => {
+          editorKind = "config";
+        },
+        { deleteNode: false, tree: false },
+      ],
+      [
+        "a canvas document, project open",
+        () => setWorkspaceProject("/proj"),
+        { deleteNode: true, tree: true },
+      ],
+    ];
+    for (const [label, arrange, expected] of states) {
+      resetWorkspaceWithTab();
+      editorKind = "canvas";
+      setWorkspaceProject(null);
+      arrange();
+      capturedTools = [];
+      capturedSystemPrompts = [];
+      nextRounds = [[{ stopReason: "stop", type: "done" }]];
+      const a = createDocumentAssistant();
+      await a.sendMessage("hi");
+      const sent = capturedTools[0]!;
+      const prompt = capturedSystemPrompts[0]!;
+      expect([
+        label,
+        sent.includes("delete_node"),
+        prompt.includes("- delete_node(paths)"),
+      ]).toEqual([label, expected.deleteNode, expected.deleteNode]);
+      expect([label, sent.includes("set_property"), prompt.includes("- set_property(")]).toEqual([
+        label,
+        expected.tree,
+        expected.tree,
+      ]);
+      // A read is not affected by the tree gate: it follows the document alone.
+      expect([label, sent.includes("read_document")]).toEqual([label, label !== "no document"]);
+    }
+  });
+
+  test("a delete_node round runs selection.delete through the registry as one undo step", async () => {
+    /* Mirrors the `add_child` case above, for the other kind of tool: the call reaches
+       `registry.run("selection.setPaths")` then `registry.run("selection.delete")`, the batch
+       removal is one transaction inside the turn's one batch, the ledger records the document, and
+       the report — the record's own sentence — is what the model reads. */
+    const tab = resetWorkspaceWithTab({
+      children: [
+        { tagName: "p", textContent: "one" },
+        { tagName: "p", textContent: "two" },
+      ],
+      tagName: "div",
+    });
+    nextRounds = [
+      toolCallRound("d1", "delete_node", {
+        paths: [
+          ["children", 1],
+          ["children", 0],
+        ],
+      }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+
+    const a = createDocumentAssistant();
+    await a.sendMessage("clear the page");
+
+    expect(tab.doc.document.children).toEqual([]);
+    expect(tab.history.index).toBe(1); // One undoable transaction (batched)
+    expect(tab.session.selection).toEqual([]);
+    // What the model read back: the `role: "tool"` message carries the whole result.
+    const reply = a.chatState.messages.find((m) => m.role === "tool");
+    expect(JSON.parse(reply!.content)).toEqual({
+      success: true,
+      summary: "Deleted 2 element(s).",
+    });
+    expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([
+      { disk: false, ok: true, path: "/project/index.json", tool: "Delete" },
+    ]);
+  });
+
+  test("a delete_node aimed at Project Settings is refused by the person's own gate", async () => {
+    /* `selection.setPaths` runs — project.json is drawn as a tree and `document.open` holds — and
+       then `selection.delete`'s `when` (`hasSelection` requires the canvas) refuses with its
+       sentence. Nothing is written, and the model reads the refusal a palette would print. */
+    const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
+    editorKind = "config";
+    nextRounds = [
+      toolCallRound("d1", "delete_node", { paths: [["children", 0]] }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+
+    const a = createDocumentAssistant();
+    await a.sendMessage("delete it");
+
+    expect((tab.doc.document.children as unknown[]).length).toBe(1);
+    expect(tab.doc.dirty).toBe(false);
+    const reply = a.chatState.messages.find((m) => m.role === "tool");
+    expect(JSON.parse(reply!.content)).toEqual({
+      error:
+        'Command "selection.delete" is not available right now — it requires an element ' +
+        "selected on the canvas that has a sibling position.",
+      success: false,
+    });
+    expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([]);
   });
 
   test("create_project adopts the scaffold and re-keys the pre-project session", async () => {

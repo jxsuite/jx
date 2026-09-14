@@ -36,7 +36,7 @@
  */
 
 import { activeTab } from "../workspace/workspace";
-import { clearProblems, notify } from "./notify";
+import { clearProblems, notify, problemFindings } from "./notify";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { JxElement } from "@jxsuite/schema/types";
@@ -499,8 +499,30 @@ export function a11yCommands(): AnyCommand[] {
         description:
           "Check the open document for accessibility problems an author can fix — missing alt " +
           "text, unlabelled controls, skipped heading levels, vague link text, duplicate ids — " +
-          "and file each as a Problem naming its WCAG criterion.",
+          "and file each as a Problem naming its WCAG criterion. The findings come back as data.",
         name: "check_accessibility",
+        /* A read the model has no other way to perform. The report is the PANEL's own read — the
+           Problems store filtered by this source — minus the unchecked-coverage rows, which are
+           about what this run could not see and are counted as such rather than listed as
+           defects. "Check this page and fix what you find" is two rounds, not a parse of a toast. */
+        report: () => {
+          const unchecked = unavailableChecks().length;
+          const findings = problemFindings(A11Y_PROBLEM_SOURCE).filter(
+            (finding) => !finding.key?.startsWith("a11y.unavailable."),
+          );
+          const n = findings.length;
+          const coverage =
+            unchecked === 0
+              ? ""
+              : ` ${unchecked} check${unchecked === 1 ? "" : "s"} could not run and ${unchecked === 1 ? "is" : "are"} listed in Problems as such.`;
+          return {
+            data: findings,
+            summary:
+              n === 0
+                ? `No accessibility problems found in this document.${coverage}`
+                : `Filed ${n} accessibility problem${n === 1 ? "" : "s"} in Problems.${coverage}`,
+          };
+        },
       },
       category: "Document",
       group: "2_document",

@@ -344,7 +344,8 @@ describe("addProjectLocale — the write both doors make", () => {
   test("declares the first language of a project that had no i18n block", async () => {
     const { state } = installMockPlatform();
     resetStudioState({ projectConfig: {} });
-    await addProjectLocale("pt-br");
+    // `true` is the answer the command's report reads: this run wrote the file.
+    expect(await addProjectLocale("pt-br")).toBe(true);
     expect(config().i18n).toEqual({ locales: ["pt-BR"] });
     expect(written(state).i18n.locales).toEqual(["pt-BR"]);
   });
@@ -365,7 +366,7 @@ describe("addProjectLocale — the write both doors make", () => {
   test("a malformed tag is notified, never written", async () => {
     const { state } = installMockPlatform();
     resetStudioState({ projectConfig: { i18n: { locales: ["en"] } } });
-    await addProjectLocale("en US");
+    expect(await addProjectLocale("en US")).toBe(false);
     expect(config().i18n.locales).toEqual(["en"]);
     expect(state.files.has("project.json")).toBe(false);
     // `error` files a Problem rather than a toast — a refusal that must be fixed, not one that
@@ -376,7 +377,7 @@ describe("addProjectLocale — the write both doors make", () => {
   test("a tag already declared in another case is a no-op that says so", async () => {
     const { state } = installMockPlatform();
     resetStudioState({ projectConfig: { i18n: { locales: ["FR-ca"] } } });
-    await addProjectLocale("fr-CA");
+    expect(await addProjectLocale("fr-CA")).toBe(false);
     expect(config().i18n.locales).toEqual(["FR-ca"]);
     expect(state.files.has("project.json")).toBe(false);
     expect(toasts.some((t) => t.message.includes("already one of this project's"))).toBe(true);

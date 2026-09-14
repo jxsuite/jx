@@ -59,12 +59,9 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the Library — every page, layout, component, content entry and media file in " +
-          "the project, as a browsable tab.",
-        name: "open_library",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome. None of the Library family is
+         projected — every one of these verbs shapes a listing a person reads, and the model has
+         `list_files` / `search_files` for the same facts. */
       run: () => {
         openLibraryTab();
       },
@@ -84,10 +81,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description: "Filter the Library to one category of project file.",
-        name: "set_library_category",
-      },
+      /* No `aiTool`: a listing filter for a person (§12.4, rule 1). */
       run: (_ctx, args) => {
         const key = enumArg("library.setCategory", args, "category", LIBRARY_CATEGORY_KEYS);
         setLibraryCategory(key);
@@ -110,10 +104,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description: "Choose the Library's layout: table, cards, media, calendar or board.",
-        name: "set_library_layout",
-      },
+      /* No `aiTool`: a listing filter for a person (§12.4, rule 1). */
       run: (_ctx, args) => {
         const layout = enumArg<LibraryLayout>("library.setLayout", args, "layout", LIBRARY_LAYOUTS);
         setLibraryLayout(layout);
@@ -135,10 +126,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description: "Filter the Library's items by a text query over name and path.",
-        name: "set_library_search",
-      },
+      /* No `aiTool`: a listing filter for a person; the model has `search_files` (§12.4, rule 1). */
       run: (_ctx, args) => {
         setLibrarySearch(optionalStringArg("library.setSearch", args, "query") ?? "");
       },
@@ -166,13 +154,7 @@ export function libraryCommands(): AnyCommand[] {
       // A monolingual project has no facet to set: the Library draws no picker, and offering the
       // Verb would name a value space with one member in it.
       when: (ctx) => ctx.project.open && ctx.project.isMultilingual,
-      aiTool: {
-        description:
-          "Filter the Library to the files under one language's directory. Files outside a " +
-          "locale directory — which under prefix-except-default includes the default language's " +
-          "own pages — are not in any language's list.",
-        name: "set_library_locale",
-      },
+      /* No `aiTool`: a listing filter for a person (§12.4, rule 1). */
       run: (_ctx, args) => {
         const choice = enumArg("library.setLocale", args, "locale", localeChoices());
         setLibraryLocale(choice === "all" ? "" : choice);
@@ -187,10 +169,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description: "Re-scan the project's files and rebuild the Library's listing.",
-        name: "refresh_library",
-      },
+      /* No `aiTool`: chrome (§12.4, rule 1). */
       run: () => refreshLibrary(),
       title: "Library: Rescan Files",
     },
@@ -214,12 +193,8 @@ export function libraryCommands(): AnyCommand[] {
       requires: "an open project",
       when: (ctx) => ctx.project.open,
       undo: "project",
-      aiTool: {
-        description:
-          "Create a page, layout, component or content entry in the directory its kind belongs " +
-          "to, then open it.",
-        name: "new_library_entry",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: it waits on the New File prompt;
+         `create_page` / `create_component` cover the job. */
       run: async (_ctx, args) => {
         const declared = libraryNewEntries().map((entry) => entry.key);
         const key = enumArg("library.newEntry", args, "type", declared);

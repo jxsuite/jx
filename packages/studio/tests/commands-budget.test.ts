@@ -35,6 +35,14 @@ describe("checkChromeBudget", () => {
     }
   });
 
+  test("the assistant's tool list has a cap, held in the same place as the chrome's", () => {
+    /* A prompt is chrome for a model. The count against it — hand rows plus projected records —
+       is asserted in `tests/ai-command-tools.test.ts`, because the hand table is not bare-Bun
+       loadable; the NUMBER lives here so raising it is the same kind of decision as a sixth
+       primary command. */
+    expect(CHROME_BUDGET.assistantTools).toBe(30);
+  });
+
   test("a ninth inline-format verb is a design decision, not an append", () => {
     /* The bar's verb cluster and its format cluster are two placements over one surface, with two
        caps, because eight format verbs sharing the cluster's cap of five would have pushed Bold

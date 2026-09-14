@@ -250,12 +250,13 @@ describe("the surface itself", () => {
 });
 
 describe("document.openSeo", () => {
-  test("it is a document-level record the palette can reach, and the assistant can call", () => {
+  test("it is a document-level record the palette can reach, and not an assistant tool", () => {
     const [command] = seoCommands();
     expect(command!.id).toBe("document.openSeo");
     expect(command!.level).toBe("document");
     expect(command!.menus).toContain("palette");
-    expect(command!.aiTool?.name).toBe("open_seo");
+    // It opens a modal for a person — §12.4's first deletion rule; a declaration would MAKE a tool.
+    expect(command!.aiTool).toBeUndefined();
   });
 
   test("it needs an open document, and opens the surface over the active one", async () => {

@@ -6,7 +6,12 @@
  */
 import { describe, expect, test } from "bun:test";
 import { CommandUnavailableError, createCommandRegistry } from "../src/commands/registry";
-import type { AnyCommand, Command, CommandRegistry } from "../src/commands/registry";
+import type {
+  AiToolProjection,
+  AnyCommand,
+  Command,
+  CommandRegistry,
+} from "../src/commands/registry";
 import { emptyContext, makeContext } from "../src/commands/context";
 import type { CommandContext } from "../src/commands/context";
 import { KeybindingConflictError } from "../src/commands/keymap";
@@ -117,6 +122,119 @@ describe("registration", () => {
       ]),
     ).toThrow(/invalid command id/);
     expect(registry.list().map((c) => c.id)).toEqual(["a.one"]);
+  });
+});
+
+describe("an aiTool declaration that cannot be completed is refused at registration", () => {
+  /*
+   * Declaring `aiTool` MAKES a tool (`services/ai-command-tools.ts` projects every record that
+   * carries one), so the only failure left is a declaration the projection cannot honour — and
+   * each of those is refused here, naming the record, rather than reaching the model as a tool it
+   * cannot use or not reaching it at all (issue 273).
+   */
+  const projected = (over: Partial<Command> & Pick<Command, "id">) =>
+    command({
+      level: "document",
+      aiTool: { name: "do_thing", description: "Does a thing.", report: () => "Did the thing." },
+      ...over,
+    });
+
+  test("a tool name that is not snake_case", () => {
+    const { registry } = harness();
+    expect(() =>
+      registry.register(
+        projected({
+          id: "a.one",
+          aiTool: { name: "doThing", description: "d", report: () => "r" },
+        }),
+      ),
+    ).toThrow('command "a.one" aiTool name "doThing" is not snake_case');
+    expect(registry.list()).toHaveLength(0);
+  });
+
+  test("a tool name another record already projects, and the claim survives only a registration", () => {
+    const { registry } = harness();
+    registry.register(projected({ id: "a.one" }));
+    expect(() => registry.register(projected({ id: "b.two" }))).toThrow(
+      'command "b.two" aiTool name "do_thing" is already projected by "a.one"',
+    );
+    // A record refused LATER — by the keymap — must not have claimed its name on the way out.
+    registry.register(command({ id: "c.chord", keybinding: "mod+d" }));
+    expect(() =>
+      registry.register(
+        projected({
+          id: "d.four",
+          keybinding: "mod+d",
+          aiTool: { name: "other_thing", description: "d", report: () => "r" },
+        }),
+      ),
+    ).toThrow(KeybindingConflictError);
+    expect(() =>
+      registry.register(
+        projected({
+          id: "e.five",
+          aiTool: { name: "other_thing", description: "d", report: () => "r" },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  test("a projection with no report — the JS caller the type cannot stop", () => {
+    const { registry } = harness();
+    const reportless = { name: "do_thing", description: "d" } as unknown as AiToolProjection;
+    const record = projected({ id: "a.one", aiTool: reportless });
+    expect(() => registry.register(record)).toThrow(/declares aiTool without a report/);
+  });
+
+  test("an application-level record", () => {
+    const { registry } = harness();
+    expect(() => registry.register(projected({ id: "view.zen", level: "application" }))).toThrow(
+      /is application-level and cannot project to the assistant/,
+    );
+  });
+
+  test("a selection-level record that declares the paths the bridge supplies", () => {
+    const { registry } = harness();
+    const colliding = projected({
+      id: "selection.thing",
+      level: "selection",
+      args: argsSchema({ paths: stringProperty("nope") }),
+    });
+    expect(() => registry.register(colliding)).toThrow(
+      'command "selection.thing" is selection-level and may not declare "paths"',
+    );
+    // A selection-level record with an argument of its OWN composes after `paths`; only the
+    // Collision is refused.
+    const own = projected({
+      id: "selection.other",
+      level: "selection",
+      args: argsSchema({ tag: stringProperty("a tag") }),
+      aiTool: { name: "other_thing", description: "d", report: () => "r" },
+    });
+    expect(() => registry.register(own)).not.toThrow();
+  });
+
+  test("a gated record with no requires sentence", () => {
+    const { registry } = harness();
+    expect(() =>
+      registry.register(projected({ id: "a.one", when: (ctx) => ctx.project.open })),
+    ).toThrow(/has no requires sentence/);
+    expect(() =>
+      registry.register(projected({ id: "b.two", enablement: (ctx) => ctx.project.open })),
+    ).toThrow(/has no requires sentence/);
+    // Ungated: nothing to explain, nothing to refuse.
+    expect(() => registry.register(projected({ id: "c.three" }))).not.toThrow();
+    // Gated with the sentence: the shape every projected record ships in.
+    expect(() =>
+      registry.register(
+        projected({
+          id: "d.four",
+          when: (ctx) => ctx.project.open,
+          requires: "an open project",
+          aiTool: { name: "gated_thing", description: "d", report: () => "r" },
+        }),
+      ),
+    ).not.toThrow();
   });
 });
 
