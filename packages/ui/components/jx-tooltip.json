@@ -43,7 +43,7 @@
     "flipped": {
       "type": "boolean",
       "default": false,
-      "description": "Whether the tip landed ABOVE its control because there was no room below. Written by the element when it opens, and read by nothing but the arrow: a pointer pinned to the block-start edge of a tip that flipped points away from the control it belongs to. A host that places the tip itself sets x and y, and sets this to say which way its arrow faces. Anchored, the flip is the platform's and this is MEASURED after the first frame — the tip's box above its control's — so the arrow follows a flip the element did not make."
+      "description": "Whether the tip landed ABOVE its control because there was no room below. Written by the element when it opens, and read by nothing but the arrow: a pointer pinned to the block-start edge of a tip that flipped points away from the control it belongs to. A host that places the tip itself sets x and y, and sets this to say which way its arrow faces. Anchored, the flip is the platform's and this is MEASURED — the tip's box above its control's — a frame after the tip shows and again, at most once per frame, whenever the page scrolls, the window resizes or either box changes size, until the tip closes, so the arrow follows a flip the element did not make, including one the platform makes while the tip is up."
     },
     "anchored": {
       "type": "boolean",
@@ -73,7 +73,7 @@
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/tooltip.ts",
       "$export": "onTooltipToggle",
-      "description": "Mirrors the platform's toggle into open, and places a freshly shown tip under the control it describes — or, when the platform is placing it by anchor, only measures a frame later which side of the control it landed on, so the arrow can follow. Placing here rather than on the gesture is what lets the declarative path work: an interestfor control shows the tip without telling the element anything, and the toggle is the first the element hears of it."
+      "description": "Mirrors the platform's toggle into open, and places a freshly shown tip under the control it describes — or, when the platform is placing it by anchor, only reads back which side of the control it is on — a frame later and then on every scroll, resize and size change while it shows — so the arrow can follow; the closing toggle stops that reading. Placing here rather than on the gesture is what lets the declarative path work: an interestfor control shows the tip without telling the element anything, and the toggle is the first the element hears of it."
     },
     "onReady": {
       "$prototype": "Function",
