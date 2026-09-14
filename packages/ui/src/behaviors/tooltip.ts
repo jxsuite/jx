@@ -689,17 +689,21 @@ let mintedHints = 0;
  * Mint the id stem a control that draws its `hint` as a `jx-tooltip` needs, and write it into
  * `uid`.
  *
- * `jx-action-button` and `jx-button` render their tip as a child of their own element, and the pair
- * is wired by id in both directions: `interestfor` on the control naming the tip, which is what
- * shows it with nothing bound on an engine that has interest invokers (Chrome 152 — and NOT the
- * desktop app's Chromium 147, which is on the fallback path until the CEF bump reaches it); `for`
- * on the tip naming the control, which is what {@link onTooltipReady} resolves by id rather than by
- * an attribute scan of the document; and `aria-describedby` on the control naming the tip again,
- * which is what makes the hint a DESCRIPTION beside the name rather than the name itself. So a
- * consumer writes none of the three, and two hinted buttons in one toolbar cannot collide. A
- * document cannot mint the stem: the closed operator set has no counter and no identity, which is
- * the sidecar case specs/ui.md §3.2 sanctions. The stem carries the host's own tag, so an id read
- * off the inspector says what it belongs to.
+ * `jx-action-button`, `jx-button` and `jx-switch` render their tip as a child of their own element,
+ * and the pair is wired by id in both directions: `interestfor` on the control naming the tip,
+ * which is what shows it with nothing bound on an engine that has interest invokers (Chrome 152 —
+ * and NOT the desktop app's Chromium 147, which is on the fallback path until the CEF bump reaches
+ * it); `for` on the tip naming the control, which is what {@link onTooltipReady} resolves by id
+ * rather than by an attribute scan of the document; and `aria-describedby` on the control naming
+ * the tip again, which is what makes the hint a DESCRIPTION beside the name rather than the name
+ * itself. So a consumer writes none of the three, and two hinted controls in one toolbar cannot
+ * collide. The switch writes only the last two: its trigger is the `<label>` wrapping the input,
+ * and interest invokers are supported on `a`, `area` and `button` alone, so an `interestfor` there
+ * would show nothing on Chrome 152 while telling {@link bindTooltip} the platform had the pair — it
+ * is wired by `for` and bound on every engine instead. A document cannot mint the stem: the closed
+ * operator set has no counter and no identity, which is the sidecar case specs/ui.md §3.2
+ * sanctions. The stem carries the host's own tag, so an id read off the inspector says what it
+ * belongs to.
  *
  * The write lands after the first render, because `onMount` runs a microtask after it — so the tip
  * and the three attributes appear on the second pass, and every binding that reads the stem guards
@@ -707,7 +711,7 @@ let mintedHints = 0;
  * `title` until it is enabled.
  *
  * @param state The control's reactive scope, whose `uid` this writes.
- * @param host The `jx-action-button` or `jx-button` element.
+ * @param host The `jx-action-button`, `jx-button` or `jx-switch` element.
  */
 export function mintHintId(state: Record<string, unknown>, host: HTMLElement): void {
   mintedHints += 1;

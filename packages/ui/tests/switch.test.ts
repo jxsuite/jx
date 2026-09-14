@@ -4,6 +4,7 @@ import { documentStyleText } from "@jxsuite/runtime";
 import type { JxElement } from "@jxsuite/schema/types";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
+import { describeHint } from "./hint-contract.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -197,15 +198,45 @@ describe("jx-switch", () => {
     expect(description).toContain("§3.2");
   });
 
-  test("hint becomes the row's title, and no hint removes the attribute", async () => {
-    const el = await toggle();
-    expect(control(el).hasAttribute("title")).toBe(false);
-    el.hint = "Sign in to publish from here.";
-    await tick();
+  test("a disabled row's hint is the LABEL's title, and the tip is described on the INPUT", async () => {
+    /* The hint contract below is shared with the buttons, where the wired node and the focused
+       node are one `<button>`. On a switch they are two, and this is the one test that says which
+       is which: the title goes on the wrapping label, because that is the row the reader hovers —
+       a title on the 28px track alone would sit over the one part of the row nobody points at —
+       and the description goes on the input, because that is the control a screen reader has. */
+    const el = await toggle({ disabled: "", hint: "Sign in to publish from here." });
     expect(control(el).getAttribute("title")).toBe("Sign in to publish from here.");
+    expect(input(el).hasAttribute("title")).toBe(false);
+    expect(input(el).hasAttribute("aria-describedby")).toBe(false);
+    el.disabled = false;
+    await tick();
+    expect(control(el).hasAttribute("title")).toBe(false);
+    const tip = el.querySelector<HTMLElement>('[part="tooltip"] > jx-tooltip')!;
+    expect(tip.getAttribute("for")).toBe(control(el).id);
+    expect(input(el).getAttribute("aria-describedby")).toBe(tip.id);
+    // The label's id is the stem; the input keeps no id of its own, so no consumer's `for` lands on it.
+    expect(control(el).id).toMatch(/^jx-switch-\d+$/);
+    expect(input(el).hasAttribute("id")).toBe(false);
+    // No hint at all: no title, no tip, and the label still carries its stem.
     el.hint = "";
     await tick();
     expect(control(el).hasAttribute("title")).toBe(false);
+    expect(el.querySelector('[part="tooltip"]')!.childNodes).toHaveLength(0);
+  });
+
+  test("the label declares no interestfor, and the document says why", () => {
+    /* Interest invokers are supported on a, area and button only. A label carrying `interestfor`
+       shows nothing on Chrome 152 and, worse, tells the tooltip sidecar the platform has the pair,
+       so nothing is bound either: the one wiring that draws no tip on any engine. */
+    const doc = documents["jx-switch"]!;
+    const label = (doc.children as JxElement[])[0]!;
+    expect(label.attributes?.["part"]).toBe("control");
+    expect(label.attributes).not.toHaveProperty("interestfor");
+    // Nothing the element RENDERS names it; the prose explaining why is in the prop description.
+    expect(JSON.stringify(doc.children)).not.toContain("interestfor");
+    const hint = doc.state!["hint"] as { description: string };
+    expect(hint.description).toContain("NO `interestfor`");
+    expect(hint.description).toContain("`a`, `area` and `button`");
   });
 
   test("disabled reaches the control, and the host says so", async () => {
@@ -371,4 +402,17 @@ describe("jx-switch", () => {
     );
     expect(css).not.toMatch(/\b\d+(?:\.\d+)?m?s\b/);
   });
+});
+
+/*
+ * The hint hybrid the buttons ship, on a switch: a `jx-tooltip` child while enabled, the label's
+ * `title` while disabled. The shape names the label as the wired node and the input as the focused
+ * one, and says the pair is NOT declarative — the label cannot carry `interestfor`, so the sidecar
+ * binds it on every engine, Chrome 152 included, and the contract's stand-in for that engine
+ * asserts the tip still opens rather than that nothing was bound.
+ */
+describeHint("jx-switch", (attrs) => toggle(attrs), {
+  control: '[part="input"]',
+  declarative: false,
+  trigger: '[part="control"]',
 });
