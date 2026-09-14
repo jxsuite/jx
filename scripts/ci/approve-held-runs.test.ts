@@ -1,9 +1,9 @@
 /**
  * Covers `scripts/ci/approve-held-runs.ts` against a scripted GitHub, and pins the way the two
- * pushing lanes, `screenshots.yml` and `schemas.yml`, wire it: the permission it needs, the step
- * that calls it, the concurrency suffix that keeps the approved bot run out of its approver's
- * group, and the actor refusal that makes approving the screenshots lane's own run a skipped job
- * rather than another push.
+ * pushing lanes, `screenshots.yml`, `schemas.yml` and `release-specs.yml`, wire it: the permission
+ * it needs, the step that calls it, the concurrency suffix that keeps the approved bot run out of
+ * its approver's group, and the actor refusal that makes approving the screenshots lane's own run a
+ * skipped job rather than another push.
  *
  * `fetch`, `sleep` and `now` are injected, so nothing here waits or talks to GitHub. What is tested
  * is the discriminator (held means `completed` + `action_required`), the settling rule, the
@@ -22,6 +22,7 @@ const REPO = "jxsuite/jx";
 const WORKFLOWS = join(import.meta.dir, "../../.github/workflows");
 const WORKFLOW_SOURCE = await Bun.file(join(WORKFLOWS, "screenshots.yml")).text();
 const SCHEMAS_SOURCE = await Bun.file(join(WORKFLOWS, "schemas.yml")).text();
+const RELEASE_SPECS_SOURCE = await Bun.file(join(WORKFLOWS, "release-specs.yml")).text();
 const SHA = "3e6b589a845c9472be30333ed1db46599215802a";
 
 const run = (id: number, name: string, over: Partial<WorkflowRun> = {}): WorkflowRun => ({
@@ -264,7 +265,7 @@ describe("crankFor and renderNote", () => {
      * pushing lane about what it has to bring.
      */
     expect(note).toContain("`screenshots.yml` declines its own head on `github.actor`");
-    expect(note).toContain("`schemas.yml` regenerates deterministically");
+    expect(note).toContain("`schemas.yml` and `release-specs.yml` regenerate deterministically");
   });
 
   test("a budget that found no run at all points at the listing, since there is no id to name", () => {
@@ -417,5 +418,22 @@ describe("schemas.yml wires it", () => {
     // Item 3). If a refusal is ever added here, the note's safety argument must say so too.
     expect(workflow.jobs.regenerate!.if ?? "").not.toContain("github-actions[bot]");
     expect(SCHEMAS_SOURCE).toContain("fixed point");
+  });
+});
+
+describe("release-specs.yml wires it", () => {
+  const workflow = Bun.YAML.parse(RELEASE_SPECS_SOURCE) as Workflow;
+  itWiresTheApproval(
+    "release-specs.yml",
+    workflow,
+    "mint",
+    "Say what happened, on the pull request",
+  );
+
+  test("has no actor refusal either: it pushes only when a fragment was minted", () => {
+    // The release pull request is AUTHORED by a bot, so an actor refusal would skip every release;
+    // The lane is safe on its own head because the run its push triggers finds specs/changes/ empty.
+    expect(workflow.jobs.mint!.if ?? "").not.toContain("github-actions[bot]");
+    expect(RELEASE_SPECS_SOURCE).toContain("fixed point");
   });
 });

@@ -65,7 +65,7 @@ Both have a CI lane that **regenerates and pushes the result to your branch** ra
 - **Schemas**: `.github/workflows/schemas.yml` runs the generators and comments with the JSON Pointers that moved, naming `+ /$defs/ClassMethodDef/properties/role/enum/mount` instead of leaving 500 KB of diff to read.
 
 :::doc-note
-A lane's commit is authored by `github-actions[bot]`, and the repository holds every workflow run on a bot-authored commit until it is approved, `ci` included. The screenshots and schemas lanes approve the runs their own push queues (`scripts/ci/approve-held-runs.ts`), so the pull request keeps reporting. If it reads BLOCKED with nothing red after a re-capture, look at the lane's comment: when the approval was refused, the comment names the held runs and the one-line `gh api` command that releases each of them.
+A lane's commit is authored by `github-actions[bot]`, and the repository holds every workflow run on a bot-authored commit until it is approved, `ci` included. The screenshots, schemas and spec-release lanes approve the runs their own push queues (`scripts/ci/approve-held-runs.ts`), so the pull request keeps reporting. If it reads BLOCKED with nothing red after a re-capture, look at the lane's comment: when the approval was refused, the comment names the held runs and the one-line `gh api` command that releases each of them.
 :::
 
 Locally the same two commands do the same work:
