@@ -13,11 +13,15 @@ export function generateSpecChangelog(): string {
   const specs = parseSpecStatuses(SPECS_DIR);
 
   const lines: string[] = [
-    frontmatter({
-      title: "Spec changelog",
-      description:
-        "Release history for every specification, generated from each spec's changelog section: version, date, and what changed.",
-    }),
+    frontmatter(
+      {
+        title: "Spec changelog",
+        description:
+          "Release history for every specification, generated from each spec's changelog section: version, date, and what changed.",
+      },
+      // A projection of the specs, read from its page and not searched for by name (#305).
+      { search: false },
+    ),
     "",
     BANNER,
     "",

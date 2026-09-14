@@ -31,6 +31,14 @@ code:
   - packages/runtime/src/runtime.ts # repo paths that must exist
 ```
 
+One more optional key changes what the site does with a page rather than what CI checks:
+
+```yaml
+search: false # keep this page out of search-index.json
+```
+
+`search: false` keeps a page out of the site's search index, and out of nothing else: the page still builds, still has its URL, still appears in the sidebar and in `llms.txt`. It exists for pages that are worth publishing but not worth finding, which in this tree means the three reference pages derived from the specs: the [spec changelog](/docs/extending/reference/spec-changelog), [implementation status](/docs/extending/reference/implementation-status) and [standards alignment](/docs/extending/reference/standards). Their generators write it, because each is a projection of the specs that grows on every release and is read from its own page rather than searched for. The generated catalogues (formulas, operators, commands, shortcuts, starters, routes) stay indexed, because a formula name or a shortcut should land on the page that lists it, and a hand-written page is real documentation and should never carry it. Only the boolean `false` opts out. A value such as `"false"` or `no` is indexed, and the build warns about it once, because a page that is present can be found and a page that is absent cannot explain why. See [Search indexes](/docs/extending/extensions/search#opting-a-page-out).
+
 In the other direction, code comments may carry `@docs <slug>` tags (e.g. `@docs framework/concepts/reactivity`) pointing at the page that documents them. Those are validated too.
 
 These associations also power `bun run docs:sync`: given your working diff, it lists the pages and spec sections tied to the source files you changed. It runs automatically as a pre-commit advisory (and as an agent stop-check), so behavior changes and their documentation land together. It never blocks, because a pure refactor needs no doc update.
@@ -130,7 +138,7 @@ Use at most a couple per screenful, and never open a page with one.
 - **Studio surface page**: definition sentence (what it is, where it lives) → hero screenshot → "Open …" click path first → verb-first task sections with numbered steps and a screenshot after each state-changing step → a `:::doc-note` naming what Studio writes, linking the Framework counterpart → related links.
 - **Framework concept page**: a "Studio writes this format for you" note linking the Studio surface → smallest complete JSON example first → one H2 per variant with a short example each → how it compiles → hard rules → related links.
 - **Tutorial**: outcome + finished screenshot + rough duration + prerequisites → numbered steps with expected-result sentences ("You should now see…") → "What you built" recap → next steps.
-- **Generated reference**: do not edit these. They carry a `GENERATED` banner and are produced by `bun run docs:generate` from package data, the specs' status markers, the specs' changelogs, and the specs' `## N. Standards Alignment` tables; CI fails on drift. Releasing a spec (`bun run spec:bump`) changes [Implementation status](/docs/extending/reference/implementation-status) and [Spec changelog](/docs/extending/reference/spec-changelog); editing a spec's Standards Alignment table changes [Standards alignment](/docs/extending/reference/standards). Regenerate in the same change set.
+- **Generated reference**: do not edit these. They carry a `GENERATED` banner (the three spec-derived pages also `search: false`), and are produced by `bun run docs:generate` from package data, the specs' status markers, the specs' changelogs, and the specs' `## N. Standards Alignment` tables; CI fails on drift. Releasing a spec (`bun run spec:bump`) changes [Implementation status](/docs/extending/reference/implementation-status) and [Spec changelog](/docs/extending/reference/spec-changelog); editing a spec's Standards Alignment table changes [Standards alignment](/docs/extending/reference/standards). Regenerate in the same change set.
 
 ## Internal links
 

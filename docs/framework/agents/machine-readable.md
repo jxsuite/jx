@@ -59,6 +59,8 @@ This is the fetch for an agent that wants the whole thing at once: one request, 
 
 The index that powers the site's own search box, emitted by the [search extension](/docs/framework/site/search) during the build. A `documents` array wrapped in an envelope of `version`, `engine` (`"minisearch"`), the indexed `fields`, and per-field `boost` weights. Each document is one page or one heading-level section within a page, carrying `id`, `collection`, `slug`, `url`, `title`, `description`, `heading`, and `text`. The two granularities **partition** the entry rather than overlapping: a page document (`heading: ""`) carries only the text before its first heading, and the section documents carry the rest. Reassemble a page by concatenating its page document with every document whose `id` starts with `<page-id>#`. A collection that keeps one directory per language adds `locale`, and then the `id` carries the tag too (`docs:fr-CA:start/install`), because two translations share an entry id.
 
+The index is not the whole corpus. A page whose frontmatter says `search: false` contributes no documents, and the three reference pages derived from the specs (the spec changelog, implementation status and the standards table) say it; the generated catalogues stay indexed. For those, and for anything you want verbatim, read `full-docs.json`, which carries every page in nav order regardless.
+
 Reach for it when you want lookup rather than reading: it is section-granular, so a query lands on a heading instead of a whole page.
 
 :::doc-note
