@@ -2467,6 +2467,11 @@ function renderMappedArrayInto(
   parentEl.append(anchor);
   const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef, key: keyRef } = arrayDef;
   const keyPointer = isRefObj(keyRef) ? keyRef.$ref : null;
+  /* The instantiation chain the list belongs to (spec.md §16.9), for the same reason
+     {@link renderSwitch} keeps one: a row that arrives with new data is inserted from an effect
+     re-run, and the instance it holds must connect under the chain of the definition that drew
+     the list. */
+  const instancePath = _instancePath;
 
   let warned = false;
   const warnOnce = (message: string): void => {
@@ -2572,7 +2577,7 @@ function renderMappedArrayInto(
 
     pauseTracking();
     try {
-      reconcile(list, keys);
+      underInstancePath(reexpand(instancePath), () => reconcile(list, keys));
     } finally {
       resetTracking();
     }
@@ -2687,6 +2692,11 @@ export function resolveTagName(tagName: unknown, scope: JxScope): string {
 function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions) {
   const path = options?._path ?? [];
   const container = document.createElement(resolveTagName(def.tagName, state));
+  /* The instantiation chain this switch belongs to (spec.md §16.9), read now because the effect
+     below re-runs with nothing on the stack. A case that flips after the first paint puts it back
+     around the insertion, so an instance the new case creates connects under the chain of the
+     definition that drew the switch rather than under none. See {@link _instancePath}. */
+  const instancePath = _instancePath;
 
   if (options?.onNodeCreated) {
     options.onNodeCreated(container, path, def, state);
@@ -2753,7 +2763,9 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
             return;
           }
           container.replaceChildren();
-          scope.run(() => container.append(renderNode(doc, childScope, childOpts)));
+          underInstancePath(reexpand(instancePath), () =>
+            scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
+          );
         })
         .catch((error: unknown) =>
           console.error("Jx $switch: failed to load external case", caseDef.$ref, error),
@@ -2766,7 +2778,9 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
     // Change to anything it read. The bindings inside it track for themselves.
     pauseTracking();
     try {
-      scope.run(() => container.append(renderNode(caseDef, state, childOpts)));
+      underInstancePath(reexpand(instancePath), () =>
+        scope.run(() => container.append(renderNode(caseDef, state, childOpts))),
+      );
     } finally {
       resetTracking();
     }
@@ -3943,6 +3957,219 @@ function injectHead(entries: JxHeadEntry[], _base: string) {
   }
 }
 
+// ─── Instantiation chain (spec.md §16.9) ─────────────────────────────────────
+
+/**
+ * How deep component nesting may go before an instance refuses to render.
+ *
+ * The same number the compiler holds in `MAX_COMPONENT_NESTING` (`@jxsuite/compiler`, `shared.ts`),
+ * and for the same reason: the cycle check in {@link extendInstancePath} catches a definition that
+ * renders ITSELF — same tag, same props — which is the only shape that can never terminate, while a
+ * self-reference whose props change at every level is data-driven recursion that a `$switch` may or
+ * may not bottom out. The seen-set cannot tell those apart, so this cap is what turns a forgotten
+ * stop into a diagnostic instead of a page that never settles. It is written twice because the
+ * compiler depends on the runtime and not the other way round, and the runtime's browser bundle
+ * cannot reach into the build tool; spec.md §16.9 is the one statement both are held to, and the
+ * compiler's `nesting-cap-agreement.test.ts` asserts its copy against this export, so the two
+ * numbers cannot part without a red test in the workspace that owns the copy.
+ */
+export const MAX_COMPONENT_NESTING = 32;
+
+/** One instance on the chain: its tag, and the props it was given, as an identity. */
+interface InstanceFrame {
+  tag: string;
+  /** Every value the instance supplied that its definition's state read (§16.9). */
+  props: Record<string, unknown>;
+}
+
+/**
+ * The chain an instance is created under, and where on it the current expansion began.
+ *
+ * `frames` is every instance from the page-level one down, outermost first. `expansion` is the
+ * index of the first frame that belongs to the SAME synchronous pass as the instance being created:
+ * the cycle check (§16.9 rule 1) looks back no further than that, while the cap (rule 2) counts
+ * every frame. The distinction is what an effect re-run does to certainty. Along one pass a
+ * repeated frame is a render that repeats itself, deterministically, forever. Across a re-run it is
+ * not: the frames above the boundary rendered to completion once, and whether the page asks for one
+ * of them again is its data — an `onMount` that flips a `$switch` into the same tag every time, or
+ * a click that opens one more level of a node that starts closed — which the runtime cannot tell
+ * apart. So the cycle check is not asked across the boundary, and the loop that lives in re-runs is
+ * ended by the cap instead: thirty-three empty hosts and a diagnostic, not a page that never
+ * settles.
+ */
+interface InstancePath {
+  frames: readonly InstanceFrame[];
+  expansion: number;
+}
+
+/** The chain a page-level render runs under: nothing above it. */
+const ROOT_INSTANCE_PATH: InstancePath = { expansion: 0, frames: [] };
+
+/**
+ * The chain of instances whose definitions are being rendered RIGHT NOW.
+ *
+ * A module-level stack rather than a WeakMap from element to chain, and it is worth saying why that
+ * survives `connectedCallback` being async. The callback awaits `buildScope` before it touches the
+ * DOM, and by the time it resumes, whatever the enclosing instance pushed here has long been popped
+ * — so the stack alone would be empty for every instance and catch nothing. What saves it is WHEN
+ * an instance connects: `this.append(child)` in the enclosing render runs the child's
+ * `connectedCallback` synchronously, and every way a definition brings an instance into being —
+ * `renderCustomElementWithProps`, the bare-tag branch of `renderNode`, a nested element inside
+ * either, and a prerendered host drawing its children again as it upgrades — appends it inside that
+ * same synchronous stretch. So the callback reads the stack ONCE, before its first `await`, and
+ * carries the copy across the gap. A WeakMap would need a write at each of those creation sites to
+ * say the same thing.
+ *
+ * A subtree an effect renders LATER — a `$switch` case that flips after the first paint, a `$map`
+ * row that arrives with new data — connects with nothing on the stack, because no enclosing render
+ * is running when the effect re-runs; a write from `onMount` or a click is what triggered it. So
+ * the two renderers that create nodes from an effect each capture the stack when they are first
+ * rendered (which is inside the enclosing pass) and put it back, re-expanded, around every later
+ * insertion ({@link underInstancePath}). That is the one thing this stack needs beyond the
+ * synchronous stretch, and it is what makes the `onMount`-flip shape a diagnostic rather than a
+ * hang. Reading `@vue/reactivity`'s `getCurrentScope()` there instead would find nothing: an effect
+ * re-run restores no scope, and a case or a row renders in a DETACHED scope with no parent.
+ */
+let _instancePath: InstancePath = ROOT_INSTANCE_PATH;
+
+/**
+ * Run `fn` with `path` as the chain, so every instance that CONNECTS during it reads that chain.
+ *
+ * Restored rather than cleared afterwards: the enclosing render's chain is what was there, and a
+ * restore needs no argument about whether anything was.
+ *
+ * @param {InstancePath} path - The chain the instances `fn` connects are created under
+ * @param {() => T} fn - The render, or the insertion that connects what a render made
+ * @returns {T} What `fn` returned
+ */
+function underInstancePath<T>(path: InstancePath, fn: () => T): T {
+  const was = _instancePath;
+  _instancePath = path;
+  try {
+    return fn();
+  } finally {
+    _instancePath = was;
+  }
+}
+
+/**
+ * The chain a later insertion runs under: the same frames, with the expansion beginning now.
+ *
+ * Called on EVERY run of a `$switch` case or a `$map` reconcile, the first one included — harmless
+ * there, because a first run builds into a detached container and nothing connects until the
+ * enclosing pass appends it, under the enclosing pass's own chain.
+ *
+ * @param {InstancePath} path - The chain captured when the renderer was first rendered
+ * @returns {InstancePath}
+ */
+function reexpand(path: InstancePath): InstancePath {
+  return { expansion: path.frames.length, frames: path.frames };
+}
+
+/**
+ * Whether two prop values are the same input to a definition.
+ *
+ * Reference equality first — a `$ref` into the parent's state forwards the same primitive, the same
+ * reactive proxy or the same function to the next level — and structural equality for plain data
+ * rebuilt at each level (`data-jx-props` parsed twice is two objects with one meaning). Plain data
+ * is what JSON can describe: an array, or an object with no prototype but `Object`'s, reactive or
+ * raw. Anything else — a `Map`, a `Set`, a class instance, a circular object — is different from
+ * everything but itself, because its JSON form would not say what it holds and two different values
+ * that serialise alike would close a cycle that was never there. The cost of that policy is a loop
+ * the depth cap catches instead; the alternative is a false diagnostic on a page that would have
+ * ended. Inside plain data the comparison IS the JSON form, so a member JSON cannot see (a
+ * function, a `Map` two levels down) is not seen here either; §16.9 says so.
+ *
+ * @param {unknown} a
+ * @param {unknown} b
+ * @returns {boolean}
+ */
+function samePropValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (!isPlainData(a) || !isPlainData(b)) {
+    return false;
+  }
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a value is an array or a plain object — the shapes whose JSON form is the whole value.
+ *
+ * @param {unknown} value
+ * @returns {value is object}
+ */
+function isPlainData(value: unknown): value is object {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const raw: unknown = toRaw(value);
+  if (Array.isArray(raw)) {
+    return true;
+  }
+  const proto: unknown = Object.getPrototypeOf(raw);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Whether two frames are the same instance: one tag, one set of prop names, equal values.
+ *
+ * @param {InstanceFrame} a
+ * @param {InstanceFrame} b
+ * @returns {boolean}
+ */
+function sameFrame(a: InstanceFrame, b: InstanceFrame): boolean {
+  if (a.tag !== b.tag) {
+    return false;
+  }
+  const keys = Object.keys(a.props);
+  if (keys.length !== Object.keys(b.props).length) {
+    return false;
+  }
+  return keys.every(
+    (key) => Object.hasOwn(b.props, key) && samePropValue(a.props[key], b.props[key]),
+  );
+}
+
+/**
+ * The chain an instance's own render runs under: the enclosing chain plus itself — or the
+ * diagnostic that says why it must not render at all.
+ *
+ * The two messages are the compiler's, word for word (`renderComponentInstance` in
+ * `@jxsuite/compiler`), so a page that fails to build and a canvas that fails to paint say the same
+ * thing about the same definition. Meeting a frame already on the chain, within the current
+ * expansion, is the instance rendering itself with the same props, which never ends; a chain at the
+ * cap is a self-reference whose props change — or whose repeats live in re-runs, where the cycle
+ * check is not asked ({@link InstancePath}) — and whose stop case never came.
+ *
+ * @param {InstancePath} path - The chain the instance was created under
+ * @param {InstanceFrame} frame - The instance about to render
+ * @returns {InstancePath} The chain its children render under
+ * @throws {Error} The named diagnostic — never a stack overflow, never a hang
+ * @docs framework/concepts/components
+ */
+function extendInstancePath(path: InstancePath, frame: InstanceFrame): InstancePath {
+  const chain = [...path.frames.map((f) => f.tag), frame.tag].join(" → ");
+  if (path.frames.slice(path.expansion).some((f) => sameFrame(f, frame))) {
+    throw new Error(
+      `Component <${frame.tag}> renders itself: ${chain}. A component cannot appear inside its own ` +
+        `definition with the same props — the expansion would never end.`,
+    );
+  }
+  if (path.frames.length >= MAX_COMPONENT_NESTING) {
+    throw new Error(
+      `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${chain}. A component that ` +
+        `renders itself with changing props needs a case that stops.`,
+    );
+  }
+  return { expansion: path.expansion, frames: [...path.frames, frame] };
+}
+
 /**
  * Register a custom element from a Jx document.
  *
@@ -4009,6 +4236,17 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       }
       this._jxInitialized = true;
 
+      /* The chain this instance was created under, read BEFORE the first `await`: the enclosing
+         render is still on the stack now and will not be when this callback resumes. See
+         {@link _instancePath} for why that ordering is the whole mechanism. */
+      const enclosingPath = _instancePath;
+      /* What this instance was given, recorded beside each write into state below. It is the
+         instance's identity on the chain (§16.9): two nested instances of one tag that were given
+         the same values render the same thing, forever. Only a value the definition's state READS
+         is recorded — a `$props` key no state entry declares changes nothing about the render, so
+         a definition that "varies" one at each level is still rendering itself. */
+      const supplied: Record<string, unknown> = {};
+
       // The definition as it stands NOW — a redefinition since this class was made is honoured.
       const live = _elementDefs.get(tagName) ?? { base: initialBase, doc: initialDef };
       const def = live.doc;
@@ -4026,6 +4264,9 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       for (const attr of observedAttrs) {
         if (this.hasAttribute(attr)) {
           absorbAttribute(state, attr, this.getAttribute(attr));
+          // The raw string, not the coerced value: coercion is a function of it, so two equal
+          // Strings are one input.
+          supplied[attr] = this.getAttribute(attr);
         }
       }
 
@@ -4039,6 +4280,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
             }
             if (key in (def.state ?? {})) {
               state[key] = val;
+              supplied[key] = val;
             }
           }
         } catch {}
@@ -4060,6 +4302,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         }
         if (key in (def.state ?? {})) {
           state[key] = this.getAttribute(name);
+          supplied[key] = this.getAttribute(name);
           this.removeAttribute(name);
         }
       }
@@ -4075,7 +4318,48 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
           instanceSupplies(this, key)
         ) {
           state[key] = (this as Record<string, unknown>)[key];
+          supplied[key] = (this as Record<string, unknown>)[key];
         }
+      }
+
+      /* Every input is known now, so this is where an instance that would never finish is
+         refused (§16.9): before it has a state, a style or a child, so a refused host is an empty
+         element the page renders around — emptied of what the definition wrote into it for its
+         slots too, since nothing will distribute that. The diagnostic is REPORTED rather than
+         thrown onward: a throw from an async `connectedCallback` is an unhandled rejection that
+         names no element and stops nothing. It goes two ways. The console is the runtime's
+         surface for a render that fails after the page has settled (`$switch` external cases and
+         the dev proxies report there too). The `jx-error` event is the surface a HOST can hold:
+         it bubbles from the refused element with the error on it, so a page, or the studio canvas
+         wrapping one, can collect it where a console line inside an iframe reaches nobody. The
+         rest of the page keeps rendering, which is the point.
+
+         Neither surface is used for a host that is no longer in the document. A refused instance
+         was connected when this callback began, and one that is not by the time the verdict is in
+         belongs to a subtree the page discarded during the `await` above: a prerendered host of the
+         same tag that was parsed INSIDE another and re-rendered from the definition by the outer
+         one's upgrade, which captures it as slot content and empties itself. Its replacement is
+         the instance that reports, on the chain the outer upgrade draws; reporting from the
+         discarded copy too said one defect twice. The refusal itself still stands, so a host
+         re-attached later is an empty element and not a hang. */
+      let ownPath: InstancePath;
+      try {
+        ownPath = extendInstancePath(enclosingPath, { props: supplied, tag: tagName });
+      } catch (error) {
+        this.replaceChildren();
+        if (!this.isConnected) {
+          return;
+        }
+        console.error(`Jx: <${tagName}> was not rendered:`, error);
+        this.dispatchEvent(
+          new ErrorEvent("jx-error", {
+            bubbles: true,
+            composed: true,
+            error,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return;
       }
       /*
        * Set up property getters/setters that forward into reactive state. Private entries get NO
@@ -4134,10 +4418,14 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
          themselves. Restored rather than cleared, because one definition may render another. */
       const wasInside = _canvasInsideStampedHost;
       _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
+      /* And the chain, for the same span: an instance this definition draws connects inside
+         `this.append` below and reads it there ({@link underInstancePath}). */
       try {
-        for (const childDef of children) {
-          this.append(renderNode(childDef, state));
-        }
+        underInstancePath(ownPath, () => {
+          for (const childDef of children) {
+            this.append(renderNode(childDef, state));
+          }
+        });
       } finally {
         _canvasInsideStampedHost = wasInside;
       }
