@@ -115,8 +115,14 @@ export interface ProjectToolsCtx {
    * tab happened to be re-read from disk afterwards ({@link ProjectToolsCtx.reloadTab}); that
    * re-read is gone, because a second parse of `project.json` is the very rival object the
    * configuration document exists to prevent.
+   *
+   * `text` is the bytes that reached the file, of which `config` is the parse. The document keeps a
+   * layout record for the file it holds (§9.4), and the assistant's write replaces the file — so
+   * the record has to travel with the write, or the next settings commit re-lays the file the model
+   * just formatted with the record of the file it had read before (issue 331). Handing the text
+   * over is what lets the document derive that record without reading the file back.
    */
-  onProjectConfigWritten?: (config: ProjectConfig) => void | Promise<void>;
+  onProjectConfigWritten?: (config: ProjectConfig, text: string) => void | Promise<void>;
 }
 
 /**
@@ -399,7 +405,7 @@ export function registerProjectTools(
            that tab, which is the split the adoption just closed. Every other path is a plain file
            and its tab has to be told from disk. */
         if (projectConfig) {
-          await onProjectConfigWritten?.(projectConfig);
+          await onProjectConfigWritten?.(projectConfig, content);
         } else if (openTab) {
           await reloadTab(relPath);
         }

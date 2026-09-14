@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.12.0-draft\
+**Version:** 0.12.1-draft\
 **Status:** Partial\
-**Updated:** 2026-09-13\
+**Updated:** 2026-09-14\
 **License:** MIT
 
 ---
@@ -1665,7 +1665,7 @@ The committed `project.json` files in a repository are formatted by whatever for
 
 **The commit compares semantically and writes nothing when nothing changed.** Both sides of the comparison are the same serializer over the same layout record, so the test is formatting-independent, and it is what makes a settings edit reviewable.
 
-**A real one-field edit is a one-line diff.** The chokepoint serializes through §9.4's layout-preserving serializer with the record the file was read in — the open `project.json` tab's when there is one, otherwise the one the chokepoint reads from disk once per binding — so what changes on disk is the field that changed. A key-span splice over the original text was the alternative and is not needed: the formatter preserves exactly the facts the record holds, so the re-serialization is the formatted file.
+**A real one-field edit is a one-line diff.** The chokepoint serializes through §9.4's layout-preserving serializer with the record the file was read in or was last written with — the open `project.json` tab's when there is one, otherwise the one the chokepoint reads from disk once per binding — so what changes on disk is the field that changed. A key-span splice over the original text was the alternative and is not needed: the formatter preserves exactly the facts the record holds, so the re-serialization is the formatted file. A `project.json` that reaches disk without passing through the chokepoint (the assistant's `write_file`) is adopted into the document together with the text that was written, and the record is derived from that text: the file IS those bytes now, so the record of the file the chokepoint read before the write would re-lay the whole file on the next edit, and reading the file back to learn its layout would be the second parse the adoption exists to prevent. The document takes the written configuration's top-level key order in the same step, because the serializer writes keys in the document's order and a key the assistant moved would otherwise move back on the next commit.
 
 ### 17.3 What the surfaces may assume
 
@@ -1855,6 +1855,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.12.1-draft** (2026-09-14) — §17.2 a project.json the assistant writes is adopted together with its text, so the layout record and the top-level key order the next settings commit uses are the file's as written.
 - **0.12.0-draft** (2026-09-13) — aiTool is a complete projection: declaring it makes a tool, report is required, coerceArgs runs in registry.run for every caller, an idempotent run answers `wrote: []` (§13.1, §13.5); the Languages panel addresses a row by path (§20.4).
 - **0.11.5-draft** (2026-09-13) — §9.4 a JSON document is saved in the layout its file was read in — inline objects, blank lines and escapes preserved by pointer, arrays and everything else laid out as the formatter would, the print width measured in display columns; §17.2's settings commit goes through the same serializer with the file's record, so an edit is a one-line diff, and §17 is Implemented (#308).
 - **0.11.4-draft** (2026-09-13) — §4.1 the canvas site-style sheet emits selector-keyed blocks (element, list, class) unscoped and the color-scheme hint triplet, byte-for-byte what jx build writes from project.json#/style; it used to drop element-selector rules (#296).
@@ -1990,4 +1991,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.12.0-draft_
+_`@jxsuite/studio` Specification v0.12.1-draft_

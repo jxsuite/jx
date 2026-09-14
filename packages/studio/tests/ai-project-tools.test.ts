@@ -263,16 +263,21 @@ describe("ai-project-tools — write_file", () => {
     expect(reloadTab).toHaveBeenCalledWith("pages/index.json");
   });
 
-  test("a project.json write syncs the config through onProjectConfigWritten", async () => {
-    const onProjectConfigWritten = mock((_c: object) => {});
+  test("a project.json write syncs the config through onProjectConfigWritten, text and all", async () => {
+    const onProjectConfigWritten = mock((_c: object, _text: string) => {});
     const { registry, state } = makeHarness({}, { onProjectConfigWritten });
-    const res = await registry.execute("write_file", {
-      content: JSON.stringify({ name: "Renamed Site" }),
-      path: "project.json",
-    });
+    /* Laid out as no serializer here would lay it: the text is the model's, and the configuration
+       document derives the file's layout record from it (issue 331), so the callback has to receive
+       the bytes that reached the platform — verbatim, not a re-rendering of the parse. */
+    const content = '{\n  "name": "Renamed Site",\n\n  "style": { "--a": "1" }\n}\n';
+    const res = await registry.execute("write_file", { content, path: "project.json" });
     expect(res.success).toBe(true);
-    expect(onProjectConfigWritten).toHaveBeenCalledWith({ name: "Renamed Site" });
+    expect(onProjectConfigWritten).toHaveBeenCalledWith(
+      { name: "Renamed Site", style: { "--a": "1" } },
+      content,
+    );
     expect(writes(state)).toHaveLength(1);
+    expect(writes(state)[0]![2]).toBe(content);
 
     const bad = await registry.execute("write_file", {
       content: "nope{",
