@@ -4,5 +4,15 @@ registry = "https://registry.npmjs.org"
 [test]
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
-coveragePathIgnorePatterns = ["**/tests/**", "../runtime/**", "../schema/**"]
+coveragePathIgnorePatterns = [
+  "**/tests/**",
+  "../runtime/**",
+  "../schema/**",
+  # A sibling workspace's sources are gated by that workspace's own bunfig, not by this one. The
+  # site-style test imports the compiler's `compileStyles` to hold the canvas sheet byte-for-byte to
+  # the page the build writes (#296), and without this line that import drags `shared.ts` and
+  # `shadow.ts` into this report, where a per-file threshold fails on code this workspace does not
+  # own. `scripts/ci/affected.ts` carries the inverted edge so the suite still runs when they move.
+  "../compiler/**",
+]
 coverageThreshold = { lines = 0.99, functions = 1.0 }
