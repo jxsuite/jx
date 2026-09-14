@@ -166,7 +166,7 @@ jobs:
 
       # Pinned by SHA: both of these are published only on a moving `main`, which dependabot cannot
       # track, so the alternative to a pin is an unreviewed third party in the release gate.
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           # The flake declares the nix-community substituter in `nixConfig`. Without accepting it,
           # Every dependency is built from source instead of fetched, and a 90-second build becomes
@@ -185,7 +185,7 @@ jobs:
       # half of the closure; what it can never serve is the ~1000 fixed-output npm tarball
       # derivations bun.nix pins, and those are what this recovers between runs. Fork PRs get a
       # read-only token and degrade to pull-only on their own, so no fork guard is needed.
-      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
         with:
           # Perf/diagnostic telemetry to Determinate Systems is on by default; "" disables it.
           diagnostic-endpoint: ""
