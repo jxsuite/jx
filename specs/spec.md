@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.21-draft\
+**Version:** 0.6.22-draft\
 **Status:** Partial\
-**Updated:** 2026-09-10\
+**Updated:** 2026-09-14\
 **License:** MIT
 
 ---
@@ -1708,6 +1708,21 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 
 > **Status: Partial.** Schema includes CEM fields. Studio has CEM editing UI. Full CEM document export is pending.
 
+### 16.9 Instantiation Limits
+
+**A definition that renders itself with the same props is an error, not a hang.** A definition's `children` may instantiate other definitions, and those may instantiate others, to any depth the page needs; each instance is one frame on an **instantiation chain** — its tag and the props it was given — that runs from the page-level instance down through every definition rendering inside it. Slot content is not on the chain of the instance it is slotted into: those nodes belong to whoever wrote them, so `<x-box><x-box/></x-box>` on a page is two instances of one tag, not a definition rendering itself. Two rules bind the chain, and they are the same two on both sides of the build:
+
+1. **An instance whose frame is already on its chain is refused.** Same tag, same props, means the same render, forever — the one shape that can never terminate. The diagnostic names the chain: `Component <user-card> renders itself: user-card → user-card. A component cannot appear inside its own definition with the same props — the expansion would never end.`
+2. **A chain of 32 frames is the cap.** A self-reference whose props change at every level — a tree node drawing its children until a `$switch` on its depth says stop — is data-driven recursion and is allowed, because the seen-set cannot tell a stop case that will come from one that was forgotten. The cap is what turns the second into a diagnostic: `Component nesting exceeds 32 levels: tree-node → … A component that renders itself with changing props needs a case that stops.` Thirty-two is beyond any component library's real depth and well inside the call stack's.
+
+A prop's identity on the chain is the value the instance supplied that its definition's state reads, by whichever route it arrived — a JS property set before connection (§16.2), an observed attribute (§16.5), a `props.*` attribute, or the `data-jx-props` payload a prerendered instance upgrades with. Values compare by reference first and by JSON structure second, so a `$ref` forwarding the parent's own value and a payload parsed twice are each one value; a value that cannot be serialised is different from everything, and a page that forwards one is bounded by the cap alone rather than refused on a guess.
+
+The **compiler** enforces both rules along the expansion path of every route it builds ([compiler.md](./compiler.md) §8.1): the route fails with the diagnostic and the other routes still build. The **interpreter** enforces them at connection: an instance that would never finish is refused before it has a state, a style or a child, so it stands as an empty host, and the rest of the page — the refused instance's siblings, and every other instance of the same tag, each on its own chain — renders as it would have. The refusal is reported two ways: the diagnostic goes to the runtime's console surface (`Jx: <user-card> was not rendered:` followed by the error), and the refused element dispatches a bubbling, composed `ErrorEvent` named **`jx-error`**, its `error` and `message` set to the diagnostic, so a page or a host wrapping one (the studio canvas around an iframe) can collect it where a console line reaches nobody. A refused host that is no longer in the document by the time the verdict is in — one an enclosing prerendered upgrade discarded as slot content while it awaited its scope — reports nothing, since the instance drawn in its place reports for it. A definition that builds is a definition that renders, and one that never settled the interpreter now names itself instead.
+
+One boundary separates the two sides. The interpreter asks rule 1 only within a single **expansion**: the synchronous pass in which a definition's `children` render, instances connect and their definitions render in turn. A subtree an effect renders later — a `$switch` case that flips after the first paint, a `$map` row that arrives with new data — connects under the chain of the definition that drew the switch or the list, so rule 2 counts every frame above it, but the frames above the re-run are not searched for a repeat. The compiler searches its whole path because a build is one deterministic expansion; the interpreter cannot tell an `onMount` that flips a node into the same tag every time from a click that opens one more level of a node that starts closed, and the second is a page asking for one more, not a definition rendering itself. So the shape that repeats only across re-runs is ended by the cap rather than by the cycle check: thirty-three hosts and the nesting diagnostic, not a page that never settles.
+
+> **Status: Implemented.** The compiler's check in `renderComponentInstance`; the interpreter's in the element's `connectedCallback`, carried from an enclosing render to the instances it creates across the asynchronous scope build. Verified in `packages/runtime/tests/self-instantiation.test.ts`.
+
 ---
 
 ## 17. Reserved Keywords
@@ -2570,6 +2585,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.22-draft** (2026-09-14) — §16.9 Instantiation Limits: a definition that instantiates its own tag with the same props is refused and a 32-frame chain is the cap, with the same diagnostics on both sides of the build; the interpreter reports a refusal with a jx-error ErrorEvent.
 - **0.6.21-draft** (2026-09-10) — a style declaration may bind a value the host measured, which two surfaces had worked around as impossible.
 - **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
 - **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
@@ -2655,4 +2671,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.21-draft — subject to revision_
+_Jx Specification v0.6.22-draft — subject to revision_
