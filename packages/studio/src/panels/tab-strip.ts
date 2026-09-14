@@ -60,6 +60,7 @@ import { DRAFT_FIELD, isDraftEntry } from "../content/draft-state";
 import { entryFields } from "../content/entry-fields";
 import { collectionOfPath } from "../content/entry-model";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported, runReported } from "../commands/run-reported";
 import { PRESET_LABELS } from "../workspace/pane-derive";
 import { localeLabel } from "@jxsuite/schema/locale";
 import { tabOfPane } from "../canvas/canvas-surface";
@@ -575,8 +576,7 @@ function openTrailing(host: HTMLElement, anchor: HTMLElement | null) {
     return;
   }
   if (_drawing.get(host)?.mode === "derivation") {
-    const registry = activeRegistry();
-    void registry?.run("pane.unsplit");
+    void runActiveReported("pane.unsplit", undefined, "Tabs");
     return;
   }
   openOverflowMenu(pane, tabLabels(pane), anchor);
@@ -807,7 +807,7 @@ function placedTabItems(tab: Tab): MenuRowProjection[] {
         ? {
             disabled: false,
             run: () => {
-              void registry.run(command.id, args);
+              void runReported(registry, command.id, args, "Tabs");
             },
           }
         : { disabled: true, requires: reason }),

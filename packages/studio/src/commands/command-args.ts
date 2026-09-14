@@ -73,6 +73,23 @@ export function numberArg(commandId: string, args: CommandArgValues, key: string
 }
 
 /**
+ * A required integer argument. `1.5` is a refusal, not a value to round: a caller naming an index
+ * or a count with a fraction in it has said something the app cannot mean.
+ *
+ * Its own reader rather than `numberArg` plus a check in `run`, because `coerceArgs` routes a bare
+ * `type: "integer"` here — without it the row read as a plain number and `1.5` passed the schema
+ * pass to fail, or not, in whatever `run` did with it. `typedArg` already held a type LIST to
+ * integrality; this is the same rule for the bare form.
+ */
+export function integerArg(commandId: string, args: CommandArgValues, key: string): number {
+  const value = args[key];
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw refuse(commandId, key, `expected an integer, got ${describe(value)}`);
+  }
+  return value;
+}
+
+/**
  * A required number argument inside a closed interval.
  *
  * REJECTS out of range rather than clamping, which is the difference between a shot that fails and
@@ -330,6 +347,7 @@ export type CoercionRow =
   | "boolean"
   | "bounded-number"
   | "number"
+  | "integer"
   | "string"
   | "path"
   | "path-list"
@@ -373,8 +391,13 @@ export function describeShape(property: object): CoercionRow {
     case "number":
     case "integer": {
       // Both bounds, as `numberProperty` writes them. A half-open interval is not a shape any
-      // Record declares, so it reads as a plain number and `run` owns the bound.
-      return p.minimum !== undefined && p.maximum !== undefined ? "bounded-number" : "number";
+      // Record declares, so it reads as a plain number and `run` owns the bound. A bounded integer
+      // Is the `bounded-number` row too, which holds it to integrality before the interval; only
+      // The BARE integer goes to `integerArg`, whose whole rule is integrality.
+      if (p.minimum !== undefined && p.maximum !== undefined) {
+        return "bounded-number";
+      }
+      return p.type === "integer" ? "integer" : "number";
     }
     case "string": {
       return "string";
@@ -486,6 +509,9 @@ function shapeOf(property: PropertySchema): string {
     case "number": {
       return "a finite number";
     }
+    case "integer": {
+      return "an integer";
+    }
     case "string": {
       return "a non-empty string";
     }
@@ -577,10 +603,19 @@ function coerceProperty(
       return booleanArg(commandId, args, key);
     }
     case "bounded-number": {
+      // Integrality first, so `{ type: "integer", minimum: 1, maximum: 9 }` refuses `1.5` by name
+      // Rather than admitting it as a number inside the interval — the static check's `type` row
+      // Already refused it, and the two passes must agree.
+      if (property.type === "integer") {
+        integerArg(commandId, args, key);
+      }
       return boundedNumberArg(commandId, args, key, property.minimum!, property.maximum!);
     }
     case "number": {
       return numberArg(commandId, args, key);
+    }
+    case "integer": {
+      return integerArg(commandId, args, key);
     }
     case "string": {
       return stringArg(commandId, args, key);

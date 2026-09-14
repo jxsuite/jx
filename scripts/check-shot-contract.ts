@@ -368,7 +368,10 @@ interface ArgsSchema {
   additionalProperties?: boolean;
   enum?: readonly unknown[];
   const?: unknown;
+  oneOf?: readonly ArgsSchema[];
   items?: ArgsSchema;
+  minimum?: number;
+  maximum?: number;
   /**
    * Non-standard, and the reason the §13.5 error string reads the way it does: the registry that
    * owns the value space, so the failure says "the panel registry declares" rather than "the schema
@@ -413,6 +416,128 @@ function typeMatches(expected: string | readonly string[], value: unknown): bool
   return jsonTypeOf(value) === expected;
 }
 
+/** The interval a bounded property declares, as the fragment prints it. */
+function boundsOf(property: ArgsSchema): string {
+  if (property.minimum !== undefined && property.maximum !== undefined) {
+    return `a number from ${property.minimum} to ${property.maximum}`;
+  }
+  return property.minimum === undefined
+    ? `a number of at most ${property.maximum}`
+    : `a number of at least ${property.minimum}`;
+}
+
+/** One `oneOf` branch, as the fragment lists it when no branch admits the value. */
+function describeBranch(branch: ArgsSchema): string {
+  if (branch.enum) {
+    return branch.enum.map((option) => show(option)).join(" | ");
+  }
+  if (branch.const !== undefined) {
+    return show(branch.const);
+  }
+  if (branch.type === undefined) {
+    return "anything";
+  }
+  return Array.isArray(branch.type) ? branch.type.join(",") : String(branch.type);
+}
+
+/**
+ * One property against one value: the fragment naming what disagrees, or nothing.
+ *
+ * The rules are the RUNTIME's, row for row — `coerceArgs` in `packages/studio/src/commands/
+ * command-args.ts` dispatches each declared property to a typed reader, and a manifest step that
+ * passes here has to pass there by construction, or the `checks` job is green for a capture that
+ * will refuse. Three of its refusals were missing from here (issue 333): `stringArg` refuses the
+ * empty string, `boundedNumberArg` refuses a number outside `minimum`..`maximum`, and a `oneOf` is
+ * read by the first branch that admits the value's type — and a fourth the parity sweep in
+ * `packages/studio/tests/shot-contract-args.test.ts` found on the way: `pathArg` refuses an array
+ * whose elements are not what `items` declares. Each is checked below, after the type, const and
+ * enum rows that were already here, and in the runtime's order.
+ */
+function propertyIssue(
+  property: ArgsSchema,
+  key: string,
+  value: unknown,
+  source: string,
+): string | undefined {
+  if (property.type !== undefined && !typeMatches(property.type, value)) {
+    return `with ${key} ${show(value)} (${jsonTypeOf(value)}); ${source} declares ${property.type}`;
+  }
+  if (property.const !== undefined) {
+    /* `describeShape`'s `const` row decides alone, so a satisfied const is the whole answer: the
+       rules below do not get to refuse a `{ type: "string", const: "" }` the runtime admits. */
+    return value === property.const
+      ? undefined
+      : `with ${key} ${show(value)}; ${source} declares ${show(property.const)}`;
+  }
+  if (property.enum) {
+    if (property.enum.includes(value)) {
+      return undefined;
+    }
+    const allowed = property.enum.map((option) => show(option)).join(" | ");
+    return `with ${key} ${show(value)}; ${source} declares ${allowed}`;
+  }
+  if (Array.isArray(property.oneOf)) {
+    return oneOfIssue(property.oneOf, key, value, source);
+  }
+  /* `pathArg`'s rule, and `pathListArg`'s through the recursion: every element is held to `items`.
+     The runtime refuses a bare path handed where a list of paths was declared by naming the entry,
+     and a `[["children", 0]]` handed to `selection.set` the same way; a static check that stopped
+     at "it is an array" admitted both. */
+  if (Array.isArray(value) && property.items !== undefined) {
+    const { items } = property;
+    for (const [i, element] of value.entries()) {
+      const nested = propertyIssue(items, `${key}[${i}]`, element, source);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  }
+  /* `stringArg`'s rule, for the bare `type: "string"` row only: a union such as `["string", "null"]`
+     is read by `typedArg`, which admits "" as a string. An enum or a const above has already
+     returned, whichever way it decided. */
+  if (property.type === "string" && value === "") {
+    return `with ${key} ""; ${source} declares a non-empty string`;
+  }
+  if (
+    typeof value === "number" &&
+    ((property.minimum !== undefined && value < property.minimum) ||
+      (property.maximum !== undefined && value > property.maximum))
+  ) {
+    return `with ${key} ${value}; ${source} declares ${boundsOf(property)}`;
+  }
+  return undefined;
+}
+
+/**
+ * `oneOf`, by the runtime's rule: a branch is tried only when it admits the value's JSON type (a
+ * branch with no `type` admits everything), the first admitting branch that accepts wins, and a
+ * value exactly one branch refused reads THAT branch's fragment — `canvas.setFit { fit: 10 }` reads
+ * the range, not the list of shapes. Only a value no branch could take is answered with the list.
+ */
+function oneOfIssue(
+  branches: readonly ArgsSchema[],
+  key: string,
+  value: unknown,
+  source: string,
+): string | undefined {
+  const refusals: string[] = [];
+  for (const branch of branches) {
+    if (branch.type !== undefined && !typeMatches(branch.type, value)) {
+      continue;
+    }
+    const issue = propertyIssue(branch, key, value, branch.declaredBy ?? source);
+    if (issue === undefined) {
+      return undefined;
+    }
+    refusals.push(issue);
+  }
+  if (refusals.length === 1) {
+    return refusals[0];
+  }
+  const shapes = branches.map((branch) => describeBranch(branch)).join(" | ");
+  return `with ${key} ${show(value)} (${jsonTypeOf(value)}); ${source} declares ${shapes}`;
+}
+
 /**
  * Validate one step's `args` against a command's schema, returning message FRAGMENTS.
  *
@@ -441,20 +566,9 @@ export function validateArgs(schema: object, args: Record<string, unknown>): str
       }
       continue;
     }
-    const source = property.declaredBy ?? "its args schema";
-    if (property.type !== undefined && !typeMatches(property.type, value)) {
-      issues.push(
-        `with ${key} ${show(value)} (${jsonTypeOf(value)}); ${source} declares ${property.type}`,
-      );
-      continue;
-    }
-    if (property.const !== undefined && value !== property.const) {
-      issues.push(`with ${key} ${show(value)}; ${source} declares ${show(property.const)}`);
-      continue;
-    }
-    if (property.enum && !property.enum.includes(value)) {
-      const allowed = property.enum.map((option) => show(option)).join(" | ");
-      issues.push(`with ${key} ${show(value)}; ${source} declares ${allowed}`);
+    const issue = propertyIssue(property, key, value, property.declaredBy ?? "its args schema");
+    if (issue !== undefined) {
+      issues.push(issue);
     }
   }
   return issues;

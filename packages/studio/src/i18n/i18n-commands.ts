@@ -195,6 +195,14 @@ export function i18nCommands(): AnyCommand[] {
       menus: ["context/tab", "palette"],
       group: "2_navigate",
       requires: "a document open in a project that declares more than one language",
+      /* `ctx.document.open` stays in the gate although `path` no longer needs a document open
+         (issue 333). `registry.run` evaluates `when` BEFORE `run` and refuses with
+         `CommandUnavailableError`, so relaxing it is the only way `{ locale, path }` could run with
+         no document open — and `when` reads the context, not the arguments, so the same relaxation
+         would light the palette row too, where the record runs with no `path` and would then throw
+         `addressedDocument`'s "needs a document open" out of a click instead of standing disabled
+         with its `requires` sentence. The palette's availability is the person's contract; an
+         argument-only gate needs a shape the registry does not have. Same on `createTranslation`. */
       when: (ctx) => ctx.project.isMultilingual && ctx.document.open,
       /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person, and the
          model has `open_document` for the file it names. */
@@ -247,6 +255,8 @@ export function i18nCommands(): AnyCommand[] {
       menus: ["palette"],
       group: "2_navigate",
       requires: "a document open in a project that declares more than one language",
+      // `document.open` stays for the reason `i18n.openTranslation` gives: the gate runs before
+      // `run`, and it cannot see `path`.
       when: (ctx) => ctx.project.isMultilingual && ctx.document.open,
       /* The document history cannot hold this: the change is a file that did not exist, and
          `undo: "project"` would claim `project.json` moved, which it did not. */
