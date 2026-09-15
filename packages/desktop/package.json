@@ -35,7 +35,7 @@
     "dbus-ts": "^0.0.7",
     "env-paths": "^4.0.0",
     "lit-html": "^3.3.3",
-    "zod": "^4.6.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
