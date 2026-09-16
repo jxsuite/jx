@@ -66,7 +66,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.1",
     "ajv": "^8.20.0",
-    "hono": "^4.13.7"
+    "hono": "^4.13.8"
   },
   "jx": "./jx-extension.json"
 }
