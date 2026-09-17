@@ -16,6 +16,7 @@ import {
   closePane,
   focusPane,
   openTab,
+  paneBeside,
   paneById,
   setWorkspaceProject,
   workspace,
@@ -37,11 +38,21 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 /** What the (mocked) CSV grid editor does when `openFileInTab` hands it a path. */
 let csvOpenFails: Error | null = null;
 void mock.module("../src/grid/grid-open", () => ({
-  openCsvGridTab: async (path: string) => {
+  openCsvGridTab: async (
+    path: string,
+    opts: { paneId?: string; focus?: boolean; preview?: boolean } = {},
+  ) => {
     if (csvOpenFails) {
       throw csvOpenFails;
     }
-    openTab({ document: { children: [], tagName: "div" }, documentPath: path, id: path });
+    return openTab({
+      document: { children: [], tagName: "div" },
+      documentPath: path,
+      id: path,
+      ...(opts.paneId !== undefined && { paneId: opts.paneId }),
+      ...(opts.preview === true && { preview: true }),
+      ...(opts.focus === false && { focus: false }),
+    });
   },
   openPagesGrid: async () => {},
 }));
@@ -222,6 +233,19 @@ describe("a .csv the grid editor cannot open", () => {
     expect(problems).toHaveLength(0);
     expect(documentsIn(PRIMARY_PANE)).toEqual(["data/rows.csv"]);
     expect(requireProjectState().selectedPath).toBe("data/rows.csv");
+  });
+
+  test("opts.paneId reaches the grid editor, and the tree's cursor follows only when focus does", async () => {
+    installFsPlatform({ "data/rows.csv": "a,b\n1,2\n" });
+    siteState();
+    const side = paneBeside(PRIMARY_PANE);
+
+    await openFileInTab("data/rows.csv", { focus: false, paneId: side.id });
+
+    expect(documentsIn(side.id)).toEqual(["data/rows.csv"]);
+    expect(documentsIn(PRIMARY_PANE)).toEqual([]);
+    // A side-open with the focus left behind must not move the tree's cursor either.
+    expect(requireProjectState().selectedPath).toBeNull();
   });
 });
 

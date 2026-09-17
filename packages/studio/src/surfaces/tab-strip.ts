@@ -31,7 +31,8 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import tabStripDoc from "./tab-strip.json";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
 registerSurface("tab-strip", tabStripDoc as unknown as JxDocument);
@@ -50,7 +51,6 @@ export interface TabChipView extends Record<string, unknown> {
   dirty: boolean;
   pinned: boolean;
   preview: boolean;
-  dragging: boolean;
   /** Whether to draw the drill-in marker. */
   origin: boolean;
   /** "Pin" or "Unpin" — the pin button's whole accessible name. */
@@ -106,18 +106,39 @@ export interface TabStripActions {
   context: (id: string, x: number, y: number) => void;
   /** The chevron, or a derived pane's ✕. The anchor is the button that was pressed. */
   openTrailing: (anchor: HTMLElement | null) => void;
-  /** A drag left this chip. The `DataTransfer` is the platform's and may be absent. */
-  dragStart: (id: string, transfer: DataTransfer | null) => void;
-  dragEnd: () => void;
-  /** A drop landed on the chip at `index`. */
-  drop: (index: number, transfer: DataTransfer | null) => void;
   /** A wheel over the strip. A host function in handler position, so it takes the event. */
   wheel: (scope: unknown, event: WheelEvent) => void;
+  /** A chip element exists. `panels/tab-strip.ts` makes it a pragmatic drag source and drop target. */
+  chipHost: (element: HTMLElement, id: string) => void;
+  /**
+   * The `jx-tabs` element exists. `panels/tab-strip.ts` makes it a drop target of its own — the
+   * strip's empty tail, and the whole of an empty pane's strip while a drag is live.
+   */
+  stripHost: (element: HTMLElement) => void;
+}
+
+/**
+ * What one strip shows about the drag in progress — written independently of {@link TabStripValues}
+ * so the indicators survive an ordinary re-project mid-drag.
+ */
+export interface TabStripDragState {
+  /** The tab id being carried, or `""` when nothing from this strip is. */
+  dragKey: string;
+  /** The chip a drop would land beside, by slot index, or `-1` for none. */
+  dropIndex: number;
+  /** Whether a drop would land in the strip's empty tail. */
+  dropTail: boolean;
 }
 
 export interface TabStripSurface {
   /** Bring the standing document up to date. An assignment; the mount is never rebuilt. */
   update: (values: TabStripValues) => void;
+  /**
+   * Write the drag indicators, independently of {@link update}. The one writer of `dragKey`,
+   * `dropIndex` and `dropTail` — `update` never touches them, which is what keeps an indicator lit
+   * across a repaint the drag itself did not cause.
+   */
+  drag: (state: TabStripDragState) => void;
   /** The `jx-tabs` element, once it exists — the one thing a measurement needs. */
   strip: () => HTMLElement | null;
   /** Take the document down and give the host back empty. Idempotent. */
@@ -125,7 +146,21 @@ export interface TabStripSurface {
 }
 
 /** The scope `tab-strip.json` reads. */
-interface TabStripScope extends Record<string, unknown>, TabStripValues, TabStripActions {}
+interface TabStripScope
+  extends Record<string, unknown>, TabStripValues, TabStripActions, TabStripDragState {}
+
+/** The `part` a node's definition carries, or `""` for a text node or an unmarked element. */
+function partOf(def: JxElement | string): string {
+  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
+  return typeof part === "string" ? part : "";
+}
+
+/** The tab id a mapped `jx-tab` node was rendered for, read from the row scope, or `""`. */
+function mappedChipKey(state: JxScope | undefined): string {
+  const map = state?.["$map"] as { item?: { key?: unknown } } | undefined;
+  const key = map?.item?.key;
+  return typeof key === "string" ? key : "";
+}
 
 /**
  * Mount one strip into `host`.
@@ -143,17 +178,38 @@ export function mountTabStripSurface(
   values: TabStripValues,
   actions: TabStripActions,
 ): TabStripSurface {
-  const scope = reactive<TabStripScope>({ ...values, ...actions }) as TabStripScope;
+  const scope = reactive<TabStripScope>({
+    ...values,
+    ...actions,
+    dragKey: "",
+    dropIndex: -1,
+    dropTail: false,
+  }) as TabStripScope;
 
   host.replaceChildren();
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   let strip: HTMLElement | null = null;
   void mountSurface("tab-strip", scope, host, {
-    onNodeCreated: (element, _path, def) => {
-      const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-      if (part === "tabs" && element instanceof HTMLElement) {
+    onNodeCreated: (element, _path, def, state) => {
+      /* `disposed` first, for the reason `files-panel.ts`'s `mountFilesPanelSurface` guards it: the
+         mount is asynchronous, and a strip taken down inside the same turn — the pane whose host
+         this is has gone away — still walks this callback for every node its document creates.
+         Adopting one then would register a drag source nothing is left to release. */
+      if (disposed || !(element instanceof HTMLElement)) {
+        return;
+      }
+      const part = partOf(def);
+      if (part === "tabs") {
         strip = element;
+        actions.stripHost(element);
+        return;
+      }
+      if (part === "tab") {
+        const id = mappedChipKey(state);
+        if (id) {
+          actions.chipHost(element, id);
+        }
       }
     },
   }).then((surface) => {
@@ -171,6 +227,14 @@ export function mountTabStripSurface(
       mounted = null;
       strip = null;
       host.replaceChildren();
+    },
+    drag(state) {
+      /* Independent of {@link update}'s field list, which is the whole point: these three are
+         written by the drag monitor on every pointer move, and `update`'s ordinary re-project must
+         not clear them out from under a drag it did not cause. */
+      scope.dragKey = state.dragKey;
+      scope.dropIndex = state.dropIndex;
+      scope.dropTail = state.dropTail;
     },
     strip: () => strip,
     update(next) {

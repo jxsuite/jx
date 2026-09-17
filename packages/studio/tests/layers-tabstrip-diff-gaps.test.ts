@@ -389,25 +389,6 @@ describe("the tab strip", () => {
   }
 
   /**
-   * Dispatch a dragstart carrying a DataTransfer, which happy-dom's own DragEvent does not. The two
-   * fields the handler writes are the two this stub records.
-   */
-  function dragStart(el: HTMLElement): { effectAllowed: string; data: Map<string, string> } {
-    const data = new Map<string, string>();
-    const dataTransfer = {
-      data,
-      effectAllowed: "uninitialized",
-      setData(type: string, value: string) {
-        data.set(type, value);
-      },
-    };
-    const event = new Event("dragstart", { bubbles: true, cancelable: true });
-    Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
-    el.dispatchEvent(event);
-    return dataTransfer;
-  }
-
-  /**
    * Both menus are the kit's now (`surfaces/menu.ts`), so a menu on screen is a `jx-menu` in a
    * popover slot — and its light dismissal is the platform's `popover="auto"` rather than a
    * document listener this strip arms a frame after opening.
@@ -446,22 +427,6 @@ describe("the tab strip", () => {
     setActiveRegistry(null);
     closeAllTabs();
     document.body.innerHTML = "";
-  });
-
-  test("a chip's drag declares a move and carries the tab id", async () => {
-    open("a");
-    open("b");
-    await flush();
-
-    const dataTransfer = dragStart(chips()[0]!);
-    await flush();
-
-    expect(dataTransfer.effectAllowed).toBe("move");
-    expect(dataTransfer.data.get("text/plain")).toBe("a");
-    expect(chips()[0]!.dataset.dragging !== undefined).toBe(true);
-
-    chips()[0]!.dispatchEvent(new Event("dragend", { bubbles: true }));
-    await flush();
   });
 
   test("the overflow menu closes on a click outside it, and stays for one inside", async () => {

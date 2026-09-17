@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioTabStrip",
-  "$description": "One pane's tab strip, as a Jx document over the kit: a real `tablist` of `jx-tab`s, or — for a pane that owns no document — the derivation chip naming what it is a projection of, and in both cases one trailing button. `panels/tab-strip.ts` keeps every decision: which pane a host is drawing, what each tab is called (the shortest unique suffix, and a page's ROUTE), what its tooltip says, whether closing it needs a prompt, what the overflow chevron lists and what the context menu offers. This document owns the markup, the ARIA, the keyboard and the style, and it holds THREE things the old chip drew by hand and the kit now draws: the tab's own selected state (`aria-selected`, not an `.active` class), its close button, and its dirty dot. The three that are Studio's alone go in `jx-tab`'s slots — the drill-in marker in `icon`, the draft pill in `status`, the pin toggle in `actions` (ui.md §5.4) — which is the gap that kept this strip out of the tab pattern until now.",
+  "$description": "One pane's tab strip, as a Jx document over the kit: a real `tablist` of `jx-tab`s, or — for a pane that owns no document — the derivation chip naming what it is a projection of, and in both cases one trailing button. `panels/tab-strip.ts` keeps every decision: which pane a host is drawing, what each tab is called (the shortest unique suffix, and a page's ROUTE), what its tooltip says, whether closing it needs a prompt, what the overflow chevron lists and what the context menu offers. This document owns the markup, the ARIA, the keyboard and the style, and it holds THREE things the old chip drew by hand and the kit now draws: the tab's own selected state (`aria-selected`, not an `.active` class), its close button, and its dirty dot. The three that are Studio's alone go in `jx-tab`'s slots — the drill-in marker in `icon`, the draft pill in `status`, the pin toggle in `actions` (ui.md §5.4) — which is the gap that kept this strip out of the tab pattern until now. **Drag is `@atlaskit/pragmatic-drag-and-drop`, not native HTML5 DnD**: a chip carries no `draggable` attribute and no `ondrag*` handler, because `panels/tab-strip.ts` registers every chip and every strip as a pragmatic source/target through `onNodeCreated` and resolves a completed drag in `panels/tab-drop.ts`. What is left here is three SCOPE comparisons, exactly as `files-panel.json` marks a row under drag: `data-dragging` on the chip being carried, `data-drop` on the chip a drop would land beside, `data-drop-tail` on the strip when the drop is its empty tail.",
   "tagName": "div",
   "attributes": {
     "part": "strip-row",
@@ -44,6 +44,13 @@
         "display": "none"
       }
     },
+    "& [part=\"tabs\"][data-drop-tail]::after": {
+      "$description": "The strip's own tail target: a drop onto the empty space after the last chip, or onto a pane whose strip carries no chips at all — an empty pane made a target during a drag by `panels/tab-strip.ts`'s `project`. A fixed-width bar rather than a background tint, so it reads the same as a chip's own `data-drop` edge instead of a second visual language for the same gesture.",
+      "content": "\"\"",
+      "flex": "0 0 2px",
+      "alignSelf": "stretch",
+      "background": "var(--accent)"
+    },
     "& [part=\"tab\"]": {
       "$description": "`.tab-strip-tab`. The kit's tab caps itself at 220px and reserves a control's height; a chrome row is tighter than that and its labels are the shortest unique suffix, so both are re-declared. `flex-shrink: 0` is what makes the strip scroll rather than squeeze fifteen documents into one width.",
       "gap": "var(--jx-space-1)",
@@ -64,6 +71,10 @@
       },
       "&[data-dragging]": {
         "opacity": "0.4"
+      },
+      "&[data-drop]": {
+        "$description": "The chip a drop would land BESIDE. An inset shadow rather than a border, so the indicator draws no layout shift mid-drag — the same reason `files-panel.json`'s row indicators are backgrounds rather than borders.",
+        "boxShadow": "inset 2px 0 0 var(--accent)"
       }
     },
     "& [part=\"tab\"] [part=\"label\"]": {
@@ -206,7 +217,8 @@
           "attributes": {
             "part": "tabs",
             "label": "${state.stripLabel}",
-            "selected": "${state.active}"
+            "selected": "${state.active}",
+            "data-drop-tail": "${state.dropTail ? '' : null}"
           },
           "onchange": {
             "$prototype": "Function",
@@ -245,11 +257,11 @@
                   "label": "${$map.item.label}",
                   "title": "${$map.item.title}",
                   "closable": "",
-                  "draggable": "true",
                   "dirty": "${$map.item.dirty ? '' : null}",
                   "data-pinned": "${$map.item.pinned ? '' : null}",
                   "data-preview": "${$map.item.preview ? '' : null}",
-                  "data-dragging": "${$map.item.dragging ? '' : null}"
+                  "data-dragging": "${state.dragKey === $map.item.key ? '' : null}",
+                  "data-drop": "${state.dropIndex === $map.item.index ? '' : null}"
                 },
                 "ondblclick": {
                   "$prototype": "Function",
@@ -294,41 +306,6 @@
                         { "$ref": "event#/clientX" },
                         { "$ref": "event#/clientY" }
                       ]
-                    }
-                  ]
-                },
-                "ondragstart": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": { "$ref": "#/state/dragStart" },
-                      "value": [{ "$ref": "$map/item/key" }, { "$ref": "event#/dataTransfer" }]
-                    }
-                  ]
-                },
-                "ondragend": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": { "$ref": "#/state/dragEnd" },
-                      "value": []
-                    }
-                  ]
-                },
-                "ondragover": {
-                  "$prototype": "Function",
-                  "body": [{ "preventDefault": true }]
-                },
-                "ondrop": {
-                  "$prototype": "Function",
-                  "body": [
-                    { "preventDefault": true },
-                    {
-                      "operator": "call",
-                      "target": { "$ref": "#/state/drop" },
-                      "value": [{ "$ref": "$map/item/index" }, { "$ref": "event#/dataTransfer" }]
                     }
                   ]
                 },

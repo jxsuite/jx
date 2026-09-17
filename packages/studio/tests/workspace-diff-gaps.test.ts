@@ -20,8 +20,8 @@ import {
   insertIntoPane,
   openTab,
   paneById,
+  paneBeside,
   setTabPinned,
-  sidePane,
   splitRight,
   tabCommands,
   workspace,
@@ -65,14 +65,14 @@ afterEach(() => {
 });
 
 describe("a pane id already in the grid is answered, never minted twice", () => {
-  test("`sidePane` hands back the record that is there rather than a second one under its id", () => {
+  test("`paneBeside` hands back the record that is there rather than a second one under its id", () => {
     /* The grid `addPane`'s guard exists for. Two records under one id is undefined behaviour in
        lit's keyed `repeat` — the grid draws two cells for one pane, each `ref` overwriting the
        other's surface record — so the answer has to be the pane that is already published. */
     workspace.panes = [{ activeTabId: null, derived: null, id: SECONDARY_PANE, tabOrder: [] }];
     workspace.activePaneId = SECONDARY_PANE;
 
-    const pane = sidePane();
+    const pane = paneBeside(PRIMARY_PANE);
 
     expect(pane.id).toBe(SECONDARY_PANE);
     expect(workspace.panes.map((candidate) => candidate.id)).toEqual([SECONDARY_PANE]);
