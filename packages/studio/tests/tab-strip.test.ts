@@ -936,40 +936,6 @@ describe("pin, reorder and preview", () => {
     await flush();
     expect(workspace.tabs.get("p")!.preview).toBe(false);
   });
-
-  test("dragging a chip onto another reorders the pane", async () => {
-    open("a");
-    open("b");
-    open("c");
-    await flush();
-    const [first, , third] = tabs();
-    first!.dispatchEvent(new Event("dragstart", { bubbles: true }));
-    await flush();
-    expect(tabs()[0]!.dataset.dragging !== undefined).toBe(true);
-    third!.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
-    await flush();
-    expect(tabs().map((el) => el.querySelector('[part="label"]')!.textContent)).toEqual([
-      "b.json",
-      "c.json",
-      "a.json",
-    ]);
-  });
-
-  test("a drop with no drag in flight changes nothing, and dragend clears the ghost", async () => {
-    open("a");
-    open("b");
-    await flush();
-    tabs()[0]!.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
-    await flush();
-    expect(tabs().map((el) => el.querySelector('[part="label"]')!.textContent)).toEqual([
-      "a.json",
-      "b.json",
-    ]);
-    tabs()[0]!.dispatchEvent(new Event("dragstart", { bubbles: true }));
-    tabs()[0]!.dispatchEvent(new Event("dragend", { bubbles: true }));
-    await flush();
-    expect(host.querySelector('[part="tab"][data-dragging]')).toBeNull();
-  });
 });
 
 describe("per-pane strips", () => {

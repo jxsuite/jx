@@ -61,6 +61,10 @@ void mock.module("../src/ui/layers.js", () => ({
     lastPrompt = { headline, opts };
     return promptAnswer;
   },
+  // `services/idle.ts` imports this at module load time — `store.ts` reaches it transitively, so a
+  // Mock without it fails the whole file at import time exactly as a missing `layerHost` would.
+  // No toast this file ever shows, so "nothing settling" is the only honest answer.
+  overlayIdleBlockers: () => [],
 }));
 
 /** What the mocked prompt answers, and what it was asked for. */

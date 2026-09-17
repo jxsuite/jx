@@ -48,7 +48,6 @@ import {
   closeTab,
   focusPane,
   isPaneFocused,
-  moveTab,
   promoteDirtyPreviewTabs,
   promoteTab,
   setTabPinned,
@@ -80,9 +79,17 @@ import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import { saveFile } from "../files/file-ops";
 import { collabReadOnly } from "../collab/collab-session";
 import { collabState } from "../collab/collab-state";
-import { rectOf } from "../utils/geometry";
+import { elementAtPoint, rectOf } from "../utils/geometry";
 import { resolveRegion } from "../ui/regions";
 import { commitTabBuffers, tabBufferUnsaved } from "../services/monaco-buffer";
+import {
+  draggable,
+  dropTargetForElements,
+  monitorForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import { attachClosestEdge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge";
+import { isTabDropSource, resolveTabDrop } from "./tab-drop";
 import type { EffectScope } from "@vue/reactivity";
 
 /**
@@ -119,8 +126,24 @@ const _overflowing = new Map<string, boolean>();
 
 let _overflowHandle: MenuHandle | null = null;
 
-/** The tab id currently being dragged, or null. */
-let _dragging: string | null = null;
+/** What is being dragged right now, or null between drags — a tab off some strip, or a file row. */
+let _drag: { kind: "tab"; tabId: string } | { kind: "file"; path: string } | null = null;
+
+/**
+ * Where the pointer is hovering, in the vocabulary a strip draws: which pane, which chip slot (`-1`
+ * for the tail), and whether that slot IS the tail. Null off every target this module answers for —
+ * a `pane-edge` hover included, which is `panels/pane-grid.ts`'s own indicator to draw.
+ */
+let _over: { paneId: string; index: number; tail: boolean } | null = null;
+
+/** Every chip's pragmatic registration, per host, per tab id — released before a re-registration. */
+const _chipDnd = new Map<HTMLElement, Map<string, () => void>>();
+
+/** Each host's OWN registration — the strip's empty-tail target. */
+const _stripDnd = new Map<HTMLElement, () => void>();
+
+/** The one drag monitor, armed in {@link mount} and released in {@link unmount}. */
+let _dropMonitor: (() => void) | null = null;
 
 /** Region id of a pane's tab strip. `ui/regions.ts` owns the grammar; this is one call site. */
 export function paneStripRegion(paneId: string): string {
@@ -153,6 +176,51 @@ function hostFor(pane: Pane): HTMLElement | null {
 export function mount(host: HTMLElement) {
   unmount();
   _primaryHost = host;
+  _dropMonitor = monitorForElements({
+    onDragStart({ source }) {
+      if (!isTabDropSource(source.data)) {
+        return;
+      }
+      _drag =
+        source.data.type === "tab"
+          ? { kind: "tab", tabId: source.data.tabId as string }
+          : { kind: "file", path: source.data.path as string };
+      // The tail target does not exist until a pane with no tabs is asked to grow one (§7).
+      render();
+      // `render()` alone does not write `dragKey` — only `syncDrag()` does — so without this the
+      // Source chip's `data-dragging` mark would not appear until the pointer's first move.
+      syncDrag();
+    },
+    onDrag({ location }) {
+      if (!_drag) {
+        return;
+      }
+      const [target] = location.current.dropTargets;
+      const data = target?.data;
+      _over =
+        data?.type === "tab-slot"
+          ? {
+              index: data.tabId === undefined ? -1 : (data.index as number),
+              paneId: data.paneId as string,
+              tail: data.tabId === undefined,
+            }
+          : null;
+      syncDrag();
+    },
+    onDrop({ location, source }) {
+      if (!isTabDropSource(source.data)) {
+        return;
+      }
+      const [target] = location.current.dropTargets;
+      _drag = null;
+      _over = null;
+      syncDrag();
+      render();
+      // A cancelled drag (dropped off every target) arrives with `dropTargets: []`; the resolver
+      // Reads `target === undefined` as "nothing landed", the same answer a refused target gives.
+      void resolveTabDrop(source, target);
+    },
+  });
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
@@ -195,16 +263,35 @@ export function unmount() {
   dismissTabContextMenu();
   _scope?.stop();
   _scope = null;
+  _dropMonitor?.();
+  _dropMonitor = null;
+  for (const host of _strips.keys()) {
+    releaseHostDnD(host);
+  }
   for (const strip of _strips.values()) {
     strip.dispose();
   }
   _strips.clear();
   _drawing.clear();
   _primaryHost = null;
-  _dragging = null;
+  _drag = null;
+  _over = null;
   _lastActive.clear();
   _overflowing.clear();
   _hosts.clear();
+}
+
+/** Take back every pragmatic registration a host holds — its chips and its own tail target. */
+function releaseHostDnD(host: HTMLElement): void {
+  const chips = _chipDnd.get(host);
+  if (chips) {
+    for (const release of chips.values()) {
+      release();
+    }
+    _chipDnd.delete(host);
+  }
+  _stripDnd.get(host)?.();
+  _stripDnd.delete(host);
 }
 
 function render() {
@@ -237,6 +324,7 @@ function render() {
     _lastActive.delete(paneId);
     _overflowing.delete(paneId);
     if (!claims.has(host)) {
+      releaseHostDnD(host);
       _strips.get(host)?.dispose();
       _strips.delete(host);
       _drawing.delete(host);
@@ -261,6 +349,7 @@ function paint(pane: Pane, host: HTMLElement): void {
   } else {
     _strips.set(host, mountTabStripSurface(host, values, actionsFor(host)));
   }
+  reconcileStripDnD(host, values);
 
   /* The strip is HELD — `surfaces/tab-strip.ts` takes it as the element is created — so this is an
      imperative USE of a node this module owns rather than a re-find of one it renders
@@ -306,6 +395,9 @@ function actionsFor(host: HTMLElement): TabStripActions {
     activate: (id) => {
       activateTab(id);
     },
+    chipHost: (element, id) => {
+      adoptChip(host, element, id);
+    },
     closeTab: (id) => {
       void requestClose(id);
     },
@@ -315,11 +407,6 @@ function actionsFor(host: HTMLElement): TabStripActions {
         openTabContextMenu(tab, x, y);
       }
     },
-    dragEnd: onDragEnd,
-    dragStart: onDragStart,
-    drop: (index, transfer) => {
-      onDrop(host, index, transfer);
-    },
     focusPane: () => {
       focusPane(drawnPane(host)?.id ?? PRIMARY_PANE);
     },
@@ -328,6 +415,9 @@ function actionsFor(host: HTMLElement): TabStripActions {
     },
     promote: (id) => {
       promoteTab(id);
+    },
+    stripHost: (element) => {
+      adoptStrip(host, element);
     },
     togglePin: (id) => {
       const tab = workspace.tabs.get(id);
@@ -439,6 +529,26 @@ function project(pane: Pane): TabStripValues {
     return derivationValues(pane, derived);
   }
   if (pane.tabOrder.length === 0) {
+    /* An empty, non-derived pane WHILE A DRAG IS LIVE draws a `tabs` row with no chips instead of
+       going blank: `blankValues` hides the row outright, and a hidden row has no `jx-tabs` element
+       for `adoptStrip` to make a target of — so a tab dragged toward the empty primary beside a
+       derived secondary (the state `detachTab` allows) had nowhere to land. `_drag` gates it rather
+       than `pane.tabOrder.length === 0` alone, so the pane stays hidden the rest of the time. */
+    if (_drag) {
+      return {
+        active: "",
+        chipTitle: "",
+        focused: isPaneFocused(pane.id),
+        mode: "tabs",
+        preset: "",
+        stripLabel: stripLabel(pane),
+        subject: "",
+        tabs: [],
+        trailing: false,
+        trailingGlyph: "⌄",
+        trailingTitle: "Show hidden tabs",
+      };
+    }
     _lastActive.set(pane.id, null);
     _overflowing.set(pane.id, false);
     return blankValues(pane);
@@ -492,7 +602,6 @@ function chipView(
     {
       dirty: tab.doc.dirty,
       draft: pill?.draft ?? false,
-      dragging: _dragging === id,
       index,
       key: id,
       label: labels.get(id) ?? "Untitled",
@@ -511,35 +620,131 @@ function chipView(
   ];
 }
 
-// ─── Drag reorder ─────────────────────────────────────────────────────────────
+// ─── Drag and drop ────────────────────────────────────────────────────────────
 
-function onDragStart(id: string, transfer: DataTransfer | null) {
-  _dragging = id;
-  transfer?.setData("text/plain", id);
-  if (transfer) {
-    transfer.effectAllowed = "move";
+/**
+ * Make one chip a pragmatic drag source and drop target. Called from `chipHost`, as the chip is
+ * CREATED (`onNodeCreated` fires once per chip; a repaint that keeps a chip alive fires it never
+ * again, and one that replaces it — a pane handover, §18.3 — fires it fresh).
+ *
+ * Released first, in case a chip element is ever handed a second registration for the same id: the
+ * SOURCE of truth for "is this id registered on this host" is the map, not whether pragmatic still
+ * remembers the old element, and releasing unconditionally is cheaper than asking.
+ */
+function adoptChip(host: HTMLElement, element: HTMLElement, id: string): void {
+  let chips = _chipDnd.get(host);
+  if (!chips) {
+    chips = new Map();
+    _chipDnd.set(host, chips);
   }
-  // The ghost is chrome state, not model state, so no effect fires for it.
-  render();
-}
+  chips.get(id)?.();
 
-function onDragEnd() {
-  _dragging = null;
-  render();
+  const cleanup = combine(
+    draggable({
+      element,
+      // A drag starting on the pin toggle or the kit's own close button is a click on THAT control,
+      // Not a request to move the chip — the same guard `panels/dnd.ts`'s Outline rows use.
+      canDrag({ input }) {
+        const target = elementAtPoint(input.clientX, input.clientY);
+        return !(target instanceof Element && target.closest('[part="pin"], [part="close"]'));
+      },
+      getInitialData() {
+        // Read at DRAG TIME, not captured at registration: the pane a host draws can change under
+        // An already-mounted chip (a handover, §18.3), and `drawnPane` always answers about now.
+        return { paneId: drawnPane(host)?.id, tabId: id, type: "tab" };
+      },
+    }),
+    dropTargetForElements({
+      canDrop({ source }) {
+        return isTabDropSource(source.data);
+      },
+      element,
+      getData({ element: el, input }) {
+        const pane = drawnPane(host);
+        if (!pane) {
+          return { type: "tab-slot-refused" };
+        }
+        // Computed HERE, not at chip creation: the target's own slot moves every time a tab is
+        // Reordered, and `resolveTabDrop` reads this fresh on every hover and on the drop itself.
+        return attachClosestEdge(
+          { index: pane.tabOrder.indexOf(id), paneId: pane.id, tabId: id, type: "tab-slot" },
+          { allowedEdges: ["left", "right"], element: el, input },
+        );
+      },
+    }),
+  );
+  chips.set(id, cleanup);
 }
 
 /**
- * Drop onto the chip at `index`. The model clamps the destination into the region the dragged tab's
- * pinned state allows, so this only has to say where the pointer was.
+ * Make a strip's OWN element a drop target — the empty tail after the last chip, and, for an empty
+ * pane growing one during a drag (§7), the whole of it. Innermost wins, so a chip under the pointer
+ * answers first; this only ever resolves a drop that landed on the strip itself.
  */
-function onDrop(host: HTMLElement, index: number, transfer: DataTransfer | null) {
-  const pane = drawnPane(host);
-  const id = _dragging ?? transfer?.getData("text/plain") ?? null;
-  _dragging = null;
-  if (!pane || !id || !pane.tabOrder.includes(id)) {
+function adoptStrip(host: HTMLElement, element: HTMLElement): void {
+  _stripDnd.get(host)?.();
+  const cleanup = dropTargetForElements({
+    canDrop({ source }) {
+      return isTabDropSource(source.data);
+    },
+    element,
+    getData() {
+      const pane = drawnPane(host);
+      return pane
+        ? { index: pane.tabOrder.length, paneId: pane.id, type: "tab-slot" }
+        : { type: "tab-slot-refused" };
+    },
+  });
+  _stripDnd.set(host, cleanup);
+}
+
+/**
+ * Release a host's chip registrations for ids that no longer appear — a tab closed, or a pane
+ * handover replaced every chip with another pane's — and release the whole host when it is no
+ * longer drawing tabs at all. Run at the tail of every {@link paint}, which is what makes a handover
+ * self-correcting: the SAME call that draws the new pane's chips (through `onNodeCreated`) is the
+ * call that notices the old pane's ids are no longer live.
+ */
+function reconcileStripDnD(host: HTMLElement, values: TabStripValues): void {
+  if (values.mode !== "tabs") {
+    releaseHostDnD(host);
     return;
   }
-  moveTab(id, index);
+  const live = new Set(values.tabs.map((chip) => chip.key));
+  const chips = _chipDnd.get(host);
+  if (!chips) {
+    return;
+  }
+  for (const [id, release] of chips) {
+    if (!live.has(id)) {
+      release();
+      chips.delete(id);
+    }
+  }
+}
+
+/**
+ * Write the drag indicators for every standing strip, from {@link _over} and {@link _drag}.
+ *
+ * `dragKey` is broadcast to every host unconditionally — a tab id only matches a chip on the ONE
+ * host that draws its pane, so the comparison in `tab-strip.json` is what scopes it, not this
+ * function. `dropIndex` / `dropTail` ARE scoped here, to the host currently drawing `_over.paneId`,
+ * because an index is meaningless on a strip it was not measured against.
+ */
+function syncDrag(): void {
+  const dragKey = _drag?.kind === "tab" ? _drag.tabId : "";
+  for (const [host, drawing] of _drawing) {
+    const surface = _strips.get(host);
+    if (!surface) {
+      continue;
+    }
+    const hovering = _over !== null && _over.paneId === drawing.paneId;
+    surface.drag({
+      dragKey,
+      dropIndex: hovering && _over ? _over.index : -1,
+      dropTail: hovering && _over ? _over.tail : false,
+    });
+  }
 }
 
 /**

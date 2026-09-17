@@ -166,11 +166,14 @@ const OUTSIDE_THE_TABLE: readonly OutsideRow[] = [
       "DELETED. `markConsumed`'s empty-list guard, `renderPane`'s `kind === \"lens\" ||` disjunct, " +
       "`runUnsplit`'s `activePaneId === PRIMARY ? SECONDARY : activePaneId` fallback, " +
       "`gitChangeFor`'s null-path guard, `rawDocOf`'s `toRaw`, `pane.derive`'s `|| null` and its " +
-      "trailing `target.activeTabId = null`, and the chip branch's `_lastActive`/`_overflowing` " +
-      "resets. Each was verified unreachable or value-identical before removal, and the reason is " +
-      "written at the line that used to be there. A mutation nothing can observe is not a gap in " +
-      "the table; it is dead code, and the honest answer is to delete it rather than to invent an " +
-      "assertion for it.",
+      "trailing `target.activeTabId = null`, the chip branch's `_lastActive`/`_overflowing` " +
+      "resets, and `revealOpenTab`'s `holder.id !== wanted` conjunct — `moveTabToPane` is " +
+      "idempotent for a tab already in `paneId`, so entering the block and calling it anyway " +
+      "reaches the identical final `activateTab` the guard's absence already reached. Each was " +
+      "verified unreachable or value-identical before removal, and the reason is written at the " +
+      "line that used to be there. A mutation nothing can observe is not a gap in the table; it " +
+      "is dead code, and the honest answer is to delete it rather than to invent an assertion " +
+      "for it.",
     what: "the lines whose inversion no state the app can reach could observe",
   },
   {
@@ -637,21 +640,7 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `  if (wanted !== undefined && holder && holder.id !== wanted) {`,
-        replace: `  if (wanted !== undefined && holder) {`,
-      },
-    ],
-    file: "src/files/files.ts",
-    id: "files.ts · a tab already in the requested pane is still ACTIVATED",
-    means:
-      "re-opening the document a pane is already showing takes the third case's early return, so " +
-      "the request is swallowed and the keyboard never arrives in the pane that was named",
-    test: "tests/files.test.ts",
-  },
-  {
-    edits: [
-      {
-        find: `    if (holder.activeTabId === tabId) {\n      return;\n    }\n    moveTabToPane(tabId, wanted);`,
+        find: `    if (holder.activeTabId === tabId && opts.focus === false) {\n      return;\n    }\n    moveTabToPane(tabId, wanted);`,
         replace: `    moveTabToPane(tabId, wanted);`,
       },
     ],
@@ -1029,7 +1018,16 @@ const MUTANTS: Mutant[] = [
 
   // ─── studio.ts — the per-pane render inputs and the drill-in ────────────────
   {
-    edits: [{ find: `  const target = receivingPane();`, replace: `  const target = sidePane();` }],
+    edits: [
+      {
+        find: `  activePane,\n  activeTab,`,
+        replace: `  activePane,\n  activeTab,\n  paneBeside,`,
+      },
+      {
+        find: `  const target = receivingPane(activePane().id);`,
+        replace: `  const target = paneBeside(activePane().id);`,
+      },
+    ],
     file: "src/studio.ts",
     id: 'studio.ts · "Edit definition" lands in a pane that can OWN the tab',
     means:

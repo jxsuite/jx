@@ -63,8 +63,8 @@ export const PANE_SELECTOR = `[part="${PANE_PART}"]`;
  */
 export const STAGE_SELECTOR = `[part="${STAGE_PART}"]`;
 
-/** The five boxes a cell is made of, in the order the document draws them. */
-export type PaneCellPart = "pane" | "strip" | "jump" | "chrome" | "stage";
+/** The six boxes a cell is made of, in the order the document draws them. */
+export type PaneCellPart = "pane" | "strip" | "jump" | "chrome" | "stage" | "dropZone";
 
 const CELL_PARTS: ReadonlyMap<string, PaneCellPart> = new Map([
   ["pane", "pane"],
@@ -72,6 +72,7 @@ const CELL_PARTS: ReadonlyMap<string, PaneCellPart> = new Map([
   ["jump", "jump"],
   ["chrome", "chrome"],
   ["pane-stage", "stage"],
+  ["drop-zone", "dropZone"],
 ]);
 
 /**
@@ -134,6 +135,14 @@ export interface PaneGridActions {
   settle: () => void;
 }
 
+/** Whether the right-edge zones are armed, and which pane's is under the pointer. */
+export interface PaneGridDragState {
+  /** Whether ANY tab-drop-eligible drag is live — the zones' shared `pointer-events` gate. */
+  armed: boolean;
+  /** The pane whose zone is under the pointer, or `""` for none. */
+  edgePane: string;
+}
+
 export interface PaneGridSurface {
   /** Resolves once the first projection is in the document. */
   ready: Promise<void>;
@@ -146,12 +155,18 @@ export interface PaneGridSurface {
    * gains or loses a pane, which is the only moment anything else could have moved it.
    */
   update: (rows: PaneGridRow[], split: number) => void;
+  /**
+   * Write the right-edge indicators, independently of {@link update} — the same reason
+   * `TabStripSurface.drag` is separate from its own `update`: a re-project the drag itself did not
+   * cause must not clear an indicator the arming monitor just lit.
+   */
+  drag: (state: PaneGridDragState) => void;
   /** Take the document down and give `#pane-grid` back empty. Idempotent. */
   dispose: () => void;
 }
 
 /** The scope `pane-grid.json` reads. */
-interface PaneGridScope extends Record<string, unknown> {
+interface PaneGridScope extends Record<string, unknown>, PaneGridDragState {
   rows: PaneGridRow[];
   /** `jx-split`'s `value`. */
   paneSplit: number;
@@ -202,6 +217,8 @@ export function mountPaneGridSurface(
 ): PaneGridSurface {
   host.replaceChildren();
   const scope = reactive<PaneGridScope>({
+    armed: false,
+    edgePane: "",
     move: actions.move,
     paneSplit: split.value,
     rows,
@@ -217,7 +234,7 @@ export function mountPaneGridSurface(
   const ready = mountSurface("pane-grid", scope, host, {
     /* No `instanceof` narrowing and no "is there a pane" guard, and both absences are structural.
        `pane-grid.json` draws no text and no `textContent`, so every node the runtime reports here
-       is an element; and the five cell parts exist only inside the repeater's rows, so a `$map`
+       is an element; and the six cell parts exist only inside the repeater's rows, so a `$map`
        scope is always there to name the pane. A guard on either would be a branch the document
        cannot reach — which is a line no test could ever cover, which is a claim nothing checks. */
     onNodeCreated: (element, _path, def, state) => {
@@ -240,6 +257,11 @@ export function mountPaneGridSurface(
       mounted?.dispose();
       mounted = null;
       host.replaceChildren();
+    },
+    drag(state) {
+      // Independent of `update`'s field list — see {@link PaneGridSurface.drag}.
+      scope.armed = state.armed;
+      scope.edgePane = state.edgePane;
     },
     ready,
     update(next, value) {

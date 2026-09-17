@@ -73,8 +73,14 @@ describe("the cell", () => {
     const cell = cellForPane(PRIMARY_PANE);
     expect(cell).not.toBeNull();
     expect(cell!.root.isConnected).toBe(true);
-    // Complete: the four surfaces are children of the root that was appended, not added after.
-    expect([...cell!.root.children]).toEqual([cell!.strip, cell!.jump, cell!.chrome, cell!.stage]);
+    // Complete: the five surfaces are children of the root that was appended, not added after.
+    expect([...cell!.root.children]).toEqual([
+      cell!.strip,
+      cell!.jump,
+      cell!.chrome,
+      cell!.stage,
+      cell!.dropZone,
+    ]);
     expect(resolveRegion("pane.primary")).toBe(cell!.stage);
     expect(resolveRegion("pane.primary/tabs")).toBe(cell!.strip);
   });
@@ -99,7 +105,7 @@ describe("the cell", () => {
     const cell = cellForPane(PRIMARY_PANE)!;
     const classed = [...grid().querySelectorAll("*")].filter((el) => el.className !== "");
     expect(classed.map((el) => `${el.nodeName.toLowerCase()}.${el.className}`)).toEqual([]);
-    for (const el of [cell.root, cell.strip, cell.jump, cell.chrome, cell.stage]) {
+    for (const el of [cell.root, cell.strip, cell.jump, cell.chrome, cell.stage, cell.dropZone]) {
       expect(el.className).toBe("");
     }
   });
@@ -262,7 +268,13 @@ describe("the second cell", () => {
 
     const side = cellForPane(SECONDARY_PANE)!;
     expect(side.root.isConnected).toBe(true);
-    expect([...side.root.children]).toEqual([side.strip, side.jump, side.chrome, side.stage]);
+    expect([...side.root.children]).toEqual([
+      side.strip,
+      side.jump,
+      side.chrome,
+      side.stage,
+      side.dropZone,
+    ]);
     expect(resolveRegion("pane.secondary")).toBe(side.stage);
     expect(resolveRegion("pane.secondary/tabs")).toBe(side.strip);
     // Its own surface record, registered against its own stage.
