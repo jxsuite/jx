@@ -16,6 +16,7 @@ import {
   modelContextWindow,
   modelToolSupport,
   PROBE_STALE_MS,
+  proxyModelsErrorMessage,
   refreshStaleProbe,
   resetModelCache,
   isManagedProxy,
@@ -176,6 +177,35 @@ describe("proxy state flags", () => {
     resetModelCache();
     expect(isProxyConfigured()).toBe(false);
     expect(getProxyDefaultModel()).toBe("");
+  });
+
+  test("captures the upstream's own message when it reported an upstream error", async () => {
+    fetchImpl = async () =>
+      Response.json(
+        {
+          models: [{ id: "gpt-4o" }],
+          configured: true,
+          upstreamError: 404,
+          upstreamMessage: "No route for that URI",
+        },
+        { status: 200 },
+      );
+    await fetchAvailableModels();
+    expect(proxyModelsErrorMessage()).toBe("No route for that URI");
+  });
+
+  test("clears the upstream message once a fetch succeeds cleanly", async () => {
+    fetchImpl = async () =>
+      Response.json(
+        { models: [], configured: true, upstreamError: 404, upstreamMessage: "nope" },
+        { status: 200 },
+      );
+    await fetchAvailableModels();
+    expect(proxyModelsErrorMessage()).toBe("nope");
+
+    fetchImpl = async () => Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 });
+    await fetchAvailableModels({ force: true });
+    expect(proxyModelsErrorMessage()).toBe("");
   });
 });
 

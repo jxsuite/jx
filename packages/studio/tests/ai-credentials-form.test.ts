@@ -287,6 +287,30 @@ describe("ai-credentials-form", () => {
     expect(modelField(c.container).matches("[data-empty]")).toBe(true);
   });
 
+  /**
+   * The proxy answers 200 even when the UPSTREAM /models call failed (Cloudflare Workers AI has no
+   * such route at all, so this is the only shape that failure ever takes) — `fetchAvailableModels`
+   * never throws for it, so without this the form looked like it had fetched successfully while
+   * quietly showing fake OpenAI defaults instead of the user's own provider's models.
+   */
+  test("fetchModels surfaces the upstream's own reason even on a 200 with defaults", async () => {
+    fetchImpl = async () =>
+      Response.json(
+        {
+          models: [{ id: "gpt-4o" }],
+          configured: true,
+          upstreamError: 404,
+          upstreamMessage: "No route for that URI",
+        },
+        { status: 200 },
+      );
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    expect(part(c.container, "models-error")!.textContent).toContain("No route for that URI");
+    expect(part(c.container, "models-error")!.textContent).toContain("type the model ID directly");
+  });
+
   test("Save persists key, endpoint, and model and fires onSaved", async () => {
     const onSaved = mock(() => {});
     const c = await makeForm({ onSaved });

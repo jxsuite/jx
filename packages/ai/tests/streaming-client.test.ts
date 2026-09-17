@@ -652,6 +652,23 @@ describe("createProxyStreamingClient", () => {
     ]);
   });
 
+  it("extracts a message from an array-shaped { errors: [...] } body (Cloudflare's own shape)", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        JSON.stringify({
+          errors: [{ code: 7000, message: "No route for that URI" }],
+          messages: [],
+          result: null,
+          success: false,
+        }),
+        { status: 404 },
+      ),
+    );
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([{ type: "error", message: "No route for that URI", code: "404" }]);
+  });
+
   it("falls back to the status when the body's code is absent or empty", async () => {
     // An empty string is not a code — it must not shadow the status a reader can still act on.
     mockFetch(() =>
