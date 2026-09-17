@@ -15,7 +15,14 @@
  */
 import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { closeAllTabs, workspace } from "../src/workspace/workspace";
+import {
+  PRIMARY_PANE,
+  closeAllTabs,
+  openTab,
+  paneBeside,
+  paneById,
+  workspace,
+} from "../src/workspace/workspace";
 import { openFileInTab } from "../src/files/files";
 import { editorKindForMode } from "../src/commands/context";
 import { invalidateMediaMeta } from "../src/files/media-meta";
@@ -109,6 +116,39 @@ describe("opening one", () => {
     openMediaTab("public/hero.png");
     expect(workspace.tabs.get("public/hero.png")).toBe(first!);
     expect([...workspace.tabs.keys()].filter((k) => k === "public/hero.png")).toHaveLength(1);
+  });
+
+  test("opts forward paneId, preview and focus to openTab, for a new tab", () => {
+    const side = paneBeside(PRIMARY_PANE);
+    openTab({ document: { tagName: "div" }, documentPath: "pages/other.json", id: "other" });
+    const tab = openMediaTab("public/hero.png", {
+      focus: false,
+      paneId: side.id,
+      preview: true,
+    });
+    expect(tab.preview).toBe(true);
+    expect(paneById(side.id)!.tabOrder).toContain("public/hero.png");
+    // Landed in the SIDE pane, but the keyboard — and `workspace.activeTabId` with it — stayed on
+    // The primary's "other".
+    expect(workspace.activeTabId).toBe("other");
+  });
+
+  test("focus: false on an already-open tab activates it in its own pane, without moving the keyboard", async () => {
+    const side = paneBeside(PRIMARY_PANE);
+    await openFileInTab("public/hero.png", { focus: false, paneId: side.id });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/other.json", id: "other" });
+    // A second tab in the side pane, so activating "hero.png" there is an observable move.
+    openTab({
+      document: { tagName: "div" },
+      documentPath: "public/hero2.png",
+      focus: false,
+      id: "hero2",
+      paneId: side.id,
+    });
+    openMediaTab("public/hero.png", { focus: false });
+    expect(paneById(side.id)!.activeTabId).toBe("public/hero.png");
+    // The keyboard stayed on the primary's "other".
+    expect(workspace.activeTabId).toBe("other");
   });
 
   test("a document is still a document", async () => {

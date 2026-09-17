@@ -39,13 +39,22 @@ export function mediaTabModes(path: string): string[] {
 /**
  * Open (or activate) a media file's viewer tab.
  *
+ * The options are `openFileInTab`'s own, passed straight through: `paneId` says which pane the tab
+ * lands in (defaulting to the focused one), `focus: false` browses without moving the keyboard, and
+ * `preview` opens a disposable tab. An existing tab is activated with the caller's `focus` — the
+ * same rule the document path follows.
+ *
  * @param {string} path - Project-relative path of the file
+ * @param {{ paneId?: string; focus?: boolean; preview?: boolean }} [opts]
  * @returns {Tab}
  */
-export function openMediaTab(path: string): Tab {
+export function openMediaTab(
+  path: string,
+  opts: { paneId?: string; focus?: boolean; preview?: boolean } = {},
+): Tab {
   const existing = workspace.tabs.get(path);
   if (existing) {
-    activateTab(path);
+    activateTab(path, { focus: opts.focus !== false });
     return existing;
   }
   return openTab({
@@ -54,5 +63,8 @@ export function openMediaTab(path: string): Tab {
     documentPath: path,
     id: path,
     sourceFormat: null,
+    ...(opts.paneId !== undefined && { paneId: opts.paneId }),
+    ...(opts.preview === true && { preview: true }),
+    ...(opts.focus === false && { focus: false }),
   });
 }

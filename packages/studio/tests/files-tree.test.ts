@@ -32,7 +32,15 @@ import {
 import type { MockPlatformState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { requireProjectState, setProjectState } from "../src/store";
-import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
+import {
+  PRIMARY_PANE,
+  SECONDARY_PANE,
+  closeAllTabs,
+  openTab,
+  paneById,
+  tabCommands,
+  workspace,
+} from "../src/workspace/workspace";
 import { initLayers } from "../src/ui/layers";
 import { setFormats } from "../src/format/format-host";
 import { registerFileFormatCommands } from "../src/format/convert-file";
@@ -66,7 +74,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   },
 }));
 
-const { loadDirectory, mountFilesPanel, setShowIgnoredFiles, unmountFilesPanel } =
+const { loadDirectory, mountFilesPanel, openFileInTab, setShowIgnoredFiles, unmountFilesPanel } =
   await import("../src/files/files");
 const { resetIgnoreCache } = await import("../src/files/gitignore");
 const { createCommandRegistry } = await import("../src/commands/registry");
@@ -960,6 +968,7 @@ describe("file context menu", () => {
       getContext: () => ({ ...emptyContext(), project: { open: true } }) as never,
     });
     registry.registerAll(gridCommands());
+    registry.registerAll(tabCommands({ openFile: openFileInTab, openFileInPane: () => {} }));
     registerContentCommands(registry);
     registerFileFormatCommands(registry);
     setActiveRegistry(registry);
@@ -1013,6 +1022,39 @@ describe("file context menu", () => {
     // Command that requires one is not offered rather than being offered and refusing.
     await openMenuOn("styles/site.css");
     expect(menuIds()).not.toContain("content.openEntry");
+  });
+
+  test("every file row offers Open to the Side; a directory does not", async () => {
+    await treeWithRegistry();
+
+    await openMenuOn("pages/home.json");
+    expect(menuIds()).toContain("document.openToSide");
+    await openMenuOn("posts/first.md");
+    expect(menuIds()).toContain("document.openToSide");
+    await openMenuOn("styles/site.css");
+    expect(menuIds()).toContain("document.openToSide");
+
+    // A directory carries no `file` fact — there is nothing FOR "the side" to open.
+    await openMenuOn("posts");
+    expect(menuIds()).not.toContain("document.openToSide");
+  });
+
+  test("Open to the Side lands the file beside the tree's own pane, and takes the keyboard there", async () => {
+    await treeWithRegistry();
+    openTab({
+      document: { tagName: "div" },
+      documentPath: "pages/home.json",
+      id: "pages/home.json",
+    });
+
+    await openMenuOn("posts/first.md");
+    await clickMenuRow("document.openToSide");
+    await flush();
+
+    expect(paneById(SECONDARY_PANE)!.tabOrder).toContain("posts/first.md");
+    expect(workspace.activePaneId).toBe(SECONDARY_PANE);
+    expect(workspace.activeTabId).toBe("posts/first.md");
+    expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["pages/home.json"]);
   });
 
   test("Open Entry Form opens the tab in entry mode — the route the palette could not offer", async () => {

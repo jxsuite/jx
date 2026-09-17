@@ -30,11 +30,25 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
 /** Placeholder document for grid tabs — the grid never reads it; save routes to the controller. */
 const GRID_STUB_DOCUMENT = { children: [], tagName: "div" };
 
-/** Open (or activate) a `.csv` file as a grid tab. */
-export async function openCsvGridTab(path: string): Promise<Tab> {
+/**
+ * Open (or activate) a `.csv` file as a grid tab.
+ *
+ * The options are `openFileInTab`'s own, passed straight through: `paneId` says which pane the tab
+ * lands in (defaulting to the focused one), `focus: false` browses without moving the keyboard, and
+ * `preview` opens a disposable tab. An existing tab is activated with the caller's `focus` — the
+ * same rule the document path follows.
+ *
+ * @param {string} path - Project-relative path of the `.csv`
+ * @param {{ paneId?: string; focus?: boolean; preview?: boolean }} [opts]
+ * @returns {Promise<Tab>}
+ */
+export async function openCsvGridTab(
+  path: string,
+  opts: { paneId?: string; focus?: boolean; preview?: boolean } = {},
+): Promise<Tab> {
   const existing = workspace.tabs.get(path);
   if (existing) {
-    activateTab(path);
+    activateTab(path, { focus: opts.focus !== false });
     return existing;
   }
 
@@ -52,6 +66,9 @@ export async function openCsvGridTab(path: string): Promise<Tab> {
     documentPath: path,
     id: path,
     sourceFormat: formatForPath(path)?.name ?? null,
+    ...(opts.paneId !== undefined && { paneId: opts.paneId }),
+    ...(opts.preview === true && { preview: true }),
+    ...(opts.focus === false && { focus: false }),
   });
   const controller = createGridController(tab, source);
   void controller.load();

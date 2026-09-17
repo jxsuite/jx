@@ -19,6 +19,7 @@ import {
   moveTab,
   openTab,
   activeTab,
+  paneBeside,
   paneById,
   paneCommands,
   paneOfTab,
@@ -26,7 +27,6 @@ import {
   promoteTab,
   moveTabToPane,
   setTabPinned,
-  sidePane,
   splitRight,
   tabCommands,
   tabIsLive,
@@ -789,24 +789,22 @@ describe("openTab says WHERE and whether the keyboard follows", () => {
   });
 });
 
-describe("sidePane and moveTabToPane", () => {
-  test("sidePane creates the second pane and moves NOTHING", () => {
+describe("paneBeside and moveTabToPane", () => {
+  test("paneBeside creates the second pane and moves NOTHING", () => {
     open("a");
-    const side = sidePane();
+    const side = paneBeside(PRIMARY_PANE);
     expect(side.id).toBe(SECONDARY_PANE);
     expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["a"]);
     expect(side.tabOrder).toEqual([]);
     // Idempotent, and from the side pane it answers with the primary.
-    expect(sidePane().id).toBe(SECONDARY_PANE);
-    focusPane(SECONDARY_PANE);
-    expect(sidePane().id).toBe(PRIMARY_PANE);
-    focusPane(PRIMARY_PANE);
+    expect(paneBeside(PRIMARY_PANE).id).toBe(SECONDARY_PANE);
+    expect(paneBeside(SECONDARY_PANE).id).toBe(PRIMARY_PANE);
   });
 
   test("moveTabToPane is a MOVE, is idempotent, and refuses ids that name nothing", () => {
     open("a");
     open("b");
-    const side = sidePane();
+    const side = paneBeside(PRIMARY_PANE);
     expect(moveTabToPane("b", side.id)?.id).toBe(SECONDARY_PANE);
     expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["a"]);
     expect(paneById(SECONDARY_PANE)!.tabOrder).toEqual(["b"]);
@@ -814,6 +812,67 @@ describe("sidePane and moveTabToPane", () => {
     expect(paneById(SECONDARY_PANE)!.tabOrder).toEqual(["b"]);
     expect(moveTabToPane("nope", SECONDARY_PANE)).toBeNull();
     expect(moveTabToPane("b", "ghost")).toBeNull();
+  });
+
+  test("paneBeside answers the same regardless of which pane holds the focus", () => {
+    // The drag resolver and the preset menu both hand it a pane id that is NOT necessarily the
+    // Focused one — rule 4 of `check-pane-singletons.ts` requires the answer not depend on it.
+    open("a");
+    paneBeside(PRIMARY_PANE);
+    focusPane(SECONDARY_PANE);
+    expect(paneBeside(PRIMARY_PANE).id).toBe(SECONDARY_PANE);
+    expect(paneBeside(SECONDARY_PANE).id).toBe(PRIMARY_PANE);
+    focusPane(PRIMARY_PANE);
+    expect(paneBeside(PRIMARY_PANE).id).toBe(SECONDARY_PANE);
+    expect(paneBeside(SECONDARY_PANE).id).toBe(PRIMARY_PANE);
+  });
+
+  test("moveTabToPane with an index inserts at that slot, cross-pane and within the same pane", () => {
+    open("a");
+    open("b");
+    open("c");
+    const side = paneBeside(PRIMARY_PANE);
+    moveTabToPane("b", side.id);
+    // Cross-pane: a fourth tab lands BEFORE "b" rather than after it.
+    open("d");
+    expect(moveTabToPane("d", side.id, 0)?.tabOrder).toEqual(["d", "b"]);
+    // Same-pane WITH an index delegates to the reorder clamp `moveTab` uses — a drag-reorder and a
+    // Cross-pane move share one clamp rather than two.
+    expect(moveTabToPane("d", side.id, 1)?.tabOrder).toEqual(["b", "d"]);
+  });
+
+  test("moveTabToPane clamps a pinned tab into the pinned prefix, even arriving from another pane", () => {
+    open("a");
+    open("b");
+    setTabPinned("a", true);
+    const side = paneBeside(PRIMARY_PANE);
+    open("c");
+    moveTabToPane("c", side.id);
+    setTabPinned("c", true);
+    // "c" is pinned but was asked for index 1 (the unpinned tail) — the clamp pulls it into the
+    // Pinned prefix, which here is index 0 since the side pane pinned nothing before it arrived.
+    expect(moveTabToPane("c", side.id, 1)?.tabOrder).toEqual(["c"]);
+  });
+});
+
+describe("splitRight(tabId)", () => {
+  test("named moves that tab rather than the focused pane's active one", () => {
+    const a = open("a");
+    open("b");
+    activateTab(a.id);
+    // The focus is on "b" (the last opened), but the split is asked to move "a" specifically — the
+    // Drag resolver names the tab it is carrying, which is not always the focused one.
+    activateTab("b");
+    const target = splitRight(a.id);
+    expect(target?.id).toBe(SECONDARY_PANE);
+    expect(target?.tabOrder).toEqual(["a"]);
+    expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["b"]);
+  });
+
+  test("refuses an id that names no tab", () => {
+    open("a");
+    expect(splitRight("nope")).toBeNull();
+    expect(workspace.panes).toHaveLength(1);
   });
 });
 

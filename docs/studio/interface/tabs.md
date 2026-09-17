@@ -18,6 +18,10 @@ code:
   - packages/studio/src/panels/pane-context.ts
   - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/workspace/workspace.ts
+  - packages/studio/src/files/files.ts
+  - packages/studio/src/studio.ts
+  - packages/studio/src/panels/tab-drop.ts
+  - packages/studio/src/panels/pane-grid.ts
 ---
 
 # Documents and panes
@@ -35,7 +39,7 @@ Media files open too. An image, a video, a font or a PDF gets a document of its 
 - Switch back and forth with :kbd[⌃Tab] / :kbd[⌃⇧Tab], which walk your documents in most-recently-used order.
 - Close one with its **×**, by middle-clicking it, or with :kbd[⌘W].
 - Reopen the last one you closed with :kbd[⌘⇧T].
-- Drag to reorder. When more are open than fit, scroll the mouse wheel over the strip, or use the **⌄** button at its right edge to pick from the ones currently out of view.
+- Drag along the strip to reorder, or onto the other pane's strip to move a document there. When more are open than fit, scroll the mouse wheel over the strip, or use the **⌄** button at its right edge to pick from the ones currently out of view.
 - Reach the strip from the keyboard with :kbd[Tab]. The whole strip is one stop, so the arrow keys then walk along it and switch as they land, :kbd[Home] and :kbd[End] jump to its ends, and :kbd[Delete] closes the document you are on, asking about unsaved changes exactly as the **×** does.
 
 ## Labels
@@ -93,7 +97,7 @@ Naming a document in the URL still wins: `?file=` opens that file, and Studio le
 
 ## Drilling into a component
 
-Opening a component from the canvas, the Outline tree or the Inspector's **Edit component** action gives it **its own place in the strip**. The page you came from stays open, still on the element you had selected, so you can flip between the two with a click or :kbd[⌃Tab].
+Opening a component from the canvas, the Outline tree or the Inspector's **Edit component** action opens it **beside the page, in a second pane**, and puts you in it. The page you came from stays open in the first pane, still on the element you had selected, so you can flip between the two with a click or :kbd[⌃Tab].
 
 The new one carries a small **↳** marker, and hovering it names the document you drilled in from.
 
@@ -105,6 +109,8 @@ The new one carries a small **↳** marker, and hovering it names the document y
 
 - **Drag the divider** to change the split. Double-click it to go back to even; the ratio is remembered with the rest of your layout.
 - **Click into a pane to work in it.** The Inspector, the Outline, the block action bar and every keyboard shortcut follow the pane you last clicked in: its canvas, its bars, its editor, anywhere. :kbd[⌘⌥0] focuses the side pane without the mouse, and **Focus Primary Pane** in the palette goes back.
+- **Drag a document across**, onto the other pane's strip, or onto the right edge of the canvas to create the second pane. :kbd[⌘\] is the keyboard form of the same move.
+- **Open to the Side**, from a file's right-click menu, is the Files tree's own route to a second pane: it opens the file beside whatever you are already looking at, and puts you in it.
 - **Unsplit** collapses the split. Closing a pane never closes documents. They move back into the pane that remains, and a pane you empty collapses on its own instead of standing there empty.
 
 The two panes are independent in everything a document owns: each keeps its own view, breakpoint, colour scheme, zoom and selection, and editing in one leaves the other exactly as it was.

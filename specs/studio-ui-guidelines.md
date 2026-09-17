@@ -413,7 +413,7 @@ A canvas click does two things at once: it places the text caret at the clicked 
 
 ### 8.2 Drag and Drop
 
-Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering and canvas element manipulation.
+Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering, canvas element manipulation, the tab strip (reorder, and a move between panes) and the pane grid's right-edge drop zone (creating a second pane).
 
 - Drag indicator: `.dragging` class (opacity 0.4)
 - Drop target: `.drop-target` class (accent-15 background, dashed outline)
@@ -429,6 +429,8 @@ Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering and canvas element
 Deliberately **not** an APG keyboard-drag mode. Building a grab/move/drop state machine would add a mode with its own keys, its own escape semantics and its own announcements — a second way to do something the editor can already do, and one more thing to keep correct. The cheaper answer is to say plainly that cut and paste ARE the alternative, and to make sure they announce.
 
 The block action bar's **Move up** / **Move down** cover the common same-parent case in one keystroke, without a clipboard round trip.
+
+**Moving a tab between panes has two non-drag equivalents.** **Split Right** (`pane.splitRight`, `⌘\`) moves the focused pane's active tab to a new pane at the grid's right edge — the keyboard form of dragging a tab onto that edge — and a file row's **Open to the Side** (`document.openToSide`) is the Files tree's own route to the same `receivingPane` a cross-pane drag resolves through.
 
 #### External (OS) file drags
 

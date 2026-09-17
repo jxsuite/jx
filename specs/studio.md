@@ -1445,7 +1445,7 @@ That an uninvited dialog is a **blocking** defect, not a cosmetic one, is a prop
 
 ## 14. Tabs and Document Identity
 
-> **Status: Partial.** The identity model and the strip ship; per-pane tab strips and preview tabs are pending.
+> **Status: Implemented.** The identity model, per-pane tab strips, preview tabs, and moving a tab between panes by drag, by `⌘\`, or by Open to the Side.
 
 ### 14.1 A tab's id IS its document
 
@@ -1458,6 +1458,8 @@ Opening an id that is already open **replaces** the tab in place — the previou
 ### 14.2 The drill-in relationship
 
 The new tab records `openedFrom` — the id and path of the document the author drilled in from. It is a **relationship, not a navigation stack**: nothing pops it, nothing restores from it, and closing the parent leaves the child perfectly usable. The strip renders it as a `↳` marker and names the origin in the tab's tooltip.
+
+**Drilling in opens to the side and follows.** Editing a component's definition is a gesture, not a read, so the pane it lands in takes the keyboard — the opposite of the rule a pane that is merely FOLLOWING a selection obeys (§18.4's `pane.derive { preset: "component" }`, which browses with the focus left behind).
 
 ### 14.3 Sub-documents: withdrawn
 
@@ -1480,6 +1482,8 @@ The rule that generalises: **a stack needs a push, and the push is the part to s
 | Marks            | Three, and each is a slot on the kit's tab rather than a chip this surface hand-draws: the drill-in `↳` (§14.2) before the label, and after it the draft pill (§7.6) and the pin. The dot and the `×` are the element's own and always come last, so a mark Studio adds can never push the close button off the end of a chip.                                                                                       |
 | Dirty            | A dot; closing a dirty tab asks before it discards — see §14.7. `⌘W` and the tab's `×` are one implementation, because two copies of that prompt drifted apart once already.                                                                                                                                                                                                                                         |
 | Keyboard         | The strip is a real `tablist` and each chip a `tab` (`ui.md` §5.4), so it is **one stop** in the tab order with a roving caret inside it: the arrows walk it and switch as they land, `Home` and `End` reach its ends, and `Delete` closes the tab the caret is on — through the same close the `×` runs, prompt included. A control on a chip (the pin) is in the tab order only while its chip is the current one. |
+| Reorder          | Dragging a chip along its own strip moves it, clamped so a pinned tab can never interleave with an unpinned one — the same clamp a cross-pane move uses.                                                                                                                                                                                                                                                             |
+| Between panes    | A tab drags onto the OTHER pane's strip — between chips or onto its empty tail — or onto the grid's right edge, which creates the second pane. `⌘\` (`pane.splitRight`) and a file row's **Open to the Side** are the keyboard and the tree's own routes to the same move (§18.1, §18.3).                                                                                                                            |
 | `⌃Tab` / `⌃⇧Tab` | Cycle the **MRU** order, not the strip order (§14.5).                                                                                                                                                                                                                                                                                                                                                                |
 | `⌘⇧T`            | Reopen the most recently closed document (§14.6).                                                                                                                                                                                                                                                                                                                                                                    |
 
@@ -1679,7 +1683,9 @@ A settings surface renders from the configuration document and commits through t
 
 ### 18.1 A pane is where a document is shown
 
-Two panes at most, and the cap is enforced in code rather than by convention — `splitRight` is the only pane creator and refuses past the maximum. **Both panes draw a live Canvas**, and a split is a move: the tab crosses as it is.
+Two panes at most, and the cap is enforced in code rather than by convention — every pane creator resolves through `paneBeside`, "the pane beside the one I am asked about", which mints the second pane the first time anything asks and answers the one already there every time after. **Both panes draw a live Canvas**, and a split is a move: the tab crosses as it is.
+
+**A split is a move of a NAMED tab, not of "whatever is focused."** `pane.splitRight` and `⌘\` still mean the focused pane's active tab, because that is what a keyboard has to mean — but the gesture the command wraps takes a tab id, because a drag names the chip it is carrying, and a chip a reader drags across the grid is rarely the one their keyboard happens to be in at that moment.
 
 **There is one cap now, and it is on the number of panes.** A second cap used to sit beside it, naming the editor kinds a pane other than the primary could host — Code, Diff, Config, Entry, Grid, Library, the cheap ones — because a second live host was unaffordable while the shell had one stage to hand between panes and one app-wide render generation to invalidate. Neither is true any longer, so the kind cap has nothing left to protect and every predicate that read it is deleted, including the one that flipped a splitting Design tab to Code on its way across. `MAX_PANES` stays at two because two is a measured budget, not a placeholder: each host is a real `@jxsuite/runtime` render, an `iframe-channel` connection and a structured clone, all on one main thread.
 
@@ -1709,6 +1715,8 @@ There is no stage handover. The shell used to own one of each pane-scoped surfac
 
 **Clicking into a pane focuses it.** For most of this section's life `focusPane` had exactly one call site — the tab strip — so a click on a pane's canvas, its context bar or its editor left the keyboard in the other pane, and the unfocused pane was not a rare state but the state you were in the moment you clicked into one. A cell focuses its pane on pointerdown; a frame reports the same through the protocol, because a click inside a cross-origin document does not reach the parent.
 
+**Opening to the side focuses the side.** `document.openToSide` and a completed cross-pane drag both follow the document into the pane it landed in — the author asked to go there, so the pane that gesture opens into takes the keyboard. This is the opposite of a READ: `pane.compareWith`, a derivation's follow and session restore all browse with `focus: false`, because those put a document beside the author without moving them.
+
 **Nothing drawn for a pane may resolve the focus.** This is the rule the whole section reduces to, and it was violated in every module that had been written when there was one stage — the Document Header card mutating the focused document, the zoom axis writing the focused tab's scale, a render posting the focused tab's colour scheme into whichever pane it was drawing, a host asking the focus whether to restore a caret it owed. Each was correct while "the focused pane" and "this pane" named the same thing. `scripts/check-pane-singletons.ts` enforces it: a function whose parameters name a pane may not read the focus in its body, one hop into a helper that does not name its own subject. A rule over a list of field names could not see any of this, which is why it parses.
 
 **A surface that caches "am I mounted?" in a module outlives the DOM it mounted into.** Every such fast path must also ask whether the mode changed, or it returns on the strength of an editor whose container was thrown away one frame earlier.
@@ -1727,7 +1735,7 @@ A derived pane is chosen by a **standing rule** rather than by a document: show 
 
 **A projection's own view state belongs to the PANE, not to the tab it borrows.** A Diff lens carries its Visual/Code position and its place in the change list, and neither may be written onto `session.ui`: that session belongs to the pane beside it, and a control that flips the document somebody else is editing is the defect the whole lens/tab split exists to refuse. It is the same rule the per-pane zoom already follows, applied to the two axes a comparison adds.
 
-**A pane may hold a derivation or tabs of its own, never both.** A projection borrows the pane, so a gesture that puts a document there — a split, a compare, a drill-in — releases the rule rather than stacking on it. The author asked for a document to be somewhere; the projection had nothing to lose.
+**A pane may hold a derivation or tabs of its own, never both.** A projection borrows the pane, so a gesture that puts a document there — a split, a compare, a drill-in, a drop, an open to the side — releases the rule rather than stacking on it. The author asked for a document to be somewhere; the projection had nothing to lose.
 
 **The `locale` preset is a follow, and it is the one that had to prove the distinction.** Jx has no message catalogue (`site-architecture.md` §13.3): a translation is a different file in a different directory, so "the same page in French" opens that file rather than re-rendering this one. A preset that redrew the pane under another language would be describing a system Jx does not have. Its label and its chip are unfinished phrases completed by the locale's own autonym — "Same page in français" — for the reason the breakpoint chip's is: a strip reading "Same page in" over a French document says nothing the pane beside it did not already say.
 
