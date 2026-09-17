@@ -23,7 +23,7 @@
  * @license MIT
  */
 
-import { fetchAvailableModels } from "../services/ai-models";
+import { fetchAvailableModels, proxyModelsErrorMessage } from "../services/ai-models";
 import {
   getBaseUrl,
   getOpenAiKey,
@@ -165,6 +165,17 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
         },
         force: true,
       });
+      /*
+       * A 200 from the proxy does not mean the UPSTREAM listing worked — handleModels answers with
+       * defaults and `configured: true` even when the provider's /models route failed, so the list
+       * fetch never throws for that case. Cloudflare Workers AI's OpenAI-compatible surface has no
+       * /models route at all, so this is the only way that failure ever reaches the form; without
+       * it, the field silently filled with OpenAI's default ids instead of the user's own models.
+       */
+      const upstreamMessage = proxyModelsErrorMessage();
+      if (upstreamMessage) {
+        modelsError = `${upstreamMessage} — type the model ID directly instead.`;
+      }
     } catch (error: unknown) {
       modelsError = (error as Error).message || "Failed to fetch models";
     } finally {

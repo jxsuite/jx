@@ -144,6 +144,45 @@ interface ErrorResponseBody {
    * reading a sentence and deciding what it meant.
    */
   code?: string;
+  /**
+   * An array-shaped envelope, as Cloudflare's own REST API uses for a BYOK base URL pointed
+   * directly at it: `{ success: false, errors: [{ code, message }] }`, with no top-level `error`
+   * key at all. Reachable only when `baseUrl` bypasses the Studio proxy and talks to such a
+   * provider directly — the proxy itself normalizes this shape before it ever reaches a client.
+   */
+  errors?: { code?: number; message?: string }[];
+}
+
+/**
+ * Extract a human-readable message from an error body, falling back to the raw body (or `fallback`
+ * when the body is empty).
+ */
+function extractErrorMessage(rawBody: string, fallback: string): string {
+  if (!rawBody) {
+    return fallback;
+  }
+  try {
+    const { error, errors } = JSON.parse(rawBody) as ErrorResponseBody;
+    if (typeof error === "string") {
+      return error;
+    }
+    if (error) {
+      const { message } = error;
+      if (message) {
+        return message;
+      }
+    }
+    const [first] = errors ?? [];
+    if (first) {
+      const { message } = first;
+      if (message) {
+        return message;
+      }
+    }
+  } catch {
+    /* Not JSON — use the raw body. */
+  }
+  return rawBody;
 }
 
 // ─── Type definitions ────────────────────────────────────────────────────────
@@ -275,9 +314,10 @@ export function createOpenAIStreamingClient({
       } catch {
         /* Ignore */
       }
+      const message = extractErrorMessage(errorBody, response.statusText);
       yield {
         type: "error",
-        message: `API error ${response.status}: ${errorBody || response.statusText}`,
+        message: `API error ${response.status}: ${message}`,
         code: String(response.status),
       };
       return;
@@ -543,23 +583,17 @@ export function createProxyStreamingClient({
       } catch {
         /* Ignore */
       }
-      // Try to extract a clean message from JSON error bodies (e.g. the proxy's
-      // { error: "..." } shape or OpenAI's { error: { message: "..." } }).
-      let cleanMessage = errorBody || response.statusText;
+      // Extract a clean message from the JSON error body — see extractErrorMessage.
+      const cleanMessage = extractErrorMessage(errorBody, response.statusText);
       /* The body's machine code beats the status. `code` was `String(response.status)`
          unconditionally, so a proxy answering 401 `{ code: "cf_reconnect_required" }` reached the
          client as `"401"` — indistinguishable from a bad BYOK key, and the one reading that would
          have put a Reconnect button on screen was thrown away at the only place it arrived. */
       let machineCode = "";
       try {
-        const parsed = JSON.parse(errorBody) as ErrorResponseBody;
-        if (typeof parsed.error === "string") {
-          cleanMessage = parsed.error;
-        } else if (parsed.error?.message) {
-          cleanMessage = parsed.error.message;
-        }
-        if (typeof parsed.code === "string" && parsed.code) {
-          machineCode = parsed.code;
+        const { code } = JSON.parse(errorBody) as ErrorResponseBody;
+        if (typeof code === "string" && code) {
+          machineCode = code;
         }
       } catch {
         /* Not JSON — use the raw body. */

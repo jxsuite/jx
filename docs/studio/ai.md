@@ -77,6 +77,10 @@ Fetch models tests the key and endpoint **currently in the form**, not the ones 
 :::
 
 :::doc-note
+**Cloudflare Workers AI**, used directly rather than through **Connect Cloudflare** above (for example from the desktop app or a dev server, where that managed option does not appear): set the endpoint to `https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1`, ending in `/v1` with nothing appended, and the key to a Cloudflare API token scoped to Workers AI. **Fetch models will not list anything**: Cloudflare's OpenAI-compatible surface has no models-listing route, only chat completions and embeddings. Type the model ID directly instead, for example `@cf/zai-org/glm-5.3-flash`.
+:::
+
+:::doc-note
 **Reasoning models work.** When a model streams its thinking beside its answer, Studio keeps that thinking with the turn and hands it back to the provider on the next round, which providers like DeepSeek require once the assistant starts calling tools. You never see it in the chat; it is part of what the model is owed, not part of the reply.
 :::
 
