@@ -326,7 +326,7 @@ describe("restoreSession", () => {
         // Pane is never created, and the second pane's documents all land in the first.
         ensureSecondPane: () => {
           splits += 1;
-          receivingPane();
+          receivingPane(PRIMARY_PANE);
         },
         openFile: opener(),
       },

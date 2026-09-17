@@ -43,9 +43,9 @@ import {
   activePane,
   detachTab,
   insertIntoPane,
+  paneBeside,
   paneById,
   promoteTab,
-  sidePane,
   workspace,
 } from "./workspace";
 import {
@@ -1143,9 +1143,11 @@ function pinnablePane(): Pane | null {
  * **Unlike `pane.derive`, the COMMAND's subject is the grid rather than the focused pane**, and
  * that is deliberate: the author reaches "Keep This Document" from the palette while the keyboard
  * is in the page they are editing, and a grid holds at most one derived pane — `pane.derive` puts
- * the projection in `sidePane()`, and `workspace.ts`'s `MAX_PANES` is 2. {@link pinnablePane} finds
- * it by scanning, which reads no focus and is therefore the same answer from anywhere — so the
- * preset menu can ask it about its own pane and get an answer about its own pane.
+ * the projection in `paneBeside(source.id)`, and `workspace.ts`'s `MAX_PANES` is 2.
+ * {@link
+ * pinnablePane} finds it by scanning, which reads no focus and is therefore the same answer
+ * from anywhere — so the preset menu can ask it about its own pane and get an answer about its own
+ * pane.
  *
  * @param {string} paneId
  * @returns {string | null}
@@ -1227,7 +1229,7 @@ export function derivationCommands(deps: DerivationDeps): AnyCommand[] {
             `command "pane.derive" argument "preset": "${preset}" requires ${refusal}`,
           );
         }
-        const target = sidePane();
+        const target = paneBeside(source.id);
         /* The DERIVATION IS PUBLISHED FIRST, and the order is not cosmetic.
            §18.1 rule 3 removes a pane with no subject, and `detachTab` applies it as each tab
            leaves — so handing the side pane's tabs back before it had a derivation collapsed the

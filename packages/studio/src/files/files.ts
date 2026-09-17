@@ -60,6 +60,7 @@ import {
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import {
+  PRIMARY_PANE,
   activateTab,
   moveTabToPane,
   openTab,
@@ -405,7 +406,7 @@ export async function openLastSessionOrHome(): Promise<boolean> {
   if (session) {
     const opened = await restoreSession(session, {
       ensureSecondPane: () => {
-        receivingPane();
+        receivingPane(PRIMARY_PANE);
       },
       openFile: (path, paneId) => openFileInTab(path, { focus: false, paneId }),
     });
@@ -1525,6 +1526,11 @@ function fileRowFacts(entry: { path: string; type: string }): Record<string, unk
     }
     return facts;
   }
+  /* Every file row states `file`, because `document.openToSide` takes one and the row is the only
+     thing that knows it — the same reason `content.openEntry`'s `path` is stated here. A command
+     whose required arguments this row cannot answer is skipped, so without this fact the
+     "Open to the Side" row would never render on any file. */
+  facts.file = entry.path;
   if (collectionOfPath(entry.path)) {
     facts.path = entry.path;
   }
@@ -2238,23 +2244,36 @@ export interface OpenFileOpts {
 /**
  * Bring an ALREADY-OPEN tab to where the caller asked for it.
  *
- * Three cases, and the third is the one a following pane depends on:
+ * Three cases, and the third is the one a cross-pane open depends on:
  *
- * | the tab is…                                      | behaviour                                      |
- * | ------------------------------------------------ | ---------------------------------------------- |
- * | in the requested pane (or no pane was requested) | activate it there, honouring `focus`           |
- * | elsewhere, and **not** its pane's active tab     | move it — one tab is one document in one strip |
- * | elsewhere, and **is** its pane's active tab      | **nothing.** You are already looking at it     |
+ * | the tab is…                                                                  | behaviour                                      |
+ * | ---------------------------------------------------------------------------- | ---------------------------------------------- |
+ * | elsewhere, and **not** its pane's active tab                                 | move it — one tab is one document in one strip |
+ * | elsewhere, and **is** its pane's active tab, browsing (`focus: false`)       | **nothing.** You are already looking at it     |
+ * | already in the requested pane, or committing (moving/staying, focus follows) | activate it there, honouring `focus`           |
  *
- * The third exists because moving it would oscillate: a derivation that re-resolves to the document
+ * The first exists because moving it would oscillate: a derivation that re-resolves to the document
  * the author is editing would yank it out of their pane and into the assistant one, and the follow
  * would then re-resolve against whatever landed in its place.
+ *
+ * The third is the first's other half, and it is what "Open to the Side" needs: the tab is
+ * elsewhere and IS its pane's active tab, but the caller asked for it in a DIFFERENT pane with the
+ * focus following — the author asked to go there, so "you are already looking at it" is the wrong
+ * answer. The move is a `moveTabToPane`, which activates nothing and moves no focus; the
+ * `activateTab` below then points the keyboard at the pane it landed in.
+ *
+ * **The guard reads `wanted !== undefined && holder` — not also `holder.id !== wanted`.** A tab
+ * already in the requested pane still passes through: `moveTabToPane` is idempotent for a tab
+ * already in `paneId` (its own doc, next to this call), so entering the block and calling it anyway
+ * costs nothing and reaches the identical final `activateTab`. Naming the extra condition would ask
+ * a reader to verify a distinction that changes nothing — the redundant branch this replaced is
+ * `check-lens-mutants.ts`'s own "delete rather than assert" rule, applied to itself.
  */
 function revealOpenTab(tabId: string, opts: OpenFileOpts): void {
   const wanted = opts.paneId;
   const holder = paneOfTab(tabId);
-  if (wanted !== undefined && holder && holder.id !== wanted) {
-    if (holder.activeTabId === tabId) {
+  if (wanted !== undefined && holder) {
+    if (holder.activeTabId === tabId && opts.focus === false) {
       return;
     }
     moveTabToPane(tabId, wanted);
@@ -2293,7 +2312,7 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
    * why a branch anywhere else would send a restored media tab straight back down the error path.
    */
   if (isViewableMedia(path)) {
-    openMediaTab(path);
+    openMediaTab(path, opts);
     if (follows) {
       requireProjectState().selectedPath = path;
     }
@@ -2308,8 +2327,10 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
   // CSV files open in the grid editor (source mode remains as the raw-text alternate).
   if (path.toLowerCase().endsWith(".csv")) {
     try {
-      await openCsvGridTab(path);
-      requireProjectState().selectedPath = path;
+      await openCsvGridTab(path, opts);
+      if (follows) {
+        requireProjectState().selectedPath = path;
+      }
       trackRecentFile({
         name: path.split("/").pop() || path,
         path,
@@ -2395,8 +2416,10 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
  * Open a file into a NAMED pane, browsing rather than committing, leaving the keyboard behind.
  *
  * The same body as {@link openFileInTab} with the three options a side-open always wants, given a
- * signature that says which pane in the first parameter. It is what "open it beside this" means
- * everywhere it is asked for — drilling into a component, following a layout, `pane.compareWith`.
+ * signature that says which pane in the first parameter. It is what the READS mean by "open it
+ * beside this" — following a layout, `pane.compareWith`. The gestures that open something
+ * (drill-in, Open to the Side) call {@link openFileInTab} directly, because the pane they open into
+ * takes the keyboard.
  *
  * @param {string} paneId
  * @param {string} path
