@@ -209,6 +209,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       'drops a grid\'s stored layout AND its named views. Nothing offers "reset this grid" — the ' +
       "grid's commands all write layouts, none discards one. A missing command, not a question",
   },
+  "grid/grid-lazy.ts": { resetGridLazy: TEST_RESET },
   "new-project/location-fields.ts": {
     locationError:
       "reads back the inline validation message from the last `collectDestination`. The dialog " +
