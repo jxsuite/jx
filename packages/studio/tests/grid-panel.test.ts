@@ -43,6 +43,7 @@ void mock.module("../src/services/notify.js", () =>
 );
 
 const { createGridController } = await import("../src/grid/grid-controller");
+const { loadGridEngine } = await import("../src/grid/grid-lazy");
 const {
   detachGridPanel,
   gridPanelMounted,
@@ -184,6 +185,11 @@ async function mountGrid(source: GridSource) {
   const controller = createGridController(tab, source);
   await controller.load();
   renderGridMode(surfaceOf(wrap), tab);
+  // The mount awaits the lazy grid engine load, which is memoized: awaiting it here means the
+  // Continuation inside `renderGridMode`'s effect is already queued, and one turn runs it. Waiting
+  // A fixed number of turns instead made the first test in the file a race against a cold import
+  // (mirrors `editors.test.ts`'s `paintEditor` and Monaco).
+  await loadGridEngine();
   await flush(3);
   return { controller, tab, wrap };
 }
