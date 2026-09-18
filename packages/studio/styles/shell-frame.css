@@ -54,6 +54,14 @@
 #toolbar.electrobun-webkit-app-region-drag {
   -webkit-app-region: drag;
 }
+/* The mirror of #toolbar's own drag class above: every interactive control inside the Command Bar
+   carries this (commandbar.json) so Electrobun's ancestry walk finds a working no-drag signal on
+   the button itself instead of falling through to the toolbar's drag region. Unscoped, like
+   .resize-edge below, because the class name is self-describing and used nowhere else. A no-op
+   outside Electrobun. */
+.electrobun-webkit-app-region-no-drag {
+  -webkit-app-region: no-drag;
+}
 /* Resize edge zones */
 .resize-edge {
   position: fixed;

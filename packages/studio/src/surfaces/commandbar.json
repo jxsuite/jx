@@ -21,9 +21,6 @@
       "flex": "1",
       "flexShrink": "999"
     },
-    "& jx-button, & jx-action-button, & button": {
-      "WebkitAppRegion": "no-drag"
-    },
     "& [part=\"csd-lead\"], & [part=\"csd-trail\"], & [part=\"menu-slot\"], & [part=\"layouts-slot\"], & [part=\"presence-slot\"]": {
       "display": "contents"
     },
@@ -264,7 +261,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "data-control": "close"
+                "data-control": "close",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -288,7 +286,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "data-control": "minimize"
+                "data-control": "minimize",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -312,7 +311,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "data-control": "maximize"
+                "data-control": "maximize",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -354,7 +354,8 @@
             }
           },
           "attributes": {
-            "data-menu": "studio"
+            "data-menu": "studio",
+            "class": "electrobun-webkit-app-region-no-drag"
           },
           "onclick": {
             "$prototype": "Function",
@@ -438,7 +439,8 @@
                   "aria-selected": "${$map.item.active ? 'true' : 'false'}",
                   "data-layout": "${$map.item.id}",
                   "data-active": "${$map.item.active ? '' : null}",
-                  "title": "${$map.item.title}"
+                  "title": "${$map.item.title}",
+                  "class": "electrobun-webkit-app-region-no-drag"
                 },
                 "textContent": "${$map.item.name}",
                 "onclick": {
@@ -484,7 +486,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "part": "layout-add"
+                "part": "layout-add",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -514,7 +517,8 @@
       "attributes": {
         "part": "center",
         "role": "group",
-        "aria-label": "Command Center"
+        "aria-label": "Command Center",
+        "class": "electrobun-webkit-app-region-no-drag"
       },
       "onclick": {
         "$prototype": "Function",
@@ -581,7 +585,8 @@
                   "part": "segment",
                   "type": "button",
                   "data-segment": "${$map.item.key}",
-                  "title": "${$map.item.title}"
+                  "title": "${$map.item.title}",
+                  "class": "electrobun-webkit-app-region-no-drag"
                 },
                 "textContent": "${$map.item.label}",
                 "onclick": {
@@ -666,7 +671,8 @@
               "quiet": true
             },
             "attributes": {
-              "data-command-id": "${$map.item.id}"
+              "data-command-id": "${$map.item.id}",
+              "class": "electrobun-webkit-app-region-no-drag"
             },
             "onclick": {
               "$prototype": "Function",
@@ -865,7 +871,8 @@
               "size": "sm"
             },
             "attributes": {
-              "data-command-id": "${$map.item.id}"
+              "data-command-id": "${$map.item.id}",
+              "class": "electrobun-webkit-app-region-no-drag"
             },
             "onchange": {
               "$prototype": "Function",
@@ -914,7 +921,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "data-control": "minimize"
+                "data-control": "minimize",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -938,7 +946,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "data-control": "maximize"
+                "data-control": "maximize",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -962,7 +971,8 @@
                 "size": "sm"
               },
               "attributes": {
-                "data-control": "close"
+                "data-control": "close",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
