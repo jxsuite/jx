@@ -536,7 +536,8 @@ function directiveToJx(node: MdastNode) {
     if (isCustomElement) {
       // For custom elements:
       //   - style, children, textContent, innerHTML, $-prefixed → element-level
-      //   - props (from props.X dot-path) → $props (component state)
+      //     ($props included: "props", bare or dotted, is a JX_DOLLAR_KEYS entry, so
+      //     `expandDotPaths` has already renamed it to "$props" by the time this loop sees it)
       //   - everything else → HTML attributes
       for (const [key, value] of Object.entries(props)) {
         if (
@@ -547,8 +548,6 @@ function directiveToJx(node: MdastNode) {
           key.startsWith("$")
         ) {
           el[key] = value;
-        } else if (key === "props") {
-          el.$props = value as Record<string, JsonValue>;
         } else {
           if (!el.attributes) {
             el.attributes = {};

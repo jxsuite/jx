@@ -12,6 +12,7 @@ import {
   currentSession,
   fetchSession,
   inBrowser,
+  refreshSession,
   resetSessionStore,
   Session,
   subscribeSession,
@@ -94,6 +95,22 @@ describe("session store", () => {
     });
     expect(await fetchSession()).toBeNull();
     expect(currentSession()).toBeNull();
+  });
+
+  test("refreshSession fetches in the background and notifies once it lands", async () => {
+    setAuthClient(fakeClient([{ user: { id: "u1", role: "admin" } }]));
+    const seen: (SessionInfo | null)[] = [];
+    subscribeSession((session) => seen.push(session));
+
+    refreshSession();
+    // Fire-and-forget: nothing has landed on the same synchronous turn.
+    expect(currentSession()).toBeNull();
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(currentSession()).toMatchObject({ role: "admin", userId: "u1" });
+    expect(seen).toEqual([currentSession()]);
   });
 
   test("clearSession drops the value and notifies", () => {

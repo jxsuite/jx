@@ -175,6 +175,40 @@ describe("invokers that are not buttons", () => {
     expect(invoker.attributes!["href"]).toBe("/pavilions");
     expect(invoker.attributes!["popovertarget"]).toBeUndefined();
   });
+
+  // Skipping the navigating anchor itself must not skip ITS descendants: a real link can still
+  // Wrap an unrelated invoker/panel pair, and that pair is still walked and converted.
+  test("still walks into a navigating anchor's children for a nested pair", () => {
+    const tree: JxElement = {
+      children: [
+        {
+          attributes: { "aria-controls": "menu", href: "/pavilions" },
+          children: [
+            {
+              attributes: { "aria-controls": "nested-menu" },
+              tagName: "button",
+            },
+            {
+              attributes: { id: "nested-menu" },
+              children: [{ tagName: "p", textContent: "items" }] as JxElement[],
+              style: { opacity: "0", position: "absolute" },
+              tagName: "div",
+            },
+          ] as JxElement[],
+          tagName: "a",
+        },
+        {
+          attributes: { id: "menu" },
+          children: [{ tagName: "p", textContent: "items" }] as JxElement[],
+          style: { opacity: "0", position: "absolute" },
+          tagName: "div",
+        },
+      ] as JxElement[],
+      tagName: "div",
+    };
+
+    expect(applyPopovers(tree)).toEqual({ converted: 1, skippedNavigatingLinks: 1 });
+  });
 });
 
 describe("what is not a panel", () => {
