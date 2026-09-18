@@ -225,6 +225,15 @@ describe("rules the host cannot parse", () => {
     expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { color: red }`);
     expect(getComputedStyle(el).color).toBe("red");
   });
+
+  test("releasing an element whose whole style failed to parse is a no-op, not a crash", () => {
+    // Every rule the element asked for was rejected, so its entry never gained a CSSRule to
+    // Delete — the release has to recognise that rather than hand deleteRule a stale index.
+    const el = div();
+    applyStyle(el, { "@position-try --flip": { insetBlockStart: "auto" } });
+    expect(elementCSS(el)).toBe("");
+    expect(() => releaseElementStyles(el)).not.toThrow();
+  });
 });
 
 describe("the <style> fallback", () => {
@@ -259,6 +268,31 @@ describe("the <style> fallback", () => {
     return doc;
   }
 
+  /** A constructable-looking `CSSStyleSheet` that throws, the way a locked-down host might. */
+  function throwingConstructable(): Document {
+    const doc = document.implementation.createHTMLDocument("throwing-constructable");
+    Object.defineProperty(doc, "defaultView", {
+      configurable: true,
+      value: {
+        CSSStyleSheet: class {
+          constructor() {
+            throw new Error("stylesheets are disabled");
+          }
+        },
+      },
+    });
+    return doc;
+  }
+
+  test("a <style> element carries the rules when a constructable stylesheet throws", () => {
+    const doc = throwingConstructable();
+    const el = doc.createElement("div");
+    doc.body.append(el);
+    applyStyle(el, { color: "red" });
+    expect(doc.head.querySelectorAll("style[data-jx-sheet]").length).toBe(1);
+    expect(documentStyleText(doc)).toBe(`[data-jx="${el.dataset.jx}"] { color: red }`);
+  });
+
   test("a <style> element carries the rules when no sheet can be constructed", () => {
     const doc = noConstructable();
     const el = doc.createElement("div");
@@ -289,6 +323,16 @@ describe("the <style> fallback", () => {
     expect(tag?.textContent).toBe(`[data-jx="${b.dataset.jx}"] { color: blue }`);
     reapplyStyle(b, { color: "green" });
     expect(documentStyleText(doc)).toBe(`[data-jx="${b.dataset.jx}"] { color: green }`);
+  });
+
+  test("tearing down a document with no CSSOM at all removes the text-sink tag too", () => {
+    const doc = noCssom();
+    const el = doc.createElement("div");
+    doc.body.append(el);
+    applyStyle(el, { color: "red" });
+    expect(doc.head.querySelector("style[data-jx-sheet]")).not.toBeNull();
+    resetDocumentStyles(doc);
+    expect(doc.head.querySelector("style[data-jx-sheet]")).toBeNull();
   });
 
   test("the fallback releases and rewrites like the real thing", () => {

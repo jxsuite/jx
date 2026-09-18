@@ -401,6 +401,45 @@ describe("resolveClassJson — hybrid $implementation", () => {
       restore();
     }
   });
+
+  test("a failed $implementation import retries against base, then falls to dev proxy", async () => {
+    /* The retry re-resolves `implSrc` against `base` — a no-op here, since `implSrc` is already
+       absolute, so it fails exactly like the first attempt. The point is that the retry itself
+       runs (rather than skipping straight to the "no base" error), and that a caller with no
+       working implementation still gets a signal back via the dev proxy. */
+    const parserDir = resolvePath(__dirname, "..", "..", "..", "extensions", "parser", "src");
+    const hybridDef = {
+      $implementation: "./NoSuchModule.js",
+      $prototype: "Class",
+      title: "Ghost",
+    };
+    const schemaSrc = `file://${join(parserDir, "Ghost.class.json")}`;
+    const originalFetch = global.fetch;
+    let proxyCalled = false;
+    global.fetch = mock((url) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.includes("Ghost.class.json")) {
+        return Promise.resolve({ json: () => Promise.resolve(hybridDef), ok: true });
+      }
+      if (urlStr.includes("__jx_resolve__")) {
+        proxyCalled = true;
+        return Promise.resolve({ json: () => Promise.resolve(42), ok: true });
+      }
+      return originalFetch(url);
+    }) as unknown as typeof fetch;
+    try {
+      const sig = (await resolvePrototype(
+        { $prototype: "Ghost", $src: schemaSrc },
+        {},
+        "$g",
+        BASE,
+      )) as any;
+      expect(proxyCalled).toBe(true);
+      expect(isSignal(sig)).toBe(true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
 
 // ─── resolveClassJson — fallback to dev proxy ───────────────────────────────
