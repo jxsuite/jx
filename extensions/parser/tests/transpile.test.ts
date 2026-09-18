@@ -608,6 +608,17 @@ describe("mdastNodeToJx directives", () => {
     expect(el.$props).toEqual({ count: "3", title: "Hi" });
   });
 
+  // "props" is a JX_DOLLAR_KEYS entry, so expandDotPaths renames it to "$props" whether or not it
+  // Carries a dot-path — the bare form takes the exact same route as a dotted one.
+  test("custom element: a bare props attribute (no dot-path) still lands in $props", () => {
+    const el = mdastNodeToJx({
+      attributes: { props: "literal" },
+      name: "my-counter",
+      type: "leafDirective",
+    } as MdastNode) as JxElement;
+    expect(el.$props as unknown as string).toBe("literal");
+  });
+
   test("containerDirective converts block children", () => {
     const el = mdastNodeToJx({
       children: [
