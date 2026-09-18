@@ -21,6 +21,7 @@
 - A **user-supplied key and base URL** are required; the server proxy attaches them per request and never persists them. The proxy refuses to forward a server-environment key to a user-supplied base URL, and blocks cloud-metadata/link-local hosts (see `@jxsuite/server` §4.2).
 - Local and self-hosted OpenAI-compatible endpoints (e.g. LM Studio, Ollama's OpenAI shim) are supported by pointing the base URL at them.
 - A **managed** platform may broker credentials instead, so a user-supplied key is required only where nothing else supplies one (§2.1).
+- Model **listing** is best-effort per endpoint: a BYOK provider is not required to serve one (Cloudflare Workers AI's OpenAI-compatible surface, for instance, has no `/models` route at all). The proxy answers `200` with a default catalogue and `upstreamError` set either way, so this failure **MUST** be distinguished from an authentication failure rather than surfaced as a silent success — `upstreamMessage` carries the upstream's own reason (e.g. "No route for that URI") so a client can show it instead of a bare status code, and chat itself is unaffected: it is a separate endpoint from `/models` and a provider that cannot list models may still serve completions.
 
 ### 2.1 Managed providers
 

@@ -151,6 +151,48 @@ function writeSSE(controller: ReadableStreamDefaultController, event: unknown): 
 }
 
 /**
+ * Extract a human-readable message from an upstream error body, falling back to the raw body (or
+ * `fallback` when the body is empty).
+ *
+ * OpenAI-compatible providers return `{ error: "..." }` or `{ error: { message: "..." } }`.
+ * Cloudflare's own REST API — what a BYOK base URL pointed at Workers AI actually returns — uses a
+ * different envelope, `{ success: false, errors: [{ code, message }] }`, with no top-level `error`
+ * key at all. Without this branch that shape parses as valid JSON with nothing matched, and the
+ * caller was left showing the whole raw body (e.g. the full `{"success":false,"errors":[...]}`
+ * blob) instead of the human sentence inside it.
+ */
+function extractUpstreamErrorMessage(rawBody: string, fallback: string): string {
+  if (!rawBody) {
+    return fallback;
+  }
+  try {
+    const { error, errors } = JSON.parse(rawBody) as {
+      error?: string | { message?: string };
+      errors?: { code?: number; message?: string }[];
+    };
+    if (typeof error === "string") {
+      return error;
+    }
+    if (error) {
+      const { message } = error;
+      if (message) {
+        return message;
+      }
+    }
+    const [first] = errors ?? [];
+    if (first) {
+      const { message } = first;
+      if (message) {
+        return message;
+      }
+    }
+  } catch {
+    /* Not JSON — use the raw body. */
+  }
+  return rawBody;
+}
+
+/**
  * Write a failure response for the non-streaming endpoints.
  *
  * The status is chosen by the caller here rather than by the type, because this file's callers
@@ -265,20 +307,7 @@ export async function handleChat(req: Request): Promise<Response> {
         } catch {
           /* Ignore */
         }
-        // Parse the upstream JSON error body (OpenAI returns { error: { message: "..." } },
-        // While some compatible providers return { error: "..." }). Extract a clean message
-        // Instead of embedding the raw JSON in the error text.
-        let cleanMessage = errorBody || response.statusText;
-        try {
-          const parsed = JSON.parse(errorBody) as { error?: string | { message?: string } };
-          if (typeof parsed.error === "string") {
-            cleanMessage = parsed.error;
-          } else if (parsed.error?.message) {
-            cleanMessage = parsed.error.message;
-          }
-        } catch {
-          /* Not JSON — use the raw body. */
-        }
+        const cleanMessage = extractUpstreamErrorMessage(errorBody, response.statusText);
         writeSSE(controller, {
           code: String(response.status),
           message: cleanMessage,
@@ -499,9 +528,22 @@ export async function handleModels(req: Request): Promise<Response> {
 
     if (!upstreamResp.ok) {
       // Upstream failed — return defaults with configured flag so user can still try.
+      let errorBody = "";
+      try {
+        errorBody = await upstreamResp.text();
+      } catch {
+        /* Ignore */
+      }
+      const upstreamMessage = extractUpstreamErrorMessage(errorBody, upstreamResp.statusText);
       const defaults = [{ id: "gpt-4o", name: "GPT-4o", contextWindow: 128_000 }];
       return Response.json(
-        { models: defaults, configured: true, managed: false, upstreamError: upstreamResp.status },
+        {
+          models: defaults,
+          configured: true,
+          managed: false,
+          upstreamError: upstreamResp.status,
+          upstreamMessage,
+        },
         {
           headers: { "Content-Type": "application/json" },
         },
@@ -529,11 +571,17 @@ export async function handleModels(req: Request): Promise<Response> {
         headers: { "Content-Type": "application/json" },
       },
     );
-  } catch {
+  } catch (error) {
     // Network error → return defaults.
     const defaults = [{ id: "gpt-4o", name: "GPT-4o", contextWindow: 128_000 }];
     return Response.json(
-      { models: defaults, configured: true, managed: false, upstreamError: "network" },
+      {
+        models: defaults,
+        configured: true,
+        managed: false,
+        upstreamError: "network",
+        upstreamMessage: (error as Error).message,
+      },
       {
         headers: { "Content-Type": "application/json" },
       },
