@@ -75,6 +75,7 @@ let proxyConfigured = false;
 let proxyManaged = false;
 let proxyDefaultModel = "";
 let proxyCode: AiModelsResponse["code"];
+let proxyModelsError = "";
 
 /**
  * One-shot capability probe shared by every credentials gate, plus the hosts to repaint when it
@@ -116,6 +117,7 @@ export function resetModelCache() {
   proxyManaged = false;
   proxyDefaultModel = "";
   proxyCode = undefined;
+  proxyModelsError = "";
   /* The probe's result IS the flags above. Clearing them while keeping the settled promise
      would strand every gate on a permanent "unconfigured, unmanaged" reading — ensureProxyProbe
      would no-op forever and the managed option would vanish until a full reload. */
@@ -266,6 +268,16 @@ export function proxyStateCode(): AiModelsResponse["code"] {
   return proxyCode;
 }
 
+/**
+ * The upstream's own error message from the last fetch, when it reported one (e.g. Cloudflare's "No
+ * route for that URI" for a base URL that doesn't serve `/models`). Empty when the last fetch had
+ * no upstream error to report — a stale message from an earlier failure must not survive a fetch
+ * that succeeded.
+ */
+export function proxyModelsErrorMessage(): string {
+  return proxyModelsError;
+}
+
 /** The proxy's preferred model id ("" when it does not declare one). */
 export function getProxyDefaultModel(): string {
   return proxyDefaultModel;
@@ -356,6 +368,7 @@ export async function fetchAvailableModels(
   proxyManaged = data.managed === true;
   proxyDefaultModel = data.defaultModel ?? "";
   proxyCode = data.code;
+  proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
   /* Capabilities are kept, not dropped. The backend has reported `toolSupport` all along and the
      ingest mapped `{id, name}` only, so a Workers AI model that cannot call tools looked exactly
      like one that can — the agent loop ran, called nothing, and answered as if that were normal.

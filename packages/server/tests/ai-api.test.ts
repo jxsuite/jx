@@ -635,6 +635,30 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
     );
   });
 
+  it("surfaces Cloudflare's array-shaped error envelope, not the raw JSON", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          Response.json(
+            {
+              errors: [{ code: 7000, message: "No route for that URI" }],
+              messages: [],
+              result: null,
+              success: false,
+            },
+            { status: 404 },
+          ),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        const err = events.find((e) => e.type === "error");
+        expect(err!.message).toBe("No route for that URI");
+        expect(err!.code).toBe("404");
+      },
+    );
+  });
+
   it("reports a network failure when the upstream fetch throws", async () => {
     await withUpstream(
       (() => Promise.reject(new Error("boom"))) as unknown as typeof fetch,
@@ -682,6 +706,29 @@ describe("GET /__studio/ai/models — upstream proxy", () => {
         const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
         const data = (await res!.json()) as { upstreamError: number };
         expect(data.upstreamError).toBe(500);
+      },
+    );
+  });
+
+  it("reports the real reason when the upstream has no /models route (Cloudflare's shape)", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          Response.json(
+            {
+              errors: [{ code: 7000, message: "No route for that URI" }],
+              messages: [],
+              result: null,
+              success: false,
+            },
+            { status: 404 },
+          ),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
+        const data = (await res!.json()) as { upstreamError: number; upstreamMessage: string };
+        expect(data.upstreamError).toBe(404);
+        expect(data.upstreamMessage).toBe("No route for that URI");
       },
     );
   });

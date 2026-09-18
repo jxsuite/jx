@@ -759,6 +759,13 @@ export interface AiModelsResponse {
   /** Set when the upstream provider was unreachable and defaults were returned. */
   upstreamError?: number | string;
   /**
+   * The upstream's own error message, when {@link upstreamError} is set. Populated from whatever
+   * envelope the upstream used — OpenAI's `{error}`, or an array-shaped one like Cloudflare's
+   * `{errors: [{message}]}` — so a caller can show the real reason (e.g. "No route for that URI")
+   * instead of a bare status code.
+   */
+  upstreamMessage?: string;
+  /**
    * Why the backend holds no working credentials, when it holds none.
    *
    * `configured: false` alone cannot tell "this user has never connected" from "this user's grant
