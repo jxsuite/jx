@@ -110,4 +110,14 @@ describe("createD1HttpDialect", () => {
     expect(committed).toBe("done");
     await db.destroy();
   });
+
+  test("rejects streaming — the HTTP API has no cursor to stream from", async () => {
+    const { db } = makeDb(() => d1Ok([{ id: "a" }]));
+    const iterate = async () => {
+      for await (const _row of db.selectFrom("t").selectAll().stream()) {
+        // Unreachable: streamQuery throws before yielding anything.
+      }
+    };
+    await expect(iterate()).rejects.toThrow("does not support streaming");
+  });
 });
