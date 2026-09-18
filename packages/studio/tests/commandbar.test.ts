@@ -10,6 +10,7 @@
  *   pre-scoped — the one place Studio now states which project is open.
  * - **`openInBrowserTarget` is a pure function** and is tested as one, route by route.
  */
+import { isAppRegionDragTarget } from "./electrobun-drag-region";
 import { flush, installMockPlatform, mountOverlayLayers, pointer } from "./harness";
 import { hintOf, printedOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -644,6 +645,68 @@ describe("window controls", () => {
     await mountBar();
     expect(root.querySelector('[part="window-controls"]')).toBeNull();
     expect(root.classList.contains("electrobun-webkit-app-region-drag")).toBe(false);
+  });
+});
+
+// ─── Electrobun drag-region ancestry ───────────────────────────────────────────
+
+/*
+ * The toolbar itself claims the whole bar as a drag handle (`root.classList`, above) so that
+ * dragging blank space moves the window. Every interactive control inside it must therefore carry
+ * its OWN no-drag signal in a form Electrobun's real ancestry walk can see — a literal class, not
+ * a style declared through the runtime's `applyStyle`/`adoptedStyleSheets` path, which is
+ * invisible to Electrobun's CSS scanner. Without it, a click anywhere in the bar falls through to
+ * the toolbar's drag class and starts a window-move instead of firing the control's handler.
+ */
+describe("Electrobun drag-region ancestry", () => {
+  function fullContext(): CommandContext {
+    return makeContext({
+      document: { canRedo: true, canUndo: true, open: true },
+      project: { isSite: true, open: true },
+    });
+  }
+
+  /** Every interactive control the bar renders, once every cluster is populated. */
+  function interactiveControls(): Element[] {
+    return [
+      ...root.querySelectorAll("jx-button, jx-action-button, button"),
+      ...(root.querySelector('[part="center"]') ? [root.querySelector('[part="center"]')!] : []),
+    ];
+  }
+
+  test("every interactive control resolves no-drag, and the bar itself still drags", async () => {
+    ctx = fullContext();
+    const controls = { close: mock(() => {}), maximize: mock(() => {}), minimize: mock(() => {}) };
+    (globalThis as Record<string, unknown>).__jxPlatform = { windowControls: controls };
+    await mountBar();
+
+    const interactive = interactiveControls();
+    expect(interactive.length).toBeGreaterThan(0);
+    for (const el of interactive) {
+      expect(isAppRegionDragTarget(el)).toBe(false);
+    }
+    // Blank toolbar space is untouched — the fix must not swallow the whole draggable region.
+    expect(isAppRegionDragTarget(root.querySelector('[part="bar"]'))).toBe(true);
+  });
+
+  test("mac layout: the leading window-control cluster resolves no-drag too", async () => {
+    toolbar.setMacPlatformForTests(true);
+    try {
+      ctx = fullContext();
+      (globalThis as Record<string, unknown>).__jxPlatform = {
+        windowControls: {
+          close: mock(() => {}),
+          maximize: mock(() => {}),
+          minimize: mock(() => {}),
+        },
+      };
+      await mountBar();
+      for (const el of interactiveControls()) {
+        expect(isAppRegionDragTarget(el)).toBe(false);
+      }
+    } finally {
+      toolbar.setMacPlatformForTests(null);
+    }
   });
 });
 
