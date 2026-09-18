@@ -39,7 +39,7 @@ import { rectOf } from "../utils/geometry";
 import { activeTab, workspace } from "../workspace/workspace";
 import { createGridController, getGridController } from "./grid-controller";
 import { createCsvFileSource } from "./sources/csv-file-source";
-import { createGridView } from "./grid-view";
+import { loadedGridEngine, loadGridEngine } from "./grid-lazy";
 import { parseGridTabId } from "./grid-source";
 import { mountGridPanelSurface } from "../surfaces/grid-panel";
 import { openGridViewsSurface } from "../surfaces/grid-views";
@@ -473,12 +473,45 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
   const engine = controller;
   let hostEl: HTMLElement | null = null;
 
+  /**
+   * (Re)build the Tabulator engine over `host`, destroying whatever view is live first.
+   *
+   * Synchronous when `tabulator-tables` is already loaded — true for every mount after the
+   * session's first, so every existing caller keeps seeing `panel.view` set before this returns. On
+   * a cold first load it goes through `loadGridEngine()` instead (see `grid-lazy.ts`) and `onReady`
+   * — and, symmetrically with the `ready` handling below, `panel.bump()` — run once the import
+   * resolves, guarded against the pane having moved on in the meantime.
+   */
+  function rebuildView(onReady?: (view: GridView) => void) {
+    panel.view?.destroy();
+    panel.view = null;
+    if (!hostEl) {
+      return;
+    }
+    const requestedHost = hostEl;
+    const loaded = loadedGridEngine();
+    if (loaded) {
+      const view = loaded.createGridView(requestedHost, engine);
+      panel.view = view;
+      onReady?.(view);
+      return;
+    }
+    void loadGridEngine().then(({ createGridView }) => {
+      if (activeIn(paneId) !== panel || hostEl !== requestedHost || panel.view) {
+        return;
+      }
+      const view = createGridView(requestedHost, engine);
+      panel.view = view;
+      onReady?.(view);
+      panel.bump();
+    });
+  }
+
   const panel: ActiveGridPanel = {
     applyLayout(layout) {
       void engine.setSort(layout?.sort ?? null);
       engine.setGrouping(layout?.groupBy ?? null);
-      panel.remount();
-      panel.view?.setSearch(layout?.filter ?? "");
+      rebuildView((view) => view.setSearch(layout?.filter ?? ""));
       panel.bump();
     },
     bump() {
@@ -486,8 +519,7 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
     },
     paneId,
     remount() {
-      panel.view?.destroy();
-      panel.view = hostEl ? createGridView(hostEl, engine) : null;
+      rebuildView();
     },
     replace: null,
     scope,
@@ -576,14 +608,16 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
 
       // Create the engine once the columns exist and the host div is in the DOM.
       if (!panel.view && !engine.state.loading && engine.state.columns.length > 0 && hostEl) {
-        panel.view = createGridView(hostEl, engine);
-        if (!restored) {
+        rebuildView((view) => {
+          if (restored) {
+            return;
+          }
           restored = true;
           const layout = loadGridLayout(engine.source.id);
           void engine.setSort(layout?.sort ?? null);
           engine.setGrouping(layout?.groupBy ?? null);
-          panel.view.setSearch(layout?.filter ?? "");
-        }
+          view.setSearch(layout?.filter ?? "");
+        });
       }
     });
   });

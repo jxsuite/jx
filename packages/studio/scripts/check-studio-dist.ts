@@ -44,6 +44,7 @@ export interface Finding {
  * deleted here, because the fix is a build-configuration question and this is a gate.
  */
 export const UNREACHABLE_CSS: readonly string[] = [
+  "dist/chunks/grid-view-*.css",
   "dist/chunks/javascript-*.css",
   "dist/chunks/jsonMode-*.css",
   "dist/chunks/monaco-setup-*.css",
