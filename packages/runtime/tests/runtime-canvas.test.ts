@@ -387,6 +387,17 @@ describe("setCanvasAssetResolver", () => {
     expect(el.getAttribute("srcset")).toBe("/raw/a.png 1x, /raw/b.png 2x");
   });
 
+  test("a srcset candidate the resolver declines to rewrite keeps its own descriptor untouched", () => {
+    setCanvasAssetResolver((value) =>
+      value === "/skip.png" ? null : `/raw/${value.replace(/^\//, "")}`,
+    );
+    const el = renderNode(
+      { srcset: "/skip.png 1x, /b.png 2x", tagName: "img" } as never,
+      reactive({}),
+    );
+    expect(el.getAttribute("srcset")).toBe("/skip.png 1x, /raw/b.png 2x");
+  });
+
   test("url() inside a style value, in the rule and the toCSSText paths", () => {
     setCanvasAssetResolver(prefixResolver);
     const el = renderNode(

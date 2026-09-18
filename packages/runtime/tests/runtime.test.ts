@@ -23,6 +23,7 @@ import {
   enumeratedAttrNames,
   isDeclarationAtRule,
   isKeyframesAtRule,
+  isSingleExpression,
   releaseElementStyles,
   resetDocumentStyles,
 } from "../src/runtime";
@@ -84,6 +85,26 @@ describe("toCSSText", () => {
     );
   });
   test("empty object", () => expect(toCSSText({})).toBe(""));
+});
+
+// ─── isSingleExpression ─────────────────────────────────────────────────────
+
+describe("isSingleExpression", () => {
+  test("a bare ${expr} with nothing before or after is one expression", () => {
+    expect(isSingleExpression("${state.count}")).toBe(true);
+  });
+  test("text before or after the expression disqualifies it", () => {
+    expect(isSingleExpression("count: ${state.count}")).toBe(false);
+    expect(isSingleExpression("${state.count} items")).toBe(false);
+  });
+  test("two adjacent expressions are not one, even with nothing between them", () => {
+    // The outer braces close at the midpoint, well short of the string's end.
+    expect(isSingleExpression("${state.a}${state.b}")).toBe(false);
+  });
+  test("braces that never return to depth zero are not a single expression either", () => {
+    // A malformed/hand-edited document can carry this; it must fail closed, not throw.
+    expect(isSingleExpression("${`${a}")).toBe(false);
+  });
 });
 
 // ─── RESERVED_KEYS ────────────────────────────────────────────────────────────
@@ -486,6 +507,17 @@ describe("buildScope", () => {
         BASE,
       ),
     ).rejects.toThrow("mutually exclusive");
+  });
+
+  test("Shape 4: a non-string body with no $src throws — untrusted JSON, not a TS guarantee", async () => {
+    // The `body`/`$src` union is a TypeScript-only contract; a raw document can still carry a
+    // Truthy, non-string `body` (e.g. malformed authoring tooling), which skips both the
+    // String-body branch and the neither-nor-body-nor-$src no-op.
+    const doc = { state: { bad: { $prototype: "Function", body: true } } };
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(buildScope(doc as unknown as JxDocument, {}, BASE)).rejects.toThrow(
+      "neither body nor $src",
+    );
   });
 
   test("Shape 4: Function with neither body nor $src → returns no-op", async () => {
@@ -1299,6 +1331,14 @@ describe("renderNode", () => {
     state.expanded = true;
     await wait();
     expect(el.getAttribute("open")).toBe("");
+  });
+
+  test("an attribute template with text around the expression stays a string, not a single value", () => {
+    // Mixed content can never carry a type of its own, so it always goes through the
+    // String-interpolating path, unlike a bare `${expr}` attribute.
+    const state = reactive({ count: 3 });
+    const el = renderNode({ attributes: { title: "${state.count} items" }, tagName: "div" }, state);
+    expect(el.getAttribute("title")).toBe("3 items");
   });
 
   test("an aria-* binding that flips writes the word both ways", async () => {
