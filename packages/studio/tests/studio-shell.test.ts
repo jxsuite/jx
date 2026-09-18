@@ -573,11 +573,11 @@ describe("navigateToComponent", () => {
     const side = workspace.panes[1]!;
     expect(side.activeTabId).toBe("components/card.json");
 
-    /* AND THE FOCUS DOES NOT FOLLOW. An assistant pane that takes the keyboard means the author's
-       next keystroke edits the definition instead of the page — and a following pane would
-       immediately have nothing to follow. */
-    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
-    expect(workspace.activeTabId).toBe("shell-tab");
+    /* AND THE FOCUS FOLLOWS. "Edit component" is a gesture, not a read: the author asked to edit
+       the component, so the pane it lands in takes the keyboard — the opposite of the earlier rule,
+       which protected a FOLLOWING pane (`pane.derive { preset: "component" }`, `focus: false`). */
+    expect(workspace.activePaneId).toBe(SECONDARY_PANE);
+    expect(workspace.activeTabId).toBe("components/card.json");
 
     const child = workspace.tabs.get("components/card.json")!;
     expect(child.documentPath).toBe("components/card.json");
@@ -603,15 +603,15 @@ describe("navigateToComponent", () => {
     const child = workspace.tabs.get("components/card.json")!;
     activateTab("shell-tab");
     await blockBarCtx.navigateToComponent("components/card.json");
-    // Still one tab, still one copy of the id, still in the side pane — and the keyboard is still
-    // In the page. This is `openFileInTab`'s third dedupe branch: the tab IS its pane's active tab,
-    // So there is nothing to do and moving it would only oscillate.
+    // Still one tab, still one copy of the id, still in the side pane. The tab is already its
+    // Pane's active tab, so nothing MOVES — but the open is a gesture, so `activateTab` still
+    // Follows the keyboard there.
     expect(workspace.tabs.get("components/card.json")).toBe(child);
     expect(workspace.panes[1]!.tabOrder).toEqual(["components/card.json"]);
-    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+    expect(workspace.activePaneId).toBe(SECONDARY_PANE);
   });
 
-  /* {@link receivingPane}, not `sidePane`. "Edit definition" is an ordinary tab, and the pane
+  /* {@link receivingPane}, not `paneBeside`. "Edit definition" is an ordinary tab, and the pane
      beside this one may be a LENS — which owns no tab by invariant D2, so the open landed in a
      `tabOrder` that `tabOfPane` hops straight past. The read-back below then got the SOURCE tab,
      `opened.documentPath !== componentPath`, and the one relationship this function exists to

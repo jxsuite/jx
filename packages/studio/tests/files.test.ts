@@ -570,6 +570,19 @@ describe("openFileInTab", () => {
     expect(workspace.tabs.get("components/card.json")?.preview).toBe(true);
   });
 
+  test("a media file honours paneId too — the branch is BEFORE the document reader", async () => {
+    installFsPlatform({ "public/hero.png": "PNG\r\n\n binary-ish" });
+    siteState();
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "tab-a" });
+    expect(splitRight()?.id).toBe(SECONDARY_PANE);
+    focusPane(PRIMARY_PANE);
+
+    await openFileInTab("public/hero.png", { focus: false, paneId: SECONDARY_PANE });
+
+    expect(paneById(SECONDARY_PANE)!.tabOrder).toContain("public/hero.png");
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+  });
+
   test("the three-way paned dedupe: activate here, MOVE from there, or leave it alone", async () => {
     const { state } = installFsPlatform({ "pages/a.json": "{}" });
     siteState();
@@ -596,6 +609,15 @@ describe("openFileInTab", () => {
     expect(paneById(SECONDARY_PANE)!.tabOrder).toEqual(["pages/c.json", "pages/b.json"]);
     expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["pages/a.json"]);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+
+    /* 4 · elsewhere, IS its pane's active tab, but the caller did NOT ask to browse — the author
+       asked to go there, so "already looking at it" is the wrong answer. It MOVES, and the
+       keyboard follows: `document.openToSide` and a cross-pane drag both depend on this. */
+    await openFileInTab("pages/b.json", { paneId: PRIMARY_PANE });
+    expect(paneById(SECONDARY_PANE)!.tabOrder).toEqual(["pages/c.json"]);
+    expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["pages/a.json", "pages/b.json"]);
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+    expect(workspace.activeTabId).toBe("pages/b.json");
   });
 
   /* CASE 1 STILL ACTIVATES, and the three-way test above cannot see it. Its case-1 tab is in the

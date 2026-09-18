@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPaneGrid",
-  "$description": "The pane grid (studio.md §18.1): one cell per pane, with a splitter before every cell but the first. Every box here is EMPTY by design — the four inside a cell are hosts other modules fill (`panels/tab-strip.ts` the strip, `panels/jump-bar.ts` the jump bar, `panels/pane-context.ts` the chrome layer, `canvas/canvas-render.ts` the stage), and the stage is an ISLAND in the §9.4 sense: the canvas host mounts a cross-origin `<iframe>` into it, so nothing this document draws may ever go inside it. What the document owns is the STRUCTURE and the STYLE — the cell's own two-row grid, the three row-2 children that share its lower cell, and the splitter — which is `styles/shell.css`'s `.pane*` block and `styles/canvas.css`'s `.pane-stage` rule, carried here and keyed on `part`. Two things are load-bearing and easy to undo. (1) **A row that moves reloads an iframe**, so the keyed `$map` is not an optimisation: `workspace.panes[0]` is always the primary and `MAX_PANES` is 2, the key is the pane id, and the runtime's forward-cursor pass therefore never moves a kept row — gaining or losing the side pane leaves the primary's node, and the frame inside it, untouched. (2) **The splitter must sit BETWEEN two cells and inside neither**, so each row is a `display: contents` wrapper holding its own leading splitter and its cell: the wrapper generates no box, so the splitter and the two cells are the grid items of `#pane-grid` in DOM order, and a pointer landing on the splitter is in no cell at all. Every selector below is a `>` chain from the root, because a pane's stage hosts other surface documents and a bare `[part=\"row\"]` descendant rule would reach into them.",
+  "$description": "The pane grid (studio.md §18.1): one cell per pane, with a splitter before every cell but the first. Every box here is EMPTY by design — the FIVE inside a cell are hosts other modules fill (`panels/tab-strip.ts` the strip, `panels/jump-bar.ts` the jump bar, `panels/pane-context.ts` the chrome layer, `canvas/canvas-render.ts` the stage, `panels/pane-grid.ts` itself the right-edge drop zone), and the stage is an ISLAND in the §9.4 sense: the canvas host mounts a cross-origin `<iframe>` into it, so nothing this document draws may ever go inside it. What the document owns is the STRUCTURE and the STYLE — the cell's own two-row grid, the three row-2 children that share its lower cell, and the splitter — which is `styles/shell.css`'s `.pane*` block and `styles/canvas.css`'s `.pane-stage` rule, carried here and keyed on `part`. Two things are load-bearing and easy to undo. (1) **A row that moves reloads an iframe**, so the keyed `$map` is not an optimisation: `workspace.panes[0]` is always the primary and `MAX_PANES` is 2, the key is the pane id, and the runtime's forward-cursor pass therefore never moves a kept row — gaining or losing the side pane leaves the primary's node, and the frame inside it, untouched. (2) **The splitter must sit BETWEEN two cells and inside neither**, so each row is a `display: contents` wrapper holding its own leading splitter and its cell: the wrapper generates no box, so the splitter and the two cells are the grid items of `#pane-grid` in DOM order, and a pointer landing on the splitter is in no cell at all. Every selector below is a `>` chain from the root, because a pane's stage hosts other surface documents and a bare `[part=\"row\"]` descendant rule would reach into them.",
   "tagName": "div",
   "attributes": {
     "part": "grid",
@@ -27,7 +27,7 @@
       "zIndex": "10"
     },
     "& > [part=\"row\"] > [part=\"pane\"]": {
-      "$description": "ONE PANE, and one COLUMN, declared. Three children name `grid-row: 2` in order to share the lower cell, and auto-placement answers that by inventing an implicit column each: the jump bar, the chrome layer and the stage lined up side by side, the stage taking a third of the pane and pinning the document to the right edge. `grid-template-columns` is what makes \"share the cell\" mean it, and every row-2 child restates `grid-column: 1` so a future fourth one cannot re-open the same hole. No unit test can see this — happy-dom does no layout, so every rect is zero — which is why the screenshot lane is what caught it.",
+      "$description": "ONE PANE, and one COLUMN, declared. Four children name `grid-row: 2` in order to share the lower cell, and auto-placement answers that by inventing an implicit column each: the jump bar, the chrome layer, the stage and the drop zone lined up side by side, the stage taking a third of the pane and pinning the document to the right edge. `grid-template-columns` is what makes \"share the cell\" mean it, and every row-2 child restates `grid-column: 1` so a future fifth one cannot re-open the same hole. No unit test can see this — happy-dom does no layout, so every rect is zero — which is why the screenshot lane is what caught it.",
       "display": "grid",
       "gridTemplateColumns": "minmax(0, 1fr)",
       "gridTemplateRows": "auto minmax(0, 1fr)",
@@ -82,11 +82,33 @@
       "display": "flex",
       "gap": "var(--jx-space-6)",
       "alignItems": "flex-start"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"drop-zone\"]": {
+      "$description": "The right-edge target that creates a second pane (§18.1). Sits ABOVE the stage (`z-index: 4` against the stage's own stacking, jump's 3, chrome's 2) so a drag reaches it before it reaches the cross-origin iframe underneath, which would otherwise swallow every drag event with no affordance to say so. `pointer-events: none` when unarmed — a mouse doing anything other than dragging a tab or a file must pass straight through to the stage — and `auto` only while `data-armed` is set, which `panels/pane-grid.ts`'s own arming monitor writes for the DURATION of a drag it recognises, never for a click.",
+      "gridRow": "2",
+      "gridColumn": "1",
+      "position": "relative",
+      "zIndex": "4",
+      "minWidth": "0",
+      "pointerEvents": "none"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"drop-zone\"][data-armed]": {
+      "pointerEvents": "auto"
+    },
+    "& > [part=\"row\"] > [part=\"pane\"] > [part=\"drop-zone\"][data-over]::after": {
+      "$description": "The right BAND, not the whole cell: the zone only ever ACCEPTS a drop in that band (`panels/pane-grid.ts`'s `edgeData`), so lighting the whole cell would promise a drop this element refuses everywhere else in it.",
+      "content": "\"\"",
+      "position": "absolute",
+      "insetBlock": "0",
+      "insetInlineEnd": "0",
+      "insetInlineStart": "50%",
+      "background": "color-mix(in srgb, var(--accent) 14%, transparent)",
+      "borderInlineStart": "2px solid var(--accent)"
     }
   },
   "children": [
     {
-      "$description": "Keyed on the PANE ID, and that is the whole of §18.1 rule 1's structural half: the key is what makes the runtime MOVE a kept row rather than rebuild it, and re-parenting is not a move for an `<iframe>` — it reloads, dropping its `iframe-channel` connection, its shadow document and every `ready` panel with it. A row renders complete (its cell, its four hosts and its splitter) inside the row's own effect scope before it is inserted, so there is no frame in which a cell exists with no stage inside it.",
+      "$description": "Keyed on the PANE ID, and that is the whole of §18.1 rule 1's structural half: the key is what makes the runtime MOVE a kept row rather than rebuild it, and re-parenting is not a move for an `<iframe>` — it reloads, dropping its `iframe-channel` connection, its shadow document and every `ready` panel with it. A row renders complete (its cell, its five hosts and its splitter) inside the row's own effect scope before it is inserted, so there is no frame in which a cell exists with no stage inside it.",
       "$prototype": "Array",
       "items": { "$ref": "#/state/rows" },
       "key": { "$ref": "$map/item/id" },
@@ -177,6 +199,16 @@
                 "attributes": {
                   "part": "pane-stage",
                   "data-jx-region": "${$map.item.region}"
+                }
+              },
+              {
+                "$description": "The right-edge drop target (§18.1). No `data-jx-region`: `pane.<id>` uniqueness names the stage, and a second element answering to it would be a silently widened crop the moment a shot cropped this pane.",
+                "tagName": "div",
+                "attributes": {
+                  "part": "drop-zone",
+                  "role": "none",
+                  "data-armed": "${state.armed ? '' : null}",
+                  "data-over": "${state.edgePane === $map.item.id ? '' : null}"
                 }
               }
             ]

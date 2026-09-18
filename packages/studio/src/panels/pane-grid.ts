@@ -11,20 +11,22 @@
  * that scaffolding was standing in for, and the handover is deleted with it.
  *
  * **The document owns the frame; this module owns the decisions.** `surfaces/pane-grid.json` is the
- * cells, the four boxes inside each one, the splitter between two of them and every rule that lays
+ * cells, the five boxes inside each one, the splitter between two of them and every rule that lays
  * them out; `surfaces/pane-grid.ts` is the mount. What is left here is the flow: which panes there
  * are, what a cell's stage is furnished with, in what ORDER a departing cell is taken apart, and
  * what the grid's own tracks are. Everything a cell CONTAINS still arrives through the module that
  * owns it — `canvas/canvas-render.ts` is the render root of the stage and this document puts
  * nothing inside it, `panels/jump-bar.ts` and `panels/pane-context.ts` are handed the jump and
- * chrome boxes, and `panels/tab-strip.ts` is handed the strip.
+ * chrome boxes, `panels/tab-strip.ts` is handed the strip, and this module makes the fifth — the
+ * right-edge drop zone — a pragmatic target itself.
  *
  * **Three properties survived the conversion, and each is structural rather than remembered:**
  *
  * 1. _A pane is complete before it is published._ The runtime builds a `$map` row inside its own
- *    effect scope and inserts it afterwards, so the four `cellPart` calls below — the surface
- *    record, the gestures, the two bars' mounts, the pane-focus listener — all happen while the
- *    cell is still detached. There is no frame in which a cell exists with no stage inside it.
+ *    effect scope and inserts it afterwards, so the five `cellPart` calls below — the surface
+ *    record, the gestures, the two bars' mounts, the pane-focus listener, the drop zone's own
+ *    registration — all happen while the cell is still detached. There is no frame in which a cell
+ *    exists with no stage inside it.
  * 2. _A pane's node is never re-parented._ The repeater is keyed on the pane id and the runtime's
  *    forward-cursor pass only moves rows that are out of place. `workspace.panes[0]` is always the
  *    primary and `MAX_PANES` is 2, so no row ever moves — which matters because re-parenting is not
@@ -55,6 +57,12 @@
 
 import { effect, effectScope } from "../reactivity";
 import {
+  dropTargetForElements,
+  monitorForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { isTabDropSource } from "./tab-drop";
+import { rectOf } from "../utils/geometry";
+import {
   DEFAULT_PANE_SPLIT,
   PANE_SPLIT_MAX,
   PANE_SPLIT_MIN,
@@ -74,13 +82,13 @@ import { scheduleCanvasRender } from "../canvas/canvas-render";
 import { paneRegion, paneStripRegion } from "../ui/regions";
 import { attachJumpBarHost } from "./jump-bar";
 import { attachPaneChromeHost } from "./pane-context";
-import { focusPane, workspace } from "../workspace/workspace";
+import { MAX_PANES, focusPane, workspace } from "../workspace/workspace";
 import { mountPaneGridSurface } from "../surfaces/pane-grid";
 import type { EffectScope } from "@vue/reactivity";
 import type { CanvasSurface } from "../canvas/canvas-surface";
 import type { PaneCellPart, PaneGridRow, PaneGridSurface } from "../surfaces/pane-grid";
 
-/** One drawn pane: its root and the four surfaces inside it. */
+/** One drawn pane: its root and the five surfaces inside it. */
 export interface PaneCell {
   paneId: string;
   root: HTMLElement;
@@ -88,13 +96,16 @@ export interface PaneCell {
   jump: HTMLElement;
   chrome: HTMLElement;
   stage: HTMLElement;
+  dropZone: HTMLElement;
   surface: CanvasSurface;
 }
 
-/** A cell's record, plus the disposer its stage gestures live behind. */
+/** A cell's record, plus the disposers its stage gestures and its drop zone live behind. */
 interface CellState extends PaneCell {
   /** Stage-gesture disposer, live between the stage's creation and the cell's disposal. */
   releaseGestures: (() => void) | null;
+  /** The drop zone's pragmatic registration, live between its creation and the cell's disposal. */
+  releaseDropZone: (() => void) | null;
 }
 
 const _cells = new Map<string, CellState>();
@@ -110,6 +121,13 @@ let _drawn: string[] = [];
 
 let _scope: EffectScope | null = null;
 
+/**
+ * The monitor that ARMS the right-edge zones — `_surface.drag`'s one writer. It never resolves a
+ * drop; `panels/tab-strip.ts`'s own monitor does that, from the same drop targets this one only
+ * watches.
+ */
+let _dragMonitor: (() => void) | null = null;
+
 /** The cell a pane is drawn in, or null. Test-visible, and the bootstrap's handle on the primary. */
 export function cellForPane(paneId: string): PaneCell | null {
   return _cells.get(paneId) ?? null;
@@ -120,7 +138,7 @@ export function cellForPane(paneId: string): PaneCell | null {
  *
  * The mount is asynchronous — the runtime waits for the kit to be defined and renders one microtask
  * after that — so `mountShell()` starting the grid is not the same event as the grid existing. The
- * bootstrap reads the primary cell's four boxes on the line after it, exactly as `mountShellTree()`
+ * bootstrap reads the primary cell's five boxes on the line after it, exactly as `mountShellTree()`
  * made every caller await the frame for the same reason.
  */
 export function paneGridReady(): Promise<void> {
@@ -142,8 +160,10 @@ function cellState(paneId: string): CellState {
   }
   const cell: CellState = {
     chrome: null as unknown as HTMLElement,
+    dropZone: null as unknown as HTMLElement,
     jump: null as unknown as HTMLElement,
     paneId,
+    releaseDropZone: null,
     releaseGestures: null,
     root: null as unknown as HTMLElement,
     stage: null as unknown as HTMLElement,
@@ -217,7 +237,52 @@ function attachStage(cell: CellState, stage: HTMLElement): void {
 }
 
 /**
- * One of a cell's five boxes has been created. Fill the record in, and wire what belongs to it.
+ * The RIGHT BAND of `paneId`'s cell, and only while it is legal to drop there: the grid is still
+ * under {@link MAX_PANES}, and `paneId` names the LAST pane — the one a second pane would sit
+ * beside. A grid of two panes has no legal edge at all, so the band answers refused everywhere on
+ * it.
+ *
+ * The band itself is `min(120px, half the cell's own width)`: wide enough to aim at, narrow enough
+ * that the rest of the stage keeps ordinary canvas gestures — a drag never reaches this at all
+ * unless `canDrop` already accepted it, so the band only ever competes with itself.
+ */
+function edgeData(
+  paneId: string,
+  input: { clientX: number },
+  element: HTMLElement,
+): Record<string, unknown> {
+  if (workspace.panes.length >= MAX_PANES || workspace.panes.at(-1)?.id !== paneId) {
+    return { type: "pane-edge-refused" };
+  }
+  const rect = rectOf(element);
+  const band = Math.min(120, rect.width / 2);
+  if (input.clientX < rect.right - band) {
+    return { type: "pane-edge-refused" };
+  }
+  return { paneId, type: "pane-edge" };
+}
+
+/**
+ * Make a cell's drop zone a pragmatic target. `canDrop` alone is not enough to keep the zone out of
+ * a two-pane grid's way — {@link edgeData} refuses in the DATA, the same "never fall through" rule
+ * `files.ts`'s row targets use, because the zone sits ABOVE the stage (`z-index: 4`) and a refusal
+ * that let the drop bubble past it would still have kept the pointer from ever reaching the iframe
+ * underneath.
+ */
+function attachDropZone(paneId: string, element: HTMLElement): () => void {
+  return dropTargetForElements({
+    canDrop({ source }) {
+      return isTabDropSource(source.data);
+    },
+    element,
+    getData({ input }) {
+      return edgeData(paneId, input, element);
+    },
+  });
+}
+
+/**
+ * One of a cell's six boxes has been created. Fill the record in, and wire what belongs to it.
  *
  * The two bars are HANDED their host rather than resolving a region, the same way
  * `panels/frontmatter-panel.ts` is handed the stage. They cannot resolve one the way the tab strip
@@ -248,6 +313,11 @@ function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): voi
     attachPaneChromeHost(paneId, element);
     return;
   }
+  if (part === "dropZone") {
+    cell.dropZone = element;
+    cell.releaseDropZone = attachDropZone(paneId, element);
+    return;
+  }
   attachStage(cell, element);
 }
 
@@ -272,6 +342,8 @@ function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): voi
  *   the record the hosts resolve through.
  */
 function disposeCell(cell: CellState): void {
+  cell.releaseDropZone?.();
+  cell.releaseDropZone = null;
   attachJumpBarHost(cell.paneId, null);
   attachPaneChromeHost(cell.paneId, null);
   cell.releaseGestures?.();
@@ -396,6 +468,22 @@ export function mount(): void {
     { cellPart, move: setPaneSplit, settle: persistDocks },
   );
   _ready = _surface.ready;
+  _dragMonitor = monitorForElements({
+    canMonitor({ source }) {
+      return isTabDropSource(source.data);
+    },
+    onDrag({ location }) {
+      const [target] = location.current.dropTargets;
+      const edgePane = target?.data.type === "pane-edge" ? (target.data.paneId as string) : "";
+      _surface?.drag({ armed: true, edgePane });
+    },
+    onDragStart() {
+      _surface?.drag({ armed: true, edgePane: "" });
+    },
+    onDrop() {
+      _surface?.drag({ armed: false, edgePane: "" });
+    },
+  });
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
@@ -412,6 +500,8 @@ export function mount(): void {
 export function unmount(): void {
   _scope?.stop();
   _scope = null;
+  _dragMonitor?.();
+  _dragMonitor = null;
   /* Every cell is taken apart by the same ordered teardown a departing one gets, and BEFORE the
      document goes: doing it afterwards would hand `releaseCanvasHosts` a stage whose frames the
      runtime had already dropped. */

@@ -500,10 +500,11 @@ export interface PresetRow {
    *
    * The previous round made the row's ANSWER a pure function of the pane and left its ACTION
    * resolving the focus: every one of these three commands takes the focused pane as its subject
-   * (`pane.derive`'s `activePane()`/`sidePane()`, `pane.unsplit`'s `workspace.activePaneId`), so a
-   * row read off the secondary pane's menu derived from the primary. Reachable by keyboard and only
-   * by keyboard, which is why it survived a browser pass: `panels/pane-grid.ts` focuses a pane on
-   * POINTERDOWN, and a keyboard activation of a menu item fires `click` alone.
+   * (`pane.derive`'s `activePane()`/`paneBeside(source.id)`, `pane.unsplit`'s
+   * `workspace.activePaneId`), so a row read off the secondary pane's menu derived from the
+   * primary. Reachable by keyboard and only by keyboard, which is why it survived a browser pass:
+   * `panels/pane-grid.ts` focuses a pane on POINTERDOWN, and a keyboard activation of a menu item
+   * fires `click` alone.
    *
    * Carried on the row rather than passed as a command argument. A pane id in `args` would make
    * "which pane" a public input of `pane.derive` — a third property on a record the palette already

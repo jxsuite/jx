@@ -27,6 +27,7 @@ import {
 
 import {
   PRIMARY_PANE,
+  activePane,
   activeTab,
   closeAllTabs,
   openTab,
@@ -384,9 +385,11 @@ function setCanvasMode(tab: Tab | null, mode: string) {
  * 1. **To the side.** §8.2 has promised this since P3 and it never shipped — the chain ran
  *    `openFileInTab` → `openTab` → `activePane()`, so "open the layout that wraps this page" opened
  *    it ON TOP of the page it was teaching about.
- * 2. **Focus stays in the page.** An assistant pane that takes the keyboard means the author's next
- *    keystroke edits the definition instead of the document they are looking at — and a following
- *    pane would immediately have nothing to follow.
+ * 2. **The focus FOLLOWS.** The open is a gesture, not a read: the author asked to edit the component,
+ *    so the pane it lands in takes the keyboard. The failure it replaces is the opposite one — an
+ *    assistant pane that takes the keyboard means the author's next keystroke edits the definition
+ *    instead of the document they are looking at, which is why the READS (`pane.compareWith`, the
+ *    derivation follow, session restore) browse with `focus: false`.
  * 3. **A PREVIEW tab**, because drilling in is browsing: the second drill-in takes the same slot
  *    instead of littering the side strip, and an edit promotes it (`promoteDirtyPreviewTabs`).
  * 4. **An ordinary tab, not a derivation.** "Edit definition" is a commitment to edit one component; a
@@ -396,16 +399,17 @@ function setCanvasMode(tab: Tab | null, mode: string) {
  * `openedFrom` is unchanged — §14.2's relationship, which nothing pops and nothing restores from.
  *
  * @param {string} componentPath
+ * @docs studio/interface/tabs
  */
 async function navigateToComponent(componentPath: string) {
   const from = activeTab.value;
-  /* {@link receivingPane}, not `sidePane`: the pane beside this one may be a LENS, which owns no
+  /* {@link receivingPane}, not `paneBeside`: the pane beside this one may be a LENS, which owns no
      tab. The open then landed in a `tabOrder` `tabOfPane` hops straight past, so the read below got
      the SOURCE tab back, `opened.documentPath !== componentPath`, and the one relationship this
      function exists to record (§14.2) was skipped without a sound. */
-  const target = receivingPane();
+  const target = receivingPane(activePane().id);
   const alreadyOpen = [...workspace.tabs.values()].some((t) => t.documentPath === componentPath);
-  await openFileInTab(componentPath, { focus: false, paneId: target.id, preview: true });
+  await openFileInTab(componentPath, { paneId: target.id, preview: true });
   const opened = tabOfPane(target.id);
   if (!alreadyOpen && from && opened && opened.documentPath === componentPath) {
     opened.session.openedFrom = { documentPath: from.documentPath, tabId: from.id };

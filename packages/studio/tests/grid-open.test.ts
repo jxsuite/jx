@@ -1,6 +1,13 @@
 import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { activePane, closeAllTabs, workspace } from "../src/workspace/workspace";
+import {
+  PRIMARY_PANE,
+  activePane,
+  closeAllTabs,
+  paneBeside,
+  paneById,
+  workspace,
+} from "../src/workspace/workspace";
 
 void mock.module("tabulator-tables", () => ({}));
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
@@ -64,6 +71,21 @@ describe("openCsvGridTab", () => {
     expect(second.id).toBe(first.id);
     expect(workspace.tabs.size).toBe(1);
     expect(workspace.activeTabId as string | null).toBe("a.csv");
+  });
+
+  test("opts forward paneId, preview and focus, for a new tab and for an existing one", async () => {
+    installMockPlatform({}, { "a.csv": "x\n1\n", "b.csv": "x\n1\n" });
+    const side = paneBeside(PRIMARY_PANE);
+    const tab = await openCsvGridTab("a.csv", { focus: false, paneId: side.id, preview: true });
+    expect(tab.preview).toBe(true);
+    expect(paneById(side.id)!.tabOrder).toContain("a.csv");
+    // The keyboard did not follow — the primary is still the focused pane.
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+
+    // An already-open tab: `focus: false` activates it in its own pane without moving the keyboard.
+    await openCsvGridTab("a.csv", { focus: false });
+    expect(paneById(side.id)!.activeTabId).toBe("a.csv");
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
   });
 
   test("openCollectionGrid opens a deduped virtual tab bound to the collection source", async () => {
