@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.2.2](https://github.com/jxsuite/jx/compare/server-v4.2.1...server-v4.2.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.3.1
+
 ## [4.2.1](https://github.com/jxsuite/jx/compare/server-v4.2.0...server-v4.2.1) (2026-09-14)
 
 

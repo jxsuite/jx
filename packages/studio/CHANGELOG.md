@@ -1,5 +1,30 @@
 # Changelog
 
+## [5.2.0](https://github.com/jxsuite/jx/compare/studio-v5.1.0...studio-v5.2.0) (2026-09-18)
+
+
+### Features
+
+* **studio:** tabs move between panes by drag, split, or Open to the Side ([aec888b](https://github.com/jxsuite/jx/commit/aec888bafea876aec8a659ba4b9b6d315cef1106))
+* **studio:** tabs move between panes by drag, split, or Open to the Side ([f431368](https://github.com/jxsuite/jx/commit/f431368950250dd5b7c61347554c99ad8c141f15))
+
+
+### Bug Fixes
+
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+* **studio:** mark Command Bar controls no-drag in a form Electrobun can see ([46589ff](https://github.com/jxsuite/jx/commit/46589ff00c7084752bea3294199e0c16e02b7692))
+* **studio:** mark Command Bar controls no-drag in a form Electrobun can see ([9b48272](https://github.com/jxsuite/jx/commit/9b482724ce367edf67a41cbe13c56c47cb33dfa1))
+* **studio:** stub proxyModelsErrorMessage in the ai-models test doubles ([cb14b70](https://github.com/jxsuite/jx/commit/cb14b706fa40f01ef9a4332ea0b13e40a96d626e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.37.2
+    * @jxsuite/protocol bumped to 2.3.1
+
 ## [5.1.0](https://github.com/jxsuite/jx/compare/studio-v5.0.0...studio-v5.1.0) (2026-09-14)
 
 
