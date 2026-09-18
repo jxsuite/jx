@@ -43,7 +43,7 @@ void mock.module("../src/services/notify.js", () =>
 );
 
 const { createGridController } = await import("../src/grid/grid-controller");
-const { loadGridEngine } = await import("../src/grid/grid-lazy");
+const { loadGridEngine, resetGridLazy } = await import("../src/grid/grid-lazy");
 const {
   detachGridPanel,
   gridPanelMounted,
@@ -218,6 +218,25 @@ describe("renderGridMode", () => {
     expect(host.contains(table!.host)).toBeTrue();
     // And it was attached before the engine touched it — a detached build draws nothing at all.
     expect(host.isConnected).toBeTrue();
+  });
+
+  test("a cold rebuild that resolves after the pane detaches builds nothing", async () => {
+    const { wrap } = await mountGrid(viewSource());
+    const before = FakeTabulator.instances.at(-1)!;
+    const panel = await openViews(wrap);
+
+    // Force the memoized engine module cold again, so the toggle below re-enters rebuildView's
+    // Async branch instead of the synchronous one it would otherwise take.
+    resetGridLazy();
+    // The column toggle's change event runs applyLayout -> rebuildView synchronously, so the
+    // Dynamic import is in flight — not yet resolved — the instant detachGridPanel runs after it.
+    toggleColumn(panel, "body", false);
+    detachGridPanel("primary");
+    await loadGridEngine();
+    await flush(3);
+    // The stale continuation saw the pane gone and returned before ever touching Tabulator again.
+    expect(before.destroyed).toBeTrue();
+    expect(FakeTabulator.instances).toHaveLength(1);
   });
 
   test("the toolbar is one named region, not a bag of anonymous buttons", async () => {
