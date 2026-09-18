@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.7-draft\
+**Version:** 0.8.8-draft\
 **Status:** Partial\
-**Updated:** 2026-09-14\
+**Updated:** 2026-09-18\
 **Applies to:** `packages/studio/`
 
 ---
@@ -896,6 +896,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.8-draft** (2026-09-18) — The tab strip and the pane grid's right-edge zone are pragmatic drag targets too; Split Right and Open to the Side are their non-drag equivalents.
 - **0.8.7-draft** (2026-09-14) — §12.4 a surface runs a command through runReported, which files a synchronous refusal and a later rejection alike in Problems under the surface's name, and a crash also reaches the console.
 - **0.8.6-draft** (2026-09-13) — §12.4 the agent's tool IS the command: the projection contract, the four deletion rules and the three review rules; the argument corollary names the schema coercion; §12.2 gains the assistant tool cap.
 - **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.

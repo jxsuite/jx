@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.14-draft\
+**Version:** 0.1.15-draft\
 **Status:** Partial\
-**Updated:** 2026-09-14\
+**Updated:** 2026-09-18\
 **License:** MIT
 
 ---
@@ -153,6 +153,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.15-draft** (2026-09-18) — Document that model-listing is best-effort per BYOK endpoint and upstream failures must be surfaced distinctly from auth failures.
 - **0.1.14-draft** (2026-09-14) — §3.6 open_document is the projection of document.open, the bridge holds an undo: project record to a project.json witness as it holds a document record to the document root, and a tool with an empty required enum is withheld from the round.
 - **0.1.13-draft** (2026-09-13) — §3.6 Command tools: the two kinds of tool, strict: false and why, the empty-`wrote` no-op and the throwing-report answer, and the composite registry.
 - **0.1.12-draft** (2026-08-31) — Provider contract §2.2: never send an empty assistant turn, and replay a thinking model's reasoning_content.
@@ -171,4 +172,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.14-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.15-draft — a stub, subject to expansion._
