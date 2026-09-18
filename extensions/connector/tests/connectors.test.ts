@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { Kysely, sql } from "kysely";
 import { createBunSqliteDialect } from "../src/dialects/bun-sqlite";
+import { testWithDialect } from "../src/provider-utils";
 import type { DynamicDatabase } from "../src/query";
 import type { TableDef } from "../src/types";
 
@@ -89,6 +90,21 @@ describe("Sqlite provider", () => {
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
+  });
+
+  test("testWithDialect reports a query failure instead of throwing", async () => {
+    // A dialect that constructs fine but fails once `select 1` actually runs — the case a
+    // Provider's own testConnection wrapper cannot produce, since it never throws past dialect
+    // Construction.
+    const broken = createBunSqliteDialect({
+      database: {
+        prepare: () => {
+          throw new Error("database is locked");
+        },
+      },
+    });
+    const result = await testWithDialect(broken);
+    expect(result).toEqual({ error: "database is locked", ok: false });
   });
 });
 

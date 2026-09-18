@@ -106,6 +106,31 @@ describe("syncTables", () => {
     await db.destroy();
   });
 
+  test("turning timestamps on for an existing table adds the two columns additively", async () => {
+    const db = makeDb();
+    const noStamps: Record<string, TableDef> = {
+      posts: {
+        connection: "main",
+        schema: { properties: { title: { type: "string" } }, type: "object" },
+        timestamps: false,
+      },
+    };
+    await syncTables(db, noStamps, { dialect: "sqlite" });
+    const withStamps: Record<string, TableDef> = {
+      posts: { ...noStamps.posts!, timestamps: true },
+    };
+    const result = await syncTables(db, withStamps, { dialect: "sqlite" });
+    expect(result.statements.toSorted()).toEqual([
+      'alter table "posts" add column "created_at" text',
+      'alter table "posts" add column "updated_at" text',
+    ]);
+    const tables = await db.introspection.getTables();
+    const columns = tables.find((t) => t.name === "posts")!.columns.map((c) => c.name);
+    expect(columns).toContain("created_at");
+    expect(columns).toContain("updated_at");
+    await db.destroy();
+  });
+
   test("integer id tables get autoincrement primary keys on sqlite", async () => {
     const db = makeDb();
     const tables: Record<string, TableDef> = {
