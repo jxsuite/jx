@@ -60,11 +60,11 @@
     "@jxsuite/schema": "workspace:^",
     "kysely": "^0.29.6",
     "kysely-d1": "^0.4.0",
-    "kysely-postgres-js": "^4.0.0",
+    "kysely-postgres-js": "^5.0.0",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260914.1",
+    "@cloudflare/workers-types": "^5.20260918.1",
     "ajv": "^8.20.0",
     "hono": "^4.13.8"
   },
