@@ -12,6 +12,7 @@
  * registration) on first use by source mode, the function editor, or the formula workspace.
  */
 import { errorMessage } from "@jxsuite/schema/parse";
+import { installModulePreloadBatcher } from "./services/module-preloads";
 import { getPanel } from "./panels/panel-registry";
 
 import {
@@ -266,6 +267,11 @@ import type { Tab } from "./tabs/tab";
 import type { JxDocument, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountShellTree } from "./shell/tree";
+
+// The bundler's `<link rel=modulepreload>` batching is installed on the module scope: before the
+// First lazy `import()` of any surface that runs, so the palette's first open does not pay a
+// Document recalculation per chunk (see the module's header for the trace that asked for this).
+installModulePreloadBatcher();
 
 /**
  * Anchor every shipped-asset URL to THIS module's directory.

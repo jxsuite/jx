@@ -1,0 +1,105 @@
+{
+  "updatedAt": "2026-09-20T11:46:06.857Z",
+  "scenarios": [
+    {
+      "name": "boot",
+      "wallMs": 1075.9,
+      "scriptingMs": 148,
+      "harnessMs": 0,
+      "styleRecalcMs": 36.4,
+      "styleRecalcCount": 5,
+      "layoutMs": 2.9,
+      "gcMs": 24.2
+    },
+    {
+      "name": "document-boot",
+      "wallMs": 4216.8,
+      "scriptingMs": 490.6,
+      "harnessMs": 0,
+      "styleRecalcMs": 863.5,
+      "styleRecalcCount": 19,
+      "layoutMs": 74.5,
+      "gcMs": 9.8
+    },
+    {
+      "name": "assistant",
+      "wallMs": 312.7,
+      "scriptingMs": 38.5,
+      "harnessMs": 0,
+      "styleRecalcMs": 44.4,
+      "styleRecalcCount": 4,
+      "layoutMs": 2.7,
+      "gcMs": 0
+    },
+    {
+      "name": "palette",
+      "wallMs": 1028.5,
+      "scriptingMs": 88.5,
+      "harnessMs": 0,
+      "styleRecalcMs": 587.6,
+      "styleRecalcCount": 26,
+      "layoutMs": 7.4,
+      "gcMs": 0
+    },
+    {
+      "name": "palette-files",
+      "wallMs": 370.5,
+      "scriptingMs": 8.8,
+      "harnessMs": 0,
+      "styleRecalcMs": 13.9,
+      "styleRecalcCount": 18,
+      "layoutMs": 3.7,
+      "gcMs": 0
+    },
+    {
+      "name": "canvas-edit",
+      "wallMs": 2258.8,
+      "scriptingMs": 250.8,
+      "harnessMs": 0,
+      "styleRecalcMs": 1175.2,
+      "styleRecalcCount": 40,
+      "layoutMs": 23.7,
+      "gcMs": 15.7
+    },
+    {
+      "name": "grid-edit",
+      "wallMs": 295.6,
+      "scriptingMs": 0.7,
+      "harnessMs": 0,
+      "styleRecalcMs": 0,
+      "styleRecalcCount": 0,
+      "layoutMs": 0,
+      "gcMs": 0
+    },
+    {
+      "name": "regions",
+      "wallMs": 327.5,
+      "scriptingMs": 12.7,
+      "harnessMs": 0,
+      "styleRecalcMs": 5.3,
+      "styleRecalcCount": 5,
+      "layoutMs": 0,
+      "gcMs": 0
+    },
+    {
+      "name": "panels",
+      "wallMs": 610.1,
+      "scriptingMs": 2.1,
+      "harnessMs": 0,
+      "styleRecalcMs": 359.6,
+      "styleRecalcCount": 2,
+      "layoutMs": 1.6,
+      "gcMs": 1
+    },
+    {
+      "name": "settings",
+      "wallMs": 220,
+      "scriptingMs": 5,
+      "harnessMs": 0,
+      "styleRecalcMs": 0,
+      "styleRecalcCount": 0,
+      "layoutMs": 0,
+      "gcMs": 0
+    }
+  ]
+}

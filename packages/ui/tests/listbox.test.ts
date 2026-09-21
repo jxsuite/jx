@@ -316,3 +316,37 @@ describe("jx-option", () => {
     ).toEqual([]);
   });
 });
+
+describe("sidecar sync coalescing", () => {
+  test("a burst of row mutations projects once per frame with the last active id", async () => {
+    const list = await listbox([{ value: "a" }, { value: "b" }]);
+    list.active = "lb-o1";
+    await tick();
+    expect(flags(list)).toEqual(["false", "true"]);
+
+    // Hold the frame: the sidecar must not sync per record while rows rebuild.
+    const queued: (() => void)[] = [];
+    const original = globalThis.requestAnimationFrame;
+    const held = globalThis as { requestAnimationFrame: (cb: () => void) => number };
+    held.requestAnimationFrame = (cb: () => void) => {
+      queued.push(cb);
+      return queued.length;
+    };
+    try {
+      // One filter re-run lands a whole new row set: many childList records in one task.
+      fill(list, [{ value: "x" }, { value: "y" }, { value: "z" }]);
+      fill(list, [{ value: "x" }]);
+      await tick();
+      expect(queued).toHaveLength(1);
+      for (const frame of queued.splice(0)) {
+        frame();
+      }
+      await tick();
+      // The single sync ran with the burst's settled answer.
+      expect(flags(list)).toEqual(["false"]);
+    } finally {
+      globalThis.requestAnimationFrame = original;
+      await tick();
+    }
+  });
+});
