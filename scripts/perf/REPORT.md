@@ -20,8 +20,7 @@ The analytics in `scripts/perf/analysis.ts` bucket timeline events into scriptin
 
 ##### Known limits
 
-The tracer's own `probe.idle()` wait loop bills ~100–300 ms of scripting to each scenario;
-`trace-studio.ts` now attributes that cost through the same source-map pass (sources under `src/services/idle.ts` are the harness's rAF poll) and **subtracts it from the scripting bucket before reporting**, so `scripting` means app scripting. Scenarios share one browser session in repo order, so later scenarios can inherit earlier ones' state (the palette scenarios open real overlays). The measurement subject is the dev-server bundle, not the production `bun run build:studio` output, so absolute numbers carry dev-build overhead; relative hot spots are stable across the runs we took. Sub-scenario metrics below ~25 ms are noise (±50% across reps); the regression gate ignores absolute deltas under 25 ms for that reason.
+The tracer's own `probe.idle()` wait loop bills ~100–300 ms of scripting to each scenario; `trace-studio.ts` now attributes that cost through the same source-map pass (sources under `src/services/idle.ts` are the harness's rAF poll) and **subtracts it from the scripting bucket before reporting**, so `scripting` means app scripting. Scenarios share one browser session in repo order, so later scenarios can inherit earlier ones' state (the palette scenarios open real overlays). The measurement subject is the dev-server bundle, not the production `bun run build:studio` output, so absolute numbers carry dev-build overhead; relative hot spots are stable across the runs we took. Sub-scenario metrics below ~25 ms are noise (±50% across reps); the regression gate ignores absolute deltas under 25 ms for that reason.
 
 ## Baseline (tracked in `scripts/perf/baseline.json`, worst of 3 reps, Sept 19 2026)
 
