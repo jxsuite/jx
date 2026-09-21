@@ -1,0 +1,95 @@
+{
+  "updatedAt": "2026-09-20T01:13:48.400Z",
+  "scenarios": [
+    {
+      "name": "boot",
+      "wallMs": 640.5,
+      "scriptingMs": 117.8,
+      "harnessMs": 0,
+      "styleRecalcMs": 29.8,
+      "styleRecalcCount": 5,
+      "layoutMs": 2.7,
+      "gcMs": 12.2
+    },
+    {
+      "name": "document-boot",
+      "wallMs": 3743.5,
+      "scriptingMs": 213.3,
+      "harnessMs": 0,
+      "styleRecalcMs": 686.4,
+      "styleRecalcCount": 19,
+      "layoutMs": 101.1,
+      "gcMs": 14.7
+    },
+    {
+      "name": "assistant",
+      "wallMs": 137.2,
+      "scriptingMs": 17.9,
+      "harnessMs": 0,
+      "styleRecalcMs": 19.4,
+      "styleRecalcCount": 3,
+      "layoutMs": 1.3,
+      "gcMs": 0
+    },
+    {
+      "name": "palette",
+      "wallMs": 644.3,
+      "scriptingMs": 57.3,
+      "harnessMs": 0,
+      "styleRecalcMs": 377,
+      "styleRecalcCount": 26,
+      "layoutMs": 6.3,
+      "gcMs": 1.9
+    },
+    {
+      "name": "palette-files",
+      "wallMs": 148.2,
+      "scriptingMs": 3.6,
+      "harnessMs": 0,
+      "styleRecalcMs": 8.5,
+      "styleRecalcCount": 17,
+      "layoutMs": 2,
+      "gcMs": 0
+    },
+    {
+      "name": "canvas-edit",
+      "wallMs": 1238.6,
+      "scriptingMs": 166.3,
+      "harnessMs": 0,
+      "styleRecalcMs": 569.1,
+      "styleRecalcCount": 39,
+      "layoutMs": 41.7,
+      "gcMs": 8.1
+    },
+    {
+      "name": "regions",
+      "wallMs": 272.2,
+      "scriptingMs": 8.6,
+      "harnessMs": 0,
+      "styleRecalcMs": 11.4,
+      "styleRecalcCount": 6,
+      "layoutMs": 3.9,
+      "gcMs": 0
+    },
+    {
+      "name": "panels",
+      "wallMs": 335.4,
+      "scriptingMs": 1.1,
+      "harnessMs": 0,
+      "styleRecalcMs": 127.6,
+      "styleRecalcCount": 4,
+      "layoutMs": 1.7,
+      "gcMs": 4.9
+    },
+    {
+      "name": "settings",
+      "wallMs": 115.6,
+      "scriptingMs": 2.6,
+      "harnessMs": 0,
+      "styleRecalcMs": 0,
+      "styleRecalcCount": 0,
+      "layoutMs": 0,
+      "gcMs": 0
+    }
+  ]
+}

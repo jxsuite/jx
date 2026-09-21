@@ -43,8 +43,7 @@ import {
 } from "../shell";
 import type { DockId } from "../shell";
 import { effect } from "../reactivity";
-import { rectOf } from "../utils/geometry";
-import { splitModifiersOf } from "@jxsuite/ui/behaviors/split";
+import { splitModifiersOf, trackOf } from "@jxsuite/ui/behaviors/split";
 import type { SplitModifiers } from "@jxsuite/ui/behaviors/split";
 
 /**
@@ -161,25 +160,6 @@ export interface SplitElement extends HTMLElement {
 }
 
 /**
- * The length of the box a handle divides, along its axis — the same box `jx-split` measures at
- * pointerdown, read here so the share this adapter writes and the one the element drags against are
- * two readings of one number.
- */
-function trackOf(handle: HTMLElement, axis: "x" | "y"): number {
-  for (let node = handle.parentElement; node; node = node.parentElement) {
-    if (globalThis.getComputedStyle(node).display === "contents") {
-      continue;
-    }
-    const box = rectOf(node);
-    const length = axis === "x" ? box.width : box.height;
-    if (length > 0) {
-      return length;
-    }
-  }
-  return 0;
-}
-
-/**
  * A target's pixel size as the leading side's share of the track, and back.
  *
  * The handle sits `lead + size / |scale|` px into the leading side. With the target ON the leading
@@ -231,7 +211,7 @@ function sizeOf(target: ResizeTarget, share: number, track: number): number {
  */
 export function bindSplit(handle: SplitElement, target: ResizeTarget): () => void {
   const sync = (): void => {
-    const track = trackOf(handle, target.axis);
+    const track = trackOf(handle, target.axis === "x");
     if (track <= 0) {
       return;
     }
@@ -243,7 +223,7 @@ export function bindSplit(handle: SplitElement, target: ResizeTarget): () => voi
     handle.value = shareOf(target, target.read(), track);
   };
   const onInput = (event: Event): void => {
-    const track = trackOf(handle, target.axis);
+    const track = trackOf(handle, target.axis === "x");
     if (track <= 0) {
       return;
     }
