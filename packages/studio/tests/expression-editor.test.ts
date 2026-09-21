@@ -499,7 +499,12 @@ describe("browse catalog", () => {
   /** The palette's own popover slot — a Jx document mounted a turn after the click. */
   const paletteSlot = () =>
     document.querySelector('[data-jx-region="overlay.menu:formula-palette"]');
-  const overlay = () => paletteSlot()?.querySelector('[part="overlay"]') ?? null;
+  /* The palette is a persistent mount now: closed it is present but hidden on the layer root, and
+     a test that asks "is the palette closed?" asks what the reader SEES — empty, not gone. */
+  const overlay = () => {
+    const el = paletteSlot()?.querySelector('[part="overlay"]');
+    return el && !el.hasAttribute("hidden") ? el : null;
+  };
   const names = () =>
     [...(paletteSlot()?.querySelectorAll('[part="option"] [part="label"]') ?? [])].map(
       (n) => n.textContent,
