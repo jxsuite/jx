@@ -3578,6 +3578,20 @@
             }
           ]
         },
+        "oninstallresult": {
+          "description": "Event handler for the \"installresult\" event.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RefObject"
+            },
+            {
+              "$ref": "#/$defs/ExpressionEntry"
+            },
+            {
+              "$ref": "#/$defs/FunctionDef"
+            }
+          ]
+        },
         "oninvalid": {
           "description": "Event handler for the \"invalid\" event.",
           "oneOf": [
@@ -27922,6 +27936,7 @@
         "img",
         "input",
         "ins",
+        "install",
         "kbd",
         "label",
         "legend",
