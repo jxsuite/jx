@@ -152,12 +152,24 @@ async function launchChrome(userDataDir: string, port: number) {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",
+      // Chromium's own sandbox refuses to run as root (the CI container is `--user root`) and a
+      // Container's default 64 MB /dev/shm is too small for Chrome's shared memory, so both
+      // Guards are disabled here rather than left to crash the renderer on first navigation.
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
       `--user-data-dir=${userDataDir}`,
       `--remote-debugging-port=${port}`,
       "about:blank",
     ],
-    { stdout: "ignore", stderr: "ignore" },
+    { stdout: "ignore", stderr: "pipe" },
   );
+  let stderr = "";
+  void new Response(proc.stderr)
+    .text()
+    .then((text) => {
+      stderr = text;
+    })
+    .catch(() => {});
   for (let i = 0; i < 80; i++) {
     try {
       await fetch(`http://127.0.0.1:${port}/json/version`);
@@ -167,7 +179,7 @@ async function launchChrome(userDataDir: string, port: number) {
     }
   }
   proc.kill(9);
-  throw new Error("Chrome did not come up");
+  throw new Error(`Chrome did not come up${stderr ? `:\n${stderr.slice(-2000)}` : ""}`);
 }
 
 type CdpLike = InstanceType<typeof Cdp>;
