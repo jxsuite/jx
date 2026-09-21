@@ -148,7 +148,12 @@ function installRegistry() {
 }
 
 function overlay(): HTMLElement | null {
-  return document.querySelector('[part="overlay"]');
+  /* The palette is a persistent mount now: closed it is present but hidden on the layer root, and
+     a test that asks "is the palette closed?" asks what the reader SEES — empty, not gone. */
+  const shown = [...document.querySelectorAll('[part="overlay"]')].find(
+    (el) => !el.hasAttribute("hidden"),
+  );
+  return (shown as HTMLElement) ?? null;
 }
 
 function input(): HTMLInputElement {

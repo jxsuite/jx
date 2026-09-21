@@ -15,7 +15,7 @@ code:
 
 # The AI assistant
 
-The assistant lives in the Inspector, as its fourth tab beside Content, Style and Logic. It survives tab switches (your draft message, scroll position, and conversation are all still there when you come back), and it works in every state of Studio, from the welcome screen to a page mid-edit. Because it shares the Inspector's width, showing it costs the canvas nothing.
+The assistant lives in the Inspector, as its fourth tab beside Content, Style and Logic. It survives tab switches (your draft message, scroll position, and conversation are all still there when you come back), and it works in every state of Studio, from the welcome screen to a page mid-edit. Because it shares the Inspector's width, showing it costs the canvas nothing. The tab's body is built the first time it is shown: anything directed at the assistant before that, such as a pending prompt from the New Project hand-off, waits with the panel and shows when the tab is first picked.
 
 ![A conversation with the assistant: a user message with context chips, an assistant reply with a tool chip, and the composer below](../../images/ai-sidebar-chat.png)
 

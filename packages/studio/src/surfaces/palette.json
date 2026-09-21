@@ -17,6 +17,9 @@
       "paddingTop": "60px",
       "background": "rgba(0, 0, 0, 0.4)"
     },
+    "& [part=\"overlay\"][hidden]": {
+      "display": "none"
+    },
     "& [part=\"panel\"]": {
       "width": "560px",
       "maxWidth": "calc(100vw - 32px)",
@@ -133,14 +136,12 @@
       "color": "var(--jx-fg-dim)"
     }
   },
-  "$switch": {
-    "$ref": "#/state/open"
-  },
-  "cases": {
-    "true": {
+  "children": [
+    {
       "tagName": "div",
       "attributes": {
-        "part": "overlay"
+        "part": "overlay",
+        "hidden": "${state.open ? null : ''}"
       },
       "onclick": {
         "$prototype": "Function",
@@ -531,5 +532,5 @@
         }
       ]
     }
-  }
+  ]
 }

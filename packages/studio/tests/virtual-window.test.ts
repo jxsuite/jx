@@ -16,6 +16,7 @@ import {
   listWindow,
   measuredRowHeight,
   nearestScroller,
+  scrollerFor,
   revealListRow,
   sameWindow,
   scrollTopToReveal,
@@ -599,5 +600,50 @@ describe("watchListWindow", () => {
     const watch = watchListWindow(null, list, spec);
     const orphan = document.createElement("div");
     expect(watchListWindow(watch, orphan, spec)).toBeNull();
+  });
+});
+
+describe("scrollerFor", () => {
+  test("memoizes the resolved scroller per list, and answers the same element again", () => {
+    const scroller = scrollBox({ clientHeight: 200, scrollHeight: 2000 });
+    const list = listIn(scroller, 0);
+    expect(scrollerFor(list)).toBe(scroller);
+    expect(scrollerFor(list)).toBe(scroller);
+  });
+
+  test("re-resolves when the list moves under a different scroller", () => {
+    const first = scrollBox({ clientHeight: 200, scrollHeight: 2000 });
+    const second = scrollBox({ clientHeight: 150, scrollHeight: 6000 });
+    const list = listIn(first, 0);
+    expect(scrollerFor(list)).toBe(first);
+    second.append(list);
+    expect(scrollerFor(list)).toBe(second);
+    first.dispatchEvent(new Event("scroll"));
+  });
+
+  test("never memoizes a null answer, so growth still resolves the scroller", () => {
+    const list = document.createElement("div");
+    document.body.append(list);
+    // Nothing scrolls the list yet — the first paint of every session.
+    expect(scrollerFor(list)).toBeNull();
+    // Rows arrived and a scroller is now reachable from it.
+    const scroller = scrollBox({ clientHeight: 100, scrollHeight: 900 });
+    list.append(document.createElement("div"));
+    scroller.append(list);
+    expect(scrollerFor(list)).toBe(scroller);
+    scroller.remove();
+  });
+
+  test("drops a stale cache when the scroller leaves the document", () => {
+    const scroller = scrollBox({ clientHeight: 200, scrollHeight: 2000 });
+    const list = listIn(scroller, 0);
+    expect(scrollerFor(list)).toBe(scroller);
+    scroller.remove();
+    // Connectivity is node walks, not layout reads, so teardown invalidates without a flush.
+    expect(scrollerFor(list)).toBeNull();
+    document.body.append(scroller);
+    list.append(document.createElement("div"));
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 9000 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 50 });
   });
 });

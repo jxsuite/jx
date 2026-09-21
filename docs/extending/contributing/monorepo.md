@@ -51,6 +51,8 @@ Pushes to `main`, the nightly cron, and manual dispatch are never gated: they al
 
 `lint`, both typechecks and all the docs and schema gates run **unconditionally**, in one `checks` job. Each is a few seconds and a fresh CI job costs longer than that to start, so gating them would spend more time than it saves.
 
+**Interaction-performance gate**: `.github/workflows/studio-perf.yml` runs `bun run perf:studio` headless against the tracked `scripts/perf/baseline.json`: nightly on `main`, and on PRs touching Studio, the UI kit or the runtime. A metric that grows by more than 20 % and 25 ms against the baseline turns the job red, with the per-scenario delta table as the summary; the failure names the scenario. A baseline your own change legitimately beat is re-captured (`bun run perf:studio --reps 3 --write-baseline 1`) and lands in the same PR, where the windows underneath both baselines are part of the review.
+
 :::doc-note
 `ci` is the aggregate job. It passes when every other job either succeeded or was skipped, and fails if any failed or was cancelled. A job your diff never reached leaves the run green.
 :::

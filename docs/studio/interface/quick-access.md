@@ -33,9 +33,7 @@ With no project open, the palette lists your recent projects instead. Pick one t
 
 - :kbd[↓] and :kbd[↑] move through the results, and the list scrolls to keep the highlighted row in view.
 - :kbd[Enter] opens the highlighted result in a tab.
-- :kbd[Esc] closes the palette.
-
-The mouse works too: click any row to open it.
+- :kbd[Esc] closes the palette. The mouse works too: click any row to open it. Closing is a display change, so reopening is instant: the palette stays mounted and hidden while closed, and the rows you ranked last time are already there when it opens.
 
 ## Next
 
