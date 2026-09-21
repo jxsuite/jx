@@ -202,11 +202,37 @@ function coordOf(vertical: boolean, event: { clientX: number; clientY: number })
  * realm cannot see through — walking past it costs a frame's work once per gesture and is the only
  * thing that makes the pane grid's two nested `display: contents` rows measurable at all.
  *
+ * The ancestor that resolved as the track is MEMOIZED per host and re-read per call. Only its
+ * identity is cached; the length is measured fresh every time, so a window resize answers the new
+ * track width with no listener anywhere. Re-measuring one element's box instead of walking with a
+ * computed-style test per ancestor is what profiling pointed at: every gesture during a shell rep
+ * forced the dirty-tree flush and the DevTools timeline charged the recalc to the read, five times
+ * per boot with a document open. The cache re-walks when the remembered track no longer contains
+ * the host (reparenting, teardown) — containment and connectivity are node walks, not layout — and
+ * when the remembered track measures zero, because an unlaid-out track resolving later (the first
+ * frame after a pane opens) is the case the walk exists for.
+ *
  * @param host The element.
  * @param vertical Whether the drag is along x.
  * @returns The length in pixels, or 0 when nothing above the splitter has one.
  */
-function trackOf(host: HTMLElement, vertical: boolean): number {
+const trackCache = new WeakMap<HTMLElement, { element: HTMLElement; vertical: boolean }>();
+
+export function trackOf(host: HTMLElement, vertical: boolean): number {
+  const cached = trackCache.get(host);
+  if (
+    cached &&
+    cached.vertical === vertical &&
+    cached.element.isConnected &&
+    host.isConnected &&
+    cached.element.contains(host)
+  ) {
+    const box = cached.element.getBoundingClientRect();
+    const length = vertical ? box.width : box.height;
+    if (length > 0) {
+      return length;
+    }
+  }
   for (let node = host.parentElement; node; node = node.parentElement) {
     if (globalThis.getComputedStyle(node).display === "contents") {
       continue;
@@ -214,6 +240,7 @@ function trackOf(host: HTMLElement, vertical: boolean): number {
     const box = node.getBoundingClientRect();
     const length = vertical ? box.width : box.height;
     if (length > 0) {
+      trackCache.set(host, { element: node, vertical });
       return length;
     }
   }
