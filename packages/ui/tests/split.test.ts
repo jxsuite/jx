@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
 
 import { registerUi } from "../src/index.ts";
-import { splitModifiersOf } from "../src/behaviors/split.ts";
+import { splitModifiersOf, trackOf } from "../src/behaviors/split.ts";
 import type { SplitModifiers } from "../src/behaviors/split.ts";
 
 const tick = () =>
@@ -651,5 +651,43 @@ describe("the modifiers a step carried", () => {
     expect(
       splitModifiersOf(new CustomEvent("input", { detail: { altKey: "yes", shiftKey: true } })),
     ).toEqual({ ...none, shiftKey: true });
+  });
+});
+
+describe("trackOf memoizes the resolved track", () => {
+  test("answers the resolved track's CURRENT box, so a resize re-measures with no walk", () => {
+    const track = document.createElement("div");
+    const host = document.createElement("jx-split");
+    const row = document.createElement("div");
+    row.style.display = "contents";
+    // The exact pane-grid shape: host inside a display:contents wrapper inside the track.
+    row.append(host);
+    track.append(row);
+    document.body.append(track);
+    measure(track, 300, 100);
+    // `vertical` is true for an X-axis drag, so a horizontal track answers width.
+    expect(trackOf(host, true)).toBe(300);
+    // The track got wider — only its identity is cached; the length is measured fresh every time.
+    measure(track, 640, 100);
+    expect(trackOf(host, true)).toBe(640);
+  });
+
+  test("re-walks after the host is reparented into a different track", () => {
+    const host = document.createElement("jx-split");
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+    first.append(host);
+    measure(first, 200, 100);
+    measure(second, 500, 100);
+    expect(trackOf(host, true)).toBe(200);
+    second.append(host);
+    expect(trackOf(host, true)).toBe(500);
+  });
+
+  test("answers 0 when nothing above the splitter has a box", () => {
+    const host = document.createElement("jx-split");
+    document.body.append(host);
+    expect(trackOf(host, false)).toBe(0);
   });
 });

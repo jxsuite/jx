@@ -301,6 +301,44 @@ export function nearestScroller(el: HTMLElement | null): HTMLElement | null {
 }
 
 /**
+ * The scroller that resolved for `list` last time, memoized while the tree still holds it.
+ *
+ * Every render pass asks {@link nearestScroller} the same question about the same list, and each
+ * ask is a walk whose reads (scrollHeight, clientHeight, computed overflow) land on a tree that is
+ * mid-paint — they force the flush the DevTools timeline charges to whatever function happened to
+ * read first. Profiling the program boot put 400 ms of style recalculation behind a handful of
+ * these walks (`trackOf` and this one together), and the answer did not change between any two
+ * repaints.
+ *
+ * Only a POSITIVE resolution is cached, and negative answers are never: a list that has not grown
+ * its rows yet has nothing to scroll (the first paint of every session), and a null answer memoized
+ * at that instant would never be revisited. Once a scroller is found it is kept while
+ * `cached.contains(list)` and both are connected — containment and connectivity are plain node
+ * walks that never read layout, so the cache invalidates itself on reparenting or teardown without
+ * paying for it.
+ *
+ * **The one semantic residue is deliberate**: the original walk additionally required the scroller
+ * to HAVE something to scroll right then (the "declares overflow but never scrolls" guard above). A
+ * memoized scroller that has since stopped scrolling stays answered — which is harmless for the
+ * window: `computeWindow` then yields the whole list (a list that fits has no window to cut), and
+ * the watch's own ResizeObserver drives a measure when the box moves so the empty answer of the
+ * next moment arrives without a walk.
+ */
+export function scrollerFor(list: HTMLElement): HTMLElement | null {
+  const cached = scrollerCache.get(list);
+  if (cached && cached.isConnected && list.isConnected && cached.contains(list)) {
+    return cached;
+  }
+  const found = nearestScroller(list);
+  if (found) {
+    scrollerCache.set(list, found);
+  } else {
+    scrollerCache.delete(list);
+  }
+  return found;
+}
+
+/**
  * How far `list`'s first row has scrolled above the top of `scroller`'s viewport.
  *
  * Measured from the two rects rather than from `offsetTop`, because the chrome between them is not
@@ -327,7 +365,7 @@ export function listWindow(
   list: HTMLElement | null,
   spec: { count: number; rowHeight: number; columns?: number; overscanRows?: number },
 ): WindowRange {
-  const scroller = list?.isConnected === true ? nearestScroller(list) : null;
+  const scroller = list?.isConnected === true ? scrollerFor(list) : null;
   if (!scroller || !list) {
     const count = Math.max(0, Math.trunc(spec.count));
     return { end: count, padBottom: 0, padTop: 0, start: 0, totalRows: count };
@@ -377,7 +415,7 @@ export function scrollTopToReveal(spec: {
  * would paint twice for one keystroke.
  */
 export function revealListRow(list: HTMLElement | null, index: number, rowHeight: number): boolean {
-  const scroller = list?.isConnected === true ? nearestScroller(list) : null;
+  const scroller = list?.isConnected === true ? scrollerFor(list) : null;
   if (!scroller || !list || index < 0 || !(rowHeight > 0)) {
     return false;
   }
@@ -437,8 +475,23 @@ export interface ListWindowWatch {
   window: VirtualWindow;
 }
 
+const scrollerCache = new WeakMap<HTMLElement, HTMLElement>();
+
 /**
  * Bind — or keep — the scroll watch that repaints a windowed list.
+ *
+ * Runs synchronously, on purpose. Deferring the resolve-and-bind to the next animation frame was
+ * tried and measured (`scripts/perf/REPORT.md`, "deferring the first measure a frame"): it moved
+ * the boot trace's forced-flush cost rather than removing it, since the layout work still runs on
+ * the frame's own pass either way, and it cost eight test-semantics changes in this file's test
+ * suite for the same totals — so it was reverted. What actually removed the repeated flush is
+ * `scrollerFor`'s identity memoization (alongside `trackOf`'s, in `split.ts`): once a scroller is
+ * resolved for a list, later calls skip the ancestor walk entirely instead of re-reading
+ * `scrollHeight`/`clientHeight` on a dirty tree every render.
+ *
+ * A steady state where the SAME list and scroller are bound hands back `previous` unchanged — no
+ * work happens when nothing changed. Only a rebind (new list, changed scroller, first bind) creates
+ * a new watch.
  *
  * Called from the surface's `afterRender`, where the rows exist and the scroller can be resolved,
  * and handed back its own previous handle so re-binding is the exception rather than the rule: the
@@ -450,14 +503,14 @@ export interface ListWindowWatch {
  * the element whose box moves when the ROWS change height, so it is what the window observes to
  * learn that `rowHeight()` now answers differently ({@link createVirtualWindow}).
  *
- * Returns the handle to keep, or null when nothing scrolls this list.
+ * @returns The handle to keep, or null when nothing scrolls this list.
  */
 export function watchListWindow(
   previous: ListWindowWatch | null,
   list: HTMLElement,
   spec: { count: () => number; rowHeight: () => number; onChange: () => void },
 ): ListWindowWatch | null {
-  const scroller = nearestScroller(list);
+  const scroller = scrollerFor(list);
   if (previous && previous.list === list && previous.scroller === scroller) {
     return previous;
   }

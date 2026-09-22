@@ -21,7 +21,7 @@ Studio has a built-in AI assistant: a chat panel that answers questions about yo
 
 ![The assistant open beside a page on the canvas, mid-conversation](../images/ai-sidebar.png)
 
-The assistant is the **fourth tab of the Inspector**, beside Content, Style and Logic. Show it with :kbd[⌘⇧4] (macOS) / :kbd[Ctrl+Shift+4] (Windows/Linux), or by clicking the tab. Because it shares the Inspector's width, showing it costs the canvas nothing. It's available in every state: before you open a project, with a project open, and with a page on the canvas. What the assistant can do grows with each of those.
+The assistant is the **fourth tab of the Inspector**, beside Content, Style and Logic. Show it with :kbd[⌘⇧4] (macOS) / :kbd[Ctrl+Shift+4] (Windows/Linux), or by clicking the tab. Because it shares the Inspector's width, showing it costs the canvas nothing. It's available in every state: before you open a project, with a project open, and with a page on the canvas. What the assistant can do grows with each of those. The tab's body is built the first time the tab is shown; anything aimed at it before that (a pending prompt from the New Project hand-off, an automated seed) is queued with the panel and appears the moment the tab is first picked.
 
 ## What it can do
 
