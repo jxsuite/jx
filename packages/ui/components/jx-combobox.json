@@ -321,7 +321,7 @@
       "fontSize": "var(--jx-text-lg)"
     },
     "& [part=\"toggle\"]": {
-      "$description": "The toggle sits inside the field's border, so it draws 2px under the field's height: 22px in a 24px field, 18px in an `sm` one. The `::before` is its hit area (WCAG 2.2 SC 2.5.8, ui.md \u00a74.3), the same shape as jx-textfield's clear button: an empty pseudo-element inset by half the difference between the drawn box and the kit's control height, -1px on a default field and -3px on a small one, so the region that accepts the pointer is `--jx-control-h` square at every size while the caret and its box stay where they were; on a large field the inset is positive and the pseudo-element is an invisible box inside a button already over the floor. `position: relative` is what the pseudo-element measures against, and it is new here: the toggle is a flex item of the field, not an absolutely placed one. The rotation the open state applies turns the pseudo-element with the button, which a square does not mind.",
+      "$description": "The toggle sits inside the field's border, so it draws 2px under the field's height: 22px in a 24px field, 18px in an `sm` one. The `::before` is its hit area (WCAG 2.2 SC 2.5.8, ui.md \u00a74.3), the same shape as jx-textfield's clear button: an empty pseudo-element inset by half the difference between the drawn box and the kit's control height, -1px on a default field and -3px on a small one, so the region that accepts the pointer is `--jx-control-h` square at every size while the caret and its box stay where they were; on a large field the inset is positive and the pseudo-element is an invisible box inside a button already over the floor. `position: relative` is what the pseudo-element measures against, and it is new here: the toggle is a flex item of the field, not an absolutely placed one. The rotation the open state applies turns the pseudo-element with the button, which a square does not mind. `contain: layout` keeps that invisible expansion a LOCAL fact: an absolutely positioned box still contributes to the SCROLLABLE overflow of the nearest ancestor whose own `overflow` is not `visible`, even though nothing clips it and nothing paints there, so a form host that scrolls (Preferences \u00b7 Assistant does, at `overflow: auto`) picked up a couple of phantom pixels on every axis from these `::before`s alone and drew scrollbars over content that fit.",
       "position": "relative",
       "display": "inline-flex",
       "alignItems": "center",
@@ -339,6 +339,7 @@
       "color": "var(--jx-fg-muted)",
       "cursor": "pointer",
       "outline": "none",
+      "contain": "layout",
       "transition": "rotate var(--jx-dur-1) var(--jx-ease-out)",
       "::before": {
         "content": "\"\"",

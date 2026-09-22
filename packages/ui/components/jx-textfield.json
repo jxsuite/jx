@@ -447,7 +447,7 @@
       "fontSize": "var(--jx-text-lg)"
     },
     "& [part=\"clear\"]": {
-      "$description": "The clear button sits inside the field's border, so it draws 2px under the field's height: 22px in a 24px field, and 18px in an `sm` one. The `::before` is its hit area (WCAG 2.2 SC 2.5.8, ui.md \u00a74.3): an empty pseudo-element inset by half the difference between the drawn box and the kit's control height, which is -1px on a default field and -3px on a small one, so the region that accepts the pointer is `--jx-control-h` square at every size while the glyph and its hover box stay where they were. On a large field the difference is positive and the pseudo-element is an invisible box INSIDE a button that is already over the floor, which changes nothing. jx-tab's close button is the technique; the button is absolutely positioned already, so it is its own containing block. The extension lies over the input it clears, which was true of the drawn button too, and 2px past the field's edge at `sm`, where a neighbour at the kit's 4px gap extends 2px back and the two abut.",
+      "$description": "The clear button sits inside the field's border, so it draws 2px under the field's height: 22px in a 24px field, and 18px in an `sm` one. The `::before` is its hit area (WCAG 2.2 SC 2.5.8, ui.md \u00a74.3): an empty pseudo-element inset by half the difference between the drawn box and the kit's control height, which is -1px on a default field and -3px on a small one, so the region that accepts the pointer is `--jx-control-h` square at every size while the glyph and its hover box stay where they were. On a large field the difference is positive and the pseudo-element is an invisible box INSIDE a button that is already over the floor, which changes nothing. jx-tab's close button is the technique; the button is absolutely positioned already, so it is its own containing block. The extension lies over the input it clears, which was true of the drawn button too, and 2px past the field's edge at `sm`, where a neighbour at the kit's 4px gap extends 2px back and the two abut. `contain: layout` keeps the expansion LOCAL: an absolutely positioned box still counts toward the SCROLLABLE overflow of the nearest ancestor whose `overflow` is not `visible`, invisible or not, so a host that scrolls picks up a couple of phantom pixels from every `::before` like this one between it and the field, and draws a scrollbar over content that already fit.",
       "position": "absolute",
       "insetBlockStart": "1px",
       "insetInlineEnd": "1px",
@@ -471,6 +471,7 @@
       "color": "var(--jx-fg-muted)",
       "cursor": "pointer",
       "outline": "none",
+      "contain": "layout",
       ":hover": {
         "color": "var(--jx-fg)"
       },
