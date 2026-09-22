@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.50-draft\
+**Version:** 0.1.51-draft\
 **Status:** Partial\
-**Updated:** 2026-09-14\
+**Updated:** 2026-09-22\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -427,6 +427,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.51-draft** (2026-09-22) — jx-split memoizes the resolved track's identity per element — length still measured per call, walked invalidation on containment/connectivity/axis change — after profiling traced per-boot forced recalcs to the walk.
 - **0.1.50-draft** (2026-09-14) — §5.1 the hint contract covers jx-switch (a jx-tooltip child wired by for to the wrapping label while enabled, the label's title while disabled) and jx-menu-item's requires is the row's title only while disabled; §5.2 records both.
 - **0.1.49-draft** (2026-09-14) — §4.3 size=sm controls accept the pointer over the 24px floor through a ::before hit area inset past the 20px picture, the field-internal buttons carry the same, and §11 records the WCAG 2.5.8 claims and non-claims per element.
 - **0.1.48-draft** (2026-09-13) — jx-action-button and jx-button draw an enabled hint as a jx-tooltip child wired by id from a stem the tooltip sidecar mints (mintHintId), and keep it as the control's title while disabled; §5.2 says how a control declares a tip, and what the bound path owes the desktop app (Chromium 147): keyboard-only focus, one Escape listener per root, a moved tip keeps its binding (#299).
@@ -481,4 +482,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.50-draft_
+_Jx UI Kit Specification v0.1.51-draft_
