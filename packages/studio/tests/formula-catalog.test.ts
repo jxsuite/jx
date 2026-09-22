@@ -83,6 +83,25 @@ describe("operatorEntries", () => {
     expect(byName.get("=")!.insert()).toEqual({ operator: "=", target: { $ref: "" }, value: null });
     expect(byName.get("!")!.insert()).toEqual({ operator: "!", target: null });
     expect(byName.get("+")!.insert()).toEqual({ operator: "+", target: null, value: null });
+    // `arrayMeta`'s two shapes: `pop`/`shift` take no value, `push`/`unshift` do.
+    expect(byName.get("pop")!.insert()).toEqual({ operator: "pop", target: { $ref: "" } });
+    expect(byName.get("push")!.insert()).toEqual({
+      operator: "push",
+      target: { $ref: "" },
+      value: null,
+    });
+  });
+
+  test("pure-method entries seed a value only for the methods that take an argument", () => {
+    const byName = new Map(operatorEntries().map((e) => [e.name, e]));
+    // `trim` is in ZERO_ARG_METHODS — no `value` in its seed.
+    expect(byName.get("trim")!.insert()).toEqual({ operator: "trim", target: { $ref: "" } });
+    // `at` is not — its seed carries a `value` for the index argument.
+    expect(byName.get("at")!.insert()).toEqual({
+      operator: "at",
+      target: { $ref: "" },
+      value: null,
+    });
   });
 });
 
@@ -164,6 +183,36 @@ describe("namedFormulaEntries", () => {
     });
     expect(entries[0]!.description).toBe("Greets a person.");
     expect(entries[0]!.parameters).toEqual([{ name: "name" }]);
+  });
+
+  test("a parameter's type normalizes from a bare string or a JSON-Schema-shaped `.type`", () => {
+    const entries = namedFormulaEntries({
+      convert: {
+        $expression: { operator: "!", target: { $ref: "$args/x" } },
+        parameters: [
+          // A bare string type, distinct from the CEM `{ text }` shape STATE's lineTotal uses.
+          { name: "x", type: "number" },
+          // A JSON-Schema fragment — `.type`, not `.text`.
+          { name: "y", type: { type: "string" } },
+        ],
+      },
+    });
+    expect(entries[0]!.parameters).toEqual([
+      { name: "x", type: "number" },
+      { name: "y", type: "string" },
+    ]);
+  });
+
+  test("invalid parameter entries (malformed document JSON) are dropped, not thrown on", () => {
+    const entries = namedFormulaEntries({
+      messy: {
+        $expression: { operator: "!", target: { $ref: "$args/a" } },
+        // A document on disk is not type-checked: an object with no name, and a bare number, are
+        // Both things a hand-edited state entry could hold.
+        parameters: [{ name: "a" }, { foo: "bar" }, 42, "b"],
+      },
+    } as unknown as Record<string, JxStateDefinition>);
+    expect(entries[0]!.parameters).toEqual([{ name: "a" }, { name: "b" }]);
   });
 
   test("insert produces a call node with defaults as seeded positional args", () => {

@@ -199,6 +199,22 @@ describe("Logic tab — empty states", () => {
     expect(c.querySelector('[part="empty-action"]')!.textContent).toContain("Open a page…");
   });
 
+  test("Open a page… runs the empty action — it opens quick search, not just a label", async () => {
+    const c = await logic(makeDoc(), []);
+    closeAllTabs();
+    await settle();
+    const { closeQuickSearch, isQuickSearchOpen } = await import("../src/panels/quick-search");
+    expect(isQuickSearchOpen()).toBe(false);
+    try {
+      press(c.querySelector('[part="empty-action"]'));
+      // `openPageAction().run()` dynamically imports quick-search.js and opens it.
+      await flush(6);
+      expect(isQuickSearchOpen()).toBe(true);
+    } finally {
+      closeQuickSearch();
+    }
+  });
+
   test("no selection shows the prompt", async () => {
     const c = await logic(makeDoc(), []);
     expect(c.querySelector('[part="empty-message"]')!.textContent).toContain(
@@ -557,6 +573,18 @@ describe("Logic tab — add event", () => {
     expect(selectedNode().onclick).toEqual({ $prototype: "Function", body: "", parameters: [] });
   });
 
+  test("a click that lands after the tab closed is a no-op, not a crash on a gone document", async () => {
+    const c = await logic(makeDoc());
+    const addBtn = c.querySelector('[part="add-event"]');
+    // The tab closes (activeTab.value → null) before the click on the still-rendered stale button
+    // Lands — `addEventBinding` reads `activeTab.value` fresh, so it must refuse rather than read
+    // A document that is gone.
+    closeAllTabs();
+    press(addBtn);
+    await settle();
+    expect(activeTab.value).toBeNull();
+  });
+
   test("EVENT_NAMES exposes the standard handler list", () => {
     expect(EVENT_NAMES).toContain("onclick");
     expect(EVENT_NAMES).toContain("onmouseleave");
@@ -650,6 +678,14 @@ describe("Logic tab — repeating list", () => {
     expect(docNow().children[0].items).toBe('["a"]');
   });
 
+  test("picking the rung Items is already on is a no-op", async () => {
+    const c = await logic(repeaterDoc());
+    // Items already reads From data… (`{ $ref: "#/state/posts" }`) — picking "ref" again must not
+    // Rewrite it.
+    await pick(row(c, "items")!.querySelector('[part="source"]'), "ref");
+    expect(docNow().children[0].items).toEqual({ $ref: "#/state/posts" });
+  });
+
   test("handler and Function state entries are excluded from the signal options", async () => {
     const c = await logic({
       children: { $prototype: "Array", items: { $ref: "#/state/posts" }, map: { tagName: "li" } },
@@ -664,6 +700,34 @@ describe("Logic tab — repeating list", () => {
       ...row(c, "items")!.querySelectorAll('[part="select"] [part="option"] [part="text"]'),
     ].map((o) => o.textContent);
     expect(options).toEqual(["posts"]);
+  });
+});
+
+// ─── Repeater fields in Formula mode (the control-host island) ───────────────
+
+describe("Logic tab — a repeater field holding $expression is an island, like a binding", () => {
+  beforeEach(() => {
+    resetSlotModeMemory();
+  });
+
+  test("an Items field holding $expression mounts its own expression editor via control-host", async () => {
+    const c = await logic(repeaterDoc({ items: { $expression: { operator: "!", target: null } } }));
+    const island = row(c, "items")!.querySelector('[part="control-host"]') as HTMLElement;
+    expect(island).toBeTruthy();
+    // Same island contract the event bindings use (§9.4): the document renders the host and
+    // Nothing inside it, and the flow mounts its own expression-editor document into it.
+    expect(island.querySelector('[part="expression"]')).toBeTruthy();
+  });
+
+  test("a stale control-host island is dropped on the next repaint once its field disappears", async () => {
+    const c = await logic(repeaterDoc({ items: { $expression: { operator: "!", target: null } } }));
+    expect(row(c, "items")!.querySelector('[part="control-host"]')).toBeTruthy();
+    // Select the root instead: no longer a repeater, so `items`/`filter`/`sort` drop out of
+    // `fields` entirely, and the "items" island this session already painted is now stale — the
+    // Next repaint must not throw reaching for a plan that no longer exists.
+    activeTab.value!.session.selection = [[]];
+    await settle();
+    expect(section(c, "repeater")).toBeNull();
   });
 });
 
@@ -754,6 +818,24 @@ describe("Logic tab — condition", () => {
     const c = await logic(switchDoc(), inMap);
     press(row(c, "$switch")!.querySelector('[part="source"]'));
     expect((menus.at(-1)!.rows as AnyRec[]).map((r) => r.id)).not.toContain("literal");
+  });
+
+  test("committing a new choice on the $switch select writes a fresh $ref", async () => {
+    const c = await logic(switchDoc(), inMap);
+    await pick(row(c, "$switch")!.querySelector('[part="source"]'), "ref");
+    commit(row(c, "$switch")!.querySelector('[part="select"]'), "$map/index");
+    await settle();
+    expect(docNow().children[0].map.$switch).toEqual({ $ref: "$map/index" });
+  });
+
+  test("once From data… is the ONLY rung, the source chip locks (sourceLocked)", async () => {
+    const c = await logic(switchDoc(), inMap);
+    // Picking "ref" leaves $switch on the one rung it offers (`switchDiscriminant` is a $ref and
+    // Nothing else) — the chip has nowhere left to move to, and disables rather than opening onto
+    // A menu with nothing but the current choice checked.
+    await pick(row(c, "$switch")!.querySelector('[part="source"]'), "ref");
+    const source = row(c, "$switch")!.querySelector('[part="source"]')!;
+    expect(source.querySelector('[part="control"]')!.hasAttribute("disabled")).toBe(true);
   });
 });
 
