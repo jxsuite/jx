@@ -441,6 +441,25 @@ describe("references indexed by shape, not by key name", () => {
     expect(result.files[0]!.refs).toEqual([{ count: 1, ref: "/images/og.png", refType: "path" }]);
   });
 
+  test("the same image named twice in one document merges into a single ref, count 2", async () => {
+    // `$head`'s og:image and the hero's own background name the identical file — one row, not two.
+    write("public/images/hero.jpg", "x");
+    write("pages/index.json", {
+      $head: [
+        { attributes: { content: "/images/hero.jpg", property: "og:image" }, tagName: "meta" },
+      ],
+      children: [{ $props: { bg: "/images/hero.jpg" }, tagName: "pv-hero" }],
+    });
+    const result = await findReferences({
+      path: "public/images/hero.jpg",
+      registry: await registry(),
+      root,
+    });
+    expect(result.files.map((f) => f.path)).toEqual(["pages/index.json"]);
+    expect(result.refsTotal).toBe(2);
+    expect(result.files[0]!.refs).toEqual([{ count: 2, ref: "/images/hero.jpg", refType: "path" }]);
+  });
+
   test("a content entry's frontmatter counts, and the prose below it does not", async () => {
     write("project.json", { extensions: ["@jxsuite/parser"], name: "p" });
     write("public/images/project-1.jpg", "x");

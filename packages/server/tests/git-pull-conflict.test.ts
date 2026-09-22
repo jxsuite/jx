@@ -104,3 +104,35 @@ describe("POST /__studio/git/pull with conflicting changes", () => {
     expect(body.detail.trim()).not.toBe("");
   });
 });
+
+describe("POST /__studio/git/pull with nothing in the way", () => {
+  test("a clean fast-forward answers 200, not the conflict shape", async () => {
+    const cleanBase = mkdtempSync(join(tmpdir(), "jx-git-clean-pull-"));
+    const remote = join(cleanBase, "remote");
+    const clone = join(cleanBase, "local");
+    mkdirSync(remote, { recursive: true });
+
+    git(remote, "init -q -b main");
+    git(remote, "config user.email test@test.com");
+    git(remote, "config user.name Test");
+    writeFileSync(join(remote, "shared.txt"), "original\n");
+    git(remote, "add .");
+    git(remote, "commit -qm initial");
+
+    execSync(`git clone -q "${remote}" "${clone}"`, { stdio: "pipe" });
+    git(clone, "config user.email test@test.com");
+    git(clone, "config user.name Test");
+
+    // Only the remote moves, so the local checkout can fast-forward without touching anything.
+    writeFileSync(join(remote, "shared.txt"), "updated\n");
+    git(remote, "commit -qam remote-only");
+
+    const url = "http://localhost/__studio/git/pull";
+    const res = await handleStudioApi(new Request(url, { method: "POST" }), new URL(url), clone);
+    expect(res!.status).toBe(200);
+    const body = (await res!.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+
+    rmSync(cleanBase, { force: true, recursive: true });
+  });
+});
