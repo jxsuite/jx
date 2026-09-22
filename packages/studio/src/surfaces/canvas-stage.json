@@ -103,7 +103,9 @@
       "paddingBottom": "16px"
     },
     "& [part=\"doc-header\"][data-placement=\"pinned\"]": {
-      "$description": "Design: the artboards are drawn under a pan/zoom transform, and a form drawn at 40% is a picture of a form — so the card sits above the surface at 1:1 and keeps its own scroll. This is the one placement that still needs a cap.",
+      "$description": "Design: the artboards are drawn under a pan/zoom transform, and a form drawn at 40% is a picture of a form — so the card sits above the surface at 1:1 and keeps its own scroll. This is the one placement that still needs a cap. `z-index` is not decoration: `doc-header` and `panzoom` are both flex items of the same column (each arrives through a `display: contents` slot, which is transparent to the flex context), so nothing before this ordered them for PAINT — only for layout. A flex item takes `z-index` without needing `position`, and on the auto-vs-auto tie this would otherwise be, the later sibling in DOM order (the boards) wins and is what was painting over the card whenever the two ever shared a pixel, exactly backwards from \"sits above the surface\".",
+      "position": "relative",
+      "zIndex": "1",
       "flexShrink": "0",
       "maxHeight": "40vh",
       "overflowY": "auto"
