@@ -92,6 +92,21 @@ describe("Sqlite provider", () => {
     }
   });
 
+  test("testConnection catches a synchronous dialect-construction failure", async () => {
+    // `sqliteDialect` is documented as synchronous and side-effect-free (the file itself opens
+    // Lazily inside `Driver.init()`), so `testWithDialect` never throws past it — the provider's
+    // Own catch is reachable only when building the dialect itself throws, e.g. a connection whose
+    // `file` throws on access instead of yielding a string.
+    const poisoned = {
+      provider: "sqlite",
+      get file(): string {
+        throw new Error("disk unavailable");
+      },
+    };
+    const result = await Sqlite.testConnection(poisoned, {});
+    expect(result).toEqual({ error: "disk unavailable", ok: false });
+  });
+
   test("testWithDialect reports a query failure instead of throwing", async () => {
     // A dialect that constructs fine but fails once `select 1` actually runs — the case a
     // Provider's own testConnection wrapper cannot produce, since it never throws past dialect
