@@ -211,6 +211,33 @@ describe("startBackgroundChecks", () => {
 
     expect(notifyCallback).toHaveBeenCalledWith("2.0.0");
   });
+
+  /**
+   * The 5s `setTimeout` and the 4h `setInterval` are two distinct callbacks even though both just
+   * call `backgroundCheck()` — advancing past only the timeout (as the tests above do) never runs
+   * the interval's own body, so the periodic re-check needs its own tick.
+   */
+  test("the 4-hour interval also runs a background check, not just the initial timeout", async () => {
+    mockCheckForUpdate.mockClear();
+    mockDownloadUpdate.mockClear();
+    mockCheckForUpdate.mockImplementation(() => ({
+      error: null,
+      updateAvailable: false,
+      updateReady: false,
+      version: "1.0.0",
+    }));
+
+    startBackgroundChecks();
+    // Past the initial 5s timeout AND the first 4-hour interval tick.
+    jest.advanceTimersByTime(4 * 60 * 60 * 1000 + 5000);
+
+    // Allow async handlers to flush
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Once from the 5s timeout, once from the 4-hour interval.
+    expect(mockCheckForUpdate).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ─── composeAppInfo (the About screen's payload) ────────────────────────────

@@ -551,10 +551,9 @@ async function expandIncludes(
         tables,
         kind,
       );
-      const rowIds = rows.map((r) => r.id).filter((v) => v != null);
-      if (rowIds.length === 0) {
-        continue;
-      }
+      // Every row here came off this table's own SELECT, so its `id` (the primary key) is never
+      // Null — unlike `rows.map(r => r[spec.column])` above, which reads an optional FK column.
+      const rowIds = rows.map((r) => r.id);
       const links = await db
         .selectFrom(junction.table)
         .selectAll()

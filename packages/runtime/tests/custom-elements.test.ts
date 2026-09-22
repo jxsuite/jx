@@ -107,6 +107,21 @@ describe("Custom Elements", () => {
     expect(rect.getAttribute("class")).toBe("plate");
   });
 
+  test("renders math children in the MathML namespace", () => {
+    const el = renderNode(
+      {
+        children: [{ children: [{ tagName: "mi", textContent: "x" }], tagName: "math" }],
+        tagName: "div",
+      },
+      reactive({}) as never,
+    );
+
+    const math = el.querySelector("math") as Element;
+    const mi = el.querySelector("mi") as Element;
+    expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
+    expect(mi.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
+  });
+
   test("foreignObject returns its descendants to HTML", () => {
     const el = renderNode(
       {

@@ -9,4 +9,4 @@ coveragePathIgnorePatterns = [
   "../parser/**",
   "../../packages/**",
 ]
-coverageThreshold = { lines = 0.98, functions = 0.98 }
+coverageThreshold = { lines = 0.99, functions = 0.99 }

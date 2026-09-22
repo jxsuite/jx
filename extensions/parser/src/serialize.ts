@@ -1152,9 +1152,6 @@ function deepResolve(
   scope: Record<string, unknown>,
   ctx: ExportContext,
 ) {
-  if (!Array.isArray(nodes)) {
-    return [];
-  }
   return nodes.map((node) => resolveNode(node, scope, ctx));
 }
 

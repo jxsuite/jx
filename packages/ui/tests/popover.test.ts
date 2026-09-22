@@ -854,6 +854,21 @@ describe("the popover behaviour", () => {
     expect(state.settling).toBe(true);
   });
 
+  test("onToggle settles synchronously where the platform has no requestAnimationFrame", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    try {
+      const state: PopoverState = {};
+      onToggle(state, { currentTarget: host, newState: "open" } as unknown as Event);
+      // No `await frame()`: `clearWhenStill` already ran inline, on the call itself.
+      expect(state.settling).toBe(false);
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+    }
+  });
+
   test("onToggle on a closing panel mirrors open and never measures", async () => {
     const host = document.createElement("div");
     document.body.append(host);
@@ -928,5 +943,21 @@ describe("the popover behaviour", () => {
     await frame();
     expect(state.x).toBe(7);
     expect(state.y).toBe(9);
+  });
+
+  test("clampIntoViewport measures synchronously where the platform has no requestAnimationFrame", () => {
+    const panelEl = document.createElement("div");
+    document.body.append(panelEl);
+    stubRect(panelEl, { height: 80, left: window.innerWidth - 20, top: 10, width: 180 });
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    try {
+      const state: PopoverState = {};
+      clampIntoViewport(state, panelEl);
+      // No `await frame()`: the measurement already ran, inline, on the call itself.
+      expect(state.x).toBe(window.innerWidth - 180 - 4);
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+    }
   });
 });

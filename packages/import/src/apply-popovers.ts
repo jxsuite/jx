@@ -193,12 +193,15 @@ function openValueFor(property: string, closed: unknown): string | null {
   return null;
 }
 
-/** Move a panel's closed-state declarations into `:popover-open`, where they describe the open one. */
+/**
+ * Move a panel's closed-state declarations into `:popover-open`, where they describe the open one.
+ *
+ * `node` is always a panel `looksLikePanel` already accepted, and that requires a concealing style
+ * declaration to exist (`concealedBy(style).length === 0` rejects it otherwise) — so
+ * `styleOf(node)` is never empty here.
+ */
 function liftConcealment(node: JxElement): void {
-  const style = styleOf(node);
-  if (!style) {
-    return;
-  }
+  const style = styleOf(node)!;
   const open = (style[":popover-open"] as Record<string, unknown> | undefined) ?? {};
   for (const property of Object.keys(style)) {
     if (!CONCEALING.has(property)) {

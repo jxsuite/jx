@@ -1621,6 +1621,19 @@ describe("format endpoints", () => {
     expect(content.entrySchema.additionalProperties.properties.source.type).toBe("string");
   });
 
+  test("GET /__studio/catalog lists what this backend can offer, installed or not", async () => {
+    const url = new URL(`http://localhost/__studio/catalog?dir=${FMT_DIR}`);
+    const req = new Request(url, { method: "GET" });
+    const res = await callApi(req, url, FMT_DIR);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const parser = data.find((e: { name: string }) => e.name === "@jxsuite/parser");
+    expect(parser.source).toBe("first-party");
+    expect(parser.installed).toBe(true);
+    expect(parser.title).toBe("Content & Markdown");
+  });
+
   test("GET /__studio/project-schemas returns pre-bundled entry documents", async () => {
     const url = new URL(`http://localhost/__studio/project-schemas?dir=${FMT_DIR}`);
     const req = new Request(url, { method: "GET" });

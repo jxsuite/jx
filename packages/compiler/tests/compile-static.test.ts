@@ -227,6 +227,15 @@ describe("compileStaticPage", () => {
     expect(html).toContain("true");
   });
 
+  test("skips a null child rather than rendering it", () => {
+    const doc = {
+      children: [{ children: [null, "text"], tagName: "p" }],
+    } as unknown as JxDocument;
+    const { html } = compileStaticPage(doc, baseOpts);
+    expect(html).toContain("text");
+    expect(html).not.toContain("null");
+  });
+
   test("applies projectStyle to style output", () => {
     const doc = { children: [{ tagName: "p", textContent: "hi" }] };
     const opts = { ...baseOpts, projectStyle: { "--bg": "#000" } };

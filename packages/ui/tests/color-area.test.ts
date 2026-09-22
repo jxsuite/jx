@@ -3,6 +3,8 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
 
 import { registerUi } from "../src/index.ts";
+import { onAreaKeydown, onAreaPointerDown, onAreaPointerUp } from "../src/behaviors/color-area.ts";
+import type { ColorAreaState } from "../src/behaviors/color-area.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -305,5 +307,42 @@ describe("jx-color-area", () => {
     expect(el.brightness).toBe(50);
     el.dispatchEvent(key("Tab", true));
     expect(el.brightness).toBe(50);
+  });
+
+  test("the handlers called directly answer the guards a live keydown or an unmounted host cannot", () => {
+    /* A dispatched keydown always lands on an Element, and a mounted host always has its own
+       track — these three guards are for a handler reused, or called, elsewhere. */
+    const state: ColorAreaState = {
+      brightness: 0,
+      disabled: false,
+      hue: 0,
+      saturation: 0,
+      step: 1,
+    };
+    onAreaKeydown(state, {
+      currentTarget: null,
+      key: "ArrowUp",
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      target: null,
+    } as unknown as KeyboardEvent);
+    expect(state.brightness).toBe(0);
+
+    const undrawn = document.createElement("jx-color-area");
+    expect(() => {
+      onAreaPointerDown(state, {
+        clientX: 0,
+        clientY: 0,
+        currentTarget: undrawn,
+        pointerId: 1,
+        preventDefault: () => {},
+      } as unknown as PointerEvent);
+    }).not.toThrow();
+
+    // A different host, never handed a pointerdown: nothing is mid-drag for it to commit.
+    const other = document.createElement("jx-color-area");
+    expect(() => {
+      onAreaPointerUp(state, { currentTarget: other, pointerId: 1 } as unknown as PointerEvent);
+    }).not.toThrow();
   });
 });

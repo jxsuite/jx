@@ -732,6 +732,34 @@ describe("processImage", () => {
     teardown();
   });
 
+  test("uses the native width when no widths are configured at all", async () => {
+    const root = setup();
+    const cacheImgDir = join(root, ".cache/images");
+
+    mockMetadata.mockImplementationOnce(() =>
+      Promise.resolve({ format: "png", height: 300, width: 500 }),
+    );
+
+    const imgPath = join(root, "unconfigured.png");
+    writeFileSync(imgPath, "unconfigured png");
+
+    const config: any = {
+      formats: ["webp"],
+      lazyLoad: true,
+      optimize: true,
+      quality: { webp: 80 },
+      sizes: "100vw",
+      widths: [],
+    };
+
+    const manifest = await processImage(imgPath, cacheImgDir, config);
+    // An empty ladder is its own ceiling (native width), and the filtered set is empty too, so
+    // The native width is the fallback rather than the "falls between two rungs" rescue.
+    expect(manifest.variants.map((v) => v.width)).toEqual([500]);
+
+    teardown();
+  });
+
   test("skips variant generation if output file already exists", async () => {
     const root = setup();
     const cacheImgDir = join(root, ".cache/images");

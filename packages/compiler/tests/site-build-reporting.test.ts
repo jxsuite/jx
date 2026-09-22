@@ -226,6 +226,48 @@ describe("buildSite — well-known emitters", () => {
   });
 });
 
+describe("buildSite — an extension's head capability throws", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-head-throws__");
+
+  beforeAll(() => {
+    scaffold(DIR, {
+      extensions: ["./ext"],
+      myhead: { enabled: true },
+      name: "Head Throw Test",
+    });
+    mkdirSync(resolve(DIR, "ext"), { recursive: true });
+    writeFileSync(
+      resolve(DIR, "ext/jx-extension.json"),
+      JSON.stringify({ classes: { HeadProvider: "./HeadProvider.class.json" }, name: "head-ext" }),
+    );
+    writeFileSync(
+      resolve(DIR, "ext/HeadProvider.class.json"),
+      JSON.stringify({
+        $defs: { methods: { head: { identifier: "head", role: "head", scope: "static" } } },
+        $implementation: "./headprovider.js",
+        project: { key: "myhead" },
+        title: "HeadProvider",
+      }),
+    );
+    writeFileSync(
+      resolve(DIR, "ext/headprovider.js"),
+      `export class HeadProvider {\n  static head() {\n    throw new Error("head capability exploded");\n  }\n}\n`,
+    );
+  });
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  // Gathered before the first page compiles (collectExtensionHead runs once, up front) — a
+  // Throwing contributor is warned about and skipped, not a reason to fail the whole build.
+  it("warns and continues instead of failing the build", async () => {
+    const { warnings, result } = await captured(() => buildSite(DIR));
+
+    expect(result.errors).toHaveLength(0);
+    expect(
+      warnings.some((w) => w.includes("HeadProvider") && w.includes("head capability failed")),
+    ).toBe(true);
+  });
+});
+
 describe("buildSite — a well-known file public/ already ships", () => {
   const DIR = resolve(import.meta.dir, "__test-site-well-known-shadow__");
 
@@ -399,5 +441,45 @@ describe("buildSite — a runtime subpath the package does not have", () => {
     expect(reported).toBeDefined();
     expect(reported).toContain("Bundling runtime subpath");
     expect(errors.some((e) => e.includes("no-such-directive.js"))).toBe(true);
+  });
+});
+
+describe("buildSite — a runtime subpath the package does have", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-good-subpath__");
+
+  beforeAll(() => {
+    scaffold(DIR, { name: "GoodSubpath" });
+    mkdirSync(resolve(DIR, "components"), { recursive: true });
+    // A subpath that resolves — the counterpart to the "does not have" case above, so the scan's
+    // Success (a stub actually written) is reported too, not only its failure.
+    writeFileSync(
+      resolve(DIR, "components/helpers.js"),
+      'export { classMap } from "lit-html/directives/class-map.js";\nexport default classMap;\n',
+      "utf8",
+    );
+    writeFileSync(
+      resolve(DIR, "components/site-widget.json"),
+      JSON.stringify({
+        children: [{ children: ["${state.n}"], tagName: "span" }],
+        state: {
+          n: 0,
+          styles: { $prototype: "Function", $src: "./helpers.js", parameters: ["state"] },
+        },
+        tagName: "site-widget",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(DIR, "pages/index.json"),
+      JSON.stringify({ children: [{ tagName: "site-widget" }], tagName: "main" }),
+      "utf8",
+    );
+  });
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  it("writes a subpath stub and reports how many, verbosely", async () => {
+    const result = await buildSite(DIR, { verbose: false });
+    expect(result.errors).toHaveLength(0);
+    expect(existsSync(resolve(DIR, "dist/assets/lit-html/directives/class-map.js"))).toBe(true);
   });
 });

@@ -8,14 +8,15 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const watched: string[] = [];
 const closed = mock(() => Promise.resolve());
+const applyRename = mock(() => Promise.resolve({ edits: [] }));
 
 void mock.module("@jxsuite/server/refactor", () => ({
-  applyRename: () => Promise.resolve({ edits: [] }),
+  applyRename,
   createFsWatcher: (root: string) => {
     watched.push(root);
     return { close: closed };
@@ -113,5 +114,36 @@ describe("the session refuses a root that is not a project", () => {
     });
     expect(closed).toHaveBeenCalled();
     void session.dispose();
+  });
+});
+
+/**
+ * `renameFile`'s own try/catch: the file move on disk happens FIRST and unconditionally, then a
+ * project-wide reference rewrite runs over it. A failure in that second pass (a corrupt sibling
+ * document, the format registry throwing, …) must not turn an already-successful move into an error
+ * — it degrades to a bare report instead, which is the contract this suite exercises.
+ */
+describe("renameFile degrades to a bare report when the refactor pass fails", () => {
+  test("the move already happened, so a failed reference rewrite still reports success", async () => {
+    const session = createProjectSession(PROJECT);
+    writeFileSync(resolve(PROJECT, "old.txt"), "content");
+    applyRename.mockImplementationOnce(() => Promise.reject(new Error("refactor engine blew up")));
+    try {
+      const report = await session.handleRenameFile({ from: "old.txt", to: "new.txt" });
+      // The move on disk already happened; only the reference-rewrite pass failed.
+      expect(existsSync(resolve(PROJECT, "old.txt"))).toBe(false);
+      expect(existsSync(resolve(PROJECT, "new.txt"))).toBe(true);
+      expect(report).toEqual({
+        errors: [],
+        from: "old.txt",
+        isDir: false,
+        ok: true,
+        references: { files: [], filesChanged: 0, refsUpdated: 0 },
+        to: "new.txt",
+      });
+    } finally {
+      rmSync(resolve(PROJECT, "new.txt"), { force: true });
+      void session.dispose();
+    }
   });
 });

@@ -6,7 +6,13 @@ import { documentStyleText } from "@jxsuite/runtime";
 
 import { registerUi } from "../src/index.ts";
 import { closeToast } from "../src/behaviors/toast.ts";
-import { focusablesIn, focusStack, returnFocus } from "../src/behaviors/toast-host.ts";
+import {
+  focusablesIn,
+  focusStack,
+  onStackClose,
+  returnFocus,
+} from "../src/behaviors/toast-host.ts";
+import type { ToastHostState } from "../src/behaviors/toast-host.ts";
 
 /** Let the runtime's queued `onMount` and its bindings settle. */
 const flush = () =>
@@ -299,5 +305,16 @@ describe("jx-toast-host", () => {
     const outside = press("Escape");
     expect(outside.defaultPrevented).toBe(false);
     expect(host.contains(document.activeElement)).toBe(false);
+  });
+
+  test("onStackClose off a host does nothing: a bound handler is reached by any close that bubbles", () => {
+    // `onclose` is bound at the host's own root, so `currentTarget` is always the host on the
+    // Wired path; a handler reused elsewhere, or called by hand, must still be inert off one.
+    const stray = document.createElement("div");
+    document.body.append(stray);
+    const state: ToastHostState = { hotkey: "F8", live: "polite" };
+    expect(() => {
+      onStackClose(state, { currentTarget: stray, target: stray } as unknown as Event);
+    }).not.toThrow();
   });
 });

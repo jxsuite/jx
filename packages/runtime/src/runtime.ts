@@ -1915,27 +1915,30 @@ const SCOPE_TOKEN = "jx-scope";
  * wholesale. Sweeping on `isConnected` instead would be wrong rather than merely redundant: an
  * element is routinely styled before it is inserted.
  *
+ * Both call sites reach this only once an element is already IN `scratchOwners`, and the only place
+ * that happens (`scratchOwners.set`, below) always opens `scratch` first — so it is never still
+ * null here.
+ *
  * @param {SheetState} state
  */
 function rewriteScratch(state: SheetState) {
-  if (!state.scratch) {
-    return;
-  }
-  state.scratch.replaceAll([...state.scratchOwners.values()].flat());
+  state.scratch!.replaceAll([...state.scratchOwners.values()].flat());
 }
 
 /**
  * Drop one reference to an interned rule set, removing its rules when the last one goes.
+ *
+ * `key` always names an entry `retainInterned` already created: {@link releaseElementStyles}'s two
+ * call sites pass back exactly the `entry.interned`/`entry.hoisted` keys it was handed at
+ * `retainInterned` time, and a stale `state` (one `resetDocumentStyles` already replaced) is turned
+ * away before either call site is reached.
  *
  * @param {SheetState} state
  * @param {Map<string, InternEntry>} table
  * @param {string} key
  */
 function releaseInterned(state: SheetState, table: Map<string, InternEntry>, key: string) {
-  const entry = table.get(key);
-  if (!entry) {
-    return;
-  }
+  const entry = table.get(key)!;
   entry.refs -= 1;
   if (entry.refs <= 0) {
     table.delete(key);
@@ -3131,6 +3134,9 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
  * Resolve a .class.json schema-defined class. Fetches the schema, follows $implementation if
  * hybrid, or constructs dynamically if self-contained.
  *
+ * Its one caller, {@link resolveExternalPrototype}, already rejects a missing `$src` before this
+ * runs, so `def.$src` is never empty here.
+ *
  * @param {JxPrototypeDef} def
  * @param {JxScope} state
  * @param {string} key
@@ -3138,10 +3144,7 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
  * @returns {Promise<unknown>}
  */
 async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string, base?: string) {
-  const src = def.$src;
-  if (!src) {
-    throw new Error(`Jx: class entry '${key}' has no $src`);
-  }
+  const src = def.$src!;
   let classDef: JxClassDef;
 
   // Bare specifiers (package references like @scope/pkg/file) can't be fetched directly —

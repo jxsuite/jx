@@ -95,6 +95,17 @@ describe("chooseOriginal", () => {
     const tied = [`${UPLOADS}/b-300x200.jpg`, `${UPLOADS}/a-300x200.jpg`];
     expect(chooseOriginal(tied)).toBe(chooseOriginal(tied.toReversed()));
   });
+
+  /*
+   * A candidate that will not parse as a URL is ranked on its raw string instead of crashing the
+   * whole pick — the conservative fallback familyKey documents for the same reason. Ranked on its
+   * own text, it carries no `-WxH` suffix, so it reads as undecorated and wins outright: the same
+   * tier an actual original does, for the same reason (nothing says otherwise).
+   */
+  test("does not throw on a candidate that will not parse as a URL", () => {
+    const malformed = "not a url";
+    expect(chooseOriginal([`${UPLOADS}/photo-300x200.jpg`, malformed])).toBe(malformed);
+  });
 });
 
 describe("planImageFamilies", () => {

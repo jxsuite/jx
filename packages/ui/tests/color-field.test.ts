@@ -2,6 +2,8 @@ import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { registerUi } from "../src/index.ts";
+import { onFieldInput, onFieldMount } from "../src/behaviors/color-field.ts";
+import type { ColorFieldState } from "../src/behaviors/color-field.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -499,5 +501,33 @@ describe("jx-color-field", () => {
     named.dispatchEvent(new Event("input", { bubbles: true }));
     expect(el.value).toBe("#3b82f6");
     expect(heard.input.length).toBe(1);
+  });
+
+  test("called directly: a target that is not an element, and a mount off the host, do nothing", () => {
+    /* A dispatched `input` always lands on an Element, and `jx-ready` always fires with the host as
+       its own `currentTarget` — these two guards are for a handler reused, or called, elsewhere. */
+    const state: ColorFieldState = {
+      alpha: true,
+      brightness: 0,
+      disabled: false,
+      expanded: false,
+      format: "hex",
+      hue: 0,
+      ink: "black",
+      invalid: false,
+      opacity: 100,
+      resolved: "",
+      saturation: 0,
+      solid: "#000000",
+      text: "",
+      uid: "",
+      value: "#000000",
+    };
+    const host = document.createElement("jx-color-field");
+    onFieldInput(state, { currentTarget: host, target: null } as unknown as Event);
+    expect(state.value).toBe("#000000");
+
+    onFieldMount(state, { currentTarget: null } as unknown as Event);
+    expect(state.uid).toBe("");
   });
 });

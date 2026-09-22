@@ -24,6 +24,7 @@ import {
   loadContentConfig,
   loadContentSection,
   localesForExpansion,
+  localeSource,
   resolveContentTypeRefs,
 } from "../src/content-loader.ts";
 import type { ContentLoaderEntry, ContentSection } from "../src/content-loader.ts";
@@ -899,6 +900,74 @@ describe("content asset mounts", () => {
   });
 });
 
+describe("asset reference rewriting — edge cases", () => {
+  const EDGE = resolve(TMP, "content/edge");
+
+  beforeAll(() => {
+    mkdirSync(resolve(EDGE, "images"), { recursive: true });
+    writeFileSync(resolve(EDGE, "images/hero.png"), "png-bytes");
+    writeFileSync(
+      resolve(EDGE, "post.md"),
+      [
+        "---",
+        "title: Edge",
+        "---",
+        "",
+        "Words ![hero](./images/hero.png) around an image.",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(resolve(EDGE, "bad-uri.md"), "---\ntitle: Bad URI\n---\n\n![escaped](%zz)\n");
+    mkdirSync(resolve(TMP, "content/dated"), { recursive: true });
+    writeFileSync(
+      resolve(TMP, "content/dated/ambiguous.md"),
+      "---\ntitle: Ambiguous\npublished: 03/04/2025\n---\n\nBody.\n",
+    );
+  });
+
+  const edgeSection: ContentSection = {
+    dated: {
+      format: "Markdown",
+      schema: {
+        properties: { published: { format: "date", type: "string" } },
+        type: "object",
+      },
+      source: "./content/dated/",
+    },
+    edge: { format: "Markdown", source: "./content/edge/" },
+  };
+
+  /** Load the edge content type through the real Markdown class. */
+  async function loadEdge(): Promise<Map<string, ContentLoaderEntry[]>> {
+    const registry = await buildFixtureRegistry();
+    return await Content.projectData(edgeSection, { projectConfig: {}, registry, root: TMP });
+  }
+
+  it("rewrites an image that shares a paragraph with text, not only a lone one", async () => {
+    const data = await loadEdge();
+    const post = (data.get("edge") as ContentLoaderEntry[]).find((e) => e.id === "post")!;
+    // The image sits beside text nodes in the same paragraph's children — walking past them (rather
+    // Than stopping at the first non-element sibling) is what this asserts.
+    expect(JSON.stringify(post.$children)).toContain("/content/edge/images/hero.png");
+  });
+
+  it("leaves an unparseable percent-escape alone instead of throwing", async () => {
+    const data = await loadEdge();
+    const bad = (data.get("edge") as ContentLoaderEntry[]).find((e) => e.id === "bad-uri")!;
+    // Decoding "%zz" throws (an invalid percent-escape); the reference is left exactly as written
+    // Rather than crashing the whole load.
+    expect(JSON.stringify(bad.$children)).toContain("%zz");
+  });
+
+  it("warns on an ambiguous date field instead of guessing", async () => {
+    const warnings = captureWarnings();
+    await loadEdge();
+    expect(warnings.some((w) => w.includes('field "published"') && w.includes("03/04/2025"))).toBe(
+      true,
+    );
+  });
+});
+
 // ─── {locale} sources ────────────────────────────────────────────────────────
 
 describe("localesForExpansion", () => {
@@ -959,6 +1028,16 @@ describe("a locale directory's spelling", () => {
     expect(mounts.map((m) => m.urlPrefix)).toEqual(["/content/notes/en", "/content/notes/fr-CA"]);
     // The URL namespace is the canonical tag; the directory behind it is whatever is on disk.
     expect(mounts[1]?.dir).toBe(resolve(ROOT, "notes/fr-ca").split("\\").join("/"));
+  });
+
+  // A THIRD casing — neither the canonical spelling nor Studio's lowercase one — is still found by
+  // The directory scan, which is what makes the match "case-insensitive" rather than "these two
+  // Spellings, tried in order." An isolated root: the shared one's later test relies on "ar"
+  // Having no directory at all.
+  it("finds a directory in neither the canonical nor the lowercase spelling", () => {
+    const thirdCasingRoot = resolve(TMP, "third-casing");
+    mkdirSync(resolve(thirdCasingRoot, "notes", "AR"), { recursive: true });
+    expect(localeSource(thirdCasingRoot, "./notes/{locale}/", "ar")).toBe("./notes/AR/");
   });
 
   // A locale nobody has written yet resolves to the canonical spelling, so the miss is reported
