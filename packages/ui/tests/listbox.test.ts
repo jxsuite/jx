@@ -349,4 +349,18 @@ describe("sidecar sync coalescing", () => {
       await tick();
     }
   });
+
+  test("syncs synchronously, per mutation, where the platform has no requestAnimationFrame", async () => {
+    const list = await listbox([{ value: "a" }, { value: "b" }]);
+    const original = globalThis.requestAnimationFrame;
+    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    try {
+      list.active = "lb-o1";
+      await tick();
+      // No frame to hold this on: the observer's own callback already ran the sync.
+      expect(flags(list)).toEqual(["false", "true"]);
+    } finally {
+      globalThis.requestAnimationFrame = original;
+    }
+  });
 });
