@@ -24,8 +24,7 @@ coveragePathIgnorePatterns = [
   # own run (0.95), and a build-only module such as `icons-build.ts` is 0% here by construction.
   "../ui/**",
 ]
-# Ratcheted to just under the workspace's worst file, per CLAUDE.md: `canvas-dnd-bridge.ts` is the
-# floor for lines (95.29) and `formula-catalog.ts` for functions (94.12). The margin is thin on
+# Ratcheted to just under the workspace's worst file, per CLAUDE.md. The margin is thin on
 # purpose — that is what a ratchet is — so a PR that drops either file below its current figure is
 # meant to go red rather than quietly spend the headroom.
 #
@@ -35,6 +34,19 @@ coveragePathIgnorePatterns = [
 # `import.meta.main` block any smaller, and a coverage floor is a ratio — so it fell to 94.37 and
 # the run went red over a file that had lost no test at all. The fix was to give the entry point
 # the shape the other gates already have (a `runCli()` that RETURNS the code, which a test can run
-# where a `process.exit` cannot), taking it to 98.57. Neither number below moved, so neither is
-# raised.
-coverageThreshold = { lines = 0.952, functions = 0.941 }
+# where a `process.exit` cannot), taking it to 98.57.
+#
+# `canvas-dnd-bridge.ts`, `formula-catalog.ts`, `surfaces/panel-data.ts` and `surfaces/entry-editor.ts`
+# went to 100% — a dozen or so previously-untested branches were races and async disposal guards
+# reachable from a real caller (a lazy cross-frame bind, a stale-mount teardown, a formula's
+# argument-arity ternary), not defensive dead code. `panels/events-panel.ts` rose from 95.35 to
+# 98.81 the same way (a repeater field in Formula mode is a `control-host` island exactly like an
+# event binding's `expression-host`, and nothing had ever put one there); its remaining gaps —
+# `plans.fields.get(key)`/`plans.bindings.get(key)` racing a stale render, and the formula
+# palette's "vendor a packaged formula's def in" pick, which needs the layer-based overlay system
+# wired into this panel's own test file — are left for a follow-up pass. The new lines floor is
+# `surfaces/preferences.ts` at 95.88 (untouched this pass). The functions floor is unchanged:
+# `studio.ts` at 94.12, tied with `formula-catalog.ts` before this pass fixed the latter — reaching
+# `studio.ts`'s own gap (`derivationDeps.fileExists`, a locale companion's real platform read) needs
+# a real two-pane locale-companion fixture in `studio-shell.test.ts`, also left for a follow-up.
+coverageThreshold = { lines = 0.958, functions = 0.941 }
