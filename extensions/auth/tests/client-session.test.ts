@@ -49,6 +49,17 @@ describe("client wrapper", () => {
     expect(() => resolveAuthBaseUrl()).toThrow(/baseUrl outside browsers/);
   });
 
+  test("resolveAuthBaseUrl derives <origin>/_jx/auth when a location exists", () => {
+    // @ts-expect-error test-only global shim for a browser-like `location`.
+    globalThis.location = { origin: "http://y.test" };
+    try {
+      expect(resolveAuthBaseUrl()).toBe("http://y.test/_jx/auth");
+    } finally {
+      // @ts-expect-error test-only global shim cleanup.
+      delete globalThis.location;
+    }
+  });
+
   test("getAuthClient builds a real Better Auth client surface for an explicit base", () => {
     const client = getAuthClient("http://x.test/_jx/auth");
     expect(typeof client.signIn.email).toBe("function");
