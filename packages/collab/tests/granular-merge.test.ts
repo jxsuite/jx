@@ -200,6 +200,23 @@ describe("concurrent style edits on one element", () => {
     expect(styleA["@--sm"]!.padding).toBe("1px");
     expect(styleA["&:hover"]!.color).toBe("red");
   });
+
+  test("a nested block collapsing to a plain value replaces the Y.Map, not merges into it", () => {
+    const { a } = pair({
+      children: [{ style: { "@--sm": { margin: "0" } }, tagName: "p" }],
+      tagName: "div",
+    });
+    const path = ["children", 0];
+    // The new value for "@--sm" is a plain string where the existing one is a nested Y.Map: no
+    // Shared structure survives a type change, so it falls back to whole-value replacement.
+    applyDocOpsToY(
+      a,
+      [{ key: "style", op: "set-key", path, value: { "@--sm": "0" } }],
+      LOCAL_ORIGIN,
+    );
+    const style = (yDocToJson(a).children as JxMutableNode[])[0]!.style as Record<string, unknown>;
+    expect(style).toEqual({ "@--sm": "0" });
+  });
 });
 
 describe("inbound events collapse back to whole-value ops", () => {
