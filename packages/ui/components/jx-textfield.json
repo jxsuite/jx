@@ -493,7 +493,13 @@
       "color": "var(--jx-danger)"
     },
     "& [part=\"error\"]:empty": {
-      "position": "absolute"
+      "$description": "`top`/`left`/`width`/`height` are pinned rather than left to resolve, because \"resolve\" is exactly what they cannot be trusted to do: with every inset auto, an absolutely positioned flex-item child falls back to its STATIC position and a shrink-to-fit size, and both are the browser's own reconstruction of where an element with no content would have been — not a value this document ever asked for. A shrink-to-fit width over empty content is 0 in every engine this was checked against, but the mechanism is a hypothetical, not a number, and it is exactly the kind of hypothetical that has read differently across engines before (the `::before` hit areas beside this rule went through the same lesson). Pinned to a literal 0×0 at the field's own top-left corner, the region costs no layout AND no paint by construction, rather than by an inference nothing here controls.",
+      "position": "absolute",
+      "top": "0",
+      "left": "0",
+      "width": "0",
+      "height": "0",
+      "overflow": "hidden"
     },
     "& > [part=\"control-slot\"], & > [part=\"clear-slot\"], & > [part=\"help-slot\"]": {
       "display": "contents"
