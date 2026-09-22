@@ -45,6 +45,22 @@ describe("image-cache", () => {
     expect(cache).toEqual({ entries: {}, touched: new Set(), version: 1 });
   });
 
+  test("falls back to the project-local cache dir when the npm probe itself fails", () => {
+    _testResetNpmCacheBase();
+    const realPath = process.env.PATH;
+    // An empty PATH makes "npm" itself unresolvable — execSync throws before it ever reads a
+    // Config value, which is the failure this fallback exists for (as opposed to
+    // `npm config get cache` succeeding with the literal string "undefined").
+    process.env.PATH = "";
+    try {
+      const dir = getImageCacheDir(TMP);
+      expect(dir).toBe(join(TMP, ".cache/images"));
+    } finally {
+      process.env.PATH = realPath;
+      _testResetNpmCacheBase();
+    }
+  });
+
   test("loadCache returns empty manifest on corrupt JSON", () => {
     setup();
     // Write corrupt JSON to wherever loadCache will look

@@ -186,6 +186,89 @@ describe("buildSite with the connector extension", () => {
       rmSync(staticDir, { force: true, recursive: true });
     }
   });
+
+  test("a server-mount class declaring no server.module is a clear build error", async () => {
+    const dir = `${TMP}-no-server-module`;
+    rmSync(dir, { force: true, recursive: true });
+    try {
+      mkdirSync(resolve(dir, "ext"), { recursive: true });
+      mkdirSync(resolve(dir, "pages"), { recursive: true });
+      writeFileSync(
+        resolve(dir, "ext/jx-extension.json"),
+        JSON.stringify({ classes: { NoModule: "./NoModule.class.json" }, name: "no-module-ext" }),
+      );
+      // No `project` block: an unconditionally active mount (site-build.ts's activeMounts filter
+      // Treats a class owning no project section as always active), so the missing module is
+      // Reached without a project section to configure.
+      writeFileSync(
+        resolve(dir, "ext/NoModule.class.json"),
+        JSON.stringify({ server: { basePath: "/_jx/x" }, title: "NoModule" }),
+      );
+      writeFileSync(
+        resolve(dir, "project.json"),
+        JSON.stringify({
+          build: { adapter: "cloudflare-workers", outDir: "./dist" },
+          extensions: ["./ext"],
+          name: "No Module",
+        }),
+      );
+      writeFileSync(resolve(dir, "pages/index.json"), JSON.stringify({ tagName: "main" }));
+      expect(buildSite(dir, {})).rejects.toThrow(
+        /Extension class "NoModule": server\.module .* is required/,
+      );
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("a connector class declaring no connector.module is a clear build error", async () => {
+    const dir = `${TMP}-no-connector-module`;
+    rmSync(dir, { force: true, recursive: true });
+    try {
+      mkdirSync(resolve(dir, "ext"), { recursive: true });
+      mkdirSync(resolve(dir, "pages"), { recursive: true });
+      writeFileSync(
+        resolve(dir, "ext/jx-extension.json"),
+        JSON.stringify({
+          classes: {
+            BrokenConn: "./BrokenConn.class.json",
+            ServerThing: "./ServerThing.class.json",
+          },
+          name: "no-conn-module-ext",
+        }),
+      );
+      // ServerThing owns the "thing" project section and gives it a valid module, so it is the
+      // Active mount that lets buildMountSpecs reach the connector loop; BrokenConn is the
+      // Provider "thing.entry1" names, and it is the one missing a module.
+      writeFileSync(
+        resolve(dir, "ext/ServerThing.class.json"),
+        JSON.stringify({
+          project: { key: "thing" },
+          server: { basePath: "/_jx/thing", module: "virtual:server-thing" },
+          title: "ServerThing",
+        }),
+      );
+      writeFileSync(
+        resolve(dir, "ext/BrokenConn.class.json"),
+        JSON.stringify({ connector: { provider: "broken-provider" }, title: "BrokenConn" }),
+      );
+      writeFileSync(
+        resolve(dir, "project.json"),
+        JSON.stringify({
+          build: { adapter: "cloudflare-workers", outDir: "./dist" },
+          extensions: ["./ext"],
+          name: "No Connector Module",
+          thing: { entry1: { provider: "broken-provider" } },
+        }),
+      );
+      writeFileSync(resolve(dir, "pages/index.json"), JSON.stringify({ tagName: "main" }));
+      expect(buildSite(dir, {})).rejects.toThrow(
+        /Connector class "BrokenConn": connector\.module .* is required/,
+      );
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
 });
 
 // ─── Generic lower capability ────────────────────────────────────────────────
@@ -322,6 +405,45 @@ describe("prototype-resolver lower", () => {
     await resolvePrototypes(doc, {}, TMP, { config: PROJECT as never, registry });
     expect((doc.state!.thing as Record<string, unknown>).$prototype).toBe("NotRegistered");
   });
+
+  test("a lower() capability that throws warns and leaves the def as-is", async () => {
+    const boomDir = `${TMP}-boom`;
+    rmSync(boomDir, { force: true, recursive: true });
+    try {
+      mkdirSync(resolve(boomDir, "ext"), { recursive: true });
+      writeFileSync(
+        resolve(boomDir, "ext/jx-extension.json"),
+        JSON.stringify({ classes: { Boom: "./Boom.class.json" }, name: "boom-ext" }),
+      );
+      writeFileSync(
+        resolve(boomDir, "ext/Boom.class.json"),
+        JSON.stringify({
+          $defs: { methods: { lower: { identifier: "lower", role: "lower", scope: "static" } } },
+          $implementation: "./boom.js",
+          title: "Boom",
+        }),
+      );
+      writeFileSync(
+        resolve(boomDir, "ext/boom.js"),
+        `export class Boom {\n  static lower() {\n    throw new Error("lower failed");\n  }\n}\n`,
+      );
+      const boomConfig = { extensions: ["./ext"], name: "Boom Project" };
+      const boomRegistry = await buildProjectExtensionRegistry(boomDir, boomConfig as never);
+
+      const doc = {
+        state: { result: { $prototype: "Boom", timing: "server" } },
+        tagName: "main",
+      } as unknown as JxDocument;
+      await resolvePrototypes(doc, {}, boomDir, {
+        config: boomConfig as never,
+        registry: boomRegistry,
+      });
+      // The throw is caught and warned; the def is left exactly as it was.
+      expect((doc.state!.result as Record<string, unknown>).$prototype).toBe("Boom");
+    } finally {
+      rmSync(boomDir, { force: true, recursive: true });
+    }
+  });
 });
 
 // ─── jx db push ──────────────────────────────────────────────────────────────
@@ -399,6 +521,28 @@ describe("dbPush", () => {
       expect(dbPush(emptyDir, {})).rejects.toThrow('no "connections" section');
     } finally {
       rmSync(emptyDir, { force: true, recursive: true });
+    }
+  });
+
+  test("a connection naming an unenabled provider fails with guidance", async () => {
+    const noProviderDir = `${TMP}-no-provider`;
+    rmSync(noProviderDir, { force: true, recursive: true });
+    try {
+      mkdirSync(noProviderDir, { recursive: true });
+      writeFileSync(
+        resolve(noProviderDir, "project.json"),
+        JSON.stringify({
+          connections: { main: { provider: "not-a-real-provider" } },
+          extensions: ["@jxsuite/connector"],
+          name: "No Provider",
+        }),
+        "utf8",
+      );
+      expect(dbPush(noProviderDir, {})).rejects.toThrow(
+        'Connection "main" names provider "not-a-real-provider"',
+      );
+    } finally {
+      rmSync(noProviderDir, { force: true, recursive: true });
     }
   });
 });
