@@ -70,7 +70,8 @@ const handleAiApi = mock(async (_req: Request, url: URL) => {
 void mock.module("@jxsuite/server/ai-api", () => ({ handleAiApi }));
 
 const handleImportApi = mock(
-  async (_req: Request, _url: URL, _opts: unknown) => new Response("import-ok", { status: 200 }),
+  async (_req: Request, _url: URL, _opts: unknown): Promise<Response | null> =>
+    new Response("import-ok", { status: 200 }),
 );
 void mock.module("@jxsuite/server/import-api", () => ({ handleImportApi }));
 
@@ -169,6 +170,16 @@ describe("import-site route", () => {
     };
     expect(opts.resolveDest("/abs/dir")).toBe("/abs/dir");
     expect(() => opts.resolveDest("relative/dir")).toThrow("absolute");
+  });
+
+  /* A tokened request under /__studio/import-site that handleImportApi does not itself handle (a
+     sub-route it declines) falls through to the shared 404, rather than the fetch handler assuming
+     every request inside the prefix is answered. */
+  test("falls through to 404 when handleImportApi does not handle the request", async () => {
+    handleImportApi.mockImplementationOnce(async () => null);
+    const res = await serveOpts!.fetch(new Request(publishedUrl(), { method: "POST" }));
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not Found");
   });
 });
 
