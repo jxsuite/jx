@@ -88,6 +88,25 @@ describe("guards", () => {
     }
   });
 
+  /**
+   * `assertUnderRoot`'s symlink-containment re-check realpaths the project root itself before
+   * comparing. A root that has since vanished from disk (deleted out from under an open session, or
+   * one that simply never existed) makes THAT realpath throw — the guard steps aside rather than
+   * blocking a write the lexical check already allowed, so the write proceeds normally.
+   */
+  test("a root that no longer resolves on disk does not block the lexical guard", async () => {
+    const missingRoot = join(import.meta.dir, "_fixtures_handlers_missing_root");
+    rmSync(missingRoot, { force: true, recursive: true });
+    setProjectRoot(missingRoot);
+    try {
+      await handleCreateDirectory({ path: "sub" });
+      expect(existsSync(join(missingRoot, "sub"))).toBe(true);
+    } finally {
+      rmSync(missingRoot, { force: true, recursive: true });
+      setProjectRoot(null);
+    }
+  });
+
   test.skipIf(process.platform === "win32")(
     "write-path realpath check blocks a symlinked dir that escapes the root",
     async () => {

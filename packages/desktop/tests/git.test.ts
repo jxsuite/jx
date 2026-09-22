@@ -254,6 +254,17 @@ describe("error handling", () => {
     setProjectRoot(FIXTURES);
   });
 
+  /**
+   * `gitStatus` checks `session.projectRoot` itself before ever calling the internal `git()`
+   * helper, so the guard above never reaches `git()`'s own check. `gitBranches` has no such
+   * pre-check, so it is what actually exercises `git()`'s "No project open" throw.
+   */
+  test("git() itself throws when no project root set, via a function with no pre-check", async () => {
+    setProjectRoot(null);
+    await expect(gitBranches()).rejects.toThrow("No project open");
+    setProjectRoot(FIXTURES);
+  });
+
   test("throws on invalid git operations", async () => {
     await expect(gitCheckout({ branch: "nonexistent-branch-xyz" })).rejects.toThrow();
   });

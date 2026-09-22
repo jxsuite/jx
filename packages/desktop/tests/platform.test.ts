@@ -189,6 +189,33 @@ describe("RPC setup", () => {
     expect(() => handler({ settings: { a: "1" } })).not.toThrow();
   });
 
+  /**
+   * The studio sidebar's live-sync subscriber. `fileChanged` (above) is a single-path notice for
+   * canvas asset resolution; `onFileEvents` is the batch of filesystem changes the sidebar redraws
+   * from, and it is a different wire message with its own subscriber seam.
+   */
+  test("onFileEvents reaches the sidebar's live-sync subscriber until it unsubscribes", () => {
+    const handler = capturedRpcConfig!.handlers.messages.onFileEvents as (p: {
+      events: { type: string; path: string; isDir: boolean }[];
+    }) => void;
+    const seen: { type: string; path: string; isDir: boolean }[][] = [];
+    const unsubscribe = platform.subscribeFileEvents!((events) => seen.push(events));
+
+    handler({ events: [{ isDir: false, path: "pages/index.json", type: "change" }] });
+    expect(seen).toEqual([[{ isDir: false, path: "pages/index.json", type: "change" }]]);
+
+    unsubscribe();
+    handler({ events: [{ isDir: false, path: "pages/other.json", type: "change" }] });
+    expect(seen).toHaveLength(1);
+  });
+
+  test("an onFileEvents message with no subscriber is not an error", () => {
+    const handler = capturedRpcConfig!.handlers.messages.onFileEvents as (p: {
+      events: { type: string; path: string; isDir: boolean }[];
+    }) => void;
+    expect(() => handler({ events: [] })).not.toThrow();
+  });
+
   test("fileChanged message handler runs without error", () => {
     const handler = capturedRpcConfig!.handlers.messages.fileChanged as (p: {
       path: string;
@@ -539,6 +566,7 @@ describe("platform methods", () => {
     ],
     ["listFormats", [], "listFormats", undefined],
     ["listExtensions", [], "listExtensions", undefined],
+    ["listExtensionCatalog", [], "listExtensionCatalog", undefined],
     ["fetchProjectSchemas", [], "fetchProjectSchemas", undefined],
     [
       "formatAction",
@@ -662,6 +690,19 @@ describe("platform methods", () => {
       expect(result).toEqual({ method: rpcMethod, ok: true });
     });
   }
+
+  /* The full PAL union accepts a `repo` destination too (the cloud backends), but this build
+     scaffolds onto disk — `createDestination: "path"` above is what actually stops Studio sending
+     one; this is the backend's own refusal if that ever got past it. */
+  test("createProject refuses a repo destination — this app scaffolds to disk only", async () => {
+    await expect(
+      platform.createProject({
+        destination: { kind: "repo", owner: "acme", private: false, repo: "site" },
+        directory: "p",
+        name: "p",
+      }),
+    ).rejects.toThrow("The desktop app creates projects on disk; repo destinations are cloud-only");
+  });
 
   // The RPC transport JSON-serializes params, so a File/Blob would arrive as `{}`. The platform
   // Base64-encodes binary before the call; a string (already base64) passes through untouched.
@@ -918,17 +959,41 @@ describe("activate() initial asset sweep", () => {
     preImg.remove();
   });
 
-  test("does not throw and leaves relative imgs untouched when canvasUrl is null", async () => {
+  test("does not throw and leaves relative imgs and background-images untouched when canvasUrl is null", async () => {
     platform.canvasUrl = undefined;
     const preImg = document.createElement("img");
     preImg.setAttribute("src", "/images/none.png");
     document.body.append(preImg);
+    // A styled element mounted before activate() resolves: resolveBackgroundImage runs during the
+    // Same synchronous sweep, and with no origin yet it must leave the url() alone too.
+    const preBg = document.createElement("div");
+    preBg.style.backgroundImage = "url(/images/none-bg.png)";
+    document.body.append(preBg);
 
     impls.set("getCanvasUrl", () => ({ canvasUrl: null }));
     const result = await platform.activate();
     expect(result).toBeUndefined();
     // LoopbackOrigin() is null => the sweep is skipped and the relative src stays put.
     expect(preImg.getAttribute("src")).toBe("/images/none.png");
+    expect(preBg.style.backgroundImage).toContain("none-bg.png");
+    expect(preBg.style.backgroundImage).not.toContain(LOOPBACK);
+    preImg.remove();
+    preBg.remove();
+  });
+
+  /* A malformed canvasUrl (a corrupt RPC reply, not merely an absent one) makes `new URL()` throw
+     inside loopbackOrigin's own try/catch — a distinct path from the "not resolved yet" null case
+     above, which never calls `new URL()` at all. */
+  test("a malformed canvasUrl also leaves relative imgs untouched, rather than throwing", async () => {
+    platform.canvasUrl = undefined;
+    const preImg = document.createElement("img");
+    preImg.setAttribute("src", "/images/malformed.png");
+    document.body.append(preImg);
+
+    impls.set("getCanvasUrl", () => ({ canvasUrl: "http://[not-a-valid-host" }));
+    const result = await platform.activate();
+    expect(result).toBeUndefined();
+    expect(preImg.getAttribute("src")).toBe("/images/malformed.png");
     preImg.remove();
   });
 
