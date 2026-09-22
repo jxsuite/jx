@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/jxsuite/jx/compare/ui-v0.2.0...ui-v0.3.0) (2026-09-22)
+
+
+### Features
+
+* **studio:** batch modulepreload links, cache scroller/track resolution ([441c7cc](https://github.com/jxsuite/jx/commit/441c7cc658ca48f2e43a2f2789ae8c28167c9364))
+
 ## [0.2.0](https://github.com/jxsuite/jx/compare/ui-v0.1.0...ui-v0.2.0) (2026-09-14)
 
 
