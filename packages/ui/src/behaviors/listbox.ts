@@ -106,8 +106,30 @@ export function syncListbox(host: HTMLElement, active: string): OptionElement | 
  */
 export function mountListbox(state: ListboxState, host: HTMLElement): void {
   syncListbox(host, String(state.active ?? ""));
+  /* One sync per frame, not one per mutation record. The palette opens by constructing its row
+     set: dozens of `childList` records in one task, and a sync per record is a querySelectorAll
+     walk plus a flush-baiting read each — the DevTools timeline billed every one of them. The
+     LAST record of a task settles the same active id the task started with (a filter's rows land
+     whole, and a caret move never changes rows), so reading `active` at frame time is the same
+     answer once, with one style pass for the burst instead of one per record. */
+  let frameId: number | null = null;
+  const scheduleSync = (): void => {
+    if (frameId !== null) {
+      return;
+    }
+    frameId = requestAnimationFrame(() => {
+      frameId = null;
+      if (host.isConnected) {
+        syncListbox(host, String(state.active ?? ""));
+      }
+    });
+  };
   const observer = new MutationObserver(() => {
-    syncListbox(host, String(state.active ?? ""));
+    if (typeof requestAnimationFrame === "function") {
+      scheduleSync();
+    } else {
+      syncListbox(host, String(state.active ?? ""));
+    }
   });
   observer.observe(host, {
     attributeFilter: ["data-active"],

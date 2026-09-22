@@ -19,7 +19,7 @@ import { initShellRefs } from "../src/store";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 import { setPendingAgentPrompt } from "../src/services/agent-seed";
 import { shell } from "../src/shell";
-import { inspectorTab } from "../src/panels/right-panel";
+import { inspectorTab, setInspectorTab } from "../src/panels/right-panel";
 
 // Chat-panel hosts ai-panel, which instantiates a document assistant at module load. Mock it
 // (before the dynamic import below) so no send ever touches the network.
@@ -110,8 +110,11 @@ afterEach(() => {
 });
 
 describe("chat panel", () => {
+  /* The surface document binds on the FIRST SHOW of the Assistant tab, so these render tests
+     select the tab the way the strip does (`setInspectorTab`) before asking for its body. */
   test("renders the chat with no tab and no project, offering the settings action", async () => {
     mount(chatHost());
+    setInspectorTab("assistant");
     await flush(4);
     const container = chatHost().querySelector(".ai-panel-host") as HTMLElement;
     expect(container).toBeTruthy();
@@ -125,6 +128,7 @@ describe("chat panel", () => {
   test("renders the chat view once a key exists, with or without an open tab", async () => {
     seedSettings({ "jx.ai.openaiKey": "sk-test" });
     mount(chatHost());
+    setInspectorTab("assistant");
     render();
     await flush(4);
     const container = chatHost().querySelector(".ai-panel-host") as HTMLElement;

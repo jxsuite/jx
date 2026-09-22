@@ -1,0 +1,115 @@
+# Studio interaction perf gate.
+#
+# Nightly on main, plus every PR that can move the numbers. A dev machine compares only within
+# its own update-day window; a runner is the quiet environment the comparison needs, which is
+# why the gate lives here rather than in a local pre-push hook.
+#
+# The failure mode is the tracked baseline being beaten by a regression: `trace-studio.ts
+# --compare` exits non-zero when any per-scenario metric grows by more than 20% AND 25 ms
+# against `scripts/perf/baseline.json`, printing a delta table with the offending rows. A
+# regenerated baseline (`--write-baseline 1`) is an intentional performance-PASS change and
+# belongs in the same PR as the change that caused it.
+#
+# The baseline warns about its own machine: the nightly runner is quiet and the seed is CPU-hungry
+# sometimes, so a baseline captured on a LOUD dev machine and gated here against a quiet runner
+# reads as "every scenario improved" rather than as a news story. Both files carry their windows,
+# and a moved baseline must arrive with its own re-capture rationale in the PR that lands it.
+name: Studio Perf
+
+on:
+  pull_request:
+    paths:
+      - "packages/studio/src/**"
+      - "packages/studio/src/surfaces/**"
+      - "packages/ui/src/**"
+      - "packages/runtime/src/**"
+      - "scripts/perf/**"
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    # The SAME pinned container the screenshots lane runs: Chrome for Testing must exist here too,
+    # and a container whose install location the lane cannot guess gives persistent diagnostics.
+    container:
+      image: ghcr.io/puppeteer/puppeteer:25.4.0
+      options: --user root --cap-add=SYS_ADMIN
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "1"
+      TZ: UTC
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The gate diffs nothing against git, but the dev server walks the whole tree and a
+          # normal checkout is all either needs.
+          fetch-depth: 0
+
+      - name: Trust the container workspace
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4
+
+      - run: bun install --frozen-lockfile
+
+      # The traced bundle is the one this checkout builds, not a dev cache: the dist/ dev server
+      # watcher reuses it and the gate's URLs go through the jxsuite.com fixture that lives in
+      # the repo.
+      - run: bun run build:studio
+
+      - name: Resolve the container's Chrome for Testing
+        shell: bash
+        run: |
+          set -uo pipefail
+          bin=$(node -e "try{process.stdout.write(require('puppeteer').executablePath())}catch(e){}" 2>/dev/null || true)
+          if [ ! -x "${bin:-}" ]; then
+            bin=$(find / -xdev -type f -path '*/chrome-linux64/chrome' -perm -u+x 2>/dev/null | sort | tail -n 1)
+          fi
+          if [ ! -x "${bin:-}" ]; then
+            echo "::error::No chrome binary in this container."
+            find / -xdev -maxdepth 6 -type d -name "*chrome*" 2>/dev/null | head -8
+            exit 1
+          fi
+          echo "CHROME_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Start the dev server
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup bun run dev > /tmp/jx-dev-server.log 2>&1 &
+          echo $! > /tmp/jx-dev.pid
+          up=0
+          for i in $(seq 1 90); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/packages/studio/index.html; then
+              echo "server up after ${i} probe(s)"
+              up=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$up" != "1" ]; then
+            echo "::error::Dev server did not come up on :3000. Log tail follows."
+            tail -40 /tmp/jx-dev-server.log
+            exit 1
+          fi
+
+      # The gate itself. `--compare` exits non-zero on a regression against the tracked baseline
+      # and prints the per-scenario delta table as the job's summary: the nightly run's row is
+      # what a maintainer reads first after an idle cron fires.
+      - name: Trace interactions against the tracked baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun scripts/perf/trace-studio.ts --reps 3 \
+            --compare scripts/perf/baseline.json 2>&1 \
+            | tee "$GITHUB_STEP_SUMMARY"

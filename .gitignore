@@ -24,6 +24,9 @@ nul
 .jx/
 packages/desktop/.jx/
 
+# Perf-trace captures and their dumps — regenerate with `bun run perf:studio`
+scripts/perf/out/
+
 # Compiler-generated component sidecars — built into dist/, never committed to source
 sites/*/components/*.js
 

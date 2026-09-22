@@ -11,9 +11,12 @@
  *
  * **The mount is standing.** One slot in the popover layer, one document in it, and `open` is a
  * field of the scope rather than a render call — so opening the palette twice reuses the same
- * element tree and the `$switch` on `open` is what puts the overlay on screen and takes it away.
- * `getLayerSlot` hands back the same slot every time until something clears it, which is the one
- * case that re-mounts: a slot the layer no longer holds is not one this module may render into.
+ * element tree: the overlay is always PRESENT and a `hidden` attribute bound to `open` is what puts
+ * it on screen and takes it away, rather than a `$switch` that tore the whole subtree down and
+ * rebuilt it (and its `jx-listbox`) on every open — the per-open document-wide style recalculation
+ * that cost traced (`scripts/perf/REPORT.md`). `getLayerSlot` hands back the same slot every time
+ * until something clears it, which is the one case that re-mounts: a slot the layer no longer holds
+ * is not one this module may render into.
  *
  * **The rows and the highlight are separate fields**, exactly as `surfaces/palette.json`'s are —
  * and the highlight is now ONE field rather than a per-row comparison. A key moves `activeId`, the
@@ -285,9 +288,10 @@ function project(): void {
 /**
  * Focus the field once the document has drawn it.
  *
- * The mount settling means the DOCUMENT rendered; the `$switch` on `open` reconciles one microtask
- * later, so the field exists a turn after that — which is why this waits for the mount and then for
- * a turn, rather than reaching for the element straight away.
+ * The field is standing now, same as the overlay, but it stays behind `hidden` until the reactive
+ * binding on `open` reconciles — one microtask after the mount settles — so a focus reaching for it
+ * straight away would land on an element the reader cannot yet see. This waits for the mount and
+ * then for a turn, rather than reaching for the element immediately.
  */
 function focusInput(): void {
   const pending = _mount;

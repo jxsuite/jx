@@ -12,10 +12,19 @@
  * in `ui/regions.ts`'s shell table — the assistant no longer has a shell host to name. Three
  * screenshot shots address that id and none of them changed.
  *
- * Hosts the assistant UI from ai-panel.ts unconditionally: with no project (welcome screen), with a
- * project but no open document, and with a document open. The panel is mounted once at studio boot
- * and never tears down on tab switches — the assistant's module state and DOM (composer draft,
- * scroll position) persist.
+ * Hosts the assistant machinery from ai-panel.ts unconditionally: with no project (welcome screen),
+ * with a project but no open document, and with a document open. The machinery is mounted once at
+ * studio boot and never tears down on tab switches — the assistant's module state (composer draft,
+ * scroll position, transcript) persists.
+ *
+ * **The assistant's SURFACE document is what this module defers.** Mounting `surfaces/ai-chat.ts`
+ * costs a traced 100–290 ms of connectedCallback at boot (its island projections; see
+ * `scripts/perf/REPORT.md`), paid on every window open although the document is invisible until
+ * the tab is picked. Binding is the same seam (`bindAiPanelHost`) and it is now deferred to the
+ * first time the Assistant tab is actually shown or revealed: `renderAiPanel` no-ops while the
+ * surface is null, and the surface's own watcher projects whatever the machinery wrote before that
+ * point, so a prompt seeded into a boot the reader never spends in the tab is not lost — it is one
+ * more message waiting when the body first appears.
  *
  * **This module is the SEAM, and it has no markup of its own.** The assistant is a Jx document
  * (`surfaces/ai-chat.json`), and a document CLEARS the host it is given — so it needs a container
@@ -32,6 +41,7 @@ import { effect, effectScope } from "../reactivity";
 import { workspace } from "../workspace/workspace";
 import { consumePendingAgentPrompt, hasPendingAgentPrompt } from "../services/agent-seed";
 import { REGION_ATTR } from "../ui/regions";
+import { inspectorTab } from "./right-panel";
 import {
   bindAiPanelHost,
   mountAiPanel,
@@ -48,6 +58,23 @@ const ASSISTANT_REGION = "inspector.assistant";
 let _host: HTMLElement | null = null;
 let _container: HTMLElement | null = null;
 let _scope: EffectScope | null = null;
+/** Whether the surface document has been bound. One bind per host; a remount resets it. */
+let _surfaceBound = false;
+
+/**
+ * Bind the assistant's surface document the first time its tab is shown or revealed.
+ *
+ * The container, the region attribute and every prompt path are ready before this; the surface is
+ * the expensive part and is invisible until the tab is picked, so this is the earliest moment its
+ * cost is worth paying. A restore that lands on the Assistant tab binds on the same tick.
+ */
+function ensureAssistantSurface(): void {
+  if (_surfaceBound || !_container) {
+    return;
+  }
+  _surfaceBound = true;
+  bindAiPanelHost(_container);
+}
 
 /**
  * Mount the assistant into the host the Inspector hands it. Idempotent per host: the persistent
@@ -68,11 +95,18 @@ export function mount(host: HTMLElement | null) {
   host.append(_container);
 
   mountAiPanel();
-  bindAiPanelHost(_container);
+  _surfaceBound = false;
 
   _scope?.stop();
   _scope = effectScope();
   _scope.run(() => {
+    effect(() => {
+      // The surface's bind follows the TAB: a session restored onto the Assistant is bound by
+      // One re-run of this effect, not by anyone remembering to call the seam directly.
+      if (inspectorTab() === "assistant") {
+        ensureAssistantSurface();
+      }
+    });
     effect(() => {
       // A pending agent prompt (stored by the New Project flow, possibly from another window) is
       // Keyed by the absolute project root — consume it as soon as this window adopts that root.
@@ -98,6 +132,7 @@ export function mount(host: HTMLElement | null) {
 export function unmount() {
   _scope?.stop();
   _scope = null;
+  _surfaceBound = false;
   // `null` unbinds the surface: the document is disposed and the chat-state watcher stopped.
   bindAiPanelHost(null);
   if (_host) {

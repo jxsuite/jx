@@ -23,13 +23,17 @@ type AppRegion = "drag" | "no-drag" | null;
 
 function normalizedRegion(value: string | null | undefined): AppRegion {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "drag" || normalized === "no-drag") {return normalized;}
+  if (normalized === "drag" || normalized === "no-drag") {
+    return normalized;
+  }
   return null;
 }
 
 function inlineRegion(element: Element): AppRegion {
   const style = element.getAttribute?.("style");
-  if (!style) {return null;}
+  if (!style) {
+    return null;
+  }
   const match = style.match(
     /(?:^|;)\s*(?:-webkit-app-region|app-region|window-drag)\s*:\s*(no-drag|drag)\b/i,
   );
@@ -41,7 +45,9 @@ function computedRegion(element: Element): AppRegion {
     const style = window.getComputedStyle(element);
     for (const propertyName of APP_REGION_PROPERTIES) {
       const region = normalizedRegion(style.getPropertyValue(propertyName));
-      if (region) {return region;}
+      if (region) {
+        return region;
+      }
     }
   } catch {
     // Detached or synthetic elements may not have a computed style.
@@ -56,12 +62,20 @@ export function isAppRegionDragTarget(target: EventTarget | null): boolean {
   let foundDragRegion = false;
 
   while (element) {
-    if (element.classList?.contains(NO_DRAG_CLASS)) {return false;}
-    if (element.classList?.contains(DRAG_CLASS)) {foundDragRegion = true;}
+    if (element.classList?.contains(NO_DRAG_CLASS)) {
+      return false;
+    }
+    if (element.classList?.contains(DRAG_CLASS)) {
+      foundDragRegion = true;
+    }
 
     const region = inlineRegion(element) ?? computedRegion(element);
-    if (region === "no-drag") {return false;}
-    if (region === "drag") {foundDragRegion = true;}
+    if (region === "no-drag") {
+      return false;
+    }
+    if (region === "drag") {
+      foundDragRegion = true;
+    }
 
     element = element.parentElement;
   }
