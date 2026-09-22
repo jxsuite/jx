@@ -184,13 +184,14 @@
     "$ref": "#/state/onDoubleClick"
   },
   "style": {
+    "$description": "`z-index: 3` is not decoration: a Navigator/Inspector split sits at the shell level, a sibling of the pane grid rather than a descendant of it, so where its box happens to meet a pane's own edge is decided by whichever stacking context wins — not by DOM order. `panels/pane-context.ts`'s floating toolbar band (`surfaces/pane-context.json`'s `[part=\"chrome\"]`) is `position: relative; z-index: 2` so it can float over the canvas stage, and that band's own edge sits flush against this splitter's box at the pane boundary. At `z-index: 1` the band won the last couple of pixels of the splitter's own 5px width, so a drag started right at that edge grabbed the toolbar instead of the handle — the reader-visible shape of that was `elementFromPoint` returning the band's `[part=\"bar\"]` for x inside the splitter's own rect. `3` clears every floating band in the shell (the chrome band's `2`, `diff-toolbar`'s `2`) without touching their own stacking, which still does its job of floating over the stage.",
     "display": "block",
     "&[hidden]": {
       "display": "none"
     },
     "flex": "none",
     "position": "relative",
-    "zIndex": "1",
+    "zIndex": "3",
     "touchAction": "none",
     "background": "var(--jx-border)",
     "cursor": "col-resize",
