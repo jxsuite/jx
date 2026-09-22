@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.12.3-draft\
+**Version:** 0.12.4-draft\
 **Status:** Partial\
-**Updated:** 2026-09-18\
+**Updated:** 2026-09-22\
 **License:** MIT
 
 ---
@@ -1863,6 +1863,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.12.4-draft** (2026-09-22) — The Assistant tab binds its surface document on first show; the panel machinery mounts at boot — pending prompts queued before the bind project when the body first appears.
 - **0.12.3-draft** (2026-09-18) — Tabs move between panes by drag, by ⌘\ or by Open to the Side; drill-in and Open to the Side focus the pane they open into.
 - **0.12.2-draft** (2026-09-14) — §13.1 open_document and set_canvas_mode are projections of document.open and canvas.setMode, and a record whose required argument's derived enum is empty is withheld from the round.
 - **0.12.1-draft** (2026-09-14) — §17.2 a project.json the assistant writes is adopted together with its text, so the layout record and the top-level key order the next settings commit uses are the file's as written.
@@ -2001,4 +2002,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.12.3-draft_
+_`@jxsuite/studio` Specification v0.12.4-draft_
