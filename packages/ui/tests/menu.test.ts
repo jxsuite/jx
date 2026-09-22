@@ -9,10 +9,12 @@ import { registerUi } from "../src/index.ts";
 import { withAnchorSupport } from "../src/testing/anchor-support.ts";
 import {
   ensureCaret,
+  focusRow,
   onMenuBeforeToggle,
   onMenuKeydown,
   onMenuPointerOver,
   onMenuToggle,
+  openSubmenu,
   rootMenuOf,
   rowsOf,
   SUBMENU_PLACEMENT,
@@ -607,6 +609,27 @@ describe("jx-menu", () => {
     expect(state.open).toBeUndefined();
     onMenuPointerOver(state, { currentTarget: stray, target: stray } as unknown as Event);
     expect(stray.childElementCount).toBe(0);
+  });
+
+  test("hovering the menu itself, off any row, opens and closes nothing", async () => {
+    // The separator, the panel's own padding: `event.target.closest(ROW)` answers null, which is
+    // A hover the menu must not mistake for entering — or leaving — one of its rows.
+    const { menu } = await open();
+    const state: MenuState = {};
+    const hr = menu.querySelector("hr")!;
+    onMenuPointerOver(state, { currentTarget: menu, target: hr } as unknown as Event);
+    // A hover over the panel's own furniture opens nothing: it is not "entering a row".
+    expect(menu.querySelector("jx-menu[open]")).toBeNull();
+  });
+
+  test("focusRow answers null on an empty row set rather than dividing by zero", () => {
+    expect(focusRow([], 0)).toBeNull();
+  });
+
+  test("openSubmenu on a row with no submenu answers null and moves no caret", async () => {
+    const { rows } = await open();
+    // "copy" carries no submenu at all.
+    expect(openSubmenu(rows[0]!)).toBeNull();
   });
 
   test("ArrowRight on a row with no submenu, and ArrowLeft in a root menu, do nothing", async () => {

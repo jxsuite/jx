@@ -970,6 +970,18 @@ describe("jx-tree, where there is nothing to do", () => {
     expect(activates).toEqual([]);
   });
 
+  test("a twisty on a disabled row expands nothing: the row's own click gating is not the tree's", async () => {
+    /* `jx-tree-item`'s twisty stops propagation and dispatches its internal `toggle` regardless of
+       `disabled` — only opacity and `aria-disabled` mark the row, so nothing upstream of the tree
+       gates the click. `onTreeToggle` is where a disabled row's twisty is refused. */
+    const rows: RowSpec[] = [
+      { disabled: true, expanded: "false", level: 1, label: "locked", value: "locked" },
+    ];
+    const { tree, expands } = await render(treeDoc({ rows }));
+    click(tree.querySelector('jx-tree-item [part="twisty"]')!);
+    expect(expands).toEqual([]);
+  });
+
   test("a handler bound to something that is not a tree does nothing to it", async () => {
     /* Every entry point reads its element from `event.currentTarget` and refuses anything that is
        not a `jx-tree`. That is what keeps a surface that delegates its own listeners from making

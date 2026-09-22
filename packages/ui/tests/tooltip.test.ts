@@ -12,6 +12,7 @@ import {
   bindTooltip,
   measureAnchoredFlip,
   onTooltipBeforeToggle,
+  onTooltipReady,
   onTooltipToggle,
   placeTooltip,
   supportsInterestInvokers,
@@ -738,6 +739,22 @@ describe("placement", () => {
     expect(state["flipped"]).toBe(false);
   });
 
+  test("measures synchronously when the platform has no requestAnimationFrame", async () => {
+    const { button, tip } = await scene();
+    box(button, { bottom: 60, height: 20, left: 100, right: 140, top: 40, width: 40 });
+    const raf = globalThis.requestAnimationFrame;
+    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    try {
+      const state: Record<string, unknown> = { for: "trigger" };
+      placeTooltip(state, tip);
+      // No `await frame()`: the measurement already ran, inline, on the call itself.
+      expect(state["x"]).toBe(100);
+      expect(state["y"]).toBe(66);
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+    }
+  });
+
   test("flips above the control when there is no room below, and says so", async () => {
     const { button, tip } = await scene();
     box(button, { bottom: 720, height: 20, left: 100, right: 140, top: 700, width: 40 });
@@ -836,6 +853,14 @@ describe("placement", () => {
     expect(anchored).toContain(
       "position-try-fallbacks: --jx-tooltip-above, flip-inline, --jx-tooltip-above flip-inline",
     );
+  });
+
+  test("onTooltipReady off an element does nothing: a handler bound where an event was not", () => {
+    const state: Record<string, unknown> = {};
+    expect(() => {
+      onTooltipReady(state, { currentTarget: null } as unknown as Event);
+    }).not.toThrow();
+    expect(state["x"]).toBeUndefined();
   });
 
   test("measureAnchoredFlip and onTooltipBeforeToggle do nothing where there is nothing to read", () => {
