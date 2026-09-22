@@ -344,7 +344,13 @@
       "color": "var(--jx-danger)"
     },
     "& [part=\"error\"]:empty": {
-      "position": "absolute"
+      "$description": "`top`/`left`/`width`/`height` are pinned rather than left to resolve: with every inset auto, an absolutely positioned flex-item child falls back to its STATIC position and a shrink-to-fit size, and both are the browser's own reconstruction of where an element with no content would have been, not a value this document asked for. A shrink-to-fit width over empty content is 0 in every engine this was checked against, but the mechanism is a hypothetical, and pinning a literal 0×0 at the field's own top-left corner costs no layout and no paint by construction rather than by an inference nothing here controls. `jx-textfield.json`'s own error region carries the same fix, for the same reason.",
+      "position": "absolute",
+      "top": "0",
+      "left": "0",
+      "width": "0",
+      "height": "0",
+      "overflow": "hidden"
     },
     "& > [part=\"help-slot\"]": {
       "display": "contents"

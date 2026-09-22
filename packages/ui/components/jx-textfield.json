@@ -447,7 +447,7 @@
       "fontSize": "var(--jx-text-lg)"
     },
     "& [part=\"clear\"]": {
-      "$description": "The clear button sits inside the field's border, so it draws 2px under the field's height: 22px in a 24px field, and 18px in an `sm` one. The `::before` is its hit area (WCAG 2.2 SC 2.5.8, ui.md \u00a74.3): an empty pseudo-element inset by half the difference between the drawn box and the kit's control height, which is -1px on a default field and -3px on a small one, so the region that accepts the pointer is `--jx-control-h` square at every size while the glyph and its hover box stay where they were. On a large field the difference is positive and the pseudo-element is an invisible box INSIDE a button that is already over the floor, which changes nothing. jx-tab's close button is the technique; the button is absolutely positioned already, so it is its own containing block. The extension lies over the input it clears, which was true of the drawn button too, and 2px past the field's edge at `sm`, where a neighbour at the kit's 4px gap extends 2px back and the two abut.",
+      "$description": "The clear button sits inside the field's border, so it draws 2px under the field's height: 22px in a 24px field, and 18px in an `sm` one. The `::before` is its hit area (WCAG 2.2 SC 2.5.8, ui.md \u00a74.3): an empty pseudo-element inset by half the difference between the drawn box and the kit's control height, which is -1px on a default field and -3px on a small one, so the region that accepts the pointer is `--jx-control-h` square at every size while the glyph and its hover box stay where they were. On a large field the difference is positive and the pseudo-element is an invisible box INSIDE a button that is already over the floor, which changes nothing. jx-tab's close button is the technique; the button is absolutely positioned already, so it is its own containing block. The extension lies over the input it clears, which was true of the drawn button too, and 2px past the field's edge at `sm`, where a neighbour at the kit's 4px gap extends 2px back and the two abut. `contain: layout` keeps the expansion LOCAL: an absolutely positioned box still counts toward the SCROLLABLE overflow of the nearest ancestor whose `overflow` is not `visible`, invisible or not, so a host that scrolls picks up a couple of phantom pixels from every `::before` like this one between it and the field, and draws a scrollbar over content that already fit.",
       "position": "absolute",
       "insetBlockStart": "1px",
       "insetInlineEnd": "1px",
@@ -471,6 +471,7 @@
       "color": "var(--jx-fg-muted)",
       "cursor": "pointer",
       "outline": "none",
+      "contain": "layout",
       ":hover": {
         "color": "var(--jx-fg)"
       },
@@ -492,7 +493,13 @@
       "color": "var(--jx-danger)"
     },
     "& [part=\"error\"]:empty": {
-      "position": "absolute"
+      "$description": "`top`/`left`/`width`/`height` are pinned rather than left to resolve, because \"resolve\" is exactly what they cannot be trusted to do: with every inset auto, an absolutely positioned flex-item child falls back to its STATIC position and a shrink-to-fit size, and both are the browser's own reconstruction of where an element with no content would have been — not a value this document ever asked for. A shrink-to-fit width over empty content is 0 in every engine this was checked against, but the mechanism is a hypothetical, not a number, and it is exactly the kind of hypothetical that has read differently across engines before (the `::before` hit areas beside this rule went through the same lesson). Pinned to a literal 0×0 at the field's own top-left corner, the region costs no layout AND no paint by construction, rather than by an inference nothing here controls.",
+      "position": "absolute",
+      "top": "0",
+      "left": "0",
+      "width": "0",
+      "height": "0",
+      "overflow": "hidden"
     },
     "& > [part=\"control-slot\"], & > [part=\"clear-slot\"], & > [part=\"help-slot\"]": {
       "display": "contents"
