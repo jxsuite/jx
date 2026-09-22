@@ -578,4 +578,40 @@ describe("lifecycle", () => {
       seenByB.some((s) => (s as { user?: { login?: string } }).user?.login === "octocat"),
     ).toBe(true);
   });
+
+  test("a socket error is a no-op — the close handler owns retry", async () => {
+    const fx = fixture();
+    const connection = fx.connect();
+    await connection.openDoc("pages/index.json");
+    expect(connection.status()).toBe("connected");
+    fx.sockets[0]!.onerror?.();
+    expect(connection.status()).toBe("connected");
+  });
+
+  test("a duplicate close event does not leak a reconnect attempt past destroy()", async () => {
+    const fx = fixture();
+    const connection = createWsCollabConnection({
+      openTimeoutMs: 1000,
+      reconnectDelayMs: 1,
+      url: "ws://loopback",
+      webSocketImpl: socketImplFor(
+        fx.host,
+        { color: "#fff", login: "octocat", permission: "write" },
+        fx.sockets,
+      ),
+    });
+    cleanups.push(() => connection.destroy());
+    await connection.openDoc("pages/index.json");
+    const socketCount = fx.sockets.length;
+    // A transport that fires close twice for one socket (not spec-conformant, but WsLike's
+    // Contract does not forbid it) must not leak a reconnect past destroy(): the first close
+    // Schedules a retry timer, the second overwrites the tracked reference without clearing it.
+    fx.sockets[0]!.onclose?.();
+    fx.sockets[0]!.onclose?.();
+    connection.destroy();
+    await settle(30);
+    // The orphaned first timer would have fired connect() again, minting a new socket, had the
+    // Post-destroy guard not caught it.
+    expect(fx.sockets.length).toBe(socketCount);
+  });
 });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import {
+  applyTextEdit,
   frontmatterMap,
   metaMap,
   resolveYPath,
@@ -132,6 +133,20 @@ describe("sourceText", () => {
     expect(sourceText(ydoc).toString()).toBe("");
     sourceText(ydoc).insert(0, "# Hello");
     expect(sourceText(ydoc).toString()).toBe("# Hello");
+  });
+});
+
+describe("applyTextEdit", () => {
+  /* Its only caller, updateSourceText, short-circuits its own identical-content case before ever
+     calling applyTextEdit, so that guard never exercises this one — applyTextEdit is exported
+     and called directly elsewhere too (setNodeKey's textContent path), so its own no-op return
+     needs a direct call to cover. */
+  test("no-ops on already-equal content", () => {
+    const ydoc = new Y.Doc();
+    const text = sourceText(ydoc);
+    text.insert(0, "same");
+    expect(applyTextEdit(text, "same")).toBe(false);
+    expect(text.toString()).toBe("same");
   });
 });
 

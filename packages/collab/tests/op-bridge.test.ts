@@ -357,6 +357,18 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     ]);
   });
 
+  /* A YTextEvent whose path is neither a granular container (caught earlier) nor the
+     "children"/index shape a bare-string child produces cannot happen through the current
+     schema — every Y.Text lives at one of those two shapes — but a malformed or future event
+     must still bail to "reconcile by diffing" rather than silently drop the edit. Built with a
+     real YTextEvent prototype (instanceof matters here, unlike the plain-object fakes below)
+     and an own `path` that shadows YEvent's getter. */
+  test("a Y.Text event off the bare-string-child shape bails to null", () => {
+    const fake = Object.create(Y.YTextEvent.prototype) as Y.YEvent<never>;
+    Object.defineProperty(fake, "path", { value: ["oops"] });
+    expect(yEventsToDocOps([fake])).toBeNull();
+  });
+
   /* The two defensive bails on the granular collapse path. Neither is reachable through the public
      API — a live container always has a doc and always resolves — but a malformed or stale event
      must degrade to "reconcile by diffing", never to a wrong op. */
