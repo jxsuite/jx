@@ -53,6 +53,18 @@ describe("createNodeFormatIO", () => {
       rmSync(root, { force: true, recursive: true });
     }
   });
+
+  test("resolvePath returns an OS-absolute ref unchanged", () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-format-host-abs-"));
+    try {
+      const io = createNodeFormatIO(root);
+      const absPath = join(root, "somewhere", "Thing.class.json");
+      const resolved = io.resolvePath(join(root, "project.json"), absPath);
+      expect(resolved).toBe(absPath);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
 });
 
 describe("buildProjectExtensionRegistry", () => {

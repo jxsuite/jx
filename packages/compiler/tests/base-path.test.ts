@@ -98,6 +98,17 @@ describe("rewriteHtmlBase", () => {
     expect(out).toContain("url('/m/probe/images/c.png')");
   });
 
+  test("leaves a CSS url() unchanged when it does not mean 'from the site root'", () => {
+    // An external URL and one already carrying the base both resolve unchanged by `withBase` —
+    // RewriteCssUrls must return the original match verbatim rather than re-wrapping it.
+    const html =
+      "<style>.a{background:url(https://ext.example/bg.png)}</style>" +
+      `<div style="background:url(${BASE}/images/already.png)"></div>`;
+    const out = rewriteHtmlBase(html, BASE);
+    expect(out).toContain("url(https://ext.example/bg.png)");
+    expect(out).toContain(`url(${BASE}/images/already.png)`);
+  });
+
   test("re-roots a URL-bearing meta content and leaves prose alone", () => {
     /* `content` is the one attribute here that usually holds prose, so it moves only when the same
        tag says the value is a URL. A description that happens to start with a slash must not. */

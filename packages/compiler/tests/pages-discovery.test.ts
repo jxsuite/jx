@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { discoverPages, expandDynamicRoutes } from "../src/site/pages-discovery";
+import { discoverPages, expandDynamicRoutes, readPageDocument } from "../src/site/pages-discovery";
 import { buildProjectExtensionRegistry } from "../src/site/format-host";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -110,6 +110,25 @@ describe("discoverPages", () => {
     const mdRoute = routes.find((r) => r.urlPattern === "/about") as any;
     expect(mdRoute).toBeDefined();
     expect(mdRoute.sourcePath).toContain(".md");
+    cleanup();
+  });
+});
+
+// ─── readPageDocument ───────────────────────────────────────────────────────
+
+describe("readPageDocument", () => {
+  test("throws naming the extension and the extensions-based fix when no registry handles it", async () => {
+    setup();
+    writeFileSync(join(FIXTURES, "page.csv"), "a,b\n1,2\n");
+    let caught: unknown;
+    try {
+      await readPageDocument(join(FIXTURES, "page.csv"));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain('No format class registered for ".csv"');
+    expect((caught as Error).message).toContain('project.json "extensions"');
     cleanup();
   });
 });
