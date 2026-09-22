@@ -461,6 +461,9 @@ describe("jx-combobox", () => {
       press(el, "ArrowDown");
       await tick();
       expect(el.open, JSON.stringify(props)).toBe(false);
+      press(el, "ArrowUp");
+      await tick();
+      expect(el.open, JSON.stringify(props)).toBe(false);
       type(el, "gpt");
       await tick();
       expect(el.open, JSON.stringify(props)).toBe(false);

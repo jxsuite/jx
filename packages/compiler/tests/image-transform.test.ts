@@ -485,6 +485,19 @@ describe("image-transform", () => {
       expect(sourcesOf(doc.children[0].children[0])).toHaveLength(2);
     });
 
+    test("skips a non-object child (e.g. null) without crashing", async () => {
+      const doc: any = {
+        children: [null, { attributes: { src: "/images/hero.png" }, tagName: "img" }],
+        tagName: "div",
+      };
+      const cache = { entries: {}, version: 1 };
+
+      await transformImageNodes(doc, defaultConfig, TMP, cache);
+
+      expect(doc.children[0]).toBeNull();
+      expect(doc.children[1].tagName).toBe("picture");
+    });
+
     test("transforms img tags embedded in innerHTML strings", async () => {
       const doc: any = {
         innerHTML: '<img src="/images/hero.png">',
@@ -809,6 +822,31 @@ describe("image-transform", () => {
       const config = { ...cfConfig, remoteDomains: ["drive.usercontent.google.com"] };
       const doc: any = {
         attributes: { src: "https://evil.example.com/img.jpg" },
+        tagName: "img",
+      };
+
+      await transformImageNodes(doc, config, TMP, null, new Map());
+      expect(doc.attributes.srcset).toBeUndefined();
+    });
+
+    test("does not treat a plain http:// source as allowlisted (https-only)", async () => {
+      const config = { ...cfConfig, remoteDomains: ["drive.usercontent.google.com"] };
+      const doc: any = {
+        attributes: { src: "http://drive.usercontent.google.com/img.jpg" },
+        tagName: "img",
+      };
+
+      await transformImageNodes(doc, config, TMP, null, new Map());
+      // Not remote-allowed, and http:// also fails the local skip rules (external prefix) —
+      // Either way, no srcset is produced.
+      expect(doc.attributes.srcset).toBeUndefined();
+    });
+
+    test("treats a malformed https:// remote source as not allowlisted", async () => {
+      const config = { ...cfConfig, remoteDomains: ["drive.usercontent.google.com"] };
+      const doc: any = {
+        // `new URL()` throws on this — the malformed-URL branch, not the hostname-mismatch one.
+        attributes: { src: "https://[bad/img.jpg" },
         tagName: "img",
       };
 

@@ -61,6 +61,28 @@ describe("dev server import-site mount", () => {
     expect(opts.outDir).toBe(resolve(FIXTURES, "imported-site"));
   });
 
+  test("imports into an absolute directory chosen directly", async () => {
+    // An absolute `directory` is the New Project modal's own choice of destination (as opposed to
+    // The historical root-relative shape), vetted the same way a create is rather than resolved
+    // Against the server root.
+    const dest = resolve(FIXTURES, "abs-dest");
+    const res = await fetch(`${base}/__studio/import-site`, {
+      body: JSON.stringify({ directory: dest, url: "https://clone.example/" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const done = text
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .at(-1)!;
+    expect(done.type).toBe("done");
+    const opts = importSite.mock.calls.at(-1)?.[0] as { outDir: string };
+    expect(opts.outDir).toBe(dest);
+  });
+
   test("rejects a destination outside the server root", async () => {
     const res = await fetch(`${base}/__studio/import-site`, {
       body: JSON.stringify({ directory: "../escape", url: "https://clone.example/" }),

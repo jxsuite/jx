@@ -764,8 +764,12 @@ describe("loopback canvas server", () => {
     ]);
     await handlers.jxResolve!({ body: "{}" });
     expect(session.jxResolve).toHaveBeenCalledWith({ body: "{}" });
+    await handlers.jxServerFunction!({ body: "{}" });
+    expect(session.jxServerFunction).toHaveBeenCalledWith({ body: "{}" });
     await handlers.readFile!({ path: "p" });
     expect(session.handleReadFile).toHaveBeenCalledWith({ path: "p" });
+    await handlers.resolveSiteContext!({ filePath: "pages/a.json" });
+    expect(session.handleResolveSiteContext).toHaveBeenCalledWith({ filePath: "pages/a.json" });
     // No write/git surface leaks onto the loopback server.
     expect(handlers.writeFile).toBeUndefined();
     expect(handlers.gitStatus).toBeUndefined();

@@ -13,6 +13,7 @@ const TABLE: TableDef = {
     properties: {
       approved: { type: "boolean" },
       author: { $ref: "#/data/users" },
+      keywords: { items: { type: "string" }, type: "array" },
       message: { type: "string" },
       meta: { type: "object" },
       mood: { enum: ["happy", "sad"], type: "string" },
@@ -112,6 +113,18 @@ describe("validateRow", () => {
     expect(result.valid).toBe(true);
     expect(result.value.meta).toEqual({ k: 1 });
     expect(validateRow(TABLE, { message: "x", meta: "{broken" }).valid).toBe(false);
+  });
+
+  test("a plain (non-reference) array column coerces JSON arrays and rejects the rest", () => {
+    const listed = validateRow(TABLE, { keywords: ["a", "b"], message: "x" });
+    expect(listed.valid).toBe(true);
+    expect(listed.value.keywords).toEqual(["a", "b"]);
+
+    const encoded = validateRow(TABLE, { keywords: '["a","b"]', message: "x" });
+    expect(encoded.value.keywords).toEqual(["a", "b"]);
+
+    // Neither "[" nor "{"-shaped: parseMaybeJson passes it through untouched, and it is not an array.
+    expect(validateRow(TABLE, { keywords: "not-json", message: "x" }).valid).toBe(false);
   });
 
   test("null clears a column", () => {

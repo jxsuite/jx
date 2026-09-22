@@ -95,6 +95,19 @@ describe("$props cannot reach it", () => {
     // The private one was refused; the public one produced no complaint.
     expect(warnings.join("\n")).not.toContain("label");
   });
+
+  // A hyphenated tag with $props takes the property-first path (renderCustomElementWithProps),
+  // Whether or not the element has upgraded yet — a second route into the same rule.
+  test("the property-first path refuses it too, on a not-yet-registered custom tag", async () => {
+    const parent = await buildScope({ state: {} } as never, {});
+    const el = renderNode(
+      { $props: { "#cache": "no", label: "yes" }, tagName: "priv-not-upgraded" } as never,
+      parent,
+    ) as HTMLElement;
+    expect((el as unknown as Record<string, unknown>)["#cache"]).toBeUndefined();
+    expect((el as unknown as Record<string, unknown>)["label"]).toBe("yes");
+    expect(warnings.join("\n")).toContain("#cache");
+  });
 });
 
 describe("the custom-element interface excludes it", () => {

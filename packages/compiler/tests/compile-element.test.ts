@@ -382,6 +382,27 @@ describe("compileElement — templates", () => {
     expect(content).toContain("s.count++");
   });
 
+  test("inline event handler with a structured statement-array body", async () => {
+    const result = await compileElement({
+      children: [
+        {
+          onclick: {
+            $prototype: "Function",
+            body: [{ operator: "+=", target: { $ref: "#/state/count" }, value: 1 }],
+          },
+          tagName: "button",
+          textContent: "Inc",
+        },
+      ],
+      state: { count: 0 },
+      tagName: "test-inline-structured-event",
+    });
+
+    const { content } = result.files[0]!;
+    expect(content).toContain("@click=");
+    expect(content).toContain("s.count += 1");
+  });
+
   test("$props on custom element child", async () => {
     const result = await compileElement({
       children: [
@@ -419,6 +440,28 @@ describe("compileElement — templates", () => {
     const { content } = result.files[0]!;
     expect(content).toContain(".map((item, index)");
     expect(content).toContain("s.items");
+  });
+
+  test("mapped array item with a template-string style value", async () => {
+    // EmitStyleString only emits a style value that is itself a template string — a static
+    // Literal is baked into the component's stylesheet rule instead, so this is the one shape
+    // That reaches the map item's inline `style="..."` attribute at all.
+    const result = await compileElement({
+      children: {
+        $prototype: "Array",
+        items: { $ref: "#/state/items" },
+        map: {
+          style: { color: "${$map.item}" },
+          tagName: "div",
+          textContent: "${$map.item}",
+        },
+      },
+      state: { items: ["red", "blue"] },
+      tagName: "test-map-style",
+    });
+
+    const { content } = result.files[0]!;
+    expect(content).toContain('style="color: ${$map.item}"');
   });
 
   test("mapped array as a member among sibling children (wrapper-less)", async () => {
@@ -576,6 +619,35 @@ Paragraph content
       expect(result.html).toContain("<test-markdown></test-markdown>");
       expect(result.files.length).toBeGreaterThanOrEqual(1);
       expect(result.files[0]!.tagName).toBe("test-markdown");
+    } finally {
+      rmSync(tmpDir, { force: true, recursive: true });
+    }
+  });
+
+  test("throws naming the extension when a non-json $elements dependency has no format class", async () => {
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const tmpDir = resolve(import.meta.dir, "__tmp_elements_unknown_format__");
+    mkdirSync(tmpDir, { recursive: true });
+    const mainPath = resolve(tmpDir, "main.json");
+    writeFileSync(
+      mainPath,
+      JSON.stringify({
+        $elements: ["./dep.xyz"],
+        children: [{ tagName: "dep-el" }],
+        tagName: "main-el",
+      }),
+    );
+    writeFileSync(resolve(tmpDir, "dep.xyz"), "whatever, this extension is never parsed");
+    try {
+      let caught: unknown;
+      try {
+        await compileElement(mainPath, {});
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain('No format class registered for ".xyz"');
+      expect((caught as Error).message).toContain('project.json "extensions"');
     } finally {
       rmSync(tmpDir, { force: true, recursive: true });
     }

@@ -16,4 +16,4 @@ coveragePathIgnorePatterns = [
   "../starters/**",
   "../studio/**",
 ]
-coverageThreshold = { lines = 0.98, functions = 0.99 }
+coverageThreshold = { lines = 0.99, functions = 1.0 }

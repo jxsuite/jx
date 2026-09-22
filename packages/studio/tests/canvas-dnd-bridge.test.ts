@@ -172,6 +172,25 @@ describe("registerCanvasDndBridge — coordinator", () => {
     expect(calls.find((c) => c.fn === "post" && c.msg.kind === "dragMove")).toBeUndefined();
   });
 
+  test("onDrag lazily binds a session when the cursor reaches a host by hit-test (no native frame-enter)", () => {
+    // The drag starts off every canvas: no host under the start cursor, so `onDragStart` leaves
+    // `session` unbound and only retains `pending`.
+    hostAt = null;
+    m().onDragStart({ location: loc(5, 5), source: { data: { type: "block" } } });
+    expect(calls.find((c) => c.fn === "begin")).toBeUndefined();
+    // The cursor now resolves to a live host purely through the parent's own hit-test — the path
+    // `nativeDragEnter` exists for the common case, but the parent's `onDrag` still has to bind
+    // Lazily for whatever crossing it DOES see.
+    hostAt = fakeHost;
+    calls.length = 0;
+    m().onDrag({ location: loc(300, 250), source: { data: { type: "block" } } });
+    const begin = calls.find((c) => c.fn === "begin");
+    expect(begin!.host).toBe(fakeHost);
+    expect(calls.find((c) => c.fn === "ghostShow")).toBeTruthy();
+    const move = calls.find((c) => c.fn === "post" && c.msg.kind === "dragMove");
+    expect(move!.host).toBe(fakeHost);
+  });
+
   test("onDrop posts a drop to the host at the DROP cursor", () => {
     monitors[0]!.onDragStart({ location: loc(300, 250), source: { data: { type: "block" } } });
     calls.length = 0;
@@ -211,6 +230,27 @@ describe("registerCanvasDndBridge — coordinator", () => {
       source: { data: { type: "something-else" } },
     });
     expect(calls).toHaveLength(0);
+  });
+
+  test("onDrag ignores unrelated sources (no recognized type)", () => {
+    monitors[0]!.onDrag({
+      location: loc(300, 250),
+      source: { data: { type: "something-else" } },
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  test("onDrop with no session ever bound just clears the ghost (nothing to end)", () => {
+    // The drag started off every canvas — `onDragStart` never binds a host, so `session` stays
+    // Null and only `pending` is retained.
+    hostAt = null;
+    m().onDragStart({ location: loc(5, 5), source: { data: { type: "block" } } });
+    calls.length = 0;
+    m().onDrop({ location: loc(5, 5), source: { data: { type: "block" } } });
+    expect(calls.find((c) => c.fn === "ghostClear")).toBeTruthy();
+    expect(calls.find((c) => c.fn === "post")).toBeUndefined();
+    // Nothing was ever begun, so there is no session id to end either.
+    expect(calls.find((c) => c.fn === "end")).toBeUndefined();
   });
 
   test("multi-panel: the cursor's panel owns the drop (host resolved by cursor, not active panel)", () => {

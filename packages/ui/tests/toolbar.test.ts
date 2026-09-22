@@ -368,6 +368,22 @@ describe("jx-toolbar", () => {
     expect(cedesKey(null, "ArrowRight", "ArrowRight")).toBe(false);
   });
 
+  test("a control whose selection THROWS is the same case, on the engine happy-dom does not model", () => {
+    /* Happy-dom answers null for this; a real engine refusing `selectionStart` on some input type
+       throws instead, which is the case the `try`/`catch` in `atEdge` is actually for. Both answer
+       the question the same way: the toolbar takes the key rather than trapping the reader inside
+       a control with no arrow key out of it. */
+    const input = document.createElement("input");
+    input.value = "text";
+    document.body.append(input);
+    Object.defineProperty(input, "selectionStart", {
+      get() {
+        throw new DOMException("The input element's type does not support selection.");
+      },
+    });
+    expect(cedesKey(input, "ArrowRight", "ArrowRight")).toBe(false);
+  });
+
   // ─── what is not an item, and why ─────────────────────────────────────────
 
   test("a control whose arrows change its VALUE is not an item: walking past it would rewrite it", async () => {

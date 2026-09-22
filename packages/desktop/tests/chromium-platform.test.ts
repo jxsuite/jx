@@ -897,6 +897,21 @@ describe("chromium desktop platform", () => {
     await until(() => windowOpen.mock.calls.length > before);
     expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/fallback/");
   });
+
+  /* `{ ok: false }` is a REFUSAL the backend answers, not a rejection — distinct from the thrown-error
+     case above. Branching only on a caught error would leave the click doing nothing at all whenever
+     the desktop answers but has no opener to hand the URL to. */
+  test("a resolved refusal ({ ok: false }) also falls back to a new browser tab", async () => {
+    responses.openExternal = { ok: false };
+    const before = windowOpen.mock.calls.length;
+    try {
+      getPreviewNavigateHandler()!("https://example.com/refused/");
+      await until(() => windowOpen.mock.calls.length > before);
+      expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/refused/");
+    } finally {
+      responses.openExternal = { ok: true };
+    }
+  });
 });
 
 /** Wait for a condition a pushed frame or a pending request will make true. */

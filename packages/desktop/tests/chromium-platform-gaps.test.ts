@@ -233,6 +233,19 @@ describe("chromium platform: search, formats and packages", () => {
     });
   });
 
+  /* The full PAL union accepts a `repo` destination too (the cloud backends), but this launcher
+     scaffolds onto disk — `createDestination: "path"` above is what actually stops Studio sending
+     one; this is the backend's own refusal if that ever got past it. */
+  test("createProject refuses a repo destination — this launcher scaffolds to disk only", async () => {
+    await expect(
+      platform.createProject({
+        destination: { kind: "repo", owner: "acme", private: false, repo: "site" },
+        directory: "fresh",
+        name: "Fresh",
+      }),
+    ).rejects.toThrow("This launcher creates projects on disk; repo destinations are cloud-only");
+  });
+
   test("listStarters returns the starter template list", async () => {
     const starters = await platform.listStarters!();
     expect(starters).toEqual(responses.listStarters as never);

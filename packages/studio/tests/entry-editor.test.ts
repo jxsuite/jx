@@ -32,6 +32,8 @@ import {
   renderEntryMode,
   setEntryDraft,
 } from "../src/content/entry-editor";
+import { mountEntryEditorSurface } from "../src/surfaces/entry-editor";
+import type { EntryEditorView } from "../src/surfaces/entry-editor";
 import type { StudioPlatform } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
 
@@ -445,5 +447,50 @@ describe("openEntryEditor over the real open path", () => {
     const tab = await openEntryEditor("content/authors/ada.json");
     expect(tab?.session.ui.canvasMode).toBe(ENTRY_MODE);
     expect(activeTab.value?.id).toBe("content/authors/ada.json");
+  });
+});
+
+/**
+ * `mountEntryEditorSurface`'s own dispose lifecycle (`src/surfaces/entry-editor.ts`), below
+ * `content/entry-editor.ts`'s pane bookkeeping — `detachEntryPane` always calls `dispose()` through
+ * here, but nothing exercised the surface's own guards directly.
+ */
+describe("mountEntryEditorSurface — dispose lifecycle", () => {
+  const emptyView: EntryEditorView = {
+    collection: "",
+    draft: false,
+    draftAxis: "hidden",
+    draftHint: "",
+    emptyLine: "Nothing to edit.",
+    fieldsRegion: "",
+    name: "",
+    note: "",
+    noteState: "hidden",
+    region: "",
+    stage: "empty",
+  };
+  const actions = { openContentTypes: () => {}, setDraft: () => {} };
+  const islands = { fieldsSlot: () => {} };
+
+  test("attached() is false once disposed, even before the mount has settled", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const handle = mountEntryEditorSurface(host, emptyView, actions, islands);
+    handle.dispose();
+    expect(handle.attached()).toBe(false);
+  });
+
+  /* A mount still in flight when its pane is torn down (mode switch, tab close) must not stand as
+     `mounted` once it arrives — the earlier `attached()` case already refuses a settled mount, and
+     this is the one that never got the chance to be adopted at all. */
+  test("a mount that settles AFTER dispose() disposes itself rather than being adopted", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const handle = mountEntryEditorSurface(host, emptyView, actions, islands);
+    handle.dispose();
+    await handle.ready;
+    expect(handle.attached()).toBe(false);
+    // Idempotent: a second dispose (e.g. a repeated pane teardown) is not a double-teardown crash.
+    expect(() => handle.dispose()).not.toThrow();
   });
 });

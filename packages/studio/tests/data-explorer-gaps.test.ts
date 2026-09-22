@@ -444,4 +444,30 @@ describe("the value tree", () => {
     const painted = [...el.querySelectorAll<HTMLElement>('[part="row"]')];
     expect(painted.map((n) => n.style.getPropertyValue("--row-indent"))).toEqual(["12px", "24px"]);
   });
+
+  /**
+   * `surfaces/panel-data.ts`'s own registry, exercised directly: a row the reader collapses takes
+   * its host out of the document before the async `mountSurface` this module started has settled.
+   * The arriving handle must dispose itself rather than stand as the record's `handle` — a mount
+   * nothing would ever take down otherwise, since `takeDown` already ran and forgot the host.
+   */
+  test("a host removed before its surface finishes mounting disposes on arrival, not later", async () => {
+    const { disposeDetachedDataTrees, renderDataTreeSurface } =
+      await import("../src/surfaces/panel-data");
+    const container = stage();
+    const rows = dataTreeRows({ a: 1 }, 0);
+    renderDataTreeSurface(container, rows, { showMore: () => {} });
+    // The row is collapsed — its host leaves the document — before `mountSurface`'s promise has
+    // Had a turn to resolve.
+    container.remove();
+    disposeDetachedDataTrees();
+    // The in-flight mount arrives on a host already given up.
+    await settle();
+    // The registry forgot the host outright (rather than leaving it disposed-but-registered): a
+    // Fresh mount into the SAME element, once reconnected, draws normally.
+    document.body.append(container);
+    renderDataTreeSurface(container, rows, { showMore: () => {} });
+    await settle();
+    expect(container.querySelector('[part="row"]')).not.toBeNull();
+  });
 });

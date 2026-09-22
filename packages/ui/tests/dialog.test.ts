@@ -4,7 +4,8 @@ import type { JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
-import { close, showModal } from "../src/behaviors/dialog.ts";
+import { close, onCommand, showModal } from "../src/behaviors/dialog.ts";
+import type { DialogState } from "../src/behaviors/dialog.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -244,5 +245,45 @@ describe("jx-dialog", () => {
     expect(() => {
       close(bare);
     }).not.toThrow();
+  });
+
+  test("an invoker command off a jx-dialog does nothing, for a listener bound somewhere else", () => {
+    // `onCommand` reads `hostOf` off the event's own `currentTarget`; a button with no jx-dialog
+    // Ancestor at all is the shape of a listener a surface bound to the wrong element.
+    const state: DialogState = { dismissible: false, open: false };
+    const stray = document.createElement("button");
+    document.body.append(stray);
+    const event = Object.assign(new Event("command", { bubbles: true }), { command: "--show" });
+    Object.defineProperty(event, "currentTarget", { value: stray });
+    expect(() => {
+      onCommand(state, event);
+    }).not.toThrow();
+    expect(state.open).toBe(false);
+  });
+
+  test("skips the synthetic toggle when the platform already defines ToggleEvent", async () => {
+    /* Chrome fires `beforetoggle`/`toggle` on a dialog itself since 2024, so on that engine the
+       synthetic dispatch would be a second `toggle` the platform already sent. The guard is the
+       `typeof ToggleEvent` check; the test DOM has none, so it is stubbed to prove the early
+       return, not the dispatch that runs on every other test here. */
+    const el = await dialog({ headline: "Native" });
+    const original = (globalThis as { ToggleEvent?: unknown }).ToggleEvent;
+    (globalThis as { ToggleEvent?: unknown }).ToggleEvent = class extends Event {};
+    try {
+      const seen: string[] = [];
+      inner(el).addEventListener("toggle", () => seen.push("toggle"));
+      showModal(el);
+      expect(inner(el).open).toBe(true);
+      expect(seen).toEqual([]);
+      close(el);
+      expect(inner(el).open).toBe(false);
+      expect(seen).toEqual([]);
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { ToggleEvent?: unknown }).ToggleEvent;
+      } else {
+        (globalThis as { ToggleEvent?: unknown }).ToggleEvent = original;
+      }
+    }
   });
 });
