@@ -1,5 +1,24 @@
 # Changelog
 
+## [5.3.0](https://github.com/jxsuite/jx/compare/studio-v5.2.0...studio-v5.3.0) (2026-09-22)
+
+
+### Features
+
+* **studio:** batch modulepreload links, cache scroller/track resolution ([441c7cc](https://github.com/jxsuite/jx/commit/441c7cc658ca48f2e43a2f2789ae8c28167c9364))
+
+
+### Bug Fixes
+
+* **studio:** account for the persistent formula-palette mount in expression-editor.test.ts ([283cd48](https://github.com/jxsuite/jx/commit/283cd48ede0ec6601318a6e0beb7e0f7fca67353))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ui bumped to 0.3.0
+
 ## [5.2.0](https://github.com/jxsuite/jx/compare/studio-v5.1.0...studio-v5.2.0) (2026-09-18)
 
 
