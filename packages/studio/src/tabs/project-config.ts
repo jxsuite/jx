@@ -33,14 +33,14 @@
  * from the other side: a config that reached disk without passing through here (the assistant's
  * `write_file`) is put INTO the document rather than left beside it as a rival.
  *
- * **One serialisation.** {@link serializeProjectConfig} is `files/json-layout.ts`'s serializer over
- * the layout the file was read in — byte-for-byte what `files/serialize-document.ts`'s native-JSON
- * branch writes, so a ⌘S on the open tab and a settings edit produce the same file. The predecessor
- * had `null, 2` in `site-context.ts` and `"\t"` in both `settings/contributed-section.ts` and
- * `settings/defs-editor.ts`, so a settings edit re-indented the entire file — every `project.json`
- * in this repository is on disk with two spaces. It was then `JSON.stringify(config, null, 2)`,
- * which agreed with the tab's save and disagreed with the formatter: a one-field edit re-laid every
- * short array in the file (issue 308).
+ * **One serialisation.** {@link serializeProjectConfig} is `@jxsuite/schema/json-layout`'s
+ * serializer over the layout the file was read in — byte-for-byte what
+ * `files/serialize-document.ts`'s native-JSON branch writes, so a ⌘S on the open tab and a settings
+ * edit produce the same file. The predecessor had `null, 2` in `site-context.ts` and `"\t"` in both
+ * `settings/contributed-section.ts` and `settings/defs-editor.ts`, so a settings edit re-indented
+ * the entire file — every `project.json` in this repository is on disk with two spaces. It was then
+ * `JSON.stringify(config, null, 2)`, which agreed with the tab's save and disagreed with the
+ * formatter: a one-field edit re-laid every short array in the file (issue 308).
  *
  * **A no-op edit writes nothing.** A form that re-commits the value it already holds — and every
  * one of these surfaces has such a path — used to rewrite the whole file. A commit now compares the
@@ -67,8 +67,8 @@ import { requireProjectState, setProjectState } from "../state";
 import { setWorkspaceProject, workspace } from "../workspace/workspace";
 import { PROJECT_CONFIG_PATH, createTab, disposeTab } from "./tab";
 import { transactDoc } from "./transact";
-import { deriveJsonLayout, parseJsonDocument, serializeJson } from "../files/json-layout";
-import type { JsonLayout } from "../files/json-layout";
+import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 import type { Tab } from "./tab";
 import type { ProjectConfig } from "@jxsuite/schema/types";

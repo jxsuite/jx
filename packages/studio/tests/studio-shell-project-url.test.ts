@@ -10,7 +10,7 @@ import { bootStudio, waitFor } from "./studio-shell-fixture";
 import { activeTab } from "../src/workspace/workspace";
 import { requireProjectState } from "../src/store";
 import { toRaw } from "../src/reactivity";
-import { deriveJsonLayout } from "../src/files/json-layout";
+import { deriveJsonLayout } from "@jxsuite/schema/json-layout";
 
 const SITE = "/abs/site";
 

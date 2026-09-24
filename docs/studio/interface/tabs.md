@@ -10,7 +10,7 @@ code:
   - packages/studio/src/panels/tab-strip.ts
   - packages/studio/src/files/file-ops.ts
   - packages/studio/src/files/serialize-document.ts
-  - packages/studio/src/files/json-layout.ts
+  - packages/schema/src/json-layout.ts
   - packages/studio/src/commands/context.ts
   - packages/studio/src/tabs/tab.ts
   - packages/studio/src/tabs/project-config.ts
