@@ -1,0 +1,84 @@
+{
+  "chatCalls": [
+    "sendMessage(\"change the text\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"set_text\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"path\\\":[\\\"children\\\",0],\\\"value\\\":\\\"AFTER STOP\\\"}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"cancelled\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "change the text"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "change the text"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"path\":[\"children\",0],\"value\":\"AFTER STOP\"}",
+          "id": "c1",
+          "name": "set_text",
+          "result": null
+        }
+      ]
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0
+}

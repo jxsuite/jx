@@ -1,0 +1,193 @@
+{
+  "name": "v1-orphans",
+  "description": "A payload broken in both directions: it opens on a tool reply whose request the 50-message cap sliced away, and ends on a round whose second call Stop left unanswered. Restored verbatim (the unpaired wire included); the send path's repair drops the reply and seals the call.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_orphans",
+      "sessions": [
+        {
+          "id": "s_orphans",
+          "title": "Continuing",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225605000,
+          "messageCount": 5
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_orphans": [
+      {
+        "id": "msg_T_1",
+        "role": "tool",
+        "toolCallId": "call_cut",
+        "content": "{\"success\":true,\"summary\":\"Added p as child 3 of the root.\"}",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "Continuing.",
+        "timestamp": 1767225602000
+      },
+      { "id": "msg_T_3", "role": "user", "content": "Add two links", "timestamp": 1767225603000 },
+      {
+        "id": "msg_T_4",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225604000,
+        "toolCalls": [
+          {
+            "id": "call_x",
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"One\"}}",
+            "result": null
+          },
+          {
+            "id": "call_y",
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"Two\"}}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_5",
+        "role": "tool",
+        "toolCallId": "call_x",
+        "content": "{\"success\":true,\"summary\":\"Added a as child 1 of the root.\"}",
+        "timestamp": 1767225605000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_orphans",
+    "storeActiveId": "s_orphans",
+    "sessions": [
+      {
+        "id": "s_orphans",
+        "title": "Continuing",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225605000,
+        "messageCount": 5
+      }
+    ],
+    "restored": [
+      {
+        "id": "msg_T_1",
+        "role": "tool",
+        "toolCallId": "call_cut",
+        "content": "{\"success\":true,\"summary\":\"Added p as child 3 of the root.\"}",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "Continuing.",
+        "timestamp": 1767225602000
+      },
+      { "id": "msg_T_3", "role": "user", "content": "Add two links", "timestamp": 1767225603000 },
+      {
+        "id": "msg_T_4",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225604000,
+        "toolCalls": [
+          {
+            "id": "call_x",
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"One\"}}",
+            "result": null
+          },
+          {
+            "id": "call_y",
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"Two\"}}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_5",
+        "role": "tool",
+        "toolCallId": "call_x",
+        "content": "{\"success\":true,\"summary\":\"Added a as child 1 of the root.\"}",
+        "timestamp": 1767225605000
+      }
+    ],
+    "wire": [
+      {
+        "role": "tool",
+        "tool_call_id": "call_cut",
+        "content": "{\"success\":true,\"summary\":\"Added p as child 3 of the root.\"}"
+      },
+      { "role": "assistant", "content": "Continuing." },
+      { "role": "user", "content": "Add two links" },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_x",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"One\"}}"
+            }
+          },
+          {
+            "id": "call_y",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"Two\"}}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_x",
+        "content": "{\"success\":true,\"summary\":\"Added a as child 1 of the root.\"}"
+      }
+    ],
+    "repair": { "dropped": 1, "sealed": 1 },
+    "repairedWire": [
+      { "role": "assistant", "content": "Continuing." },
+      { "role": "user", "content": "Add two links" },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_x",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"One\"}}"
+            }
+          },
+          {
+            "id": "call_y",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"Two\"}}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_y",
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_x",
+        "content": "{\"success\":true,\"summary\":\"Added a as child 1 of the root.\"}"
+      }
+    ],
+    "storage": "unchanged"
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "scenario": "counter-button--round-cap-nothing-applied",
+  "task": "counter-button",
+  "what": "five failing work rounds (truncated args, missing key/node/arg): the cap as an error",
+  "modelRequests": [
+    "user",
+    "user assistant tool",
+    "user assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool tool",
+    "user assistant tool assistant tool assistant tool tool assistant tool"
+  ],
+  "rounds": 5,
+  "toolCallCount": 6,
+  "toolCalls": [
+    {
+      "id": "nop-1",
+      "name": "update_state",
+      "args": {
+        "$unparsed": "{\"key\":\"cou"
+      }
+    },
+    {
+      "id": "nop-2",
+      "name": "update_state",
+      "args": {
+        "key": "counter",
+        "value": 1
+      }
+    },
+    {
+      "id": "nop-3",
+      "name": "set_property",
+      "args": {
+        "path": ["children", 0],
+        "key": "textContent",
+        "value": "0"
+      }
+    },
+    {
+      "id": "nop-3b",
+      "name": "create_component",
+      "args": {
+        "path": "components/counter-display.json",
+        "content": {
+          "tagName": "counter-display"
+        }
+      }
+    },
+    {
+      "id": "nop-4",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "value": "red"
+      }
+    },
+    {
+      "id": "nop-5",
+      "name": "update_state",
+      "args": {
+        "key": "counter",
+        "value": 1
+      }
+    }
+  ],
+  "loopError": "I ran out of tool-call rounds (5) before finishing.\n\nErrors encountered:\n- Failed to parse arguments: JSON Parse error: Unterminated string\n- State key \"counter\" does not exist. Use add_state to create it, or check the name. Current state keys: count\n- No node exists at path [\"children\",0].\n- File operations are not available in this environment.\n- Validation failed: Missing required argument: \"property\"\n\nYou can continue by sending another message, or try a more specific request.",
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "counter-widget",
+    "state": {
+      "count": {
+        "type": "integer",
+        "default": 0
+      }
+    },
+    "children": []
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Add a button that increments a counter, and show the current count above it. Wire up the reactive state."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["update_state"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nop-1",
+      "result": {
+        "success": false,
+        "error": "Failed to parse arguments: JSON Parse error: Unterminated string"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["update_state"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nop-2",
+      "result": {
+        "success": false,
+        "error": "State key \"counter\" does not exist. Use add_state to create it, or check the name. Current state keys: count"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_property", "create_component"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nop-3",
+      "result": {
+        "success": false,
+        "error": "No node exists at path [\"children\",0]."
+      }
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nop-3b",
+      "result": {
+        "success": false,
+        "error": "File operations are not available in this environment."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_style"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nop-4",
+      "result": {
+        "success": false,
+        "error": "Validation failed: Missing required argument: \"property\""
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["update_state"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nop-5",
+      "result": {
+        "success": false,
+        "error": "State key \"counter\" does not exist. Use add_state to create it, or check the name. Current state keys: count"
+      }
+    }
+  ]
+}

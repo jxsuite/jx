@@ -1,0 +1,37 @@
+{
+  "name": "v1-active-payload-missing",
+  "description": "The index names an active session whose payload key is gone. Nothing is restored and the live chat is unbound, while the index still names the session.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_gone",
+      "sessions": [
+        {
+          "id": "s_gone",
+          "title": "Vanished",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    }
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": "s_gone",
+    "sessions": [
+      {
+        "id": "s_gone",
+        "title": "Vanished",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

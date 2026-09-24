@@ -1,0 +1,12 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Interrupted"
+    },
+    {
+      "type": "done",
+      "stopReason": "cancelled"
+    }
+  ]
+}

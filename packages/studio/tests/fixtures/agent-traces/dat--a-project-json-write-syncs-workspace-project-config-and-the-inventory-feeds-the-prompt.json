@@ -1,0 +1,237 @@
+{
+  "chatCalls": [
+    "sendMessage(\"rename the project\")",
+    "toMessagesArray()",
+    "setTokenCount(5628)",
+    "setContextWarning(false)",
+    "setTokenCount(5628)",
+    "setModel(\"gpt-4o\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"write_file\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"content\\\":\\\"{\\\\\\\"name\\\\\\\":\\\\\\\"New Name\\\\\\\"}\\\",\\\"path\\\":\\\"project.json\\\"}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Wrote \\\"project.json\\\" (saved to disk; not undoable with Cmd+Z).\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Wrote \\\\\\\"project.json\\\\\\\" (saved to disk; not undoable with Cmd+Z).\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "rename the project"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "3a592c1a8202",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Current Document",
+          "## Project Context",
+          "## Project Files",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 22473
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page",
+        "list_files",
+        "read_file",
+        "write_file",
+        "search_files",
+        "select_node",
+        "delete_node"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "write_file",
+                  "arguments": "{\"content\":\"{\\\"name\\\":\\\"New Name\\\"}\",\"path\":\"project.json\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":true,\"summary\":\"Wrote \\\"project.json\\\" (saved to disk; not undoable with Cmd+Z).\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":true,\"ok\":true,\"path\":\"project.json\",\"tool\":\"write_file\"})",
+      "endTurn(\"msg#4\") filed 1"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "project.json",
+            "writes": [
+              {
+                "disk": true,
+                "ok": true,
+                "tool": "write_file"
+              }
+            ]
+          }
+        ],
+        "turn": "msg#4"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "rename the project"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"content\":\"{\\\"name\\\":\\\"New Name\\\"}\",\"path\":\"project.json\"}",
+          "id": "c1",
+          "name": "write_file",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Wrote \\\"project.json\\\" (saved to disk; not undoable with Cmd+Z).\"}",
+      "toolCallId": "c1"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "gpt-4o",
+    "status": "idle",
+    "tokenCount": 5628,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 1,
+  "extra": {
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": [
+      "aiChatUrl()",
+      "writeFile(\"project.json\")",
+      "readFile(\"project.json\")",
+      "listExtensionCatalog()"
+    ],
+    "projectRoot": "/proj",
+    "sessions": {
+      "(unscoped)": [],
+      "/proj": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#1 user", "msg#2 assistant", "msg#3 tool"],
+          "title": "rename the project"
+        }
+      ]
+    },
+    "writtenFiles": [
+      {
+        "content": "{\"name\":\"New Name\"}",
+        "path": "project.json"
+      }
+    ],
+    "projectConfigName": {
+      "store": "New Name",
+      "workspace": "New Name"
+    }
+  }
+}

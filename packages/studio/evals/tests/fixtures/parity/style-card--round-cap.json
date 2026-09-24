@@ -1,0 +1,163 @@
+{
+  "scenario": "style-card--round-cap",
+  "task": "style-card",
+  "what": "five work rounds with edits applied and errors seen: the cap as an assistant message",
+  "modelRequests": [
+    "user",
+    "user assistant tool",
+    "user assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool assistant tool"
+  ],
+  "rounds": 6,
+  "toolCallCount": 5,
+  "toolCalls": [
+    {
+      "id": "cap-1",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "property": "backgroundColor",
+        "value": "white"
+      }
+    },
+    {
+      "id": "cap-2",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "property": "padding",
+        "value": "16px"
+      }
+    },
+    {
+      "id": "cap-3",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "property": "borderRadius",
+        "value": "8px"
+      }
+    },
+    {
+      "id": "cap-4",
+      "name": "set_style",
+      "args": {
+        "path": ["children", 1],
+        "property": "color",
+        "value": "black"
+      }
+    },
+    {
+      "id": "cap-5",
+      "name": "read_document",
+      "args": {
+        "path": ["children", 0]
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "feature-card",
+    "children": [
+      {
+        "tagName": "h2",
+        "textContent": "Fast by default"
+      }
+    ],
+    "style": {
+      "backgroundColor": "white",
+      "padding": "16px",
+      "borderRadius": "8px"
+    }
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Give this card a white background, 16px of padding, and rounded 8px corners. Leave the heading text unchanged."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_style"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cap-1",
+      "result": {
+        "success": true,
+        "summary": "Set style \"backgroundColor\" at []."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_style"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cap-2",
+      "result": {
+        "success": true,
+        "summary": "Set style \"padding\" at []."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_style"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cap-3",
+      "result": {
+        "success": true,
+        "summary": "Set style \"borderRadius\" at []."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_style"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cap-4",
+      "result": {
+        "success": false,
+        "error": "No node exists at path [\"children\",1]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["read_document"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cap-5",
+      "result": {
+        "success": true,
+        "data": {
+          "tagName": "h2",
+          "textContent": "Fast by default"
+        }
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "I ran out of tool-call rounds (5) before finishing.\n\nChanges applied so far:\n- Set style \"backgroundColor\" at [].\n- Set style \"padding\" at [].\n- Set style \"borderRadius\" at [].\n\nErrors encountered:\n- No node exists at path [\"children\",1].\n\nYou can continue by sending another message, or try a more specific request."
+    }
+  ]
+}

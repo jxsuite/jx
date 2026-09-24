@@ -1,0 +1,43 @@
+{
+  "name": "v1-payload-not-array",
+  "description": "The active payload is valid JSON but not an array (a wrapper object). loadSession returns null for it, so nothing is restored.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_wrapped",
+      "sessions": [
+        {
+          "id": "s_wrapped",
+          "title": "Wrapped",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_wrapped": {
+      "messages": [
+        { "id": "w_1", "role": "user", "content": "Wrapped", "timestamp": 1767225601000 },
+        { "id": "w_2", "role": "assistant", "content": "Not an array", "timestamp": 1767225602000 }
+      ]
+    }
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": "s_wrapped",
+    "sessions": [
+      {
+        "id": "s_wrapped",
+        "title": "Wrapped",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

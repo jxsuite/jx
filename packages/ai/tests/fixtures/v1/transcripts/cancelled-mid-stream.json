@@ -1,0 +1,15 @@
+{
+  "name": "cancelled-mid-stream",
+  "description": "The author pressed Stop while the reply streamed. cancelStream removes the partial assistant message, text and any open tool call, so the wire carries the user's message and nothing of the reply.",
+  "shapes": ["cancelled-mid-stream"],
+  "script": [
+    ["sendMessage", "Rewrite the intro"],
+    ["appendDelta", "Here is a tighter"],
+    ["appendToolCallStart", "call_1", "set_text"],
+    ["cancelStream"]
+  ],
+  "messages": [
+    { "id": "msg_T_1", "role": "user", "content": "Rewrite the intro", "timestamp": 1767225601000 }
+  ],
+  "wire": [{ "role": "user", "content": "Rewrite the intro" }]
+}

@@ -1,0 +1,157 @@
+{
+  "name": "v1-tool-results-populated",
+  "description": "Tool-call records that carry their results (success and failure), as a chat-state consumer that attached them persists them. Restored verbatim; the results never reach the wire.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_results",
+      "sessions": [
+        {
+          "id": "s_results",
+          "title": "Style the title",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225605000,
+          "messageCount": 5
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_results": [
+      { "id": "msg_T_1", "role": "user", "content": "Style the title", "timestamp": 1767225601000 },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225602000,
+        "toolCalls": [
+          {
+            "id": "call_ok",
+            "name": "update_style",
+            "arguments": "{\"path\":[\"children\",0],\"style\":{\"color\":\"red\"}}",
+            "result": { "success": true, "summary": "Styled h1." }
+          },
+          {
+            "id": "call_bad",
+            "name": "update_style",
+            "arguments": "{\"path\":[\"children\",9],\"style\":{\"color\":\"red\"}}",
+            "result": { "success": false, "error": "No node at path [\"children\",9]." }
+          }
+        ]
+      },
+      {
+        "id": "msg_T_3",
+        "role": "tool",
+        "toolCallId": "call_ok",
+        "content": "{\"success\":true,\"summary\":\"Styled h1.\"}",
+        "timestamp": 1767225603000
+      },
+      {
+        "id": "msg_T_4",
+        "role": "tool",
+        "toolCallId": "call_bad",
+        "content": "{\"success\":false,\"error\":\"No node at path [\\\"children\\\",9].\"}",
+        "timestamp": 1767225604000
+      },
+      {
+        "id": "msg_T_5",
+        "role": "assistant",
+        "content": "The title is red; there is no tenth child.",
+        "timestamp": 1767225605000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_results",
+    "storeActiveId": "s_results",
+    "sessions": [
+      {
+        "id": "s_results",
+        "title": "Style the title",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225605000,
+        "messageCount": 5
+      }
+    ],
+    "restored": [
+      { "id": "msg_T_1", "role": "user", "content": "Style the title", "timestamp": 1767225601000 },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225602000,
+        "toolCalls": [
+          {
+            "id": "call_ok",
+            "name": "update_style",
+            "arguments": "{\"path\":[\"children\",0],\"style\":{\"color\":\"red\"}}",
+            "result": { "success": true, "summary": "Styled h1." }
+          },
+          {
+            "id": "call_bad",
+            "name": "update_style",
+            "arguments": "{\"path\":[\"children\",9],\"style\":{\"color\":\"red\"}}",
+            "result": { "success": false, "error": "No node at path [\"children\",9]." }
+          }
+        ]
+      },
+      {
+        "id": "msg_T_3",
+        "role": "tool",
+        "toolCallId": "call_ok",
+        "content": "{\"success\":true,\"summary\":\"Styled h1.\"}",
+        "timestamp": 1767225603000
+      },
+      {
+        "id": "msg_T_4",
+        "role": "tool",
+        "toolCallId": "call_bad",
+        "content": "{\"success\":false,\"error\":\"No node at path [\\\"children\\\",9].\"}",
+        "timestamp": 1767225604000
+      },
+      {
+        "id": "msg_T_5",
+        "role": "assistant",
+        "content": "The title is red; there is no tenth child.",
+        "timestamp": 1767225605000
+      }
+    ],
+    "wire": [
+      { "role": "user", "content": "Style the title" },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_ok",
+            "type": "function",
+            "function": {
+              "name": "update_style",
+              "arguments": "{\"path\":[\"children\",0],\"style\":{\"color\":\"red\"}}"
+            }
+          },
+          {
+            "id": "call_bad",
+            "type": "function",
+            "function": {
+              "name": "update_style",
+              "arguments": "{\"path\":[\"children\",9],\"style\":{\"color\":\"red\"}}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_ok",
+        "content": "{\"success\":true,\"summary\":\"Styled h1.\"}"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_bad",
+        "content": "{\"success\":false,\"error\":\"No node at path [\\\"children\\\",9].\"}"
+      },
+      { "role": "assistant", "content": "The title is red; there is no tenth child." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

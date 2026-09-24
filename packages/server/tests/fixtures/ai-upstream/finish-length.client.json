@@ -1,0 +1,12 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "The list continues: one, two,"
+    },
+    {
+      "type": "done",
+      "stopReason": "length"
+    }
+  ]
+}

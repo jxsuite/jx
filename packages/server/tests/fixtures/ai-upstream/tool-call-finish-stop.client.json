@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "type": "tool_call_start",
+      "id": "call_wai_1",
+      "name": "set_text"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_wai_1",
+      "args": "{\"path\":[\"children\",0],\"value\":\"Hello\"}"
+    },
+    {
+      "type": "tool_call_end",
+      "id": "call_wai_1"
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ]
+}

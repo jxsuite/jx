@@ -1,0 +1,141 @@
+{
+  "chatCalls": [
+    "sendMessage(\"earlier question\")",
+    "toMessagesArray()",
+    "setTokenCount(5519)",
+    "setContextWarning(false)",
+    "setTokenCount(5519)",
+    "setModel(\"gpt-4o\")",
+    "toMessagesArray()",
+    "appendDelta(\"Earlier reply\")",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "earlier question"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "168ec6a4495e",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Current Document",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 22042
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_project",
+        "list_starters",
+        "select_node",
+        "delete_node"
+      ]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "earlier question"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "Earlier reply"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "gpt-4o",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 1,
+  "extra": {
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": ["aiChatUrl()"],
+    "projectRoot": null,
+    "sessions": {
+      "(unscoped)": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#1 user", "msg#2 assistant"],
+          "title": "earlier question"
+        }
+      ]
+    },
+    "writtenFiles": [],
+    "firstSession": "session#1"
+  }
+}

@@ -1,0 +1,220 @@
+{
+  "chatCalls": [
+    "sendMessage(\"add a span\")",
+    "toMessagesArray()",
+    "setTokenCount(5518)",
+    "setContextWarning(false)",
+    "setTokenCount(5518)",
+    "setModel(\"gpt-4o\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"add_child\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"index\\\":1,\\\"node\\\":{\\\"tagName\\\":\\\"span\\\",\\\"textContent\\\":\\\"added\\\"},\\\"parentPath\\\":[]}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Inserted node at [\\\\\\\"children\\\\\\\",1].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "add a span"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "168ec6a4495e",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Current Document",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 22042
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_project",
+        "list_starters",
+        "select_node",
+        "delete_node"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "add_child",
+                  "arguments": "{\"index\":1,\"node\":{\"tagName\":\"span\",\"textContent\":\"added\"},\"parentPath\":[]}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"/project/index.json\",\"tool\":\"Inserted node at [\\\"children\\\",1].\"})",
+      "endTurn(\"msg#4\") filed 1"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "/project/index.json",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Inserted node at [\"children\",1]."
+              }
+            ]
+          }
+        ],
+        "turn": "msg#4"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "add a span"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"index\":1,\"node\":{\"tagName\":\"span\",\"textContent\":\"added\"},\"parentPath\":[]}",
+          "id": "c1",
+          "name": "add_child",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"}",
+      "toolCallId": "c1"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "gpt-4o",
+    "status": "idle",
+    "tokenCount": 5518,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      },
+      {
+        "tagName": "span",
+        "textContent": "added"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 1,
+  "extra": {
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": ["aiChatUrl()"],
+    "projectRoot": null,
+    "sessions": {
+      "(unscoped)": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#1 user", "msg#2 assistant", "msg#3 tool"],
+          "title": "add a span"
+        }
+      ]
+    },
+    "writtenFiles": []
+  }
+}

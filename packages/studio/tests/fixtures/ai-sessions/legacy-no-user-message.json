@@ -1,0 +1,61 @@
+{
+  "name": "legacy-no-user-message",
+  "description": "A legacy store with no user message migrates under the default title.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-history:/proj/demo": [
+      {
+        "id": "msg_T_1",
+        "role": "assistant",
+        "content": "Welcome back.",
+        "timestamp": 1767225601000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_T_1",
+    "storeActiveId": "s_T_1",
+    "sessions": [
+      {
+        "id": "s_T_1",
+        "title": "New chat",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225601000,
+        "messageCount": 1
+      }
+    ],
+    "restored": [
+      {
+        "id": "msg_T_1",
+        "role": "assistant",
+        "content": "Welcome back.",
+        "timestamp": 1767225601000
+      }
+    ],
+    "wire": [{ "role": "assistant", "content": "Welcome back." }],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {
+      "jx-ai-chat-session:/proj/demo:s_T_1": [
+        {
+          "id": "msg_T_1",
+          "role": "assistant",
+          "content": "Welcome back.",
+          "timestamp": 1767225601000
+        }
+      ],
+      "jx-ai-chat-sessions:/proj/demo": {
+        "version": 1,
+        "activeId": "s_T_1",
+        "sessions": [
+          {
+            "id": "s_T_1",
+            "title": "New chat",
+            "createdAt": 1767225601000,
+            "updatedAt": 1767225601000,
+            "messageCount": 1
+          }
+        ]
+      }
+    }
+  }
+}

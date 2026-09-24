@@ -1,0 +1,20 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Héllo"
+    },
+    {
+      "type": "delta",
+      "content": ", 世界"
+    },
+    {
+      "type": "delta",
+      "content": " 👋"
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ]
+}

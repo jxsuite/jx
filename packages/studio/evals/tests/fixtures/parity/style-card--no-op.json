@@ -1,0 +1,40 @@
+{
+  "scenario": "style-card--no-op",
+  "task": "style-card",
+  "what": "the model answers in text and edits nothing",
+  "modelRequests": ["user"],
+  "rounds": 1,
+  "toolCallCount": 0,
+  "toolCalls": [],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "feature-card",
+    "children": [
+      {
+        "tagName": "h2",
+        "textContent": "Fast by default"
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Give this card a white background, 16px of padding, and rounded 8px corners. Leave the heading text unchanged."
+    },
+    {
+      "role": "assistant",
+      "content": "Sure, the card could use some styling."
+    }
+  ]
+}

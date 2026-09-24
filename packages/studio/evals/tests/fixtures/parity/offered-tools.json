@@ -1,0 +1,14 @@
+{
+  "tools": [
+    "read_document",
+    "set_property",
+    "add_child",
+    "set_style",
+    "set_text",
+    "add_state",
+    "update_state",
+    "move_node",
+    "create_component",
+    "create_page"
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "v1-no-active-session",
+  "description": "activeId null (the author pressed New Chat): a fresh chat, nothing restored. The index is stored out of updatedAt order and listSessions returns it as stored; only writes sort.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": null,
+      "sessions": [
+        {
+          "id": "s_one",
+          "title": "First",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        },
+        {
+          "id": "s_two",
+          "title": "Second",
+          "createdAt": 1767225603000,
+          "updatedAt": 1767225604000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_one": [
+      { "id": "one_1", "role": "user", "content": "First", "timestamp": 1767225601000 },
+      { "id": "one_2", "role": "assistant", "content": "One", "timestamp": 1767225602000 }
+    ],
+    "jx-ai-chat-session:/proj/demo:s_two": [
+      { "id": "two_1", "role": "user", "content": "Second", "timestamp": 1767225603000 },
+      { "id": "two_2", "role": "assistant", "content": "Two", "timestamp": 1767225604000 }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": null,
+    "sessions": [
+      {
+        "id": "s_one",
+        "title": "First",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      },
+      {
+        "id": "s_two",
+        "title": "Second",
+        "createdAt": 1767225603000,
+        "updatedAt": 1767225604000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

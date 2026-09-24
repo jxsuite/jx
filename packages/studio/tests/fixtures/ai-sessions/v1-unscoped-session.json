@@ -1,0 +1,67 @@
+{
+  "name": "v1-unscoped-session",
+  "description": "No project open: the unscoped keys (no root segment), as a bootstrap conversation leaves them before create_project re-keys it.",
+  "root": "",
+  "storage": {
+    "jx-ai-chat-sessions": {
+      "version": 1,
+      "activeId": "s_bootstrap",
+      "sessions": [
+        {
+          "id": "s_bootstrap",
+          "title": "Start a portfolio site",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:s_bootstrap": [
+      {
+        "id": "boot_1",
+        "role": "user",
+        "content": "Start a portfolio site",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "boot_2",
+        "role": "assistant",
+        "content": "Let's pick a starter first.",
+        "timestamp": 1767225602000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_bootstrap",
+    "storeActiveId": "s_bootstrap",
+    "sessions": [
+      {
+        "id": "s_bootstrap",
+        "title": "Start a portfolio site",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      {
+        "id": "boot_1",
+        "role": "user",
+        "content": "Start a portfolio site",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "boot_2",
+        "role": "assistant",
+        "content": "Let's pick a starter first.",
+        "timestamp": 1767225602000
+      }
+    ],
+    "wire": [
+      { "role": "user", "content": "Start a portfolio site" },
+      { "role": "assistant", "content": "Let's pick a starter first." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

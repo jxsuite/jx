@@ -1,0 +1,168 @@
+{
+  "name": "legacy-single-conversation",
+  "description": "The pre-session store (jx-ai-chat-history:<root>) migrates on first read: one session, titled from the first user message, spanning the earliest to latest timestamp. The legacy key is removed and the migrated session restored.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-history:/proj/demo": [
+      {
+        "id": "msg_T_1",
+        "role": "user",
+        "content": "Build me a landing page",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225602000,
+        "reasoningContent": "A heading goes first.",
+        "toolCalls": [
+          {
+            "id": "call_1",
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\"}}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_3",
+        "role": "tool",
+        "toolCallId": "call_1",
+        "content": "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}",
+        "timestamp": 1767225603000
+      },
+      {
+        "id": "msg_T_4",
+        "role": "assistant",
+        "content": "Added a heading.",
+        "timestamp": 1767225604000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_T_1",
+    "storeActiveId": "s_T_1",
+    "sessions": [
+      {
+        "id": "s_T_1",
+        "title": "Build me a landing page",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225604000,
+        "messageCount": 4
+      }
+    ],
+    "restored": [
+      {
+        "id": "msg_T_1",
+        "role": "user",
+        "content": "Build me a landing page",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225602000,
+        "reasoningContent": "A heading goes first.",
+        "toolCalls": [
+          {
+            "id": "call_1",
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\"}}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_3",
+        "role": "tool",
+        "toolCallId": "call_1",
+        "content": "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}",
+        "timestamp": 1767225603000
+      },
+      {
+        "id": "msg_T_4",
+        "role": "assistant",
+        "content": "Added a heading.",
+        "timestamp": 1767225604000
+      }
+    ],
+    "wire": [
+      { "role": "user", "content": "Build me a landing page" },
+      {
+        "role": "assistant",
+        "content": null,
+        "reasoning_content": "A heading goes first.",
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\"}}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}"
+      },
+      { "role": "assistant", "content": "Added a heading." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {
+      "jx-ai-chat-session:/proj/demo:s_T_1": [
+        {
+          "id": "msg_T_1",
+          "role": "user",
+          "content": "Build me a landing page",
+          "timestamp": 1767225601000
+        },
+        {
+          "id": "msg_T_2",
+          "role": "assistant",
+          "content": "",
+          "timestamp": 1767225602000,
+          "reasoningContent": "A heading goes first.",
+          "toolCalls": [
+            {
+              "id": "call_1",
+              "name": "add_child",
+              "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\"}}",
+              "result": null
+            }
+          ]
+        },
+        {
+          "id": "msg_T_3",
+          "role": "tool",
+          "toolCallId": "call_1",
+          "content": "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}",
+          "timestamp": 1767225603000
+        },
+        {
+          "id": "msg_T_4",
+          "role": "assistant",
+          "content": "Added a heading.",
+          "timestamp": 1767225604000
+        }
+      ],
+      "jx-ai-chat-sessions:/proj/demo": {
+        "version": 1,
+        "activeId": "s_T_1",
+        "sessions": [
+          {
+            "id": "s_T_1",
+            "title": "Build me a landing page",
+            "createdAt": 1767225601000,
+            "updatedAt": 1767225604000,
+            "messageCount": 4
+          }
+        ]
+      }
+    }
+  }
+}

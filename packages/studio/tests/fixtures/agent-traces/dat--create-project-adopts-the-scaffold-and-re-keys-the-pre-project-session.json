@@ -1,0 +1,189 @@
+{
+  "chatCalls": [
+    "sendMessage(\"bootstrap a site\")",
+    "toMessagesArray()",
+    "setTokenCount(5080)",
+    "setContextWarning(false)",
+    "setTokenCount(5080)",
+    "setModel(\"gpt-4o\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"create_project\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"location\\\":\\\"/home/dev/Sites\\\",\\\"name\\\":\\\"Fresh Site\\\"}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Created project \\\"Fresh Site\\\" at /home/dev/Sites/fresh-site and opened it. The file tools (list_files, read_file, write_file) and document tools are now available — start with list_files to see the scaffolded pages, layouts, and components.\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Created project \\\\\\\"Fresh Site\\\\\\\" at /home/dev/Sites/fresh-site and opened it. The file tools (list_files, read_file, write_file) and document tools are now available — start with list_files to see the scaffolded pages, layouts, and components.\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendDelta(\"Project ready\")",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "bootstrap a site"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "a3feaee4c6dd",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 20286
+      },
+      "tools": ["ask_user", "create_project", "list_starters"]
+    },
+    {
+      "round": 2,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "create_project",
+                  "arguments": "{\"location\":\"/home/dev/Sites\",\"name\":\"Fresh Site\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":true,\"summary\":\"Created project \\\"Fresh Site\\\" at /home/dev/Sites/fresh-site and opened it. The file tools (list_files, read_file, write_file) and document tools are now available — start with list_files to see the scaffolded pages, layouts, and components.\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": [
+        "ask_user",
+        "create_component",
+        "create_page",
+        "list_files",
+        "read_file",
+        "write_file",
+        "search_files"
+      ]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#4\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "bootstrap a site"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"location\":\"/home/dev/Sites\",\"name\":\"Fresh Site\"}",
+          "id": "c1",
+          "name": "create_project",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Created project \\\"Fresh Site\\\" at /home/dev/Sites/fresh-site and opened it. The file tools (list_files, read_file, write_file) and document tools are now available — start with list_files to see the scaffolded pages, layouts, and components.\"}",
+      "toolCallId": "c1"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "Project ready"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "gpt-4o",
+    "status": "idle",
+    "tokenCount": 5080,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": [
+      "aiChatUrl()",
+      "createProject()",
+      "activate(\"/home/dev/Sites/fresh-site\")",
+      "gitStatus()",
+      "gitInit()"
+    ],
+    "projectRoot": "/home/dev/Sites/fresh-site",
+    "sessions": {
+      "(unscoped)": [],
+      "/home/dev/Sites/fresh-site": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#1 user", "msg#2 assistant", "msg#3 tool", "msg#4 assistant"],
+          "title": "bootstrap a site"
+        }
+      ]
+    },
+    "writtenFiles": []
+  }
+}
