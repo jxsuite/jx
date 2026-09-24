@@ -22,6 +22,7 @@
     "./packages": "./src/packages.ts",
     "./project-server": "./src/project-server.ts",
     "./oauth-loopback": "./src/oauth-loopback.ts",
+    "./net-guard": "./src/net-guard.ts",
     "./live-preview": "./src/live-preview.ts",
     "./site-preview": "./src/site-preview.ts",
     "./refactor": "./src/refactor/index.ts",

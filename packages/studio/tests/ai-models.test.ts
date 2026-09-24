@@ -21,9 +21,10 @@ import {
   resetModelCache,
   isManagedProxy,
   isProxyConfigured,
+  siblingRoute,
 } from "../src/services/ai-models";
 
-installMockPlatform();
+const { platform } = installMockPlatform();
 
 let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
   Response.json({ models: [] }, { status: 200 });
@@ -63,6 +64,29 @@ describe("fetchAvailableModels", () => {
       { id: "gpt-4o", name: "gpt-4o" },
       { id: "x", name: "Model X" },
     ]);
+  });
+
+  /* The desktop's shared server gates the models route with the same per-process token as chat,
+     carried in the query of an ABSOLUTE chat URL. A models URL that dropped it would be refused, the
+     probe would throw, and every AI option on desktop would disappear with nothing failing here. */
+  test("keeps the chat URL's token when deriving the models URL", async () => {
+    const original = platform.aiChatUrl;
+    platform.aiChatUrl = () => "http://127.0.0.1:9/__studio/ai/chat?token=t0k";
+    try {
+      await fetchAvailableModels({ force: true });
+      expect(fetchCalls.at(-1)!.url).toBe("http://127.0.0.1:9/__studio/ai/models?token=t0k");
+    } finally {
+      platform.aiChatUrl = original;
+    }
+  });
+
+  test("siblingRoute keeps the query on absolute and root-relative URLs", () => {
+    expect(siblingRoute("http://127.0.0.1:9/__studio/ai/chat?token=t", "models")).toBe(
+      "http://127.0.0.1:9/__studio/ai/models?token=t",
+    );
+    expect(siblingRoute("/__studio__/ai/chat?token=t", "models")).toBe(
+      "/__studio__/ai/models?token=t",
+    );
   });
 
   test("forwards stored credentials as headers, omitting empty ones", async () => {
