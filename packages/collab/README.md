@@ -24,7 +24,7 @@ The CRDT granularity deliberately equals Studio's op-log granularity: mutators e
 - `applyDocOpsToY(doc, ops, origin)` replays Studio's recorded forward `JxDocOp`s onto the Y tree in one origin-tagged transaction (`LOCAL_ORIGIN` for user edits, `MIRROR_ORIGIN` for derived writes, `SEED_ORIGIN` for bootstraps).
 - `yEventsToDocOps(events)` converts a remote transaction's deep events back into `JxDocOp`s. Call it **inside** the `observeDeep` callback. It returns `null` for shapes it cannot convert safely; reconcile by diffing instead.
 - `diffDocs(a, b)` produces ops transforming `a` into `b` (invariant: `apply(clone(a), diff(a,b)) ≡ b`); returns `null` past `maxOps`, in which case `replaceYStructure()` hard-replaces and bumps `meta.canonicalRev` so stale mirror writes are discarded.
-- `applyDocOpToDoc` (in `./ops`, yjs-free) is the canonical plain-JSON applier shared with Studio's history replay and canvas shadow doc.
+- `applyDocOpToDoc`, `inverseOf` and `applyDocOpsWithInverse` (in `./ops`, yjs-free) re-export the canonical plain-JSON op vocabulary from `@jxsuite/schema/doc-ops`, shared with Studio's history replay and the canvas shadow doc, so a host without yjs can apply the same ops.
 
 ## The wire envelope (`./envelope`)
 
