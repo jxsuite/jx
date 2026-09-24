@@ -772,9 +772,10 @@ export interface AiModelsResponse {
    * lapsed", and those are different sentences on screen — the second one explains a thing that
    * used to work. `cf_upstream_error` is the third case and deliberately arrives WITH `configured:
    * true`: Cloudflare being briefly unreachable is not a reason to send someone round an OAuth flow
-   * that fixes nothing.
+   * that fixes nothing. `cf_account_required` is a live grant with no account chosen (ai.md §2.1):
+   * re-authorizing lands back in the same state, so it calls for the account picker instead.
    */
-  code?: "cf_not_connected" | "cf_reconnect_required" | "cf_upstream_error";
+  code?: "cf_not_connected" | "cf_reconnect_required" | "cf_account_required" | "cf_upstream_error";
 }
 
 // ─── Cloudflare publish surface ──────────────────────────────────────────────
