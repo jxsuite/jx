@@ -28,7 +28,7 @@
  * editing. That is the point.
  */
 
-import { cloneValue } from "@jxsuite/collab/ops";
+import { cloneValue } from "@jxsuite/schema/doc-ops";
 import { notePreviewOverlayEdit } from "../preview/preview-overlay";
 import { recordDocOp } from "../tabs/patch-ops";
 import { mutateUpdateFrontmatter, transactDoc } from "../tabs/transact";

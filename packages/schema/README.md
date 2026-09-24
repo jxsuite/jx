@@ -42,6 +42,12 @@ const schema = await generateSchema(); // component meta-schema object
 const valid = await validateDocument(doc); // validate a Jx document
 ```
 
+## Documents as data
+
+A subpath lets any host edit a Jx document the way Studio does, with no DOM, no reactive store and no yjs:
+
+- **`@jxsuite/schema/doc-ops`** is the document-op vocabulary. A `JxDocOp` (`set-key`, `insert-child`, `remove-child`, `set-child`, `move-child`) is a value-carrying mutation addressed by `JxPath`. `applyDocOpToDoc(doc, op)` applies one to a plain tree; `inverseOf(doc, op)` computes the op that undoes it, against the document as it stands before the op, in the coordinates of the document after it; `applyDocOpsWithInverse(doc, ops)` applies a sequence and answers each forward/inverse pair. Studio's history, the canvas iframe's shadow document and the collab bridge all replay through this one implementation, and `@jxsuite/collab/ops` re-exports it. Undoing an insert or move into a node that had no `children` leaves `children: []` behind, as Studio's history always has.
+
 ## Component schema coverage
 
 - **`tagName`**: all standard HTML element names from `@webref/elements`
