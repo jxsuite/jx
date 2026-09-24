@@ -4,7 +4,7 @@
  * Outcome assertions (testing-plan §3.1 Completeness) check _what the document became_, independent
  * of which tools the model used to get there.
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 3.
+ * See docs/extending/contributing/ai-evals.md.
  */
 
 /** Depth-first list of every node in the document (root included). */

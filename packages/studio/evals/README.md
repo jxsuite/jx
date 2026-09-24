@@ -1,6 +1,6 @@
 # AI assistant eval harness
 
-A Karpathy-`autoresearch`-style self-improvement loop for the Jx Studio AI document assistant. The **model is held fixed**. What we iterate on is the _scaffolding_: the system prompt ([ai-system-prompt.js](../src/services/ai-system-prompt.js)), the tool schemas + validation-error translations ([ai-tools.js](../src/services/ai-tools.js)), and the few-shot examples. A stable golden-task suite is the benchmark; every scaffolding change is measured against it.
+A Karpathy-`autoresearch`-style self-improvement loop for the Jx Studio AI document assistant. The **model is held fixed**. What we iterate on is the _scaffolding_: the system prompt ([ai-system-prompt.ts](../src/services/ai-system-prompt.ts)), the tool schemas + validation-error translations ([ai-tools.ts](../src/services/ai-tools.ts)), and the few-shot examples. A stable golden-task suite is the benchmark; every scaffolding change is measured against it.
 
 It exercises the **real** production loop (`runAgentLoop` + `@jxsuite/ai` + `ai-tools`), swapping only the fake test client for a real OpenAI-compatible client and adding graders + a scoreboard.
 
@@ -9,11 +9,11 @@ It exercises the **real** production loop (`runAgentLoop` + `@jxsuite/ai` + `ai-
 ```
 evals/
   tasks/*.json        golden tasks (one isolated, unambiguous spec each)
-  runner.js           drive the real loop headlessly per task; pass@k / pass^k
-  render-critic.js    PRIMARY grader — shadow-render the result with @jxsuite/runtime
-  schema-grader.js    baseline grader — reuse validateDoc() (ajv)
-  scoreboard.js       aggregate → results.json + transcripts + report.md (+ regression diff)
-  cli.js              `bun run eval` entrypoint
+  runner.ts           drive the real loop headlessly per task; pass@k / pass^k
+  render-critic.ts    PRIMARY grader — shadow-render the result with @jxsuite/runtime
+  schema-grader.ts    baseline grader — reuse validateDoc() (ajv)
+  scoreboard.ts       aggregate → results.json + transcripts + report.md (+ regression diff)
+  cli.ts              `bun run eval` entrypoint
   runs/               local-only run artifacts (gitignored)
   tests/              grader/runner unit tests (scripted client, no network)
 ```
@@ -28,7 +28,7 @@ OPENAI_API_KEY=sk-… bun run eval
 OPENAI_API_KEY=sk-… bun run eval --tasks add-nav-to-header --k 1
 ```
 
-`OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional, mirroring the server proxy config in [packages/server/src/ai-api.js](../../server/src/ai-api.js). The CLI exits non-zero if any task regresses vs the previous run (CI gate). Each run writes `runs/<stamp>/report.md` plus one `transcripts/<task>-<trial>.md` per trial. **Read these**; you can't trust a grader you haven't watched (Anthropic, _Demystifying evals_).
+`OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional, mirroring the server proxy config in [packages/server/src/ai-api.ts](../../server/src/ai-api.ts). The CLI exits non-zero if any task regresses vs the previous run (CI gate). Each run writes `runs/<stamp>/report.md` plus one `transcripts/<task>-<trial>.md` per trial. **Read these**; you can't trust a grader you haven't watched (Anthropic, _Demystifying evals_).
 
 ## Grading
 
@@ -48,4 +48,4 @@ The model never changes. Only the scaffolding does, and that is what makes two r
 
 ## Out of scope (this phase)
 
-Runtime UX sensors in the live assistant, LLM-as-judge grading, token accounting (the streaming client doesn't yet surface usage), and fully-autonomous overnight self-editing. The render-critic error format is intentionally LLM-ready so a later phase can wire it into the live loop or an automated proposer.
+Runtime UX sensors in the live assistant, LLM-as-judge grading, per-task token accounting (the stream now carries a `usage` frame, but the scoreboard does not aggregate it yet), and fully-autonomous overnight self-editing. The render-critic error format is intentionally LLM-ready so a later phase can wire it into the live loop or an automated proposer.

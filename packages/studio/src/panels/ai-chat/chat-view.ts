@@ -4,7 +4,7 @@
  *
  * Message-row anatomy: user messages render as right-aligned bubbles (attached-context blocks
  * become chips), assistant messages render sanitized markdown plus tool-call chips, tool messages
- * surface failures only (ADR §11.3), the streaming tail renders as plain text with a cursor
+ * surface failures only, the streaming tail renders as plain text with a cursor
  * (markdown parses once on finalize), and chat errors get a danger row with recovery advice and a
  * Retry. **None of that is markup here any more** — `surfaces/ai-chat.json` draws it and this
  * module decides what it says, which is the same split the file always had with a document on the
@@ -535,8 +535,8 @@ export function projectRows(opts: MessageListOptions): ChatRowView[] {
       continue;
     }
     if (msg.role === "tool") {
-      // Show only failed tool results so the user knows why an edit didn't land (ADR §11.3).
-      // Successful tool results stay hidden to reduce noise.
+      /* Show only failed tool results so the user knows why an edit didn't land. Successful tool
+         results stay hidden to reduce noise; the chip on the call already states its outcome. */
       const parsed = tryParseToolResult(msg.content);
       if (parsed && !parsed.success) {
         rows.push({
