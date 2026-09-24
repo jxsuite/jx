@@ -11,6 +11,7 @@
 
 import { reactive } from "@vue/reactivity";
 
+import type { StreamUsageEvent } from "./streaming-client.ts";
 import type { ToolResult } from "./tools.ts";
 
 export type ChatState = "idle" | "streaming" | "error";
@@ -40,6 +41,34 @@ export interface ToolCallRecord {
   result?: ToolResult | null;
 }
 
+/**
+ * The provider's own count for the last request, and where in the transcript it was taken.
+ *
+ * `messageCount` and `lastMessageId` are what make the figure reusable: every message up to and
+ * including `lastMessageId` was part of a request the provider counted, so a later budget needs to
+ * estimate only what was added since, rather than re-estimating the whole history at four
+ * characters per token. A transcript whose message at that position is no longer `lastMessageId`
+ * has been trimmed, rewound, repaired or replaced, and the figure no longer describes it — length
+ * alone cannot say so, because a retry re-grows the transcript to the same length.
+ */
+export interface ChatUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  messageCount: number;
+  /** The id of the last message the count covers (`messages[messageCount - 1]`). */
+  lastMessageId: string;
+  /**
+   * What the counted request leaves in the context for the NEXT request: input plus output, minus
+   * reasoning the provider generated but never streamed. That reasoning (OpenAI's o-series on chat
+   * completions) is billed as output yet is not replayed, so it occupies nothing on the next send.
+   */
+  contextTokens: number;
+  /** The estimate of the system prompt the counted request carried, when the caller supplied it. */
+  systemTokens?: number;
+}
+
 export interface ChatStore {
   messages: Message[];
   status: ChatState;
@@ -49,6 +78,8 @@ export interface ChatStore {
   model: string;
   tokenCount: number;
   contextWarning: boolean;
+  /** The last reported count, or null when none has been reported since the transcript changed. */
+  usage: ChatUsage | null;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -61,6 +92,11 @@ let _idCounter = 0;
 function uid() {
   _idCounter += 1;
   return `msg_${Date.now()}_${_idCounter}`;
+}
+
+/** A token count a budget can use: a finite, non-negative number. */
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 // ─── Factory ─────────────────────────────────────────────────────────────────
@@ -87,6 +123,8 @@ function uid() {
  *   retryLast: () => void;
  *   setModel: (model: string) => void;
  *   setTokenCount: (count: number) => void;
+ *   recordUsage: (usage: StreamUsageEvent, opts?: { systemTokens?: number }) => void;
+ *   clearUsage: () => void;
  *   setContextWarning: (warning: boolean) => void;
  *   toMessagesArray: () => object[];
  * }}
@@ -103,6 +141,7 @@ export function createChatState(opts: { model?: string } = {}) {
     model,
     tokenCount: 0,
     contextWarning: false,
+    usage: null,
   });
 
   let _streamingMessage: Message | null = null;
@@ -333,6 +372,7 @@ export function createChatState(opts: { model?: string } = {}) {
     store.pendingToolCalls = [];
     store.error = null;
     store.contextWarning = false;
+    store.usage = null;
     _streamingMessage = null;
   }
 
@@ -366,6 +406,47 @@ export function createChatState(opts: { model?: string } = {}) {
    */
   function setTokenCount(count: number) {
     store.tokenCount = count;
+  }
+
+  /**
+   * Record the provider's count for the request that just finished. The count covers everything the
+   * request carried plus what it generated, which is the context's size at this point — less any
+   * reasoning the provider billed but never streamed, since the next request cannot replay what it
+   * never received. It replaces the estimate in `tokenCount` rather than adding to it.
+   *
+   * @param {StreamUsageEvent} usage
+   * @param {{ systemTokens?: number }} [extra] - The estimate of the system prompt this request
+   *   carried, so a later budget can add what the prompt has grown by since.
+   */
+  function recordUsage(usage: StreamUsageEvent, extra: { systemTokens?: number } = {}) {
+    /* A backend's frame, trusted no further than its shape: a count that is not a finite,
+       non-negative number would turn every later budget into NaN, and a NaN budget trims history
+       it has no reason to. Such a frame is ignored, and the estimate stands. */
+    if (!isCount(usage.inputTokens) || !isCount(usage.outputTokens)) {
+      return;
+    }
+    const { type: _type, ...counts } = usage;
+    const counted = _streamingMessage ?? store.messages.at(-1);
+    /* Replayed means SENT: `toMessagesArray` drops an assistant turn carrying neither text nor
+       tool calls, reasoning and all, so a turn that only thought is not replayed either. */
+    const replayed = Boolean(
+      counted?.reasoningContent && (counted.content || (counted.toolCalls?.length ?? 0) > 0),
+    );
+    const unreplayed = replayed || !isCount(usage.reasoningTokens) ? 0 : usage.reasoningTokens;
+    const contextTokens = Math.max(0, usage.inputTokens + usage.outputTokens - unreplayed);
+    store.usage = {
+      ...counts,
+      contextTokens,
+      lastMessageId: store.messages.at(-1)?.id ?? "",
+      messageCount: store.messages.length,
+      ...(extra.systemTokens === undefined ? {} : { systemTokens: extra.systemTokens }),
+    };
+    store.tokenCount = contextTokens;
+  }
+
+  /** Forget the last count — the transcript it described has changed underneath it. */
+  function clearUsage() {
+    store.usage = null;
   }
 
   /**
@@ -465,6 +546,8 @@ export function createChatState(opts: { model?: string } = {}) {
     retryLast,
     setModel,
     setTokenCount,
+    recordUsage,
+    clearUsage,
     setContextWarning,
     toMessagesArray,
   });

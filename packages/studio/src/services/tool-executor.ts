@@ -3,7 +3,7 @@
  *
  * Streams a chat round, executes any tool calls the model makes (via a ToolRegistry backed by
  * `transactDoc()`), feeds the results back as `tool` messages, and re-streams — up to a capped
- * number of rounds (spec §10.2, ADR docs/ai-assistant-decision.md §6a).
+ * number of rounds (specs/ai.md §3.2 to §3.4).
  *
  * Two §7.4 honesty rules live here rather than in the panel, because they are properties of the RUN
  * and a panel can only render what the run recorded:
@@ -28,6 +28,7 @@ import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { Tab } from "../tabs/tab";
 import { batchTab, beginBatch, endBatch } from "../tabs/transact";
 import { ensureProxyProbe, resetModelCache } from "./ai-models";
+import { estimatePromptTokens } from "./context-manager";
 import { beginTurn, endTurn } from "./ai-writes";
 import { beginToolCall, beginTurnSignal, endTurnSignal } from "./ai-turn-signal";
 
@@ -149,6 +150,12 @@ export async function runAgentLoop({
             chatState.appendToolCallEnd(event.id);
             break;
           }
+          case "usage": {
+            /* The provider's own count replaces the four-characters-per-token estimate. The prompt
+               it covered is recorded with it, because the next send rebuilds the prompt. */
+            chatState.recordUsage(event, { systemTokens: estimatePromptTokens(systemPrompt) });
+            break;
+          }
           case "done": {
             ({ stopReason } = event);
             break;
@@ -179,12 +186,27 @@ export async function runAgentLoop({
         return;
       }
 
-      if (stopReason !== "tool_calls" || toolCalls.size === 0) {
+      /* The calls the model streamed decide whether tools run, not the finish reason the provider
+         reported beside them. Some OpenAI-compatible backends (Workers AI among them) end a
+         tool-calling turn with `finish_reason: "stop"`, and gating on `tool_calls` dropped those
+         calls unrun — the turn ended looking finished, and the next send sealed them as failures.
+         A call cut off by `length` still runs: its arguments fail to parse, and the model reads
+         that as a tool error it can correct.
+
+         Cancellation is the exception, and it is not a finish reason at all: it is the author
+         pressing Stop. A stopped round runs nothing it streamed, including calls whose arguments
+         were already complete, because Stop is the one control that must not be outrun. */
+      if (toolCalls.size === 0 || stopReason === "cancelled" || signal?.aborted) {
         return;
       }
 
       let didWork = false;
       for (const [id, call] of toolCalls) {
+        /* A Stop that lands between calls (while `ask_user` waits, or during a long import) stops
+           the calls after it too. They stay unanswered, and the send path seals them. */
+        if (signal?.aborted) {
+          return;
+        }
         let result;
         // Published, not passed: `ToolRegistry.execute` takes the args and nothing else.
         beginToolCall(id);

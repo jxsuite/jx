@@ -1,6 +1,7 @@
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
+import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -78,6 +79,175 @@ describe("ai agent loop — integration", () => {
     expect((children[1] as JxMutableNode).tagName).toBe("span");
     expect(tab.history.index).toBe(1); // One undoable transaction
     expect(chatState.status).toBe("idle");
+    disposeTab(tab);
+  });
+
+  /* Workers AI (and other OpenAI-compatible backends) can report `finish_reason: "stop"` on a turn
+     that streamed tool calls. The calls are what decide whether tools run. */
+  test("runs streamed tool calls even when the backend reports a plain stop", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const round = toolCallRound("c1", "add_child", {
+      parentPath: [],
+      index: 1,
+      node: { tagName: "span", textContent: "added" },
+    });
+    round[round.length - 1] = { type: "done", stopReason: "stop" };
+    const client = fakeClient([round, [{ type: "done", stopReason: "stop" }]]);
+
+    chatState.sendMessage("add a span");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    const children = tab.doc.document.children as (JxMutableNode | string)[];
+    expect(children).toHaveLength(2);
+    expect(client.calls()).toBe(2); // The result went back to the model
+    expect(chatState.status).toBe("idle");
+    disposeTab(tab);
+  });
+
+  /* Stop is the one control that must not be outrun. Letting streamed calls run whatever the stop
+     reason regressed this: a call whose arguments were complete when the author pressed Stop was
+     applied anyway, and the loop streamed another round on the aborted signal. */
+  test("a round the author stopped runs nothing it streamed", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const controller = new AbortController();
+    const round = toolCallRound("c1", "set_text", { path: ["children", 0], value: "AFTER STOP" });
+    const client = fakeClient([[...round.slice(0, -1), { type: "done", stopReason: "cancelled" }]]);
+    const inner = client.streamChat.bind(client);
+    client.streamChat = async function* streamChat(...args: Parameters<typeof inner>) {
+      for await (const event of inner(...args)) {
+        if (event.type === "done") {
+          controller.abort(); // The author pressed Stop as the calls finished streaming
+        }
+        yield event;
+      }
+    };
+
+    chatState.sendMessage("change the text");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry,
+      systemPrompt: "",
+      signal: controller.signal,
+    });
+
+    const children = tab.doc.document.children as JxMutableNode[];
+    expect(children[0]).toEqual({ tagName: "p", textContent: "Hello" });
+    expect(client.calls()).toBe(1);
+    expect(chatState.messages.some((m) => m.role === "tool")).toBe(false);
+    disposeTab(tab);
+  });
+
+  /* The finish reason alone, with a signal that is still live: `cancelled` is what every client
+     reports for a Stop, and it must suppress the calls without the abort check's help. */
+  test("a round that ends cancelled runs nothing, even before the signal reads aborted", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const round = toolCallRound("c1", "set_text", { path: ["children", 0], value: "CANCELLED" });
+    const client = fakeClient([[...round.slice(0, -1), { type: "done", stopReason: "cancelled" }]]);
+
+    chatState.sendMessage("change the text");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry,
+      systemPrompt: "",
+      signal: new AbortController().signal,
+    });
+
+    expect((tab.doc.document.children as JxMutableNode[])[0]).toEqual({
+      tagName: "p",
+      textContent: "Hello",
+    });
+    expect(client.calls()).toBe(1);
+    expect(chatState.messages.some((m) => m.role === "tool")).toBe(false);
+    disposeTab(tab);
+  });
+
+  test("a Stop that lands between two calls stops the second", async () => {
+    const tab = makeTab();
+    const controller = new AbortController();
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    registerAiTools(toolRegistry, { getTab: () => tab, validate: async () => [] });
+    const ran: string[] = [];
+    toolRegistry.register(
+      createToolDefinition({
+        name: "first",
+        description: "stops the turn while it runs",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          ran.push("first");
+          controller.abort();
+          return { success: true };
+        },
+      }),
+    );
+    toolRegistry.register(
+      createToolDefinition({
+        name: "second",
+        description: "must not run after the Stop",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          ran.push("second");
+          return { success: true };
+        },
+      }),
+    );
+    const client = fakeClient([
+      [
+        { type: "tool_call_start", id: "a", name: "first" },
+        { type: "tool_call_end", id: "a" },
+        { type: "tool_call_start", id: "b", name: "second" },
+        { type: "tool_call_end", id: "b" },
+        { type: "done", stopReason: "tool_calls" },
+      ],
+    ]);
+
+    chatState.sendMessage("do both");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry: toolRegistry as ToolRegistry,
+      systemPrompt: "",
+      signal: controller.signal,
+    });
+
+    expect(ran).toEqual(["first"]);
+    expect(client.calls()).toBe(1);
+    disposeTab(tab);
+  });
+
+  test("records the provider's usage count on the chat state", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      [
+        { type: "delta", content: "Done." },
+        { type: "usage", inputTokens: 640, outputTokens: 12 },
+        { type: "done", stopReason: "stop" },
+      ],
+    ]);
+
+    chatState.sendMessage("hello");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry,
+      systemPrompt: "p".repeat(400),
+    });
+
+    expect(chatState.usage).toEqual({
+      contextTokens: 652,
+      inputTokens: 640,
+      lastMessageId: chatState.messages[1]!.id,
+      messageCount: 2,
+      outputTokens: 12,
+      systemTokens: 100, // The prompt it covered, recorded so the next send can measure drift
+    });
+    expect(chatState.tokenCount).toBe(652);
     disposeTab(tab);
   });
 

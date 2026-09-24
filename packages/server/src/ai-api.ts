@@ -48,6 +48,55 @@ interface OpenAIStreamChunk {
     };
     finish_reason?: string | null;
   }[];
+  /** The count `stream_options.include_usage` asks for — normally a final chunk with no choices. */
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number } | null;
+    completion_tokens_details?: { reasoning_tokens?: number } | null;
+  } | null;
+}
+
+/** The `usage` frame (`@jxsuite/ai` `StreamUsageEvent`), sent once, immediately before `done`. */
+interface UsageFrame {
+  type: "usage";
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+}
+
+/**
+ * Normalize an upstream usage object into a `usage` frame, or null when it carries no count. The
+ * detail figures are included only when the provider sent them — absent is "not said", not zero.
+ * Mirrors `usageEventFromOpenAI` in `@jxsuite/ai`, which this server does not import.
+ */
+function usageFrame(usage: OpenAIStreamChunk["usage"]): UsageFrame | null {
+  if (!usage || typeof usage.prompt_tokens !== "number") {
+    return null;
+  }
+  const frame: UsageFrame = {
+    type: "usage",
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens ?? 0,
+  };
+  const cached = usage.prompt_tokens_details?.cached_tokens;
+  if (typeof cached === "number") {
+    frame.cachedInputTokens = cached;
+  }
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens;
+  if (typeof reasoning === "number") {
+    frame.reasoningTokens = reasoning;
+  }
+  return frame;
+}
+
+/** The stop reasons the stream reports; any other `finish_reason` keeps it reading. */
+function stopReasonOf(reason: string | null | undefined): string | null {
+  if (reason === "tool_calls" || reason === "length" || reason === "stop") {
+    return reason;
+  }
+  return null;
 }
 
 /** A model entry from the upstream `/models` listing. */
@@ -334,6 +383,29 @@ export async function handleChat(req: Request): Promise<Response> {
       let buffer = "";
 
       const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
+      /* The finish reason is REMEMBERED, not acted on: with `include_usage` the count arrives in a
+         chunk of its own after the finish, and closing the stream on the finish dropped it on every
+         request. The stream ends at `[DONE]` or when the upstream body closes. */
+      let stopReason: string | null = null;
+      let usage: UsageFrame | null = null;
+
+      const closePendingToolCalls = () => {
+        for (const [, tc] of pendingToolCalls) {
+          writeSSE(controller, { type: "tool_call_end", id: tc.id });
+        }
+        pendingToolCalls.clear();
+      };
+
+      /* The stream's last frames: open calls, the count when there is one, then `done` — the count
+         BEFORE `done`, because a reader stops at `done`. */
+      const finish = () => {
+        closePendingToolCalls();
+        if (usage) {
+          writeSSE(controller, usage);
+        }
+        writeSSE(controller, { type: "done", stopReason: stopReason ?? "stop" });
+        controller.close();
+      };
 
       try {
         while (true) {
@@ -354,13 +426,7 @@ export async function handleChat(req: Request): Promise<Response> {
 
             const dataStr = trimmed.slice(6);
             if (dataStr === "[DONE]") {
-              // Emit pending tool call ends
-              for (const [, tc] of pendingToolCalls) {
-                writeSSE(controller, { type: "tool_call_end", id: tc.id });
-              }
-              pendingToolCalls.clear();
-              writeSSE(controller, { type: "done", stopReason: "stop" });
-              controller.close();
+              finish();
               return;
             }
 
@@ -371,18 +437,18 @@ export async function handleChat(req: Request): Promise<Response> {
               continue;
             }
 
+            // Usually a final chunk with no choices, but a provider may put it beside the finish.
+            usage = usageFrame(parsed.usage) ?? usage;
+
             const choice = parsed.choices?.[0];
             if (!choice) {
               continue;
             }
 
             const { delta } = choice;
-            if (!delta) {
-              continue;
-            }
 
             // Text content
-            if (delta.content) {
+            if (delta?.content) {
               writeSSE(controller, { type: "delta", content: delta.content });
             }
 
@@ -390,13 +456,13 @@ export async function handleChat(req: Request): Promise<Response> {
                than dropped: DeepSeek's thinking mode requires every prior turn's reasoning back on
                any request carrying `tools`, so a proxy that swallows these frames makes the NEXT
                round a 400 the client cannot repair. */
-            const reasoning = delta.reasoning_content ?? delta.reasoning;
+            const reasoning = delta?.reasoning_content ?? delta?.reasoning;
             if (typeof reasoning === "string" && reasoning) {
               writeSSE(controller, { type: "reasoning", content: reasoning });
             }
 
             // Tool calls
-            if (delta.tool_calls) {
+            if (delta?.tool_calls) {
               for (const tc of delta.tool_calls) {
                 if (tc.id) {
                   // First appearance
@@ -427,39 +493,17 @@ export async function handleChat(req: Request): Promise<Response> {
               }
             }
 
-            // Finish reason
-            if (choice.finish_reason === "tool_calls") {
-              for (const [, tc] of pendingToolCalls) {
-                writeSSE(controller, { type: "tool_call_end", id: tc.id });
-              }
-              pendingToolCalls.clear();
-              writeSSE(controller, { type: "done", stopReason: "tool_calls" });
-              controller.close();
-              return;
-            }
-
-            if (choice.finish_reason === "stop" || choice.finish_reason === "length") {
-              for (const [, tc] of pendingToolCalls) {
-                writeSSE(controller, { type: "tool_call_end", id: tc.id });
-              }
-              pendingToolCalls.clear();
-              writeSSE(controller, {
-                type: "done",
-                stopReason: choice.finish_reason === "length" ? "length" : "stop",
-              });
-              controller.close();
-              return;
+            // Finish reason: close the calls now, report the reason at the end of the stream.
+            const finished = stopReasonOf(choice.finish_reason);
+            if (finished) {
+              closePendingToolCalls();
+              stopReason = finished;
             }
           }
         }
 
-        // Stream ended without explicit finish_reason
-        for (const [, tc] of pendingToolCalls) {
-          writeSSE(controller, { type: "tool_call_end", id: tc.id });
-        }
-        pendingToolCalls.clear();
-        writeSSE(controller, { type: "done", stopReason: "stop" });
-        controller.close();
+        // Stream ended without `[DONE]`
+        finish();
       } catch (error) {
         void reader.cancel();
         if ((error as Error).name === "AbortError") {
