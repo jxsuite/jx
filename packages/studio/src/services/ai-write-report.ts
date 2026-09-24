@@ -8,14 +8,14 @@
  * with:
  *
  * 1. {@link snapshotBeforeWrite} reads the document's schema errors and render state BEFORE the
- *    write, because the eval signal (ADR docs/ai-assistant-decision.md §6b) is "what did this edit
- *    newly introduce", not "is the document valid": a page that was already broken must not make
- *    every subsequent edit read as the culprit.
+ *    write, because the loop's signal (specs/ai.md §3.1) is "what did this edit newly introduce",
+ *    not "is the document valid": a page that was already broken must not make every subsequent
+ *    edit read as the culprit.
  * 2. {@link reportDocumentWrite} compares AFTER the write, translating each new schema error into a
  *    fix hint the model can act on, running the render check only when rendering worked before,
  *    and appending the soft token-discipline hints to a success.
  *
- * The change stays applied either way (optimistic apply + undo, ADR §5); reporting the errors lets
+ * The change stays applied either way (optimistic apply + undo, specs/ai.md §3.1); reporting the errors lets
  * the agent loop self-correct on the next round.
  *
  * @license MIT
