@@ -1,0 +1,16 @@
+: OPENROUTER PROCESSING
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1727000002-OpenRouterReasoning","provider":"DeepInfra","model":"deepseek/deepseek-r1","object":"chat.completion.chunk","created":1727000002,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"Counting"},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1727000002-OpenRouterReasoning","provider":"DeepInfra","model":"deepseek/deepseek-r1","object":"chat.completion.chunk","created":1727000002,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":" the r's."},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1727000002-OpenRouterReasoning","provider":"DeepInfra","model":"deepseek/deepseek-r1","object":"chat.completion.chunk","created":1727000002,"choices":[{"index":0,"delta":{"role":"assistant","content":"Three.","reasoning":null},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1727000002-OpenRouterReasoning","provider":"DeepInfra","model":"deepseek/deepseek-r1","object":"chat.completion.chunk","created":1727000002,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop","logprobs":null}]}
+
+data: {"id":"gen-1727000002-OpenRouterReasoning","provider":"DeepInfra","model":"deepseek/deepseek-r1","object":"chat.completion.chunk","created":1727000002,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"native_finish_reason":null,"logprobs":null}],"usage":{"prompt_tokens":9,"completion_tokens":31,"total_tokens":40,"completion_tokens_details":{"reasoning_tokens":27}}}
+
+data: [DONE]
+

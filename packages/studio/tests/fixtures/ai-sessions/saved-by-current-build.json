@@ -1,0 +1,347 @@
+{
+  "name": "saved-by-current-build",
+  "description": "Written by the current build, not by hand: four turns through a real createDocumentAssistant (a document tool with reasoning and usage, an answered ask_user, Stop while ask_user waits so the round's second call never runs, then a send that seals it). storage is that run's snapshot; expected is today's loader reading it back.",
+  "root": "/proj/round-trip",
+  "storage": {
+    "jx-ai-chat-session:/proj/round-trip:s_T_1": [
+      {
+        "id": "msg_T_1",
+        "role": "user",
+        "content": "Add a heading to the page",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "I'll add a heading.",
+        "timestamp": 1767225601000,
+        "reasoningContent": "The page has no heading yet.",
+        "toolCalls": [
+          {
+            "id": "call_head",
+            "name": "add_child",
+            "arguments": "{\"index\":0,\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"},\"parentPath\":[]}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_3",
+        "role": "tool",
+        "toolCallId": "call_head",
+        "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",0].\"}",
+        "timestamp": 1767225602000
+      },
+      {
+        "id": "msg_T_4",
+        "role": "assistant",
+        "content": "Added a Welcome heading.",
+        "timestamp": 1767225602000
+      },
+      {
+        "id": "msg_T_5",
+        "role": "user",
+        "content": "Ask me which layout to use",
+        "timestamp": 1767225604000
+      },
+      {
+        "id": "msg_T_6",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225604000,
+        "toolCalls": [
+          {
+            "id": "call_layout",
+            "name": "ask_user",
+            "arguments": "{\"options\":[\"One column\",\"Two columns\"],\"question\":\"Which layout should the page use?\"}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_7",
+        "role": "tool",
+        "toolCallId": "call_layout",
+        "content": "{\"success\":true,\"data\":{\"answer\":\"Two columns\",\"skipped\":false},\"summary\":\"The user answered: \\\"Two columns\\\"\"}",
+        "timestamp": 1767225605000
+      },
+      {
+        "id": "msg_T_8",
+        "role": "assistant",
+        "content": "Two columns it is.",
+        "timestamp": 1767225605000
+      },
+      {
+        "id": "msg_T_9",
+        "role": "user",
+        "content": "Style the footer, then add a contact link",
+        "timestamp": 1767225607000
+      },
+      {
+        "id": "msg_T_10",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225607000,
+        "toolCalls": [
+          {
+            "id": "call_footer",
+            "name": "ask_user",
+            "arguments": "{\"question\":\"Dark or light footer?\"}",
+            "result": null
+          },
+          {
+            "id": "call_link",
+            "name": "add_child",
+            "arguments": "{\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"},\"parentPath\":[]}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
+        "id": "sealed_call_link_0",
+        "role": "tool",
+        "timestamp": 1767225607000,
+        "toolCallId": "call_link"
+      },
+      {
+        "id": "msg_T_11",
+        "role": "tool",
+        "toolCallId": "call_footer",
+        "content": "{\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"}",
+        "timestamp": 1767225608000
+      },
+      { "id": "msg_T_12", "role": "user", "content": "Carry on", "timestamp": 1767225609000 },
+      {
+        "id": "msg_T_13",
+        "role": "assistant",
+        "content": "Picking up where we left off.",
+        "timestamp": 1767225609000
+      }
+    ],
+    "jx-ai-chat-sessions:/proj/round-trip": {
+      "version": 1,
+      "activeId": "s_T_1",
+      "sessions": [
+        {
+          "id": "s_T_1",
+          "title": "Add a heading to the page",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225610000,
+          "messageCount": 14
+        }
+      ]
+    }
+  },
+  "expected": {
+    "assistantSessionId": "s_T_1",
+    "storeActiveId": "s_T_1",
+    "sessions": [
+      {
+        "id": "s_T_1",
+        "title": "Add a heading to the page",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225610000,
+        "messageCount": 14
+      }
+    ],
+    "restored": [
+      {
+        "id": "msg_T_1",
+        "role": "user",
+        "content": "Add a heading to the page",
+        "timestamp": 1767225601000
+      },
+      {
+        "id": "msg_T_2",
+        "role": "assistant",
+        "content": "I'll add a heading.",
+        "timestamp": 1767225601000,
+        "reasoningContent": "The page has no heading yet.",
+        "toolCalls": [
+          {
+            "id": "call_head",
+            "name": "add_child",
+            "arguments": "{\"index\":0,\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"},\"parentPath\":[]}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_3",
+        "role": "tool",
+        "toolCallId": "call_head",
+        "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",0].\"}",
+        "timestamp": 1767225602000
+      },
+      {
+        "id": "msg_T_4",
+        "role": "assistant",
+        "content": "Added a Welcome heading.",
+        "timestamp": 1767225602000
+      },
+      {
+        "id": "msg_T_5",
+        "role": "user",
+        "content": "Ask me which layout to use",
+        "timestamp": 1767225604000
+      },
+      {
+        "id": "msg_T_6",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225604000,
+        "toolCalls": [
+          {
+            "id": "call_layout",
+            "name": "ask_user",
+            "arguments": "{\"options\":[\"One column\",\"Two columns\"],\"question\":\"Which layout should the page use?\"}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "id": "msg_T_7",
+        "role": "tool",
+        "toolCallId": "call_layout",
+        "content": "{\"success\":true,\"data\":{\"answer\":\"Two columns\",\"skipped\":false},\"summary\":\"The user answered: \\\"Two columns\\\"\"}",
+        "timestamp": 1767225605000
+      },
+      {
+        "id": "msg_T_8",
+        "role": "assistant",
+        "content": "Two columns it is.",
+        "timestamp": 1767225605000
+      },
+      {
+        "id": "msg_T_9",
+        "role": "user",
+        "content": "Style the footer, then add a contact link",
+        "timestamp": 1767225607000
+      },
+      {
+        "id": "msg_T_10",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225607000,
+        "toolCalls": [
+          {
+            "id": "call_footer",
+            "name": "ask_user",
+            "arguments": "{\"question\":\"Dark or light footer?\"}",
+            "result": null
+          },
+          {
+            "id": "call_link",
+            "name": "add_child",
+            "arguments": "{\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"},\"parentPath\":[]}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
+        "id": "sealed_call_link_0",
+        "role": "tool",
+        "timestamp": 1767225607000,
+        "toolCallId": "call_link"
+      },
+      {
+        "id": "msg_T_11",
+        "role": "tool",
+        "toolCallId": "call_footer",
+        "content": "{\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"}",
+        "timestamp": 1767225608000
+      },
+      { "id": "msg_T_12", "role": "user", "content": "Carry on", "timestamp": 1767225609000 },
+      {
+        "id": "msg_T_13",
+        "role": "assistant",
+        "content": "Picking up where we left off.",
+        "timestamp": 1767225609000
+      }
+    ],
+    "wire": [
+      { "role": "user", "content": "Add a heading to the page" },
+      {
+        "role": "assistant",
+        "content": "I'll add a heading.",
+        "reasoning_content": "The page has no heading yet.",
+        "tool_calls": [
+          {
+            "id": "call_head",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"index\":0,\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"},\"parentPath\":[]}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_head",
+        "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",0].\"}"
+      },
+      { "role": "assistant", "content": "Added a Welcome heading." },
+      { "role": "user", "content": "Ask me which layout to use" },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_layout",
+            "type": "function",
+            "function": {
+              "name": "ask_user",
+              "arguments": "{\"options\":[\"One column\",\"Two columns\"],\"question\":\"Which layout should the page use?\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_layout",
+        "content": "{\"success\":true,\"data\":{\"answer\":\"Two columns\",\"skipped\":false},\"summary\":\"The user answered: \\\"Two columns\\\"\"}"
+      },
+      { "role": "assistant", "content": "Two columns it is." },
+      { "role": "user", "content": "Style the footer, then add a contact link" },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_footer",
+            "type": "function",
+            "function": {
+              "name": "ask_user",
+              "arguments": "{\"question\":\"Dark or light footer?\"}"
+            }
+          },
+          {
+            "id": "call_link",
+            "type": "function",
+            "function": {
+              "name": "add_child",
+              "arguments": "{\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"},\"parentPath\":[]}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_link",
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_footer",
+        "content": "{\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"}"
+      },
+      { "role": "user", "content": "Carry on" },
+      { "role": "assistant", "content": "Picking up where we left off." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

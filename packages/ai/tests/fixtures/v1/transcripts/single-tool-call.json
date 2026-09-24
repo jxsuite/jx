@@ -1,0 +1,84 @@
+{
+  "name": "single-tool-call",
+  "description": "One tool call, in the order Studio's agent loop makes the calls: finishStream first, then appendToolResult (which finds nothing to attach to, so the record keeps result: null), then the tool reply message and the next round. An assistant turn with tool calls and no text is sent with content null.",
+  "shapes": [
+    "single-tool-call",
+    "content-null-with-tool-calls",
+    "tool-result-message",
+    "tool-record-result-null"
+  ],
+  "script": [
+    ["sendMessage", "Add a heading"],
+    ["appendToolCallStart", "call_1", "add_child"],
+    ["appendToolCallDelta", "call_1", "{\"parentPath\":[],"],
+    ["appendToolCallDelta", "call_1", "\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"}}"],
+    ["appendToolCallEnd", "call_1"],
+    ["finishStream", "tool_calls"],
+    [
+      "appendToolResult",
+      "call_1",
+      { "success": true, "summary": "Added h1 as child 0 of the root." }
+    ],
+    [
+      "pushToolResultMessage",
+      "call_1",
+      "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}"
+    ],
+    ["beginAssistantTurn"],
+    ["appendDelta", "Added a Welcome heading."],
+    ["finishStream", "stop"]
+  ],
+  "messages": [
+    { "id": "msg_T_1", "role": "user", "content": "Add a heading", "timestamp": 1767225601000 },
+    {
+      "id": "msg_T_2",
+      "role": "assistant",
+      "content": "",
+      "timestamp": 1767225601000,
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "add_child",
+          "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"}}",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg_T_3",
+      "role": "tool",
+      "toolCallId": "call_1",
+      "content": "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}",
+      "timestamp": 1767225608000
+    },
+    {
+      "id": "msg_T_4",
+      "role": "assistant",
+      "content": "Added a Welcome heading.",
+      "timestamp": 1767225609000
+    }
+  ],
+  "wire": [
+    { "role": "user", "content": "Add a heading" },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": {
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"}}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "{\"success\":true,\"summary\":\"Added h1 as child 0 of the root.\"}"
+    },
+    { "role": "assistant", "content": "Added a Welcome heading." }
+  ]
+}

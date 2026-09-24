@@ -1,0 +1,156 @@
+{
+  "scenario": "add-nav-to-header",
+  "task": "add-nav-to-header",
+  "what": "reads the document, mis-aims add_child at a children array, then corrects itself",
+  "modelRequests": [
+    "user",
+    "user assistant tool",
+    "user assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool"
+  ],
+  "rounds": 4,
+  "toolCallCount": 3,
+  "toolCalls": [
+    {
+      "id": "nav-1",
+      "name": "read_document",
+      "args": {}
+    },
+    {
+      "id": "nav-2",
+      "name": "add_child",
+      "args": {
+        "parentPath": ["children"],
+        "index": 1,
+        "node": {
+          "tagName": "nav",
+          "children": []
+        }
+      }
+    },
+    {
+      "id": "nav-3",
+      "name": "add_child",
+      "args": {
+        "parentPath": [],
+        "index": 1,
+        "node": {
+          "tagName": "nav",
+          "children": [
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/"
+              },
+              "textContent": "Home"
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/about"
+              },
+              "textContent": "About"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "site-header",
+    "children": [
+      {
+        "tagName": "h1",
+        "textContent": "My Site"
+      },
+      {
+        "tagName": "nav",
+        "children": [
+          {
+            "tagName": "a",
+            "attributes": {
+              "href": "/"
+            },
+            "textContent": "Home"
+          },
+          {
+            "tagName": "a",
+            "attributes": {
+              "href": "/about"
+            },
+            "textContent": "About"
+          }
+        ]
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Add a navigation bar to this header with two links: Home (href /) and About (href /about)."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["read_document"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nav-1",
+      "result": {
+        "success": true,
+        "data": {
+          "tagName": "site-header",
+          "children": [
+            {
+              "tagName": "h1",
+              "textContent": "My Site"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nav-2",
+      "result": {
+        "success": false,
+        "error": "parentPath [\"children\"] points at a children array, not a node. Drop the trailing \"children\" segment — add_child appends \"children\" and the index automatically. For example, to insert into the node at [\"children\",0,\"children\",1], pass parentPath: [\"children\",0,\"children\",1]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "nav-3",
+      "result": {
+        "success": true,
+        "summary": "Inserted node at [\"children\",1]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Added a nav with Home and About links after the heading."
+    }
+  ]
+}

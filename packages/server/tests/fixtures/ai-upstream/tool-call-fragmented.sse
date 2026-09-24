@@ -1,0 +1,16 @@
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_Ab12Cd34","type":"function","function":{"name":"set_text","arguments":""}}],"refusal":null},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\""}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"path"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\":[0,"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"2],\"text\":\"Hi"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" there\"}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Fragmented","object":"chat.completion.chunk","created":1727000003,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

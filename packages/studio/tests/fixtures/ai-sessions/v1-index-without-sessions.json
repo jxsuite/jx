@@ -1,0 +1,53 @@
+{
+  "name": "v1-index-without-sessions",
+  "description": "An index with no sessions array counts as absent, so the legacy store beside it migrates and OVERWRITES that index; the migrated conversation is restored.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": { "version": 1, "activeId": "s_lost" },
+    "jx-ai-chat-history:/proj/demo": [
+      { "id": "leg_1", "role": "user", "content": "Migrate me", "timestamp": 1767225601000 },
+      { "id": "leg_2", "role": "assistant", "content": "Migrated.", "timestamp": 1767225602000 }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_T_1",
+    "storeActiveId": "s_T_1",
+    "sessions": [
+      {
+        "id": "s_T_1",
+        "title": "Migrate me",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      { "id": "leg_1", "role": "user", "content": "Migrate me", "timestamp": 1767225601000 },
+      { "id": "leg_2", "role": "assistant", "content": "Migrated.", "timestamp": 1767225602000 }
+    ],
+    "wire": [
+      { "role": "user", "content": "Migrate me" },
+      { "role": "assistant", "content": "Migrated." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {
+      "jx-ai-chat-session:/proj/demo:s_T_1": [
+        { "id": "leg_1", "role": "user", "content": "Migrate me", "timestamp": 1767225601000 },
+        { "id": "leg_2", "role": "assistant", "content": "Migrated.", "timestamp": 1767225602000 }
+      ],
+      "jx-ai-chat-sessions:/proj/demo": {
+        "version": 1,
+        "activeId": "s_T_1",
+        "sessions": [
+          {
+            "id": "s_T_1",
+            "title": "Migrate me",
+            "createdAt": 1767225601000,
+            "updatedAt": 1767225602000,
+            "messageCount": 2
+          }
+        ]
+      }
+    }
+  }
+}

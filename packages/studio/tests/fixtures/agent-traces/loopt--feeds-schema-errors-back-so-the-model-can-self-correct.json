@@ -1,0 +1,213 @@
+{
+  "chatCalls": [
+    "sendMessage(\"rename root to header\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"set_property\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"key\\\":\\\"tagName\\\",\\\"path\\\":[],\\\"value\\\":\\\"header\\\"}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c1\", {\"success\":false,\"error\":\"Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\\n- (root): invalid custom element tagName\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":false,\\\"error\\\":\\\"Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\\\\n- (root): invalid custom element tagName\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c2\", \"set_property\")",
+    "appendToolCallDelta(\"c2\", \"{\\\"key\\\":\\\"tagName\\\",\\\"path\\\":[],\\\"value\\\":\\\"site-header\\\"}\")",
+    "appendToolCallEnd(\"c2\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c2\", {\"success\":true,\"summary\":\"Set \\\"tagName\\\" at [].\"})",
+    "pushToolResultMessage(\"c2\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"tagName\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "rename root to header"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"tagName\",\"path\":[],\"value\":\"header\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":false,\"error\":\"Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\\n- (root): invalid custom element tagName\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c2",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"tagName\",\"path\":[],\"value\":\"site-header\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c2",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"tagName\\\" at [].\"}"
+          }
+        ],
+        "carried": 3
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"tagName\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"tagName\\\" at [].\"})",
+      "endTurn(\"msg#6\") filed 2"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "(untitled)",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"tagName\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"tagName\" at []."
+              }
+            ]
+          }
+        ],
+        "turn": "msg#6"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "rename root to header"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"tagName\",\"path\":[],\"value\":\"header\"}",
+          "id": "c1",
+          "name": "set_property",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\\n- (root): invalid custom element tagName\"}",
+      "toolCallId": "c1"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"tagName\",\"path\":[],\"value\":\"site-header\"}",
+          "id": "c2",
+          "name": "set_property",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#5",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"tagName\\\" at [].\"}",
+      "toolCallId": "c2"
+    },
+    {
+      "id": "msg#6",
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "site-header"
+  },
+  "historyIndex": 2
+}
