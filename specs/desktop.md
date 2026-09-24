@@ -639,6 +639,18 @@ export async function handleListDirectory(dir) {
 // ... readFile, writeFile, deleteFile, renameFile, discoverComponents
 ```
 
+### 7.3a Shared Services Server
+
+> **Status: Implemented.** `packages/desktop/src/index.ts`.
+
+The Electrobun launcher runs one process-wide loopback HTTP server beside the per-window project servers, for the two surfaces that stream: the AI proxy (`/__studio/ai/*`) and the site import (`/__studio/import-site`). Both are privileged. The import writes to the filesystem, and the AI proxy forwards to a provider on the user's own key, so an ungated one is an open relay for any process on the machine.
+
+- **One per-process random token gates every route**, compared in constant time, and the webview receives it inside the URL it is handed over RPC (`aiChatUrl`, `importSiteUrl`). The token rides in the query rather than `Authorization`, because the AI proxy already reads that header as the provider key.
+- **A non-loopback `Host` is refused before any route is consulted**, so a DNS-rebound page cannot reach a route by name.
+- **The advertised origin is the literal the server binds**, `http://127.0.0.1:<port>`. `localhost` is not equivalent: on a resolver that answers `::1` first it reaches nothing, because the bind is IPv4-only.
+
+The chromium launcher has no shared server. Its AI and import routes live on the project server under the same token as the rest of it (`server.md` §4.2).
+
 ### 7.4 App Structure
 
 ```

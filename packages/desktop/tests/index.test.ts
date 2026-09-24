@@ -20,7 +20,7 @@ void mock.module("electrobun/main", () => ({
 // ─── Mock local modules ──────────────────────────────────────────────────────
 
 const openProjectWindow = mock((_root: string | null) => ({}) as unknown);
-const setAiServerUrl = mock((_url: string) => {});
+const setAiChatUrl = mock((_url: string) => {});
 const setImportServiceUrl = mock((_url: string) => {});
 const broadcastSettingsChanged = mock((_settings: Record<string, string>) => {});
 const broadcastUpdateReady = mock((_version: string) => {});
@@ -32,7 +32,7 @@ void mock.module("../src/window-manager", () => ({
   broadcastUpdateReady,
   openProjectWindow,
   parseProjectDirFromUrl,
-  setAiServerUrl,
+  setAiChatUrl,
   setImportServiceUrl,
 }));
 
@@ -106,7 +106,9 @@ describe("boot sequence", () => {
     expect(serveOpts).not.toBeNull();
     expect(serveOpts!.port).toBe(0);
     expect(typeof serveOpts!.fetch).toBe("function");
-    expect(setAiServerUrl).toHaveBeenCalledWith("http://localhost:43210");
+    expect(setAiChatUrl.mock.calls[0]?.[0]).toStartWith(
+      "http://127.0.0.1:43210/__studio/ai/chat?token=",
+    );
   });
 
   test("installs the application menu", () => {
@@ -126,19 +128,67 @@ describe("boot sequence", () => {
   });
 });
 
-// ─── AI HTTP server fetch handler ───────────────────────────────────────────
+// ─── AI HTTP server fetch handler (token-gated) ─────────────────────────────
 
 describe("AI server fetch handler", () => {
-  test("delegates matching routes to handleAiApi with the request URL", async () => {
-    const res = await serveOpts!.fetch(new Request("http://localhost/__studio/ai/hit"));
+  const chatUrl = () => new URL(setAiChatUrl.mock.calls[0]?.[0] as string);
+  const tokened = (path: string) => {
+    const url = new URL(path, chatUrl());
+    url.search = chatUrl().search;
+    return url.href;
+  };
+
+  test("delegates tokened AI routes to handleAiApi with the request URL", async () => {
+    const res = await serveOpts!.fetch(new Request(tokened("/__studio/ai/hit")));
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("ai-ok");
     const [, url] = handleAiApi.mock.calls.at(-1)!;
     expect((url as URL).pathname).toBe("/__studio/ai/hit");
   });
 
-  test("returns 404 when handleAiApi does not handle the route", async () => {
-    const res = await serveOpts!.fetch(new Request("http://localhost/nope"));
+  /* The route forwards to a provider on the user's own key; without the token any local process
+     could spend it. The handler must not even be consulted. */
+  test("rejects AI requests without the token, before handleAiApi runs", async () => {
+    const before = handleAiApi.mock.calls.length;
+    const res = await serveOpts!.fetch(new Request("http://127.0.0.1:43210/__studio/ai/chat"));
+    expect(res.status).toBe(403);
+    expect(handleAiApi.mock.calls.length).toBe(before);
+  });
+
+  test("rejects AI requests carrying a wrong token", async () => {
+    const before = handleAiApi.mock.calls.length;
+    const res = await serveOpts!.fetch(
+      new Request("http://127.0.0.1:43210/__studio/ai/chat?token=not-the-token"),
+    );
+    expect(res.status).toBe(403);
+    expect(handleAiApi.mock.calls.length).toBe(before);
+  });
+
+  /* A DNS-rebound page names the attacker's host; the token is not the only line. */
+  test("rejects a non-loopback Host even with the token", async () => {
+    const before = handleAiApi.mock.calls.length;
+    const res = await serveOpts!.fetch(
+      new Request(tokened("/__studio/ai/chat"), { headers: { host: "evil.example:43210" } }),
+    );
+    expect(res.status).toBe(403);
+    expect(handleAiApi.mock.calls.length).toBe(before);
+  });
+
+  test("the AI and import routes share one per-process token", () => {
+    const importToken = new URL(setImportServiceUrl.mock.calls[0]?.[0] as string).searchParams.get(
+      "token",
+    );
+    expect(chatUrl().searchParams.get("token")).toBe(importToken);
+  });
+
+  test("returns 404 when handleAiApi does not handle a tokened route", async () => {
+    const res = await serveOpts!.fetch(new Request(tokened("/__studio/ai/nope")));
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not Found");
+  });
+
+  test("returns 404 for routes outside both prefixes", async () => {
+    const res = await serveOpts!.fetch(new Request("http://127.0.0.1:43210/nope"));
     expect(res.status).toBe(404);
     expect(await res.text()).toBe("Not Found");
   });
