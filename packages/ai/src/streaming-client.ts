@@ -5,7 +5,7 @@
  * and concrete implementations for OpenAI and Anthropic. Designed upfront so switching
  * providers is a new implementation, not a refactor.
  *
- * The union and its seven members are exported because they are the contract a third-party Studio
+ * The union and its eight members are exported because they are the contract a third-party Studio
  * backend implements for the `ai/chat` route, not an internal detail — see the docs page below.
  *
  * @license MIT
@@ -21,6 +21,7 @@ export type StreamEvent =
   | StreamToolCallStartEvent
   | StreamToolCallDeltaEvent
   | StreamToolCallEndEvent
+  | StreamUsageEvent
   | StreamDoneEvent
   | StreamErrorEvent;
 
@@ -59,6 +60,27 @@ export interface StreamToolCallDeltaEvent {
 export interface StreamToolCallEndEvent {
   type: "tool_call_end";
   id: string;
+}
+
+/**
+ * What the provider counted for the request that produced this stream, when it reported a count.
+ *
+ * Emitted at most once, immediately BEFORE `done`, because a reader stops at `done`. It is optional
+ * and additive: a backend with no figure sends none, and a reader that predates it ignores it. It
+ * exists because every budget the client keeps was an estimate of four characters per token, and
+ * the provider's own count, which the client was asking for all along (`include_usage`), was
+ * discarded before it arrived.
+ */
+export interface StreamUsageEvent {
+  type: "usage";
+  /** Tokens the provider read: system prompt, tool schemas and the whole history. */
+  inputTokens: number;
+  /** Tokens the provider generated, reasoning included. */
+  outputTokens: number;
+  /** The part of `inputTokens` served from a prompt cache, when the provider says. */
+  cachedInputTokens?: number;
+  /** The part of `outputTokens` spent on chain-of-thought, when the provider says. */
+  reasoningTokens?: number;
 }
 
 export interface StreamDoneEvent {
@@ -131,6 +153,53 @@ interface OpenAIStreamChunk {
     };
     finish_reason?: string | null;
   }[];
+  /** The count `stream_options.include_usage` asks for — normally a final chunk with no choices. */
+  usage?: OpenAIUsage | null;
+}
+
+/** OpenAI's usage object, as chat-completions streams it. */
+export interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number } | null;
+  completion_tokens_details?: { reasoning_tokens?: number } | null;
+}
+
+/**
+ * Normalize OpenAI's usage object into a {@link StreamUsageEvent}, or null when it carries no count.
+ * The two detail figures are included only when the provider sent them: absent means "not said",
+ * which is not the same as zero.
+ */
+export function usageEventFromOpenAI(usage?: OpenAIUsage | null): StreamUsageEvent | null {
+  if (!usage || typeof usage.prompt_tokens !== "number") {
+    return null;
+  }
+  const event: StreamUsageEvent = {
+    type: "usage",
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens ?? 0,
+  };
+  const cached = usage.prompt_tokens_details?.cached_tokens;
+  if (typeof cached === "number") {
+    event.cachedInputTokens = cached;
+  }
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens;
+  if (typeof reasoning === "number") {
+    event.reasoningTokens = reasoning;
+  }
+  return event;
+}
+
+/**
+ * The stop reasons the client reports, from an OpenAI `finish_reason`. Anything else (a content
+ * filter, a provider's own spelling) is not a stop the loop acts on, so it maps to null and the
+ * stream keeps reading.
+ */
+function stopReasonFromOpenAI(reason: string | null | undefined): string | null {
+  if (reason === "tool_calls" || reason === "length" || reason === "stop") {
+    return reason;
+  }
+  return null;
 }
 
 /** Error response body — the proxy's flat `{ error: "..." }` or OpenAI's `{ error: { message } }`. */
@@ -199,6 +268,7 @@ export const STREAM_EVENT_TYPES = {
   TOOL_CALL_START: "tool_call_start",
   TOOL_CALL_DELTA: "tool_call_delta",
   TOOL_CALL_END: "tool_call_end",
+  USAGE: "usage",
   DONE: "done",
   ERROR: "error",
 } as const;
@@ -332,8 +402,37 @@ export function createOpenAIStreamingClient({
     const decoder = new TextDecoder();
     let buffer = "";
 
-    /** @type {Map<string, { id: string; name: string; args: string }>} */
     const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
+    /* The finish reason is REMEMBERED rather than acted on. With `include_usage`, the count arrives
+       in a chunk of its own after the one carrying `finish_reason`, so returning on the finish
+       dropped the count on every request. The stream ends at `[DONE]` or when the body closes. */
+    let stopReason: string | null = null;
+    let usage: StreamUsageEvent | null = null;
+
+    /**
+     * Close the tool calls still open. Idempotent, so a finish chunk and `[DONE]` can both call it.
+     *
+     * @yields {StreamEvent} A `tool_call_end` per open call.
+     */
+    function* closePendingToolCalls(): Generator<StreamEvent> {
+      for (const tc of pendingToolCalls.values()) {
+        yield { type: "tool_call_end", id: tc.id };
+      }
+      pendingToolCalls.clear();
+    }
+
+    /**
+     * The stream's last frames: any open calls, the count when there is one, then `done`.
+     *
+     * @yields {StreamEvent} The closing frames, in order.
+     */
+    function* finish(): Generator<StreamEvent> {
+      yield* closePendingToolCalls();
+      if (usage) {
+        yield usage;
+      }
+      yield { type: "done", stopReason: stopReason ?? "stop" };
+    }
 
     try {
       while (true) {
@@ -355,12 +454,7 @@ export function createOpenAIStreamingClient({
 
           const dataStr = trimmed.slice(6);
           if (dataStr === "[DONE]") {
-            // Emit any pending tool call ends before done
-            for (const tc of pendingToolCalls.values()) {
-              yield { type: "tool_call_end", id: tc.id };
-            }
-            pendingToolCalls.clear();
-            yield { type: "done", stopReason: "stop" };
+            yield* finish();
             return;
           }
 
@@ -371,29 +465,29 @@ export function createOpenAIStreamingClient({
             continue; // Skip unparseable chunks
           }
 
+          // Usually a final chunk with no choices, but a provider may put it beside the finish.
+          usage = usageEventFromOpenAI(parsed.usage) ?? usage;
+
           const choice = parsed.choices?.[0];
           if (!choice) {
             continue;
           }
 
           const { delta } = choice;
-          if (!delta) {
-            continue;
-          }
 
           // Text content
-          if (delta.content) {
+          if (delta?.content) {
             yield { type: "delta", content: delta.content };
           }
 
           // Chain-of-thought, under either of the two names providers give it.
-          const reasoning = delta.reasoning_content ?? delta.reasoning;
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
           if (typeof reasoning === "string" && reasoning) {
             yield { type: "reasoning", content: reasoning };
           }
 
           // Tool calls
-          if (delta.tool_calls) {
+          if (delta?.tool_calls) {
             for (const tc of delta.tool_calls) {
               const existing = pendingToolCalls.get(tc.index);
 
@@ -423,38 +517,17 @@ export function createOpenAIStreamingClient({
             }
           }
 
-          // Finish reason
-          if (choice.finish_reason === "tool_calls") {
-            // Emit pending tool call ends
-            for (const tc of pendingToolCalls.values()) {
-              yield { type: "tool_call_end", id: tc.id };
-            }
-            pendingToolCalls.clear();
-            yield { type: "done", stopReason: "tool_calls" };
-            return;
-          }
-
-          if (choice.finish_reason === "stop" || choice.finish_reason === "length") {
-            // Emit any pending tool call ends
-            for (const tc of pendingToolCalls.values()) {
-              yield { type: "tool_call_end", id: tc.id };
-            }
-            pendingToolCalls.clear();
-            yield {
-              type: "done",
-              stopReason: choice.finish_reason === "length" ? "length" : "stop",
-            };
-            return;
+          // Finish reason: close the calls now, report the reason at the end of the stream.
+          const finished = stopReasonFromOpenAI(choice.finish_reason);
+          if (finished) {
+            yield* closePendingToolCalls();
+            stopReason = finished;
           }
         }
       }
 
-      // Stream ended without explicit finish_reason
-      for (const tc of pendingToolCalls.values()) {
-        yield { type: "tool_call_end", id: tc.id };
-      }
-      pendingToolCalls.clear();
-      yield { type: "done", stopReason: "stop" };
+      // Stream ended without `[DONE]`
+      yield* finish();
     } catch (error) {
       void reader.cancel();
       if ((error as Error).name === "AbortError") {
