@@ -39,7 +39,7 @@ import type { CollabParser } from "../collab/collab-session";
 import { flushCanvasEdits } from "../canvas/iframe-host";
 import { flushPreviewOverlay } from "../preview/preview-overlay";
 import { serializeDocument } from "./serialize-document";
-import { parseJsonDocument } from "./json-layout";
+import { parseJsonDocument } from "@jxsuite/schema/json-layout";
 import {
   defaultContentFormat,
   formatByName,

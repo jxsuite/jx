@@ -1079,7 +1079,7 @@ A declared limit is different. Studio refuses an oversized file before spending 
 
 ### 9.4 Saving a JSON document keeps its layout
 
-> **Status: Implemented.** `packages/studio/src/files/json-layout.ts`; `packages/studio/tests/json-layout.test.ts` proves byte identity over every formatted document in this repository.
+> **Status: Implemented.** `packages/schema/src/json-layout.ts` (`@jxsuite/schema/json-layout`, so any host that writes a document writes it the way Studio does); `packages/studio/tests/json-layout.test.ts` proves byte identity over every formatted document in this repository, and `packages/schema/tests/json-layout.test.ts` pins the layout rules.
 
 A `.json` document is written back in the layout its file was read in, so a one-value edit is a one-line diff. The native JSON branch of `serializeDocument` used to be `JSON.stringify(document, null, 2)`, which is not the layout any formatted project is kept in: the repository's formatter keeps a short object on the one line its author wrote it on, and a save expanded every one of them and buried the changed line in a few hundred reflowed ones (#308).
 

@@ -26,7 +26,7 @@ import type { JxNodeValue } from "../tabs/transact";
 import type { JsonValue } from "../types";
 import { validateDoc } from "./jx-validate";
 import { recordWrite } from "./ai-writes";
-import { serializeJson } from "../files/json-layout";
+import { serializeJson } from "@jxsuite/schema/json-layout";
 import {
   reportDocumentWrite,
   snapshotBeforeWrite,
@@ -658,7 +658,7 @@ export function registerAiTools(
           }
         }
         try {
-          // The save serializer, layout-less (`files/json-layout.ts`): the assistant supplied a
+          // The save serializer, layout-less (`@jxsuite/schema/json-layout`): the assistant supplied a
           // Value, not a text, so the formatter's layout for fresh output is the right one.
           await saveFile(relPath, serializeJson(content, null));
           recordWrite({ disk: true, ok: true, path: relPath, tool: "create_component" });

@@ -77,8 +77,8 @@ import { activeRegistry } from "../commands/active-registry";
 import { runActiveReported, runReported } from "../commands/run-reported";
 import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
-import { parseJsonDocument } from "./json-layout";
-import type { JsonLayout } from "./json-layout";
+import { parseJsonDocument } from "@jxsuite/schema/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import { invalidateUsages } from "../services/references";
 import {
   documentExtensions,

@@ -12,7 +12,7 @@ import {
 } from "../commands/command-args";
 import { EDITOR_KIND_LABELS } from "../commands/context";
 import type { Tab, TabOrigin } from "../tabs/tab";
-import type { JsonLayout } from "../files/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 import type { ComponentEntry } from "../files/components";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";

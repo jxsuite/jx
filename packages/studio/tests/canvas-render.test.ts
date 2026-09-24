@@ -36,7 +36,7 @@ import { commitTabBuffers, tabBufferUnsaved } from "../src/services/monaco-buffe
 import { toRaw } from "../src/reactivity";
 import { shell } from "../src/shell";
 import { setFormats } from "../src/format/format-host";
-import { serializeJson } from "../src/files/json-layout";
+import { serializeJson } from "@jxsuite/schema/json-layout";
 import { setEditZoom } from "../src/canvas/canvas-utils";
 import { resetEditWidths, setEditWidth } from "../src/canvas/edit-width";
 import { diffChangeMapOf, diffViewOf, resetDiffViews, setDiffView } from "../src/canvas/diff-view";

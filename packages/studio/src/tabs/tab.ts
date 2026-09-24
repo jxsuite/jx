@@ -8,7 +8,7 @@ import { editorKindForMode } from "../commands/context";
 import type { EditorKind } from "../commands/context";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
-import type { JsonLayout } from "../files/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 /**
  * The project's configuration file, project-relative.
@@ -187,8 +187,8 @@ export interface Tab {
     handlersSource: string | null;
     dirty: boolean;
     /**
-     * The layout the document's JSON file was written in (`files/json-layout.ts`), or null for a
-     * document with no JSON source — a format-class file, a new document, a stub.
+     * The layout the document's JSON file was written in (`@jxsuite/schema/json-layout`), or null
+     * for a document with no JSON source — a format-class file, a new document, a stub.
      *
      * On the document record because it is a fact about the FILE the document came from, and it
      * lives exactly as long as that fact does: every edit leaves it alone (the pointers it is keyed

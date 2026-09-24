@@ -19,7 +19,7 @@ import {
   formatSerialize,
   loadFormats,
 } from "../format/format-host";
-import { serializeJson } from "./json-layout";
+import { serializeJson } from "@jxsuite/schema/json-layout";
 import type { Tab } from "../tabs/tab";
 
 /**

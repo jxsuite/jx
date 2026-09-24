@@ -23,7 +23,7 @@ import { projectState, setProjectState } from "../src/store";
 import { canUndo, undo } from "../src/tabs/transact";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
-import { deriveJsonLayout, parseJsonDocument, serializeJson } from "../src/files/json-layout";
+import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 
 import type { MockPlatformState } from "./harness";
 import type { ProjectConfig } from "@jxsuite/schema/types";

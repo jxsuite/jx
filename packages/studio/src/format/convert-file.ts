@@ -27,8 +27,8 @@ import {
   stringProperty,
 } from "../commands/command-args";
 import { convertTargetExtensions, convertTargets } from "./format-choices";
-import { parseJsonDocument, serializeJson } from "../files/json-layout";
-import type { JsonLayout } from "../files/json-layout";
+import { parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /** What a conversion will do, resolved in full before the reader is asked to confirm it. */
@@ -99,7 +99,7 @@ async function writeDocument(
 ): Promise<string> {
   const merged = { ...frontmatter, ...document };
   if (targetExt === ".json") {
-    /* The same serializer a save uses (`files/json-layout.ts`), with NO layout: the source was
+    /* The same serializer a save uses (`@jxsuite/schema/json-layout`), with NO layout: the source was
        markdown or CSV, so there is no JSON text whose line breaks could be kept. Every object
        expands and every short array stays on one line — which is exactly what the repository's
        formatter would make of `JSON.stringify` output, so the converted file needs no reformat and
