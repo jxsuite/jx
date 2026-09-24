@@ -1,15 +1,15 @@
 # @jxsuite/ai
 
-The provider-agnostic substrate Jx Studio's assistant is built on: a streaming LLM client abstraction that normalizes provider SSE into seven event shapes, a tool registry that speaks OpenAI function-calling, and a reactive chat store. It has no Jx-domain dependencies (just a type-only import of `ProblemDetails` from `@jxsuite/protocol`, plus `@vue/reactivity`), and its only platform APIs are `fetch`, `TextDecoder` and `AbortSignal`, so the same modules run in the browser and in Bun/Node.
+The provider-agnostic substrate Jx Studio's assistant is built on: a streaming LLM client abstraction that normalizes provider SSE into eight event shapes, a tool registry that speaks OpenAI function-calling, and a reactive chat store. It has no Jx-domain dependencies (just a type-only import of `ProblemDetails` from `@jxsuite/protocol`, plus `@vue/reactivity`), and its only platform APIs are `fetch`, `TextDecoder` and `AbortSignal`, so the same modules run in the browser and in Bun/Node.
 
 Governing spec: [`specs/ai.md`](../../specs/ai.md) §1-§2 (Status: Partial). User-facing documentation for the Studio feature lives at [`docs/studio/ai.md`](../../docs/studio/ai.md).
 
-| Entrypoint                     | Exports                                                                                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@jxsuite/ai`                  | Barrel: the three factories, `createToolDefinition`, `createToolRegistry`, `createChatState`, `STREAM_EVENT_TYPES`, and the streaming types |
-| `@jxsuite/ai/streaming-client` | `StreamingClient`, `StreamEvent` and its seven members, the three factories and their option types, `STREAM_EVENT_TYPES`                    |
-| `@jxsuite/ai/tools`            | `createToolDefinition`, `createToolRegistry`, `toolSuccess`, `toolError`, and their types                                                   |
-| `@jxsuite/ai/chat-state`       | `createChatState`, `ChatStore`, `Message`, `ToolCallRecord`, `ChatState`, `MessageRole`                                                     |
+| Entrypoint                     | Exports                                                                                                                                                                           |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@jxsuite/ai`                  | Barrel: the three factories, `createToolDefinition`, `createToolRegistry`, `createChatState`, the `ChatUsage` type, `STREAM_EVENT_TYPES`, and the streaming types                 |
+| `@jxsuite/ai/streaming-client` | `StreamingClient`, `StreamEvent` and its eight members, the three factories and their option types, `STREAM_EVENT_TYPES`, `usageEventFromOpenAI` and its `OpenAIUsage` input type |
+| `@jxsuite/ai/tools`            | `createToolDefinition`, `createToolRegistry`, `toolSuccess`, `toolError`, and their types                                                                                         |
+| `@jxsuite/ai/chat-state`       | `createChatState`, `ChatStore`, `ChatUsage`, `Message`, `ToolCallRecord`, `ChatState`, `MessageRole`                                                                              |
 
 `toolSuccess` / `toolError` are **not** re-exported by the barrel. Import them from `@jxsuite/ai/tools`. Importing the subpaths instead of the root is also what makes the package tree-shakeable.
 
@@ -22,7 +22,7 @@ streamChat(messages: object[], tools: object[], systemPrompt: string, signal: Ab
   : AsyncGenerator<StreamEvent>;
 ```
 
-Every implementation yields the same discriminated union, whose type strings are also published as `STREAM_EVENT_TYPES`: `delta {content}`, `tool_call_start {id, name}`, `tool_call_delta {id, args}`, `tool_call_end {id}`, `done {stopReason}`, `error {message, code?, problem?}`. This union is the contract a third-party Studio backend must satisfy for the `ai/chat` route (see [`packages/protocol/README.md`](../protocol/README.md)); `@jxsuite/server` emits the same format without depending on this package. `StreamEvent` and each member are exported, so an implementer can import the type instead of reconstructing it.
+Every implementation yields the same discriminated union, whose type strings are also published as `STREAM_EVENT_TYPES`: `delta {content}`, `reasoning {content}`, `tool_call_start {id, name}`, `tool_call_delta {id, args}`, `tool_call_end {id}`, `usage {inputTokens, outputTokens, cachedInputTokens?, reasoningTokens?}`, `done {stopReason}`, `error {message, code?, problem?}`. This union is the contract a third-party Studio backend must satisfy for the `ai/chat` route (see [`packages/protocol/README.md`](../protocol/README.md)); `@jxsuite/server` emits the same format without depending on this package. `StreamEvent` and each member are exported, so an implementer can import the type instead of reconstructing it.
 
 ```ts
 import { createProxyStreamingClient } from "@jxsuite/ai";
@@ -45,7 +45,7 @@ for await (const event of client.streamChat(messages, tools, systemPrompt, signa
 Three behaviours are easy to get wrong when consuming the stream:
 
 1. **Cancellation is a `done`, not an `error`.** An `AbortError` from `fetch` or mid-read becomes `{ type: "done", stopReason: "cancelled" }`. Treating abort as failure paints a user's Stop button as a crash. The OpenAI client's other stop reasons are `"stop"`, `"tool_calls"` and `"length"`.
-2. **The OpenAI client drains pending tool calls on every termination path.** `[DONE]`, a `finish_reason` of `stop`, `length` or `tool_calls` (any other value is ignored and the stream continues), and a body that simply closes all emit `tool_call_end` for anything still open, then exactly one `done`. The proxy client tracks nothing of its own, so a body that closes without a `done` frame ends its generator with no `done` at all.
+2. **A finish is remembered, not acted on.** A `finish_reason` of `stop`, `length` or `tool_calls` emits `tool_call_end` for every call still open and records the reason (any other value is ignored), but the stream keeps reading, because with `include_usage` the count arrives in a chunk of its own after the finish. The stream ends at `[DONE]` or when the body closes, and ends the same way every time: `tool_call_end` for anything still open, one `usage` frame when the provider reported a count, then exactly one `done` carrying the recorded reason (`stop` when there was none). `usage` precedes `done` because a reader stops at `done`. The proxy client tracks nothing of its own, so a body that closes without a `done` frame ends its generator with no `done` at all.
 3. **`error` frames may carry an RFC 9457 `problem` beside the human `message`,** because the response has already begun with a 200 and the status can no longer change (a committed standards row in `specs/ai.md` §5). The field is optional and no client in this package sets it. `@jxsuite/server`'s proxy is what populates it, and `createProxyStreamingClient` passes it through. Read `problem.type` for machine dispatch when it is present; keep showing `message`.
 
 ## The tool registry
@@ -79,7 +79,7 @@ To vary the tool set per turn, wrap rather than mutate. Studio's `createGatedToo
 
 ## The reactive chat store
 
-`createChatState(options?: { model?: string })` returns a `@vue/reactivity` `reactive()` store with its mutators `Object.assign`ed onto the same proxy, so the returned value is both the state and the API. The store holds `messages`, `status`, `streamingContent`, `pendingToolCalls`, `error`, `model`, `tokenCount` and `contextWarning`. The model falls back to `"gpt-4o"` via `||`, so an empty string takes the default too. `status` is `"idle" | "streaming" | "error"`; `toMessagesArray()` serializes back to OpenAI wire shape (assistant `tool_calls`, `tool` messages with `tool_call_id`, everything else `{ role, content }`).
+`createChatState(options?: { model?: string })` returns a `@vue/reactivity` `reactive()` store with its mutators `Object.assign`ed onto the same proxy, so the returned value is both the state and the API. The store holds `messages`, `status`, `streamingContent`, `pendingToolCalls`, `error`, `model`, `tokenCount`, `contextWarning` and `usage`. `recordUsage(event, { systemTokens? })` stores a `usage` frame as a `ChatUsage`: the counts, the context it leaves for the next request (input plus output, less reasoning the provider billed but never streamed), and the id and position of the last message it covers, so a budget can reuse it only while that message is still in place. It also sets `tokenCount` to that context figure. `clearUsage()` forgets it, and `clearChat()` does too. The model falls back to `"gpt-4o"` via `||`, so an empty string takes the default too. `status` is `"idle" | "streaming" | "error"`; `toMessagesArray()` serializes back to OpenAI wire shape (assistant `tool_calls`, `tool` messages with `tool_call_id`, everything else `{ role, content }`).
 
 Two ordering rules inside `beginAssistantTurn` are load-bearing, and any reimplementation must keep them: `status` is set to `"streaming"` **before** the placeholder message is pushed (the push itself triggers effects, and a reader seeing `"idle"` renders the empty placeholder as a finished message), and the pushed object is immediately re-read back through the proxy (`store.messages.at(-1)`), because mutating the raw object would notify nothing. A regression test asserts that an `effect()` reading `messages.at(-1).content` re-runs on every `appendDelta`.
 

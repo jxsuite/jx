@@ -2,7 +2,7 @@
  * Context-manager.js — Token budget management for the AI assistant
  *
  * Estimates token usage and trims conversation history before each send to keep the
- * context window within safe limits (ADR docs/ai-assistant-decision.md §11.4).
+ * context window within safe limits (specs/ai.md §2 and §2.1).
  *
  * Strategy (MVP): keep the system prompt + the most recent messages, dropping the oldest
  * messages when the estimated total exceeds the configured token budget. Dropped messages
@@ -30,7 +30,8 @@ const CHARS_PER_TOKEN = 4;
 
 /**
  * Approximate context windows (in tokens) per model id, longest-prefix matched. Used to derive a
- * model-aware budget instead of a flat cap (ADR §14.2). Conservative fallback for unknown models.
+ * model-aware budget instead of a flat cap (specs/ai.md §2.1). Conservative fallback for unknown
+ * models.
  */
 const MODEL_CONTEXT_WINDOWS: [string, number][] = [
   ["gpt-4o", 128_000],
@@ -123,6 +124,64 @@ function estimateTokens(input: string | MessageArrayEntry[]): number {
   return total;
 }
 
+/** The wire-shaped entry {@link estimateTokens} reads, for one transcript message. */
+function wireEntry(msg: ReturnType<typeof createChatState>["messages"][number]): MessageArrayEntry {
+  const entry: MessageArrayEntry = { content: msg.content, role: msg.role };
+  if (msg.toolCalls) {
+    entry.tool_calls = msg.toolCalls.map((tc) => ({
+      function: { arguments: tc.arguments, name: tc.name },
+    }));
+  }
+  return entry;
+}
+
+/**
+ * The context's size in tokens, as close to the provider's own count as the transcript allows.
+ *
+ * When the provider reported a count (`chatState.usage`) for a transcript this one still extends
+ * (the message at the count's boundary is the one it was taken at), that count covers everything up
+ * to it exactly, tool schemas included, so only the messages added since are estimated, plus
+ * whatever the system prompt has grown by. Without one, or once the transcript has been trimmed,
+ * rewound or repaired beneath it, the whole history is estimated at four characters per token,
+ * which is what every budget used before the count was forwarded.
+ */
+function contextTokens(
+  chatState: ReturnType<typeof createChatState>,
+  systemTokens: number,
+): number {
+  const { usage, messages } = chatState;
+  const boundary = usage ? messages[usage.messageCount - 1] : undefined;
+  if (usage && boundary && boundary.id === usage.lastMessageId) {
+    /* Only what will be SENT: `toMessagesArray` drops an assistant turn carrying neither text nor
+       tool calls — the placeholder `sendMessage` pushes is always one — so it is not counted. */
+    const since = messages
+      .slice(usage.messageCount)
+      .filter((msg) => msg.role !== "assistant" || msg.content || (msg.toolCalls?.length ?? 0) > 0)
+      .map((msg) => wireEntry(msg));
+    /* The system prompt is rebuilt on every send from live state (the document outline, the file
+       inventory), so the one the count covered is not the one about to go out. What it has grown
+       or shrunk by is added, estimated the same way on both sides. */
+    const promptDrift = usage.systemTokens === undefined ? 0 : systemTokens - usage.systemTokens;
+    const reused = Math.max(0, usage.contextTokens + promptDrift) + estimateTokens(since);
+    // A count this module cannot trust is no count at all.
+    if (Number.isFinite(reused)) {
+      return reused;
+    }
+  }
+  return systemTokens + estimateTokens(chatState.toMessagesArray() as MessageArrayEntry[]);
+}
+
+/**
+ * The estimate of a system prompt, in the same units {@link trimContext} budgets in — what the loop
+ * records beside a provider's count so the next budget can measure the prompt's drift.
+ *
+ * @param {string} systemPrompt
+ * @returns {number}
+ */
+export function estimatePromptTokens(systemPrompt: string): number {
+  return estimateTokens(systemPrompt);
+}
+
 // ─── Trim ───────────────────────────────────────────────────────────────────
 
 /**
@@ -146,8 +205,7 @@ export function trimContext(
 
   const systemTokens = estimateTokens(systemPrompt);
   const allMessages = chatState.messages;
-  const messageTokens = estimateTokens(chatState.toMessagesArray());
-  const total = systemTokens + messageTokens;
+  const total = contextTokens(chatState, systemTokens);
 
   if (total <= maxTokens) {
     chatState.setTokenCount(total);
@@ -194,6 +252,8 @@ export function trimContext(
 
   const droppedCount = keepFrom;
   allMessages.splice(0, keepFrom);
+  // The provider counted a transcript that no longer exists; the estimate is all there is now.
+  chatState.clearUsage();
 
   // Insert a summary note so the model knows context was trimmed.
   allMessages.unshift({

@@ -13,6 +13,7 @@ import {
   createOpenAIStreamingClient,
   createAnthropicStreamingClient,
   createProxyStreamingClient,
+  usageEventFromOpenAI,
 } from "../src/streaming-client.js";
 import type { StreamErrorEvent, StreamEvent } from "../src/streaming-client.js";
 
@@ -471,6 +472,114 @@ describe("createOpenAIStreamingClient", () => {
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
+  });
+
+  /* `include_usage` puts the count in a chunk of its own AFTER the finish chunk. Returning on the
+     finish dropped it on every request, so the client never saw a real token count. */
+  it("reads past the finish chunk and yields the usage count before done", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, id: "c1", function: { name: "f", arguments: "{}" } }],
+                },
+              },
+            ],
+          }),
+          JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),
+          JSON.stringify({
+            choices: [],
+            usage: {
+              prompt_tokens: 1200,
+              completion_tokens: 40,
+              prompt_tokens_details: { cached_tokens: 1024 },
+              completion_tokens_details: { reasoning_tokens: 12 },
+            },
+          }),
+          "[DONE]",
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "tool_call_start", id: "c1", name: "f" },
+      { type: "tool_call_delta", id: "c1", args: "{}" },
+      { type: "tool_call_end", id: "c1" },
+      {
+        type: "usage",
+        inputTokens: 1200,
+        outputTokens: 40,
+        cachedInputTokens: 1024,
+        reasoningTokens: 12,
+      },
+      { type: "done", stopReason: "tool_calls" },
+    ]);
+  });
+
+  it("takes a count carried beside the finish, and omits the details it was not given", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({
+            choices: [{ delta: { content: "hi" }, finish_reason: "length" }],
+            usage: { prompt_tokens: 9 },
+          }),
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "delta", content: "hi" },
+      { type: "usage", inputTokens: 9, outputTokens: 0 },
+      { type: "done", stopReason: "length" },
+    ]);
+  });
+
+  it("sends no usage frame when the provider reports none, and ignores unknown finishes", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({
+            choices: [{ delta: { content: "a" }, finish_reason: "content_filter" }],
+          }),
+          JSON.stringify({ choices: [{ finish_reason: "stop" }], usage: null }),
+          "[DONE]",
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "delta", content: "a" },
+      { type: "done", stopReason: "stop" },
+    ]);
+  });
+});
+
+describe("usageEventFromOpenAI", () => {
+  it("returns null when there is no prompt count to report", () => {
+    expect(usageEventFromOpenAI(null)).toBeNull();
+    expect(usageEventFromOpenAI()).toBeNull();
+    expect(usageEventFromOpenAI({ completion_tokens: 3 })).toBeNull();
+  });
+
+  it("keeps detail figures only when they are numbers", () => {
+    expect(
+      usageEventFromOpenAI({
+        prompt_tokens: 5,
+        completion_tokens: 2,
+        prompt_tokens_details: null,
+        completion_tokens_details: {},
+      }),
+    ).toEqual({ type: "usage", inputTokens: 5, outputTokens: 2 });
   });
 });
 

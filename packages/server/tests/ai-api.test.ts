@@ -605,6 +605,82 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
     );
   });
 
+  /* `include_usage` puts the count in a chunk AFTER the finish. Closing on the finish dropped it,
+     so the client never received a real token count. It must precede `done`: readers stop there. */
+  it("forwards the usage count after the finish chunk, immediately before done", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            { choices: [{ delta: { content: "Hi" } }] },
+            { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+            {
+              choices: [],
+              usage: {
+                completion_tokens: 7,
+                completion_tokens_details: { reasoning_tokens: 3 },
+                prompt_tokens: 812,
+                prompt_tokens_details: { cached_tokens: 512 },
+              },
+            },
+            "[DONE]",
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.slice(-2)).toEqual([
+          {
+            cachedInputTokens: 512,
+            inputTokens: 812,
+            outputTokens: 7,
+            reasoningTokens: 3,
+            type: "usage",
+          },
+          { stopReason: "tool_calls", type: "done" },
+        ]);
+      },
+    );
+  });
+
+  it("forwards a count beside the finish, and sends none when the upstream reports none", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            {
+              choices: [{ delta: { content: "a" }, finish_reason: "length" }],
+              usage: { prompt_tokens: 4 },
+            },
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.slice(-2)).toEqual([
+          { inputTokens: 4, outputTokens: 0, type: "usage" },
+          { stopReason: "length", type: "done" },
+        ]);
+      },
+    );
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            { choices: [{ delta: {}, finish_reason: "content_filter" }] },
+            { choices: [{ finish_reason: "stop" }], usage: null },
+            { choices: [], usage: { completion_tokens: 2 } },
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.some((e) => e.type === "usage")).toBe(false);
+        expect(events.at(-1)).toEqual({ stopReason: "stop", type: "done" });
+      },
+    );
+  });
+
   it("surfaces an upstream error body as an error event", async () => {
     await withUpstream(
       (() =>

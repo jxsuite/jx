@@ -331,8 +331,85 @@ describe("connect", () => {
     await flush(6);
 
     expect(part(container, "error")?.textContent).toContain("no account is chosen yet");
-    // No point re-probing: the backend answers cf_account_required until one is picked.
-    expect(fetchCalls).toHaveLength(0);
+    // Re-probed once, so the shared probe reports the state the backend now holds.
+    expect(fetchCalls).toHaveLength(1);
+  });
+
+  /* The docs promise this: closing the list leaves a button that opens the list again, rather than
+     one that sends the user back through an approval they already gave. The backend reports a live
+     grant with no account as `cf_account_required`, so the re-probe after the dismissal says so. */
+  test("after a dismissed picker the button offers the picker again, not the OAuth flow", async () => {
+    await probeManaged(true);
+    pickerResult = null;
+    const cfConnect = mock(async () => ({
+      connection: { connected: true },
+      status: "connected" as const,
+    }));
+    platform.cfConnect = cfConnect;
+    const { container } = await makeConnect();
+
+    fetchImpl = async () =>
+      Response.json(
+        { code: "cf_account_required", configured: false, managed: true, models: [] },
+        { status: 200 },
+      );
+    pointer(connectControl(container), "click");
+    await flush(6);
+    expect(connectButton(container)?.textContent?.trim()).toBe("Choose Cloudflare account");
+
+    pickerResult = { id: "acc-picked", name: "Picked" };
+    fetchImpl = async () =>
+      Response.json({ configured: true, managed: true, models: [] }, { status: 200 });
+    pointer(connectControl(container), "click");
+    await flush(6);
+
+    expect(cfConnect).toHaveBeenCalledTimes(1);
+    expect(pickerCalls).toHaveLength(2);
+    expect(cta(container)).toBeNull(); // Configured now, so the offer withdraws
+  });
+
+  /* The offer follows the probe, never a memory of an earlier dismissal: once Cloudflare is
+     disconnected, or the grant lapses, the button says what fixes THAT. */
+  test("a later probe decides the button, not the dismissal before it", async () => {
+    await probeManaged(true);
+    pickerResult = null;
+    const cfConnect = mock(async () => ({
+      connection: { connected: true },
+      status: "connected" as const,
+    }));
+    platform.cfConnect = cfConnect;
+    const { container, mc } = await makeConnect();
+    fetchImpl = async () =>
+      Response.json(
+        { code: "cf_account_required", configured: false, managed: true, models: [] },
+        { status: 200 },
+      );
+    pointer(connectControl(container), "click");
+    await flush(6);
+    expect(connectButton(container)?.textContent?.trim()).toBe("Choose Cloudflare account");
+
+    fetchImpl = async () =>
+      Response.json(
+        { code: "cf_reconnect_required", configured: false, managed: true, models: [] },
+        { status: 200 },
+      );
+    await fetchAvailableModels({ force: true });
+    render(mc.render(), container);
+    await flush(2);
+    expect(connectButton(container)?.textContent?.trim()).toBe("Reconnect Cloudflare");
+
+    fetchImpl = async () =>
+      Response.json(
+        { code: "cf_not_connected", configured: false, managed: true, models: [] },
+        { status: 200 },
+      );
+    await fetchAvailableModels({ force: true });
+    render(mc.render(), container);
+    await flush(2);
+    expect(connectButton(container)?.textContent?.trim()).toBe("Connect Cloudflare");
+    pointer(connectControl(container), "click");
+    await flush(6);
+    expect(cfConnect).toHaveBeenCalledTimes(2); // The OAuth flow, not the picker
   });
 
   test("surfaces a thrown error and re-enables the button", async () => {
@@ -440,6 +517,44 @@ describe("the recommendation, and its two moods", () => {
     const { container } = await renderFresh();
     expect(connectButton(container)?.textContent?.trim()).toBe("Reconnect Cloudflare");
     expect(part(container, "intro")?.textContent).toContain("expired");
+  });
+
+  test("a live grant with no account chosen is asked to CHOOSE one, not to reconnect", async () => {
+    /* `cf_account_required` (ai.md §2.1): re-authorizing lands straight back in this state, so the
+       words and the button name the missing piece — the account — rather than the connection. */
+    probeAnswers({ code: "cf_account_required", configured: false, managed: true, models: [] });
+    const { container, mc } = await renderFresh();
+    expect(mc.canOffer()).toBe(true);
+    expect(connectButton(container)?.textContent?.trim()).toBe("Choose Cloudflare account");
+    expect(part(container, "intro")?.textContent).toContain("no account is chosen yet");
+  });
+
+  test("choosing the account opens the picker instead of the OAuth flow", async () => {
+    probeAnswers({ code: "cf_account_required", configured: false, managed: true, models: [] });
+    const { container, mc } = await renderFresh();
+    const cfConnect = mock(async () => CONNECTED);
+    platform.cfConnect = cfConnect;
+
+    fetchCalls.length = 0;
+    probeAnswers({ configured: true, managed: true, models: [] });
+    pointer(connectControl(container), "click");
+    await flush(6);
+
+    expect(pickerCalls).toHaveLength(1);
+    expect(cfConnect).not.toHaveBeenCalled();
+    expect(fetchCalls).toHaveLength(1); // Verified by re-probing
+    expect(mc.canOffer()).toBe(false);
+  });
+
+  test("an account chosen that the backend still refuses says so", async () => {
+    probeAnswers({ code: "cf_account_required", configured: false, managed: true, models: [] });
+    const { container } = await renderFresh();
+    pointer(connectControl(container), "click");
+    await flush(6);
+
+    expect(pickerCalls).toHaveLength(1);
+    // Account advice, not "try reconnecting": reconnecting cannot choose an account.
+    expect(part(container, "error")?.textContent).toContain("still reports no account chosen");
   });
 
   test("a transient upstream error does NOT send the user round the OAuth flow", async () => {

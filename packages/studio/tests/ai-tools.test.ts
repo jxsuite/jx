@@ -101,6 +101,61 @@ describe("ai-tools — state tools (§14.1 regression)", () => {
     expect(res.success).toBe(false);
     disposeTab(tab);
   });
+
+  test("removing the last state key drops the empty state object, as the Inspector does", async () => {
+    const { tab, registry } = harness({ tagName: "x-comp", state: { count: 0 }, children: [] });
+
+    await registry.execute("update_state", { key: "count", value: null });
+
+    expect(tab.doc.document.state).toBeUndefined();
+    undo(tab);
+    expect(tab.doc.document.state).toEqual({ count: 0 });
+    disposeTab(tab);
+  });
+});
+
+/*
+ * These three wrote the tree directly and recorded no ops, so each edit reached the canvas as a full
+ * re-render, history as a whole-document snapshot, and collaborators as a diff. An entry with
+ * `forwardOps` is the proof the edit travelled as an edit.
+ */
+describe("ai-tools — edits are recorded as ops", () => {
+  const lastEntry = (tab: Tab) => tab.history.snapshots[tab.history.index]!;
+
+  test("set_text records set-key ops and undoes exactly", async () => {
+    const { tab, registry } = harness({
+      tagName: "div",
+      children: [{ tagName: "p", textContent: "old" }],
+    });
+
+    await registry.execute("set_text", { path: ["children", 0], value: "new" });
+
+    const node = (tab.doc.document.children as JxMutableNode[])[0]!;
+    expect(node.textContent).toBeUndefined();
+    expect(node.children).toEqual(["new"]);
+    expect(lastEntry(tab).forwardOps?.length).toBe(2);
+    undo(tab);
+    expect((tab.doc.document.children as JxMutableNode[])[0]).toEqual({
+      tagName: "p",
+      textContent: "old",
+    });
+    disposeTab(tab);
+  });
+
+  test("add_state and update_state record a state set-key op", async () => {
+    const { tab, registry } = harness({ tagName: "x-comp", children: [] });
+
+    await registry.execute("add_state", { key: "count", value: 0 });
+    expect(lastEntry(tab).forwardOps).toEqual([
+      { key: "state", op: "set-key", path: [], value: { count: 0 } },
+    ]);
+
+    await registry.execute("update_state", { key: "count", value: 3 });
+    expect(lastEntry(tab).forwardOps).toEqual([
+      { key: "state", op: "set-key", path: [], value: { count: 3 } },
+    ]);
+    disposeTab(tab);
+  });
 });
 
 describe("ai-tools — style & structure", () => {

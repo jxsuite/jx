@@ -639,6 +639,18 @@ export async function handleListDirectory(dir) {
 // ... readFile, writeFile, deleteFile, renameFile, discoverComponents
 ```
 
+### 7.3a Shared Services Server
+
+> **Status: Implemented.** `packages/desktop/src/index.ts`.
+
+The Electrobun launcher runs one process-wide loopback HTTP server beside the per-window project servers, for the two surfaces that stream: the AI proxy (`/__studio/ai/*`) and the site import (`/__studio/import-site`). Both are privileged. The import writes to the filesystem, and the AI proxy forwards to a provider on the user's own key, so an ungated one is an open relay for any process on the machine.
+
+- **One per-process random token gates every route**, compared in constant time, and the webview receives it inside the URL it is handed over RPC (`aiChatUrl`, `importSiteUrl`). The token rides in the query rather than `Authorization`, because the AI proxy already reads that header as the provider key.
+- **A non-loopback `Host` is refused before any route is consulted**, so a DNS-rebound page cannot reach a route by name.
+- **The advertised origin is the literal the server binds**, `http://127.0.0.1:<port>`. `localhost` is not equivalent: on a resolver that answers `::1` first it reaches nothing, because the bind is IPv4-only.
+
+The chromium launcher has no shared server. Its AI and import routes live on the project server under the same token as the rest of it (`server.md` §4.2).
+
 ### 7.4 App Structure
 
 ```
@@ -922,7 +934,7 @@ Everything else the ElectroBun launcher implements, this one implements: `previe
 
 A cloud adapter replaces filesystem operations with API calls to a remote service. The project root becomes a project ID rather than a filesystem path. All PAL methods translate to REST or WebSocket calls to the cloud API.
 
-Concretely, the shipped adapter is session-bound: every call goes to `/api/v1/p/:owner/:repo/:branch/studio/*` with cookie auth, so the "project id" is the triple in the path. It reports `id: "cloud"`, `canvasUrl: "/canvas.html"` and `openProjectPicker: "repo-list"` — that last one routes New Project through Studio's own repository picker over `listRepos` + `importProject`, so `openProject()` is never called (§3.4). It implements the full git family, the identity and publish members, `subscribeFileEvents` over SSE, and `collab`. It deliberately omits `pickDirectory`, `importSite`, the package install family, `gitClone`, `resolveClass` and `codeService`; each degrades exactly as its protocol route's `degradation` field describes, which is what makes an omission a documented state rather than a break.
+Concretely, the shipped adapter is session-bound: every call goes to `/api/v1/p/:owner/:repo/:branch/studio/*` with cookie auth, so the "project id" is the triple in the path. It reports `id: "cloud"`, `canvasUrl: "/canvas.html"` and `openProjectPicker: "repo-list"` — that last one routes New Project through Studio's own repository picker over `listRepos` + `importProject`, so `openProject()` is never called (§3.4). It implements the full git family, the identity and publish members, `subscribeFileEvents` over the session's `/events` WebSocket, `collab`, and `importSite`, which posts to the platform's own `/api/v1/import/site` rather than a session route, because importing is how a cloud project comes into existence and the project-less hub is where it must work. That route has not shipped on the platform yet, so the member answers 404 until it does. It deliberately omits `pickDirectory`, the package install family, `gitClone`, `resolveClass` and `codeService`; each degrades exactly as its protocol route's `degradation` field describes, which is what makes an omission a documented state rather than a break.
 
 **`discoverComponents` is NOT among them, and the reason it once was is worth keeping.** It returned nothing under a blanket "no execution of project JS" posture — but for a JSON component, discovery is a file read and a property lookup, and executes nothing. The posture belongs to the formats that genuinely need a project-supplied parser, not to the whole feature. Omitting it did not cost a feature list: the canvas injects the `$elements` a document's tags need only when the component registry is non-empty, so an empty registry meant no component was ever registered or fetched, and every instance rendered as an unregistered custom element — blank space where the component should be. An omission is only a documented state when something actually degrades gracefully.
 

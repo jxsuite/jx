@@ -102,7 +102,7 @@ Never tune the tasks to make a scaffolding change look good. If a task is genuin
 
 ## Out of scope
 
-The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, token accounting (the streaming client does not surface usage yet), or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
+The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, per-task token accounting (the stream carries a `usage` frame now, but the scoreboard does not aggregate it yet), or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
 
 It also cannot score a **project-level** tool call yet. Every golden task is document-shaped: an `initialDoc` plus the intent a grader reads off the resulting tree. A behavior like "asked for a blog, so it turned on the content extension" has no document to compare, and needs a task kind carrying a project fixture and a check over `project.json`. Until that exists, project-tier tools are covered by unit tests over the tool surface and the prompt, not by an eval.
 
