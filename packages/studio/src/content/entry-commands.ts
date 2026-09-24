@@ -28,7 +28,7 @@ import {
 } from "../format/format-host";
 import { notify } from "../services/notify";
 import { activeTab } from "../workspace/workspace";
-import { serializeJson } from "../files/json-layout";
+import { serializeJson } from "@jxsuite/schema/json-layout";
 import { invalidateReferenceEntries } from "../ui/form-controls";
 import { reloadDraftAwareGrids } from "../grid/sources/content-source";
 import { setIncludeDrafts } from "./draft-state";
@@ -64,7 +64,7 @@ async function seedText(collection: EntryCollection): Promise<string> {
     formatForPath(`untitled${collection.ext}`)?.name ??
     defaultContentFormat()?.name;
   if (collection.ext === ".json" || formatName === undefined) {
-    // The save serializer with no layout (`files/json-layout.ts`): a seed has no source text, and
+    // The save serializer with no layout (`@jxsuite/schema/json-layout`): a seed has no source text, and
     // This is what the formatter makes of one, newline included.
     return serializeJson(seed, null);
   }

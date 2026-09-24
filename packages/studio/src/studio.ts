@@ -107,8 +107,8 @@ import {
   setDocumentSavedListener,
 } from "./files/file-ops";
 import { serializeDocument } from "./files/serialize-document";
-import { parseJsonDocument } from "./files/json-layout";
-import type { JsonLayout } from "./files/json-layout";
+import { parseJsonDocument } from "@jxsuite/schema/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import {
   formatForPath,
   loadFormats,

@@ -25,7 +25,7 @@ import { transact } from "../tabs/transact";
 import { componentRegistry, computeRelativePath, loadComponentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { jsonClone } from "../utils/studio-utils";
-import { serializeJson } from "../files/json-layout";
+import { serializeJson } from "@jxsuite/schema/json-layout";
 import { notify } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
 import { validateComponentSlots } from "../services/cem-export";
@@ -106,7 +106,7 @@ export async function convertToComponent() {
   // Write component file and refresh registry
   try {
     const platform = getPlatform();
-    /* Through the save serializer (`files/json-layout.ts`) rather than `JSON.stringify`, so the new
+    /* Through the save serializer (`@jxsuite/schema/json-layout`) rather than `JSON.stringify`, so the new
        file lands in the formatter's layout with its trailing newline and the first save from its
        tab is a clean diff. No layout to carry: the subtree was lifted out of another document, and
        its record there is keyed by that document's pointers. */

@@ -566,7 +566,7 @@ describe("the configuration tab", () => {
     const { commitProjectConfig, resetProjectConfigDocument } =
       await import("../src/tabs/project-config");
     const { saveFile } = await import("../src/files/file-ops");
-    const { deriveJsonLayout } = await import("../src/files/json-layout");
+    const { deriveJsonLayout } = await import("@jxsuite/schema/json-layout");
     const { toRaw } = await import("../src/reactivity");
     const onDisk =
       '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
