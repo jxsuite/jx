@@ -3,7 +3,7 @@
  *
  * Concrete `.jx` AST tools registered into a `@jxsuite/ai` ToolRegistry. Each tool wraps an
  * existing `transactDoc()` mutation helper so AI edits get the same undo/redo history as manual
- * edits (ADR docs/ai-assistant-decision.md §5 — optimistic apply + undo).
+ * edits (specs/ai.md §3.1 and §3.2 — optimistic apply, undo as the backstop).
  *
  * @license MIT
  */
@@ -14,13 +14,16 @@ import type { JxMutableNode, JxPath, JxStateDefinition } from "@jxsuite/schema/t
 import { getNodeAtPath } from "../state";
 import type { Tab } from "../tabs/tab";
 import {
+  mutateAddDef,
   mutateInsertNode,
   mutateMoveNode,
+  mutateRemoveDef,
   mutateUpdateProperty,
   mutateUpdateStyle,
   transactDoc,
 } from "../tabs/transact";
 import type { JxNodeValue } from "../tabs/transact";
+import type { JsonValue } from "../types";
 import { validateDoc } from "./jx-validate";
 import { recordWrite } from "./ai-writes";
 import { serializeJson } from "../files/json-layout";
@@ -52,10 +55,10 @@ function noDocError(): ToolResult {
 
 /**
  * Apply a mutation, then hand the verdict to `ai-write-report.ts`: only the schema errors the edit
- * NEWLY introduced are reported (the eval signal — ADR §6b), the render check runs when a
- * renderCheck was provided and rendering worked before, and a success carries the token hints. The
- * change stays applied either way (optimistic apply + undo, ADR §5); reporting the errors lets the
- * agent loop self-correct on the next round.
+ * NEWLY introduced are reported, the render check runs when a renderCheck was provided and
+ * rendering worked before, and a success carries the token hints. The change stays applied either
+ * way (optimistic apply + undo); reporting the errors lets the agent loop self-correct on the next
+ * round. Both rules are specs/ai.md §3.1.
  *
  * @param {import("../tabs/tab").Tab} tab
  * @param {(t: import("../tabs/tab").Tab) => void} mutationFn
@@ -418,10 +421,12 @@ export function registerAiTools(
         }
         return applyAndValidate(
           tab,
+          /* Through the recording mutators, as two `set-key` ops, rather than by writing the node
+             directly. An unrecorded write reaches the canvas only as a full re-render, history only
+             as a whole-document snapshot, and collaborators only as a diff. */
           (t) => {
-            const node = getNodeAtPath(t.doc.document, path);
-            delete node.textContent;
-            node.children = [value];
+            mutateUpdateProperty(t, path, "textContent");
+            mutateUpdateProperty(t, path, "children", [value]);
           },
           `Set text at ${JSON.stringify(path)}.`,
           validate,
@@ -467,17 +472,10 @@ export function registerAiTools(
         }
         return applyAndValidate(
           tab,
-          (t) => {
-            // Ensure the state object exists before setting a key on it.
-            if (!t.doc.document.state) {
-              t.doc.document.state = {};
-            }
-            /*
-             * Directly mutate — bypass mutateUpdateProperty because its "" → delete behaviour
-             * (transact.ts:248) is wrong for state defaults (e.g. "title": "").
-             */
-            t.doc.document.state[key] = value;
-          },
+          /* `mutateAddDef` rather than `mutateUpdateProperty`: the latter deletes on "", which is
+             wrong for a state default (`"title": ""`). It also records the op, so the canvas, the
+             history and collaborators each get the edit as an edit. */
+          (t) => mutateAddDef(t, key, value as Record<string, JsonValue>),
           `Added state "${key}".`,
           validate,
           renderCheck,
@@ -523,19 +521,13 @@ export function registerAiTools(
         }
         return applyAndValidate(
           tab,
+          /* The recording def mutators, for the reason `add_state` gives. Removing the last key
+             drops the empty `state` object, as the Inspector's own removal does. */
           (t) => {
-            /*
-             * Directly mutate — bypass mutateUpdateProperty because its "" → delete behaviour
-             * (transact.ts:248) is wrong for state defaults (e.g. "title": "").
-             */
-            const { state } = t.doc.document;
-            if (!state) {
-              return;
-            }
             if (value == null) {
-              delete state[key];
+              mutateRemoveDef(t, key);
             } else {
-              state[key] = value;
+              mutateAddDef(t, key, value as Record<string, JsonValue>);
             }
           },
           value == null ? `Removed state "${key}".` : `Updated state "${key}".`,
