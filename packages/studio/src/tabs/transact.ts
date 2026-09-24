@@ -9,7 +9,7 @@ import {
   pruneSelection,
   structuralBatch,
 } from "./selection";
-import { applyDocOpToDoc, childArray, cloneValue } from "./doc-op-apply";
+import { applyDocOpToDoc, childArray, cloneValue, inverseOf } from "./doc-op-apply";
 import {
   beginRecording,
   endRecording,
@@ -878,35 +878,29 @@ export function mutateMoveNode(tab: Tab, fromPath: JxPath, toParentPath: JxPath,
   if (!fromParent || !Array.isArray(fromParent.children) || !toParent) {
     return;
   }
-  const [node] = fromParent.children.splice(fromIdx, 1);
-  if (node === undefined) {
+  if (fromParent.children[fromIdx] === undefined) {
     return;
   }
   let adjustedIndex = toIndex;
   if (fromParent === toParent && fromIdx < toIndex) {
     adjustedIndex -= 1;
   }
-  childArray(toParent).splice(adjustedIndex, 0, node);
+  const forward: JxDocOp = {
+    fromIndex: fromIdx,
+    fromParentPath,
+    op: "move-child",
+    toIndex: adjustedIndex,
+    toParentPath,
+  };
+  /* Computed BEFORE the splice, against the document the move applies to. The inverse runs against
+     the post-move document, so `inverseOf` writes both of its parent paths in post-move
+     coordinates: the removal shifted paths under the source parent, the insertion paths under the
+     target. One implementation of that rule, shared with every other host that moves a node. */
+  const inverse = inverseOf(doc, forward);
+  const [node] = fromParent.children.splice(fromIdx, 1);
+  childArray(toParent).splice(adjustedIndex, 0, node!);
   recordPatch({ fromPath, op: "move", toIndex: adjustedIndex, toParentPath });
-  recordDocOp({
-    forward: {
-      fromIndex: fromIdx,
-      fromParentPath,
-      op: "move-child",
-      toIndex: adjustedIndex,
-      toParentPath,
-    },
-    inverse: {
-      fromIndex: adjustedIndex,
-      // The inverse runs against the post-move document, so both parent paths are translated
-      // Into post-move coordinates: the removal shifted paths under fromParent, the insertion
-      // Shifted paths under toParent.
-      fromParentPath: shiftPrefixedIndex(fromParentPath, toParentPath, fromIdx, -1, false),
-      op: "move-child",
-      toIndex: fromIdx,
-      toParentPath: shiftPrefixedIndex(toParentPath, fromParentPath, adjustedIndex, 1, true),
-    },
-  });
+  recordDocOp({ forward, inverse });
 
   if (pathsEqual(primarySelection(tab.session.selection), fromPath)) {
     let idx = toIndex;

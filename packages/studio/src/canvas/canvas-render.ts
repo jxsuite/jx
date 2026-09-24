@@ -44,7 +44,7 @@ import type { BindingAwareness } from "../collab/monaco-binding";
 import { monacoTheme, shell } from "../shell";
 import { parseSourceForPath } from "../files/file-ops";
 import { serializeDocument } from "../files/serialize-document";
-import { parseJsonDocument, serializeJson } from "../files/json-layout";
+import { parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import { detachGridPanel, gridPanelMounted, renderGridMode } from "../grid/grid-panel";
 import { detachLibraryPane, libraryPaneMounted, renderLibraryMode } from "../browse/library-pane";
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
@@ -165,7 +165,7 @@ async function sourceContent(tab: Tab) {
   if (formatByName(tab.doc.sourceFormat)) {
     return serializeDocument(tab);
   }
-  // The file's own layout (`files/json-layout.ts`), so the buffer shows the bytes a save writes and
+  // The file's own layout (`@jxsuite/schema/json-layout`), so the buffer shows the bytes a save writes and
   // A commit from it reads the same layout back — what `serializeDocument`'s JSON branch does.
   return serializeJson(tab.doc.document, tab.doc.layout ?? null);
 }
