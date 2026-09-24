@@ -33,6 +33,11 @@ The component schema is derived at generation time from web standards data (`@we
 | `validateClass(doc)`         | Validates a .class.json definition against the class schema                                               |
 | `validateWithSchema(doc, s)` | Validates against an arbitrary self-contained 2020-12 schema (e.g. a bundled per-project document schema) |
 
+Two subpaths let any host edit and write a Jx document the way Studio does, with no DOM, no reactive store and no yjs:
+
+- **`@jxsuite/schema/doc-ops`** is the document-op vocabulary: `applyDocOpToDoc(doc, op)` applies one `JxDocOp` (`set-key`, `insert-child`, `remove-child`, `set-child`, `move-child`) to a plain tree, `inverseOf(doc, op)` computes the op that undoes it, and `applyDocOpsWithInverse(doc, ops)` applies a sequence and answers each forward/inverse pair. An inverse is computed against the document before its op and expressed in the coordinates after it; an index the applier clamps is recorded as the slot the node actually lands in. **An op that cannot apply has no inverse**, and a move into the moved node's own subtree is refused by the applier itself, before anything is spliced. `@jxsuite/collab/ops` re-exports this module, so Studio's history, the canvas shadow document and the collab bridge replay through one implementation.
+- **`@jxsuite/schema/json-layout`** is the layout-preserving JSON serializer behind every save (`studio.md` §9.4): `parseJsonDocument(text)` answers the document and the layout facts of its text, and `serializeJson(document, layout)` writes it back with them honoured.
+
 ---
 
 ## 3. Schema Coverage
