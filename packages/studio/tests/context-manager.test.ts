@@ -197,6 +197,124 @@ describe("context-manager — trimContext", () => {
   });
 });
 
+describe("context-manager — the provider's own count", () => {
+  /* Every budget was an estimate at four characters per token. A reported count covers the
+     transcript it was taken over exactly, so only what was added since needs estimating. */
+  test("a reported count is used, plus an estimate of only the messages added since", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [
+      { role: "user", content: "x".repeat(40) },
+      { role: "assistant", content: "y".repeat(40) },
+    ]);
+    cs.recordUsage({ type: "usage", inputTokens: 900, outputTokens: 100 });
+    pushMessages(cs, [{ role: "user", content: longContent(10) }]);
+
+    const result = trimContext(cs, longContent(5000));
+    // 1000 reported + (10 content + 4 framing) for the one new message; the prompt is inside 900.
+    expect(result!.estimatedTokens).toBe(1014);
+    expect(cs.tokenCount).toBe(1014);
+  });
+
+  test("a tool call added since the count is estimated with its name and arguments", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [{ role: "user", content: "go" }]);
+    cs.recordUsage({ type: "usage", inputTokens: 500, outputTokens: 0 });
+    pushMessages(cs, [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "x".repeat(8), arguments: "y".repeat(40) }],
+      },
+    ]);
+
+    const result = trimContext(cs, "");
+    // 500 reported + (0 content + 2 name + 10 args + 4 call framing) + 4 message framing.
+    expect(result!.estimatedTokens).toBe(520);
+  });
+
+  test("what the system prompt has grown by since the count is added", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [{ role: "user", content: "go" }]);
+    cs.recordUsage({ type: "usage", inputTokens: 700, outputTokens: 0 }, { systemTokens: 100 });
+
+    // The prompt is rebuilt on every send; this one is 300 tokens, 200 more than the counted one.
+    const result = trimContext(cs, longContent(300));
+    expect(result!.estimatedTokens).toBe(900);
+  });
+
+  test("a prompt that shrank is subtracted, never below zero", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [{ role: "user", content: "go" }]);
+    cs.recordUsage({ type: "usage", inputTokens: 50, outputTokens: 0 }, { systemTokens: 400 });
+
+    const result = trimContext(cs, "");
+    expect(result!.estimatedTokens).toBe(0);
+  });
+
+  /* Length alone cannot tell: Retry rewinds the transcript and the re-send grows it back to the
+     same length, over different messages. */
+  test("a retry that re-grows the transcript to the same length does not reuse the count", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    cs.sendMessage(longContent(10));
+    cs.recordUsage({ type: "usage", inputTokens: 90_000, outputTokens: 1 });
+    cs.finishStream("stop");
+    cs.retryLast();
+    cs.sendMessage(longContent(10));
+
+    const result = trimContext(cs, longContent(2));
+    // The estimate: 2 prompt + (10 + 4) for the user message; the empty placeholder is not sent.
+    expect(result!.estimatedTokens).toBe(16);
+  });
+
+  test("the placeholder sendMessage pushes is not counted, since it is never sent", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [{ role: "user", content: "go" }]);
+    cs.recordUsage({ type: "usage", inputTokens: 300, outputTokens: 0 });
+    cs.sendMessage(longContent(10)); // A user message plus the empty assistant placeholder
+
+    const result = trimContext(cs, "");
+    expect(result!.estimatedTokens).toBe(300 + 10 + 4);
+  });
+
+  test("a count that is not finite falls back to the estimate", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [{ role: "user", content: longContent(10) }]);
+    cs.recordUsage({ type: "usage", inputTokens: 5, outputTokens: 0 });
+    cs.usage!.contextTokens = Number.NaN; // What a frame from before the guard could leave
+
+    const result = trimContext(cs, "");
+    expect(result!.estimatedTokens).toBe(10 + 4);
+    expect(result!.droppedCount).toBe(0);
+  });
+
+  test("a transcript shorter than the count falls back to the estimate", () => {
+    const cs = createChatState({ model: "gpt-4o" });
+    pushMessages(cs, [
+      { role: "user", content: longContent(10) },
+      { role: "assistant", content: longContent(10) },
+    ]);
+    cs.recordUsage({ type: "usage", inputTokens: 50_000, outputTokens: 1 });
+    cs.messages.pop(); // Rewound beneath the count, as retry does
+
+    const result = trimContext(cs, longContent(2));
+    expect(result!.estimatedTokens).toBe(2 + 10 + 4);
+  });
+
+  test("trimming forgets the count, because it described the dropped transcript", () => {
+    const cs = createChatState({ model: "gpt-4" });
+    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    for (let i = 0; i < 40; i++) {
+      msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: longContent(200) });
+    }
+    pushMessages(cs, msgs);
+    cs.recordUsage({ type: "usage", inputTokens: 8000, outputTokens: 50 });
+
+    const result = trimContext(cs, "");
+    expect(result!.droppedCount).toBeGreaterThan(0);
+    expect(cs.usage).toBeNull();
+  });
+});
+
 describe("context-manager — the model's context window", () => {
   /** Fill a state with `count` messages of `tokens` each, so a budget can be crossed on purpose. */
   function stateWith(model: string, count: number, tokens: number) {

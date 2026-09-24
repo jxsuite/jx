@@ -9,7 +9,7 @@
  * Usage: JX_AI_KEY=... bun run packages/studio/tests/harness/run-eval.js # all defined tests
  * JX_AI_KEY=... bun run packages/studio/tests/harness/run-eval.js L1.1 L1.3
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 4.
+ * See docs/extending/contributing/ai-evals.md.
  */
 
 import { readFileSync } from "node:fs";

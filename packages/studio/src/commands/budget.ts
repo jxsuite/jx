@@ -46,7 +46,7 @@ export const CHROME_BUDGET = {
    *
    * A prompt is chrome for a model: every tool costs attention, and issue 273's finding was that a
    * naive projection of every declaration would have taken the list from 22 to 67. Thirty is
-   * headroom over today's 28 (19 hand + 9 projected), not a target. Asserted in
+   * headroom over today's 29 (18 hand + 11 projected), not a target. Asserted in
    * `tests/ai-command-tools.test.ts` rather than `scripts/check-chrome-budget.ts`, because the hand
    * table lives in `ai-system-prompt.ts`, which imports `../store.js` and is not bare-Bun loadable;
    * the number lives here either way, and raising it is a design decision.

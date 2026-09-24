@@ -313,6 +313,97 @@ describe("chat-state setters", () => {
   });
 });
 
+describe("chat-state usage", () => {
+  it("records the provider's count, where it was taken, and shows it as the token count", () => {
+    const chat = createChatState();
+    chat.sendMessage("hi");
+    chat.recordUsage({
+      type: "usage",
+      inputTokens: 120,
+      outputTokens: 30,
+      cachedInputTokens: 100,
+      reasoningTokens: 8,
+    });
+    expect(chat.usage).toEqual({
+      inputTokens: 120,
+      outputTokens: 30,
+      cachedInputTokens: 100,
+      reasoningTokens: 8,
+      // No reasoning was streamed, so the 8 reasoning tokens occupy nothing on the next send.
+      contextTokens: 142,
+      lastMessageId: chat.messages[1]!.id,
+      messageCount: 2, // The user message and the reply being streamed
+    });
+    expect(chat.tokenCount).toBe(142);
+  });
+
+  it("keeps reasoning in the context when the turn streamed it, since it is replayed", () => {
+    const chat = createChatState();
+    chat.sendMessage("think");
+    chat.appendReasoning("weighing it");
+    chat.appendDelta("Here is the answer."); // An answered turn is sent, reasoning and all
+    chat.recordUsage(
+      { type: "usage", inputTokens: 100, outputTokens: 40, reasoningTokens: 25 },
+      { systemTokens: 60 },
+    );
+    expect(chat.usage?.contextTokens).toBe(140);
+    expect(chat.usage?.systemTokens).toBe(60);
+  });
+
+  it("does not count reasoning as replayed when the turn is never sent", () => {
+    // A turn carrying only reasoning is dropped by toMessagesArray, reasoning and all.
+    const chat = createChatState();
+    chat.sendMessage("think");
+    chat.appendReasoning("thinking, then cut off");
+    chat.recordUsage({ type: "usage", inputTokens: 100, outputTokens: 40, reasoningTokens: 40 });
+    expect(chat.usage?.contextTokens).toBe(100);
+  });
+
+  it("ignores a frame whose counts are not finite, non-negative numbers", () => {
+    const chat = createChatState();
+    chat.sendMessage("hi");
+    const bad = [
+      { inputTokens: Number.NaN, outputTokens: 1 },
+      { inputTokens: 1, outputTokens: -1 },
+      { inputTokens: "10" as unknown as number, outputTokens: 1 },
+      { inputTokens: 1, outputTokens: Number.POSITIVE_INFINITY },
+    ];
+    for (const counts of bad) {
+      chat.recordUsage({ type: "usage", ...counts });
+    }
+    expect(chat.usage).toBeNull();
+    expect(chat.tokenCount).toBe(0);
+  });
+
+  it("disregards a reasoning figure that is not a count", () => {
+    const chat = createChatState();
+    chat.sendMessage("hi");
+    chat.recordUsage({
+      type: "usage",
+      inputTokens: 10,
+      outputTokens: 5,
+      reasoningTokens: Number.NaN,
+    });
+    expect(chat.usage?.contextTokens).toBe(15);
+  });
+
+  it("falls back to the last message when no reply is streaming", () => {
+    const chat = createChatState();
+    chat.recordUsage({ type: "usage", inputTokens: 5, outputTokens: 5, reasoningTokens: 2 });
+    expect(chat.usage).toMatchObject({ contextTokens: 8, lastMessageId: "", messageCount: 0 });
+  });
+
+  it("clearUsage forgets the count, and clearChat forgets it too", () => {
+    const chat = createChatState();
+    chat.recordUsage({ type: "usage", inputTokens: 1, outputTokens: 1 });
+    chat.clearUsage();
+    expect(chat.usage).toBeNull();
+    chat.recordUsage({ type: "usage", inputTokens: 1, outputTokens: 1 });
+    chat.clearChat();
+    expect(chat.usage).toBeNull();
+  });
+});
+
 describe("chat-state toMessagesArray", () => {
   it("emits plain user and assistant entries", () => {
     const chat = createChatState();

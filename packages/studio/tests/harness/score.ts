@@ -6,7 +6,7 @@
  * Browser-only ceilings (rendered-DOM Correctness ≥4, seamless Undo/Redo) are returned as `N/A
  * (browser)` — the studio owns those.
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 3.
+ * See docs/extending/contributing/ai-evals.md.
  */
 
 import { undo, redo } from "../../src/tabs/transact";

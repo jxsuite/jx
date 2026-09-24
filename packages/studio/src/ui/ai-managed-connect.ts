@@ -66,6 +66,13 @@ const LEDE_FRESH =
   "Recommended — run the assistant on Workers AI in your own Cloudflare account. No API key to create, copy or rotate.";
 const LEDE_LAPSED =
   "Your Cloudflare connection has expired. Reconnect to keep using the assistant.";
+/**
+ * A live grant that reaches more than one account and has none chosen (`cf_account_required`).
+ * Re-authorizing lands back in exactly this state, so the button opens the account picker instead
+ * of the OAuth flow, and the words say which of the two is missing.
+ */
+const LEDE_ACCOUNT =
+  "Cloudflare is connected, but no account is chosen yet. Pick the account the assistant should run on.";
 
 /**
  * Create a managed-connect controller bound to a host's render scheduler.
@@ -98,6 +105,51 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
     return !isProxyConfigured() || proxyStateCode() === "cf_reconnect_required";
   }
 
+  /**
+   * The grant is live but names no account — the one state a connect flow cannot fix. Read from the
+   * shared probe alone, so it can never outlive the state it describes: a disconnect, or an account
+   * picked in Preferences, changes what the probe answers and this answer with it.
+   */
+  const needsAccount = () => proxyStateCode() === "cf_account_required";
+
+  /**
+   * Re-probe after the connection changed, and CHECK the answer, because a change the backend does
+   * not honour must not look like one that worked. This is the only place that can tell.
+   */
+  async function verifyConnection(): Promise<void> {
+    // Re-probe: /models flips to configured once the connection lands, opening the gate.
+    resetModelCache();
+    await fetchAvailableModels({ force: true });
+    /* Each refusal gets the advice that can fix it: reconnecting cannot choose an account, and a
+       pick cannot revive a lapsed grant. */
+    if (proxyStateCode() === "cf_account_required") {
+      connectError =
+        "Cloudflare still reports no account chosen for the assistant. Pick one again, or use your own API key below.";
+    } else if (!isProxyConfigured() || proxyStateCode() === "cf_reconnect_required") {
+      connectError =
+        "Cloudflare connected, but the assistant backend still reports the connection as unusable. " +
+        "Try reconnecting, or use your own API key below.";
+    }
+  }
+
+  /** Open the account picker, and verify the connection once an account is chosen. */
+  async function chooseAccount(): Promise<void> {
+    /* Lazily, because the picker pulls the dialog layer in and this module is imported by every
+       credentials gate — including ones that render before layers are bound. */
+    const { openCfAccountPicker } = await import("./cf-account-picker");
+    if (!(await openCfAccountPicker())) {
+      /* Re-probe, because the probe still answers from before the connect. The backend reports a
+         live grant with no account as `cf_account_required`, so after this the button offers the
+         picker again rather than an OAuth round trip that would land right back here. */
+      resetModelCache();
+      await fetchAvailableModels({ force: true });
+      connectError =
+        "Cloudflare is connected, but no account is chosen yet — pick one to finish setting up the assistant.";
+      return;
+    }
+    await verifyConnection();
+  }
+
   function ensureProbe() {
     ensureProxyProbe(opts.requestRender);
   }
@@ -126,25 +178,10 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
       return;
     }
     if (!outcome.connection.accountId) {
-      /* Lazily, because the picker pulls the dialog layer in and this module is imported by every
-         credentials gate — including ones that render before layers are bound. */
-      const { openCfAccountPicker } = await import("./cf-account-picker");
-      if (!(await openCfAccountPicker())) {
-        connectError =
-          "Cloudflare is connected, but no account is chosen yet — pick one to finish setting up the assistant.";
-        return;
-      }
+      await chooseAccount();
+      return;
     }
-    // Re-probe: /models flips to configured once the connection lands, opening the gate.
-    resetModelCache();
-    await fetchAvailableModels({ force: true });
-    /* And then CHECK, because a connect the backend does not honour must not look like one that
-       worked. This is the only place that can tell the difference. */
-    if (!isProxyConfigured() || proxyStateCode() === "cf_reconnect_required") {
-      connectError =
-        "Cloudflare connected, but the assistant backend still reports the connection as unusable. " +
-        "Try reconnecting, or use your own API key below.";
-    }
+    await verifyConnection();
   }
 
   async function connect() {
@@ -155,7 +192,11 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
     connectError = "";
     opts.requestRender();
     try {
-      await settle((await getPlatform().cfConnect?.()) ?? null);
+      /* `cf_account_required` is a grant that already works for authorization and names no
+         account; the OAuth flow would land straight back here (ai.md §2.1). */
+      await (needsAccount()
+        ? chooseAccount()
+        : settle((await getPlatform().cfConnect?.()) ?? null));
     } catch (error) {
       connectError = error instanceof Error ? error.message : String(error);
     }
@@ -165,6 +206,14 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
 
   /** What the offer says right now — the whole of what the surface is told. */
   function view(): ManagedConnectView {
+    if (needsAccount()) {
+      return {
+        buttonLabel: busy ? "Choosing…" : "Choose Cloudflare account",
+        busy,
+        error: connectError,
+        intro: LEDE_ACCOUNT,
+      };
+    }
     const lapsed = proxyStateCode() === "cf_reconnect_required";
     const idleLabel = lapsed ? "Reconnect Cloudflare" : "Connect Cloudflare";
     return {

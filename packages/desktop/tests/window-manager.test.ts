@@ -303,11 +303,11 @@ const {
   broadcastSettingsChanged,
   broadcastUpdateReady,
   parseProjectDirFromUrl,
-  setAiServerUrl,
+  setAiChatUrl,
   setImportServiceUrl,
 } = await import("../src/window-manager");
 
-setAiServerUrl("http://localhost:9000");
+setAiChatUrl("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
 setImportServiceUrl("http://x/import?token=t");
 
 const DASH = "—"; // Em dash used in window titles
@@ -503,7 +503,7 @@ describe("per-window RPC", () => {
     expect(pkg.listPackages).toHaveBeenCalledTimes(1);
 
     // Process-shared handlers.
-    expect(reqs.aiChatUrl()).toBe("http://localhost:9000/__studio/ai/chat");
+    expect(reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
     expect(reqs.updaterApplyUpdate()).toBe("apply");
     expect(reqs.updaterCheckForUpdate()).toBe("check");
     expect(reqs.updaterDownloadUpdate()).toBe("download");
@@ -563,7 +563,7 @@ describe("per-window RPC", () => {
   test("aiChatUrl resolves to the shared AI server's proxy endpoint", () => {
     openProjectWindow("/proj/ai");
     const reqs = lastRequests();
-    expect(reqs.aiChatUrl()).toBe("http://localhost:9000/__studio/ai/chat");
+    expect(reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
   });
 
   test("importSiteUrl resolves to the shared token-gated import endpoint", () => {

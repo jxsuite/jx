@@ -4,7 +4,7 @@
  *
  * Wires the @jxsuite/ai infrastructure (chat-state, proxy streaming client, tool registry) to
  * the active Jx document via `transactDoc()`-backed tools, and drives the error-correction
- * agent loop. See docs/ai-assistant-decision.md.
+ * agent loop. See specs/ai.md §3.
  *
  * @license MIT
  */
@@ -45,8 +45,9 @@ import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
 import * as sessionStore from "./ai-session-store";
 
 /**
- * Project root scoping the session store (ADR §11.5 / §14.2 — conversations don't bleed across
- * projects). Falls back to a shared unscoped store when no project is open.
+ * Project root scoping the session store, so conversations don't bleed across projects (the history
+ * section of docs/studio/ai/chat.md). Falls back to a shared unscoped store when no project is
+ * open.
  *
  * @returns {string}
  */
