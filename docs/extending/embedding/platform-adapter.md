@@ -12,6 +12,9 @@ code:
   - packages/studio/src/utils/base64.ts
   - packages/desktop/src/platform.ts
   - packages/desktop/src/chromium/platform.ts
+  - packages/desktop/src/boot.ts
+  - packages/studio/src/platforms/default-platform.ts
+  - packages/studio/src/services/directory-picker.ts
 ---
 
 # Writing a platform adapter
@@ -118,7 +121,7 @@ export function createMyPlatform() {
 }
 ```
 
-A browser-hosted adapter can still offer `pickDirectory`: `@jxsuite/studio/directory-picker` exports `canPickDirectory()` and `pickDirectoryPath(locate)`, which drive `showDirectoryPicker()` and hand you the picked folder's `name` plus the random id it wrote into a hidden `.jx-loc-id` there. Your `locate` callback resolves that pair to an absolute path (the dev server does it with `GET /__studio/locate-directory`). Omit the member when `canPickDirectory()` is false, so Studio hides the button. One that always returns null leaves a dead button on screen.
+A browser-hosted adapter can still offer `pickDirectory`: `@jxsuite/studio/directory-picker` exports `canPickDirectory()` and `pickDirectoryPath(locate)`, which drive `showDirectoryPicker()` and hand you the picked folder's `name` plus the random id it wrote into a hidden `.jx-loc-id` there. Your `locate` callback resolves that pair to an absolute path (the dev server does it with `GET /__studio/locate-directory`), or `null` when nothing matches. `pickDirectoryPath` resolves `null` only when the user cancels. It rejects when it can't tag the folder or when `locate` answers `null` or throws, and Studio shows that message under **Location**. Hold your own `pickDirectory` to the same rule: `null` for a cancel, a thrown `Error` with a readable message for anything else. A `null` that means "failed" looks exactly like a cancel, so the user picks a folder and nothing happens. Omit the member when `canPickDirectory()` is false, so Studio hides the button.
 
 ## Registration
 
@@ -140,17 +143,23 @@ export function getPlatform() {
 }
 ```
 
-The desktop app does exactly this with a four-line init bundle injected ahead of the Studio bundle:
+The desktop app does this with a short init bundle loaded ahead of the Studio bundle. Its first import announces the launcher, and registration happens before anything asynchronous:
 
 ```ts
-// packages/desktop/src/init.ts — loaded before studio.js
-import { registerPlatform } from "@jxsuite/studio/platform";
+// packages/desktop/src/init.ts, loaded before studio.js
+import { bootLauncher } from "./boot"; // first: publishes globalThis.__jxLauncher
+import { hydrateGithubToken } from "@jxsuite/studio/github-auth";
 import { createDesktopPlatform } from "./platform";
 
-registerPlatform(createDesktopPlatform());
+await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "electrobun" });
 ```
 
-If nothing has registered by the time Studio boots, it self-registers the dev-server adapter: `if (!hasPlatform()) registerPlatform(createDevServerPlatform())`. So an embedder that serves the HTTP protocol needs no registration code at all, and one that doesn't must win the race by loading its init script first.
+If nothing has registered by the time Studio boots, what happens depends on whether your page declared a boot module:
+
+- **No boot module.** Studio builds the cloud adapter when `__jxCloud` was published, and the dev-server adapter otherwise. An embedder that serves the HTTP protocol needs no registration code at all.
+- **A boot module, or an announced launcher.** There is no fallback. If your init script throws before `registerPlatform`, or finishes without registering, Studio shows a full-window boot-failure screen with the error and calls no backend. It used to fall back to the dev-server adapter, and a desktop window then reported "Failed to fetch" on **Create Project** while **Browse…** did nothing.
+
+So register first, before any `await`, and call `announceLauncher()` from `@jxsuite/studio/platform` in your bundle's first import. Record a construction error on the signal it returns (`signal.error = { message, stack }`) so the failure screen can name it. `studioShellHtml({ boot })` writes the `jx-boot` marker that turns the fallback off, so you get this behavior by declaring `boot`.
 
 ## The project-open flow
 

@@ -38,10 +38,19 @@ export async function openFileDialog(): Promise<string | null> {
   return paths[0].trim() || null;
 }
 
-/** Pick a folder — used by New Project to choose where to scaffold the project. */
+/**
+ * Pick a folder — used by New Project to choose where to scaffold the project.
+ *
+ * Resolves `null` only when the user cancels the dialog. A build whose Electrobun `Utils` never
+ * loaded has no dialog to show, and answering `null` there would make Browse… indistinguishable
+ * from a cancel: a button that visibly does nothing. So it rejects with the sentence Studio shows
+ * under the Location field instead (`StudioPlatform.pickDirectory`'s contract).
+ */
 export async function openDirectoryDialog(): Promise<string | null> {
   if (!Utils) {
-    return null;
+    throw new Error(
+      "The system folder dialog is not available in this build. Type the path into Location instead.",
+    );
   }
   const paths = await Utils.openFileDialog({
     allowsMultipleSelection: false,

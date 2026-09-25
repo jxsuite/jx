@@ -1,3 +1,4 @@
+// oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 /**
  * Tests for the dev-server StudioPlatform adapter (src/platforms/devserver.ts).
  *
@@ -468,13 +469,54 @@ describe("createProject", () => {
     expect(log.removed).toEqual([LOCATION_ID_FILE]);
   });
 
-  test("pickDirectory returns null when the locate route responds non-ok", async () => {
-    const { handle } = fakeDestHandle("Elsewhere");
+  /* `null` from pickDirectory is the user cancelling, and nothing else. A lookup that failed
+     used to resolve `null` too, which is how Browse… came to pick a folder and then do nothing:
+     every case below now rejects with a sentence the modal shows under Location. The tag must
+     still be removed each time, since the server never matched it. */
+  test("pickDirectory rejects with the server's problem when the locate route responds non-ok", async () => {
+    const { handle, log } = fakeDestHandle("Elsewhere");
     setPicker(async () => handle);
     route("/__studio/locate-directory", () => json({ error: "no home directory" }, 500));
     const p: StudioPlatform = createDevServerPlatform();
-    // A folder the server cannot place is "no destination chosen", not an error to surface.
-    expect(await p.pickDirectory!()).toBeNull();
+    await expect(p.pickDirectory!()).rejects.toThrow(
+      'Jx Studio could not look up where "Elsewhere" is: no home directory. Type the folder\'s path into Location instead.',
+    );
+    expect(log.removed).toEqual([LOCATION_ID_FILE]);
+  });
+
+  test("pickDirectory rejects, saying the folder was not found, on a 200 with no path", async () => {
+    const { handle, log } = fakeDestHandle("Outside");
+    setPicker(async () => handle);
+    // The route's own "searched, no folder holds this id" answer: outside $HOME, for one.
+    route("/__studio/locate-directory", () => json({ path: null }));
+    const p: StudioPlatform = createDevServerPlatform();
+    await expect(p.pickDirectory!()).rejects.toThrow(/could not find where "Outside" is/);
+    expect(log.removed).toEqual([LOCATION_ID_FILE]);
+  });
+
+  /* The customer's case: a page no dev server is behind (a packaged `views://` document whose own
+     adapter never registered) has no route to reach, so fetch itself throws. */
+  test("pickDirectory rejects naming the network failure when fetch throws", async () => {
+    const { handle, log } = fakeDestHandle("Sites");
+    setPicker(async () => handle);
+    globalThis.fetch = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    const p: StudioPlatform = createDevServerPlatform();
+    await expect(p.pickDirectory!()).rejects.toThrow(
+      /could not look up where "Sites" is: Failed to fetch\./,
+    );
+    expect(log.removed).toEqual([LOCATION_ID_FILE]);
+  });
+
+  test("pickDirectory falls back to the status when a non-ok body is not JSON", async () => {
+    const { handle, log } = fakeDestHandle("Sites");
+    setPicker(async () => handle);
+    // A proxy, or an older server without the route, answering with an HTML page.
+    route("/__studio/locate-directory", () => textRes("<!doctype html><h1>Not Found</h1>", 404));
+    const p: StudioPlatform = createDevServerPlatform();
+    await expect(p.pickDirectory!()).rejects.toThrow(/Request failed \(404\)/);
+    expect(log.removed).toEqual([LOCATION_ID_FILE]);
   });
 
   test("posts the options including the destination and returns the server response", async () => {

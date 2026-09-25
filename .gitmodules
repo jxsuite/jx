@@ -6,9 +6,14 @@
 # `.hutch/devkit`, which is a network step no clone, linter or CI job can perform for itself.
 #
 # So this submodule is the TYPECHECK sysroot: `packages/desktop/tsconfig.json` `paths` point into
-# `package/src`, and Hutch's `.hutch/devkit` remains the BUILD sysroot. The projected devkit is a
-# verbatim copy of these same directories (196 of 197 files byte-identical at 2.0.1), so the two
-# describe one release; `bun run electrobun:verify` proves they still name the same version.
+# `package/src`. It is also the BUILD sysroot for the webview init bundle, which
+# `packages/desktop/scripts/pre-build.ts` compiles with plain `bun build` through those same `paths`
+# — with this checkout empty, that bundle inlines `node_modules/electrobun`'s throwing stub, which
+# is what desktop 5.0.0 through 5.1.3 shipped; pre-build and every bundle lane now run
+# `check-electrobun-vendor.ts --init` first. Hutch's `.hutch/devkit` remains the sysroot for Hutch's
+# own bundling of the main process. The projected devkit is a verbatim copy of these same
+# directories (196 of 197 files byte-identical at 2.0.1), so the two describe one release;
+# `bun run electrobun:verify` proves they still name the same version.
 #
 # `bun run electrobun:sync` owns this checkout — it pins the tag named by the `electrobun`
 # devDependency, applies the sparse patterns below, and writes the one generated file the SDK

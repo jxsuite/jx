@@ -4,9 +4,9 @@
  * Two shapes, chosen by the platform's `createDestination` (specs/desktop.md §4.5):
  *
  * - `"path"` (desktop, dev server): a required **Location** (absolute parent directory) plus the
- *   folder name. Desktop backs the Browse… button with the native dialog via `pickDirectory`; the
- *   dev server has no dialog, so the path is typed. Nothing is ever written to a directory the user
- *   did not name.
+ *   folder name. The Browse… button is backed by `pickDirectory` wherever the platform has one:
+ *   desktop's system dialog, and the dev server's `showDirectoryPicker` in a Chromium browser.
+ *   Elsewhere the path is typed. Nothing is ever written to a directory the user did not name.
  * - `"repo"` (cloud): the repository location — owner (personal account or organization), the
  *   repository name, and its visibility.
  *
@@ -21,6 +21,7 @@
  * @docs studio/projects/create
  */
 
+import { errorMessage } from "@jxsuite/schema/parse";
 import { getPlatform } from "../platform";
 import type { CreateProjectDestination, RepoInfo } from "../types";
 
@@ -253,6 +254,13 @@ export function setLocationVisibility(value: string): void {
  * Re-entrant by refusal rather than by disabling alone: the button is drawn disabled while the
  * native dialog is up, and a synthetic click does not consult that.
  *
+ * **Never a silent no-op, and never a rejection.** `null` from `pickDirectory` is the user
+ * cancelling, so nothing is said and the standing state is left alone. Anything else rejects with a
+ * displayable message (see `StudioPlatform.pickDirectory`), which lands in the destination error
+ * under the Location field, where typing a path clears it. The modal calls this as `void
+ * browseLocation(...)`, so a rejection escaping here would be an unhandled one: the exact "picked a
+ * folder and nothing happened" this contract exists to rule out.
+ *
  * @param rerender Repaint the wizard — once for the busy label, once for the answer.
  */
 export async function browseLocation(rerender: () => void): Promise<void> {
@@ -268,6 +276,11 @@ export async function browseLocation(rerender: () => void): Promise<void> {
       _parent = picked;
       _error = "";
     }
+  } catch (error) {
+    /* The dialog could not open, the folder could not be tagged, the backend was unreachable or
+       found no match, an RPC timed out. Whatever the platform, the sentence goes under Location. */
+    _error =
+      errorMessage(error) || "The folder could not be chosen. Type its path into Location instead.";
   } finally {
     _browsing = false;
     rerender();
