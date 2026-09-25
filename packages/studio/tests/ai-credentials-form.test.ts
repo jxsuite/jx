@@ -332,6 +332,12 @@ describe("ai-credentials-form", () => {
     expect(error.textContent).toContain(body);
     expect(getComputedStyle(error).overflowWrap).toBe("anywhere");
     expect(getComputedStyle(error).minWidth).toBe("0");
+    /* And it takes a line of its own under the button rather than a column beside it. Reflowed but
+       still beside `Fetch models`, six lines of this body began 96px into the 320px column, indented
+       past the button they answer for, with the button floating at their middle. A basis of the
+       whole line in a row that wraps cannot share one. */
+    expect(getComputedStyle(error).flexBasis).toBe("100%");
+    expect(getComputedStyle(part(c.container, "models")!).flexWrap).toBe("wrap");
   });
 
   test("Save persists key, endpoint, and model and fires onSaved", async () => {
@@ -447,6 +453,28 @@ describe("ai-credentials-form", () => {
     // The endpoint is still the reader's edit, so there is still something to commit.
     expect(part(c.container, "save")).not.toBeNull();
     expect(part(c.container, "cancel")).not.toBeNull();
+  });
+
+  /**
+   * The two questions — "is this dirty?" and "has the reader touched this?" — have to be answered
+   * by the same rule. Raw equality made a whitespace-only draft touched but not dirty: no Save and
+   * no Cancel were drawn, so nothing could reset it, and the revoked key then sat in the field with
+   * a Save offering to store it back.
+   */
+  test("a normalisation-only draft still follows the store, and a Disconnect empties it", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-a" });
+    const c = await makeForm();
+    c.form.startEdit();
+    await flush(4);
+    type(c.container, "key", " sk-a ");
+    // Nothing to keep and nothing to abandon: Save would store what is already there.
+    expect(part(c.container, "save")).toBeNull();
+    expect(part(c.container, "cancel")).toBeNull();
+
+    clearAiProvider();
+    await c.repaint();
+    expect(input(c.container, "key").value).toBe("");
+    expect(part(c.container, "save")).toBeNull();
   });
 
   /**

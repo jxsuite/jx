@@ -17,7 +17,10 @@ import {
   saveAiProvider,
   setModel,
   setOpenAiKey,
+  storedEquals,
 } from "../src/services/ai-settings";
+import { SETTINGS } from "../src/services/settings/definitions";
+import { adoptRemoteSettings } from "../src/services/settings/kernel";
 import { preferredModel } from "../src/services/ai-models";
 import type { SettingsPatch } from "../src/types";
 
@@ -129,6 +132,43 @@ describe("ai-settings — aiProviderDiffers", () => {
   test("a blank draft over a stored value is a change — Save would store the blank", () => {
     saveAiProvider({ apiKey: "sk-a", baseUrl: "", model: "" });
     expect(aiProviderDiffers({ apiKey: "", baseUrl: "", model: "" })).toBe(true);
+  });
+
+  test("a STORED value the setters never normalised is no change either", () => {
+    /* Only the setters normalise. A backend hydrate, another window's adopt and a hand-edited
+       settings.json all put the value in as it was written, so the store legitimately holds the
+       trailing slash the docs print. Comparing a normalised draft against that raw value reported
+       an edit nobody made: Save and Cancel on a form at rest, and a Cancel that could not clear
+       them, because reloading the drafts loaded the same raw value again. */
+    adoptRemoteSettings({
+      "jx.ai.baseUrl": "http://localhost:11434/v1/",
+      "jx.ai.model": " o3 ",
+      "jx.ai.openaiKey": "sk-a\n",
+    });
+    expect(getBaseUrl()).toBe("http://localhost:11434/v1/");
+    expect(
+      aiProviderDiffers({
+        apiKey: "sk-a\n",
+        baseUrl: "http://localhost:11434/v1/",
+        model: " o3 ",
+      }),
+    ).toBe(false);
+    // What the form would actually draw from the raw store is no change either.
+    expect(
+      aiProviderDiffers({ apiKey: getOpenAiKey(), baseUrl: getBaseUrl(), model: " o3 " }),
+    ).toBe(false);
+    // And a real edit on top of an unnormalised store still reads as one.
+    expect(
+      aiProviderDiffers({ apiKey: "sk-b", baseUrl: "http://localhost:11434/v1/", model: " o3 " }),
+    ).toBe(true);
+  });
+});
+
+describe("ai-settings — storedEquals", () => {
+  test("it answers for one setting what aiProviderDiffers answers for three", () => {
+    expect(storedEquals(SETTINGS.aiBaseUrl, "http://h/v1", "http://h/v1//")).toBe(true);
+    expect(storedEquals(SETTINGS.aiOpenAiKey, " sk-a ", "sk-a")).toBe(true);
+    expect(storedEquals(SETTINGS.aiModel, "o3", "o4")).toBe(false);
   });
 });
 

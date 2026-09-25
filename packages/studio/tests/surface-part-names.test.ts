@@ -25,6 +25,29 @@
  * Selectors are resolved with the runtime's own `resolveNestedSelector`, so a nested `&` block and
  * a comma list are read exactly as the emitted sheet reads them, and an at-rule block passes its
  * parent's selector through unchanged, as the runtime's own walk does.
+ *
+ * **The hand-written sheets are read too.** `styles/*.css` cascades over the same light DOM as the
+ * surface documents, with no scope at all, so `.panel-footer [part="error"]` in `panels.css`
+ * reaches every field inside every panel footer. A guard that checked only the documents would have
+ * held the claim in this header for the JSON half of the styling and left the half that has the
+ * wider reach unread.
+ *
+ * **And a name can collide across two documents, not just with the kit.** A surface that draws an
+ * ISLAND hosts a whole other document in its own light DOM, so a descendant part selector the host
+ * writes reaches the guest's nodes as well as its own. That is how renaming the managed-connect
+ * refusal to the conventional `failure` walked it into `new-project.json`'s footer-banner rules.
+ * The hosts are derived (a part named `island` or `*-island`); their guests cannot be, because the
+ * wiring is a closure per island, so {@link ISLAND_GUESTS} names them and the test proves each
+ * named host really draws the island it claims.
+ *
+ * **What this does NOT reach.** A host is only found by name, and `preferences.json` calls its two
+ * boxes `managed-slot` and `creds-slot` — it is in the list because a rule of its own was reaching
+ * the credentials form's `[part="key"]` field and `[part="title"]`, not because anything derived
+ * it. Further out there is a whole family of boxes that code fills with something OTHER than a
+ * surface document (a form field's `control-host`, the colour row's lit island, the signals tree),
+ * and a guest list for those is not a set of files at all. So the list is the guard's reach:
+ * widening it is a line per host, and the test below makes sure the convention-named ones cannot be
+ * missed.
  */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -201,7 +224,235 @@ const SOURCES = [
     .map((name) => `styles/${name}`),
 ].toSorted();
 
+const SHEETS = readdirSync(join(STUDIO, "styles"))
+  .filter((name) => name.endsWith(".css"))
+  .map((name) => `styles/${name}`)
+  .toSorted();
+
 const read = (path: string) => JSON.parse(readFileSync(join(STUDIO, path), "utf8")) as Json;
+
+/**
+ * Every rule selector a hand-written sheet declares.
+ *
+ * A prelude is whatever sits between the last `;`, `{` or `}` and the next `{`, which reads a
+ * nested block the same way it reads a top-level one; an at-rule's own prelude starts with `@` and
+ * is dropped, while the rules inside it are found on the next pass of the same scan.
+ *
+ * @yields {string} Each rule's selector list, as written.
+ */
+function* sheetSelectors(css: string): Generator<string> {
+  const text = css.replaceAll(/\/\*[\s\S]*?\*\//g, "");
+  for (const match of text.matchAll(/([^{}]*)\{/g)) {
+    const prelude = match[1]!.slice(match[1]!.search(/[^;}]*$/)).trim();
+    if (prelude !== "" && !prelude.startsWith("@")) {
+      yield prelude;
+    }
+  }
+}
+
+/**
+ * The surfaces mounted into each island-hosting surface's islands.
+ *
+ * A LIST rather than a derivation, because the wiring is a callback per island — `new-project.ts`
+ * maps `creds-island` to `options.islands.creds`, and the modal passes `() => credsForm().render()`
+ * — so nothing in the documents or the adapters says which document lands in which box. The cost of
+ * the list is one line when an island gains a body, and the test below fails when a named host
+ * stops drawing the island it is listed for, so it cannot rot into a no-op.
+ */
+const ISLAND_GUESTS: Readonly<Record<string, readonly string[]>> = {
+  "dialog.json": ["grid-open.json", "push-plan.json"],
+  "new-project.json": [
+    "ai-credentials-form.json",
+    "ai-managed-connect.json",
+    "ai-model-picker.json",
+  ],
+  "preferences.json": [
+    "ai-credentials-form.json",
+    "ai-managed-connect.json",
+    "ai-model-picker.json",
+  ],
+};
+
+/**
+ * The parts of every box a document draws and never fills: a mount point.
+ *
+ * Two shapes, because the naming convention is not universal. `island`/`*-island` is what
+ * studio-ui-guidelines §9.4 calls one, and `preferences.json` calls its two `managed-slot` and
+ * `creds-slot` — so a box is also read as a mount when it is a LEAF with `role="none"`: no
+ * children, no `$switch`, no `$map`, no text. That is the document saying "somebody else puts
+ * something here".
+ */
+function mountBoxes(doc: Json): string[] {
+  return [...elementsUnder(doc)].flatMap((node) => {
+    const attributes = isObject(node["attributes"]) ? node["attributes"] : {};
+    const filled = ["children", "cases", "map", "$switch", "textContent"].some(
+      (key) => node[key] !== undefined,
+    );
+    return partsOf(node).filter(
+      (part) =>
+        part === "island" || part.endsWith("-island") || (attributes["role"] === "none" && !filled),
+    );
+  });
+}
+
+/** Every part name the documents in `files` draw, mapped to the nodes that carry it. */
+function drawnParts(files: readonly string[]): Map<string, GuestNode[]> {
+  const drawn = new Map<string, GuestNode[]>();
+  for (const file of files) {
+    for (const node of guestNodes(read(`src/surfaces/${file}`), file)) {
+      for (const part of partsOf(node.node)) {
+        drawn.set(part, [...(drawn.get(part) ?? []), node]);
+      }
+    }
+  }
+  return drawn;
+}
+
+/** One node a guest document draws, with the little a host's selector could test it against. */
+interface GuestNode {
+  file: string;
+  node: Json;
+  /**
+   * The part names of the element this one sits inside, or `undefined` for the guest's root: that
+   * one's parent is the host's own mount box, so a rule reaching it cannot be ruled out.
+   */
+  parentParts: readonly string[] | undefined;
+}
+
+/**
+ * Every element a guest document draws, each carrying the parts of the element it sits inside.
+ *
+ * The nearest enclosing element is the parent whatever the key between them is — `children`, a
+ * `$switch` case or a `map` body all render one node inside another.
+ *
+ * @yields {GuestNode} Each element, the document's own root first.
+ */
+function* guestNodes(
+  value: unknown,
+  file: string,
+  parentParts?: readonly string[],
+): Generator<GuestNode> {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      yield* guestNodes(item, file, parentParts);
+    }
+    return;
+  }
+  if (!isObject(value)) {
+    return;
+  }
+  const element = typeof value["tagName"] === "string";
+  if (element) {
+    yield { file, node: value, parentParts };
+  }
+  const inside = element ? partsOf(value) : parentParts;
+  for (const [key, child] of Object.entries(value)) {
+    if (key !== "style") {
+      yield* guestNodes(child, file, inside);
+    }
+  }
+}
+
+/**
+ * The compounds of one selector member, each with the combinator that precedes it.
+ *
+ * `[` … `]` is opaque, so a bracketed value carrying a space or a `>` does not split a compound.
+ */
+function sequence(member: string): { combinator: string; compound: string }[] {
+  const out: { combinator: string; compound: string }[] = [];
+  let combinator = "";
+  let compound = "";
+  let depth = 0;
+  for (const char of member) {
+    if (char === "[") {
+      depth += 1;
+    } else if (char === "]") {
+      depth -= 1;
+    }
+    if (depth === 0 && /[\s>+~]/.test(char)) {
+      if (compound !== "") {
+        out.push({ combinator, compound });
+        combinator = "";
+        compound = "";
+      }
+      if (char !== " " || combinator === "") {
+        combinator = char === " " ? " " : char;
+      }
+      continue;
+    }
+    compound += char;
+  }
+  if (compound !== "") {
+    out.push({ combinator, compound });
+  }
+  return out;
+}
+
+/**
+ * Whether a host's compound could match a guest's node at all.
+ *
+ * The part name has already matched; what is left is every OTHER thing the compound asks for. A tag
+ * the node is not, a `[data-…]` it does not carry, a class it has no `class` for: each of those is
+ * the rule saying it means a node of the host's own, which is how a host keeps a shared part name
+ * without reaching into its guest. Pseudo-classes are ignored — they are state, not identity.
+ */
+function compoundCouldMatch(compound: string, node: Json): boolean {
+  const attributes = isObject(node["attributes"]) ? node["attributes"] : {};
+  const tag = /^[a-z][a-z0-9-]*/.exec(compound)?.[0];
+  if (tag !== undefined && tag !== node["tagName"]) {
+    return false;
+  }
+  for (const match of compound.matchAll(
+    /\[([a-zA-Z-]+)(?:[~^$*|]?=\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\s*\]/g,
+  )) {
+    const name = match[1] ?? "";
+    const value = match[2] ?? match[3] ?? match[4];
+    if (name === "part") {
+      continue;
+    }
+    if (!(name in attributes)) {
+      return false;
+    }
+    if (value !== undefined && String(attributes[name]) !== value) {
+      return false;
+    }
+  }
+  const classes = String(attributes["class"] ?? "").split(/\s+/);
+  for (const match of compound.matchAll(/\.([a-zA-Z][\w-]*)/g)) {
+    if (!classes.includes(match[1] ?? "")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether one selector member could match `guest`.
+ *
+ * Only the two tests a document can answer: the compound that carries the part name, and — when the
+ * part is reached through a CHILD combinator — whether the guest's own parent could be the compound
+ * before it. An ancestor combinator says nothing, because the host's box really is the guest's
+ * ancestor. The guest's root has no parent here (the host's mount box is), so a rule on it stands.
+ */
+function memberCouldMatch(member: string, part: string, guest: GuestNode): boolean {
+  const seq = sequence(member);
+  const at = seq.findIndex(({ compound }) =>
+    [...compound.matchAll(PART_SELECTOR)].some(
+      (match) => (match[1] ?? match[2] ?? match[3] ?? "") === part,
+    ),
+  );
+  if (at === -1 || !compoundCouldMatch(seq[at]!.compound, guest.node)) {
+    return false;
+  }
+  const parent = at > 0 && seq[at]!.combinator === ">" ? seq[at - 1]!.compound : undefined;
+  if (parent === undefined || guest.parentParts === undefined) {
+    return true;
+  }
+  const wanted = [...parent.matchAll(PART_SELECTOR)].map(
+    (match) => match[1] ?? match[2] ?? match[3] ?? "",
+  );
+  return wanted.every((name) => guest.parentParts!.includes(name));
+}
 
 describe("the reserved names are the kit's own", () => {
   test("the permanent live region is `error`, and the derivation cannot silently go empty", () => {
@@ -270,5 +521,137 @@ describe("Studio names its own refusals something the kit does not use", () => {
       .filter((part) => RESERVED.has(part));
     const hint = "name your own banner `failure` or `section-error`";
     expect({ nodes, selectors }, `${path}: ${hint}`).toEqual({ nodes: [], selectors: [] });
+  });
+
+  test.each(SHEETS)("%s", (path) => {
+    /* The linked sheets have no scope of their own, so a part-name selector in one reaches the
+       kit's live region inside every panel and dialog it matches. */
+    const selectors = [...sheetSelectors(readFileSync(join(STUDIO, path), "utf8"))].flatMap(
+      (selector) => collisions(selector, RESERVED, HOLDERS),
+    );
+    const hint = 'anchor on the field (`jx-textfield [part="error"]`) or rename the rule';
+    expect(selectors, `${path}: ${hint}`).toEqual([]);
+  });
+
+  test("the sheet scan reads a nested block, an at-rule and a comma list", () => {
+    const css = `
+      /* [part="error"] in a comment is not a rule */
+      .panel-footer [part="error"] { padding: 6px }
+      @media (min-width: 40em) {
+        .a [part='error'], .b { margin: 0 }
+      }
+      .c { color: red; & jx-textfield [part="error"] { color: blue } }
+    `;
+    expect([...sheetSelectors(css)]).toEqual([
+      '.panel-footer [part="error"]',
+      ".a [part='error'], .b",
+      ".c",
+      '& jx-textfield [part="error"]',
+    ]);
+    const found = [...sheetSelectors(css)].flatMap((selector) =>
+      collisions(selector, new Set(["error"]), new Set(["jx-textfield"])),
+    );
+    expect(found).toEqual(['.panel-footer [part="error"]', ".a [part='error']"]);
+  });
+});
+
+describe("a surface that hosts an island does not style its guest's parts", () => {
+  /* An island is a box in the host's own light DOM, so every descendant part selector the host
+     writes reaches the mounted document too. A guest therefore qualifies its part names — the
+     managed-connect refusal is `connect-failure`, not the `failure` every panel banner uses,
+     because `new-project.json` styles `[part="failure"]` with a border and padding of its own. */
+  test.each(Object.entries(ISLAND_GUESTS))("%s", (host, guests) => {
+    const doc = read(`src/surfaces/${host}`);
+    expect(mountBoxes(doc).length, `${host} draws no island`).toBeGreaterThan(0);
+    const guestParts = drawnParts(guests);
+    const reached = [...documentSelectors(doc)]
+      .flatMap((selector) => splitSelectorList(selector))
+      .flatMap((member) =>
+        [...member.matchAll(PART_SELECTOR)]
+          .map((match) => match[1] ?? match[2] ?? match[3] ?? "")
+          .flatMap((name) =>
+            (guestParts.get(name) ?? [])
+              .filter((guest) => memberCouldMatch(member, name, guest))
+              .map((guest) => `${member} reaches [part="${name}"] in ${guest.file}`),
+          ),
+      );
+    const hint =
+      "qualify the rule (a child of your own part, an attribute the guest lacks) or the guest's part name, as `connect-failure` does";
+    expect([...new Set(reached)], `${host}: ${hint}`).toEqual([]);
+  });
+
+  test("every island a host NAMES is listed, so a new body cannot arrive unguarded", () => {
+    /* One direction only, and it is the direction that cannot rot: a document that names a box
+       `island` has to appear above. The other direction is the test before this one, which fails
+       when a listed host stops drawing a mount box at all. Equality would be the wrong shape now
+       that `preferences.json` is listed for two boxes it calls `-slot`. */
+    const named = SOURCES.filter((path) => path.startsWith("src/surfaces/")).filter((path) =>
+      [...elementsUnder(read(path))]
+        .flatMap((node) => partsOf(node))
+        .some((part) => part === "island" || part.endsWith("-island")),
+    );
+    const listed = Object.keys(ISLAND_GUESTS).map((name) => `src/surfaces/${name}`);
+    for (const host of named) {
+      expect(listed, `${host} draws an island and is not in ISLAND_GUESTS`).toContain(host);
+    }
+  });
+
+  test("a rule is judged against the guest's own node, not just against the name", () => {
+    /* A shared part name is not yet a collision, and a guest is not made to rename every word a
+       host also uses: what decides it is whether the host's rule could match the guest's NODE.
+       Both of Preferences' rules are here, in the two shapes — before and after — because it is
+       the only reason the sheet may keep `title` for its heading and `key` for a binding row. */
+    const field: GuestNode = {
+      file: "ai-credentials-form.json",
+      node: { attributes: { part: "key" }, tagName: "jx-textfield" },
+      parentParts: ["ai-creds-form"],
+    };
+    expect(memberCouldMatch('SCOPE [part="key"]', "key", field)).toBe(true);
+    expect(memberCouldMatch('SCOPE [part="key"][data-command]', "key", field)).toBe(false);
+    const title: GuestNode = {
+      file: "ai-credentials-form.json",
+      node: { attributes: { part: "title" }, tagName: "div" },
+      parentParts: ["ai-creds-form"],
+    };
+    expect(memberCouldMatch('SCOPE [part="title"]', "title", title)).toBe(true);
+    expect(memberCouldMatch('SCOPE [part="section"] > [part="title"]', "title", title)).toBe(false);
+    // An ANCESTOR combinator rules nothing out: the host's box really is the guest's ancestor.
+    expect(memberCouldMatch('SCOPE [part="section"] [part="title"]', "title", title)).toBe(true);
+    // A tag, and a class, the node does not have.
+    expect(memberCouldMatch('SCOPE h3[part="title"]', "title", title)).toBe(false);
+    expect(memberCouldMatch('SCOPE [part="title"].sheet-heading', "title", title)).toBe(false);
+    // The guest's ROOT is the one node whose parent IS the host's box, so a child rule stands.
+    const root: GuestNode = {
+      file: "ai-credentials-form.json",
+      node: { attributes: { part: "ai-creds-form" }, tagName: "div" },
+      parentParts: undefined,
+    };
+    expect(
+      memberCouldMatch('SCOPE [part="creds-slot"] > [part="ai-creds-form"]', "ai-creds-form", root),
+    ).toBe(true);
+  });
+
+  test("a guest node's parent is the nearest element above it, through a case or a map", () => {
+    const doc: Json = {
+      attributes: { part: "root" },
+      children: [
+        {
+          attributes: { part: "slot" },
+          cases: { true: { attributes: { part: "banner" }, tagName: "p" } },
+          tagName: "div",
+        },
+      ],
+      tagName: "div",
+    };
+    const nodes = [...guestNodes(doc, "g.json")];
+    expect(nodes.map((node) => partsOf(node.node))).toEqual([["root"], ["slot"], ["banner"]]);
+    expect(nodes.map((node) => node.parentParts)).toEqual([undefined, ["root"], ["slot"]]);
+  });
+
+  test("the compound scan reads a bracketed value that holds a space or a combinator", () => {
+    expect(sequence('[part="a b"] > [data-x="p > q"]')).toEqual([
+      { combinator: "", compound: '[part="a b"]' },
+      { combinator: ">", compound: '[data-x="p > q"]' },
+    ]);
   });
 });

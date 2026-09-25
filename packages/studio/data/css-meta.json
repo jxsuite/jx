@@ -253,10 +253,10 @@
       "$input": "button-group",
       "$buttonValues": ["normal", "flex-start", "flex-end", "center", "space-between", "stretch"],
       "$icons": {
-        "flex-start": "align-left",
-        "flex-end": "align-right",
-        "center": "align-center-horizontal",
-        "space-between": "arrows-out-line-horizontal",
+        "flex-start": "align-top",
+        "flex-end": "align-bottom",
+        "center": "align-center-vertical",
+        "space-between": "arrows-vertical",
         "stretch": "arrows-out-line-vertical"
       },
       "enum": [

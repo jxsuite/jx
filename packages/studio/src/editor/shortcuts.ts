@@ -992,6 +992,72 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   "settings",
 ]);
 
+/**
+ * Can a box between `target` and the stage still answer this wheel itself?
+ *
+ * Edit forwards every wheel to the page's scroller (see the branch below), which was the whole
+ * story while the stage cell held nothing but the page. It also holds the Document Header band now,
+ * a capped scroll container standing beside the scroller — and a `preventDefault` from an ANCESTOR
+ * listener cancels the native scroll of whatever the pointer is over, so a form taller than the cap
+ * could not be wheeled at all while the page scrolled underneath it instead. So the stage takes the
+ * wheel only when nothing inside it wants one: the walk stops at the stage cell, and it steps over
+ * the page's scroller because that box is what the forwarding is FOR — a wheel forwarded out of the
+ * cross-origin frame is dispatched on the cell itself and reaches no scrollable element on the way,
+ * and letting the browser scroll the page natively would chain out of it into the shell.
+ *
+ * @param {WheelEvent} e
+ * @param {HTMLElement} stage The cell the listener is on — the walk's upper bound, exclusive.
+ * @param {HTMLElement | null} pageScroller The box the Edit branch scrolls itself.
+ */
+function wheelBelongsInside(
+  e: WheelEvent,
+  stage: HTMLElement,
+  pageScroller: HTMLElement | null,
+): boolean {
+  const { target } = e;
+  let el: Element | null =
+    target instanceof Element ? target : ((target as Node | null)?.parentElement ?? null);
+  while (el && el !== stage) {
+    if (el instanceof HTMLElement && el !== pageScroller && canScrollBy(el, e.deltaX, e.deltaY)) {
+      return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
+ * Is `el` a scroll container with room left in the direction this wheel asks for?
+ *
+ * Both halves are load-bearing: a box already at the end of its range answers nothing, and left the
+ * wheel it would chain the scroll out to its ancestors — which is the shell, and exactly what the
+ * Edit branch's `preventDefault` is there to stop. The 1px slack is the subpixel one a fractional
+ * layout leaves at the end of a range. Overflow is read the way `ui/virtual-window.ts`'s scroller
+ * walk reads it, cheap test first: happy-dom performs no layout, so the sizes are 0 for every
+ * element and no test pays for a `getComputedStyle` it could not answer anyway.
+ *
+ * @param {HTMLElement} el
+ * @param {number} dx
+ * @param {number} dy
+ */
+function canScrollBy(el: HTMLElement, dx: number, dy: number): boolean {
+  const downRoom = dy > 0 && el.scrollTop < el.scrollHeight - el.clientHeight - 1;
+  const upRoom = dy < 0 && el.scrollTop > 0;
+  const acrossRoom =
+    (dx > 0 && el.scrollLeft < el.scrollWidth - el.clientWidth - 1) ||
+    (dx < 0 && el.scrollLeft > 0);
+  if (!downRoom && !upRoom && !acrossRoom) {
+    return false;
+  }
+  const style = getComputedStyle(el);
+  const scrolls = (overflow: string) =>
+    overflow === "auto" || overflow === "scroll" || overflow === "overlay";
+  return (
+    (downRoom || upRoom ? scrolls(style.overflowY) : false) ||
+    (acrossRoom ? scrolls(style.overflowX) : false)
+  );
+}
+
 /** The stage-context reader, published by {@link initShortcuts} for {@link installStageGestures}. */
 let _stageContext: StageContext | null = null;
 
@@ -1033,7 +1099,9 @@ export function installStageGestures(surface: CanvasSurface): () => void {
         /* The stage's own scroller, by the `part` the stage document draws it with — the same
            attribute every other consumer of the canvas's chrome now addresses it by. */
         const sc = canvasWrap.querySelector<HTMLElement>('[part="edit-canvas"]');
-        if (sc) {
+        /* …unless the pointer is over a box in this cell that scrolls itself — the Document Header
+           band, which Edit docks beside the scroller. See {@link wheelBelongsInside}. */
+        if (sc && !wheelBelongsInside(e, canvasWrap, sc)) {
           e.preventDefault();
           sc.scrollTop += e.deltaY;
           sc.scrollLeft += e.deltaX;

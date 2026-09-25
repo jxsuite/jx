@@ -2517,6 +2517,10 @@ describe("the Document Header slot", () => {
     // The stage cell stacks and stretches: that is what makes the band the PANE's width.
     expect(stageEl().style.flexDirection).toBe("column");
     expect(stageEl().style.alignItems).toBe("stretch");
+    /* …and closes its own 24px gap, so the scroller clips its content AT the band's bottom border.
+       With the gap the page ended at an invisible line 24px below that border with nothing drawn in
+       between, and the border read as a hairline over one continuous surface. */
+    expect(stageEl().style.gap).toBe("0px");
     expect((slot() as HTMLElement | null)?.dataset.placement).toBeUndefined();
   });
 
@@ -2530,6 +2534,7 @@ describe("the Document Header slot", () => {
     expect(slot()).toBeNull();
     expect(stageEl().style.flexDirection).toBe("");
     expect(stageEl().style.alignItems).toBe("");
+    expect(stageEl().style.gap).toBe("");
   });
 
   test("Design with breakpoints draws no header either, over any of its artboards", async () => {
@@ -2557,6 +2562,7 @@ describe("the Document Header slot", () => {
     expect(slot()).toBeNull();
     expect(stageEl().style.flexDirection).toBe("");
     expect(stageEl().style.alignItems).toBe("");
+    expect(stageEl().style.gap).toBe("");
   });
 
   test("Edit → Design → Edit takes the card down and brings it back", async () => {
@@ -2570,6 +2576,7 @@ describe("the Document Header slot", () => {
     await flush();
     expect(stageEl().querySelector('[part="doc-header"] [part="card"]')).not.toBeNull();
     expect(stageEl().style.flexDirection).toBe("column");
+    expect(stageEl().style.gap).toBe("0px");
 
     setMode("design");
     renderCanvas();
@@ -2578,12 +2585,15 @@ describe("the Document Header slot", () => {
     expect(stageEl().querySelector('[part="card"]')).toBeNull();
     expect(stageEl().style.flexDirection).toBe("");
     expect(stageEl().style.alignItems).toBe("");
+    // The gap is the cell's own again: Design's artboards and Monaco's halves stand apart by it.
+    expect(stageEl().style.gap).toBe("");
 
     setMode("edit");
     renderCanvas();
     await flush();
     expect(stageEl().querySelector('[part="doc-header"] [part="card"]')).not.toBeNull();
     expect(stageEl().style.flexDirection).toBe("column");
+    expect(stageEl().style.gap).toBe("0px");
   });
 
   test("a document that loses its header unstacks the stage without a mode change", async () => {
@@ -2601,6 +2611,7 @@ describe("the Document Header slot", () => {
     expect(slot()).toBeNull();
     expect(stageEl().style.flexDirection).toBe("");
     expect(stageEl().style.alignItems).toBe("");
+    expect(stageEl().style.gap).toBe("");
   });
 
   test("Preview, Source and Grid draw no header — they are not authoring views", async () => {

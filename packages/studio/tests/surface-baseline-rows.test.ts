@@ -17,6 +17,17 @@
  * array's rows land in the parent; a `display: contents` wrapper, `$switch` container included,
  * passes its children up). The set of controls without a baseline is DERIVED from the kit, so a kit
  * element that gains the containment is covered without an edit here.
+ *
+ * **And then the row that centres has to actually centre.** `align-items: center` aligns MARGIN
+ * boxes, not border boxes, so an item carrying a block margin of its own is centred including that
+ * margin and its ink comes out off the line. Welcome's `Recent` header is the case: moved off
+ * `baseline`, its `h2` still had `margin: 0 0 var(--jx-space-3)`, whose margin box measured 26px —
+ * exactly the header's height — so `center` had nothing to move, the title sat flush at the top and
+ * `Clear all` centred 3.6px below its baseline. A fix that measured right and still looked wrong,
+ * and the rule's own `$description` claimed the baseline it was not delivering. So the second sweep
+ * below reads every centred flex ROW (block margins are irrelevant on a column's cross axis) and
+ * fails on an item with an asymmetric block margin, a `<p>` or `<h2>` left on its UA margin
+ * included. The spacing belongs on the row.
  */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -228,6 +239,124 @@ function offenders(doc: Json): string[] {
 
 const read = (name: string): Json => JSON.parse(readFileSync(join(dir, name), "utf8")) as Json;
 
+/**
+ * The tags whose UA sheet gives them a block margin. A row's item left on one is the same defect as
+ * one given a margin by a rule, and it is the commoner half: nothing in the document says so.
+ */
+const UA_BLOCK_MARGIN = new Set([
+  "blockquote",
+  "dl",
+  "figure",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "menu",
+  "ol",
+  "p",
+  "pre",
+  "ul",
+]);
+
+/** A rule's own block-start and block-end margins, reading the shorthands the surfaces use. */
+function blockMargins(rule: Json): { start?: string; end?: string } {
+  const out: { start?: string; end?: string } = {};
+  for (const [property, value] of Object.entries(rule)) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const sides = value.trim().split(/\s+/);
+    if (property === "margin") {
+      out.start = sides[0]!;
+      out.end = sides.length >= 3 ? sides[2]! : sides[0]!;
+    } else if (property === "marginBlock") {
+      out.start = sides[0]!;
+      out.end = sides[1] ?? sides[0]!;
+    } else if (property === "marginTop" || property === "marginBlockStart") {
+      out.start = value;
+    } else if (property === "marginBottom" || property === "marginBlockEnd") {
+      out.end = value;
+    }
+  }
+  return out;
+}
+
+/** Whether a margin is absent or zero. A token is never zero, so any `var()` counts as a margin. */
+const isZero = (value: string | undefined): boolean =>
+  value === undefined || /^0(\D|$)/.test(value.trim());
+
+/** Whether a rule lays its items out as a flex ROW, the one axis a block margin can spoil. */
+function isFlexRow(rule: Json): boolean {
+  return (
+    /flex/.test(String(rule["display"] ?? "")) &&
+    !String(rule["flexDirection"] ?? "row").startsWith("column")
+  );
+}
+
+/**
+ * Every centred flex row in a surface, crossed with the items whose own block margin means the row
+ * centres something other than what a reader sees.
+ *
+ * The margins a part carries are collected from every rule that names it LAST, in document order,
+ * so `[part="section-header"] [part="section-title"]` overriding `[part="section-title"]` reads the
+ * way the cascade reads it.
+ */
+function marginOffenders(doc: Json): string[] {
+  const style = isObject(doc["style"]) ? doc["style"] : {};
+  const contents = contentsParts(style);
+  const centred = new Set<string>();
+  const margins = new Map<string, { start?: string; end?: string }>();
+  for (const [selector, rule] of rulesOf(style)) {
+    const parts = lastParts(selector);
+    if (
+      isFlexRow(rule) &&
+      /\bcenter\b/.test(String(rule["alignItems"] ?? rule["placeItems"] ?? ""))
+    ) {
+      for (const part of parts) {
+        centred.add(part);
+      }
+    }
+    const own = blockMargins(rule);
+    if (own.start !== undefined || own.end !== undefined) {
+      for (const part of parts) {
+        margins.set(part, Object.assign(margins.get(part) ?? {}, own));
+      }
+    }
+  }
+  const found: string[] = [];
+  for (const node of nodesUnder(doc)) {
+    if (!partsOf(node).some((part) => centred.has(part))) {
+      continue;
+    }
+    for (const item of flexItems(node, contents)) {
+      const margin: { start?: string; end?: string } = {};
+      for (const part of partsOf(item)) {
+        Object.assign(margin, margins.get(part));
+      }
+      if (isObject(item["style"])) {
+        Object.assign(margin, blockMargins(item["style"]));
+      }
+      const untouchedUa =
+        UA_BLOCK_MARGIN.has(String(item["tagName"] ?? "")) &&
+        margin.start === undefined &&
+        margin.end === undefined;
+      const asymmetric =
+        isZero(margin.start) !== isZero(margin.end) ||
+        (!isZero(margin.start) && margin.start !== margin.end);
+      if (untouchedUa) {
+        found.push(`${nameOf(item)} keeps its UA block margin in a centred row`);
+      } else if (asymmetric) {
+        found.push(
+          `${nameOf(item)} carries an uneven block margin (${margin.start ?? "unset"} / ${margin.end ?? "unset"}) in a centred row`,
+        );
+      }
+    }
+  }
+  return found;
+}
+
 describe("kit controls without a baseline", () => {
   test("the kit's small buttons, action buttons and checkboxes are layout-contained", () => {
     /* The negative control: a derivation that found nothing would pass every surface below. */
@@ -284,6 +413,75 @@ describe("surface baseline rows", () => {
       expect(
         offenders(read(name)),
         `${name}: a small kit button, action button or checkbox is layout-contained so its outset hit area adds nothing to a scrolling ancestor's overflow, and so it has no baseline; centre the row (align-items: center)`,
+      ).toEqual([]);
+    });
+  }
+});
+
+describe("a centred row centres what a reader sees", () => {
+  test("the walker reads the header Welcome shipped, and the one it ships now", () => {
+    /* The negative control, and it is the real case: with the h2's own block-end margin still on it
+       the header had nothing to centre, because the margin box already filled the line. */
+    const doc = read("welcome.json");
+    expect(marginOffenders(doc)).toEqual([]);
+    const style = doc["style"] as Json;
+    delete style['& [part="section-header"] [part="section-title"]'];
+    expect(marginOffenders(doc)).toEqual([
+      "h2[section-title] carries an uneven block margin (0 / var(--jx-space-3)) in a centred row",
+    ]);
+  });
+
+  test("a UA block margin counts, and a column's cross axis does not", () => {
+    const row: Json = {
+      tagName: "div",
+      style: {
+        '& [part="row"]': { display: "flex", alignItems: "center" },
+        '& [part="col"]': { display: "flex", flexDirection: "column", alignItems: "center" },
+      },
+      children: [
+        {
+          tagName: "div",
+          attributes: { part: "row" },
+          children: [{ tagName: "p", textContent: "Nothing zeroed this" }],
+        },
+        {
+          tagName: "div",
+          attributes: { part: "col" },
+          // A column centres on the INLINE axis, so a block margin is nothing to do with it.
+          children: [{ tagName: "p", textContent: "Fine here" }],
+        },
+      ],
+    };
+    expect(marginOffenders(row)).toEqual(["p keeps its UA block margin in a centred row"]);
+  });
+
+  test("an even margin is not an offender, however it is spelled", () => {
+    const doc: Json = {
+      tagName: "div",
+      style: {
+        '& [part="row"]': { display: "flex", alignItems: "center" },
+        '& [part="even"]': { marginBlock: "var(--jx-space-2)" },
+        '& [part="none"]': { margin: "0 var(--jx-space-2)" },
+      },
+      children: [
+        {
+          tagName: "div",
+          attributes: { part: "row" },
+          children: [
+            { tagName: "h2", attributes: { part: "even" }, textContent: "Even" },
+            { tagName: "p", attributes: { part: "none" }, textContent: "Inline only" },
+          ],
+        },
+      ],
+    };
+    expect(marginOffenders(doc)).toEqual([]);
+  });
+
+  for (const name of surfaces) {
+    test(`${name} leaves no block margin on an item of a centred row`, () => {
+      expect(
+        marginOffenders(read(name)),
+        `${name}: \`align-items: center\` aligns MARGIN boxes, so an item's own block margin moves its ink off the line; zero it on the item and put the spacing on the row`,
       ).toEqual([]);
     });
   }

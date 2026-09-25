@@ -68,7 +68,6 @@ import {
   transactDoc,
 } from "../tabs/transact";
 import {
-  abbreviateValue,
   friendlyNameToVar,
   inferInputType,
   kebabToLabel,
@@ -775,8 +774,17 @@ function isNumericValue(value: string): boolean {
  *
  * A value's glyph is its css-meta `$icons` entry VERBATIM: those values are kit manifest names
  * (ui.md §8, one key space), so there is nothing to translate. A value with no entry — `nowrap`,
- * `auto`, `normal` — draws `abbreviateValue` text instead, and its button is the only kind that
- * carries any.
+ * `wrap-reverse`, `normal`, `auto` — draws its own CSS KEYWORD instead, in full and in lower case,
+ * and its button is the only kind that carries any text.
+ *
+ * The keyword is written out rather than abbreviated. It used to go through an `abbreviateValue`
+ * table in `utils/studio-utils.ts`, and four segments of a row that is otherwise pictures then read
+ * `no-wr`, `wr-rev`, `norm` and `auto` — a reader cannot decode three of them. `wr-rev` is as
+ * opaque as the glyph-less Display row this pass set out to fix, and it sat beside a wrap arrow
+ * that a reader COULD decode, so the row taught them the buttons were unreadable. A word takes
+ * about 30px more than a glyph; the group's text segments pay 6px of inline padding for it
+ * (`jx-action-group`), and no row draws more than two. That table had no other caller, so it went
+ * with the abbreviations rather than staying behind as a spelling nothing spells.
  *
  * There used to be a table here from css-meta's own semantic names (`display-flex`,
  * `justify-start`) to the eight of them the kit happened to ship verbatim. It was a second spelling
@@ -805,7 +813,7 @@ function buttonGroup(
       icon,
       row: rowKey,
       selected: v === value,
-      text: icon === "" ? abbreviateValue(v) : "",
+      text: icon === "" ? v : "",
       title: v,
       value: v,
     };

@@ -59,9 +59,11 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"meta-value\"]": {
+      "$description": "One of the two places in the chrome that opt back in to selection (`STYLING.md` §Text selection). The root sets `user-select: none` and `styles/tokens.json` restates it on every modal `dialog`, but this dialog's body IS its message: the version, the build date, the commit and the channel exist to be pasted into a bug report, and Studio offers no copy action for them.",
       "margin": "0",
       "color": "var(--fg)",
-      "wordBreak": "break-word"
+      "wordBreak": "break-word",
+      "userSelect": "text"
     },
     "& [part=\"links\"]": {
       "display": "flex",
@@ -99,10 +101,12 @@
       "gap": "4px"
     },
     "& [part=\"package-row\"]": {
+      "$description": "Selectable for the same reason `meta-value` is, and on the ROW rather than on the version alone: what a reader pastes is the pair, `@jxsuite/ai 0.37.0`, so a drag has to be able to cross from the name to the number and on down the list.",
       "display": "flex",
       "justifyContent": "space-between",
       "gap": "12px",
-      "fontSize": "var(--jx-text-md)"
+      "fontSize": "var(--jx-text-md)",
+      "userSelect": "text"
     },
     "& [part=\"package-name\"]": {
       "color": "var(--fg-dim)"

@@ -232,7 +232,7 @@ function hardClearCanvasWrap(canvasWrap: HTMLElement) {
 
 /**
  * Where each stage's non-artboard hosts landed, keyed by part (and by the static mark that tells
- * two of one part apart: a handle's side, a card's placement).
+ * the two width handles apart: `data-side`, the one part the stage document draws twice).
  *
  * Per STAGE rather than per module, for the reason every other field on `CanvasSurface` is: two
  * panes each have a Monaco host and a card slot, and one slot would hand the second pane's stage
@@ -632,6 +632,7 @@ function resetCanvasView(surface: CanvasSurface) {
   canvasWrap.style.padding = "";
   canvasWrap.style.alignItems = "";
   canvasWrap.style.flexDirection = "";
+  canvasWrap.style.gap = "";
   canvasWrap.style.display = "";
   canvasWrap.style.overflow = "";
   dismissBlockActionBar();
@@ -1263,8 +1264,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "";
     canvasWrap.style.alignItems = "";
     canvasWrap.style.flexDirection = "";
+    canvasWrap.style.gap = "";
     canvasWrap.style.display = "";
-    canvasWrap.style.overflow = "";
     canvasWrap.style.overflow = "";
 
     // Dismiss open popovers/toolbars that are no longer relevant
@@ -1640,9 +1641,16 @@ function renderCanvasImpl(surface: CanvasSurface) {
        claim the column this way — `#canvas-wrap` is a row by default and each surface states its
        own axis. Stretched, because the band is as wide as the PANE: that is the whole difference
        between docking the card here and drawing it in the column, whose width is the breakpoint's
-       or the drag's. */
+       or the drag's.
+       And FLUSH: the cell's own 24px gap (`pane-grid.json`) between two side-by-side surfaces is
+       dead space between a docked band and the box below it. The scroller clips its content at its
+       top edge, so the gap put that edge 24px below the band's border with nothing drawn in
+       between — the page ended at an invisible line and the band read as a hairline over one
+       continuous surface. At 0 the clip happens AT the border, which is what makes the border read
+       as the band's edge; the scroller's own 32px of top padding is the breathing room. */
     canvasWrap.style.flexDirection = wantsDocHeader ? "column" : "";
     canvasWrap.style.alignItems = wantsDocHeader ? "stretch" : "";
+    canvasWrap.style.gap = wantsDocHeader ? "0px" : "";
     void drawStage(
       surface,
       {
