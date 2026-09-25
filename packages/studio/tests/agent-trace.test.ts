@@ -1141,6 +1141,11 @@ const DAT = inSuite("dat", [
         await flush(1);
       }
       expect(pendingAsk()).not.toBeNull();
+      /* Past the millisecond the question's own save landed in. The recorded session list is most
+         recently updated first, and two saves in one millisecond would tie on it. */
+      await new Promise((settle) => {
+        setTimeout(settle, 5);
+      });
       a.openSession(firstId);
       await running;
       expect(a.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
