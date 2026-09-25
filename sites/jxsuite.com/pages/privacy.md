@@ -36,12 +36,12 @@ Jx Suite spans three quite different things, and the honest answer to "what do y
 
 ## 1. Who we are
 
-**Avunu LLC** ("Avunu", "we", "us") is a Pennsylvania limited liability company and the owner and operator of Jx Suite, which comprises the jxsuite.com website, the Jx Studio desktop application and `jx` command-line tools, the open-source `@jxsuite/*` packages, and the hosted Jx Publishing Platform at studio.jxsuite.com.
+**Avunu LLC** ("Avunu", "we", "us") is a Pennsylvania limited liability company and the owner and operator of Jx Suite, which comprises the jxsuite.com website, the Jx Studio desktop application and `jx` command-line tools, the open-source `@jxsuite/*` packages, and the hosted Jx Publishing Platform, which we market as "Jx Cloud", at studio.jxsuite.com.
 
 Avunu LLC is the **data controller** for the processing described in this policy.
 
 - **Postal address:** 948 E Philadelphia St, York Pennsylvania 17403, United States
-- **Privacy contact:** [m](mailto:privacy@jxsuite.com)a
+- **Privacy contact:** [privacy@jxsuite.com](mailto:privacy@jxsuite.com)
 
 If you are in the European Economic Area or the United Kingdom, see section 14 for the rights that apply to you and how to exercise them.
 
