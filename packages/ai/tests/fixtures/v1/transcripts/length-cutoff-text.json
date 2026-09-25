@@ -1,0 +1,40 @@
+{
+  "name": "length-cutoff-text",
+  "description": "A text answer cut off by the provider's length limit. finishStream discards its stop reason, so the truncated turn is indistinguishable from a finished one in the transcript and on the wire.",
+  "shapes": ["length-cutoff-text", "plain-exchange"],
+  "script": [
+    ["sendMessage", "List the three setup steps"],
+    ["appendDelta", "1. Create the project. 2. Add a page. 3. Publish the"],
+    ["finishStream", "length"],
+    ["sendMessage", "Go on"],
+    ["appendDelta", "3. Publish the site."],
+    ["finishStream", "stop"]
+  ],
+  "messages": [
+    {
+      "id": "msg_T_1",
+      "role": "user",
+      "content": "List the three setup steps",
+      "timestamp": 1767225601000
+    },
+    {
+      "id": "msg_T_2",
+      "role": "assistant",
+      "content": "1. Create the project. 2. Add a page. 3. Publish the",
+      "timestamp": 1767225601000
+    },
+    { "id": "msg_T_3", "role": "user", "content": "Go on", "timestamp": 1767225604000 },
+    {
+      "id": "msg_T_4",
+      "role": "assistant",
+      "content": "3. Publish the site.",
+      "timestamp": 1767225604000
+    }
+  ],
+  "wire": [
+    { "role": "user", "content": "List the three setup steps" },
+    { "role": "assistant", "content": "1. Create the project. 2. Add a page. 3. Publish the" },
+    { "role": "user", "content": "Go on" },
+    { "role": "assistant", "content": "3. Publish the site." }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "chatCalls": [
+    "sendMessage(\"hello\")",
+    "toMessagesArray()",
+    "appendDelta(\"Done.\")",
+    "recordUsage({\"inputTokens\":640,\"outputTokens\":12,\"type\":\"usage\"}, {\"systemTokens\":100})",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "c96581d49e69",
+        "headings": [],
+        "length": 400
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "Done."
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 652,
+    "usage": {
+      "inputTokens": 640,
+      "outputTokens": 12,
+      "contextTokens": 652,
+      "lastMessageId": "msg#2",
+      "messageCount": 2,
+      "systemTokens": 100
+    }
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0
+}

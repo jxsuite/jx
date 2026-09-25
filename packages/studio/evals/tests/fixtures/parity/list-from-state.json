@@ -1,0 +1,90 @@
+{
+  "scenario": "list-from-state",
+  "task": "list-from-state",
+  "what": "maps state.fruits into li items with a $prototype Array children object",
+  "modelRequests": ["user", "user assistant tool"],
+  "rounds": 2,
+  "toolCallCount": 1,
+  "toolCalls": [
+    {
+      "id": "lst-1",
+      "name": "add_child",
+      "args": {
+        "parentPath": [],
+        "index": 0,
+        "node": {
+          "tagName": "ul",
+          "children": {
+            "$prototype": "Array",
+            "items": {
+              "$ref": "#/state/fruits"
+            },
+            "map": {
+              "tagName": "li",
+              "textContent": "${$map.item}"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "fruit-list",
+    "state": {
+      "fruits": {
+        "type": "array",
+        "default": ["Apples", "Bananas", "Cherries"]
+      }
+    },
+    "children": [
+      {
+        "tagName": "ul",
+        "children": {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/fruits"
+          },
+          "map": {
+            "tagName": "li",
+            "textContent": "${$map.item}"
+          }
+        }
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Render an unordered list of the three fruits in state as <li> items."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "lst-1",
+      "result": {
+        "success": true,
+        "summary": "Inserted node at [\"children\",0]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Rendered the fruits as a list."
+    }
+  ]
+}

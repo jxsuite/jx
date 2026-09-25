@@ -1,0 +1,21 @@
+{
+  "name": "v1-index-corrupt",
+  "description": "The index is corrupt JSON and there is no legacy store. It reads as an empty index; the orphaned payload is not restored and the corrupt index is left as it was.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": { "$raw": "{\"version\":1,\"activeId\":\"s_x\"" },
+    "jx-ai-chat-session:/proj/demo:s_x": [
+      { "id": "x_1", "role": "user", "content": "Orphaned", "timestamp": 1767225601000 },
+      { "id": "x_2", "role": "assistant", "content": "Never restored", "timestamp": 1767225602000 }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": null,
+    "sessions": [],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

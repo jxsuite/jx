@@ -66,6 +66,12 @@ export interface ExtraEdge {
 
 const EXTRA_EDGES: ExtraEdge[] = [
   {
+    patterns: ["packages/server/tests/fixtures/ai-upstream/**"],
+    seeds: ["packages/ai"],
+    evidence: ["packages/ai/tests/upstream-divergence.test.ts"],
+    why: "The upstream SSE fixtures, and the proxy's frozen frames beside them, live under packages/server, but packages/ai's divergence test reads them: it runs createOpenAIStreamingClient over the same bodies and pins the list of fixtures where the two normalizers disagree against the committed *.server.json. Neither package depends on the other, so a fixture or server-golden change must retest packages/ai.",
+  },
+  {
     patterns: [
       "extensions/*/jx-extension.json",
       "extensions/*/package.json",

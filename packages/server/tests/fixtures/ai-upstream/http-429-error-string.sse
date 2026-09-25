@@ -1,0 +1,5 @@
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+Retry-After: 3
+
+{"error":"Rate limit exceeded: 20 requests per minute. Retry after 3s."}

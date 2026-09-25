@@ -328,6 +328,11 @@ jobs:
       # of which the root tsconfig sets — and two type errors in the contract were found by
       # consuming it rather than by building it. See the note in that tsconfig.
       - run: bunx tsc -p packages/studio/src/hosting/tsconfig.json
+      # @jxsuite/ai's Worker-safe subpaths (./streaming-client, ./tools), compiled with only a Worker's
+      # globals: bare ES2023 lib and @cloudflare/workers-types, no bun-types, no DOM. The bundle half of
+      # the gate (no node:, bun, @vue/reactivity or Studio module in the graph) runs in the packages/ai
+      # test matrix as tests/worker-safety.test.ts. See packages/ai/tsconfig.worker.json.
+      - run: bun run typecheck:ai-worker
       - run: bun --cwd packages/studio scripts/check-icons.ts
       # The desktop's electrobun config, judged WITHOUT building the app. The CLI is a compiled Bun
       # binary whose resolver takes node: builtins and relative paths and NOT bare specifiers — and

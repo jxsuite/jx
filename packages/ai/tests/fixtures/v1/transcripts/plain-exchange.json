@@ -1,0 +1,36 @@
+{
+  "name": "plain-exchange",
+  "description": "Two user turns answered in plain text. Every wire entry is exactly { role, content }, in transcript order, and ids and timestamps never reach the wire.",
+  "shapes": ["plain-exchange"],
+  "script": [
+    ["sendMessage", "What is Jx?"],
+    ["appendDelta", "Jx is a JSON-first "],
+    ["appendDelta", "web component framework."],
+    ["finishStream", "stop"],
+    ["sendMessage", "Thanks!"],
+    ["appendDelta", "You're welcome."],
+    ["finishStream", "stop"]
+  ],
+  "messages": [
+    { "id": "msg_T_1", "role": "user", "content": "What is Jx?", "timestamp": 1767225601000 },
+    {
+      "id": "msg_T_2",
+      "role": "assistant",
+      "content": "Jx is a JSON-first web component framework.",
+      "timestamp": 1767225601000
+    },
+    { "id": "msg_T_3", "role": "user", "content": "Thanks!", "timestamp": 1767225605000 },
+    {
+      "id": "msg_T_4",
+      "role": "assistant",
+      "content": "You're welcome.",
+      "timestamp": 1767225605000
+    }
+  ],
+  "wire": [
+    { "role": "user", "content": "What is Jx?" },
+    { "role": "assistant", "content": "Jx is a JSON-first web component framework." },
+    { "role": "user", "content": "Thanks!" },
+    { "role": "assistant", "content": "You're welcome." }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "code": "401",
+      "message": "Incorrect API key provided: sk-fixt*****1234. You can find your API key at https://platform.openai.com/account/api-keys.",
+      "problem": {
+        "status": 401,
+        "title": "Credentials are missing or not accepted",
+        "type": "https://jxsuite.com/problems/unauthorized",
+        "detail": "Incorrect API key provided: sk-fixt*****1234. You can find your API key at https://platform.openai.com/account/api-keys.",
+        "error": "Incorrect API key provided: sk-fixt*****1234. You can find your API key at https://platform.openai.com/account/api-keys."
+      },
+      "type": "error"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

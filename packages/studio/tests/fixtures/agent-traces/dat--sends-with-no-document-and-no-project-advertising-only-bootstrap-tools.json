@@ -1,0 +1,117 @@
+{
+  "chatCalls": [
+    "sendMessage(\"I want a portfolio site\")",
+    "toMessagesArray()",
+    "setTokenCount(5082)",
+    "setContextWarning(false)",
+    "setTokenCount(5082)",
+    "setModel(\"gpt-4o\")",
+    "toMessagesArray()",
+    "appendDelta(\"Let's start a project\")",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "I want a portfolio site"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "a3feaee4c6dd",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 20286
+      },
+      "tools": ["ask_user", "create_project", "list_starters"]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "I want a portfolio site"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "Let's start a project"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "gpt-4o",
+    "status": "idle",
+    "tokenCount": 5082,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": ["aiChatUrl()"],
+    "projectRoot": null,
+    "sessions": {
+      "(unscoped)": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#1 user", "msg#2 assistant"],
+          "title": "I want a portfolio site"
+        }
+      ]
+    },
+    "writtenFiles": []
+  }
+}

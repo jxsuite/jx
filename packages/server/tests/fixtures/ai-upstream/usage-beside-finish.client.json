@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Two"
+    },
+    {
+      "type": "delta",
+      "content": " words"
+    },
+    {
+      "type": "usage",
+      "inputTokens": 20,
+      "outputTokens": 3
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ]
+}

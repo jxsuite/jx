@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "No terminator"
+    },
+    {
+      "type": "usage",
+      "inputTokens": 5,
+      "outputTokens": 2
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "legacy-corrupt",
+  "description": "A corrupt legacy store is removed (its content is lost) and migrates nothing.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-history:/proj/demo": { "$raw": "[{\"role\":\"user\",\"content\":\"Hel" }
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": null,
+    "sessions": [],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {}
+  }
+}

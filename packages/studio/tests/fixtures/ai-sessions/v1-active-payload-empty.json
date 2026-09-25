@@ -1,0 +1,38 @@
+{
+  "name": "v1-active-payload-empty",
+  "description": "The active payload is an empty array. restoreChat treats it as nothing to restore and leaves the live chat unbound.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_empty",
+      "sessions": [
+        {
+          "id": "s_empty",
+          "title": "New chat",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225601000,
+          "messageCount": 0
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_empty": []
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": "s_empty",
+    "sessions": [
+      {
+        "id": "s_empty",
+        "title": "New chat",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225601000,
+        "messageCount": 0
+      }
+    ],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

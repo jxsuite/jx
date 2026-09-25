@@ -1,0 +1,37 @@
+{
+  "name": "empty-turns-dropped",
+  "description": "Two empty assistant turns, both left out of the wire: a finished turn that streamed nothing (it stays in the transcript, so two user messages end up adjacent on the wire) and the in-flight placeholder sendMessage pushes for the request being built.",
+  "shapes": ["placeholder-dropped"],
+  "script": [
+    ["sendMessage", "Hello"],
+    ["finishStream", "stop"],
+    ["sendMessage", "Are you there?"],
+    ["appendDelta", "Yes, sorry about that."],
+    ["finishStream", "stop"],
+    ["sendMessage", "Make the header blue"]
+  ],
+  "messages": [
+    { "id": "msg_T_1", "role": "user", "content": "Hello", "timestamp": 1767225601000 },
+    { "id": "msg_T_2", "role": "assistant", "content": "", "timestamp": 1767225601000 },
+    { "id": "msg_T_3", "role": "user", "content": "Are you there?", "timestamp": 1767225603000 },
+    {
+      "id": "msg_T_4",
+      "role": "assistant",
+      "content": "Yes, sorry about that.",
+      "timestamp": 1767225603000
+    },
+    {
+      "id": "msg_T_5",
+      "role": "user",
+      "content": "Make the header blue",
+      "timestamp": 1767225606000
+    },
+    { "id": "msg_T_6", "role": "assistant", "content": "", "timestamp": 1767225606000 }
+  ],
+  "wire": [
+    { "role": "user", "content": "Hello" },
+    { "role": "user", "content": "Are you there?" },
+    { "role": "assistant", "content": "Yes, sorry about that." },
+    { "role": "user", "content": "Make the header blue" }
+  ]
+}
