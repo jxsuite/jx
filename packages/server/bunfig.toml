@@ -5,6 +5,10 @@ coveragePathIgnorePatterns = [
   "**/tests/**",
   "./result/**",
   "../../extensions/**",
+  # The AI routes run @jxsuite/ai/gateway, so its files land here with only the paths this server
+  # takes (it sets no limits and no admit hook), while being gated at 0.99 under packages/ai's own
+  # run. Same rule as `../protocol/**` below.
+  "../ai/**",
   "../collab/**",
   "../compiler/**",
   "../create/**",
