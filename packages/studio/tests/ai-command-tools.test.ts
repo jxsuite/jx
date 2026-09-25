@@ -29,7 +29,9 @@ import {
   composeToolRegistries,
   createCommandToolRegistry,
 } from "../src/services/ai-command-tools";
-import { beginTurn, endTurn } from "../src/services/ai-writes";
+import { fileTurn } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
+import { createToolContext } from "@jxsuite/ai/tools";
 import { mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
 import { resetProjectConfigDocument } from "../src/tabs/project-config";
 import { updateSiteConfig } from "../src/site-context";
@@ -151,15 +153,15 @@ describe("every declaration reaches run, by id, and the refusal comes back verba
       const definition = tools.getDefinition(name)!;
       expect(definition).toBeDefined();
 
-      beginTurn("witness");
-      const result = await tools.execute(name, minimalArgs(definition.parameters));
+      const witnessCall = recordingContext();
+      const result = await tools.execute(name, minimalArgs(definition.parameters), witnessCall);
       expect(result).toEqual({
         error: `Command "${command.id}" is not available right now — it requires a test state.`,
         success: false,
       });
       expect(calls).toEqual(command.level === "selection" ? [SELECTOR, command.id] : [command.id]);
       // No ledger entry for a refusal.
-      expect(endTurn("witness")).toEqual([]);
+      expect(fileTurn("witness", witnessCall.ledger.writes)).toEqual([]);
     });
   }
 
@@ -528,11 +530,11 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/index.json" });
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    const result = await tools.execute("doc_write", {});
+    const tCall = recordingContext();
+    const result = await tools.execute("doc_write", {}, tCall);
     expect(result).toEqual({ success: true, summary: "Wrote the document." });
     expect(tab.doc.document.id).toBe("x");
-    expect(endTurn("t")).toEqual([
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([
       { disk: false, ok: true, path: "pages/index.json", tool: "Write Doc" },
     ]);
   });
@@ -541,13 +543,13 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    const result = await tools.execute("doc_noop", {});
+    const tCall = recordingContext();
+    const result = await tools.execute("doc_noop", {}, tCall);
     expect(result).toEqual({
       error: "No-op Doc changed nothing: the document is exactly as it was.",
       success: false,
     });
-    expect(endTurn("t")).toEqual([]);
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([]);
   });
 
   test("…and names the collab freeze when source is canonical", async () => {
@@ -571,34 +573,34 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("proj_phantom", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("proj_phantom", {}, tCall)).toEqual({
       success: true,
       summary: "Phantom Project changed nothing: project.json is exactly as it was.",
     });
-    expect(endTurn("t")).toEqual([]);
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([]);
   });
 
   test("…and one that wrote through the chokepoint passes the witness: its sentence and one ledger entry", async () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("proj_write", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("proj_write", {}, tCall)).toEqual({
       success: true,
       summary: "Wrote project.json.",
     });
-    expect(endTurn("t")).toEqual([
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([
       { disk: false, ok: true, path: "project.json", tool: "Write Project" },
     ]);
     // The second run of the same patch is the idempotent case: the chokepoint compares the
     // Serialised result against the file and transacts nothing, and the witness says so.
-    beginTurn("u");
-    expect(await tools.execute("proj_write", {})).toEqual({
+    const uCall = recordingContext();
+    expect(await tools.execute("proj_write", {}, uCall)).toEqual({
       success: true,
       summary: "Write Project changed nothing: project.json is exactly as it was.",
     });
-    expect(endTurn("u")).toEqual([]);
+    expect(fileTurn("u", uCall.ledger.writes)).toEqual([]);
   });
 
   test("a throwing report on a run that changed nothing files nothing either", async () => {
@@ -607,28 +609,28 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("proj_bad_report_noop", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("proj_bad_report_noop", {}, tCall)).toEqual({
       error: "Bad Report No-op ran, but its report failed: sections is not iterable",
       success: false,
     });
-    expect(endTurn("t")).toEqual([]);
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([]);
   });
 
   test("undo: none with wrote records one { disk: true } per path; undo: project defaults to project.json", async () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("disk_write", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("disk_write", {}, tCall)).toEqual({
       success: true,
       summary: "Wrote two files.",
     });
-    expect(await tools.execute("proj_write", {})).toEqual({
+    expect(await tools.execute("proj_write", {}, tCall)).toEqual({
       success: true,
       summary: "Wrote project.json.",
     });
-    expect(endTurn("t")).toEqual([
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([
       { disk: true, ok: true, path: "a.json", tool: "Write Disk" },
       { disk: true, ok: true, path: "b.json", tool: "Write Disk" },
       { disk: false, ok: true, path: "project.json", tool: "Write Project" },
@@ -643,12 +645,12 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("disk_unnamed", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("disk_unnamed", {}, tCall)).toEqual({
       success: true,
       summary: "Wrote something.",
     });
-    expect(endTurn("t")).toEqual([
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([
       { disk: true, ok: true, path: "(unknown file)", tool: "Write Somewhere" },
     ]);
   });
@@ -662,9 +664,12 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("proj_noop", {})).toEqual({ success: true, summary: "Already so." });
-    expect(endTurn("t")).toEqual([]);
+    const tCall = recordingContext();
+    expect(await tools.execute("proj_noop", {}, tCall)).toEqual({
+      success: true,
+      summary: "Already so.",
+    });
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([]);
   });
 
   test("a report that throws after run resolved names the write and files it from the defaults", async () => {
@@ -675,12 +680,12 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("proj_bad_report", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("proj_bad_report", {}, tCall)).toEqual({
       error: "Bad Report ran, but its report failed: sections is not iterable",
       success: false,
     });
-    expect(endTurn("t")).toEqual([
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([
       { disk: false, ok: true, path: "project.json", tool: "Bad Report" },
     ]);
   });
@@ -689,13 +694,13 @@ describe("execution", () => {
     const tab = resetWorkspaceWithTab();
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
-    beginTurn("t");
-    expect(await tools.execute("read_thing", {})).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("read_thing", {}, tCall)).toEqual({
       data: [{ message: "m" }],
       success: true,
       summary: "Found one.",
     });
-    expect(endTurn("t")).toEqual([]);
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([]);
   });
 
   test("a schema-breaking write returns the write reporter's verdict, not the report's summary", async () => {
@@ -782,7 +787,7 @@ describe("execution", () => {
   test("a definition listed without an executor refuses rather than running", async () => {
     const { registry } = appRegistry(RICH);
     const [first] = advertisedCommandTools(registry);
-    expect(await first!.execute({})).toEqual({
+    expect(await first!.execute({}, createToolContext())).toEqual({
       error: `Tool "${first!.name}" was listed without an executor.`,
       success: false,
     });

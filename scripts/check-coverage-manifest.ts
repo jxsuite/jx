@@ -60,18 +60,23 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 // Files exempt from the every-source-file-is-tested rule: pure type
-// Declarations (erased at runtime, never produce coverage rows) and tiny
-// Side-effect entry shims with no testable logic.
+// Declarations, erased at runtime, which never produce coverage rows.
+//
+// Desktop's two launcher shims (`src/init.ts`, `src/chromium/init.ts`) used to
+// Be listed here as side-effect entries with no testable logic. That exemption
+// Is how desktop 5.0.0-5.1.3 shipped a shim whose bundle threw on import with
+// No test to notice; they are now imported by `init-shim*.test.ts` and gated
+// Like every other file.
 export const ALLOWLIST = new Set([
   "src/types.ts",
-  "src/init.ts",
-  "src/chromium/init.ts",
   // Desktop RPC schema: interfaces/type aliases only, no runtime exports.
   "src/rpc-schema.ts",
   // Collab provider contract: interfaces/type aliases only, no runtime exports.
   "src/provider.ts",
   // The @jxsuite/ai gateway's host contract (Upstream, GatewayRefusal, ...): interfaces only.
   "src/gateway/types.ts",
+  // The @jxsuite/ai tool-call shapes (ToolContext, WriteLedger, Actor, ...): types only.
+  "src/core-types.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

@@ -100,7 +100,7 @@ Studio uses a platform abstraction (`src/platform.ts`) to decouple UI from backe
 | `probeRootProject()`     | Auto-detect project at startup                                                                             |
 | `createDestination`      | Whether New Project collects a folder (`"path"`) or a repository (`"repo"`) — see specs/desktop.md §4.5    |
 | `createProject(opts)`    | Scaffold a project at the user-chosen `opts.destination`; never defaults a location                        |
-| `pickDirectory?()`       | Native folder picker behind the modal's **Browse…** button (desktop only)                                  |
+| `pickDirectory?()`       | Folder picker behind **Browse…**: a path, `null` only for a cancel, else a rejection shown under Location  |
 | `fetchProjectSchemas?()` | The active project's generated entry documents, PRE-BUNDLED (extensions.md §5.2) — drives §4.2.1           |
 | `canvasUrl?`             | The canvas iframe document. Absent means the bundle-relative default (§11.2)                               |
 | `canvasUrlDeferred?`     | This platform resolves `canvasUrl` asynchronously; the host waits rather than mounting the default (§11.2) |
@@ -123,7 +123,7 @@ Three platform targets:
 - **Desktop** (`@jxsuite/desktop`) — ElectroBun app with RPC to Bun process for native file I/O.
 - **Cloud** (`platforms/cloud.ts`) — Hosted sessions over the platform's session API; the backend composes per-project schemas in-Worker (extensions.md §5.5), so §4.2.1 holds there too.
 
-Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access.
+Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access. A host that declared a boot module or announced a launcher and registered nothing gets the boot-failure state, never the DevServer adapter (desktop.md §3.3, §3.4).
 
 ### 3.5 Project Open
 
@@ -1273,7 +1273,7 @@ A host serves the tree and supplies a platform. Both halves are the package's to
 
 **A host declares what its origin serves.** Serving the tree is one half; the other is saying whether the canvas document's own origin answers a SITE URL. A host that mounts the studio beside the project it edits answers yes by construction and declares nothing. A host that mounts it on a shared origin does not, and must declare `assetSpace: "repo"` with `documentBaseUrl` (§3.4) — the canvas cannot discover this, because a single-page-app fallback answers a missing asset with the shell at HTTP 200 and there is nothing for it to detect.
 
-**`boot` is the PAL seam.** Module URLs evaluated before the studio entry, in order. The runtime half is unchanged (§3.3 of `desktop.md`): a boot module sets `globalThis.__jxPlatform`, or publishes the `__jxCloud` signal for the entry to build the adapter from, and must do so **synchronously** — a module script with top-level await does not block a later script tag. Both hosts previously obtained this seam by string-replacing the entry's script tag, and only one of them checked that the replace had matched.
+**`boot` is the PAL seam.** Module URLs evaluated before the studio entry, in order. The runtime half is unchanged (§3.3 of `desktop.md`): a boot module sets `globalThis.__jxPlatform`, or publishes the `__jxCloud` signal for the entry to build the adapter from, and must do so **synchronously** — a module script with top-level await does not block a later script tag. Both hosts previously obtained this seam by string-replacing the entry's script tag, and only one of them checked that the replace had matched. **Declaring `boot` also turns the dev-server default off.** A non-empty `boot` makes `studioShellHtml` write `<meta name="jx-boot" content="launcher">`, and the entry's resolver reads it: a document whose boot modules registered neither `__jxPlatform` nor `__jxCloud` boots into desktop.md §3.4's failure state instead of an editor whose every backend call fails, because a host that declared a platform and lost it is not a dev-server session. A document with no `boot` is unchanged.
 
 **The package names no backend.** `@jxsuite/studio` may contain PAL adapters — `platforms/cloud.ts` ships inside the bundle because it owns the collab client's `Y.Doc`, and a second bundled `yjs` breaks cross-module `instanceof` — but it must not depend on a backend _package_. A dependency on `@jxsuite/server` would make the abstraction depend on one of its implementations, and would put the compiler, the scaffolder and the starters into every studio install, the cloud's included. `scripts/check-dep-rules.ts` cannot see this (it forbids only core-to-extension edges, and both are core), so `scripts/check-studio-package.ts` enforces it, along with the rule that only the staging module may import `node:` — the manifest and the document generators are pure so a Worker build, a Vite plugin or a Deno host can read them.
 

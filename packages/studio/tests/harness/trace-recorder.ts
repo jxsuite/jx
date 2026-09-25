@@ -318,29 +318,37 @@ export async function installAiWritesSpy(): Promise<AiWritesSpy> {
   const real = (await import(AI_WRITES)) as AiWritesModule;
   const {
     MAX_TURNS,
-    beginTurn,
-    endTurn,
-    recordWrite,
+    fileTurn,
+    openTurnLedger,
     resetAiWrites,
     summarizeWrites,
     turnAnchor,
     writesForTurn,
   } = real;
   const events: AiWritesEvent[] = [];
+  /* The event vocabulary predates the per-turn ledger, and is kept: a turn's ledger opening is
+     `beginTurn`, each write `recordWrite`, and its filing `endTurn`, so a trace records the same
+     lifecycle whichever API carries it. */
   void mock.module(AI_WRITES, () => ({
     MAX_TURNS,
-    beginTurn: (id: string) => {
-      events.push({ id, op: "beginTurn" });
-      beginTurn(id);
-    },
-    endTurn: (id: string) => {
-      const filed = endTurn(id);
-      events.push({ filed: filed.map((write) => jsonSafe(write)), id, op: "endTurn" });
+    fileTurn: (anchor: string, writes: Parameters<AiWritesModule["fileTurn"]>[1]) => {
+      const filed = fileTurn(anchor, writes);
+      events.push({ filed: filed.map((write) => jsonSafe(write)), id: anchor, op: "endTurn" });
       return filed;
     },
-    recordWrite: (write: Parameters<AiWritesModule["recordWrite"]>[0]) => {
-      events.push({ op: "recordWrite", write: jsonSafe(write) });
-      recordWrite(write);
+    openTurnLedger: (turnId: string) => {
+      events.push({ id: turnId, op: "beginTurn" });
+      const ledger = openTurnLedger(turnId);
+      return {
+        record: (write: Parameters<typeof ledger.record>[0]) => {
+          events.push({ op: "recordWrite", write: jsonSafe(write) });
+          ledger.record(write);
+        },
+        turnId: ledger.turnId,
+        get writes() {
+          return ledger.writes;
+        },
+      };
     },
     resetAiWrites: () => {
       events.push({ op: "resetAiWrites" });

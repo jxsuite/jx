@@ -118,6 +118,9 @@ export function formatErrorAdvice(error: string): string {
   if (lower.includes("500") || lower.includes("internal")) {
     return "The upstream API returned a server error. Try again in a moment.";
   }
+  if (lower.includes("empty reply")) {
+    return "Try again, or pick another model: some send back nothing for a request they cannot handle.";
+  }
   return "";
 }
 

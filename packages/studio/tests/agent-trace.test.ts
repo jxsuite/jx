@@ -148,7 +148,7 @@ void mock.module("@jxsuite/ai", () => ({
   },
 }));
 
-const { runAgentLoop } = await import("../src/services/tool-executor");
+const { EMPTY_TURN_TEXT, runAgentLoop } = await import("../src/services/tool-executor");
 const { registerAiTools } = await import("../src/services/ai-tools");
 const { answerAsk, pendingAsk, registerAskTool, resetAsk } = await import("../src/services/ai-ask");
 const { createTab, disposeTab } = await import("../src/tabs/tab");
@@ -167,7 +167,7 @@ const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { selectionCommands } = await import("../src/canvas/canvas-render");
 const { isSpliceablePath } = await import("../src/tabs/selection");
 const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
-const { recordWrite, writesForTurn } = await import("../src/services/ai-writes");
+const { writesForTurn } = await import("../src/services/ai-writes");
 const { projectChip } = await import("../src/panels/ai-chat/chat-view");
 const { refreshFormats } = await import("../src/format/format-host");
 const { ensureProxyProbe, isProxyConfigured, proxyStateCode, resetModelCache } =
@@ -320,9 +320,9 @@ function editHarness(rec: Recording, opts: { ok?: boolean; stopDuring?: boolean 
   toolRegistry.register(
     createToolDefinition({
       description: "records one write",
-      async execute() {
+      async execute(_args, ctx) {
         const ok = opts.ok ?? true;
-        recordWrite({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
+        ctx.ledger.record({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
         if (opts.stopDuring) {
           controller.abort();
         }
@@ -851,6 +851,148 @@ const LOOPT = inSuite("loopt", [
       await h.run(client);
       expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
       return { chat: h.chatState };
+    },
+  },
+  {
+    name: "a turn whose model sends back nothing ends on an error row saying so",
+    async run(rec) {
+      const tab = makeTab();
+      const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
+      const client = scripted([[{ stopReason: "stop", type: "done" }]]);
+      chatState.sendMessage("hello?");
+      await loop(rec, { chatState, client, toolRegistry });
+      expect(chatState.status).toBe("error");
+      expect(chatState.error).toBe(EMPTY_TURN_TEXT);
+      return settleTab(chatState, tab);
+    },
+  },
+  {
+    name: "an empty final round after work is a complete turn, not an error",
+    async run(rec) {
+      const tab = makeTab();
+      const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
+      const client = scripted([
+        toolCallRound("c1", "add_child", ADD_SPAN),
+        [{ stopReason: "stop", type: "done" }],
+      ]);
+      chatState.sendMessage("add a span");
+      await loop(rec, { chatState, client, toolRegistry });
+      expect(chatState.status).toBe("idle");
+      return settleTab(chatState, tab);
+    },
+  },
+  {
+    name: "a stopped turn that drew nothing is not an error",
+    async run(rec) {
+      const tab = makeTab();
+      const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
+      const client = scripted([[{ stopReason: "cancelled", type: "done" }]]);
+      chatState.sendMessage("never mind");
+      await loop(rec, { chatState, client, toolRegistry });
+      expect(chatState.status).toBe("idle");
+      expect(chatState.error).toBeNull();
+      return settleTab(chatState, tab);
+    },
+  },
+  {
+    name: "a turn that only read and ran out of rounds applied nothing, and says so as an error",
+    async run(rec) {
+      const tab = makeTab();
+      const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
+      /* A read that reports in a sentence, as list_files, search_files and ask_user do: it
+         succeeds with a summary and writes nothing. */
+      toolRegistry.register(
+        createToolDefinition({
+          description: "reads, and says what it read",
+          async execute() {
+            return { success: true, summary: "Looked at the page." };
+          },
+          name: "peek",
+          parameters: { properties: {}, type: "object" },
+        }),
+      );
+      const client = scripted(
+        Array.from({ length: 6 }, (_, i) => toolCallRound(`r${i}`, "peek", {})),
+      );
+      chatState.sendMessage("look at everything");
+      await loop(rec, { chatState, client, toolRegistry });
+      expect(client.calls()).toBe(5);
+      expect(chatState.status).toBe("error");
+      expect(chatState.error).not.toContain("Changes applied so far");
+      return settleTab(chatState, tab);
+    },
+  },
+  {
+    name: "the round cap lists the calls that wrote, not the ones that read",
+    async run(rec) {
+      const tab = makeTab();
+      const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
+      /* A read that reports in a sentence, as list_files, search_files and ask_user do: it
+         succeeds with a summary and writes nothing. */
+      toolRegistry.register(
+        createToolDefinition({
+          description: "reads, and says what it read",
+          async execute() {
+            return { success: true, summary: "Looked at the page." };
+          },
+          name: "peek",
+          parameters: { properties: {}, type: "object" },
+        }),
+      );
+      const round = (i: number): StreamEvent[] => [
+        { id: `r${i}`, name: "peek", type: "tool_call_start" },
+        { id: `r${i}`, type: "tool_call_end" },
+        { id: `w${i}`, name: "set_property", type: "tool_call_start" },
+        {
+          args: JSON.stringify({ key: "id", path: [], value: `v${i}` }),
+          id: `w${i}`,
+          type: "tool_call_delta",
+        },
+        { id: `w${i}`, type: "tool_call_end" },
+        { stopReason: "tool_calls", type: "done" },
+      ];
+      const client = scripted(Array.from({ length: 6 }, (_, i) => round(i)));
+      chatState.sendMessage("read then write, repeatedly");
+      await loop(rec, { chatState, client, toolRegistry });
+      expect(chatState.status).toBe("idle");
+      expect(chatState.messages.at(-1)!.content).toContain("Changes applied so far");
+      return settleTab(chatState, tab);
+    },
+  },
+  {
+    name: "a capped turn that created a project lists the project as applied",
+    async run(rec) {
+      const tab = makeTab();
+      const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
+      toolRegistry.register(
+        createToolDefinition({
+          description: "creates a project the way create_project does",
+          async execute(_args, ctx) {
+            ctx.ledger.record({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
+            return { success: true, summary: "Created project at /abs/site and opened it." };
+          },
+          name: "bootstrap",
+          parameters: { properties: {}, type: "object" },
+        }),
+      );
+      toolRegistry.register(
+        createToolDefinition({
+          description: "reads, and says what it read",
+          async execute() {
+            return { success: true, summary: "Looked at the page." };
+          },
+          name: "peek",
+          parameters: { properties: {}, type: "object" },
+        }),
+      );
+      const client = scripted([
+        toolCallRound("b", "bootstrap", {}),
+        ...Array.from({ length: 5 }, (_, i) => toolCallRound(`r${i}`, "peek", {})),
+      ]);
+      chatState.sendMessage("make me a site");
+      await loop(rec, { chatState, client, toolRegistry });
+      expect(chatState.status).toBe("idle");
+      return settleTab(chatState, tab);
     },
   },
 ]);
@@ -1788,6 +1930,12 @@ const LOOPT_MIRRORED = [
   "a Stop during the last call opens no further round",
   "a stream error removes its round's partial message, calls and all",
   "a stream error after a round of work keeps that round and removes only its own partial",
+  "a turn whose model sends back nothing ends on an error row saying so",
+  "an empty final round after work is a complete turn, not an error",
+  "a stopped turn that drew nothing is not an error",
+  "a turn that only read and ran out of rounds applied nothing, and says so as an error",
+  "the round cap lists the calls that wrote, not the ones that read",
+  "a capped turn that created a project lists the project as applied",
 ];
 
 /** Every `ai-loop-reconnect.test.ts` test this file mirrors. */

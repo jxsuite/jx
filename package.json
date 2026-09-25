@@ -100,7 +100,7 @@
     "nano-staged": "^1.0.2",
     "oxfmt": "^0.70.0",
     "oxlint": "^1.85.0",
-    "oxlint-tsgolint": "^7.0.2002",
+    "oxlint-tsgolint": "^7.0.2003",
     "puppeteer-core": "^25.11.0",
     "release-please": "^17.11.2",
     "ts-migrate": "^0.1.35",

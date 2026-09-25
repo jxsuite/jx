@@ -32,7 +32,7 @@ import {
   tryParseToolResult,
 } from "../src/panels/ai-chat/chat-view";
 import type { AskHandlers } from "../src/panels/ai-chat/chat-view";
-import { beginTurn, endTurn, recordWrite, resetAiWrites } from "../src/services/ai-writes";
+import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
 import { ATTACHED_CONTEXT_DELIMITER } from "../src/panels/ai-chat/attached-context";
 import { setActiveRegistry } from "../src/commands/active-registry";
 import { createCommandRegistry } from "../src/commands/registry";
@@ -120,11 +120,10 @@ function asking(
 
 /** File a ledger entry against a message id, the way the agent loop does. */
 function ledger(id: string, writes: { disk: boolean; ok: boolean; path: string }[]) {
-  beginTurn(`for:${id}`);
-  for (const w of writes) {
-    recordWrite({ ...w, tool: "write_file" });
-  }
-  endTurn(id);
+  fileTurn(
+    id,
+    writes.map((w) => ({ ...w, tool: "write_file" })),
+  );
 }
 
 describe("helpers", () => {
@@ -153,6 +152,8 @@ describe("helpers", () => {
     expect(formatErrorAdvice("HTTP 401 unauthorized")).toContain("API key");
     expect(formatErrorAdvice("Network error while fetching")).toContain("dev server");
     expect(formatErrorAdvice("429 rate limit exceeded")).toContain("rate limit");
+    // The loop's own sentence for a turn that drew nothing (services/tool-executor.ts).
+    expect(formatErrorAdvice("The model sent back an empty reply.")).toContain("another model");
     expect(formatErrorAdvice("500 internal server error")).toContain("server error");
     expect(formatErrorAdvice("something exotic")).toBe("");
   });

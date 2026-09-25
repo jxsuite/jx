@@ -534,6 +534,42 @@ describe("openNewProjectModal — destination", () => {
 
     expect(npLocation().value).toBe("/home/dev/Sites");
     expect(npPreview()).toBe("Creates: /home/dev/Sites/…");
+    // A cancel is the user's own answer, so nothing is reported anywhere.
+    expect(destinationError()).toBeNull();
+    expect(errorText()).toBeNull();
+  });
+
+  /* The customer's report, end to end: a folder was picked and nothing happened. `pickDirectory`
+     rejected (here the dev-server lookup, from a page no dev server was behind), the modal's
+     `void browseLocation(...)` dropped it as an unhandled rejection, and the button simply came
+     back. The reason now sits under the Location field it is about, not in the footer strip,
+     and typing a path, which is what it asks for, takes it away. */
+  test("a failed Browse… says why under the Location field", async () => {
+    const reason =
+      'Jx Studio could not look up where "Sites" is: Failed to fetch. Type the folder\'s path into Location instead.';
+    installMockPlatform({
+      pickDirectory: (async () => {
+        throw new Error(reason);
+      }) as never,
+    });
+    void openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+
+    click(browseButton());
+    await flush(3);
+
+    expect(destinationError()).toBe(reason);
+    expect(npPart("destination-failure")?.getAttribute("role")).toBe("alert");
+    expect(errorText()).toBeNull();
+    expect(npPart("browse")?.textContent).toContain("Browse…");
+    expect(browseButton()?.hasAttribute("disabled")).toBe(false);
+    expect(npLocation().value).toBe("");
+
+    npFillLocation();
+    await flush();
+    expect(destinationError()).toBeNull();
   });
 });
 

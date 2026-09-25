@@ -13,6 +13,8 @@ import { createToolRegistry } from "@jxsuite/ai";
 import { registerProjectTools } from "../src/services/ai-project-tools";
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
+import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
 import type { CreateProjectDestination, DirEntry } from "../src/types";
 
 /** The shape of the `createProject` options the create_project tool sends to the platform. */
@@ -676,6 +678,44 @@ describe("ai-project-tools — create_project", () => {
     expect(res.success).toBe(true);
     expect(res.summary).toContain("not opened in this window");
     expect(onProjectAdopted).not.toHaveBeenCalled();
+  });
+
+  /* The project is on disk once the platform has created it, opened here or not, and no undo
+     reaches it. Recorded, it is what the turn changed; a failed scaffold records nothing. */
+  test("records the created project as a disk write, and a failed scaffold records nothing", async () => {
+    resetAiWrites();
+    const created = makeHarness(
+      {},
+      { adoptProject: async () => {} },
+      { createProject: async () => ({ config: {}, root: "/abs/solo" }) },
+    );
+    const createdCall = recordingContext();
+    await created.registry.execute(
+      "create_project",
+      { location: "/home/dev/Sites", name: "Solo" },
+      createdCall,
+    );
+    expect(fileTurn("m1", createdCall.ledger.writes)).toEqual([
+      { disk: true, ok: true, path: "/abs/solo", tool: "create_project" },
+    ]);
+
+    const failing = makeHarness(
+      {},
+      {},
+      {
+        createProject: async () => {
+          throw new Error("directory exists");
+        },
+      },
+    );
+    const failedCall = recordingContext();
+    await failing.registry.execute(
+      "create_project",
+      { location: "/home/dev/Sites", name: "Dup" },
+      failedCall,
+    );
+    expect(fileTurn("m2", failedCall.ledger.writes)).toEqual([]);
+    resetAiWrites();
   });
 
   test("surfaces scaffolding errors and adoption failures", async () => {
