@@ -72,7 +72,7 @@ The assistant is given a fixed set of document-editing tools (create/edit page a
 
 Every capability the chat surface offers is a command record in the `Assistant` category — Focus Composer (`⌘⇧A`), New Chat, Chat History, Retry, Attach Selection and Stop — so each one is in the palette, in the generated keyboard sheet, and rebindable, and the chat header's buttons RUN those records rather than calling module functions beside them. They are `level: "application"`, including Attach Selection: it READS the selection and WRITES a chip into the composer, and a record is filed by the level of the state it writes.
 
-Two context keys gate them and had no readers before: `ai.configured` (a provider is connected) and `ai.streaming` (a turn is in flight, which is the only state in which Stop can act). None carries an `aiTool` projection — the assistant does not get to end its own conversation.
+Two context keys gate them and had no readers before: `ai.configured` (a provider is connected) and `ai.streaming` (a turn is in flight, which is the only state in which Stop can act). **A turn is in flight from an accepted send until its loop ends**, its tools, questions and imports included: the chat's own status belongs to the token stream and reads idle while a round's tools run (§3.4), so it cannot answer the question. **One window runs one turn**: a send while one is in flight starts nothing, the composer offers Stop for the whole of it, and Retry is refused until it ends. A question the turn is waiting on outranks Stop in the composer, because a send while it waits is its answer. None carries an `aiTool` projection — the assistant does not get to end its own conversation.
 
 ### 3.1 Schema gate
 
@@ -98,7 +98,7 @@ A multi-tool turn may move between documents. The undo batch and the collaborati
 
 An assistant that must guess, or apologise for not knowing, is worse than one that can ask. `ask_user` suspends the turn on the author and resumes with their reply. Five properties are normative.
 
-**The mechanism is the tool, not a new state.** The agent loop awaits each tool call, so a tool that returns a pending promise suspends the turn; nothing in the chat state or the streaming protocol changes. `finishStream` has already run by the time tools execute, so a suspended turn is idle by construction — "waiting" is the presence of an outstanding question, not a fourth status.
+**The mechanism is the tool, not a new state.** The agent loop awaits each tool call, so a tool that returns a pending promise suspends the turn; nothing in the chat state or the streaming protocol changes. `finishStream` has already run by the time tools execute, so a suspended turn is idle by construction — "waiting" is the presence of an outstanding question, not a fourth status. That idle is the token stream's, not the turn's: the turn is still in flight (`ai.streaming`, §3.0), so Stop stays on offer while the question waits.
 
 **A skip is a success, and only a stopped turn is a failure.** "You decide" is a real answer to a fair question. Reporting it as an error would have the model apologise for asking, and would end the turn on the error path — which deletes the streaming message (§3.2).
 

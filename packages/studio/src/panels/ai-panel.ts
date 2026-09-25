@@ -197,6 +197,8 @@ function watchAssistant() {
       }
       void cs.status;
       void cs.error;
+      // The composer's Send/Stop follows the turn, which outlasts the stream's status.
+      void assistant.isTurnActive();
       // A usage frame moves the token count and nothing else this effect reads.
       void cs.tokenCount;
       // The registry is composed AFTER the bootstrap mounts this, and it is a reactive holder —
@@ -257,12 +259,18 @@ export function mountAiPanel() {
  * them is a 400. It travels as the tool result instead, and the question's own card renders it.
  */
 async function handleAssistantSend(text: string) {
-  if (!text.trim() || assistant.chatState.status === "streaming") {
+  if (!text.trim()) {
     return;
   }
+  /* Answering comes first: a question is put by a turn that is still running, so a send while one
+     waits is its answer, never a second turn. */
   if (answerAsk(text.trim())) {
     surface?.pin();
     renderAiPanel();
+    return;
+  }
+  // One turn per window: a send during a turn, tools included, starts nothing.
+  if (isAssistantStreaming()) {
     return;
   }
   // A send always lands in the chat view, pinned to the newest message.
@@ -494,6 +502,11 @@ export function isAssistantWaiting(): boolean {
  * Whether a turn is in flight — the probe `commands/live-context.ts` declares as `aiStreaming` and
  * projects onto `ctx.ai.streaming`.
  *
+ * The whole turn, not the token stream. The chat's `status` reads idle while a round's tools run,
+ * while a question waits and through a minutes-long import, so reading it here left Stop refused
+ * and Send offered in the middle of a turn, and a second send could start a second turn beside the
+ * first. The assistant's own turn fact is true from an accepted send until its loop ends.
+ *
  * That source was declared optional with the note "there is nothing to read yet; the caller passes
  * a probe when one exists", and no caller ever did — so `ctx.ai.streaming` read `false` forever and
  * `assistant.stop` would have been permanently refused. Reading the reactive chat state here is
@@ -502,7 +515,7 @@ export function isAssistantWaiting(): boolean {
  * ends.
  */
 export function isAssistantStreaming(): boolean {
-  return assistant.chatState.status === "streaming";
+  return assistant.isTurnActive();
 }
 
 function stop() {
@@ -743,9 +756,9 @@ export function assistantCommands(): AnyCommand[] {
       menus: ["palette"],
       group: "2_turn",
       requires: "a turn in flight",
-      /* The union, not just `streaming`. A turn suspended on `ask_user` moves no tokens, so
-         `ctx.ai.streaming` reads false — and that is precisely the turn a reader who does not want
-         to answer needs to end. */
+      /* The union, which is `streaming` itself now that it covers the whole turn: a turn suspended
+         on `ask_user` moves no tokens, and it is precisely the turn a reader who does not want to
+         answer needs to end. `waiting` stays in the union for a question put outside a turn. */
       enablement: (ctx: CommandContext) => ctx.ai.streaming || ctx.ai.waiting,
       run: stop,
     },

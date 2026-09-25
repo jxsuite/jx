@@ -1116,6 +1116,27 @@ const DAT = inSuite("dat", [
     },
   },
   {
+    name: "a send while a turn's tools run is refused, and the turn reads active until it ends",
+    async run() {
+      nextRounds = [
+        toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+        [{ stopReason: "stop", type: "done" }],
+      ];
+      const a = createDocumentAssistant();
+      const first = a.sendMessage("first");
+      for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+        await flush(1);
+      }
+      const activeWhileWaiting = a.isTurnActive();
+      expect(activeWhileWaiting).toBe(true);
+      await a.sendMessage("second");
+      answerAsk("yes");
+      await first;
+      expect(a.isTurnActive()).toBe(false);
+      return datObserve(a, { activeWhileWaiting });
+    },
+  },
+  {
     name: "a chat opened while a turn waits gets none of that turn's reply or changes",
     async run() {
       const tab = resetWorkspaceWithTab({

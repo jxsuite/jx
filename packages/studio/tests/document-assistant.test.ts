@@ -100,7 +100,7 @@ const { selectionCommands } = await import("../src/canvas/canvas-render");
 const { isSpliceablePath } = await import("../src/tabs/selection");
 const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
 const { writesForTurn } = await import("../src/services/ai-writes");
-const { pendingAsk } = await import("../src/services/ai-ask");
+const { answerAsk, pendingAsk } = await import("../src/services/ai-ask");
 
 /** Which editor the registry fixture reports the focused pane as showing. */
 let editorKind: "canvas" | "config" = "canvas";
@@ -347,6 +347,37 @@ describe("document-assistant", () => {
     a.openSession(secondId);
     a.deleteSession("already-gone");
     expect(a.activeSessionId()).toBe(secondId);
+  });
+
+  /* One turn per window. The chat's status belongs to the token stream and reads idle while a
+     round's tools run (here, a question waiting on the author), so guarding on it let a second
+     send start a second turn beside the first (D2). */
+  test("a send while a turn's tools run is refused, and the turn reads active until it ends", async () => {
+    nextRounds = [
+      toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+    const a = createDocumentAssistant();
+    expect(a.isTurnActive()).toBe(false);
+    const first = a.sendMessage("first");
+    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      await flush(1);
+    }
+    expect(a.chatState.status).toBe("idle");
+    expect(a.isTurnActive()).toBe(true);
+
+    const streams = capturedTools.length;
+    await a.sendMessage("second");
+    expect(capturedTools).toHaveLength(streams);
+    expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "first",
+    ]);
+
+    // Answering is not a send: the turn carries on with the reply and then ends.
+    answerAsk("yes");
+    await first;
+    expect(a.isTurnActive()).toBe(false);
+    expect(capturedTools).toHaveLength(streams + 1);
   });
 
   /* Chat History stays open to the author while a turn waits on them, and opening a chat stops the
