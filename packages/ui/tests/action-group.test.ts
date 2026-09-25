@@ -689,10 +689,12 @@ describe("a compact group draws the segmented control itself", () => {
     );
   });
 
-  test("a text-only small segment gets --jx-space-2 of inline padding, and a glyph segment does not", async () => {
+  test("a text-only small segment gets 6px of inline padding, and a glyph segment does not", async () => {
     /* The DOM double does not map `padding-inline` onto the physical sides, so the logical
-       property is read directly: set to the token on a text segment, absent on a glyph one, which
-       keeps the small size's own 2px (`padding: 0 var(--jx-space-1)`). */
+       property is read directly: set on a text segment, absent on a glyph one, which keeps the
+       small size's own 2px (`padding: 0 var(--jx-space-1)`). 6px is one step between --jx-space-2
+       and --jx-space-3, the widest Style panel row having overflowed its 256px column at the
+       latter, so it is a literal rather than a token and the number is the claim. */
     const el = freshGroup({ label: "Display" });
     const glyph = document.createElement("jx-action-button") as JxActionButton;
     glyph.setAttribute("label", "Row");
@@ -700,14 +702,80 @@ describe("a compact group draws the segmented control itself", () => {
     glyph.setAttribute("size", "sm");
     await mount(el, [textItem("flex"), textItem("grid", { selected: "" }), glyph]);
     const [flex, grid, row] = buttons(el).map((b) => getComputedStyle(controlOf(b)));
-    expect(flex!.getPropertyValue("padding-inline")).toBe("4px");
-    expect(grid!.getPropertyValue("padding-inline")).toBe("4px");
+    expect(flex!.getPropertyValue("padding-inline")).toBe("6px");
+    expect(grid!.getPropertyValue("padding-inline")).toBe("6px");
     expect(row!.getPropertyValue("padding-inline")).toBe("");
     expect(row!.paddingLeft).toBe("2px");
     // The padding is the group's: the same text member outside a compact group keeps 2px.
     const loose = await mount(freshGroup({ compact: "false", label: "Loose" }), [textItem("flex")]);
     const [alone] = buttons(loose);
     expect(getComputedStyle(controlOf(alone!)).getPropertyValue("padding-inline")).toBe("");
+  });
+
+  test("a glyph segment keeps its square shape while it LOADS, though its icon part is hidden", async () => {
+    /* `loading` puts a spinner where the glyph was, so `iconHidden` is `noIcon || loading` and the
+       icon part is hidden for both. Keyed on that part, the text-segment padding fired on a busy
+       icon segment: 22px to 26px and back for the length of the verb, moving every segment after
+       it. The host reflects data-no-icon from `icon` instead, which says what the rule means. */
+    const el = freshGroup({ label: "Verbs" });
+    const glyph = document.createElement("jx-action-button") as JxActionButton;
+    glyph.setAttribute("label", "Fetch");
+    glyph.setAttribute("icon", "plus");
+    glyph.setAttribute("size", "sm");
+    await mount(el, [glyph, textItem("Pull")]);
+    const words = buttons(el)[1]!;
+    expect(glyph.dataset["noIcon"]).toBeUndefined();
+    expect(words.dataset["noIcon"]).toBe("");
+
+    glyph.setAttribute("loading", "");
+    await settle();
+    const icon = glyph.querySelector('[part="icon"]')!;
+    expect(icon.hasAttribute("hidden")).toBe(true);
+    expect(glyph.dataset["noIcon"]).toBeUndefined();
+    expect(getComputedStyle(controlOf(glyph)).getPropertyValue("padding-inline")).toBe("");
+  });
+
+  test("a disabled segment dims its ink and keeps its share of the group's frame", async () => {
+    /* The member's own `:disabled` is `opacity: 0.5`, which faded its borders with its label: the
+       frame is drawn across every member, so half of the group's outer rectangle went faint while
+       the other half stayed bright. `:disabled` cannot be computed in the DOM double, so the rule
+       is the claim — including its POSITION, since it ties with the selected rules at (0,4,1) and
+       only wins the ink by coming after them. */
+    const el = await group({ label: "Align" }, ["A", "B!"]);
+    expect(controlOf(buttons(el)[1]!).disabled).toBe(true);
+    const rules = sheet();
+    expect(rules).toContain(
+      'S[data-compact] > jx-action-button > [part="control"]:disabled { opacity: 1; color: var(--jx-fg-muted) }',
+    );
+    const at = (selector: string) => rules.findIndex((rule) => rule.startsWith(`${selector} {`));
+    expect(at('S[data-compact] > jx-action-button > [part="control"]:disabled')).toBeGreaterThan(
+      at('S[data-compact] > jx-action-button[data-selected][data-emphasized] > [part="control"]'),
+    );
+    // And the hover wash still passes a disabled segment by, which is the other half of the ink.
+    expect(rules.some((rule) => rule.includes(":hover:not(:disabled)"))).toBe(true);
+  });
+
+  test("a compact group refuses to wrap, because no selector can find the end of a line", async () => {
+    /* The seam is written in tree order: the -1px overlap on `+ jx-action-button` and the rounded
+       ends on `:first-of-type`/`:last-of-type`. Wrapped, that put the overlap on a line-start
+       member (1px outside the group's own edge), squared both line ends and abutted the rows into
+       a doubled border. A row of choices that has to wrap is compact=false. */
+    expect(sheet()).toContain("S[data-compact] { gap: 0; flex-wrap: nowrap }");
+    const el = await group({ label: "Size" }, ["Base", "Sm", "Md"]);
+    expect(getComputedStyle(el).flexWrap).toBe("nowrap");
+  });
+
+  test("a vertical compact group's segments fill the host the group stretched", async () => {
+    /* `align-items: stretch` stretches each member HOST to the widest one, and the host is a row
+       whose control sits inside it at content width: the segments' end edges stepped in and out
+       down the column, one frame per label length. */
+    expect(sheet()).toContain(
+      'S[data-compact][data-orientation="vertical"] > jx-action-button > [part="control"] { flex: 1 }',
+    );
+    const el = await group({ label: "Panels", orientation: "vertical" }, ["Files", "Outline"]);
+    expect(getComputedStyle(el).alignItems).toBe("stretch");
+    const first = buttons(el)[0]!;
+    expect(getComputedStyle(controlOf(first)).flexGrow).toBe("1");
   });
 
   test("a focus ring paints over the selected segment's raised edge", () => {
@@ -727,6 +795,13 @@ describe("a compact group draws the segmented control itself", () => {
     expect(forced).toBeDefined();
     expect(forced).toContain(
       'S[data-compact] > jx-action-button[data-selected] > [part="control"]',
+    );
+    /* The emphasized selector is spelled out beside it because a media condition adds no
+       specificity: at (0,4,1) this block took `forced-color-adjust: none` and then lost the three
+       colours to the emphasized rule at (0,5,1), so an emphasized chosen segment painted the
+       author's blue over the user's palette with adjustment off. */
+    expect(forced).toContain(
+      'S[data-compact] > jx-action-button[data-selected][data-emphasized] > [part="control"]',
     );
     expect(forced).toContain("forced-color-adjust: none");
     expect(forced).toContain("background: Highlight");

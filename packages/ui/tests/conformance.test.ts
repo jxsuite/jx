@@ -629,11 +629,22 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
            counts toward the SCROLLABLE overflow of the nearest ancestor whose `overflow` is not
            `visible` though nothing paints it: uncontained, every shrunk control touching a
            scroller's edge draws a phantom scrollbar (jx-action-button's did, in Preferences ·
-           Keyboard). `contain: layout` keeps it local; `strict` and `content` both include it. */
+           Keyboard). `contain: layout` keeps it local, and it is the ONLY value that does so
+           without taking the hit area away: `content` and `strict` both include PAINT containment,
+           which clips a box to its padding edge, and the clipped part is exactly the reach past
+           the drawn box this loop just measured — probed in Chrome, `elementFromPoint` 1px outside
+           an `sm` action button hit the parent under either value, and `strict` adds size
+           containment on top, which collapsed the control from 22px to 20px. This gate used to
+           accept all three, so a future element could have passed it with no target at all. */
+        const contain = String(declarations["contain"] ?? controlRule?.["contain"] ?? "");
         expect(
-          String(declarations["contain"] ?? controlRule?.["contain"] ?? ""),
+          contain,
           `${tag}: ${key} extends its hit area past the box without contain: layout, so a scrolling ancestor counts it as scrollable overflow`,
-        ).toMatch(/\b(layout|strict|content)\b/);
+        ).toMatch(/\blayout\b/);
+        expect(
+          contain,
+          `${tag}: ${key} contains paint, which clips the hit area it just declared to the padding edge`,
+        ).not.toMatch(/\b(paint|content|strict)\b/);
         /* The sm rule's own border if it declares one, else the base control rule's: the border
            the shrunk box actually draws, which the outset is measured from the inside of. */
         const border = borderWidthOf(
