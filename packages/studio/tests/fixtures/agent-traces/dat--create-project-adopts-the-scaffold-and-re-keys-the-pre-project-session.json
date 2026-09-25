@@ -116,8 +116,28 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#4\") filed 0"],
-    "turns": []
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":true,\"ok\":true,\"path\":\"/home/dev/Sites/fresh-site\",\"tool\":\"create_project\"})",
+      "endTurn(\"msg#4\") filed 1"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "/home/dev/Sites/fresh-site",
+            "writes": [
+              {
+                "disk": true,
+                "ok": true,
+                "tool": "create_project"
+              }
+            ]
+          }
+        ],
+        "turn": "msg#4"
+      }
+    ]
   },
   "finalMessages": [
     {

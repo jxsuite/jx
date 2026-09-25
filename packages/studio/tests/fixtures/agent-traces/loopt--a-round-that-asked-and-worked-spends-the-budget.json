@@ -65,9 +65,7 @@
     "pushToolResultMessage(\"a4\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
     "appendToolResult(\"w4\", {\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}})",
     "pushToolResultMessage(\"w4\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"children\\\":[{\\\"tagName\\\":\\\"p\\\",\\\"textContent\\\":\\\"Hello\\\"}],\\\"tagName\\\":\\\"div\\\"}}\")",
-    "beginAssistantTurn()",
-    "appendDelta(\"I ran out of tool-call rounds (5) before finishing.\\n\\nChanges applied so far:\\n- The user answered: \\\"yes\\\"\\n- The user answered: \\\"yes\\\"\\n- The user answered: \\\"yes\\\"\\n- The user answered: \\\"yes\\\"\\n- The user answered: \\\"yes\\\"\\n\\nYou can continue by sending another message, or try a more specific request.\")",
-    "finishStream(\"length\")"
+    "setError(\"I ran out of tool-call rounds (5) before finishing.\\n\\nYou can continue by sending another message, or try a more specific request.\")"
   ],
   "clientCalls": [
     {
@@ -275,7 +273,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#17\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#14\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -528,18 +526,13 @@
       "role": "tool",
       "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}",
       "toolCallId": "w4"
-    },
-    {
-      "id": "msg#17",
-      "role": "assistant",
-      "content": "I ran out of tool-call rounds (5) before finishing.\n\nChanges applied so far:\n- The user answered: \"yes\"\n- The user answered: \"yes\"\n- The user answered: \"yes\"\n- The user answered: \"yes\"\n- The user answered: \"yes\"\n\nYou can continue by sending another message, or try a more specific request."
     }
   ],
   "finalState": {
     "contextWarning": false,
-    "error": null,
+    "error": "I ran out of tool-call rounds (5) before finishing.\n\nYou can continue by sending another message, or try a more specific request.",
     "model": "test",
-    "status": "idle",
+    "status": "error",
     "tokenCount": 0,
     "usage": null
   },

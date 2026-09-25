@@ -38,6 +38,7 @@ import {
 import { adoptCreatedProject } from "./project-adoption";
 import type { AdoptOutcome } from "./project-adoption";
 import { currentToolCallId, turnSignal } from "./ai-turn-signal";
+import { recordWrite } from "./ai-writes";
 
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { Tab } from "../tabs/tab";
@@ -511,6 +512,9 @@ export function registerImportTools(
 
         turn?.removeEventListener("abort", stopRun);
         finishImportRun(id, { status: "done" });
+        /* The imported project is on disk from here, and no undo reaches it: it is what the turn
+           changed, whichever window ends up opening it. */
+        recordWrite({ disk: true, ok: true, path: result.root, tool: "import_site" });
         imported = true;
         clearPendingImportBrief();
 

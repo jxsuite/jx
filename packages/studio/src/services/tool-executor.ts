@@ -12,7 +12,13 @@
  *   the turn red and — in `chat-state.ts` — DELETES the streaming message, so a turn that applied
  *   four edits and then hit the cap reported as an error that had also erased its own account of
  *   the four edits. The cap is now an ordinary assistant message whenever anything was applied, and
- *   an error only when nothing was.
+ *   an error only when nothing was. **Applied means it wrote**: a call counts when it succeeded with
+ *   a summary AND the write ledger grew by an `ok` write while it ran, not merely when it returned a
+ *   summary, because a read returns a summary too, and a turn that only looked around was reported
+ *   as having changed things.
+ * - **A turn that drew nothing says so.** A model that answered with neither text nor a tool call
+ *   left the author's message sitting there with no reply at all. That turn ends on an error row,
+ *   with Retry, instead.
  * - **A batch belongs to the tab it edits.** `beginBatch(getTab())` ran once, against whichever tab
  *   happened to be active when the loop started. A turn that then moved to a second document closed
  *   its batch against the FIRST tab, so the second document's edits got neither a history snapshot
@@ -29,10 +35,13 @@ import type { Tab } from "../tabs/tab";
 import { batchTab, beginBatch, endBatch } from "../tabs/transact";
 import { ensureProxyProbe, resetModelCache } from "./ai-models";
 import { estimatePromptTokens } from "./context-manager";
-import { beginTurn, endTurn, turnAnchor } from "./ai-writes";
+import { beginTurn, endTurn, turnAnchor, turnWrites } from "./ai-writes";
 import { beginToolCall, beginTurnSignal, endTurnSignal } from "./ai-turn-signal";
 
 const MAX_ROUNDS = 5;
+
+/** What a turn that drew nothing says: the model answered with neither text nor a tool call. */
+export const EMPTY_TURN_TEXT = "The model sent back an empty reply.";
 
 /**
  * Hard ceiling on rounds of every kind, so the loop terminates whatever the model does.
@@ -189,6 +198,16 @@ export async function runAgentLoop({
         return;
       }
 
+      /* A turn that has drawn nothing by the end of a round with no calls ends here, as an error
+         the author can see and retry, rather than as silence under their message. `setError`
+         before `finishStream`, so it removes the empty reply. A stopped round is not empty: the
+         author ended it. */
+      const stopped = stopReason === "cancelled" || signal?.aborted === true;
+      if (toolCalls.size === 0 && !stopped && turnAnchor(chatState.messages, turnUserId) === null) {
+        chatState.setError(EMPTY_TURN_TEXT);
+        return;
+      }
+
       chatState.finishStream(stopReason);
 
       /* The calls the model streamed decide whether tools run, not the finish reason the provider
@@ -213,6 +232,8 @@ export async function runAgentLoop({
           return;
         }
         let result;
+        // The ledger's length before the call, so the call can be judged by what it recorded.
+        const writesBefore = turnWrites().length;
         // Published, not passed: `ToolRegistry.execute` takes the args and nothing else.
         beginToolCall(id);
         try {
@@ -237,7 +258,10 @@ export async function runAgentLoop({
         if (!result.success && result.error) {
           allErrors.push(result.error);
         }
-        if (result.success && result.summary) {
+        const wrote = turnWrites()
+          .slice(writesBefore)
+          .some((write) => write.ok);
+        if (result.success && result.summary && wrote) {
           appliedSummaries.push(result.summary);
         }
         chatState.appendToolResult(id, result);

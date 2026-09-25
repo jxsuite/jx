@@ -59,7 +59,7 @@ OPENAI_API_KEY=sk-… bun run eval --tasks counter-button --k 1
 
 `OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional and mirror how the server proxy resolves its config. Without `OPENAI_API_KEY` the CLI exits `2` immediately, because the harness calls a real model by design. Any OpenAI-compatible endpoint works, Cloudflare Workers AI included: point `OPENAI_BASE_URL` at `https://api.cloudflare.com/client/v4/accounts/<account id>/ai/v1`, pass an API token as the key, and name a model that calls tools, such as `@cf/meta/llama-4-scout-17b-16e-instruct`. The harness reaches the provider the way a server does, so an endpoint that answers no browser preflight is fine.
 
-If no trial reaches the model at all (a bad key, an endpoint that is down or refuses the request), the CLI exits `2` and writes no run, because a run like that measures the endpoint rather than the assistant, and it would become the baseline the next run is compared against.
+If no trial gets a reply from the model at all (a bad key, an endpoint that is down or refuses the request, or a model that answers every trial empty), the CLI exits `2` and writes no run, because a run like that measures the endpoint rather than the assistant, and it would become the baseline the next run is compared against.
 
 Each run writes a timestamped directory under `evals/runs/`, which is gitignored:
 
