@@ -58,6 +58,21 @@
           }
         }
       ]
+    },
+    "mode": "edit",
+    "chooseMode": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/mode"
+          },
+          "value": {
+            "$ref": "event#/currentTarget/dataset/value"
+          }
+        }
+      ]
     }
   },
   "style": {
@@ -96,7 +111,7 @@
     },
     {
       "tagName": "p",
-      "textContent": "A row of action buttons with ONE tab stop, and one attribute choosing the whole ARIA pattern: selects=\"none\" is a toolbar, \"single\" a radiogroup, \"multiple\" a group. It owns the roving caret and the segmented seam; it does not own the selection. Horizontal alignment is ${state.align}."
+      "textContent": "A row of action buttons with ONE tab stop, and one attribute choosing the whole ARIA pattern: selects=\"none\" is a toolbar, \"single\" a radiogroup, \"multiple\" a group. It owns the roving caret and, when compact, the whole segmented control: the frame, the shared borders and the selected segment, drawn whatever a member's quiet says. It does not own the selection. Horizontal alignment is ${state.align}; the canvas is in ${state.mode} mode."
     },
     {
       "tagName": "h2",
@@ -172,6 +187,79 @@
     },
     {
       "tagName": "h2",
+      "textContent": "selects=\"single\" with text segments at the small size, as Studio's switches draw them"
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "Canvas mode",
+            "selects": "single"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Edit",
+                "size": "sm",
+                "checked": "${state.mode === 'edit' ? 'true' : 'false'}"
+              },
+              "onclick": {
+                "$ref": "#/state/chooseMode"
+              },
+              "attributes": {
+                "data-value": "edit"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Edit"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Design",
+                "size": "sm",
+                "checked": "${state.mode === 'design' ? 'true' : 'false'}"
+              },
+              "onclick": {
+                "$ref": "#/state/chooseMode"
+              },
+              "attributes": {
+                "data-value": "design"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Design"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Source",
+                "size": "sm",
+                "disabled": true,
+                "checked": "false"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Source"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
       "textContent": "selects=\"none\" \u2014 a toolbar, and the same row uncompacted"
     },
     {
@@ -189,7 +277,6 @@
                 "label": "Bold",
                 "hint": "Bold",
                 "icon": "text-b",
-                "quiet": false,
                 "toggles": true
               }
             },
@@ -199,7 +286,6 @@
                 "label": "Italic",
                 "hint": "Italic",
                 "icon": "text-italic",
-                "quiet": false,
                 "toggles": true
               }
             },
@@ -209,7 +295,6 @@
                 "label": "Underline",
                 "hint": "Underline",
                 "icon": "text-a-underline",
-                "quiet": false,
                 "disabled": true
               }
             },
@@ -219,7 +304,6 @@
                 "label": "Strikethrough",
                 "hint": "Strikethrough",
                 "icon": "text-strikethrough",
-                "quiet": false,
                 "toggles": true
               }
             }
@@ -268,6 +352,51 @@
     },
     {
       "tagName": "h2",
+      "textContent": "compact=false with quiet members \u2014 a toolbar of quiet tools, which is never a compact group"
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "File actions",
+            "compact": false
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "New file",
+                "hint": "New file",
+                "icon": "plus",
+                "size": "sm"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Refresh",
+                "hint": "Refresh",
+                "icon": "arrows-clockwise",
+                "size": "sm"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Copy path",
+                "hint": "Copy path",
+                "icon": "copy",
+                "size": "sm"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
       "textContent": "selects=\"multiple\" \u2014 a group of independent toggles, drawn vertically"
     },
     {
@@ -286,7 +415,6 @@
               "$props": {
                 "label": "Problems",
                 "icon": "warning-circle",
-                "quiet": false,
                 "toggles": true,
                 "selected": true
               },
@@ -302,7 +430,6 @@
               "$props": {
                 "label": "Logic",
                 "icon": "lightning",
-                "quiet": false,
                 "toggles": true
               },
               "children": [
@@ -317,7 +444,6 @@
               "$props": {
                 "label": "Activity",
                 "icon": "clock-counter-clockwise",
-                "quiet": false,
                 "toggles": true
               },
               "children": [
