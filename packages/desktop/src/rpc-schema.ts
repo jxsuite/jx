@@ -167,6 +167,12 @@ export interface StudioRPC {
         params: { path: string };
         response: string;
       };
+      readFileBytes: {
+        params: { path: string };
+        /* Base64, for the same reason `uploadFile` TAKES base64: these params and results are
+           JSON, and a JPEG is not a string. The caller decodes with `base64ToBytes`. */
+        response: { data: string };
+      };
       writeFile: {
         params: { path: string; content: string };
         response: void;

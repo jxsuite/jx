@@ -20,6 +20,7 @@ const {
   setDirectoryDialog,
   listDirectory,
   handleReadFile,
+  handleReadFileBytes,
   handleWriteFile,
   handleDeleteFile,
   handleRenameFile,
@@ -948,6 +949,56 @@ describe("fetchPluginSchema", () => {
       });
       // Plain is a function without .schema, so returns null
       expect(result).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── handleReadFileBytes ────────────────────────────────────────────────────
+
+/* The mirror of handleUploadFile, and the only way the electrobun shell can read a project image:
+   its own origin is `views://`, the loopback serving project files is cross-origin, and CORS is
+   banned repo-wide (server.md §4.2) — so an <img> taints a canvas and a fetch is refused. */
+describe("handleReadFileBytes", () => {
+  /* Bytes that are NOT valid UTF-8 — a JPEG's SOI/APP0 marker. This is the whole point: through
+     `handleReadFile` these come back as U+FFFD replacement characters, irreversibly. */
+  const JPEG_HEAD = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+  test("answers base64 that round-trips to the exact bytes", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "pic.jpg"), JPEG_HEAD);
+      const { data } = await handleReadFileBytes({ path: "pic.jpg" });
+      expect([...Buffer.from(data, "base64")]).toEqual([...JPEG_HEAD]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("the text path would have destroyed those same bytes", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "pic.jpg"), JPEG_HEAD);
+      const asText = await handleReadFile({ path: "pic.jpg" });
+      expect([...Buffer.from(asText, "utf8")]).not.toEqual([...JPEG_HEAD]);
+      expect(asText).toContain("\uFFFD");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("throws when no project root is set", async () => {
+    setProjectRoot(null);
+    await expect(handleReadFileBytes({ path: "pic.jpg" })).rejects.toThrow("No project open");
+  });
+
+  test("rejects path traversal", async () => {
+    setup();
+    try {
+      await expect(handleReadFileBytes({ path: "../../etc/passwd" })).rejects.toThrow(
+        "Path outside project root",
+      );
     } finally {
       cleanup();
     }

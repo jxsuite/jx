@@ -384,6 +384,21 @@ export function createDevServerPlatform() {
     },
 
     /**
+     * Raw bytes, undecoded. Same-origin here, so the response body is simply the file.
+     *
+     * @param {string} path
+     */
+    async readFileBytes(path: string) {
+      const res = await fetch(
+        `/__studio/file/bytes?path=${encodeURIComponent(serverPath(path))}`,
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to read file bytes: ${path}`);
+      }
+      return res.arrayBuffer();
+    },
+
+    /**
      * @param {string} path
      * @param {string} content
      */

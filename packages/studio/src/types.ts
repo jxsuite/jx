@@ -298,6 +298,26 @@ export interface StudioPlatform {
   } | null>;
   listDirectory: (dir: string) => Promise<DirEntry[]>;
   readFile: (path: string) => Promise<string>;
+  /**
+   * A project file's raw bytes — what {@link readFile} cannot answer.
+   *
+   * `readFile` decodes as UTF-8, and every byte sequence that is not valid UTF-8 becomes U+FFFD on
+   * the way through. That is invisible and irreversible: a JPEG read this way is not a corrupted
+   * JPEG, it is a string of replacement characters that no decoder will ever turn back into an
+   * image. So a caller that must DECODE a project file — the image editor — needs this instead.
+   *
+   * **The `<img>` route is not an alternative, on the one platform that matters most.** A preview
+   * `src` from `files/media-paths.ts` is a cross-origin loopback URL on the electrobun desktop
+   * while the shell sits on `views://`, so drawing it into a canvas taints the canvas and
+   * `toBlob()` throws; and `server.md` §4.2 bans CORS outright, because the whole loopback security
+   * model rests on the browser refusing cross-origin reads. Bytes through the PAL become a
+   * same-origin `Blob`, so tainting stops being a thing that can happen rather than a thing that is
+   * worked around.
+   *
+   * Optional, and feature-detected like every optional member: a backend without it simply does not
+   * offer the image editor, which is the honest degradation `specs/desktop.md` §3.1 asks for.
+   */
+  readFileBytes?: (path: string) => Promise<ArrayBuffer>;
   writeFile: (path: string, content: string) => Promise<void>;
   /**
    * Store bytes at a project path, and report where they really landed.

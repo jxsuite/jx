@@ -230,6 +230,16 @@ export function installMockPlatform(
       }
       return content;
     }),
+    /* The mock filesystem holds text, so the bytes are that text's UTF-8 encoding — which is the
+       honest answer for a text-backed fake and enough for the routing this harness exists to test.
+       A test that needs real binary (an image header, a byte above 0x7F) overrides this member. */
+    readFileBytes: log("readFileBytes", async (path: string) => {
+      const content = state.files.get(path);
+      if (content === undefined) {
+        throw new Error(`mock platform: no such file: ${path}`);
+      }
+      return new TextEncoder().encode(content).buffer as ArrayBuffer;
+    }),
     removePackage: log("removePackage", async () => ({})),
     renameFile: log("renameFile", async (from, to): Promise<RenameResult> => {
       const content = state.files.get(from);

@@ -120,6 +120,31 @@ export const STUDIO_ROUTES = {
       "echo: a store that de-duplicates, suffixes, or normalizes names reports what it really wrote",
   ),
   /**
+   * A project file's raw BYTES, as an answer rather than as a URL.
+   *
+   * `fileRead` cannot serve this and never could: it answers `readFile(abs, "utf8")`, and Bun
+   * replaces every byte sequence that is not valid UTF-8 with U+FFFD — so a JPEG round-trips
+   * through it as mojibake, silently and losslessly-looking. A caller that wants to DECODE a
+   * project image (Studio's image editor) needs the bytes intact.
+   *
+   * Distinct from {@link documentRaw}, which serves files at a URL a `<img src>` or a `fetch` in
+   * the canvas realm can name. That is the right shape for rendering and the wrong one for reading:
+   * on the desktop the canvas origin is a cross-origin loopback, and `server.md` §4.2 bans CORS
+   * outright, so nothing in the shell can read those bytes back. This route is addressed by the
+   * PAL, not by a document, which is what lets every backend answer it the same way.
+   *
+   * `Cache-Control: no-store`, deliberately unlike `fileRead`'s `max-age=5`: the caller is an
+   * editor about to overwrite the file, and five seconds of staleness is an edit applied to the
+   * wrong bytes.
+   */
+  fileBytes: route(
+    "GET",
+    "/__studio/file/bytes",
+    "A project file's raw bytes, undecoded — the read side of `fileUpload`, for a caller that must " +
+      "not go through UTF-8",
+    "Studio cannot decode a project image, so the image editor is not offered.",
+  ),
+  /**
    * A project file as its own BYTES, at its own URL.
    *
    * `fileRead` answers `{ path, content }`, which is right for the editor and useless to the

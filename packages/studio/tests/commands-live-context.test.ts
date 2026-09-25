@@ -415,6 +415,7 @@ describe("collab, ai and capabilities", () => {
       gitClone: false,
       importSite: false,
       openProjectInNewWindow: false,
+      readFileBytes: false,
       windowControls: false,
     });
   });
@@ -434,6 +435,8 @@ describe("collab, ai and capabilities", () => {
       gitClone: true,
       importSite: false,
       openProjectInNewWindow: false,
+      // On: the harness's mock ships `readFileBytes`, which is what gates the image editor.
+      readFileBytes: true,
       windowControls: true,
     });
   });
@@ -451,6 +454,22 @@ describe("collab, ai and capabilities", () => {
     });
     const ctx = createLiveContext(sources({ platform: () => platform as StudioPlatform }))();
     expect(ctx.capability.findReferences).toBe(true);
+  });
+
+  /* The image editor's gate, and the reason it is a capability rather than an assumption: a backend
+     that cannot answer raw bytes cannot decode an image, so the mode must not be offered at all.
+     `readFile` being present is not enough — it decodes UTF-8 and would hand back mojibake. */
+  test("readFileBytes is off for a backend that only answers text", () => {
+    const { platform } = installMockPlatform();
+    // Dropped rather than overridden: `exactOptionalPropertyTypes` refuses an explicit `undefined`
+    // For an optional member, and the state under test is the member being ABSENT.
+    const textOnly = { ...platform } as Partial<StudioPlatform>;
+    delete textOnly.readFileBytes;
+    const ctx = createLiveContext(
+      sources({ platform: () => textOnly as StudioPlatform }),
+    )();
+    expect(ctx.capability.readFileBytes).toBe(false);
+    expect(typeof textOnly.readFile).toBe("function");
   });
 });
 
