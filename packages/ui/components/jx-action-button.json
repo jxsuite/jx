@@ -55,7 +55,7 @@
       "type": "string",
       "default": "",
       "attribute": "icon",
-      "description": "The glyph, by its name in the kit's manifest. Empty for a text-only action button."
+      "description": "The glyph, by its name in the kit's manifest. Empty for a text-only action button, which the host reflects as data-no-icon so a sheet outside the element can tell the two apart: the icon PART is hidden while a glyph button is loading as well, the spinner having taken its place, so a compact group keyed on that span widened an icon segment by 4px for the length of a verb."
     },
     "mirror": {
       "type": "boolean",
@@ -370,6 +370,7 @@
   "attributes": {
     "role": "${state.checked ? 'none' : null}",
     "data-size": "${state.size}",
+    "data-no-icon": "${state.icon ? null : ''}",
     "data-quiet": "${state.quiet ? '' : null}",
     "data-emphasized": "${state.emphasized ? '' : null}",
     "data-selected": "${state.selected || state.checked === 'true' ? '' : null}",
