@@ -5,19 +5,23 @@
     "setTokenCount(5519)",
     "setContextWarning(false)",
     "setTokenCount(5519)",
-    "cancelStream()",
-    "clearChat()",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
-    "appendDelta(\"half a th\")",
-    "finishStream(\"stop\")"
+    "cancelStream()",
+    "clearChat()",
+    "finishStream(\"cancelled\")"
   ],
   "clientCalls": [
     {
       "round": 1,
       "signal": "live",
       "messages": {
-        "added": [],
+        "added": [
+          {
+            "role": "user",
+            "content": "start something"
+          }
+        ],
         "carried": 0
       },
       "systemPrompt": {
@@ -82,7 +86,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:0\")", "endTurn(\"\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"\") filed 0"],
     "turns": []
   },
   "finalMessages": [],
@@ -98,7 +102,7 @@
     "children": [
       {
         "tagName": "p",
-        "textContent": "Hello"
+        "textContent": "one"
       }
     ],
     "tagName": "div"

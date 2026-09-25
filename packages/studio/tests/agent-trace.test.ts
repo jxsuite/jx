@@ -89,6 +89,31 @@ function scripted(rounds: StreamEvent[][]): StreamingClient & { calls: () => num
   };
 }
 
+/**
+ * The real proxy client's contract in front of a scripted one: a lazy URL is resolved once, inside
+ * the first stream, and a stream stopped by then sends nothing. The resolved URL is what the
+ * recorded options show, as it was when the send path resolved it before building the client.
+ */
+function lazyUrl(inner: StreamingClient, chatUrl: unknown): StreamingClient {
+  let url: Promise<unknown> | null = null;
+  return {
+    async *streamChat(messages, tools, systemPrompt, signal) {
+      url ??= Promise.resolve(
+        typeof chatUrl === "function" ? (chatUrl as () => unknown)() : chatUrl,
+      );
+      const resolved = await url;
+      if (lastClientOpts) {
+        lastClientOpts = { ...lastClientOpts, chatUrl: resolved };
+      }
+      if (signal?.aborted) {
+        yield { stopReason: "cancelled", type: "done" };
+        return;
+      }
+      yield* inner.streamChat(messages, tools, systemPrompt, signal);
+    },
+  };
+}
+
 /** One tool call followed by a tool_calls stop. */
 function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
   return [
@@ -116,7 +141,10 @@ void mock.module("@jxsuite/ai", () => ({
     if (createErrorMessage) {
       throw new Error(createErrorMessage);
     }
-    return spyStreamingClient(scripted(nextRounds), recording?.clientLog ?? createClientCallLog());
+    return spyStreamingClient(
+      lazyUrl(scripted(nextRounds), opts.chatUrl),
+      recording?.clientLog ?? createClientCallLog(),
+    );
   },
 }));
 
@@ -1339,11 +1367,20 @@ const DAT = inSuite("dat", [
   {
     name: "New Chat during a turn leaves the discarded conversation unpersisted",
     async run() {
+      const tab = resetWorkspaceWithTab({
+        children: [{ tagName: "p", textContent: "one" }],
+        tagName: "div",
+      });
       nextRounds = [
         [
           { content: "half a th", type: "delta" },
-          { stopReason: "stop", type: "done" },
+          ...toolCallRound("c1", "add_child", {
+            index: 1,
+            node: { tagName: "span" },
+            parentPath: [],
+          }),
         ],
+        [{ stopReason: "stop", type: "done" }],
       ];
       const a = createDocumentAssistant();
       const sending = a.sendMessage("start something");
@@ -1351,6 +1388,37 @@ const DAT = inSuite("dat", [
       await sending;
       expect(a.activeSessionId()).toBeNull();
       expect(a.chatState.messages).toHaveLength(0);
+      expect(tab.doc.document.children).toHaveLength(1);
+      return datObserve(a);
+    },
+  },
+  {
+    name: "a Stop while the chat URL is resolved streams nothing and changes nothing",
+    async run() {
+      let answer: (url: string) => void = () => {};
+      installPlatform({
+        aiChatUrl: () =>
+          new Promise<string>((settle) => {
+            answer = settle;
+          }),
+      });
+      const tab = resetWorkspaceWithTab({
+        children: [{ tagName: "p", textContent: "one" }],
+        tagName: "div",
+      });
+      nextRounds = [
+        toolCallRound("c1", "set_text", { path: ["children", 0], value: "AFTER STOP" }),
+        [{ stopReason: "stop", type: "done" }],
+      ];
+      const a = createDocumentAssistant();
+      const sending = a.sendMessage("change it");
+      await flush(1);
+      expect(a.chatState.status).toBe("streaming");
+      a.stop();
+      answer("/__mock/ai/chat");
+      await sending;
+      expect(tab.doc.document.children).toEqual([{ tagName: "p", textContent: "one" }]);
+      expect(a.chatState.messages.map((m) => m.role)).toEqual(["user"]);
       return datObserve(a);
     },
   },

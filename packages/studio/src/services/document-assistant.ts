@@ -295,14 +295,20 @@ export function createDocumentAssistant() {
     // Persist after trimming so the saved history reflects what's actually sent.
     persistChat();
 
+    /* Stop is armed before the send's first wait. The turn's signal used to be created after
+       `await plat.aiChatUrl()`, which on desktop is an IPC round trip while the chat already reads
+       as streaming: a Stop pressed in that window found no controller, so the turn went on to
+       stream and run its tools, into a transcript the Stop had already cleared. The URL is now
+       resolved inside the first request, on the armed signal. */
+    controller = new AbortController();
+    const { signal } = controller;
     try {
       const plat = getPlatform();
-      const chatUrl = await Promise.resolve(plat.aiChatUrl());
       // Re-read the persisted model each send: the session is constructed once at module load
       // (before the user sets a key/model), so the picker's choice must be picked up here.
       chatState.setModel(preferredModel());
       const streamingClient = createProxyStreamingClient({
-        chatUrl,
+        chatUrl: () => plat.aiChatUrl(),
         model: chatState.model,
         // Sent as X-Api-Key; the proxy falls back to the server's OPENAI_API_KEY when empty.
         apiKey: getOpenAiKey() || undefined,
@@ -310,19 +316,19 @@ export function createDocumentAssistant() {
         baseUrl: getBaseUrl() || undefined,
       });
 
-      controller = new AbortController();
       await runAgentLoop({
         chatState,
         streamingClient,
         toolRegistry,
         systemPrompt: buildPrompt(),
-        signal: controller.signal,
+        signal,
         getTab: () => activeTab.value,
       });
     } catch (error) {
       /*
-       * Synchronous failure (e.g. platform not registered, network unreachable before the
-       * stream starts). Set the error so the panel can display it.
+       * A failure outside the stream's own error frames: the platform not registered, or its chat
+       * URL lookup rejecting inside the first request (a lookup that fails after a Stop ends the
+       * stream as cancelled instead). Set the error so the panel can display it.
        */
       chatState.setError(error instanceof Error ? error.message : String(error));
     } finally {

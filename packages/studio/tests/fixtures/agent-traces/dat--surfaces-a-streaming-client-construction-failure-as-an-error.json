@@ -41,10 +41,9 @@
   "extra": {
     "activeSession": "session#1",
     "clientOptions": {
-      "chatUrl": "/__mock/ai/chat",
       "model": "gpt-4o"
     },
-    "platformCalls": ["aiChatUrl()"],
+    "platformCalls": [],
     "projectRoot": null,
     "sessions": {
       "(unscoped)": [
