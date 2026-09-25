@@ -74,13 +74,14 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   mountIframeCanvas: () => Promise.resolve(),
   postApplyFormat: () => {},
   postOpenSlash: () => {},
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
   releaseCanvasHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
   setToolbarRefresh: () => {},
 }));
 
-void mock.module("../src/panels/welcome-screen.js", () => ({
+void mock.module("../src/surfaces/welcome.js", () => ({
   initWelcome: () => {},
   renderWelcome: () => {},
 }));
@@ -98,7 +99,7 @@ void mock.module("../src/panels/formula-workspace.js", () => ({
   revealLogicPanel: () => {},
 }));
 
-void mock.module("../src/panels/statusbar.js", () => ({
+void mock.module("../src/surfaces/statusbar.js", () => ({
   forgetSavedTimes: () => {},
   mountStatusbar: () => {},
   noteDocumentSaved: () => {},
@@ -261,7 +262,7 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(stage().style.display).toBe("block");
     // …and the dispatch STOPS here. Falling through would build the design surface over the
     // Editor — a panzoom wrap and an artboard on a stage the settings editor already owns.
-    expect(stage().querySelector(".panzoom-wrap")).toBeNull();
+    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
     expect(canvasPanels).toHaveLength(0);
   });
 
@@ -276,7 +277,7 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(tab).toBe(activeTab.value!);
     expect(stage().style.padding).toBe("0px");
     expect(stage().style.display).toBe("block");
-    expect(stage().querySelector(".panzoom-wrap")).toBeNull();
+    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
     expect(canvasPanels).toHaveLength(0);
   });
 
@@ -291,7 +292,7 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(tab).toBe(activeTab.value!);
     expect(stage().style.padding).toBe("0px");
     expect(stage().style.display).toBe("block");
-    expect(stage().querySelector(".panzoom-wrap")).toBeNull();
+    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
     expect(canvasPanels).toHaveLength(0);
   });
 
@@ -432,7 +433,7 @@ describe("the notice a stale companion draws", () => {
       renderCanvas(SECONDARY_PANE);
       await flush();
 
-      const button = wrap.querySelector(".empty-state-action")!;
+      const button = wrap.querySelector('[part="empty-action"]')!;
       expect(button.textContent?.trim()).toBe("Keep This Document");
       expect(paneById(SECONDARY_PANE)?.derived).not.toBeNull();
 

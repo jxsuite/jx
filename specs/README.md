@@ -43,14 +43,17 @@ Numbered headings (`## 5`, `### 5.1`, `#### 19.4a`) are anchors: docs pages refe
 
 ## Releasing a spec
 
-Every substantive edit is a release. Do not hand-edit the version, the date, or the changelog — run:
+Every substantive edit is a release. Do not hand-edit the version, the date, or the changelog — record the release, in one of two forms:
 
 ```sh
-bun run spec:bump <spec.md> <major|minor|patch|stable> -m "<what changed>"
-bun run docs:generate   # refresh the derived reference pages
+bun run spec:change <spec.md> <major|minor|patch|stable> -m "<what changed>"   # a fragment, minted on the release branch (preferred)
+bun run spec:bump   <spec.md> <major|minor|patch|stable> -m "<what changed>"   # in place, now
+bun run docs:generate   # preview the derived reference pages locally (build outputs; never committed)
 ```
 
-That advances the header **and** footer version, restamps `**Updated:**` to today, and prepends a `## Changelog` entry.
+`spec:change` writes one small file under `specs/changes/` naming the spec, the level and the changelog sentence, and touches nothing else. It exists because the in-place form is where two pull requests releasing the same spec collide: both rewrite the `**Version:**` line and both prepend at the top of `## Changelog`, so whichever merges second conflicts on lines that carry nothing of its own. Two fragments never conflict. `.github/workflows/release-specs.yml` mints every fragment on the release pull request, in the order each landed on `main` (`bun run spec:release` does the same locally, `--dry` to preview), so the version a change gets is decided by when it merged, and the spec changelog page shows a recorded-but-unminted release as **unreleased** until then. The gate (`docs:spec-release`) accepts either form.
+
+`spec:bump` advances the header **and** footer version, restamps `**Updated:**` to today, and prepends a `## Changelog` entry, in the pull request. Use it when you know no other open pull request releases the same spec, or when the number must be visible in the pull request itself.
 
 | Level  | Use when                                                                                                    |
 | ------ | ----------------------------------------------------------------------------------------------------------- |
@@ -61,19 +64,9 @@ That advances the header **and** footer version, restamps `**Updated:**` to toda
 
 ### Concurrent releases
 
-The next version is computed from the **higher** of the working file and the same file on the base
-branch (`origin/main`, then `main`; `--base <ref>` overrides). That matters on a branch: fork before
-a release lands on main, and the local file still shows the old version, so bumping from it would
-mint a number main has already published. Two branches then claim the same version, and nothing says
-so until the merge — where `bun run docs:status` reports it as an ordering fault ("0.9.31-draft is
-not older than 0.9.31-draft") and the fix is renumbering the header, the footer and every entry above
-the collision by hand.
+The next version is computed from the **higher** of the working file and the same file on the base branch (`origin/main`, then `main`; `--base <ref>` overrides). That matters on a branch: fork before a release lands on main, and the local file still shows the old version, so bumping from it would mint a number main has already published. Two branches then claim the same version, and nothing says so until the merge — where `bun run docs:status` reports it as an ordering fault ("0.9.31-draft is not older than 0.9.31-draft") and the fix is renumbering the header, the footer and every entry above the collision by hand.
 
-`spec:bump` prints the ref and the version whenever the base moved the answer. The floor is read from
-the base's **tip**, not from the merge base — the question is "is this number taken", which only the
-tip can answer. A ref that is unfetched, shallow, or does not carry the spec yet simply means no
-floor, so a stale `origin/main` under-reports rather than blocking; fetch if the printed version
-looks behind.
+`spec:bump` prints the ref and the version whenever the base moved the answer. The floor is read from the base's **tip**, not from the merge base — the question is "is this number taken", which only the tip can answer. A ref that is unfetched, shallow, or does not carry the spec yet simply means no floor, so a stale `origin/main` under-reports rather than blocking; fetch if the printed version looks behind.
 
 **Every spec is pre-1.0 today**, and while a spec is at `0.x` the release-please `bump-minor-pre-major` policy applies: `major` moves the **minor** digit, and `minor` and `patch` both move the **patch** digit. So a structural break reads `0.2.7 → 0.3.0`, and everything else reads `0.2.7 → 0.2.8`. Past `1.0.0` the levels mean exactly what they say.
 
@@ -94,11 +87,11 @@ They are deliberately bullets rather than headings so changelog versions never c
 | Command                   | Enforces                                                                                                                                   |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | bun run docs:status       | Header fields, status vocabulary, footer/header version agreement, changelog ordering and consistency                                      |
-| bun run docs:spec-release | A spec whose body changed also advanced its version (this is what keeps versions meaningful)                                               |
+| bun run docs:spec-release | A spec whose body changed also released it, in place or as a fragment under `specs/changes/` (keeps versions meaningful)                   |
 | bun run docs:standards    | The `## N. Standards Alignment` tables: vocabulary, canonical citations, resolvable bindings, committed evidence, and the tracked gap list |
 | bun run docs:check        | Docs spec: anchors resolve to real numbered headings                                                                                       |
-| bun run docs:verify       | The generated reference pages match the specs they derive from                                                                             |
+| bun run docs:verify       | `docs:check` over a freshly generated page set, plus the screenshot image lock                                                             |
 
 A spec's "body" is everything except the release metadata — the `**Version:**` and `**Updated:**` lines, the `## Changelog` section, and the footer version. Header `**Status:**` and the per-section `> **Status: …**` markers _are_ body: changing what is built is a change worth releasing.
 
-Three pages are generated from the metadata here and must never be hand-edited: [implementation status](../docs/extending/reference/implementation-status.md) from the `**Status:**` markers, [spec changelog](../docs/extending/reference/spec-changelog.md) from the `## Changelog` sections, and [standards](../docs/extending/reference/standards.md) from the `## N. Standards Alignment` tables.
+Three pages are generated from the metadata here and are never hand-edited, because they are never committed: [implementation status](https://jxsuite.com/docs/extending/reference/implementation-status) from the `**Status:**` markers, [spec changelog](https://jxsuite.com/docs/extending/reference/spec-changelog) from the `## Changelog` sections, and [standards](https://jxsuite.com/docs/extending/reference/standards) from the `## N. Standards Alignment` tables. They are build outputs of the site (`scripts/docs/generators/pages.ts`), gitignored, and written by `bun run docs:generate`; a release here reaches them at the next build, with nothing to regenerate in the pull request.

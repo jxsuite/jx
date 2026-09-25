@@ -3,8 +3,8 @@ title: "Logic tab"
 description: "The Inspector's Logic tab: bind events to functions, formulas or inline handlers, wire a repeating list or a condition, and read a component's contract."
 code:
   - packages/studio/src/panels/events-panel.ts
+  - packages/studio/src/surfaces/logic-panel.ts
   - packages/studio/src/panels/provenance.ts
-  - packages/studio/src/ui/field-row.ts
 ---
 
 # Logic tab
@@ -31,7 +31,7 @@ A repeating list is not an element, so it gets no Events section: there is nothi
 A condition node swaps what renders in one spot based on a value: a wizard step, a loading/ready/error switch, a client-side view. The section has two parts:
 
 - **Expression**: the value being switched on. Its **value source** chip offers **From data…** (a signal) or **Mixed text**; a condition is inherently dynamic, so there is no fixed-value rung to drop to.
-- **Cases**: one row per case. Edit a case's key in place to rename it, click **→** to select that case and edit what it renders, or click the accent dot on its label to remove it. **+ Add case** adds another.
+- **Cases**: one row per case. Edit a case's key in place to rename it, click **→** to select that case and edit what it renders, or click the trash button to remove it. **Add case** adds another.
 
 :::doc-note
 Studio has no gesture for creating a condition node yet. Add one in the **[Code editor](/docs/studio/logic/code)** (the format is described in **[Switching](/docs/framework/concepts/switching)**) and the Logic tab edits it from then on.
@@ -43,19 +43,19 @@ Studio has no gesture for creating a condition node yet. Add one in the **[Code 
 
 Click **Add Event**. Studio creates a binding on the first free event name and points it at your file's first function, or starts an inline handler instead if the file has no functions yet. Each binding row then carries:
 
-- The **event name**, a field you can type into, with the ten most common suggested: `onclick`, `oninput`, `onchange`, `onsubmit`, `onkeydown`, `onkeyup`, `onfocus`, `onblur`, `onmouseenter`, `onmouseleave`. Any handler name works, so `ondragover`, `onpointerdown`, `onwheel` and the custom events your own components emit are all bindable here. A name that is not an `on…` handler is refused. Changing the name moves the binding rather than making a second one.
-- The **mode**, one of the three ways to respond, below.
-- An accent dot and a trash button, either of which removes the binding.
+- The **event name**, a button that opens a menu: the names this element already binds, then the ten most common (`onclick`, `oninput`, `onchange`, `onsubmit`, `onkeydown`, `onkeyup`, `onfocus`, `onblur`, `onmouseenter`, `onmouseleave`), then **Other name…**, which asks for any name at all. Those ten are suggestions, not a list you are held to: `ondragover`, `onpointerdown`, `onwheel` and the custom events your own components emit are all bindable here. A name that is not an `on…` handler is refused. Changing the name moves the binding rather than making a second one.
+- The **value source** chip, one of the three ways to respond, below.
+- One button carrying a dot, which removes the binding.
 
 ### Three ways to respond
 
-**Existing function: call something you already declared.** A picker lists the functions declared in the **[Data panel](/docs/studio/logic/data)**; pick one and the event runs it. This is the tidiest option when the same behavior is used in more than one place.
+**From data: call something you already declared.** A picker lists the functions declared in the **[Data panel](/docs/studio/logic/data)**; pick one and the event runs it. This is the tidiest option when the same behavior is used in more than one place.
 
-**Expression: an inline formula.** The event runs a single formula, edited right in the tab with live value badges, which suits one-step reactions like `$count += 1` or `$menuOpen = true`. Inside a repeater template it previews against the first item, so the badges show real values. The **open below** icon moves it into the **[formula workspace](/docs/studio/logic/formula-workspace)** in the Bottom dock, where the page keeps rendering behind it.
+**Formula: an inline formula.** The event runs a single formula, edited right in the tab with live value badges, which suits one-step reactions like `$count += 1` or `$menuOpen = true`. Inside a repeater template it previews against the first item, so the badges show real values. The **open below** icon moves it into the **[formula workspace](/docs/studio/logic/formula-workspace)** in the Bottom dock, where the page keeps rendering behind it.
 
-**Inline code: a handler written on the element itself.** A **Statements** / **Code** toggle picks how you write it: as visual **[statement](/docs/studio/logic/statements)** cards, or as JavaScript in a small text field with an **Open in editor** button for the real **[code editor](/docs/studio/logic/code)**.
+**Inline function: a handler written on the element itself.** A **Statements** / **Code** toggle picks how you write it: as visual **[statement](/docs/studio/logic/statements)** cards, or as JavaScript in a small text field with an **Open in editor** button for the real **[code editor](/docs/studio/logic/code)**.
 
-Switching modes replaces the binding with a fresh start in the new mode; undo restores the previous one.
+The chip opens the same rung picker every other bindable value in Studio uses, so the four words mean the same thing here as they do on a property row. Switching rungs replaces the binding with a fresh start on the new one, and switching back restores the body you left; undo restores the previous one either way.
 
 ### Read values from the event
 

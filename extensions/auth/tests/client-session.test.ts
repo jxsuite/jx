@@ -12,6 +12,7 @@ import {
   currentSession,
   fetchSession,
   inBrowser,
+  refreshSession,
   resetSessionStore,
   Session,
   subscribeSession,
@@ -46,6 +47,17 @@ describe("client wrapper", () => {
   test("resolveAuthBaseUrl needs an explicit base outside browsers", () => {
     expect(resolveAuthBaseUrl("http://x.test/_jx/auth")).toBe("http://x.test/_jx/auth");
     expect(() => resolveAuthBaseUrl()).toThrow(/baseUrl outside browsers/);
+  });
+
+  test("resolveAuthBaseUrl derives <origin>/_jx/auth when a location exists", () => {
+    // @ts-expect-error test-only global shim for a browser-like `location`.
+    globalThis.location = { origin: "http://y.test" };
+    try {
+      expect(resolveAuthBaseUrl()).toBe("http://y.test/_jx/auth");
+    } finally {
+      // @ts-expect-error test-only global shim cleanup.
+      delete globalThis.location;
+    }
   });
 
   test("getAuthClient builds a real Better Auth client surface for an explicit base", () => {
@@ -94,6 +106,22 @@ describe("session store", () => {
     });
     expect(await fetchSession()).toBeNull();
     expect(currentSession()).toBeNull();
+  });
+
+  test("refreshSession fetches in the background and notifies once it lands", async () => {
+    setAuthClient(fakeClient([{ user: { id: "u1", role: "admin" } }]));
+    const seen: (SessionInfo | null)[] = [];
+    subscribeSession((session) => seen.push(session));
+
+    refreshSession();
+    // Fire-and-forget: nothing has landed on the same synchronous turn.
+    expect(currentSession()).toBeNull();
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(currentSession()).toMatchObject({ role: "admin", userId: "u1" });
+    expect(seen).toEqual([currentSession()]);
   });
 
   test("clearSession drops the value and notifies", () => {

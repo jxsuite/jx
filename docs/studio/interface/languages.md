@@ -89,3 +89,5 @@ The [Library](/docs/studio/projects/browse) has a **Language** facet and column,
 - [Locales and languages](/docs/framework/site/i18n): what the framework does with all this at build time
 - [Browse the library](/docs/studio/projects/browse): the Language facet
 - [Project settings](/docs/studio/projects/settings): the rest of `project.json`
+  - packages/studio/src/surfaces/panel-i18n.json
+  - packages/studio/src/surfaces/panel-i18n.ts

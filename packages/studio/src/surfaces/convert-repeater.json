@@ -1,0 +1,309 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioConvertRepeater",
+  "$description": "Repeat…: the dialog that turns the selected element into an `$prototype: \"Array\"` template. One `jx-dialog`, so the platform owns modality, Escape, the backdrop and focus restoration — which is what retired the `sp-dialog-wrapper` this surface used to open through its bare `open` attribute, and the hand-rolled `requestAnimationFrame` focus move that had to follow it. Three questions in one form: which state definition holds the items, and optionally which function filters and which sorts. The name field appears only when the answer to the first is \"Create new…\", because a definition that already exists needs no name. Nothing here knows what makes a definition an array — `editor/convert-to-repeater.ts` asks the plugin schemas, keeps the refusals and writes the repeater — and it hands over rows that are already strings.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Repeat…",
+    "confirmLabel": "Create Repeater",
+    "cancelLabel": "Cancel",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "convert-repeater"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "There is no stylesheet to transcribe: the lit version carried one inline `display:flex;flex-direction:column;gap:12px` on a wrapper div and nothing else, because `sp-field-label` and `sp-dialog-wrapper` drew the rest. Both of those are gone — the label is `jx-field`'s, which actually NAMES the control it wraps rather than sitting beside it, and the box is the dialog's — so the whole of this block is the one gap that separated the rows, said in the kit's scale instead of in the twelve pixels somebody typed.",
+    "& [part=\"form\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"new-slot\"], & [part=\"functions-slot\"], & [part=\"functions\"]": {
+      "$description": "A branch host and the pair inside it are structure rather than layout: `display: contents` puts the rows they carry straight into the form's own column, so one gap rule spaces every row whether it is drawn or not.",
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "form"
+      },
+      "children": [
+        {
+          "tagName": "jx-field",
+          "attributes": {
+            "part": "source-row"
+          },
+          "$props": {
+            "span": true,
+            "label": "Items source"
+          },
+          "children": [
+            {
+              "tagName": "jx-select",
+              "attributes": {
+                "part": "source"
+              },
+              "$props": {
+                "size": "sm",
+                "options": {
+                  "$ref": "#/state/sourceOptions"
+                },
+                "value": {
+                  "$ref": "#/state/source"
+                }
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/pickSource"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "new-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/creating"
+          },
+          "cases": {
+            "true": {
+              "tagName": "jx-field",
+              "attributes": {
+                "part": "new-row"
+              },
+              "$props": {
+                "span": true,
+                "label": "New definition name",
+                "invalid": {
+                  "$ref": "#/state/invalid"
+                }
+              },
+              "children": [
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "new-name"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "placeholder": "myItems",
+                    "value": {
+                      "$ref": "#/state/newName"
+                    },
+                    "invalid": {
+                      "$ref": "#/state/invalid"
+                    },
+                    "error": {
+                      "$ref": "#/state/error"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setName"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "Enter": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/confirm"
+                              },
+                              "value": []
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "functions-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/hasFunctions"
+          },
+          "cases": {
+            "true": {
+              "tagName": "div",
+              "attributes": {
+                "part": "functions",
+                "role": "none"
+              },
+              "children": [
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "filter-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Filter (optional)"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-select",
+                      "attributes": {
+                        "part": "filter"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "options": {
+                          "$ref": "#/state/functionOptions"
+                        },
+                        "value": {
+                          "$ref": "#/state/filter"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/pickFilter"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "sort-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": "Sort (optional)"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-select",
+                      "attributes": {
+                        "part": "sort"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "options": {
+                          "$ref": "#/state/functionOptions"
+                        },
+                        "value": {
+                          "$ref": "#/state/sort"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/pickSort"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

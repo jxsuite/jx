@@ -54,3 +54,5 @@ Inserting adds one element node to the open file. A component card adds an insta
 
 - Get your own cards to appear here with **[Working with components](/docs/studio/design/components)**.
 - Rearrange what you inserted in the **[Outline panel](/docs/studio/design/layers)**.
+  - packages/studio/src/surfaces/panel-elements.json
+  - packages/studio/src/surfaces/panel-elements.ts

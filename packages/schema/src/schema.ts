@@ -199,9 +199,17 @@ function buildEventHandlerProperties(eventHandlers: string[]) {
 }
 
 function buildCssProperties(cssProps: string[]) {
-  const properties: Record<string, unknown> = {};
+  /* The authored `properties` come first so a `$`-prefixed metadata key survives: this function
+     REPLACES the block's properties rather than adding to them, so anything the hand-written schema
+     declared there was silently dropped — which is how `$description` validated as a number. */
+  const properties: Record<string, unknown> = { ...styleObjectSchema.properties };
   for (const name of cssProps) {
-    properties[name] = { oneOf: [{ type: "string" }, { type: "number" }] };
+    /* A `{ $ref }` is a reactive VALUE, which the runtime has always resolved (spec.md §9.6) and
+       only the validator refused: `style: { fontFamily: { $ref: "$map/item/face" } }` reported
+       "must be string". It is what lets a row render in the face it names. */
+    properties[name] = {
+      oneOf: [{ type: "string" }, { type: "number" }, { $ref: "#/$defs/RefObject" }],
+    };
   }
   return properties;
 }
@@ -493,13 +501,29 @@ export async function generateSchema() {
   };
 }
 
+/**
+ * `StyleObject` without the reactive-value branch, for a schema whose style block is emitted
+ * STATICALLY.
+ *
+ * A project's `style` block becomes the site stylesheet at build time, with no live scope to
+ * resolve against — so a `{ $ref }` there could never mean anything, and admitting it would
+ * validate a document the builder must silently drop. The document schema keeps the branch, because
+ * an element's style IS resolved against a scope.
+ */
+const staticStyleObjectSchema = {
+  ...styleObjectSchema,
+  additionalProperties: {
+    anyOf: [{ type: "string" }, { type: "number" }, { $ref: "#/$defs/StyleObject" }],
+  },
+} as const;
+
 // ─── Project Schema Generator ────────────────────────────────────────────────
 
 export function generateProjectSchema() {
   return {
     $defs: {
       ImageConfig: imageConfigSchema,
-      StyleObject: styleObjectSchema,
+      StyleObject: staticStyleObjectSchema,
     },
     $id: "https://jxsuite.com/schema/project/v1",
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -531,7 +555,7 @@ export function generateProjectCoreSchema() {
       ImageConfig: imageConfigSchema,
       JxFieldSchema: jxFieldSchemaDef,
       RelationshipRef: relationshipRefSchema,
-      StyleObject: styleObjectSchema,
+      StyleObject: staticStyleObjectSchema,
     },
     $id: "https://jxsuite.com/schema/project/core/v2",
     $schema: "https://json-schema.org/draft/2020-12/schema",

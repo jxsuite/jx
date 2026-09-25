@@ -16,6 +16,7 @@ void mock.module("../src/canvas/iframe-host", () => ({
   postSiteStyleToLiveHosts: () => {
     siteCalls.push(stylebookCalls.length);
   },
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: (style: Record<string, unknown>) => {
     stylebookCalls.push(style);
     return 0;

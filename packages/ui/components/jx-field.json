@@ -1,0 +1,162 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxField",
+  "tagName": "jx-field",
+  "observedAttributes": ["label", "description", "required", "invalid", "warning", "span"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The visible label in the left column. It is drawn into the element's own label node, and that node's id is what names the slotted control — so the text is the accessible name without the consumer writing an id anywhere."
+    },
+    "description": {
+      "type": "string",
+      "default": "",
+      "attribute": "description",
+      "description": "A sentence under the row explaining the control. It is the FALLBACK of the help slot, so slotting richer help replaces it rather than stacking with it, and an empty description leaves the help line with nothing in it — which is exactly what [part=\"help\"]:empty keys on to take the line out of flow. The control is pointed at the sentence only when the line HAS something in it at mount — an empty one would be a reference to an empty paragraph, which the four classes never wrote. A sentence that starts empty and fills later should therefore be SLOTTED into help, whose presence the row can see, rather than passed here."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "required",
+      "description": "Draws the required mark after the label. The mark is DRAWN, in content with an empty alt string, never appended to the label text: the label is the control's accessible name, and an asterisk inside that name is read out as a word. Marking the row does not make the control required — say so on the control as well, which is the element that validates."
+    },
+    "invalid": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "invalid",
+      "description": "The row's value is refused: the label and the help sentence both draw in the danger colour. This is the whole of the old .jx-help-text--error class, folded in as a state of the row rather than a second class on the sentence. It says nothing to assistive technology — aria-invalid belongs on the control that holds the value."
+    },
+    "warning": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "warning",
+      "description": "The row's value is accepted but worth a second look: the label draws in the warning colour. The help sentence is left alone, because a warning is a shade on the name rather than a correction of the sentence under it."
+    },
+    "span": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "span",
+      "description": "Collapses the row to ONE column: the label sits above the control and reads from the left. It is the shape a long label, a wide control or a checkbox list needs, and it is a property of the row rather than of anything in it."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This row's own id stem, minted on mount. The label node and the help sentence take their ids from it, and the slotted control is handed those ids as its labelledby and describedby props."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/textfield.ts",
+      "$export": "nameFieldControl",
+      "description": "Mints the row's id stem and names the slotted control with it. A document cannot do either: the closed operator set has no counter, and no body can write a property on an element other than the one whose handler is running. It runs once, over what is slotted then: a control APPENDED to the row afterwards lands outside the control part, unplaced and unnamed. Keep the control in the document and switch its state rather than adding it later."
+    }
+  },
+  "attributes": {
+    "data-span": "${state.span ? '' : null}",
+    "data-required": "${state.required ? '' : null}",
+    "data-invalid": "${state.invalid ? '' : null}",
+    "data-warning": "${state.warning ? '' : null}"
+  },
+  "style": {
+    "display": "grid",
+    "gridTemplateColumns": "var(--jx-field-label-w) minmax(0, 1fr)",
+    "columnGap": "var(--jx-space-3)",
+    "rowGap": "var(--jx-space-1)",
+    "alignItems": "center",
+    "padding": "var(--jx-space-1) 0",
+    "minWidth": "0",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "&[data-span]": {
+      "gridTemplateColumns": "minmax(0, 1fr)"
+    },
+    "& > [part=\"label\"]": {
+      "display": "block",
+      "width": "var(--jx-field-label-w)",
+      "minWidth": "0",
+      "textAlign": "right",
+      "color": "var(--jx-fg-dim)",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "&[data-span] > [part=\"label\"]": {
+      "width": "auto",
+      "textAlign": "left"
+    },
+    "&[data-invalid] > [part=\"label\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "&[data-warning] > [part=\"label\"]": {
+      "color": "var(--jx-warning)"
+    },
+    "&[data-required] > [part=\"label\"]": {
+      "::after": {
+        "content": "\"*\" / \"\"",
+        "color": "var(--jx-danger)",
+        "marginInlineStart": "var(--jx-space-1)"
+      }
+    },
+    "& > [part=\"control\"]": {
+      "display": "contents"
+    },
+    "& > [part=\"help\"]": {
+      "gridColumn": "1 / -1",
+      "margin": "0",
+      "minWidth": "0",
+      "color": "var(--jx-fg-dim)",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)"
+    },
+    "& > [part=\"help\"]:empty": {
+      "display": "none"
+    },
+    "&[data-invalid] > [part=\"help\"]": {
+      "color": "var(--jx-danger)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "label",
+      "attributes": {
+        "part": "label",
+        "id": "${state.uid ? state.uid + '-label' : null}"
+      },
+      "textContent": "${state.label}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "control",
+        "role": "none"
+      },
+      "children": [
+        {
+          "tagName": "slot"
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "help",
+        "id": "${state.uid ? state.uid + '-help' : null}"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "help"
+          },
+          "children": ["${state.description}"]
+        }
+      ]
+    }
+  ]
+}

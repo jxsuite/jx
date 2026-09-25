@@ -40,6 +40,18 @@ export const CHROME_BUDGET = {
    * verb is a design decision that has to be made here rather than by appending to a data file.
    */
   blockbarFormat: 8,
+  /**
+   * Tools the assistant may be advertised in its richest state — the hand-registered rows of
+   * `AI_TOOL_TIERS` plus every command record that declares `aiTool`.
+   *
+   * A prompt is chrome for a model: every tool costs attention, and issue 273's finding was that a
+   * naive projection of every declaration would have taken the list from 22 to 67. Thirty is
+   * headroom over today's 29 (18 hand + 11 projected), not a target. Asserted in
+   * `tests/ai-command-tools.test.ts` rather than `scripts/check-chrome-budget.ts`, because the hand
+   * table lives in `ai-system-prompt.ts`, which imports `../store.js` and is not bare-Bun loadable;
+   * the number lives here either way, and raising it is a design decision.
+   */
+  assistantTools: 30,
 } as const;
 
 /** One tabbed region and what it currently hosts. */

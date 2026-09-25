@@ -5,9 +5,8 @@
  * lacks the data routes. Table editing itself is covered by the grid tests (grid-connector-source
  * and friends).
  */
-import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { render } from "lit-html";
+import { flush, installMockPlatform, mountOverlayLayers, resetStudioState } from "./harness";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import {
   dataSectionActions,
@@ -19,25 +18,39 @@ import { closeAllTabs } from "../src/workspace/workspace";
 import type { DataPushResult, DataRowsQuery, StudioPlatform } from "../src/types";
 import type { SectionActionsContext } from "../src/settings/contributed-section";
 
-for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
-  if (!document.querySelector(`#${id}`)) {
-    const el = document.createElement("div");
-    el.id = id;
-    document.body.append(el);
+beforeAll(() => {
+  mountOverlayLayers();
+  initLayers();
+});
+
+/* Both surfaces are documents now — `surfaces/data-actions.json` for the row and
+   `surfaces/push-plan.json` inside `ui/layers.ts`'s own confirm dialog for the plan — so nothing
+   here names a class. The dialog is addressed as `jx-dialog` and answered with the `confirm` /
+   `cancel` events every flow over it dispatches; whether it offers an Apply at all is the
+   `confirm-label` attribute, which is absent when there is nothing to apply. */
+function pushDialog(): HTMLElement | null {
+  return [...document.querySelectorAll<HTMLElement>("#layer-dialog jx-dialog")].at(-1) ?? null;
+}
+
+function part(root: ParentNode | null, name: string): HTMLElement | null {
+  return root?.querySelector<HTMLElement>(`[part="${name}"]`) ?? null;
+}
+
+function textOf(root: ParentNode | null, name: string): string {
+  return part(root, name)?.textContent?.replaceAll(/\s+/g, " ").trim() ?? "";
+}
+
+function control(root: ParentNode, name: string): HTMLElement {
+  const el = root.querySelector<HTMLElement>(`[part="${name}"] [part="control"]`);
+  if (!el) {
+    throw new Error(`no control inside [part="${name}"]`);
   }
-}
-initLayers();
-
-function modalLayer(): HTMLElement {
-  return document.querySelector("#layer-modal") as HTMLElement;
+  return el;
 }
 
-function pushDialogEl(): HTMLElement | null {
-  return modalLayer().querySelector(".push-dialog");
-}
-
-function textOf(selector: string, scope: HTMLElement | null): string {
-  return scope?.querySelector(selector)?.textContent?.trim() ?? "";
+async function answer(kind: "confirm" | "cancel"): Promise<void> {
+  pushDialog()?.dispatchEvent(new Event(kind));
+  await flush(3);
 }
 
 interface Calls {
@@ -180,40 +193,44 @@ describe("grid opening", () => {
   test("Open Data Grid opens the grid-tab source picker listing connections' tables", async () => {
     installDataPlatform();
     resetStudioState({ projectConfig: { content: {} } });
-    const actions = dataSectionActions("data")!;
-    const host = document.createElement("div");
-    document.body.append(host);
-    render(
-      actions({ rerender: () => {}, selected: null } as unknown as SectionActionsContext),
-      host,
-    );
-    await flush();
+    const host = await mountActions("data", null);
 
-    (host.querySelector(".data-action-grid") as HTMLElement).click();
-    await flush();
-    const picker = modalLayer().querySelector(".jx-grid-picker");
-    expect(picker).not.toBeNull();
-    const items = [...picker!.querySelectorAll("sp-menu-item")].map((m) => m.textContent?.trim());
-    expect(items).toContain("Pages");
-    expect(items).toContain("posts");
-    expect(items).toContain("user");
-    expect(items).toContain("No tables — push a schema first");
+    control(host, "grid").click();
+    await flush(4);
+    const labels = [...document.querySelectorAll('#layer-dialog [part="source"]')].map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(labels).toContain("Pages");
+    expect(labels).toContain("posts");
+    expect(labels).toContain("user");
+    // The connection with no tables says so instead of contributing a silent empty group.
+    expect(
+      [...document.querySelectorAll('#layer-dialog [part="group-empty"]')].map((el) =>
+        el.textContent?.trim(),
+      ),
+    ).toEqual(["No tables — push a schema first."]);
     host.remove();
-    modalLayer().replaceChildren();
+    await answer("cancel");
   });
 });
 
-function mountActions(sectionKey: string, selected: string | null) {
+/**
+ * Mount the actions row the way the settings machinery does: a host node the section document made,
+ * handed to the contributor, which mounts into it and re-projects on every later call.
+ */
+async function mountActions(sectionKey: string, selected: string | null): Promise<HTMLElement> {
   const actions = dataSectionActions(sectionKey);
   expect(actions).not.toBeNull();
-  const container = document.createElement("div");
+  const host = document.createElement("div");
+  document.body.append(host);
   const ctx: SectionActionsContext = {
-    rerender: () => render(actions!(ctx), container),
+    rerender: () => actions!(host, ctx),
     sectionKey,
     selected,
   };
-  render(actions!(ctx), container);
-  return container;
+  actions!(host, ctx);
+  await flush(3);
+  return host;
 }
 
 describe("data section actions", () => {
@@ -228,39 +245,55 @@ describe("data section actions", () => {
 
   test("Test Connection is selection-scoped and reports the probe result", async () => {
     const calls = installDataPlatform();
-    const none = mountActions("connections", null);
-    expect(none.querySelector(".data-action-test")!.hasAttribute("disabled")).toBe(true);
+    const none = await mountActions("connections", null);
+    expect(control(none, "test").hasAttribute("disabled")).toBeTrue();
 
-    const container = mountActions("connections", "main");
-    const testButton = container.querySelector(".data-action-test")!;
-    expect(testButton.hasAttribute("disabled")).toBe(false);
-    pointer(testButton, "click");
-    await flush();
+    const host = await mountActions("connections", "main");
+    expect(control(host, "test").hasAttribute("disabled")).toBeFalse();
+    control(host, "test").click();
+    await flush(3);
     expect(calls.tests).toEqual(["main"]);
-    const result = container
-      .querySelector(".data-test-result.ok")!
-      .textContent!.replaceAll(/\s+/g, " ")
-      .trim();
-    expect(result).toBe("main: connected");
+    expect(part(host, "result")?.dataset["ok"]).toBe("true");
+    expect(textOf(host, "result")).toBe("main: connected");
+    // The verdict arrives after the press, so it has to announce itself.
+    expect(part(host, "result")?.getAttribute("role")).toBe("status");
+    none.remove();
+    host.remove();
   });
 
-  test("failed probes render the error", async () => {
+  test("failed probes render the error and mark the row as a failure", async () => {
     installDataPlatform();
-    const container = mountActions("connections", "empty");
-    pointer(container.querySelector(".data-action-test")!, "click");
-    await flush();
-    expect(container.querySelector(".data-test-result.failed")!.textContent).toContain("no db");
+    const host = await mountActions("connections", "empty");
+    control(host, "test").click();
+    await flush(3);
+    expect(textOf(host, "result")).toContain("no db");
+    expect(part(host, "result")?.dataset["ok"]).toBe("false");
+    host.remove();
   });
 
   test("the data section offers Push and Open Data Grid without Test", async () => {
     installDataPlatform();
-    const container = mountActions("data", null);
-    expect(container.querySelector(".data-action-test")).toBeNull();
-    expect(container.querySelector(".data-action-push")).not.toBeNull();
-    pointer(container.querySelector(".data-action-grid")!, "click");
-    await flush();
-    expect(modalLayer().querySelector(".jx-grid-picker")).not.toBeNull();
-    modalLayer().replaceChildren();
+    const host = await mountActions("data", null);
+    expect(part(host, "test")).toBeNull();
+    expect(part(host, "push")).not.toBeNull();
+    expect(part(host, "grid")).not.toBeNull();
+    host.remove();
+  });
+
+  /* The section redraws on every keystroke its form takes, and the row used to be re-rendered with
+     it — which replaced the very button the reader was pressing. It is mounted once per host now,
+     and a redraw is a projection into the row already there. */
+  test("a redraw re-projects the row instead of replacing it", async () => {
+    const calls = installDataPlatform();
+    const host = await mountActions("connections", "main");
+    const button = control(host, "test");
+    button.click();
+    await flush(3);
+    expect(calls.tests).toEqual(["main"]);
+    // Same node, after a projection that changed both the label and the result beside it.
+    expect(control(host, "test")).toBe(button);
+    expect(textOf(host, "result")).toBe("main: connected");
+    host.remove();
   });
 });
 
@@ -269,46 +302,78 @@ describe("data section actions", () => {
 describe("push dialog", () => {
   test("dry-runs first, shows the plan + warnings, and applies only on confirm", async () => {
     const calls = installDataPlatform();
-    const container = mountActions("connections", "main");
-    pointer(container.querySelector(".data-action-push")!, "click");
-    await flush();
+    const host = await mountActions("connections", "main");
+    control(host, "push").click();
+    await flush(4);
 
-    const dialog = pushDialogEl()!;
+    const dialog = pushDialog()!;
     expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute("headline")).toBe("Push Schema — main");
     expect(calls.pushes).toEqual([{ connection: "main", dryRun: true }]);
-    const steps = [...dialog.querySelectorAll(".push-step")].map((s) => s.textContent?.trim());
-    expect(steps).toEqual(['Create table "posts"']);
-    expect(textOf(".push-dialog-warning", dialog)).toContain("type drift");
+    expect([...dialog.querySelectorAll('[part="step"]')].map((s) => s.textContent?.trim())).toEqual(
+      ['Create table "posts"'],
+    );
+    expect(textOf(dialog, "warning")).toContain("type drift");
+    // There is something to apply, so the primary answer exists and says what it does.
+    expect(dialog.getAttribute("confirm-label")).toBe("Apply");
 
-    pointer(dialog.querySelector(".push-apply")!, "click");
-    await flush();
+    await answer("confirm");
     expect(calls.pushes).toEqual([{ connection: "main", dryRun: true }, { connection: "main" }]);
-    expect(textOf(".push-dialog-status", pushDialogEl())).toBe("Schema applied.");
+    expect(textOf(pushDialog(), "message")).toBe("Schema applied.");
+    // Applied: there is nothing left to confirm, and the way out is named Close.
+    expect(pushDialog()?.getAttribute("confirm-label")).toBeNull();
+    expect(pushDialog()?.getAttribute("cancel-label")).toBe("Close");
 
-    pointer(pushDialogEl()!.querySelector(".push-cancel")!, "click");
-    expect(pushDialogEl()).toBeNull();
+    await answer("cancel");
+    expect(pushDialog()).toBeNull();
+    host.remove();
   });
 
   test("an empty plan reads as nothing-to-push with no Apply", async () => {
     const calls = installDataPlatform({ dryPlan: { applied: false, plan: [] } });
     await startPush(undefined, () => {});
-    await flush();
-    const dialog = pushDialogEl()!;
-    expect(textOf(".push-dialog-status", dialog)).toContain("Nothing to push");
-    expect(dialog.querySelector(".push-apply")).toBeNull();
+    await flush(4);
+    expect(textOf(pushDialog(), "message")).toContain("Nothing to push");
+    expect(pushDialog()?.getAttribute("confirm-label")).toBeNull();
     expect(calls.pushes).toEqual([{ dryRun: true }]);
-    pointer(dialog.querySelector(".push-cancel")!, "click");
-    expect(pushDialogEl()).toBeNull();
+    await answer("cancel");
+    expect(pushDialog()).toBeNull();
   });
 
-  test("dry-run errors surface in the dialog and only one dialog opens at a time", async () => {
+  test("dry-run errors surface as an alert and only one dialog opens at a time", async () => {
     installDataPlatform({
       dryPlan: { applied: false, errors: ["remote: unreachable"], plan: [] },
     });
     await startPush(undefined, () => {});
     await startPush(undefined, () => {});
-    await flush();
-    expect(modalLayer().querySelectorAll(".push-dialog")).toHaveLength(1);
-    expect(textOf(".push-dialog-error", pushDialogEl())).toBe("remote: unreachable");
+    await flush(4);
+    expect(document.querySelectorAll("#layer-dialog jx-dialog")).toHaveLength(1);
+    expect(textOf(pushDialog(), "error")).toBe("remote: unreachable");
+    expect(part(pushDialog(), "error")?.getAttribute("role")).toBe("alert");
+    await answer("cancel");
+  });
+
+  test("a failed apply says so rather than claiming the schema is live", async () => {
+    installDataPlatform({
+      overrides: {
+        dataPush: async (opts?: { dryRun?: boolean }) =>
+          opts?.dryRun
+            ? {
+                applied: false,
+                plan: [{ kind: "createTable", summary: "Create table", table: "posts" }],
+              }
+            : { applied: false, errors: ["permission denied"], plan: [] },
+      },
+    });
+    let done = 0;
+    await startPush(undefined, () => {
+      done += 1;
+    });
+    await flush(4);
+    await answer("confirm");
+    expect(textOf(pushDialog(), "message")).toBe("Push failed.");
+    expect(textOf(pushDialog(), "error")).toBe("permission denied");
+    expect(done).toBe(1);
+    await answer("cancel");
   });
 });

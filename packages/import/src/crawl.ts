@@ -1,5 +1,6 @@
-import { launchBrowser, capturePage } from "./capture.ts";
-import type { CaptureResult } from "./capture.ts";
+import { capturePage } from "./capture.ts";
+import type { CaptureResult, ImportBrowser } from "./capture.ts";
+import type { ImportIo } from "./io.ts";
 import { convertToJx } from "./to-jx.ts";
 import type { ToJxResult } from "./to-jx.ts";
 import { captureStyles } from "./style-capture.ts";
@@ -14,12 +15,16 @@ import type { Breakpoint, BreakpointPolicy } from "./breakpoint-plan.ts";
 import { applyStylesToTree } from "./apply-styles.ts";
 import { collectAssets } from "./asset-collect.ts";
 import { downloadAssets } from "./asset-download.ts";
+import { applyFamilyAliases, planImageFamilies } from "./image-family.ts";
 import { rewriteAssetUrls } from "./asset-rewrite.ts";
 import { applyTokens } from "./css-tokens.ts";
 
 export interface CrawlOptions {
   url: string;
-  outDir: string;
+  /** The browser to capture with. The crawl never launches one — see `browser-local.ts`. */
+  browser: ImportBrowser;
+  /** Where downloaded assets go. */
+  io: ImportIo;
   maxDepth: number;
   maxPages: number;
   maxNodesPerPage: number;
@@ -52,8 +57,8 @@ export interface CrawledPage {
   jx: ToJxResult;
   depth: number;
   links: string[];
-  /** Reference screenshot PNG buffer, present when captureScreenshots is true. */
-  screenshot?: Buffer | undefined;
+  /** Reference screenshot PNG bytes, present when captureScreenshots is true. */
+  screenshot?: Uint8Array | undefined;
 }
 
 export interface CrawlResult {
@@ -187,7 +192,8 @@ function isDisallowed(url: string, disallowedPaths: Set<string>): boolean {
 export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   const {
     url,
-    outDir,
+    browser,
+    io,
     maxDepth,
     maxPages,
     maxNodesPerPage,
@@ -199,7 +205,6 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   } = options;
 
   const { origin } = new URL(url);
-  const browser = await launchBrowser();
 
   // Fetch robots.txt
   let disallowedPaths = new Set<string>();
@@ -261,11 +266,9 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
         `  ⚠ Page exceeds node cap (${jx.nodeCount} > ${maxNodesPerPage}), skipping styles/assets`,
       );
       skippedByNodeCap.push(entry.url);
-      let screenshot: Buffer | undefined;
+      let screenshot: Uint8Array | undefined;
       if (options.captureScreenshots) {
-        screenshot = Buffer.from(
-          await capture.page.screenshot({ fullPage: fullPageScreenshots, type: "png" }),
-        );
+        screenshot = await capture.page.screenshot({ fullPage: fullPageScreenshots, type: "png" });
       }
       await capture.page.close();
 
@@ -325,7 +328,7 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
               mergedBreakpoints = {};
             }
             Object.assign(mergedBreakpoints, media.breakpoints);
-            applyStylesToTree(jx.document, diffed, media.deltas);
+            applyStylesToTree(jx.document, diffed, media.deltas, media.breakpoints);
           } else {
             applyStylesToTree(jx.document, diffed);
           }
@@ -363,7 +366,12 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
         }
 
         if (collected.assets.length > 0) {
-          const downloaded = await downloadAssets(collected.assets, outDir, entry.url);
+          /* One member per responsive family reaches the network; every dropped derivative is
+             aliased onto the file that WAS written, so a reference to any rung of the ladder still
+             resolves. The compiler regenerates the sizes from the original it now owns. */
+          const families = planImageFamilies(collected.assets);
+          const downloaded = await downloadAssets(families.keep, io, entry.url);
+          applyFamilyAliases(downloaded.rewriteMap, families.alias);
           if (downloaded.rewriteMap.size > 0) {
             rewriteAssetUrls(jx.document, downloaded.rewriteMap, entry.url);
             // Collect font rewrites (R2)
@@ -381,11 +389,9 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       }
     }
 
-    let screenshot: Buffer | undefined;
+    let screenshot: Uint8Array | undefined;
     if (options.captureScreenshots) {
-      screenshot = Buffer.from(
-        await capture.page.screenshot({ fullPage: fullPageScreenshots, type: "png" }),
-      );
+      screenshot = await capture.page.screenshot({ fullPage: fullPageScreenshots, type: "png" });
     }
     await capture.page.close();
 

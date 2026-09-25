@@ -14,7 +14,9 @@ describe("jx cli", () => {
     const stderr = await new Response(proc.stderr).text();
 
     expect(stderr).not.toContain("Cannot find module");
-    expect(exitCode).toBe(0);
+    // The build's own stderr is the only account of WHY it exited non-zero, and it is invisible
+    // Otherwise: a CI runner has sharp and the image pass, a NixOS checkout does not.
+    expect(exitCode, `jx build exited ${exitCode}:\n${stderr}`).toBe(0);
   });
 
   /*
@@ -34,7 +36,7 @@ describe("jx cli", () => {
     const stderr = await new Response(proc.stderr).text();
     const stdout = await new Response(proc.stdout).text();
 
-    expect(exitCode).toBe(0);
+    expect(exitCode, `jx build exited ${exitCode}:\n${stderr}`).toBe(0);
     expect(stderr).not.toContain("Cannot find module");
     expect(`${stdout}${stderr}`).not.toContain("Could not resolve");
   });

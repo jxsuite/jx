@@ -5,10 +5,11 @@
  * "source" alternate; collection/pages/connector grids (later phases) open as virtual tabs with
  * `grid://` ids. All openers dedupe by tab id.
  */
-import { html } from "lit-html";
 import { activateTab, openTab, workspace } from "../workspace/workspace";
 import { formatForPath, loadFormats } from "../format/format-host";
-import { openModal } from "../ui/layers";
+import { layerHost } from "../ui/layers";
+import { openDialogSurface } from "../surfaces/dialog";
+import { mountGridOpenSurface } from "../surfaces/grid-open";
 import { dataSurfaceAvailable, fetchConnections } from "../services/data-service";
 import { createGridController } from "./grid-controller";
 import { createCsvFileSource } from "./sources/csv-file-source";
@@ -18,21 +19,36 @@ import {
   createPagesSource,
 } from "./sources/content-source";
 import { createConnectorSource } from "./sources/connector-source";
-import { makeGridTabId } from "./grid-source";
+import { makeGridTabId, parseGridTabId } from "./grid-source";
 import { libraryTabId } from "../browse/library-source";
 import { argsSchema, optionalStringArg, stringArg, stringProperty } from "../commands/command-args";
 import type { GridSource } from "./grid-source";
+import type { GridOpenSurfaceHandle, GridSourceGroup } from "../surfaces/grid-open";
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /** Placeholder document for grid tabs — the grid never reads it; save routes to the controller. */
 const GRID_STUB_DOCUMENT = { children: [], tagName: "div" };
 
-/** Open (or activate) a `.csv` file as a grid tab. */
-export async function openCsvGridTab(path: string): Promise<Tab> {
+/**
+ * Open (or activate) a `.csv` file as a grid tab.
+ *
+ * The options are `openFileInTab`'s own, passed straight through: `paneId` says which pane the tab
+ * lands in (defaulting to the focused one), `focus: false` browses without moving the keyboard, and
+ * `preview` opens a disposable tab. An existing tab is activated with the caller's `focus` — the
+ * same rule the document path follows.
+ *
+ * @param {string} path - Project-relative path of the `.csv`
+ * @param {{ paneId?: string; focus?: boolean; preview?: boolean }} [opts]
+ * @returns {Promise<Tab>}
+ */
+export async function openCsvGridTab(
+  path: string,
+  opts: { paneId?: string; focus?: boolean; preview?: boolean } = {},
+): Promise<Tab> {
   const existing = workspace.tabs.get(path);
   if (existing) {
-    activateTab(path);
+    activateTab(path, { focus: opts.focus !== false });
     return existing;
   }
 
@@ -50,6 +66,9 @@ export async function openCsvGridTab(path: string): Promise<Tab> {
     documentPath: path,
     id: path,
     sourceFormat: formatForPath(path)?.name ?? null,
+    ...(opts.paneId !== undefined && { paneId: opts.paneId }),
+    ...(opts.preview === true && { preview: true }),
+    ...(opts.focus === false && { focus: false }),
   });
   const controller = createGridController(tab, source);
   void controller.load();
@@ -132,8 +151,62 @@ export function openConnectorGrid(connection: string | undefined, table: string)
 }
 
 /**
+ * Open the source a row names.
+ *
+ * The row's id IS the grid tab id it opens, which is what makes each row addressable — a shot or a
+ * test names `[data-source="grid://collection/posts"]` rather than the label somebody typed — and
+ * saves this module a second encoding to keep in step with `makeGridTabId`.
+ */
+function openGridSource(id: string): void {
+  const ref = parseGridTabId(id);
+  if (ref?.kind === "pages") {
+    openPagesGrid();
+  } else if (ref?.kind === "collection") {
+    openCollectionGrid(ref.name);
+  } else if (ref?.kind === "data") {
+    openConnectorGrid(ref.connection, ref.table);
+  }
+}
+
+/** Every grid-able source a project has, grouped by where it comes from. */
+function sourceGroups(
+  collections: readonly { name: string }[],
+  connections: readonly { name: string; tables: string[] }[],
+): GridSourceGroup[] {
+  return [
+    {
+      emptyMessage: "",
+      key: "project",
+      rows: [
+        { id: makeGridTabId({ kind: "pages" }), label: "Pages" },
+        ...collections.map(({ name }) => ({
+          id: makeGridTabId({ kind: "collection", name }),
+          label: `Collection: ${name}`,
+        })),
+      ],
+      state: "listed",
+      title: "Project",
+    },
+    ...connections.map((conn) => ({
+      emptyMessage: "No tables — push a schema first.",
+      key: `data:${conn.name}`,
+      rows: conn.tables.map((table) => ({
+        id: makeGridTabId({ connection: conn.name, kind: "data", table }),
+        label: table,
+      })),
+      state: (conn.tables.length === 0 ? "empty" : "listed") as "empty" | "listed",
+      title: `Data · ${conn.name}`,
+    })),
+  ];
+}
+
+/**
  * Source picker — one dialog listing every grid-able source: pages, content collections, and (when
  * the platform serves the data surface) each connection's tables.
+ *
+ * The dialog is `ui/layers.ts`'s, and the list inside it is `surfaces/grid-open.json`. Nothing here
+ * draws a headline or a cancel button: a second answer to "what is a dialog" is a defect
+ * (specs/studio-ui-guidelines.md §12.5), and what this surface genuinely owns is the grouping.
  */
 export async function openGridSourcePicker(): Promise<void> {
   const collections = collectionDirs();
@@ -143,59 +216,30 @@ export async function openGridSourcePicker(): Promise<void> {
     connections = response?.connections ?? [];
   }
 
-  const handle = openModal(
-    html`<sp-dialog-wrapper
-      open
-      dismissable
-      underlay
-      headline="Open Grid"
-      @close=${() => handle.close()}
-    >
-      <sp-menu class="jx-grid-picker">
-        <sp-menu-group>
-          <span slot="header">Project</span>
-          <sp-menu-item
-            @click=${() => {
-              handle.close();
-              openPagesGrid();
-            }}
-            >Pages</sp-menu-item
-          >
-          ${collections.map(
-            ({ name }) =>
-              html`<sp-menu-item
-                @click=${() => {
-                  handle.close();
-                  openCollectionGrid(name);
-                }}
-                >Collection: ${name}</sp-menu-item
-              >`,
-          )}
-        </sp-menu-group>
-        ${connections.map(
-          (conn) =>
-            html`<sp-menu-group>
-              <span slot="header">Data · ${conn.name}</span>
-              ${
-                conn.tables.length === 0
-                  ? html`<sp-menu-item disabled>No tables — push a schema first</sp-menu-item>`
-                  : conn.tables.map(
-                      (table) =>
-                        html`<sp-menu-item
-                          @click=${() => {
-                            handle.close();
-                            openConnectorGrid(conn.name, table);
-                          }}
-                          >${table}</sp-menu-item
-                        >`,
-                    )
-              }
-            </sp-menu-group>`,
-        )}
-      </sp-menu>
-    </sp-dialog-wrapper>`,
-    { label: "Open Grid" },
-  );
+  let list: GridOpenSurfaceHandle | null = null;
+  const handle = openDialogSurface({
+    cancelLabel: "Cancel",
+    confirmLabel: "",
+    headline: "Open Grid",
+    island: (host) => {
+      list = mountGridOpenSurface(host, sourceGroups(collections, connections), (id) => {
+        handle.close();
+        openGridSource(id);
+      });
+    },
+    layer: layerHost("dialog"),
+    onCancel: () => handle.close(),
+    onClosed: () => {
+      list?.dispose();
+      list = null;
+    },
+    onConfirm: () => {},
+    region: "grid/open",
+  });
+  /* Deliberately not awaited. `handle.ready` settles when the dialog has been SHOWN, and the only
+     caller is a button press that has nothing to do afterwards; awaiting it would make this
+     function's promise depend on a platform event rather than on the fetch it actually performs. */
+  void handle.ready;
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -228,10 +272,8 @@ export function gridCommands(): AnyCommand[] {
       group: "5_data",
       requires: "a project that declares content collections",
       when: (ctx) => ctx.project.open,
-      aiTool: {
-        description: "Open a content collection's entries as an editable grid in a new tab.",
-        name: "open_collection_grid",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the grid is
+         not a tool surface. */
       run: (_commandCtx, args) => {
         const name = stringArg("collection.editInGrid", args, "name");
         const declared = collectionDirs().map((c) => c.name);
@@ -266,10 +308,7 @@ export function gridCommands(): AnyCommand[] {
       requires: "a platform that serves the data routes",
       when: (ctx) => ctx.project.open,
       enablement: (ctx) => ctx.capability.dataRows,
-      aiTool: {
-        description: "Open a connector table as an editable grid in a new tab.",
-        name: "open_data_grid",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
       run: (_commandCtx, args) => {
         const table = stringArg("data.openGrid", args, "table");
         openConnectorGrid(optionalStringArg("data.openGrid", args, "connection"), table);

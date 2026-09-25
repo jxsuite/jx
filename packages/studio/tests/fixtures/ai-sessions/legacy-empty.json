@@ -1,0 +1,15 @@
+{
+  "name": "legacy-empty",
+  "description": "An empty legacy store is removed and migrates nothing: a fresh chat, and no index is written.",
+  "root": "/proj/demo",
+  "storage": { "jx-ai-chat-history:/proj/demo": [] },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": null,
+    "sessions": [],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {}
+  }
+}

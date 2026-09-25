@@ -135,6 +135,16 @@ describe("filter ops over real SQL", () => {
     expect(await ids([{ field: "author", op: "==", value: "u1" }])).toEqual(["a", "d"]);
   });
 
+  test("== against a JSON-storage column compares the encoded value", async () => {
+    expect(await ids([{ field: "tags", op: "==", value: ["x", "y"] }])).toEqual(["a"]);
+  });
+
+  test("a boolean probe against a non-boolean column still coerces, rather than crashing", async () => {
+    // `views` is integer storage; a stray boolean value falls through storageValue's generic
+    // Boolean branch (1/0), not the column's own storage-boolean coercion.
+    expect(await ids([{ field: "views", op: "==", value: true }])).toEqual([]);
+  });
+
   test("multiple rules AND together; unknown ops match everything", async () => {
     expect(
       await ids([

@@ -1,0 +1,16 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "a"
+    },
+    {
+      "type": "delta",
+      "content": "b"
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ]
+}

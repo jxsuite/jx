@@ -7,25 +7,29 @@
  * now, beside the colour schemes and feature queries they share a map with. The platform adapter
  * has moved to Deploy in P6.2, because §2 principle 5 says a definition site is a LEVEL, not a
  * field on some other level's form — and "what this site is" and "where it ships" are two levels.
+ *
+ * **The markup left too.** The section is the `settings-overview` surface
+ * (`surfaces/settings-overview.json`), mounted by `surfaces/settings-overview.ts`; what is here is
+ * the section itself — what a value means, what is refused, what reaches `project.json`, and what a
+ * failed write says. `renderGeneralSettings` is unchanged as a contract: the registry hands a
+ * container to a `render`, and this one mounts a document into it instead of rendering lit.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { live } from "lit-html/directives/live.js";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
 import { activeRegistry } from "../commands/active-registry";
 import { getPlatform } from "../platform";
+import { mountOverviewSurface } from "../surfaces/settings-overview";
 
+import type {
+  OverviewActions,
+  OverviewError,
+  OverviewErrorField,
+  OverviewSurfaceHandle,
+  OverviewValues,
+} from "../surfaces/settings-overview";
 import type { JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
-
-/** Which control an error belongs under. `"section"` puts it at the top of the section. */
-type ErrorField = "name" | "description" | "url" | "favicon" | "section";
-
-interface GeneralError {
-  field: ErrorField;
-  message: string;
-}
 
 /**
  * The last failed write, per rendered section.
@@ -37,7 +41,15 @@ interface GeneralError {
  * the user sees it. Keyed by container so two mounted copies (and two tests) never share a
  * message.
  */
-const errors = new WeakMap<HTMLElement, GeneralError>();
+const errors = new WeakMap<HTMLElement, OverviewError>();
+
+/** The surface mounted in each container, so a redraw updates one rather than making another. */
+const mounted = new WeakMap<HTMLElement, OverviewSurfaceHandle>();
+
+/** The live project configuration, read at the moment it is needed rather than at render time. */
+function config(): ProjectConfig {
+  return (projectState?.projectConfig || {}) as ProjectConfig;
+}
 
 // ─── Site description ($head meta) ───────────────────────────────────────────
 
@@ -51,8 +63,8 @@ function isDescriptionMeta(entry: JxHeadEntry): boolean {
  * closed (`unevaluatedProperties: false`) — so it lives where `@jxsuite/create` writes it and where
  * the browser reads it: the `<meta name="description">` entry of `$head`.
  */
-function readDescription(config: ProjectConfig): string {
-  const entry = (config.$head ?? []).find((e) => isDescriptionMeta(e));
+function readDescription(cfg: ProjectConfig): string {
+  const entry = (cfg.$head ?? []).find((e) => isDescriptionMeta(e));
   return typeof entry?.attributes?.content === "string" ? entry.attributes.content : "";
 }
 
@@ -84,15 +96,56 @@ function headWithDescription(head: JxHeadEntry[], text: string): JxHeadEntry[] {
  */
 const CLEAR_URL = { url: undefined } as unknown as Partial<ProjectConfig>;
 
-// ─── Render ──────────────────────────────────────────────────────────────────
+// ─── Projection ──────────────────────────────────────────────────────────────
 
-/** @param {HTMLElement} container */
-export function renderGeneralSettings(container: HTMLElement) {
-  const config = (projectState?.projectConfig || {}) as ProjectConfig;
-  const shown = errors.get(container);
+/**
+ * What the surface should be showing, from the configuration and the registry as they stand now.
+ *
+ * The Project Styles button is rendered FROM the `styles.open` record, so it is disabled rather
+ * than absent when it cannot act (§12.3) and it cannot drift from the palette row or the gear menu.
+ * The record's TITLE, and nothing else off the registry: `disabledReason` would be the §12.3 shape
+ * for a control that can be inapplicable, but this one cannot be — `styles.open` is gated on
+ * `ctx.project.open` and Overview is a section of the project's own configuration document, so by
+ * the time this renders the answer is always yes. Asking anyway would also be a FOCUS read inside a
+ * function that was handed a container, which is what `scripts/check-pane-singletons.ts` rule 4
+ * forbids: a pane-scoped surface must not report the focused pane's state. A project-level verb
+ * happens to read the same in every pane, but the way to be right about that is not to ask. The one
+ * thing that can genuinely be missing is the registry itself (bootstrap order, a test), and that is
+ * an existence check, not a state read.
+ */
+function values(container: HTMLElement): OverviewValues {
+  const cfg = config();
+  const command = activeRegistry()?.get("styles.open");
+  return {
+    description: readDescription(cfg),
+    error: errors.get(container) ?? null,
+    favicon: typeof cfg.favicon === "string" ? cfg.favicon : "",
+    name: cfg.name ?? "",
+    stylesDisabled: command === undefined,
+    stylesTitle: command?.title ?? "",
+    url: cfg.url ?? "",
+  };
+}
+
+/** The decisions, bound to one container's surface. Made once, when that surface is mounted. */
+function actions(container: HTMLElement): OverviewActions {
+  /**
+   * What the control now holds, told to the scope before anything is decided about it.
+   *
+   * Without this a refusal leaves the refused text in the field: the binding writes the value the
+   * scope names, and the scope never said anything but the value on disk — so re-stating it is not
+   * a change and nothing is written back. Echoing first makes the snap-back a real move, which is
+   * the job `live()` did in the template this replaced.
+   */
+  const echo = (patch: Partial<OverviewValues>): void => {
+    mounted.get(container)?.update(patch);
+  };
 
   /** Persist a patch, surfacing the rejection instead of swallowing it. */
-  const persist = async (patch: Partial<ProjectConfig>, field: ErrorField = "section") => {
+  const persist = async (
+    patch: Partial<ProjectConfig>,
+    field: OverviewErrorField = "section",
+  ): Promise<void> => {
     try {
       await updateSiteConfig(patch);
       errors.delete(container);
@@ -106,45 +159,12 @@ export function renderGeneralSettings(container: HTMLElement) {
   };
 
   /** Park a validation failure under `field` without writing anything. */
-  const reject = (field: ErrorField, message: string) => {
+  const reject = (field: OverviewErrorField, message: string): void => {
     errors.set(container, { field, message });
     renderGeneralSettings(container);
   };
 
-  /** The error line for one control, if that is where the current failure belongs. */
-  const errorFor = (field: ErrorField) =>
-    shown?.field === field
-      ? html`<p class="settings-field-error" role="alert">${shown.message}</p>`
-      : nothing;
-
-  // ─── Site identity ─────────────────────────────────────────────────────────
-
-  const onNameChange = (e: Event) => {
-    const name = (e.target as HTMLInputElement).value.trim();
-    if (!name) {
-      reject("name", "A project name is required.");
-      return;
-    }
-    void persist({ name }, "name");
-  };
-
-  const onDescriptionChange = (e: Event) => {
-    const text = (e.target as HTMLInputElement).value;
-    void persist({ $head: headWithDescription(config.$head ?? [], text) }, "description");
-  };
-
-  const onUrlChange = (e: Event) => {
-    const url = (e.target as HTMLInputElement).value.trim();
-    if (url && !/^https?:\/\/\S+$/.test(url)) {
-      reject("url", "Enter a full address starting with http:// or https://");
-      return;
-    }
-    void persist(url ? { url } : CLEAR_URL, "url");
-  };
-
-  // ─── Favicon ───────────────────────────────────────────────────────────────
-
-  const onFaviconUpload = () => {
+  const uploadFavicon = (): void => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*,.ico,.svg";
@@ -164,132 +184,61 @@ export function renderGeneralSettings(container: HTMLElement) {
     input.click();
   };
 
-  /*
-   * Project Styles is the SAME document in a different editor, and `styles.open` is the one place
-   * that says so. This used to write `session.ui.canvasMode` here directly — a second
-   * implementation of a capability, §12.5's defect in miniature: the button and the command could
-   * disagree about what "open Project Styles" means, and only one of them was reachable by name.
-   * The mode is still a fact about the TAB, and there is exactly one `project.json` tab, so
-   * `revealTab`'s `focusPane` puts the keyboard on whichever pane holds it.
-   *
-   * Rendered FROM the record, so the button is disabled with its `requires` sentence rather than
-   * absent when it cannot act (§12.3), and it cannot drift from the palette row or the gear menu.
-   */
-  const registry = activeRegistry();
-  const stylesCommand = registry?.get("styles.open");
-  /* The record's TITLE, and nothing else off the registry.
-     `disabledReason` would be the §12.3 shape for a control that can be inapplicable — but this one
-     cannot be. `styles.open` is gated on `ctx.project.open`, and Overview is a section of the
-     project's own configuration document, so by the time this renders the answer is always yes.
-     Asking anyway would also be a FOCUS read inside a function that was handed a container, which
-     is what `scripts/check-pane-singletons.ts` rule 4 forbids: a pane-scoped surface must not report
-     the focused pane's state. A project-level verb happens to read the same in every pane, but the
-     way to be right about that is not to ask. The one thing that can genuinely be missing is the
-     registry itself (bootstrap order, a test), and that is an existence check, not a state read. */
+  return {
+    /*
+     * Project Styles is the SAME document in a different editor, and `styles.open` is the one place
+     * that says so. This used to write `session.ui.canvasMode` here directly — a second
+     * implementation of a capability, §12.5's defect in miniature: the button and the command could
+     * disagree about what "open Project Styles" means, and only one of them was reachable by name.
+     * The mode is still a fact about the TAB, and there is exactly one `project.json` tab, so
+     * `revealTab`'s `focusPane` puts the keyboard on whichever pane holds it.
+     */
+    openStyles: () => {
+      void activeRegistry()?.run("styles.open");
+    },
+    setDescription: (value: string) => {
+      echo({ description: value });
+      void persist({ $head: headWithDescription(config().$head ?? [], value) }, "description");
+    },
+    setName: (value: string) => {
+      echo({ name: value });
+      const name = value.trim();
+      if (!name) {
+        reject("name", "A project name is required.");
+        return;
+      }
+      void persist({ name }, "name");
+    },
+    setUrl: (value: string) => {
+      echo({ url: value });
+      const url = value.trim();
+      if (url && !/^https?:\/\/\S+$/.test(url)) {
+        reject("url", "Enter a full address starting with http:// or https://");
+        return;
+      }
+      void persist(url ? { url } : CLEAR_URL, "url");
+    },
+    uploadFavicon,
+  };
+}
 
-  const currentFavicon = config.favicon;
+// ─── Render ──────────────────────────────────────────────────────────────────
 
-  const tpl = html`
-    <div class="settings-section">
-      <h3 class="settings-section-title">Overview</h3>
-      ${errorFor("section")}
-
-      <div class="settings-field">
-        <label class="settings-field-label">Site Name</label>
-        <p class="settings-field-desc">
-          What this site is called — used in page titles and the project list.
-        </p>
-        <sp-textfield
-          size="s"
-          class="settings-site-name"
-          placeholder="My Site"
-          .value=${live(config.name ?? "")}
-          ?invalid=${shown?.field === "name"}
-          @change=${onNameChange}
-        ></sp-textfield>
-        ${errorFor("name")}
-      </div>
-
-      <div class="settings-field">
-        <label class="settings-field-label">Description</label>
-        <p class="settings-field-desc">
-          One or two sentences about the site. Search engines and link previews show this.
-        </p>
-        <sp-textfield
-          multiline
-          size="s"
-          class="settings-site-description"
-          placeholder="A short description of the site"
-          .value=${live(readDescription(config))}
-          @change=${onDescriptionChange}
-        ></sp-textfield>
-        ${errorFor("description")}
-      </div>
-
-      <div class="settings-field">
-        <label class="settings-field-label">Production URL</label>
-        <p class="settings-field-desc">
-          Where the published site lives. Sitemaps and absolute links are built from it.
-        </p>
-        <sp-textfield
-          size="s"
-          class="settings-site-url"
-          placeholder="https://example.com"
-          .value=${live(config.url ?? "")}
-          ?invalid=${shown?.field === "url"}
-          @change=${onUrlChange}
-        ></sp-textfield>
-        ${errorFor("url")}
-      </div>
-
-      <div class="settings-field">
-        <label class="settings-field-label">Favicon</label>
-        <p class="settings-field-desc">Upload an image to use as the site favicon.</p>
-        <div style="display:flex;align-items:center;gap:12px">
-          ${
-            currentFavicon
-              ? html`<img
-                  src=${currentFavicon}
-                  alt="Current favicon"
-                  style="width:32px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:var(--radius);padding:2px"
-                />`
-              : html`<div
-                  style="width:32px;height:32px;border:1px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--fg-dim);font-size:var(--spectrum-font-size-50, 11px)"
-                >
-                  —
-                </div>`
-          }
-          <sp-action-button size="s" @click=${onFaviconUpload}> Upload Favicon </sp-action-button>
-          ${
-            currentFavicon
-              ? html`<span style="font-size:var(--spectrum-font-size-50, 11px);color:var(--fg-dim)"
-                  >${currentFavicon}</span
-                >`
-              : nothing
-          }
-        </div>
-        ${errorFor("favicon")}
-      </div>
-
-      <div class="settings-field">
-        <label class="settings-field-label">Global Styles</label>
-        <p class="settings-field-desc">
-          Design tokens and the default element styles that apply across every page. Opens Project
-          Styles over this same document.
-        </p>
-        <sp-action-button
-          size="s"
-          ?disabled=${!stylesCommand}
-          title=${stylesCommand?.title ?? ""}
-          @click=${() => {
-            void registry?.run("styles.open");
-          }}
-        >
-          Edit Global Styles
-        </sp-action-button>
-      </div>
-    </div>
-  `;
-
-  litRender(tpl, container);
+/**
+ * Draw the section into `container`, or bring the surface already there up to date.
+ *
+ * The pane calls this again whenever something it cannot see may have changed, and a remount would
+ * take the caret out of whatever field the reader is in — so a standing surface is updated and only
+ * a container the document has left is mounted into again.
+ *
+ * @param {HTMLElement} container
+ */
+export function renderGeneralSettings(container: HTMLElement): void {
+  const standing = mounted.get(container);
+  if (standing?.connected()) {
+    standing.update(values(container));
+    return;
+  }
+  standing?.dispose();
+  mounted.set(container, mountOverviewSurface(container, values(container), actions(container)));
 }

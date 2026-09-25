@@ -1,0 +1,262 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSwatch",
+  "tagName": "jx-swatch",
+  "observedAttributes": ["color", "value", "label", "checked", "selected", "disabled", "size"],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "color": {
+      "type": "string",
+      "default": "",
+      "attribute": "color",
+      "description": "The colour the chip draws, as any CSS colour the page can resolve. Empty is a legal value and is the NO COLOUR chip: it draws a slashed square rather than nothing, because a blank square in a palette reads as a white swatch and picking it would be picking white."
+    },
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What the swatch stands for: the detail of the select it dispatches, and what a swatch group compares its own value against. Empty falls back to color, so a palette of literal colours needs no second attribute; set it when the swatch stands for a TOKEN whose colour is only how it looks, which is the case a project's palette is made of."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The swatch's name, and its accessible name: it is written to aria-label, so it wins over anything slotted beside the chip. A COLOUR IS NOT A NAME. Without this the element falls back to the value and then to the colour, which announces \"#3b82f6\" one character at a time — legible, technically a name, and useless. Give every swatch in a palette the word a reader would use for it."
+    },
+    "checked": {
+      "type": "string",
+      "default": "",
+      "attribute": "checked",
+      "description": "Empty for a plain button; true or false for one member of a swatch group, which then carries role=radio and aria-checked on its control and puts role=none on the HOST so the radio is the group's own child rather than a grandchild behind a generic. jx-swatch-group is the single writer of this on its children, exactly as jx-tabs is of a tab's selected, so a host moves the selection by writing the group's value."
+    },
+    "selected": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "selected",
+      "description": "Draws the chosen ring and the tick without announcing anything, for a swatch a host has chosen outside a radio group. It is the drawing alone: checked is what a reader is TOLD, and setting one never sets the other."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be chosen or focused. Disabled, never absent."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The chip grows; the button's target does not shrink below the kit's control height, so a small swatch is still a target a finger can hit."
+    },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the button inside, not the host, so a group moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so one control would become two tab stops."
+    },
+    "inkOf": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/color.ts",
+      "$export": "inkOn",
+      "parameters": ["color"],
+      "description": "Black or white, whichever can be seen on the swatch's own colour, or the empty string for a colour only the browser can resolve. Pure: it takes the colour and returns a word."
+    },
+    "ink": "${state.inkOf(state.color)}",
+    "token": "${state.value || state.color}",
+    "name": "${state.label || state.value || state.color || 'Colour'}",
+    "isChecked": {
+      "$expression": {
+        "operator": "===",
+        "target": {
+          "$ref": "#/state/checked"
+        },
+        "value": "true"
+      }
+    },
+    "chosen": {
+      "$expression": {
+        "operator": "||",
+        "target": {
+          "$ref": "#/state/isChecked"
+        },
+        "value": {
+          "$ref": "#/state/selected"
+        }
+      }
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "select",
+          "detail": {
+            "$ref": "#/state/token"
+          },
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "select",
+          "description": "The swatch was activated; detail is what it stands for. A swatch group listens for it and answers with its own change."
+        }
+      ],
+      "description": "Activation says what the swatch stands for and nothing else. It does not write its own checked: inside a group the group owns that, and outside one the host does, and an element that chose itself would disagree with both."
+    }
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "attributes": {
+    "role": "${state.checked ? 'none' : null}",
+    "data-size": "${state.size}",
+    "data-chosen": "${state.chosen ? '' : null}",
+    "data-empty": "${state.color ? null : ''}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "verticalAlign": "middle",
+    "--jx-swatch-size": "20px",
+    "--jx-swatch-color": "${state.color || 'transparent'}",
+    "--jx-swatch-ink": "${state.ink || 'var(--jx-border-strong)'}",
+    "--jx-color-checkerboard": "repeating-conic-gradient(var(--jx-gray-300) 0% 25%, var(--jx-bg-input) 0% 50%) 50% / 8px 8px",
+    "&[data-size=\"sm\"]": {
+      "--jx-swatch-size": "14px"
+    },
+    "&[data-size=\"lg\"]": {
+      "--jx-swatch-size": "28px"
+    },
+    "& > [part=\"control\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minInlineSize": "var(--jx-control-h)",
+      "minBlockSize": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "var(--jx-space-1)",
+      "border": "0",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "transparent",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer",
+      "outline": "none",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      }
+    },
+    "& [part=\"chip\"]": {
+      "$description": "The ring is drawn with the ink the element worked out from its own colour rather than with a neutral border token, because a mid-grey boundary disappears against a mid-grey swatch and a control whose edge cannot be seen is a WCAG 1.4.11 failure. The checkerboard behind it is what makes a translucent colour read as translucent instead of as a paler opaque one.",
+      "position": "relative",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "flex": "none",
+      "inlineSize": "var(--jx-swatch-size)",
+      "blockSize": "var(--jx-swatch-size)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "linear-gradient(var(--jx-swatch-color), var(--jx-swatch-color)), var(--jx-color-checkerboard)",
+      "boxShadow": "inset 0 0 0 1px var(--jx-swatch-ink)",
+      "color": "var(--jx-swatch-ink)"
+    },
+    "&[data-empty] [part=\"chip\"]": {
+      "background": "linear-gradient(to bottom right, transparent calc(50% - 1px), var(--jx-danger) calc(50% - 1px), var(--jx-danger) calc(50% + 1px), transparent calc(50% + 1px)), var(--jx-bg-input)"
+    },
+    "&[data-chosen] [part=\"chip\"]": {
+      "outline": "2px solid var(--jx-fg)",
+      "outlineOffset": "2px"
+    },
+    "& [part=\"mark\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"label\"]": {
+      "minInlineSize": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"label\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"mark-slot\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "button",
+      "attributes": {
+        "part": "control",
+        "type": "button",
+        "role": "${state.checked ? 'radio' : null}",
+        "aria-checked": "${state.checked || null}",
+        "aria-label": "${state.name}",
+        "tabindex": "${state.tabindex || null}",
+        "disabled": {
+          "$ref": "#/state/disabled"
+        }
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "chip",
+            "aria-hidden": "true"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "mark-slot"
+              },
+              "$switch": {
+                "$ref": "#/state/chosen"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-icon",
+                  "$props": {
+                    "name": "check",
+                    "weight": "bold"
+                  },
+                  "attributes": {
+                    "part": "mark"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

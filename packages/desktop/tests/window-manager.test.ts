@@ -140,6 +140,9 @@ function makeSession(initialRoot: string | null) {
     dataDeleteRow: mock(async () => ({ ok: true })),
     listSecrets: mock(async () => ({ names: [] })),
     setSecrets: mock(async () => ({ names: [], ok: true })),
+    listExtensionCatalog: mock(async () => [
+      { name: "@jxsuite/feed", sections: [{ key: "feed" }], source: "first-party" },
+    ]),
     pickDirectory: mock(async () => "/picked"),
     openProject: mock(async () => {
       root = "/proj/opened";
@@ -300,11 +303,11 @@ const {
   broadcastSettingsChanged,
   broadcastUpdateReady,
   parseProjectDirFromUrl,
-  setAiServerUrl,
+  setAiChatUrl,
   setImportServiceUrl,
 } = await import("../src/window-manager");
 
-setAiServerUrl("http://localhost:9000");
+setAiChatUrl("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
 setImportServiceUrl("http://x/import?token=t");
 
 const DASH = "—"; // Em dash used in window titles
@@ -500,7 +503,7 @@ describe("per-window RPC", () => {
     expect(pkg.listPackages).toHaveBeenCalledTimes(1);
 
     // Process-shared handlers.
-    expect(reqs.aiChatUrl()).toBe("http://localhost:9000/__studio/ai/chat");
+    expect(reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
     expect(reqs.updaterApplyUpdate()).toBe("apply");
     expect(reqs.updaterCheckForUpdate()).toBe("check");
     expect(reqs.updaterDownloadUpdate()).toBe("download");
@@ -560,7 +563,7 @@ describe("per-window RPC", () => {
   test("aiChatUrl resolves to the shared AI server's proxy endpoint", () => {
     openProjectWindow("/proj/ai");
     const reqs = lastRequests();
-    expect(reqs.aiChatUrl()).toBe("http://localhost:9000/__studio/ai/chat");
+    expect(reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
   });
 
   test("importSiteUrl resolves to the shared token-gated import endpoint", () => {
@@ -573,6 +576,16 @@ describe("per-window RPC", () => {
     const session = sessions.at(-1)!;
     expect(await lastRequests().pickDirectory()).toBe("/picked");
     expect(session.pickDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  test("listExtensionCatalog delegates to this window's session", async () => {
+    // Each window binds its own ProjectSession, so a forwarder that reached a module-global
+    // Session would answer the wrong project's catalogue in a second window.
+    openProjectWindow("/proj/catalogue");
+    const session = sessions.at(-1)!;
+    const catalog = (await lastRequests().listExtensionCatalog()) as { name: string }[];
+    expect(catalog[0]?.name).toBe("@jxsuite/feed");
+    expect(session.listExtensionCatalog).toHaveBeenCalledTimes(1);
   });
 
   test("getProjectRoot reports this window's root", () => {
@@ -751,8 +764,12 @@ describe("loopback canvas server", () => {
     ]);
     await handlers.jxResolve!({ body: "{}" });
     expect(session.jxResolve).toHaveBeenCalledWith({ body: "{}" });
+    await handlers.jxServerFunction!({ body: "{}" });
+    expect(session.jxServerFunction).toHaveBeenCalledWith({ body: "{}" });
     await handlers.readFile!({ path: "p" });
     expect(session.handleReadFile).toHaveBeenCalledWith({ path: "p" });
+    await handlers.resolveSiteContext!({ filePath: "pages/a.json" });
+    expect(session.handleResolveSiteContext).toHaveBeenCalledWith({ filePath: "pages/a.json" });
     // No write/git surface leaks onto the loopback server.
     expect(handlers.writeFile).toBeUndefined();
     expect(handlers.gitStatus).toBeUndefined();

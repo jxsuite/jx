@@ -33,8 +33,18 @@ import {
   tokenFallbacks,
   scanBannedIdentifiers,
   scanHex,
+  scanJsonStyle,
+  keyframeNames,
+  jsonStyleBlocks,
+  surfaceClasses,
+  surfaceDefinedClasses,
   stackedClasses,
-  extractUnderlayCards,
+  SPECTRUM_ALLOWED,
+  overlayOrderFindings,
+  scanSpectrum,
+  stripComments,
+  stripCssComments,
+  stripDocProse,
   stripCommentsAndStrings,
   templateLiterals,
 } from "../scripts/check-styles";
@@ -355,10 +365,18 @@ describe("scanHex", () => {
   });
 
   test("allows any hex in a colour-data file", () => {
-    expect(scanHex("src/ui/color-selector.ts", "#123456").errors).toEqual([]);
+    expect(scanHex("src/settings/css-vars-editor.ts", "#123456").errors).toEqual([]);
   });
 
-  test("warns on px literals that have a Spectrum token", () => {
+  test("a file that stopped being one is no longer exempt — the list ratchets", () => {
+    /* `src/ui/color-selector.ts` was a colour CONTROL and its hexes were user data. It is a
+       projection of the project's named colours now and holds no literal at all, so its DATA_FILES
+       entry went with Spectrum. An exemption for a file that no longer needs one is one nobody
+       would notice going stale. */
+    expect(scanHex("src/ui/color-selector.ts", "#123456").errors).toHaveLength(1);
+  });
+
+  test("warns on px literals that have an exact kit token", () => {
     const { warnings } = scanHex("src/a.ts", "font-size: 12px; border-radius: 4px;");
     expect(warnings).toHaveLength(2);
     expect(scanHex("src/a.ts", "font-size: 13px; border-radius: 7px;").warnings).toEqual([]);
@@ -379,6 +397,8 @@ describe("collect", () => {
         ".styled { color: red }",
         ".paired { outline: none }",
         ".paired:focus-visible { outline: 2px solid red }",
+        "/* it read --spectrum-gray-300 here, which resolved only inside <sp-theme> */",
+        ".tokened { color: var(--spectrum-gray-100) }",
       ].join("\n"),
     );
     writeFileSync(
@@ -395,20 +415,41 @@ describe("collect", () => {
     );
     writeFileSync(
       join(root, "src", "inject.ts"),
-      "const css = `.injected { position: absolute; }`;\n",
+      'const css = `.injected { position: absolute; }`;\nq("sp-textfield");\n',
     );
-    /* Two modal bodies, identical but for one declaration: the scrim paints at z-index 1, so the
-       one with no z-index is under it — visible through the scrim, and unclickable. */
+    /* Prose in both dialects the ban must not read: a `//` comment, a block comment, and a
+       document `$description`. Each says what a value used to be, which is the migration record. */
+    writeFileSync(
+      join(root, "src", "prose.ts"),
+      [
+        "// It was an sp-picker, and --spectrum-font-size-50 was its label size.",
+        "/* The sp-underlay beside it painted at z-index 1. */",
+        "export const done = true;",
+      ].join("\n"),
+    );
+    mkdirSync(join(root, "src", "surfaces"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "surfaces", "doc.json"),
+      JSON.stringify({
+        $id: "Doc",
+        style: {
+          $description: "It read --spectrum-font-size-50, which resolved only inside <sp-theme>.",
+          color: "var(--fg)",
+        },
+      }),
+    );
+    /* One animation name in two sheets. CSS keeps the LAST and ignores the first, in silence. */
+    writeFileSync(
+      join(root, "styles", "anim.css"),
+      "@keyframes pulse { 50% { opacity: 0.4 } }\n@keyframes solo { to { opacity: 1 } }",
+    );
+    /* Three of the four overlay layers, and the fourth left undeclared: an unstamped layer stacks
+       by document order and ties with every other, which is the defect the rule is for. */
     writeFileSync(
       join(root, "styles", "modals.css"),
-      ".lifted { position: fixed; z-index: 1000 }\n.sunken { position: fixed }",
-    );
-    writeFileSync(
-      join(root, "src", "modals.ts"),
-      [
-        'html`<sp-underlay open></sp-underlay><div class="lifted">ok</div>`;',
-        'html`<sp-underlay open></sp-underlay><div class="sunken">unclickable</div>`;',
-      ].join("\n"),
+      ".jx-layer--popover { z-index: 1000 }\n.jx-layer--modal { z-index: 2000 }\n" +
+        ".jx-layer--dialog { z-index: 3000 }\n" +
+        "@keyframes pulse { 50% { opacity: 0.9 } }",
     );
     writeFileSync(
       join(root, "src", "app.ts"),
@@ -416,9 +457,38 @@ describe("collect", () => {
         'html`<div class="kept nested canvas-only from-css injected"></div>`;',
         'html`<div class="orphan-one"></div>`;',
         'el.className = "orphan-two";',
-        'el.classList.add("monaco-hover", "sp-picker", "tabulator-cell");',
+        'el.classList.add("monaco-hover", "codicon-close", "tabulator-cell");',
         "el.style.color = '#123456';",
+        // The ban's template case, beside its selector-string and stylesheet cases elsewhere.
+        "html`<sp-picker></sp-picker>`;",
       ].join("\n"),
+    );
+    /* A surface: a Jx document whose styling is a `style` object. Nothing else in this fixture
+       reaches the rules through JSON, so each finding below is proof the walk happens at all. */
+    mkdirSync(join(root, "src", "surfaces"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "surfaces", "panel.json"),
+      JSON.stringify(
+        {
+          tagName: "div",
+          $description: "A hex here is prose, not chrome: #abcdef",
+          style: {
+            color: "#654321",
+            fontSize: "12px",
+            borderRadius: "4px",
+            gap: "12px",
+            background: "var(--bg, #001122)",
+            "&:hover": { color: "#fedcba" },
+          },
+          children: [
+            { tagName: "span", attributes: { class: "from-css surface-orphan" } },
+            { tagName: "span", className: "computed-${state.kind}" },
+            { tagName: "span", textContent: "not a colour: #ff0000" },
+          ],
+        },
+        null,
+        2,
+      ),
     );
     result = await collect(root);
   });
@@ -428,7 +498,11 @@ describe("collect", () => {
   });
 
   test("reports only classes that no stylesheet defines", () => {
-    expect(result.allOrphans.map((o) => o.text)).toEqual(["orphan-one", "orphan-two"]);
+    expect(result.allOrphans.map((o) => o.text)).toEqual([
+      "orphan-one",
+      "orphan-two",
+      "surface-orphan",
+    ]);
   });
 
   test("credits definitions from index.html, canvas.html, .css files and injected CSS", () => {
@@ -438,9 +512,16 @@ describe("collect", () => {
     }
   });
 
+  test("no longer exempts a Spectrum class — that prefix left with the components", () => {
+    /* `sp-` and `spectrum-` were two of the six VENDOR_CLASS_PREFIXES, exempting Spectrum's own
+       class names from the orphan rule. They are not vendor names any more, they are banned ones,
+       and an exemption whose subject is gone reads like the policy still has one. */
+    expect(result.spectrum.some((f) => f.file === "src/app.ts")).toBe(true);
+  });
+
   test("ignores vendor classes whose stylesheet is bundled, not committed", () => {
     const orphaned = new Set(result.allOrphans.map((o) => o.text));
-    for (const vendor of ["monaco-hover", "sp-picker", "tabulator-cell"]) {
+    for (const vendor of ["monaco-hover", "codicon-close", "tabulator-cell"]) {
       expect(orphaned.has(vendor)).toBe(false);
     }
   });
@@ -450,8 +531,47 @@ describe("collect", () => {
   });
 
   test("still runs the hex and px rules over html and ts", () => {
-    expect(result.hexErrors.map((e) => e.file)).toEqual(["src/app.ts"]);
-    expect(result.pxWarnings.map((w) => w.file)).toEqual(["index.html"]);
+    expect(result.hexErrors.map((e) => e.file)).toEqual([
+      "src/app.ts",
+      "src/surfaces/panel.json",
+      "src/surfaces/panel.json",
+    ]);
+    expect(result.pxWarnings.map((w) => w.file)).toEqual([
+      "index.html",
+      "src/surfaces/panel.json",
+      "src/surfaces/panel.json",
+    ]);
+  });
+
+  test("runs both rules over a surface document's style block, and over nothing else in it", () => {
+    /* The three hexes NOT reported are the whole point: a `$description`, a `textContent` and a
+       `var()` fallback are prose, content and a token reference. A gate that flagged them would be
+       a gate somebody switches off. */
+    const hexes = result.hexErrors.filter((e) => e.file.endsWith("panel.json")).map((e) => e.text);
+    expect(hexes).toEqual(['"color": "#654321",', '"color": "#fedcba"']);
+    // `gap: 12px` is not reported: only font-size and border-radius have exact tokens.
+    const px = result.pxWarnings.filter((w) => w.file.endsWith("panel.json")).map((w) => w.text);
+    expect(px).toEqual(['"fontSize": "12px",', '"borderRadius": "4px",']);
+  });
+
+  test("an animation name defined twice is reported at BOTH sites", () => {
+    /* A `@keyframes` name is document-global: CSS keeps the LAST definition and ignores every
+       earlier one, with no parse error either way. Both sites are named because neither is wrong on
+       its own — the reader has to choose which to delete, and naming one hides half the problem. */
+    const sites = result.duplicateAnimations.filter((f) => f.text === "pulse");
+    expect(sites.map((f) => f.file).toSorted()).toEqual(["styles/anim.css", "styles/modals.css"]);
+  });
+
+  test("an animation name defined once is not reported", () => {
+    expect(result.duplicateAnimations.some((f) => f.text === "solo")).toBe(false);
+  });
+
+  test("a class a surface names is held to the orphan rule, and a computed one is not", () => {
+    const orphaned = new Set(result.allOrphans.map((o) => o.text));
+    expect(orphaned.has("surface-orphan")).toBe(true);
+    // Defined in src/a.css, so naming it from a document is not an escape.
+    expect(orphaned.has("from-css")).toBe(false);
+    expect([...orphaned].some((name) => name.startsWith("computed-"))).toBe(false);
   });
 
   test("reports every allow-listed name that is no longer orphaned as stale", () => {
@@ -481,9 +601,31 @@ describe("collect", () => {
     expect(paired.text).toContain("no allowance");
   });
 
-  test("reports a modal card that no rule lifts above its own underlay", () => {
-    expect(result.underScrim.map((u) => `${u.file}:${u.line}`)).toEqual(["src/modals.ts:2"]);
-    expect(result.underScrim[0]!.text).toContain(".sunken");
+  test("reports the overlay layer the fixture never stamped", () => {
+    /* Its predecessor asserted the same guarantee against the shape Spectrum gave it: a modal card
+       opened beside an `<sp-underlay>` that no rule lifted above the scrim. That element cannot be
+       constructed any more, and the ban below is what keeps it that way, so the ordering itself —
+       which `styles/shell-frame.json` says was made a class FOR this rule — is what is checked. */
+    expect(result.overlayOrder).toHaveLength(1);
+    expect(result.overlayOrder[0]!.text).toContain(".jx-layer--toast has no z-index");
+  });
+
+  test("reports every Spectrum name still written in code, whatever the file kind", () => {
+    /* Three writers, three file kinds: a template tag, a selector STRING (the shape a rule that
+       blanked strings would miss), and a token in a stylesheet. */
+    const said = result.spectrum.map((f) => `${f.file}:${f.text}`).toSorted();
+    expect(said).toContain("src/app.ts:sp-picker");
+    expect(said).toContain("src/inject.ts:sp-textfield");
+    expect(said).toContain("styles/x.css:--spectrum-gray-100");
+  });
+
+  test("does not read the prose the migration is written in", () => {
+    /* `src/prose.ts` names three Spectrum things in comments and the surface names one in a
+       `$description`. Both are the record of what a value USED to be, which is the most valuable
+       thing those files carry — a ban that forced them to be coy would delete more than it kept. */
+    const files = new Set(result.spectrum.map((f) => f.file));
+    expect(files.has("src/prose.ts")).toBe(false);
+    expect(files.has("src/surfaces/doc.json")).toBe(false);
   });
 
   test("reports every allowance the tree no longer needs as stale — the same ratchet", () => {
@@ -507,7 +649,9 @@ describe("report", () => {
     staleFocusRings: [],
     contrast: [],
     guidelineTokens: [],
-    underScrim: [],
+    overlayOrder: [],
+    spectrum: [],
+    duplicateAnimations: [],
   };
   const finding = (text: string): { file: string; line: number; text: string } => ({
     file: "src/a.ts",
@@ -622,6 +766,26 @@ describe("report", () => {
     expect(logs.join("\n")).toContain("stale FOCUS_RING_ALLOWANCES");
   });
 
+  test("fails on a @keyframes name defined twice, naming every site and counting names once", () => {
+    /* Every definition of a duplicated name arrives as its own finding, so the headline has to
+       count NAMES (a set), not findings — "4 animation name(s)" for two names would send the reader
+       hunting for the other two. Each site is listed as file:line so both definitions can be found. */
+    const duplicateAnimations = [
+      { file: "styles/anim.css", line: 3, text: "pulse" },
+      { file: "styles/modals.css", line: 12, text: "pulse" },
+      { file: "styles/toast.css", line: 7, text: "toast-in" },
+      { file: "styles/toast.css", line: 30, text: "toast-in" },
+    ];
+    expect(report({ ...empty, duplicateAnimations })).toBe(1);
+    const out = logs.join("\n");
+    expect(out).toContain("2 animation name(s) defined more than once");
+    expect(out).toContain("keeps the LAST definition");
+    expect(out).toContain("styles/anim.css:3  pulse");
+    expect(out).toContain("styles/modals.css:12  pulse");
+    expect(out).toContain("styles/toast.css:7  toast-in");
+    expect(out).toContain("styles/toast.css:30  toast-in");
+  });
+
   test("says how many suppressions are still paired when everything is clean", () => {
     expect(report(empty)).toBe(0);
     expect(logs.join("\n")).toContain("focus-ring suppression(s) each paired");
@@ -687,43 +851,114 @@ describe("countBareCatches", () => {
   });
 });
 
-describe("extractUnderlayCards", () => {
-  test("takes the card beside the scrim, not the elements inside it", () => {
-    const source = [
-      "html`<sp-underlay open></sp-underlay>",
-      '<div class="progress-modal"><div class="progress-head"><strong class="t"></strong></div></div>`;',
-    ].join("\n");
-    expect(extractUnderlayCards(source)).toEqual([{ classes: ["progress-modal"], line: 1 }]);
-  });
-
-  test("keeps every class on the card — any one of them may carry the z-index", () => {
-    const source =
-      'html`<sp-underlay open></sp-underlay><div class="new-project-modal add-repo"></div>`;';
-    expect(extractUnderlayCards(source)[0]!.classes).toEqual(["new-project-modal", "add-repo"]);
-  });
-
-  test("a template with no underlay declares no card", () => {
-    expect(extractUnderlayCards('html`<div class="plain"></div>`;')).toEqual([]);
-  });
-
-  test("an interpolated class token is not a name this rule can check", () => {
-    const source = 'html`<sp-underlay open></sp-underlay><div class="card ${mode}"></div>`;';
-    expect(extractUnderlayCards(source)[0]!.classes).toEqual(["card"]);
-  });
-});
-
 describe("stackedClasses", () => {
   test("credits a positive z-index, in any rule that names the class", () => {
-    expect([...stackedClasses(".a { z-index: 1000 }")]).toEqual(["a"]);
-    expect([...stackedClasses(".b { position: fixed;\n  z-index: 3; }")]).toEqual(["b"]);
-  });
-
-  test("a token reference counts — the value is not this rule's business", () => {
-    expect([...stackedClasses(".c { z-index: var(--layer-modal) }")]).toEqual(["c"]);
+    expect([...stackedClasses(".a { z-index: 1000 }")]).toEqual([["a", 1000]]);
+    expect([...stackedClasses(".b { position: fixed;\n  z-index: 3; }")]).toEqual([["b", 3]]);
   });
 
   test("z-index: auto and 0 stack nothing — they are the defect", () => {
     expect([...stackedClasses(".d { z-index: auto }\n.e { z-index: 0 }")]).toEqual([]);
+  });
+
+  test("a token reference is no longer credited — the rule compares numbers now", () => {
+    /* It used to be, because the old question was only "does SOMETHING stack this". The question
+       is now "is this layer above that one", which a `var()` cannot answer, and crediting it would
+       let an unresolvable reference pass as an order. */
+    expect([...stackedClasses(".c { z-index: var(--layer-modal) }")]).toEqual([]);
+  });
+});
+
+describe("overlayOrderFindings", () => {
+  const ORDER = new Map([
+    ["jx-layer--popover", 1000],
+    ["jx-layer--modal", 2000],
+    ["jx-layer--dialog", 3000],
+    ["jx-layer--toast", 4000],
+  ]);
+
+  test("the shipped order passes — the positive control", () => {
+    expect(overlayOrderFindings(new Map(ORDER))).toEqual([]);
+  });
+
+  test("an undeclared layer is reported by name", () => {
+    const missing = new Map(ORDER);
+    missing.delete("jx-layer--dialog");
+    expect(overlayOrderFindings(missing)).toHaveLength(1);
+    expect(overlayOrderFindings(missing)[0]!.text).toContain("jx-layer--dialog has no z-index");
+  });
+
+  test("an equal pair is a finding — a tie is resolved silently by document order", () => {
+    const tied = new Map(ORDER).set("jx-layer--toast", 3000);
+    expect(overlayOrderFindings(tied)[0]!.text).toContain("not above .jx-layer--dialog");
+  });
+
+  test("a toast under its dialog is the case the layer comment exists for", () => {
+    const swapped = new Map(ORDER).set("jx-layer--toast", 500);
+    expect(overlayOrderFindings(swapped)).toHaveLength(1);
+    expect(overlayOrderFindings(swapped)[0]!.text).toContain(".jx-layer--toast is at z-index 500");
+  });
+});
+
+describe("scanSpectrum", () => {
+  test("finds a tag and a token, and reports the name it found", () => {
+    const found = scanSpectrum("a.ts", 'q("sp-picker");\nvar(--spectrum-gray-100)');
+    expect(found.map((f) => `${f.line}:${f.text}`)).toEqual([
+      "1:sp-picker",
+      "2:--spectrum-gray-100",
+    ]);
+  });
+
+  test("a word merely containing sp- is not a tag", () => {
+    /* Word-bounded on purpose: `resp-` reads as one word, so a rule that flagged it would be turned
+       off within a week. */
+    expect(scanSpectrum("a.ts", "const respLess = resp-1;\nel.dataset.jxSpOpen = '';")).toEqual([]);
+  });
+
+  test("but a HYPHEN before it is a boundary, and that is the known false positive", () => {
+    /* `data-jx-sp-open` would be read as the tag `sp-open`. No such name exists in the package
+       today — `grep -E "[a-z0-9]-sp-[a-z]"` over `src` and `styles` returns nothing — so this is
+       recorded rather than worked around: a regex that also excluded a preceding hyphen would stop
+       matching `.foo sp-picker`, which is the selector shape the rule most needs to catch. If a
+       `-sp-` name ever arrives, rename it or give it an entry in SPECTRUM_ALLOWED with a sentence. */
+    expect(scanSpectrum("a.ts", 'el.setAttribute("data-jx-sp-open", "");')[0]?.text).toBe(
+      "sp-open",
+    );
+  });
+
+  test("the allow-list is empty, and that is the assertion", () => {
+    expect(SPECTRUM_ALLOWED).toEqual([]);
+  });
+});
+
+describe("what the ban reads", () => {
+  test("stripComments blanks a comment and keeps the string beside it", () => {
+    const out = stripComments('// sp-picker\nconst s = "sp-textfield";');
+    expect(out).not.toContain("sp-picker");
+    expect(out).toContain("sp-textfield");
+  });
+
+  test("stripComments preserves line numbers", () => {
+    expect(stripComments("/* sp-a\n sp-b */\nx").split("\n")).toHaveLength(3);
+  });
+
+  test("stripCssComments blanks the note and keeps the declaration", () => {
+    const out = stripCssComments("/* was --spectrum-gray-100 */\n.a { color: var(--fg) }");
+    expect(out).not.toContain("--spectrum-");
+    expect(out).toContain("var(--fg)");
+  });
+
+  test("stripDocProse blanks $description and $comment, and nothing else", () => {
+    const json = '{"$description":"read --spectrum-font-size-50","color":"var(--spectrum-white)"}';
+    const out = stripDocProse(json);
+    expect(out).not.toContain("--spectrum-font-size-50");
+    expect(out).toContain("--spectrum-white");
+  });
+
+  test("stripDocProse survives an escaped quote inside the prose", () => {
+    const json = String.raw`{"$description":"it said \"sp-theme\" once","a":"sp-picker"}`;
+    expect(stripDocProse(json)).toContain("sp-picker");
+    expect(stripDocProse(json)).not.toContain("sp-theme");
   });
 });
 
@@ -746,19 +981,19 @@ describe("contrastRatio", () => {
 
 describe("tokenFallbacks", () => {
   test("reads the hex fallback out of each token declaration", () => {
-    const css = "sp-theme {\n  --bg: var(--spectrum-x, #111111);\n  --fg: var(--y, #E4E4E7);\n}";
+    const css = ":root {\n  --bg: var(--jx-bg, #111111);\n  --fg: var(--y, #E4E4E7);\n}";
     expect(tokenFallbacks(css).get("--bg")).toBe("#111111");
     // Lowercased, so a spec row and a declaration cannot differ only by case.
     expect(tokenFallbacks(css).get("--fg")).toBe("#e4e4e7");
   });
 
   test("a token with no hex fallback is simply absent", () => {
-    expect(tokenFallbacks("sp-theme { --hover-bg: rgba(255,255,255,0.04); }").size).toBe(0);
+    expect(tokenFallbacks(":root { --hover-bg: rgba(255,255,255,0.04); }").size).toBe(0);
   });
 });
 
 describe("guidelineTokenFindings", () => {
-  const css = "sp-theme {\n  --bg: var(--spectrum-x, #111111);\n  --radius: var(--r, 3px);\n}";
+  const css = ":root {\n  --bg: var(--jx-bg, #111111);\n  --radius: var(--r, 3px);\n}";
 
   test("catches a documented value the app does not ship", () => {
     /*
@@ -823,5 +1058,133 @@ describe("contrastFindings", () => {
     const outgrown = findings.find((f) => f.text.includes("--accent-fg on --accent"));
     expect(outgrown?.text).toContain("now meets 4.5:1 (21.00)");
     expect(outgrown?.text).toContain("delete its CONTRAST_DEBT entry");
+  });
+});
+
+describe("jsonStyleBlocks", () => {
+  test("takes the whole block, nested selectors and at-rules with it", () => {
+    const src = '{\n  "style": {\n    "color": "red",\n    "&:hover": { "color": "blue" }\n  }\n}';
+    const blocks = jsonStyleBlocks(src);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.line).toBe(2);
+    expect(blocks[0]!.text).toContain('"&:hover"');
+    expect(blocks[0]!.text).toContain('"color": "blue"');
+  });
+
+  test("a brace inside a string closes nothing", () => {
+    /* The reason this is brace-matched over the source rather than walked over `JSON.parse`: a
+       finding needs its line, and a parsed object has forgotten where it came from. So the string
+       tracking has to be real. */
+    const src = String.raw`{ "style": { "content": "\"}\"", "color": "#123456" }, "after": 1 }`;
+    const blocks = jsonStyleBlocks(src);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.text).toContain("#123456");
+    expect(blocks[0]!.text).not.toContain("after");
+  });
+
+  test("finds every block in a document, not only the first", () => {
+    const src = '{ "style": { "a": "1" }, "children": [{ "style": { "b": "2" } }] }';
+    expect(jsonStyleBlocks(src).length).toBe(2);
+  });
+
+  test("a `style` string attribute is not a block", () => {
+    expect(jsonStyleBlocks('{ "attributes": { "style": "color: red" } }')).toEqual([]);
+  });
+});
+
+describe("scanJsonStyle", () => {
+  const at = (src: string) => scanJsonStyle("s.json", src);
+
+  test("reports a raw hex in a style value, at its own line", () => {
+    const src = '{\n  "style": {\n    "color": "#654321"\n  }\n}';
+    expect(at(src).errors).toEqual([{ file: "s.json", line: 3, text: '"color": "#654321"' }]);
+  });
+
+  test("forgives an allow-listed hex and a var() fallback", () => {
+    expect(at('{ "style": { "background": "#ff5f57" } }').errors).toEqual([]);
+    expect(at('{ "style": { "color": "var(--fg, #123456)" } }').errors).toEqual([]);
+  });
+
+  test("reads a style value and nothing else in the document", () => {
+    const src = '{ "textContent": "#123456", "$description": "#abcdef", "style": { "gap": "0" } }';
+    expect(at(src).errors).toEqual([]);
+  });
+
+  test("nudges a tokenizable font-size and border-radius, in either spelling", () => {
+    expect(at('{ "style": { "fontSize": "12px" } }').warnings.length).toBe(1);
+    expect(at('{ "style": { "font-size": "12px" } }').warnings.length).toBe(1);
+    expect(at('{ "style": { "borderRadius": "4px" } }').warnings.length).toBe(1);
+    expect(at('{ "style": { "border-radius": "4px" } }').warnings.length).toBe(1);
+  });
+
+  test("leaves a px with no exact token alone, and a non-tokenizable property alone", () => {
+    expect(at('{ "style": { "fontSize": "13px" } }').warnings).toEqual([]);
+    expect(at('{ "style": { "gap": "12px" } }').warnings).toEqual([]);
+    expect(at('{ "style": { "width": "4px" } }').warnings).toEqual([]);
+  });
+});
+
+describe("surfaceDefinedClasses", () => {
+  test("reads the classes a document's own style block declares rules for", () => {
+    const src = '{ "style": { "& .tabulator-cell.jx-grid-cell--dirty": { "color": "red" } } }';
+    expect(surfaceDefinedClasses(src)).toEqual(["tabulator-cell", "jx-grid-cell--dirty"]);
+  });
+
+  test("ignores a declaration, which is a property rather than a selector", () => {
+    expect(surfaceDefinedClasses('{ "style": { "fontSize": "12px" } }')).toEqual([]);
+  });
+
+  test("ignores a selector with no class in it", () => {
+    expect(surfaceDefinedClasses('{ "style": { "&:hover": { "color": "red" } } }')).toEqual([]);
+  });
+
+  /* The case that made this exist. A document styles what its ISLAND writes, so the emission is in
+     TypeScript and the definition is in the JSON beside it — and without this the orphan rule saw
+     only `styles/*.css` and reported six live grid state classes as having no rule at all. */
+  test("a class emitted by an island and styled by its document is not an orphan", () => {
+    const doc = '{ "style": { "& .tabulator-row.jx-grid-row--stale": { "opacity": "0.5" } } }';
+    expect(surfaceDefinedClasses(doc)).toContain("jx-grid-row--stale");
+  });
+});
+
+describe("surfaceClasses", () => {
+  test("reads both spellings, with the line each is on", () => {
+    const src = '{\n  "attributes": { "class": "row wide" },\n  "className": "tail"\n}';
+    expect(surfaceClasses(src)).toEqual([
+      ["row", 2],
+      ["wide", 2],
+      ["tail", 3],
+    ]);
+  });
+
+  test("drops a computed token and keeps its literal siblings", () => {
+    expect(surfaceClasses('{ "class": "tab tab-${state.kind} active" }')).toEqual([
+      ["tab", 1],
+      ["active", 1],
+    ]);
+  });
+
+  test("finds nothing in a document that names no class, which is every one of them", () => {
+    expect(surfaceClasses('{ "tagName": "div", "attributes": { "part": "row" } }')).toEqual([]);
+  });
+});
+
+describe("keyframeNames", () => {
+  test("reads a stylesheet's names, with the line each is on", () => {
+    expect(keyframeNames("a { b: 1 }\n@keyframes pulse {\n}\n@keyframes fade-in {\n}")).toEqual([
+      ["pulse", 2],
+      ["fade-in", 4],
+    ]);
+  });
+
+  test("reads a surface document's spelling too", () => {
+    // The name is in the KEY there, exactly as the runtime's own prefix match reads it.
+    expect(keyframeNames('{ "style": { "@keyframes toast-in": { "from": {} } } }')).toEqual([
+      ["toast-in", 1],
+    ]);
+  });
+
+  test("finds nothing where nothing is defined", () => {
+    expect(keyframeNames("a { animation: pulse 1s }")).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ title: "Quick Access"
 description: "Open any file in your project by name with the Quick Access palette: how to open it, what it searches, and its keyboard controls."
 code:
   - packages/studio/src/panels/quick-search.ts
+  - packages/studio/src/surfaces/palette.json
 ---
 
 # Quick Access
@@ -30,11 +31,9 @@ With no project open, the palette lists your recent projects instead. Pick one t
 
 ## Keyboard controls
 
-- :kbd[↓] and :kbd[↑] move through the results.
+- :kbd[↓] and :kbd[↑] move through the results, and the list scrolls to keep the highlighted row in view.
 - :kbd[Enter] opens the highlighted result in a tab.
-- :kbd[Esc] closes the palette.
-
-The mouse works too: click any row to open it.
+- :kbd[Esc] closes the palette. The mouse works too: click any row to open it. Closing is a display change, so reopening is instant: the palette stays mounted and hidden while closed, and the rows you ranked last time are already there when it opens.
 
 ## Next
 

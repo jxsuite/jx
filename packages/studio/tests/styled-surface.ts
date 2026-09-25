@@ -64,7 +64,7 @@ export async function emittedClassesOf(rel: string): Promise<Set<string>> {
  * a rule in `styles/*.css` that silently does nothing. Rendered as `tag[declarations]` strings
  * because a failure has to say WHICH element and WHAT it declares — an element count does not
  * survive being read six months later. Elements another module renders into the same subtree
- * (`ui/field-row.ts`'s rows, `ui/formula-chips.ts`'s chips) are not this file's to answer for.
+ * (`ui/field-row.ts`'s rows) are not this file's to answer for.
  */
 export function inlineStyledOwn(root: ParentNode, own: Set<string>): string[] {
   return [...root.querySelectorAll("[style]")]

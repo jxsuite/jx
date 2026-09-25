@@ -1,0 +1,110 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioProgressModal",
+  "$description": "The one surface in Studio that blocks while it works: the operation's name, a spinner, the line under it, and the two ways out. A `jx-dialog`, so the platform owns modality, the backdrop, focus restoration and Escape — which is what retired the `sp-underlay` this surface used to paint beside itself, and with it the fixed box, the panel, the shadow and the `z-index: 1000` that box needed to climb back out from under its own scrim. The two answers are the dialog's own: confirm is `Run in the background`, which stops the BLOCKING and leaves the work running in Activity, and the secondary answer is Cancel, drawn only when the operation handed one over. It is the secondary rather than the cancel answer for a reason that is behavioural, not cosmetic: the platform raises one `cancel` for Escape, for a light dismissal and for the cancel button alike, and a surface that cannot tell them apart would stop a dependency install on a keystroke. Escape therefore means what confirm means — stop blocking, not stop working — and the answer that stops the work is a button and only a button.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": {
+      "$ref": "#/state/title"
+    },
+    "confirmLabel": "Run in the background",
+    "secondaryLabel": {
+      "$ref": "#/state/cancelLabel"
+    },
+    "cancelLabel": "",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "progress"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/background"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onsecondary": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/cancel"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/background"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "What is left once `jx-dialog` has drawn the dialog. `.progress-modal` is gone rather than moved — it positioned a fixed box, painted its panel, border, radius and shadow, capped its height and then lifted itself above the scrim it rendered beside — and a modal `<dialog>` in the top layer is every one of those. `.progress-title` went the same way: the operation's name is the dialog's headline, which is also its accessible name, so nothing here draws a title.",
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"status\"]": {
+      "$description": "`anywhere`, because a status line is usually a path or a package spec with no space in it, and one of those would otherwise be the thing that decides how wide the dialog is. `min-width: 0` is what lets it wrap at all: a flex item's automatic minimum is its content, so without this the row refuses to shrink and the text overflows instead.",
+      "minWidth": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "overflowWrap": "anywhere"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "row"
+      },
+      "children": [
+        {
+          "tagName": "jx-spinner",
+          "attributes": {
+            "part": "busy"
+          },
+          "$props": {
+            "size": "lg"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "status",
+            "aria-live": "polite"
+          },
+          "textContent": "${state.status}"
+        }
+      ]
+    }
+  ]
+}

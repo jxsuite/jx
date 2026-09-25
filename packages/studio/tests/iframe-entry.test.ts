@@ -1,5 +1,6 @@
 import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
+import { documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
 import { flush } from "./harness";
 import { bootCanvasIframe, layoutHitFor, startCanvasIframe } from "../src/canvas/iframe-entry";
@@ -13,7 +14,12 @@ const WIRE_CTX: WireMapperCtx = {
   pageContentPrefix: null,
 };
 
-function renderMsg(gen: number, doc: unknown, shadowDoc: unknown = doc): ParentToIframe {
+function renderMsg(
+  gen: number,
+  doc: unknown,
+  shadowDoc: unknown = doc,
+  extra: Partial<ParentToIframe & { mode: string }> = {},
+): ParentToIframe {
   return {
     colorScheme: null,
     doc,
@@ -24,7 +30,42 @@ function renderMsg(gen: number, doc: unknown, shadowDoc: unknown = doc): ParentT
     mode: "design",
     shadowDoc,
     siteStyle: null,
-  };
+    ...extra,
+  } as ParentToIframe;
+}
+
+/** A document whose only child is a popover panel, as the runtime de-popovers it in the canvas. */
+const POPOVER_DOC = {
+  children: [{ attributes: { popover: "auto" }, children: ["Menu"], tagName: "nav" }],
+  tagName: "div",
+};
+
+/** The panel element in the rendered container, whatever the container is. */
+function panel(): HTMLElement | null {
+  return document.querySelector("[data-jx-popover]");
+}
+
+/** A document whose only child is an open dialog, as the runtime de-links it in the canvas. */
+const DIALOG_DOC = {
+  children: [{ attributes: { open: "" }, children: ["Confirm"], tagName: "dialog" }],
+  tagName: "div",
+};
+
+/** A dialog with a popover panel inside it: the two reveal rules at once. */
+const BOTH_DOC = {
+  children: [
+    {
+      attributes: { open: "" },
+      children: [{ attributes: { popover: "auto" }, children: ["Menu"], tagName: "nav" }],
+      tagName: "dialog",
+    },
+  ],
+  tagName: "div",
+};
+
+/** The dialog element in the rendered container. */
+function dialogEl(): HTMLElement | null {
+  return document.querySelector("dialog");
 }
 
 let teardown: (() => void) | undefined;
@@ -1336,10 +1377,8 @@ describe("startCanvasIframe — stylebook mode", () => {
   });
 
   async function bootStylebook(gen: number) {
-    // Scoped style tags land in document.head and outlive the per-test body reset.
-    for (const tag of document.head.querySelectorAll("style[data-jx-owner]")) {
-      tag.remove();
-    }
+    // Adopted rules live on the document and outlive the per-test body reset.
+    resetDocumentStyles();
     const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
     const acks: IframeToParent[] = [];
     pair.parent.onMessage((m) => acks.push(m));
@@ -1353,10 +1392,7 @@ describe("startCanvasIframe — stylebook mode", () => {
     return { acks, container, pair };
   }
 
-  const headCss = () =>
-    [...document.head.querySelectorAll("style[data-jx-owner]")]
-      .map((s) => s.textContent)
-      .join("\n");
+  const headCss = () => documentStyleText();
 
   test("styleUpdate at the rendered gen reapplies the root style WITHOUT a re-render", async () => {
     const { container, pair } = await bootStylebook(3);
@@ -1601,5 +1637,152 @@ describe("startCanvasIframe — layout chrome clicks", () => {
     container.querySelector("h1")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     pair.flush();
     expect(acks.some((m) => m.kind === "layoutHit")).toBe(false);
+  });
+});
+
+describe("startCanvasIframe — setPopoverOpen", () => {
+  /** Mount a frame showing POPOVER_DOC in `mode` and return the channel pair. */
+  async function mounted(mode = "design") {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    pair.parent.post(renderMsg(1, POPOVER_DOC, POPOVER_DOC, { mode }));
+    pair.flush();
+    await flush();
+    pair.flush();
+    return pair;
+  }
+
+  test("the render de-popovers the panel, so it leaves the top layer", async () => {
+    await mounted();
+    expect(panel()).not.toBeNull();
+    expect(panel()!.getAttribute("popover")).toBeNull();
+  });
+
+  test("opening flips one attribute and needs no re-render", async () => {
+    const pair = await mounted();
+    const acks: IframeToParent[] = [];
+    pair.parent.onMessage((m) => acks.push(m));
+    pair.parent.post({ kind: "setPopoverOpen", path: ["children", 0] });
+    pair.flush();
+    expect(panel()!.dataset.jxPopoverOpen).toBe("");
+    expect(acks.some((m) => m.kind === "renderComplete")).toBe(false);
+  });
+
+  test("null closes it again", async () => {
+    const pair = await mounted();
+    pair.parent.post({ kind: "setPopoverOpen", path: ["children", 0] });
+    pair.flush();
+    pair.parent.post({ kind: "setPopoverOpen", path: null });
+    pair.flush();
+    expect(panel()!.dataset.jxPopoverOpen).toBeUndefined();
+  });
+
+  test("preview refuses it in the FRAME as well as in the host", async () => {
+    // Both realms enforce every editing gate (§4.2): the canvas bundle ships prebuilt, so neither
+    // Side may assume the other's build is current.
+    const pair = await mounted("preview");
+    pair.parent.post({ kind: "setPopoverOpen", path: ["children", 0] });
+    pair.flush();
+    expect(document.querySelector("[data-jx-popover-open]")).toBeNull();
+  });
+
+  test("a render restores the open panel, because a render replaces the DOM", async () => {
+    const pair = await mounted();
+    pair.parent.post(
+      renderMsg(2, POPOVER_DOC, POPOVER_DOC, { popoverOpen: ["children", 0] } as never),
+    );
+    pair.flush();
+    await flush();
+    pair.flush();
+    expect(panel()!.dataset.jxPopoverOpen).toBe("");
+  });
+});
+
+describe("startCanvasIframe — setDialogOpen", () => {
+  /** Mount a frame showing DIALOG_DOC in `mode` and return the channel pair. */
+  async function mounted(mode = "design") {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    pair.parent.post(renderMsg(1, DIALOG_DOC, DIALOG_DOC, { mode }));
+    pair.flush();
+    await flush();
+    pair.flush();
+    return pair;
+  }
+
+  test("the render de-links the dialog, so it never reaches the top layer", async () => {
+    // A `<dialog open>` in the canvas would be a real modal over the editor: it would take focus,
+    // Make the rest of the page inert, and the reader could not select the node they are editing.
+    await mounted();
+    expect(dialogEl()).not.toBeNull();
+    expect(dialogEl()!.hasAttribute("open")).toBe(false);
+    expect(dialogEl()!.dataset["jxOpen"]).toBe("");
+  });
+
+  test("opening flips one attribute and needs no re-render", async () => {
+    const pair = await mounted();
+    const acks: IframeToParent[] = [];
+    pair.parent.onMessage((m) => acks.push(m));
+    pair.parent.post({ kind: "setDialogOpen", path: ["children", 0] });
+    pair.flush();
+    expect(dialogEl()!.dataset["jxDialogOpen"]).toBe("");
+    expect(acks.some((m) => m.kind === "renderComplete")).toBe(false);
+  });
+
+  test("null closes it again", async () => {
+    const pair = await mounted();
+    pair.parent.post({ kind: "setDialogOpen", path: ["children", 0] });
+    pair.flush();
+    pair.parent.post({ kind: "setDialogOpen", path: null });
+    pair.flush();
+    expect(dialogEl()!.dataset["jxDialogOpen"]).toBeUndefined();
+  });
+
+  test("preview refuses it in the FRAME as well as in the host", async () => {
+    const pair = await mounted("preview");
+    pair.parent.post({ kind: "setDialogOpen", path: ["children", 0] });
+    pair.flush();
+    expect(document.querySelector("[data-jx-dialog-open]")).toBeNull();
+  });
+
+  test("a render restores the open dialog, because a render replaces the DOM", async () => {
+    const pair = await mounted();
+    pair.parent.post(
+      renderMsg(2, DIALOG_DOC, DIALOG_DOC, { dialogOpen: ["children", 0] } as never),
+    );
+    pair.flush();
+    await flush();
+    pair.flush();
+    expect(dialogEl()!.dataset["jxDialogOpen"]).toBe("");
+  });
+
+  test("the two reveal rules compose: a popover opens inside an open dialog", async () => {
+    // Each rule clears only its own marker, so a menu opening inside a dialog must not close the
+    // Dialog under the author's hands — and the dialog's own path must not close the menu either.
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    pair.parent.post(renderMsg(1, BOTH_DOC, BOTH_DOC));
+    pair.flush();
+    await flush();
+    pair.flush();
+
+    pair.parent.post({ kind: "setDialogOpen", path: ["children", 0] });
+    pair.flush();
+    pair.parent.post({ kind: "setPopoverOpen", path: ["children", 0, "children", 0] });
+    pair.flush();
+    expect(dialogEl()!.dataset["jxDialogOpen"]).toBe("");
+    expect(panel()!.dataset["jxPopoverOpen"]).toBe("");
+
+    // Closing the dialog leaves the menu's own marker alone; the host owns that decision.
+    pair.parent.post({ kind: "setDialogOpen", path: null });
+    pair.flush();
+    expect(dialogEl()!.dataset["jxDialogOpen"]).toBeUndefined();
+    expect(panel()!.dataset["jxPopoverOpen"]).toBe("");
   });
 });

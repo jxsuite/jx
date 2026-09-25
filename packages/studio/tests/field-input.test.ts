@@ -1,6 +1,5 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
-import { html, render } from "lit-html";
 import {
   clearDraft,
   commitField,
@@ -8,7 +7,6 @@ import {
   hasDraft,
   scheduleDraftCommit,
   setDraft,
-  spTextField,
 } from "../src/ui/field-input";
 
 describe("field-input draft store", () => {
@@ -90,18 +88,5 @@ describe("draft commit semantics", () => {
       setTimeout(r, 80);
     });
     expect(calls).toBe(1); // The debounce timer was cancelled by commitField
-  });
-});
-
-describe("spTextField widget render", () => {
-  test("renders an sp-textfield showing the current draft value", () => {
-    const container = document.createElement("div");
-    setDraft("r1", "draftval");
-    render(html`<div>${spTextField("r1", "committed", () => {})}</div>`, container);
-    const el = container.querySelector("sp-textfield");
-    expect(el).toBeTruthy();
-    // Live() binds the draft value as the property.
-    expect((el as unknown as { value?: string }).value).toBe("draftval");
-    clearDraft("r1");
   });
 });

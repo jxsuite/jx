@@ -1,0 +1,220 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookAccordion",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-accordion-item.json"
+    },
+    {
+      "$ref": "../components/jx-accordion.json"
+    }
+  ],
+  "state": {
+    "last": "nothing yet",
+    "note": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/last"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-5) 0 var(--jx-space-2)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-accordion"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The stack a panel of sections stands in: a column that clips its children's width and draws one hairline BETWEEN them, so a rule falls in every seam and never above the first VISIBLE section. The first stack below opens with a section a panel has bound away, and no hairline is drawn across the top of what is left. The rule is the container's because it is a rule about a child's POSITION among its siblings, which no section can see about itself. Last toggle said: ${state.last}."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A panel of sections"
+    },
+    {
+      "tagName": "jx-accordion",
+      "style": {
+        "maxWidth": "420px",
+        "border": "1px solid var(--jx-border)",
+        "borderRadius": "var(--jx-radius-md)",
+        "background": "var(--jx-bg-panel)"
+      },
+      "children": [
+        {
+          "tagName": "jx-accordion-item",
+          "attributes": {
+            "hidden": ""
+          },
+          "$props": {
+            "label": "Bound away"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "A panel that binds hidden on a section is why the seam asks for the first VISIBLE child rather than the first child. Unhide this in the inspector and the hairline moves to the section below it."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-accordion-item",
+          "$props": {
+            "label": "Layout",
+            "open": true
+          },
+          "ontoggle": {
+            "$ref": "#/state/note"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "Display, position and the box model. The panel's frame is written on the usage site rather than in the element, because a border and a background are this page's idea of a panel and not the stack's."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-accordion-item",
+          "$props": {
+            "label": "Typography"
+          },
+          "ontoggle": {
+            "$ref": "#/state/note"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "The hairline above this section is the container's rule, and the first section a reader sees has none — the hidden one above it does not count."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-accordion-item",
+          "$props": {
+            "label": "Nesting"
+          },
+          "ontoggle": {
+            "$ref": "#/state/note"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "A stack inside a section keeps its own seams, because the rule reaches direct children only."
+            },
+            {
+              "tagName": "jx-accordion",
+              "children": [
+                {
+                  "tagName": "jx-accordion-item",
+                  "$props": {
+                    "label": "Inner first"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "textContent": "No rule above this one either."
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-accordion-item",
+                  "$props": {
+                    "label": "Inner second"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "textContent": "One seam, in the inner stack."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "One at a time"
+    },
+    {
+      "tagName": "p",
+      "textContent": "multiple=\"false\" is the container writing down what the panel is for; the platform's own switch is name on each section, and only the section may carry it."
+    },
+    {
+      "tagName": "jx-accordion",
+      "$props": {
+        "multiple": false
+      },
+      "style": {
+        "maxWidth": "420px",
+        "border": "1px solid var(--jx-border)",
+        "borderRadius": "var(--jx-radius-md)",
+        "background": "var(--jx-bg-panel)"
+      },
+      "children": [
+        {
+          "tagName": "jx-accordion-item",
+          "$props": {
+            "label": "First",
+            "name": "stylebook-exclusive",
+            "open": true
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "Every item here carries the same name, so the platform closes the others when one opens."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-accordion-item",
+          "$props": {
+            "label": "Second",
+            "name": "stylebook-exclusive"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "No shipped Studio panel wants this — all six keep several sections open at once — but the platform gives it for one forwarded attribute."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

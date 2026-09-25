@@ -2,8 +2,8 @@
  * Presence chips — who else is in this co-editing session, the sync-status pill that replaces the
  * dirty dot for collab tabs, and the two states co-editing had no way to announce (§7.4).
  *
- * Pure lit templates over `collabState(tab)`; the toolbar includes them and its render effect
- * tracks the underlying reactive state.
+ * Pure projections of `collabState(tab)`: the Command Bar surface draws the cluster and the pane's
+ * own chrome draws the banner, and both are documents, so nothing here renders.
  *
  * **What was invisible.** Three things:
  *
@@ -12,7 +12,10 @@
  *   precisely what a bug looks like. It gets a persistent indicator, so the refusal has a visible
  *   cause standing beside it for as long as it is true.
  * - **Read-only guests.** Their edits applied locally and were dropped at the publish gate. They now
- *   get a banner that says so before they type, not a silence after.
+ *   get a banner that says so before they type, not a silence after. The banner itself lives in
+ *   `surfaces/pane-context.json`, drawn from `collabState(tab)` by the pane's own chrome: the
+ *   sentence has to stand above the editing surface and inside the band the stage is offset by, and
+ *   that band is a document now. What stays here is everything the TOOLBAR draws.
  * - **A failed attach.** It set `status = "detached"` — the same value a solo document carries — so a
  *   dead relay was indistinguishable from nobody having shared the file. `"failed"` and
  *   `"unavailable"` are now separate states with separate sentences.
@@ -23,8 +26,6 @@
  * precisely because silently undoing someone else's work is worse than not undoing.
  */
 
-import { html, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
 import { collabState } from "./collab-state";
 import type { CollabTabStatus, PeerPresence } from "./collab-state";
 import type { Tab } from "../tabs/tab";
@@ -71,81 +72,58 @@ export function statusTitle(status: CollabTabStatus, attachError: string): strin
   return STATUS_LABEL[status];
 }
 
-/** Chips + status pill for the toolbar; `nothing` while the tab has no collaboration to report. */
-export function presenceChipsTemplate(tab: Tab | null): TemplateResult | typeof nothing {
-  if (!tab) {
-    return nothing;
-  }
-  const state = collabState(tab);
-  /* "unavailable" is the only silent state: this build has no collaboration, so there is nothing to
-     be honest ABOUT. Every other state — including solo and failed — says which one it is. */
-  if (state.status === "unavailable") {
-    return nothing;
-  }
-  const label = STATUS_LABEL[state.status] || state.status;
-  return html`
-    <div class="jx-presence" title=${statusTitle(state.status, state.attachError)}>
-      <span class="jx-presence-status" data-status=${state.status}>${label}</span>
-      ${
-        state.readOnly
-          ? html`<span
-              class="jx-presence-flag"
-              data-flag="read-only"
-              title="You have read access to this session. Your edits show here but are not published to the others."
-              >Read-only</span
-            >`
-          : nothing
-      }
-      ${
-        state.sourceCanonical
-          ? html`<span
-              class="jx-presence-flag"
-              data-flag="frozen"
-              title="Someone is editing the code view. Structural edits are paused until they stop — this is not an error."
-              >Code view held</span
-            >`
-          : nothing
-      }
-      ${state.peers.map(
-        (peer) => html`
-          <span
-            class="jx-presence-chip"
-            style="background:${peer.state.user.color}"
-            title=${titleOf(peer, tab.documentPath)}
-            >${
-              peer.state.user.avatarUrl
-                ? html`<img src=${peer.state.user.avatarUrl} alt=${initialOf(peer)} />`
-                : initialOf(peer)
-            }</span
-          >
-        `,
-      )}
-    </div>
-  `;
+/** One peer, as the Command Bar draws it: a coloured chip with the person's initial or avatar. */
+export interface PresencePeerProjection {
+  /** The awareness client id, the row key. */
+  key: number;
+  color: string;
+  /** Who, and where they are when it is not this document. */
+  title: string;
+  initial: string;
+  avatarUrl: string;
+  hasAvatar: boolean;
+}
+
+/** The presence cluster, projected for the `commandbar` surface. */
+export interface PresenceProjection {
+  status: CollabTabStatus;
+  /** The status word: Live, Solo, Offline… */
+  label: string;
+  /** The sentence behind the cluster, from {@link statusTitle}. */
+  title: string;
+  readOnly: boolean;
+  /** Someone holds the code view, so structural edits are paused. */
+  frozen: boolean;
+  peers: PresencePeerProjection[];
 }
 
 /**
- * The read-only banner — a standing statement, not an after-the-fact refusal.
+ * The presence cluster for a tab, or null when there is nothing to say.
  *
- * A guest without write access used to watch their edits apply locally and be dropped silently at
- * the publish gate, which reads as the app losing work. The sentence has to be there before the
- * first keystroke, so it is rendered by the PANE CHROME (`panels/pane-context.ts`) rather than by
- * the toolbar the chips ride in: the chrome is per-pane and per-document, it sits directly above
- * the editing surface, and the stage is offset by the band it lives in — so the banner pushes the
- * document down instead of covering it.
+ * "unavailable" is the only silent state: this build has no collaboration, so there is nothing to
+ * be honest ABOUT. Every other state — including solo and failed — says which one it is.
  */
-export function readOnlyBannerTemplate(tab: Tab | null): TemplateResult | typeof nothing {
+export function presenceProjection(tab: Tab | null): PresenceProjection | null {
   if (!tab) {
-    return nothing;
+    return null;
   }
   const state = collabState(tab);
-  if (!state.active || !state.readOnly) {
-    return nothing;
+  if (state.status === "unavailable") {
+    return null;
   }
-  return html`
-    <div class="jx-collab-banner" role="status" data-kind="read-only">
-      You have read access to this session. You can explore and edit locally, but your changes are
-      not published to the other people in it.
-    </div>
-  `;
+  return {
+    frozen: state.sourceCanonical,
+    label: STATUS_LABEL[state.status] || state.status,
+    peers: state.peers.map((peer) => ({
+      avatarUrl: peer.state.user.avatarUrl ?? "",
+      color: peer.state.user.color,
+      hasAvatar: Boolean(peer.state.user.avatarUrl),
+      initial: initialOf(peer),
+      key: peer.clientId,
+      title: titleOf(peer, tab.documentPath),
+    })),
+    readOnly: state.readOnly,
+    status: state.status,
+    title: statusTitle(state.status, state.attachError),
+  };
 }

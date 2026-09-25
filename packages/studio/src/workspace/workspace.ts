@@ -10,7 +10,9 @@ import {
   stringArg,
   stringProperty,
 } from "../commands/command-args";
+import { EDITOR_KIND_LABELS } from "../commands/context";
 import type { Tab, TabOrigin } from "../tabs/tab";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 import type { ComponentEntry } from "../files/components";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -86,6 +88,16 @@ export type PaneDerivation =
       media: string | null;
       /** `diff` only: this pane's OWN diff, never `shell.git.diffState`. */
       diff: GitDiffState | null;
+      /**
+       * The `shell.git.rev` {@link diff} was read at, or absent when it was not read by the loader.
+       *
+       * What makes the comparison revalidate. Without it the lens asked once per PATH and never
+       * again, so it went on showing the texts it read when it opened — and change marks over a
+       * stale comparison describe a file the author has since edited. Absent means "not from the
+       * loader", and such a comparison is left alone rather than judged stale on a rev it never
+       * had.
+       */
+      diffRev?: number;
       /**
        * This pane's own scale. `session.ui.zoom` is per-TAB, so under a lens the mobile view and
        * the desktop view it is a lens OF would zoom together.
@@ -356,68 +368,82 @@ export function focusOtherPane() {
  */
 
 /**
- * Split the grid and move the focused tab into the new pane, which becomes focused.
+ * Split the grid and move a tab into the new pane, which becomes focused.
  *
  * Moves rather than duplicates: one tab is one document with one undo history and one collab
  * session, and two strips claiming the same id is the duplicate-`repeat`-key bug §4.3 describes.
  *
+ * The subject is `tabId` when given, else the focused pane's active tab. The drag resolver names
+ * the tab it is carrying — the gesture points at a chip, not at whatever the keyboard is in — and
+ * `⌘\` and `pane.splitRight` call it bare, which is the focused tab as it has always been.
+ *
+ * @param {string} [tabId] The tab to move; defaults to the focused pane's active tab.
  * @returns {Pane | null} The pane the tab landed in, or null when the split was refused
  */
-export function splitRight(): Pane | null {
-  const source = activePane();
-  const tabId = source.activeTabId;
-  const tab = tabId ? workspace.tabs.get(tabId) : null;
-  if (!tabId || !tab) {
+export function splitRight(tabId?: string): Pane | null {
+  const id = tabId ?? activePane().activeTabId;
+  const tab = id ? workspace.tabs.get(id) : null;
+  if (!id || !tab) {
+    return null;
+  }
+  const source = paneOfTab(id);
+  if (!source) {
     return null;
   }
   /* The tab moves AS IT IS. `capToPaneKind` used to run here and rewrite `session.ui.canvasMode`
      when the target pane could not host the tab's kind — which, for a Design tab, meant `⌘\`
      silently reopened your page as Code in the pane you had just made. Both panes host every kind
      now, so a split is a move and nothing else. */
-  const target = receivingPane();
-  detachTab(tabId);
-  insertIntoPane(target, tabId);
+  const target = receivingPane(source.id);
+  detachTab(id);
+  insertIntoPane(target, id);
   /* Focus moves LAST, and every write above went through {@link addPane}'s reactive record.
      Publishing the focus first made the pane observable while it still showed nothing: the
      `activeTab` computed re-ran, cached null, and the jump bar, the Inspector and the toolbar all
      printed "no document" over a stage that was drawing one. The write that should have corrected
      them notified nobody, because it went through the raw literal this used to push. */
-  target.activeTabId = tabId;
+  target.activeTabId = id;
   workspace.activePaneId = target.id;
   resetTabCycle();
-  promoteMru(tabId);
+  promoteMru(id);
   return target;
 }
 
 /**
- * The pane BESIDE the focused one, created if the grid has only one.
+ * The pane beside `paneId`, created if the grid has only one.
  *
  * The `existing ?? addPane(SECONDARY_PANE)` shape {@link splitRight} has always used, named because
- * three callers now want it: the split, `pane.compareWith` and `pane.derive`. Unlike `splitRight`
- * it moves NOTHING — "give me the other pane" and "send my document to it" are two requests, and
- * only the split makes both.
+ * four callers now want it: the split, `pane.compareWith`, `pane.derive` and the drag resolver.
+ * Unlike `splitRight` it moves NOTHING — "give me the other pane" and "send my document to it" are
+ * two requests, and only the split makes both.
+ *
+ * Takes the pane it is asked about rather than reading the focus, because a drag names the pane its
+ * chip came from and `pane.derive`'s preset menu asks about its own pane — and
+ * `scripts/check-pane-singletons.ts` rule 4 refuses a function handed a `paneId` that reads the
+ * focus. The one caller that means "beside ME" passes `activePane().id`.
  *
  * `SECONDARY_PANE` unconditionally, and it is free unconditionally: {@link closePane} refuses to
  * remove the primary, so "there is no other pane" can only mean the grid is exactly `[primary]` and
- * the focused pane is that primary. This used to be `existing?.id ?? SECONDARY_PANE` handed
+ * the asked-about pane is that primary. This used to be `existing?.id ?? SECONDARY_PANE` handed
  * straight to `addPane` with no check that the id was free — which, on a grid of `["secondary"]`,
  * pushed a SECOND record under that id and gave lit's keyed `repeat` a duplicate key. Both ends are
  * closed: the state is unreachable, and {@link addPane} would not mint the duplicate even if it
  * were. {@link MAX_PANES} is therefore satisfied by construction — there are two ids in play.
  *
+ * @param {string} paneId The pane to answer "beside" for.
  * @returns {Pane}
+ * @docs studio/interface/tabs
  */
-export function sidePane(): Pane {
-  const source = activePane();
-  return workspace.panes.find((pane) => pane.id !== source.id) ?? addPane(SECONDARY_PANE);
+export function paneBeside(paneId: string): Pane {
+  return workspace.panes.find((pane) => pane.id !== paneId) ?? addPane(SECONDARY_PANE);
 }
 
 /**
- * The pane beside the focused one, ready to OWN a tab.
+ * The pane beside `paneId`, ready to OWN a tab.
  *
- * {@link sidePane} answers "which pane is beside me". This answers "which pane may I put a document
- * IN", and they differ by exactly one case — a LENS, whose invariant D2 is that it owns no tab at
- * all. Three callers mean the second question and all three were asking the first:
+ * {@link paneBeside} answers "which pane is beside that one". This answers "which pane may I put a
+ * document IN", and they differ by exactly one case — a LENS, whose invariant D2 is that it owns no
+ * tab at all. Four callers mean the second question and all four were asking the first:
  *
  * - `splitRight` moved the focused tab into a lens. Between that write and the follow's next frame
  *   the pane held both a derivation and a tab — D2 violated and observable — and `applyDerivation`
@@ -429,6 +455,8 @@ export function sidePane(): Pane {
  *   touches — never ran to repair it.
  * - `navigateToComponent` read `tabOfPane(target.id)` back and got the SOURCE tab, so the §14.2
  *   `openedFrom` relationship the function exists to record was silently skipped.
+ * - The drag resolver dropped a tab or a file onto a lens's strip, where the same three failures
+ *   apply with a gesture instead of a command.
  *
  * **The derivation is released rather than the request refused.** "Put this document over there" is
  * an explicit instruction about the pane a projection is currently borrowing, and a projection is a
@@ -444,10 +472,11 @@ export function sidePane(): Pane {
  * `activeTabId` — promotes whichever document is on top, which after `⌘\` is the page, not the
  * layout the author was keeping. A gesture that empties a derivation of its meaning ends it.
  *
+ * @param {string} paneId The pane the receiving pane sits beside.
  * @returns {Pane}
  */
-export function receivingPane(): Pane {
-  const target = sidePane();
+export function receivingPane(paneId: string): Pane {
+  const target = paneBeside(paneId);
   if (target.derived) {
     /* The same write {@link closePane} makes for D4, for the same reason and in the same module:
        clearing a derivation is a fact about the PANE GRID. `pane-derive.ts`'s
@@ -570,8 +599,11 @@ export function closePane(paneId: string) {
  * same question while every pane's subject was its tabs. A lens pane's subject is its derivation —
  * its `tabOrder` is empty BY DESIGN — so the literal test would collapse it the instant it was
  * created.
+ *
+ * Exported for `panels/tab-drop.ts`, whose edge-drop resolution refuses to leave a pane it minted
+ * standing empty over a refused open — the same rule `document.openToSide` applies in-module.
  */
-function paneIsEmpty(pane: Pane): boolean {
+export function paneIsEmpty(pane: Pane): boolean {
   return pane.tabOrder.length === 0 && pane.derived === null;
 }
 
@@ -747,12 +779,12 @@ function syncTreeSelection(tab: Tab) {
 /**
  * Make `tabId` the active tab OF ITS OWN PANE. The one place activation happens.
  *
- * `focus: false` is "put it on screen there, and leave the keyboard where it is" — the shape a
- * side-open needs. It writes `pane.activeTabId` and stops: no `activePaneId` write, no
- * `resetTabCycle`, no `promoteMru`, no `syncTreeSelection`, because every one of those describes
- * where the AUTHOR is and the author has not moved. Drilling into a component with the focus
- * following it is the failure it exists to prevent: the pane the author is typing in changes under
- * them, and their next keystroke edits the definition instead of the page.
+ * `focus: false` is "put it on screen there, and leave the keyboard where it is" — the shape a READ
+ * needs: the derivation follow, `pane.compareWith`, session restore. It writes `pane.activeTabId`
+ * and stops: no `activePaneId` write, no `resetTabCycle`, no `promoteMru`, no `syncTreeSelection`,
+ * because every one of those describes where the AUTHOR is and the author has not moved. The
+ * gestures that OPEN something — drilling into a component, Open to the Side — follow instead: the
+ * pane they open into takes the keyboard, because the author asked to go there.
  *
  * Legal here and nowhere else — this module is `check-pane-singletons.ts`'s `FOCUS_OWNER`, and the
  * default is still to move the focus, so no existing caller changes behaviour.
@@ -797,10 +829,12 @@ function setActiveTab(tabId: string, opts: { cycling?: boolean; focus?: boolean 
  *
  * `paneId` says WHERE, and `focus` says whether the keyboard goes with it. Both default to today's
  * answer — the focused pane, and yes — because "open this document" has always meant "in front of
- * me". They exist because drilling into a component, comparing two documents and following a
- * selection all mean the opposite: put it in the pane beside this one and leave me where I am. A
- * `paneId` no pane carries falls back to the focused pane rather than dropping the open, which is
- * the same answer a stale persisted layout gets everywhere else in this module.
+ * me". They exist because the gestures that mean the opposite are the READS: comparing two
+ * documents and following a derivation put it in the pane beside this one and leave the author
+ * where they are. The gestures that OPEN something — drill-in, Open to the Side — pass neither: the
+ * pane they open into takes the keyboard, because the author asked to go there. A `paneId` no pane
+ * carries falls back to the focused pane rather than dropping the open, which is the same answer a
+ * stale persisted layout gets everywhere else in this module.
  *
  * @param {{
  *   id: string;
@@ -814,6 +848,7 @@ function setActiveTab(tabId: string, opts: { cycling?: boolean; focus?: boolean 
  *   preview?: boolean;
  *   paneId?: string;
  *   focus?: boolean;
+ *   layout?: JsonLayout | null;
  * }} opts
  * @returns {Tab}
  */
@@ -829,6 +864,7 @@ export function openTab(opts: {
   preview?: boolean;
   paneId?: string;
   focus?: boolean;
+  layout?: JsonLayout | null;
 }) {
   const previous = workspace.tabs.get(opts.id);
   const preview = opts.preview === true && previous?.pinned !== true;
@@ -946,12 +982,33 @@ export function moveTab(tabId: string, toIndex: number) {
   if (!tab || !pane) {
     return;
   }
+  pane.tabOrder = reorderWithinPane(pane, tabId, toIndex);
+}
+
+/**
+ * The order `pane`'s strip takes when `tabId` moves to `toIndex`, clamped into the region the tab's
+ * pinned state allows — the pinned prefix and the unpinned tail never interleave.
+ *
+ * Extracted from `moveTab` because the cross-pane move needs the SAME clamp: a tab dragged into
+ * another pane's strip at index 0 must land after that pane's pinned prefix, not inside it, and
+ * duplicating the boundary arithmetic is how the two moves drift apart.
+ *
+ * @param {Pane} pane
+ * @param {string} tabId
+ * @param {number} toIndex
+ * @returns {string[]} The pane's new `tabOrder`.
+ */
+function reorderWithinPane(pane: Pane, tabId: string, toIndex: number): string[] {
+  const tab = workspace.tabs.get(tabId);
+  if (!tab) {
+    return pane.tabOrder;
+  }
   const without = pane.tabOrder.filter((id) => id !== tabId);
   const boundary = without.filter((id) => workspace.tabs.get(id)?.pinned === true).length;
   const lower = tab.pinned ? 0 : boundary;
   const upper = tab.pinned ? boundary : without.length;
   const at = Math.min(Math.max(toIndex, lower), upper);
-  pane.tabOrder = [...without.slice(0, at), tabId, ...without.slice(at)];
+  return [...without.slice(0, at), tabId, ...without.slice(at)];
 }
 
 /**
@@ -1163,20 +1220,30 @@ export function activateTab(tabId: string, opts: { focus?: boolean } = {}) {
  *
  * Idempotent for a tab already in `paneId`, which is what makes it safe on the follow path.
  *
+ * `index` is the slot in `paneId`'s order the tab takes, clamped into the region the tab's pinned
+ * state allows — the same clamp `moveTab` applies, so a cross-pane move can never interleave a
+ * pinned tab with an unpinned one. Omitted, the tab takes the default slot: inside the pinned
+ * prefix if pinned, else at the end. A same-pane move with an index delegates to `moveTab`, so the
+ * drag-reorder and the cross-pane move share one clamp rather than two.
+ *
  * @param {string} tabId
  * @param {string} paneId
+ * @param {number} [index]
  * @returns {Pane | null} The pane it landed in, or null when either id names nothing.
  */
-export function moveTabToPane(tabId: string, paneId: string): Pane | null {
+export function moveTabToPane(tabId: string, paneId: string, index?: number): Pane | null {
   const pane = paneById(paneId);
   if (!pane || !workspace.tabs.has(tabId)) {
     return null;
   }
   if (pane.tabOrder.includes(tabId)) {
+    if (index !== undefined) {
+      pane.tabOrder = reorderWithinPane(pane, tabId, index);
+    }
     return pane;
   }
   detachTab(tabId);
-  insertIntoPane(pane, tabId);
+  insertIntoPane(pane, tabId, index);
   return pane;
 }
 
@@ -1212,8 +1279,16 @@ export function renameTab(oldId: string, newId: string, newDocumentPath: string)
 
 /** What the tab commands need from the rest of Studio. */
 export interface TabCommandDeps {
-  /** Read a file from disk and show it — `files/files.ts`'s `openFileInTab`. */
-  openFile: (path: string) => void | Promise<void>;
+  /**
+   * Read a file from disk and show it — `files/files.ts`'s `openFileInTab`. The options are the
+   * opener's own: `paneId` names the pane the tab lands in (defaulting to the focused one), and
+   * `focus: false` browses without moving the keyboard — the shape session restore and the
+   * derivation follow need.
+   */
+  openFile: (
+    path: string,
+    opts?: { paneId?: string; focus?: boolean; preview?: boolean },
+  ) => void | Promise<void>;
   /**
    * Read a file from disk and show it in a NAMED pane, browsing rather than committing and leaving
    * the keyboard where it is — `files/files.ts`'s `openFileInPane`.
@@ -1282,6 +1357,117 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
       requires: "a second open document",
       run: () => {
         cycleTab(-1);
+      },
+    },
+    {
+      args: argsSchema({
+        path: stringProperty(
+          'Project-relative path of the file to open, e.g. "pages/about.json" or ' +
+            '"components/nav-bar.json". It must exist.',
+        ),
+      }),
+      id: "document.open",
+      title: "Open Document",
+      category: "Document",
+      /* PROJECT level, though the namespace says document: the level is what a record acts on, and
+         this one acts on the workspace — it adds a tab — from a state where no document is open
+         at all. A document-level record would be gated on the one thing it exists to produce. */
+      level: "project",
+      menus: ["palette"],
+      group: "1_file",
+      when: (ctx) => ctx.project.open,
+      requires: "an open project",
+      aiTool: {
+        description:
+          "Open a project file as the active document; the document tools then operate on it. " +
+          "Use it when the user should SEE the page, or for iterative visual refinement after " +
+          "creating a page or component.",
+        name: "open_document",
+        /* The person's own read: `activeTab` is what the tab strip highlights, and `editor.kind`
+           is the fact the document-tree tier is gated on. Both are named so the model learns in one
+           round whether the tree tools reach the file it opened — a `.csv` lands in the Grid, a
+           `.png` in the Media viewer, and neither is an element tree. The `.value` read is module
+           state, which a projected `report` may close over (§12.4); `after` alone cannot say WHICH
+           document is active. */
+        report: ({ after, args }) => {
+          const path = stringArg("document.open", args, "path");
+          const active = activeTab.value?.documentPath ?? null;
+          if (active !== path) {
+            return `Opened "${path}", but the active document is ${active === null ? "none" : `"${active}"`}.`;
+          }
+          const where =
+            after.editor.kind === "canvas"
+              ? "on the canvas; the document tools now operate on it"
+              : `in the ${EDITOR_KIND_LABELS[after.editor.kind]} editor, which is not an element tree the document tools can edit`;
+          return `"${path}" is the active document, ${where}.`;
+        },
+      },
+      /* Refuses by THROWING (§12.4's first review rule). `openFileInTab` reports a file it cannot
+         open as a Problem and returns normally — the right answer for a click in the Files tree,
+         where the toast is in front of the person — so the record has to look for the tab itself.
+         The hand tool this replaced read `getTab()` after the open and called whatever it found a
+         success, so a missing file left the PREVIOUS document active and reported "Switched to". */
+      run: async (_ctx, args) => {
+        const path = stringArg("document.open", args, "path");
+        await deps.openFile(path);
+        if (![...workspace.tabs.values()].some((tab) => tab.documentPath === path)) {
+          throw new RangeError(
+            `command "document.open" argument "path": "${path}" could not be opened — it does ` +
+              `not exist, or no editor claims its format. Problems has the reason.`,
+          );
+        }
+      },
+    },
+    {
+      args: argsSchema({
+        file: stringProperty(
+          'Project-relative path of the file to open in the other pane, e.g. "pages/about.json". ' +
+            "It must exist.",
+        ),
+      }),
+      id: "document.openToSide",
+      title: "Open to the Side",
+      category: "Document",
+      /* PROJECT level for the same reason `document.open` is: it adds a tab to the workspace, and
+         a second pane may not exist yet — the record mints one. */
+      level: "project",
+      menus: ["context/file", "palette"],
+      group: "1_file",
+      when: (ctx) => ctx.project.open,
+      requires: "an open project",
+      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
+         looking at. No `undo`: opening a tab is not a state the undo stack owns. */
+      undo: "none",
+      /* The non-drag equivalent of dragging a file row onto the other pane's strip (SC 2.5.7): the
+         same `receivingPane` the drag resolver uses, so a file tree row and this command can never
+         disagree about where "the side" is. The open is a FOLLOW — the pane it lands in takes the
+         keyboard, which is what "open to the side" means when the side pane did not exist a moment
+         ago. */
+      run: async (_ctx, args) => {
+        const file = stringArg("document.openToSide", args, "file");
+        const target = receivingPane(activePane().id);
+        await deps.openFile(file, { paneId: target.id });
+        if (![...workspace.tabs.values()].some((tab) => tab.documentPath === file)) {
+          /* The open failed (a missing file, or no editor claims the format) and `openFileInTab`
+             reported it as a Problem rather than throwing. If the target pane was minted for this
+             open and holds nothing, close it — a command that fails must not leave a new empty
+             pane behind.
+
+             `target.id !== PRIMARY_PANE` GUARDS it, and the guard is load-bearing rather than
+             defensive: `receivingPane` answers PRIMARY when the author is focused on the secondary,
+             and an empty primary is a legitimate state on its own (`detachTab`'s "welcome screen
+             beside the document" exemption) — not a hole this command minted. `closePane`'s own
+             contract reads `PRIMARY_PANE` as "collapse the OTHER pane", so calling it unguarded here
+             would close the secondary the author was just looking at, over a refusal about a
+             completely different pane. */
+          if (paneIsEmpty(target) && target.id !== PRIMARY_PANE) {
+            closePane(target.id);
+          }
+          throw new RangeError(
+            `command "document.openToSide" argument "file": "${file}" could not be opened — it ` +
+              `does not exist, or no editor claims its format. Problems has the reason.`,
+          );
+        }
       },
     },
     {
@@ -1397,6 +1583,10 @@ export function paneCommands(deps: TabCommandDeps): AnyCommand[] {
       requires: "an open document",
       undo: "none",
       run: () => {
+        /* The non-drag equivalent of every drag move (SC 2.5.7): `splitRight` moves the active tab
+           to a new pane at the right of the grid, which is what dragging a tab onto the grid's
+           right edge does, and `document.openToSide` is its file-tree counterpart. A keyboard-only
+           author can reach every arrangement the drag offers. */
         splitRight();
       },
     },
@@ -1419,12 +1609,8 @@ export function paneCommands(deps: TabCommandDeps): AnyCommand[] {
       enablement: () => workspace.activeTabId !== null,
       requires: "an open document",
       undo: "none",
-      aiTool: {
-        description:
-          "Open a second document in the pane beside the current one, without moving the document " +
-          "you are in.",
-        name: "compare_with",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
+         looking at. */
       run: async (_ctx, args) => {
         const path = stringArg("pane.compareWith", args, "path");
         const here = activePane();
@@ -1439,11 +1625,11 @@ export function paneCommands(deps: TabCommandDeps): AnyCommand[] {
           );
         }
         /* Nothing closes, nothing unsplits, and the FOCUS DOES NOT MOVE: comparing is a read.
-           {@link receivingPane} rather than `sidePane`, because the pane beside this one may be a
+           {@link receivingPane} rather than `paneBeside`, because the pane beside this one may be a
            LENS — and a lens owns no tab, so the document landed in a `tabOrder` that `tabOfPane`
            hops straight past. Nothing was on screen, nothing was in a strip, and
            `workspace.activeTabId` went on reporting the source. */
-        await deps.openFileInPane(receivingPane().id, path);
+        await deps.openFileInPane(receivingPane(here.id).id, path);
       },
     },
     {

@@ -65,7 +65,7 @@
       }
     },
     {
-      "tagName": "user-card",
+      "tagName": "div",
       "attributes": { "data-level": "${state.levelClass}" },
       "style": {
         "display": "block",

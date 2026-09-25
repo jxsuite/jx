@@ -1,69 +1,205 @@
 /**
- * Tests for src/settings/defs-editor.ts — visual editor for project-level $defs.
+ * Tests for src/settings/defs-editor.ts — Project Settings › Data Shapes, the editor for
+ * project-level `$defs`.
  *
- * The editor keeps module-level selection state, so each test installs a fresh mock platform +
- * project config and drives selection through the rendered list buttons (same approach as
- * contributed-content-types.test.ts).
+ * **The section is a Jx document now** (`src/surfaces/settings-defs.json`), so four things about
+ * this file are deliberate rather than incidental:
+ *
+ * - The container is APPENDED TO THE DOCUMENT. A kit element renders in `connectedCallback`, so a
+ *   detached container gets `<jx-textfield>` tags with nothing inside them, and every assertion
+ *   about a control would read `null` — a failure that looks like a missing element rather than a
+ *   missing connection.
+ * - Rendering is awaited. `renderDefsEditor` still returns void, as the registry's
+ *   `render(container)` seam requires, and mounting is asynchronous underneath it; {@link settle}
+ *   is the one place that knows how long that takes.
+ * - An edit is made on the NATIVE control inside the kit element, never on the element. That is what
+ *   a reader's edit is: the kit hears its own input's event and lets it bubble on, so a test that
+ *   wrote the host's `value` property would be moving the control without telling it.
+ * - The selection, the two forms and the per-object add-row drafts are kept PER CONTAINER, so each
+ *   test's fresh container starts cold. The lit version kept them per module, which is why the file
+ *   it replaced had to drive selection through the list in a fixed order.
+ *
+ * What the surface added, and what these pin as behaviour rather than markup: a refused rename now
+ * puts the on-disk name back in the field (the scope moves, where the lit handler assigned to
+ * `target.value`), and the nested add row keeps what the reader typed in the section's own state
+ * rather than in the DOM it was about to re-render.
  */
 import { flush, installMockPlatform, key, pointer, resetStudioState } from "./harness";
-import { describe, expect, test } from "bun:test";
-import { renderDefsEditor } from "../src/settings/defs-editor";
+import { afterEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
 
 import type { MockPlatformState } from "./harness";
 
+const { renderDefsEditor } = await import("../src/settings/defs-editor");
+const { mountDefsSurface } = await import("../src/surfaces/settings-defs");
+
 type AnyConfig = Record<string, any>;
 
-function setup(defs: AnyConfig | null): { container: HTMLElement; state: MockPlatformState } {
+/**
+ * Let the document catch up.
+ *
+ * Generous on purpose, and in one place: the mount awaits the kit's registration, each kit element
+ * builds its own scope asynchronously in `connectedCallback`, and a write goes through a commit
+ * before the file is on disk. A per-test turn count would be four guesses at the same number.
+ */
+async function settle(): Promise<void> {
+  await flush(8);
+}
+
+async function setup(
+  cfg: AnyConfig | null,
+): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform();
-  resetStudioState({
-    projectConfig: defs === null ? null : ({ $defs: defs } as unknown),
-  });
+  resetStudioState({ projectConfig: cfg as unknown });
   const container = document.createElement("div");
+  document.body.append(container);
   renderDefsEditor(container);
+  await settle();
   return { container, state };
+}
+
+/** A project holding only `$defs`, which is what most of these are about. */
+async function withDefs(
+  defs: AnyConfig | null,
+): Promise<{ container: HTMLElement; state: MockPlatformState }> {
+  return setup(defs === null ? null : { $defs: defs });
 }
 
 function config(): AnyConfig {
   return (projectState as AnyConfig).projectConfig;
 }
 
-function buttonByText(root: HTMLElement, text: string): HTMLElement {
-  const match = [...root.querySelectorAll("sp-action-button")].find((b) =>
-    b.textContent?.includes(text),
-  );
-  if (!match) {
-    throw new Error(`no sp-action-button containing "${text}"`);
+function part(root: ParentNode, name: string): HTMLElement {
+  const el = root.querySelector(`[part="${name}"]`);
+  if (!el) {
+    throw new Error(`no [part="${name}"] in the Data Shapes section`);
   }
-  return match as HTMLElement;
+  return el as HTMLElement;
 }
 
-function selectDef(container: HTMLElement, name: string): void {
-  const button = [...container.querySelectorAll(".settings-list-panel sp-action-button")].find(
-    (b) => b.textContent?.trim() === name,
+/** The native control a kit element wraps: the field's input, or the picker's select. */
+function control(el: Element): HTMLInputElement {
+  const inner = el.querySelector<HTMLInputElement>(
+    'input[part="input"], textarea[part="input"], select[part="control"]',
   );
+  if (!inner) {
+    throw new Error(`no native control inside <${el.tagName.toLowerCase()}>`);
+  }
+  return inner;
+}
+
+/**
+ * Type into a control and commit it, the way a reader does: `input` as each character lands, and
+ * then the event that commits it.
+ *
+ * Both halves matter. A kit field mirrors `input` into its own state and hears nothing from
+ * `change`, so a test that fired only the commit would leave the element believing it still holds
+ * the old text — and every assertion about a value being put back would pass against an element
+ * that had never moved.
+ */
+function setAndFire(el: Element, value: string, type = "change"): void {
+  const inner = control(el);
+  inner.value = value;
+  inner.dispatchEvent(new Event("input", { bubbles: true }));
+  if (type !== "input") {
+    inner.dispatchEvent(new Event(type, { bubbles: true }));
+  }
+}
+
+/** Flip a switch, the way a reader does. */
+function toggle(el: Element, checked: boolean): void {
+  const inner = control(el);
+  inner.checked = checked;
+  inner.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** What a control currently shows. */
+function shows(el: Element): string {
+  return control(el).value;
+}
+
+/** What a field's name control shows — the assertion a refused rename is judged by. */
+function nameShown(within: HTMLElement): string {
+  return shows(nameField(within));
+}
+
+function shapes(container: HTMLElement): string[] {
+  return [...container.querySelectorAll("[data-shape]")].map(
+    (el) => (el as HTMLElement).dataset.shape ?? "",
+  );
+}
+
+async function selectShape(container: HTMLElement, name: string): Promise<void> {
+  const button = container.querySelector(`[data-shape="${name}"]`);
   if (!button) {
-    throw new Error(`no list button for definition "${name}"`);
+    throw new Error(`no list button for the data shape "${name}"`);
   }
   pointer(button, "click");
+  await settle();
 }
 
-function fieldCard(container: HTMLElement, fieldName: string): HTMLElement {
-  const card = [...container.querySelectorAll(".schema-field-card")].find(
-    (c) =>
-      !c.classList.contains("schema-field-card--nested") &&
-      c.querySelector(".schema-field-name-input")?.getAttribute("value") === fieldName,
-  );
-  if (!card) {
-    throw new Error(`no field card for "${fieldName}"`);
+function card(container: HTMLElement, field: string): HTMLElement {
+  const el = container.querySelector(`[data-field="${field}"]`);
+  if (!el) {
+    throw new Error(`no field card for "${field}"`);
   }
-  return card as HTMLElement;
+  return el as HTMLElement;
 }
 
-function setAndFire(el: Element, value: string, type = "change"): void {
-  (el as HTMLInputElement).value = value;
-  el.dispatchEvent(new Event(type, { bubbles: true }));
+/** A field's own row, so a parent object's controls are never mistaken for a child's. */
+function row(container: HTMLElement, field: string): HTMLElement {
+  return card(container, field).querySelector('[part="field-row"]') as HTMLElement;
 }
+
+/** One child of an object field. Its card holds exactly one row, which is that child's. */
+function nested(container: HTMLElement, parent: string, child: string): HTMLElement {
+  const el = card(container, parent).querySelector(`[data-nested="${child}"]`);
+  if (!el) {
+    throw new Error(`no nested card for "${parent}.${child}"`);
+  }
+  return el as HTMLElement;
+}
+
+/** The three controls of an object field's add row. */
+function draftName(container: HTMLElement, parent: string): HTMLElement {
+  return part(card(container, parent), "nested-add-name");
+}
+function draftType(container: HTMLElement, parent: string): HTMLElement {
+  return part(card(container, parent), "nested-add-type");
+}
+function draftAdd(container: HTMLElement, parent: string): HTMLElement {
+  return part(card(container, parent), "nested-add-button");
+}
+
+/** The four per-row controls, addressed by the part they carry rather than by their order. */
+function nameField(within: HTMLElement): HTMLElement {
+  return part(within, "field-name");
+}
+function typePicker(within: HTMLElement): HTMLElement {
+  return part(within, "field-type");
+}
+function formatPicker(within: HTMLElement): HTMLElement {
+  return part(within, "field-format");
+}
+function requiredSwitch(within: HTMLElement): HTMLElement {
+  return part(within, "field-required");
+}
+
+function written(state: MockPlatformState): AnyConfig {
+  const text = state.files.get("project.json");
+  if (text === undefined) {
+    throw new Error("project.json was never written");
+  }
+  return JSON.parse(text) as AnyConfig;
+}
+
+function writes(state: MockPlatformState): number {
+  return state.calls.filter(([name]) => name === "writeFile").length;
+}
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
 
 function postDefs(): AnyConfig {
   return {
@@ -91,32 +227,43 @@ function postDefs(): AnyConfig {
 
 // ─── List panel ──────────────────────────────────────────────────────────────
 
-describe("defs list panel", () => {
-  test("renders empty state when nothing is selected", () => {
-    const { container } = setup({});
-    expect(container.querySelector(".settings-empty-state")?.textContent).toContain(
+describe("the shape list", () => {
+  test("says what to do when nothing is selected, and offers only the new-shape button", async () => {
+    const { container } = await withDefs({});
+    expect(part(container, "empty").textContent).toContain(
       "Pick a data shape on the left, or create one.",
     );
-    expect(container.querySelectorAll(".settings-list-panel sp-action-button").length).toBe(1); // Only "New Data Shape"
+    expect(shapes(container)).toEqual([]);
+    expect(container.querySelector('[part="new-open"]')).not.toBeNull();
+    expect(container.querySelector('[part="editor"]')).toBeNull();
   });
 
-  test("lists existing definition names and selecting one shows its editor", () => {
-    const { container } = setup(postDefs());
-    const labels = [...container.querySelectorAll(".settings-list-panel sp-action-button")].map(
-      (b) => b.textContent?.trim(),
-    );
-    expect(labels).toContain("Post");
-    expect(labels).toContain("Author");
+  test("lists every shape, and selecting one opens its fields", async () => {
+    const { container } = await withDefs(postDefs());
+    expect(shapes(container)).toEqual(["Author", "Post"]);
 
-    selectDef(container, "Post");
-    expect(container.querySelector(".settings-editor-header h3")?.textContent).toBe("Post");
-    expect(container.querySelectorAll(".schema-field-card").length).toBeGreaterThanOrEqual(4);
+    await selectShape(container, "Post");
+    expect(part(container, "editor-name").textContent).toBe("Post");
+    expect(container.querySelectorAll("[data-field]").length).toBe(4);
+    /* The chosen row says so on the button the reader clicked, not just in the editor beside it —
+       and the kit draws that state itself, which is why this document has no rule for it. */
+    const chosen = container.querySelector('[data-shape="Post"]') as HTMLElement;
+    expect(chosen.dataset.selected).toBe("");
+  });
+
+  test("a field's caption is its name in words, beside the raw key the reader edits", async () => {
+    const { container } = await withDefs({
+      Post: { properties: { heroImage: { type: "string" } }, type: "object" },
+    });
+    await selectShape(container, "Post");
+    expect(part(card(container, "heroImage"), "field-label").textContent).toBe("Hero Image");
+    expect(nameShown(card(container, "heroImage"))).toBe("heroImage");
   });
 });
 
-// ─── New definition flow ─────────────────────────────────────────────────────
+// ─── New shape ───────────────────────────────────────────────────────────────
 
-describe("new definition flow", () => {
+describe("creating a shape", () => {
   /*
    * The indentation assertion is inverted on purpose. This editor used to own a second writer at
    * `JSON.stringify(config, null, "\t")`, so adding one data shape re-indented every line of
@@ -124,112 +271,127 @@ describe("new definition flow", () => {
    * one serialisation now (tabs/project-config.ts), and it is the one every other JSON document
    * Studio saves already uses.
    */
-  test("create via Enter trims the name, selects it, and persists at the project indent", async () => {
-    const { container, state } = setup({});
-    pointer(buttonByText(container, "New Data Shape"), "click");
-    const input = container.querySelector(".settings-inline-form sp-textfield")!;
-    setAndFire(input, "  ApiResponse  ", "input");
-    key(input, "Enter");
+  test("Enter trims the name, selects it, and persists at the project indent", async () => {
+    const { container, state } = await withDefs({});
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const field = part(container, "new-field");
+    setAndFire(field, "  ApiResponse  ", "input");
+    key(control(field), "Enter");
+    await settle();
 
     expect(config().$defs.ApiResponse).toEqual({ properties: {}, required: [], type: "object" });
-    expect(container.querySelector(".settings-editor-header h3")?.textContent).toBe("ApiResponse");
-    await flush();
-    const written = state.files.get("project.json");
-    expect(written).toBeDefined();
-    expect(written).not.toContain("\t");
-    expect(written).toContain('\n  "$defs"');
-    expect(JSON.parse(written!).$defs.ApiResponse).toBeDefined();
+    expect(part(container, "editor-name").textContent).toBe("ApiResponse");
+    const text = state.files.get("project.json");
+    expect(text).toBeDefined();
+    expect(text).not.toContain("\t");
+    expect(text).toContain('\n  "$defs"');
+    expect(written(state).$defs.ApiResponse).toBeDefined();
   });
 
-  test("create via the Create button", async () => {
-    const { container, state } = setup({});
-    pointer(buttonByText(container, "New Data Shape"), "click");
-    setAndFire(container.querySelector(".settings-inline-form sp-textfield")!, "Product", "input");
-    pointer(buttonByText(container, "Create"), "click");
+  test("the Create button does the same, and the form closes behind it", async () => {
+    const { container, state } = await withDefs({});
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    setAndFire(part(container, "new-field"), "Product", "input");
+    pointer(part(container, "new-create"), "click");
+    await settle();
+
     expect(config().$defs.Product).toBeDefined();
-    await flush();
+    expect(container.querySelector('[part="new-field"]')).toBeNull();
     expect(state.files.has("project.json")).toBe(true);
   });
 
-  test("blank name is rejected and the form stays open", async () => {
-    const { container, state } = setup({});
-    pointer(buttonByText(container, "New Data Shape"), "click");
-    const input = container.querySelector(".settings-inline-form sp-textfield")!;
-    setAndFire(input, "   ", "input");
-    key(input, "Enter");
+  test("a blank name is refused, the form stays open, and Escape closes it", async () => {
+    const { container, state } = await withDefs({});
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const field = part(container, "new-field");
+    setAndFire(field, "   ", "input");
+    key(control(field), "Enter");
+    await settle();
+
     expect(Object.keys(config().$defs)).toEqual([]);
-    expect(container.querySelector(".settings-inline-form")).not.toBeNull();
-    await flush();
+    // The text the reader typed is still there: nothing was decided, so nothing was taken away.
+    expect(shows(part(container, "new-field"))).toBe("   ");
     expect(state.files.size).toBe(0);
-    key(input, "Escape");
-    expect(container.querySelector(".settings-inline-form")).toBeNull();
+
+    key(control(part(container, "new-field")), "Escape");
+    await settle();
+    expect(container.querySelector('[part="new-field"]')).toBeNull();
   });
 
-  test("duplicate name does not overwrite the existing definition", async () => {
-    const { container, state } = setup(postDefs());
-    pointer(buttonByText(container, "New Data Shape"), "click");
-    const input = container.querySelector(".settings-inline-form sp-textfield")!;
-    setAndFire(input, "Post", "input");
-    key(input, "Enter");
+  test("a duplicate name does not overwrite the shape that has it", async () => {
+    const { container, state } = await withDefs(postDefs());
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const field = part(container, "new-field");
+    setAndFire(field, "Post", "input");
+    key(control(field), "Enter");
+    await settle();
+
     expect(config().$defs.Post.properties.title).toEqual({ type: "string" });
-    await flush();
     expect(state.files.size).toBe(0);
-    key(input, "Escape");
   });
 
-  test("missing project config is a safe no-op", () => {
-    const { container } = setup(null);
-    pointer(buttonByText(container, "New Data Shape"), "click");
-    const input = container.querySelector(".settings-inline-form sp-textfield")!;
-    setAndFire(input, "Whatever", "input");
-    expect(() => key(input, "Enter")).not.toThrow();
-    key(input, "Escape");
+  test("a project that is not open is a safe no-op", async () => {
+    const { container } = await withDefs(null);
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const field = part(container, "new-field");
+    setAndFire(field, "Whatever", "input");
+    expect(() => key(control(field), "Enter")).not.toThrow();
+    await settle();
+    expect(container.querySelector('[part="empty"]')).not.toBeNull();
   });
 
-  test("creates the $defs map when the config lacks one", () => {
-    installMockPlatform();
-    resetStudioState({ projectConfig: {} as unknown });
-    const container = document.createElement("div");
-    renderDefsEditor(container);
-    pointer(buttonByText(container, "New Data Shape"), "click");
-    const input = container.querySelector(".settings-inline-form sp-textfield")!;
-    setAndFire(input, "Fresh", "input");
-    key(input, "Enter");
+  test("a project with no $defs at all gets one", async () => {
+    const { container } = await setup({ name: "Site" });
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const field = part(container, "new-field");
+    setAndFire(field, "Fresh", "input");
+    key(control(field), "Enter");
+    await settle();
     expect(config().$defs.Fresh).toBeDefined();
   });
 });
 
-// ─── Add field flow ──────────────────────────────────────────────────────────
+// ─── Adding a field ──────────────────────────────────────────────────────────
 
-describe("add field flow", () => {
-  test("add a formatted required field via the inline form", async () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(buttonByText(container, "Add Field"), "click");
+describe("adding a field", () => {
+  test("a formatted, required field lands with its format and its requirement", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(container, "add-open"), "click");
+    await settle();
 
-    setAndFire(container.querySelector(".schema-add-field sp-textfield")!, "heroImage", "input");
-    const sw = container.querySelector(".schema-add-field sp-switch") as HTMLInputElement;
-    sw.checked = true;
-    sw.dispatchEvent(new Event("change", { bubbles: true }));
-    setAndFire(container.querySelectorAll(".schema-add-field sp-picker")[1]!, "image");
-    pointer(buttonByText(container, "Add"), "click");
+    setAndFire(part(container, "add-name"), "heroImage", "input");
+    toggle(part(container, "add-required"), true);
+    setAndFire(part(container, "add-format"), "image");
+    pointer(part(container, "add-confirm"), "click");
+    await settle();
 
     const def = config().$defs.Post;
     expect(def.properties.heroImage).toEqual({ format: "image", type: "string" });
     expect(def.required).toContain("heroImage");
-    expect(container.querySelector(".schema-add-field")).toBeNull();
-    await flush();
-    expect(state.files.has("project.json")).toBe(true);
+    expect(container.querySelector('[part="add-form"]')).toBeNull();
+    expect(written(state).$defs.Post.properties.heroImage).toBeDefined();
   });
 
-  test("changing type to object hides the format picker and adds an object skeleton", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(buttonByText(container, "Add Field"), "click");
-    setAndFire(container.querySelector(".schema-add-field sp-textfield")!, "extras", "input");
-    setAndFire(container.querySelectorAll(".schema-add-field sp-picker")[0]!, "object");
-    expect(container.querySelectorAll(".schema-add-field sp-picker").length).toBe(1);
-    key(container.querySelector(".schema-add-field sp-textfield")!, "Enter");
+  test("choosing object takes the format picker away and adds an object skeleton", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(container, "add-open"), "click");
+    await settle();
+
+    setAndFire(part(container, "add-name"), "extras", "input");
+    setAndFire(part(container, "add-type"), "object");
+    await settle();
+    expect(container.querySelector('[part="add-format"]')).toBeNull();
+
+    key(control(part(container, "add-name")), "Enter");
+    await settle();
     expect(config().$defs.Post.properties.extras).toEqual({
       properties: {},
       required: [],
@@ -237,97 +399,103 @@ describe("add field flow", () => {
     });
   });
 
-  test("empty name keeps the form open; Cancel resets it", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(buttonByText(container, "Add Field"), "click");
-    key(container.querySelector(".schema-add-field sp-textfield")!, "Enter");
-    expect(container.querySelector(".schema-add-field")).not.toBeNull();
+  test("an empty name keeps the form open, and Cancel empties what it held", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(container, "add-open"), "click");
+    await settle();
 
-    setAndFire(container.querySelector(".schema-add-field sp-textfield")!, "draft", "input");
-    pointer(buttonByText(container, "Cancel"), "click");
-    expect(container.querySelector(".schema-add-field")).toBeNull();
+    key(control(part(container, "add-name")), "Enter");
+    await settle();
+    expect(container.querySelector('[part="add-form"]')).not.toBeNull();
+
+    setAndFire(part(container, "add-name"), "draft", "input");
+    pointer(part(container, "add-cancel"), "click");
+    await settle();
+    expect(container.querySelector('[part="add-form"]')).toBeNull();
     expect(config().$defs.Post.properties.draft).toBeUndefined();
 
-    // Reopening shows a reset form
-    pointer(buttonByText(container, "Add Field"), "click");
-    const input = container.querySelector(".schema-add-field sp-textfield") as HTMLInputElement;
-    expect(input.value ?? "").toBe("");
-    key(input, "Escape");
+    pointer(part(container, "add-open"), "click");
+    await settle();
+    expect(shows(part(container, "add-name"))).toBe("");
+
+    key(control(part(container, "add-name")), "Escape");
+    await settle();
+    expect(container.querySelector('[part="add-form"]')).toBeNull();
   });
 
-  test("creates properties and required maps when the def lacks them", () => {
-    const { container } = setup({ Slim: { type: "object" } });
-    selectDef(container, "Slim");
-    pointer(buttonByText(container, "Add Field"), "click");
-    setAndFire(container.querySelector(".schema-add-field sp-textfield")!, "title", "input");
-    const sw = container.querySelector(".schema-add-field sp-switch") as HTMLInputElement;
-    sw.checked = true;
-    sw.dispatchEvent(new Event("change", { bubbles: true }));
-    key(container.querySelector(".schema-add-field sp-textfield")!, "Enter");
+  test("a shape with neither map gets both", async () => {
+    const { container } = await withDefs({ Slim: { type: "object" } });
+    await selectShape(container, "Slim");
+    pointer(part(container, "add-open"), "click");
+    await settle();
+    setAndFire(part(container, "add-name"), "title", "input");
+    toggle(part(container, "add-required"), true);
+    key(control(part(container, "add-name")), "Enter");
+    await settle();
     expect(config().$defs.Slim.properties.title).toEqual({ type: "string" });
     expect(config().$defs.Slim.required).toEqual(["title"]);
   });
 
-  test("def removed underneath the form is a guarded no-op", async () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(buttonByText(container, "Add Field"), "click");
-    setAndFire(container.querySelector(".schema-add-field sp-textfield")!, "ghost", "input");
+  test("a shape deleted underneath the open form is a guarded no-op", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(container, "add-open"), "click");
+    await settle();
+    setAndFire(part(container, "add-name"), "ghost", "input");
+
     delete config().$defs.Post;
-    expect(() =>
-      key(container.querySelector(".schema-add-field sp-textfield")!, "Enter"),
-    ).not.toThrow();
-    await flush();
-    expect(state.files.size).toBe(0);
-    pointer(buttonByText(container, "Cancel"), "click");
+    expect(() => key(control(part(container, "add-name")), "Enter")).not.toThrow();
+    await settle();
+    expect(writes(state)).toBe(0);
   });
 });
 
 // ─── Field mutations ─────────────────────────────────────────────────────────
 
-describe("field mutations", () => {
-  test("delete removes the property and its required entry", async () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(fieldCard(container, "title").querySelector('[title="Delete field"]')!, "click");
+describe("editing a field", () => {
+  test("delete takes the property and its requirement with it", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(row(container, "title"), "field-delete"), "click");
+    await settle();
+
     const def = config().$defs.Post;
     expect(def.properties.title).toBeUndefined();
     expect(def.required).not.toContain("title");
-    expect(() => fieldCard(container, "title")).toThrow();
-    await flush();
-    expect(state.files.has("project.json")).toBe(true);
+    expect(container.querySelector('[data-field="title"]')).toBeNull();
+    expect(written(state).$defs.Post.properties.title).toBeUndefined();
   });
 
-  test("toggle required adds then removes the field", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    const fire = () =>
-      fieldCard(container, "cover")
-        .querySelector("sp-switch")!
-        .dispatchEvent(new Event("change", { bubbles: true }));
-    fire();
+  test("the required switch writes what it now holds, in both directions", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    toggle(requiredSwitch(row(container, "cover")), true);
+    await settle();
     expect(config().$defs.Post.required).toContain("cover");
-    fire();
+
+    toggle(requiredSwitch(row(container, "cover")), false);
+    await settle();
     expect(config().$defs.Post.required).not.toContain("cover");
   });
 
-  test("toggle required initializes a missing required array", () => {
-    const { container } = setup({
+  test("a shape with no required list gets one", async () => {
+    const { container } = await withDefs({
       Slim: { properties: { a: { type: "string" } }, type: "object" },
     });
-    selectDef(container, "Slim");
-    fieldCard(container, "a")
-      .querySelector("sp-switch")!
-      .dispatchEvent(new Event("change", { bubbles: true }));
+    await selectShape(container, "Slim");
+    toggle(requiredSwitch(row(container, "a")), true);
+    await settle();
     expect(config().$defs.Slim.required).toEqual(["a"]);
   });
 
-  test("rename keeps the literal name, remaps required, and preserves order", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
+  test("a rename keeps the literal name, remaps required, and preserves the order", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
     const before = Object.keys(config().$defs.Post.properties);
-    setAndFire(fieldCard(container, "title").querySelector(".schema-field-name-input")!, "header");
+    setAndFire(nameField(row(container, "title")), "header");
+    await settle();
+
     const def = config().$defs.Post;
     expect(def.properties.header).toEqual({ type: "string" });
     expect(def.properties.title).toBeUndefined();
@@ -335,161 +503,187 @@ describe("field mutations", () => {
     expect(Object.keys(def.properties)).toEqual(before.map((k) => (k === "title" ? "header" : k)));
   });
 
-  test("rename to an existing field name is rejected", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    setAndFire(fieldCard(container, "title").querySelector(".schema-field-name-input")!, "cover");
+  /*
+   * The refusal, and the reason the section echoes. A document's binding writes only when the scope
+   * value CHANGES, and after a refusal the scope still holds the name on disk — so the setter says
+   * what the control holds before it decides, and the snap-back is a real move rather than a write
+   * the runtime skips. The lit version did this by assigning to `target.value` from the handler.
+   */
+  test("a rename onto a name already taken is refused, and the field snaps back", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    setAndFire(nameField(row(container, "title")), "cover");
+    await settle();
+
     const def = config().$defs.Post;
     expect(def.properties.title).toEqual({ type: "string" });
     expect(def.properties.cover).toEqual({ format: "image", type: "string" });
+    expect(nameShown(row(container, "title"))).toBe("title");
+    expect(writes(state)).toBe(0);
   });
 
-  test("change type string→array preserves the format on items", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    setAndFire(fieldCard(container, "cover").querySelectorAll("sp-picker")[0]!, "array");
+  test("a rename to nothing is refused the same way", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    setAndFire(nameField(row(container, "title")), "   ");
+    await settle();
+    expect(config().$defs.Post.properties.title).toEqual({ type: "string" });
+    expect(nameShown(row(container, "title"))).toBe("title");
+    expect(writes(state)).toBe(0);
+  });
+
+  test("string to array keeps the format, on the items where an array carries it", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    setAndFire(typePicker(row(container, "cover")), "array");
+    await settle();
     expect(config().$defs.Post.properties.cover).toEqual({
       items: { format: "image", type: "string" },
       type: "array",
     });
   });
 
-  test("change type to number drops the format", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    setAndFire(fieldCard(container, "cover").querySelectorAll("sp-picker")[0]!, "number");
+  test("a type that carries no format drops it, and stops drawing the picker", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    setAndFire(typePicker(row(container, "cover")), "number");
+    await settle();
     expect(config().$defs.Post.properties.cover).toEqual({ type: "number" });
+    expect(row(container, "cover").querySelector('[part="field-format"]')).toBeNull();
   });
 
-  test("change format keeps the field type; array format lands on items", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    setAndFire(fieldCard(container, "title").querySelectorAll("sp-picker")[1]!, "date");
+  test("a format keeps the type it is a format of", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    setAndFire(formatPicker(row(container, "title")), "date");
+    await settle();
     expect(config().$defs.Post.properties.title).toEqual({ format: "date", type: "string" });
 
-    setAndFire(fieldCard(container, "tags").querySelectorAll("sp-picker")[1]!, "color");
+    setAndFire(formatPicker(row(container, "tags")), "color");
+    await settle();
     expect(config().$defs.Post.properties.tags).toEqual({
       items: { format: "color", type: "string" },
       type: "array",
     });
   });
 
-  test("change format falls back to string when the property has no type", () => {
-    const { container } = setup({
+  test("a property with no type is treated as the string it is drawn as", async () => {
+    const { container } = await withDefs({
       Slim: { properties: { odd: { format: "date" } }, type: "object" },
     });
-    selectDef(container, "Slim");
-    setAndFire(fieldCard(container, "odd").querySelectorAll("sp-picker")[1]!, "color");
+    await selectShape(container, "Slim");
+    setAndFire(formatPicker(row(container, "odd")), "color");
+    await settle();
     expect(config().$defs.Slim.properties.odd).toEqual({ format: "color", type: "string" });
   });
 });
 
-// ─── Nested field mutations ──────────────────────────────────────────────────
+// ─── Nested fields ───────────────────────────────────────────────────────────
 
-describe("nested field mutations", () => {
-  function metaCard(container: HTMLElement) {
-    return fieldCard(container, "meta");
-  }
-  function nestedCard(container: HTMLElement, child: string) {
-    const card = [...metaCard(container).querySelectorAll(".schema-field-card--nested")].find(
-      (c) => c.querySelector(".schema-field-name-input")?.getAttribute("value") === child,
-    );
-    if (!card) {
-      throw new Error(`no nested card "${child}"`);
-    }
-    return card as HTMLElement;
-  }
-  function metaSchema() {
+describe("editing an object's children", () => {
+  function meta(): AnyConfig {
     return config().$defs.Post.properties.meta;
   }
 
-  test("add nested field via Enter and via the add button", async () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
+  test("the add row keeps its draft in the section, and adds on Enter and on the button", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
 
-    const row = metaCard(container).querySelector(".schema-nested-add")!;
-    const input = row.querySelector(".schema-nested-add-name") as HTMLInputElement;
-    input.value = "birthYear";
-    (row.querySelector("sp-picker") as HTMLInputElement).value = "number";
-    key(input, "Enter");
-    expect(metaSchema().properties.birthYear).toEqual({ type: "number" });
+    const addName = draftName(container, "meta");
+    setAndFire(addName, "birthYear", "input");
+    setAndFire(draftType(container, "meta"), "number");
+    await settle();
+    // The draft survives the redraw the type change caused: it is state, not markup.
+    expect(shows(draftName(container, "meta"))).toBe("birthYear");
 
-    const row2 = metaCard(container).querySelector(".schema-nested-add")!;
-    (row2.querySelector(".schema-nested-add-name") as HTMLInputElement).value = "homepage";
-    (row2.querySelector("sp-picker") as HTMLInputElement).value = "";
-    pointer(row2.querySelector('[title="Add nested field"]')!, "click");
-    expect(metaSchema().properties.homepage).toEqual({ type: "string" });
-    await flush();
+    key(control(draftName(container, "meta")), "Enter");
+    await settle();
+    expect(meta().properties.birthYear).toEqual({ type: "number" });
+    // The name clears and the type does not: the next field is usually another one of these.
+    expect(shows(draftName(container, "meta"))).toBe("");
+
+    setAndFire(draftName(container, "meta"), "homepage", "input");
+    setAndFire(draftType(container, "meta"), "string");
+    pointer(draftAdd(container, "meta"), "click");
+    await settle();
+    expect(meta().properties.homepage).toEqual({ type: "string" });
     expect(state.files.has("project.json")).toBe(true);
   });
 
-  test("add nested field creates a missing parent properties map", () => {
-    const { container } = setup({
+  test("an object with no properties map gets one", async () => {
+    const { container } = await withDefs({
       Post: { properties: { meta: { type: "object" } }, type: "object" },
     });
-    selectDef(container, "Post");
-    const row = metaCard(container).querySelector(".schema-nested-add")!;
-    const input = row.querySelector(".schema-nested-add-name") as HTMLInputElement;
-    input.value = "slug";
-    key(input, "Enter");
-    expect(metaSchema().properties.slug).toEqual({ type: "string" });
+    await selectShape(container, "Post");
+    setAndFire(draftName(container, "meta"), "slug", "input");
+    key(control(draftName(container, "meta")), "Enter");
+    await settle();
+    expect(meta().properties.slug).toEqual({ type: "string" });
   });
 
-  test("delete nested removes the property and its required entry", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(nestedCard(container, "author").querySelector('[title="Delete field"]')!, "click");
-    expect(metaSchema().properties.author).toBeUndefined();
-    expect(metaSchema().required).not.toContain("author");
+  test("an empty draft adds nothing", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(draftAdd(container, "meta"), "click");
+    await settle();
+    expect(Object.keys(meta().properties)).toEqual(["author"]);
+    expect(writes(state)).toBe(0);
   });
 
-  test("toggle nested required removes then re-adds", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    const fire = () =>
-      nestedCard(container, "author")
-        .querySelector("sp-switch")!
-        .dispatchEvent(new Event("change", { bubbles: true }));
-    fire();
-    expect(metaSchema().required).not.toContain("author");
-    fire();
-    expect(metaSchema().required).toContain("author");
+  test("delete takes the child and its requirement with it", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(nested(container, "meta", "author"), "field-delete"), "click");
+    await settle();
+    expect(meta().properties.author).toBeUndefined();
+    expect(meta().required).not.toContain("author");
   });
 
-  test("toggle nested required initializes a missing required array", () => {
-    const { container } = setup({
+  test("a child's required switch writes what it now holds", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    toggle(requiredSwitch(nested(container, "meta", "author")), false);
+    await settle();
+    expect(meta().required).not.toContain("author");
+
+    toggle(requiredSwitch(nested(container, "meta", "author")), true);
+    await settle();
+    expect(meta().required).toContain("author");
+  });
+
+  test("an object with no required list gets one", async () => {
+    const { container } = await withDefs({
       Post: {
         properties: { meta: { properties: { a: { type: "string" } }, type: "object" } },
         type: "object",
       },
     });
-    selectDef(container, "Post");
-    nestedCard(container, "a")
-      .querySelector("sp-switch")!
-      .dispatchEvent(new Event("change", { bubbles: true }));
-    expect(metaSchema().required).toEqual(["a"]);
+    await selectShape(container, "Post");
+    toggle(requiredSwitch(nested(container, "meta", "a")), true);
+    await settle();
+    expect(meta().required).toEqual(["a"]);
   });
 
-  test("rename nested remaps required; conflicting rename is rejected", () => {
-    const { container } = setup(postDefs());
-    selectDef(container, "Post");
-    setAndFire(
-      nestedCard(container, "author").querySelector(".schema-field-name-input")!,
-      "writer",
-    );
-    expect(metaSchema().properties.writer).toEqual({ type: "string" });
-    expect(metaSchema().required).toContain("writer");
+  test("a child rename remaps required; a conflicting one is refused and snaps back", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    setAndFire(nameField(nested(container, "meta", "author")), "writer");
+    await settle();
+    expect(meta().properties.writer).toEqual({ type: "string" });
+    expect(meta().required).toContain("writer");
 
-    // Add a second child, then attempt a conflicting rename
-    const row = metaCard(container).querySelector(".schema-nested-add")!;
-    (row.querySelector(".schema-nested-add-name") as HTMLInputElement).value = "city";
-    key(row.querySelector(".schema-nested-add-name")!, "Enter");
-    setAndFire(nestedCard(container, "city").querySelector(".schema-field-name-input")!, "writer");
-    expect(metaSchema().properties.city).toEqual({ type: "string" });
+    setAndFire(draftName(container, "meta"), "city", "input");
+    key(control(draftName(container, "meta")), "Enter");
+    await settle();
+
+    setAndFire(nameField(nested(container, "meta", "city")), "writer");
+    await settle();
+    expect(meta().properties.city).toEqual({ type: "string" });
+    expect(nameShown(nested(container, "meta", "city"))).toBe("city");
   });
 
-  test("change nested type preserves format string→array, drops it for boolean", () => {
-    const { container } = setup({
+  test("a child's type keeps a format between the types that carry one", async () => {
+    const { container } = await withDefs({
       Post: {
         properties: {
           meta: { properties: { avatar: { format: "image", type: "string" } }, type: "object" },
@@ -497,18 +691,21 @@ describe("nested field mutations", () => {
         type: "object",
       },
     });
-    selectDef(container, "Post");
-    setAndFire(nestedCard(container, "avatar").querySelectorAll("sp-picker")[0]!, "array");
-    expect(metaSchema().properties.avatar).toEqual({
+    await selectShape(container, "Post");
+    setAndFire(typePicker(nested(container, "meta", "avatar")), "array");
+    await settle();
+    expect(meta().properties.avatar).toEqual({
       items: { format: "image", type: "string" },
       type: "array",
     });
-    setAndFire(nestedCard(container, "avatar").querySelectorAll("sp-picker")[0]!, "boolean");
-    expect(metaSchema().properties.avatar).toEqual({ type: "boolean" });
+
+    setAndFire(typePicker(nested(container, "meta", "avatar")), "boolean");
+    await settle();
+    expect(meta().properties.avatar).toEqual({ type: "boolean" });
   });
 
-  test("change nested format keeps the type and falls back to string when untyped", () => {
-    const { container } = setup({
+  test("a child's format keeps its type, and gives an untyped property one", async () => {
+    const { container } = await withDefs({
       Post: {
         properties: {
           meta: {
@@ -519,155 +716,208 @@ describe("nested field mutations", () => {
         type: "object",
       },
     });
-    selectDef(container, "Post");
-    setAndFire(nestedCard(container, "author").querySelectorAll("sp-picker")[1]!, "color");
-    expect(metaSchema().properties.author).toEqual({ format: "color", type: "string" });
-    setAndFire(nestedCard(container, "odd").querySelectorAll("sp-picker")[1]!, "image");
-    expect(metaSchema().properties.odd).toEqual({ format: "image", type: "string" });
+    await selectShape(container, "Post");
+    setAndFire(formatPicker(nested(container, "meta", "author")), "color");
+    await settle();
+    expect(meta().properties.author).toEqual({ format: "color", type: "string" });
+
+    setAndFire(formatPicker(nested(container, "meta", "odd")), "image");
+    await settle();
+    expect(meta().properties.odd).toEqual({ format: "image", type: "string" });
   });
 });
 
-// ─── Stale-DOM guards ────────────────────────────────────────────────────────
+// ─── Guards ──────────────────────────────────────────────────────────────────
 
-describe("stale DOM guards", () => {
-  test("field events after schema parts are removed are no-ops without persisting", () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
-    const title = fieldCard(container, "title");
-    const meta = fieldCard(container, "meta");
-    const author = meta.querySelector(".schema-field-card--nested")!;
-    const addRow = meta.querySelector(".schema-nested-add")!;
-    const change = () => new Event("change", { bubbles: true });
+describe("edits against a schema that has moved underneath", () => {
+  test("every control is a guarded no-op, and none of them persists", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    const title = row(container, "title");
+    const author = nested(container, "meta", "author");
+    /* Held before the shape goes: a control the reader is looking at when the file changes
+       underneath is exactly the one whose click must be a no-op, and it is gone from the section
+       by the time it is clicked. */
+    const deleteShape = part(container, "delete-shape");
+    const addRow = draftName(container, "meta");
+    const addType = draftType(container, "meta");
 
     expect(() => {
-      // Parent object removed → nested handlers bail
+      // The parent object is gone: every nested handler bails.
       delete config().$defs.Post.properties.meta;
-      pointer(author.querySelector('[title="Delete field"]')!, "click");
-      author.querySelector("sp-switch")!.dispatchEvent(change());
-      setAndFire(author.querySelectorAll("sp-picker")[0]!, "number");
-      setAndFire(author.querySelectorAll("sp-picker")[1]!, "color");
-      setAndFire(author.querySelector(".schema-field-name-input")!, "orphanName");
-      const input = addRow.querySelector(".schema-nested-add-name") as HTMLInputElement;
-      input.value = "orphan";
-      key(input, "Enter");
+      pointer(part(author, "field-delete"), "click");
+      toggle(requiredSwitch(author), true);
+      setAndFire(typePicker(author), "number");
+      setAndFire(formatPicker(author), "color");
+      setAndFire(nameField(author), "orphanName");
+      setAndFire(addType, "number");
+      setAndFire(addRow, "orphan", "input");
+      key(control(addRow), "Enter");
 
-      // Properties map removed → top-level handlers bail
+      // The properties map is gone: every top-level handler bails.
       delete config().$defs.Post.properties;
-      pointer(title.querySelector('[title="Delete field"]')!, "click");
-      setAndFire(title.querySelectorAll("sp-picker")[0]!, "number");
-      setAndFire(title.querySelectorAll("sp-picker")[1]!, "date");
-      setAndFire(title.querySelector(".schema-field-name-input")!, "newName");
+      pointer(part(title, "field-delete"), "click");
+      setAndFire(typePicker(title), "number");
+      setAndFire(formatPicker(title), "date");
+      setAndFire(nameField(title), "newName");
 
-      // Def removed entirely → toggle-required bails
+      // The shape itself is gone: the required switch and the delete button bail.
       delete config().$defs.Post;
-      title.querySelector("sp-switch")!.dispatchEvent(change());
+      toggle(requiredSwitch(title), true);
+      pointer(deleteShape, "click");
     }).not.toThrow();
 
-    expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+    await settle();
+    expect(writes(state)).toBe(0);
   });
 });
 
-// ─── Delete definition ───────────────────────────────────────────────────────
+// ─── Deleting a shape ────────────────────────────────────────────────────────
 
-describe("delete definition", () => {
-  test("removes the entry, clears selection, and persists", async () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
-    pointer(
-      container.querySelector('.settings-editor-header [title="Delete data shape"]')!,
-      "click",
-    );
+describe("deleting a shape", () => {
+  test("removes the entry, clears the selection, and persists", async () => {
+    const { container, state } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+    pointer(part(container, "delete-shape"), "click");
+    await settle();
+
     expect(config().$defs.Post).toBeUndefined();
     expect(config().$defs.Author).toBeDefined();
-    expect(container.querySelector(".settings-empty-state")).not.toBeNull();
-    await flush();
-    expect(JSON.parse(state.files.get("project.json")!).$defs.Post).toBeUndefined();
+    expect(part(container, "empty")).not.toBeNull();
+    expect(written(state).$defs.Post).toBeUndefined();
   });
 
-  test("selected def missing from config shows empty state without crashing", () => {
-    const { container, state } = setup(postDefs());
-    selectDef(container, "Post");
-    // Re-render against a config that no longer contains the selected def
+  test("a shape that has gone from the file leaves the section on its empty state", async () => {
+    const { container } = await withDefs(postDefs());
+    await selectShape(container, "Post");
+
     resetStudioState({ projectConfig: { $defs: {} } as unknown });
-    const fresh = document.createElement("div");
-    expect(() => renderDefsEditor(fresh)).not.toThrow();
-    expect(fresh.querySelector(".settings-empty-state")).not.toBeNull();
-    // Delete on the stale container's header is a guarded no-op
-    pointer(
-      container.querySelector('.settings-editor-header [title="Delete data shape"]')!,
-      "click",
-    );
-    expect(config().$defs).toEqual({});
-    expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+    renderDefsEditor(container);
+    await settle();
+    expect(part(container, "empty")).not.toBeNull();
+    expect(container.querySelector('[part="editor"]')).toBeNull();
   });
 });
 
-// ─── The reference field, completed (plan §11.3 "Settings → Definitions") ────
+// ─── Reference fields ────────────────────────────────────────────────────────
 
-describe("reference fields", () => {
-  /** A project whose $defs hold one reference field, beside two content types to point at. */
-  function setupRefs(ref: AnyConfig): { container: HTMLElement; state: MockPlatformState } {
-    const { state } = installMockPlatform();
-    resetStudioState({
-      projectConfig: {
-        $defs: { Post: { properties: { author: ref }, required: [], type: "object" } },
-        content: { authors: { source: "./content/authors" }, tags: {} },
-      } as unknown,
+/*
+ * The reference type was only ever half-built here: choosing it wrote `#/content/` and offered no
+ * way to say what it pointed at. The picker is the other half, and it is drawn only when the
+ * project has content types to point at.
+ */
+
+describe("a reference field", () => {
+  async function withRefs(ref: AnyConfig): Promise<{
+    container: HTMLElement;
+    state: MockPlatformState;
+  }> {
+    const mounted = await setup({
+      $defs: { Post: { properties: { author: ref }, required: [], type: "object" } },
+      content: { authors: { source: "./content/authors" }, tags: {} },
     });
-    const container = document.createElement("div");
-    renderDefsEditor(container);
-    selectDef(container, "Post");
-    return { container, state };
+    await selectShape(mounted.container, "Post");
+    return mounted;
   }
 
-  test("a reference field offers every content type as a target", () => {
-    const { container } = setupRefs({ $ref: "#/content/authors" });
-    const picker = container.querySelector(".schema-field-ref-target sp-picker");
-    expect(picker).not.toBeNull();
-    expect(
-      [...picker!.querySelectorAll("sp-menu-item")].map((m) => m.getAttribute("value")),
-    ).toEqual(["authors", "tags"]);
-    expect(picker!.getAttribute("value")).toBe("authors");
+  test("offers every content type, and shows the one it points at", async () => {
+    const { container } = await withRefs({ $ref: "#/content/authors" });
+    const picker = part(card(container, "author"), "ref-target-select");
+    expect([...picker.querySelectorAll("option")].map((o) => o.getAttribute("value"))).toEqual([
+      "authors",
+      "tags",
+    ]);
+    expect(control(picker).value).toBe("authors");
   });
 
-  test("choosing a target rewrites the $ref and persists it", async () => {
-    const { container, state } = setupRefs({ $ref: "#/content/authors" });
-    const picker = container.querySelector(".schema-field-ref-target sp-picker")!;
-    (picker as unknown as { value: string }).value = "tags";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(4);
+  test("choosing a target rewrites the pointer and persists it", async () => {
+    const { container, state } = await withRefs({ $ref: "#/content/authors" });
+    setAndFire(part(card(container, "author"), "ref-target-select"), "tags");
+    await settle();
     expect(config().$defs.Post.properties.author).toEqual({ $ref: "#/content/tags" });
-    expect(JSON.parse(state.files.get("project.json")!).$defs.Post.properties.author).toEqual({
-      $ref: "#/content/tags",
-    });
+    expect(written(state).$defs.Post.properties.author).toEqual({ $ref: "#/content/tags" });
   });
 
-  test("a target chosen for a field that has gone is a guarded no-op", async () => {
-    const { container, state } = setupRefs({ $ref: "#/content/authors" });
-    const picker = container.querySelector(".schema-field-ref-target sp-picker")!;
-    resetStudioState({
-      projectConfig: {
-        $defs: { Post: { properties: {}, required: [], type: "object" } },
-        content: { authors: {} },
-      } as unknown,
-    });
-    (picker as unknown as { value: string }).value = "authors";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(4);
-    expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+  test("choosing a target for a field that has gone is a guarded no-op", async () => {
+    const { container, state } = await withRefs({ $ref: "#/content/authors" });
+    const picker = part(card(container, "author"), "ref-target-select");
+    delete config().$defs.Post.properties.author;
+    setAndFire(picker, "tags");
+    await settle();
+    expect(writes(state)).toBe(0);
   });
 
-  test("with no content types the picker is not drawn — there is nothing to point at", () => {
-    const { state } = installMockPlatform();
-    expect(state).toBeDefined();
-    resetStudioState({
-      projectConfig: {
-        $defs: { Post: { properties: { author: { $ref: "#/content/gone" } }, type: "object" } },
-      } as unknown,
+  test("choosing the reference type from the picker writes the bare pointer", async () => {
+    const { container } = await withRefs({ type: "string" });
+    setAndFire(typePicker(row(container, "author")), "reference");
+    await settle();
+    expect(config().$defs.Post.properties.author).toEqual({ $ref: "#/content/" });
+    // With a target list to offer, the picker appears in the same move.
+    expect(card(container, "author").querySelector('[part="ref-target-select"]')).not.toBeNull();
+  });
+
+  test("with no content types there is no picker, because there is nothing to point at", async () => {
+    const { container } = await setup({
+      $defs: { Post: { properties: { author: { $ref: "#/content/gone" } }, type: "object" } },
     });
-    const container = document.createElement("div");
+    await selectShape(container, "Post");
+    expect(container.querySelector('[part="ref-target-select"]')).toBeNull();
+  });
+});
+
+// ─── The mount ───────────────────────────────────────────────────────────────
+
+describe("the surface", () => {
+  test("a section that lost its container is mounted again rather than updated into nothing", async () => {
+    const { container } = await withDefs(postDefs());
+    expect(container.querySelector('[part="defs"]')).not.toBeNull();
+
+    // What a different section rendering into the same container does.
+    container.replaceChildren();
     renderDefsEditor(container);
-    selectDef(container, "Post");
-    expect(container.querySelector(".schema-field-ref-target")).toBeNull();
+    await settle();
+    expect(container.querySelector('[part="defs"]')).not.toBeNull();
+  });
+
+  test("a mount disposed before it settles leaves nothing behind", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const noop = (): void => {};
+    const handle = mountDefsSurface(host, {
+      addNested: noop,
+      cancelAdd: noop,
+      cancelNew: noop,
+      confirmAdd: noop,
+      createNew: noop,
+      editAddFormat: noop,
+      editAddName: noop,
+      editAddRequired: noop,
+      editAddType: noop,
+      editDraftName: noop,
+      editDraftType: noop,
+      editNew: noop,
+      openAdd: noop,
+      openNew: noop,
+      removeField: noop,
+      removeNested: noop,
+      removeShape: noop,
+      renameField: noop,
+      renameNested: noop,
+      select: noop,
+      setFormat: noop,
+      setNestedFormat: noop,
+      setNestedRequired: noop,
+      setNestedType: noop,
+      setRequired: noop,
+      setTarget: noop,
+      setType: noop,
+    });
+    handle.dispose();
+    await handle.ready;
+    await settle();
+
+    expect(handle.attached()).toBe(false);
+    expect(handle.host).toBe(host);
+    expect(host.querySelector('[part="defs"]')).toBeNull();
   });
 });

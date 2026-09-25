@@ -6,11 +6,12 @@ code:
   - packages/studio/src/services/notify.ts
   - packages/studio/src/panels/bottom-dock.ts
   - packages/studio/src/panels/problems-panel.ts
+  - packages/studio/src/commands/run-reported.ts
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/panels/activity-panel.ts
   - packages/studio/src/ui/progress-modal.ts
-  - packages/studio/src/ui/field-row.ts
-  - packages/studio/src/panels/statusbar.ts
+  - packages/studio/src/surfaces/style-panel.ts
+  - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/services/connection.ts
 ---
 
@@ -42,6 +43,8 @@ Toasts are for outcomes you don't have to act on. Anything you _do_ have to act 
 
 A Problem is something that must be fixed, kept on a list until it is. Failed saves, validation errors, a render that didn't work and a push that was refused all land here with the file they came from.
 
+A command that refuses also lands here, whichever surface you ran it from: a menu row, a keyboard shortcut, a palette entry, a status bar item or a Retry button on another Problem. The row names the command and what it needed, and it is grouped under the surface that ran it (**Keyboard**, **Palette**, **Command Bar**, **Problems**), so a shortcut that does nothing is a row you can read rather than a key that went quiet.
+
 Open the list two ways, both showing the same rows:
 
 - The **⚠ n** count in the status bar, whenever it is above zero. Click it and the list opens on the problem.
@@ -63,6 +66,14 @@ Rows are grouped under where they came from (**Save**, **Source Control**, **Can
 :::doc-note
 Problems belong to the project you have open. Closing the project clears them, so a failure never follows you into a different repository.
 :::
+
+### Checks over your own content
+
+Some Problems are about the document rather than about Studio. Saving a file checks its [popovers](/docs/framework/concepts/overlays) and files what it finds under **Popover**: a panel whose base style sets `display`, which cancels the browser's own hiding and lays the panel out on every page; `popovertarget` on an element that cannot invoke one; a target naming no popover; an exit animation that will be cut short.
+
+Where the fix is mechanical the row carries a **Fix** button that performs it in one step you can undo with one press: moving `display` into `:popover-open`, removing attributes that do nothing where they are, writing `popover="auto"`. Where it is not, the row is a sentence with no button, because a button that does not do what it says is worse than none. Which panel a control should point at is your decision, not something Studio can guess.
+
+You can run the same check on demand: press :kbd[⌘K] and choose **Check Popovers**. **Check Accessibility** is its neighbour and files under **Accessibility** instead, with the WCAG criterion behind each finding; the rules it applies are listed on the [Accessibility](/docs/framework/concepts/accessibility) page, and `jx validate` applies the same ones. Both are also tools of the [AI assistant](/docs/studio/ai): ask it to check the open page and it runs the same command, reads back the rows it filed, and can fix what it finds in the same request.
 
 ### Losing the backend
 
@@ -87,7 +98,7 @@ Being a dock tab rather than a full-screen surface is the whole point: **the pag
 - The dock reveals itself **once per thing you open**. Close the dock over an open formula and it stays closed until you open another.
 
 :::doc-note
-There is no **Diff** tab here. Reviewing a change is a **Diff** editor on a document at full pane size. See [Source control](/docs/studio/publish/source-control).
+There is no **Diff** tab here. Reviewing a change is a **Diff** editor on a document at full pane size, and its change count and stepper are drawn over the comparison itself. Two panes can be comparing two different files, which a single dock tab could not show. See [Source control](/docs/studio/publish/source-control).
 :::
 
 ## Activity
@@ -143,3 +154,8 @@ The selection field carries what an address can't state: **3 selected** when mor
 - **[Keyboard shortcuts](/docs/studio/interface/shortcuts)**: the full generated list
 - **[Dependencies and imports](/docs/studio/projects/dependencies)**: the one operation that still blocks
 - **[Source control](/docs/studio/publish/source-control)**: where a failed commit or push sends you back to
+  - packages/studio/src/surfaces/panel-problems.json
+  - packages/studio/src/surfaces/panel-problems.ts
+  - packages/studio/src/surfaces/panel-activity.json
+  - packages/studio/src/surfaces/panel-activity.ts
+  - packages/studio/src/surfaces/panel-deploy-checklist.ts

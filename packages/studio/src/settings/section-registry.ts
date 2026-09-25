@@ -25,7 +25,14 @@
 export interface SettingsSection {
   key: string;
   label: string;
-  /** Nav icon name (reserved for future nav treatments). */
+  /**
+   * Nav icon name (reserved for future nav treatments).
+   *
+   * A KEY into the kit's glyph manifest (`@jxsuite/ui/icons`), the same space `PanelRecord.icon`
+   * resolves in — never a tag. A key with no row is not a missing element, it is zero nodes
+   * (`studio.md` §13.5), so a wrong name here is silent in both directions: silent now because
+   * nothing draws it, and silent later because `jx-icon` falls back to nothing.
+   */
   icon?: string | undefined;
   /** Sort position — lower orders render higher in the inner nav. */
   order: number;

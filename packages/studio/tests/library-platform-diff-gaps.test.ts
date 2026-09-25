@@ -1,16 +1,18 @@
 /**
  * Diff-gap tests for three surfaces the existing suites leave unexercised.
  *
- * - **`src/browse/library-pane.ts`** — the context menu's outside-click dismissal (the sibling test
- *   dismisses with `pointerdown`, and the layer listens for `mousedown`); a drop whose destination
- *   prompt is cancelled; the EMPTY state's own Retry, which is a different button from the
- *   incomplete-scan banner's and sits below it in the DOM; and the click that opens a card.
+ * - **`src/browse/library-pane.ts`** — the context menu's outside-click dismissal, which is the
+ *   platform popover's light dismissal rather than anything this module binds; a drop whose
+ *   destination prompt is cancelled; the EMPTY state's own Retry, which is a different button from
+ *   the incomplete-scan banner's and sits below it in the DOM; and the click that opens a card.
  * - **`src/platforms/devserver.ts`** — `buildSite`, including the sentence it falls back to when the
  *   backend named no error at all.
  * - **`src/platforms/cloud.ts`** — `cfConnect`'s poll RE-ARMING itself: the popup is still open and
  *   the broker has nothing yet, which is the one branch every existing poll test settles before
  *   reaching; and, over a timer table with distinct ids, that the handle it re-armed is the one
- *   `cleanup` clears — so the settled promise leaves nothing behind to poll the broker again.
+ *   `cleanup` clears — so the settled promise leaves nothing behind to poll the broker again. Both
+ *   now begin one fetch later than they used to: the flow reads a baseline connection before it
+ *   opens the popup, and nothing it installs exists until that read lands.
  */
 import {
   answerPromptDialog,
@@ -125,8 +127,9 @@ async function mount(): Promise<HTMLElement> {
   return host;
 }
 
-function popovers(): number {
-  return document.querySelectorAll("#layer-dialog sp-popover").length;
+/** Menus on screen. The kit's menu is a popover on the platform's own top layer. */
+function menus(): number {
+  return document.querySelectorAll("#layer-popover jx-menu").length;
 }
 
 // ─── Library pane ────────────────────────────────────────────────────────────
@@ -152,7 +155,7 @@ describe("the Library pane", () => {
 
   test("a click on a card opens THAT card's path, not the first one drawn", async () => {
     await mount();
-    const card = host.querySelector('.library-card[data-path="public/logo.png"]') as HTMLElement;
+    const card = host.querySelector('[part="card"][data-path="public/logo.png"]') as HTMLElement;
     expect(card).not.toBeNull();
     card.click();
     await flush();
@@ -167,23 +170,23 @@ describe("the Library pane", () => {
     await mount();
     // Nothing was read, so the list is empty AND incomplete: the banner is drawn above the body and
     // The empty state inside it. They are two buttons, and this is the second one.
-    const empty = host.querySelector(".library-empty") as HTMLElement;
+    const empty = host.querySelector('[part="empty"]') as HTMLElement;
     expect(empty.textContent).toContain("the scan did not finish");
-    const retry = empty.querySelector("sp-button") as HTMLElement;
-    expect(host.querySelectorAll("sp-button").length).toBeGreaterThan(1);
+    const retry = empty.querySelector('[part="retry"]') as HTMLElement;
+    expect(host.querySelectorAll('[part="retry"]').length).toBeGreaterThan(1);
 
     broken = false;
     retry.click();
     await flush();
     await flush();
-    expect(host.querySelectorAll(".library-card").length).toBe(5);
-    expect(host.querySelector(".library-empty")).toBeNull();
+    expect(host.querySelectorAll('[part="card"]').length).toBe(5);
+    expect(host.querySelector('[part="empty"]')).toBeNull();
   });
 
   test("a drop into All whose destination prompt is cancelled uploads nothing", async () => {
     setLibraryCategory("all");
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
+    const body = host.querySelector('[part="body"]') as HTMLElement;
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
     // The drop really did reach the upload flow — it is waiting on the destination.
@@ -196,7 +199,7 @@ describe("the Library pane", () => {
   test("…and the same drop, answered, uploads into the folder the author named", async () => {
     setLibraryCategory("all");
     await mount();
-    const body = host.querySelector(".library-body") as HTMLElement;
+    const body = host.querySelector('[part="body"]') as HTMLElement;
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
     await answerPromptDialog("assets/media/");
@@ -206,20 +209,24 @@ describe("the Library pane", () => {
 
   test("an outside mousedown dismisses the context menu, and the next right-click reopens one", async () => {
     await mount();
-    const card = host.querySelector(".library-card") as HTMLElement;
+    const card = host.querySelector('[part="card"]') as HTMLElement;
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    expect(popovers()).toBe(1);
+    expect(menus()).toBe(1);
 
-    // The layer's dismissal listener is a capturing `mousedown` on the document — not `pointerdown`.
+    /* Light dismissal is the PLATFORM's: an `auto` popover closes on an outside mousedown, and the
+       `toggle` event that follows is what tells `openMenu` to empty its slot. Nothing in the
+       Library binds a document listener for it any more — which is the whole reason the
+       hand-rolled popover, its dismissal handler and its edge clamping went. */
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(popovers()).toBe(0);
+    await flush();
+    expect(menus()).toBe(0);
 
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    expect(popovers()).toBe(1);
-    const open = [...document.querySelectorAll("#layer-dialog sp-menu-item")].find(
-      (n) => (n.textContent ?? "").trim() === "Open",
+    expect(menus()).toBe(1);
+    const open = document.querySelector(
+      '#layer-popover jx-menu-item[data-command-id="open"]',
     ) as HTMLElement;
     open.click();
     await flush();
@@ -283,12 +290,14 @@ describe("the cloud adapter's cfConnect poll", () => {
   });
 
   test("re-arms itself while the popup is open and the broker has nothing yet", async () => {
+    /* Call 1 is the BASELINE, taken before the popup opens — it is what tells the poll that the row
+       it later finds is new rather than left over from a previous session. */
     let checks = 0;
     globalThis.fetch = ((input: RequestInfo | URL) => {
       if (String(input).includes("/api/v1/cf/connection")) {
         checks += 1;
         return Promise.resolve(
-          Response.json(checks < 3 ? { connected: false } : { accountId: "acct", connected: true }),
+          Response.json(checks < 4 ? { connected: false } : { accountId: "acct", connected: true }),
         );
       }
       return Promise.resolve(Response.json({}));
@@ -307,10 +316,13 @@ describe("the cloud adapter's cfConnect poll", () => {
 
     try {
       const p = createCloudPlatform(null);
-      expect(await p.cfConnect?.()).toEqual({ accountId: "acct", connected: true });
-      // Two empty polls, each of which had to re-arm the timer, then the one that found it. Without
-      // The re-arm the second check never happens and the promise never settles.
-      expect(checks).toBe(3);
+      expect(await p.cfConnect?.()).toEqual({
+        connection: { accountId: "acct", connected: true },
+        status: "connected",
+      });
+      /* Baseline, two empty polls each of which had to re-arm the timer, then the one that found
+         it. Without the re-arm the second check never happens and the promise never settles. */
+      expect(checks).toBe(4);
       expect(delays).toEqual([1500, 1500, 1500]);
       expect(popup.close).toHaveBeenCalled();
     } finally {
@@ -378,12 +390,17 @@ describe("the cloud adapter's cfConnect poll", () => {
     try {
       const p = createCloudPlatform(null);
       const pending = p.cfConnect?.();
+      /* Nothing is armed synchronously any more: the flow reads a baseline connection before it
+         opens the popup, so the first timer only exists once that read has landed. */
+      expect([...armed.keys()]).toEqual([]);
+      await drain();
       expect([...armed.keys()]).toEqual([1]);
+      expect(fetched).toEqual(["/api/v1/cf/connection"]);
 
       await fire(1);
       // The broker has nothing and the popup is open, so that poll armed a SECOND timer.
       expect([...armed.keys()]).toEqual([2]);
-      expect(fetched).toEqual(["/api/v1/cf/connection"]);
+      expect(fetched).toHaveLength(2);
 
       // The home shell relays success while timer 2 is still armed.
       connected = true;
@@ -393,7 +410,10 @@ describe("the cloud adapter's cfConnect poll", () => {
           origin: location.origin,
         }),
       );
-      expect(await pending).toEqual({ accountId: "acct", connected: true });
+      expect(await pending).toEqual({
+        connection: { accountId: "acct", connected: true },
+        status: "connected",
+      });
 
       // Cleanup cleared the id the poll RE-ARMED, not the stale first one…
       expect(cleared).toEqual([2]);

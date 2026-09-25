@@ -5,6 +5,7 @@ import { setNotifyWebview, startBackgroundChecks } from "./updater";
 import { init as initUtils, openDirectoryDialog, openFileDialog } from "./utils";
 import { handleAiApi } from "@jxsuite/server/ai-api";
 import { handleImportApi } from "@jxsuite/server/import-api";
+import { hostIsLoopbackOrAbsent, secretsMatch } from "@jxsuite/server/net-guard";
 import { installApplicationMenu } from "./menu";
 import { watchSettings } from "./settings-store";
 import {
@@ -12,7 +13,7 @@ import {
   broadcastUpdateReady,
   openProjectWindow,
   parseProjectDirFromUrl,
-  setAiServerUrl,
+  setAiChatUrl,
   setImportServiceUrl,
 } from "./window-manager";
 
@@ -30,21 +31,38 @@ async function main() {
   // Shared services HTTP server (SSE/NDJSON streaming requires HTTP), loopback-bound. AI sessions
   // Are id-keyed and process-global, so the server resolves requests by id and needs no fixed
   // Project root (session creation flows through per-window RPC, which supplies the window's own
-  // Root). The import route writes to the filesystem, so it is additionally gated by a per-process
-  // Random token handed to webviews over RPC.
-  const importToken = crypto.randomUUID();
+  // Root).
+  //
+  // Every route is gated by ONE per-process random token handed to webviews over RPC. The import
+  // Route writes to the filesystem and the AI route spends the user's own provider credit, so an
+  // Ungated one is an open relay for any process on the machine (desktop.md §7.3a). The token rides
+  // In the query rather than `Authorization`, because the AI proxy already reads that header as the
+  // Provider key. A Host check comes first, so a DNS-rebound page cannot reach either route by name.
+  const serviceToken = crypto.randomUUID();
+  const tokenPresented = (url: URL) => {
+    const presented = url.searchParams.get("token");
+    return presented !== null && secretsMatch(presented, serviceToken);
+  };
   const aiServer = Bun.serve({
     hostname: "127.0.0.1",
     // Imports stream for minutes with heartbeats every 15s; match the dev server's generous timeout.
     idleTimeout: 120,
     async fetch(req) {
       const url = new URL(req.url);
-      const aiResponse = await handleAiApi(req, url);
-      if (aiResponse) {
-        return aiResponse;
+      if (!hostIsLoopbackOrAbsent(req)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      if (url.pathname.startsWith("/__studio/ai/")) {
+        if (!tokenPresented(url)) {
+          return new Response("Forbidden", { status: 403 });
+        }
+        const aiResponse = await handleAiApi(req, url);
+        if (aiResponse) {
+          return aiResponse;
+        }
       }
       if (url.pathname === "/__studio/import-site") {
-        if (url.searchParams.get("token") !== importToken) {
+        if (!tokenPresented(url)) {
           return new Response("Forbidden", { status: 403 });
         }
         const importResponse = await handleImportApi(req, url, {
@@ -65,10 +83,11 @@ async function main() {
     port: 0,
   });
 
-  setAiServerUrl(`http://localhost:${aiServer.port}`);
-  setImportServiceUrl(
-    `http://127.0.0.1:${aiServer.port}/__studio/import-site?token=${importToken}`,
-  );
+  /* The literal the server is bound to, not `localhost`: on a machine whose resolver answers `::1`
+     first, `localhost` reaches nothing, because the bind is IPv4-only. */
+  const serviceOrigin = `http://127.0.0.1:${aiServer.port}`;
+  setAiChatUrl(`${serviceOrigin}/__studio/ai/chat?token=${serviceToken}`);
+  setImportServiceUrl(`${serviceOrigin}/__studio/import-site?token=${serviceToken}`);
 
   installApplicationMenu();
 

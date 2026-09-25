@@ -66,6 +66,22 @@ export interface ExtraEdge {
 
 const EXTRA_EDGES: ExtraEdge[] = [
   {
+    patterns: ["packages/server/tests/fixtures/ai-upstream/**"],
+    seeds: ["packages/ai"],
+    evidence: ["packages/ai/tests/upstream-divergence.test.ts"],
+    why: "The upstream SSE fixtures, and the proxy's frozen frames beside them, live under packages/server, but packages/ai's divergence test reads them: it runs createOpenAIStreamingClient over the same bodies and pins the list of fixtures where the two normalizers disagree against the committed *.server.json. packages/server depends on packages/ai (it runs @jxsuite/ai/gateway), never the reverse, so no package.json edge carries a fixture or server-golden change back to packages/ai, and this one must.",
+  },
+  {
+    patterns: [
+      "extensions/*/jx-extension.json",
+      "extensions/*/package.json",
+      "extensions/*/src/*.class.json",
+    ],
+    seeds: ["packages/catalog"],
+    evidence: ["packages/catalog/tests/catalog.test.ts"],
+    why: "packages/catalog/catalog.json is GENERATED from every extension's manifest and the class descriptors it names, and no package.json edge records that: the catalogue names the extensions as data precisely so core keeps no dependency on them (specs/extensions.md §2). Its test holds the committed bytes to those files, so a manifest edit must retest it.",
+  },
+  {
     patterns: ["packages/runtime/src/runtime.ts"],
     seeds: ["packages/compiler"],
     evidence: ["packages/compiler/tests/shadow-dom.test.ts"],
@@ -99,6 +115,18 @@ const EXTRA_EDGES: ExtraEdge[] = [
     why: "project-config globs every committed sites/*/project.json as its only real-formatting fixture; the DOM harness loads sites/test-blank as its site.",
   },
   {
+    patterns: ["packages/site/src/site-style.ts"],
+    seeds: ["packages/ui"],
+    evidence: ["packages/ui/tests/theme.test.ts"],
+    why: "An INVERTED edge: the kit does not depend on the site builder, yet its theme test imports buildSiteStyleCSS to hold the two readings of one style block in agreement — the kit emits the theme through buildStyleRules and the builder emits the same block for a page, and a divergence between them is exactly the defect that made installTheme a third emitter. Without this the test that guards the agreement never runs when the builder side moves.",
+  },
+  {
+    patterns: ["packages/compiler/src/shared.ts"],
+    seeds: ["packages/site"],
+    evidence: ["packages/site/tests/site-style.test.ts"],
+    why: "An INVERTED edge: the compiler depends on the site builder, yet the builder's test imports the compiler's compileStyles to hold the canvas sheet byte-for-byte to the page the build writes from one project style block (#296). The two used to disagree in silence — the build emitted a site's element-selector rules and the canvas dropped them — and without this edge the test that guards the agreement never runs when the compiler side moves.",
+  },
+  {
     patterns: ["examples/**"],
     seeds: ["packages/compiler"],
     evidence: [
@@ -124,12 +152,13 @@ const EXTRA_EDGES: ExtraEdge[] = [
   },
   {
     patterns: ["extensions/feed/src/**", "extensions/parser/src/**"],
-    seeds: ["packages/compiler"],
+    seeds: ["packages/compiler", "packages/server"],
     evidence: [
       "packages/compiler/tests/feed-integration.test.ts",
       "packages/compiler/tests/sitemap-lastmod.test.ts",
+      "packages/server/tests/refactor-apply.test.ts",
     ],
-    why: "Two compiler tests build a real project that loads @jxsuite/parser (and, for feeds, @jxsuite/feed), so a change to either extension's src can break a compiler test. The sitemap one spans three packages by construction: the parser carries an entry's timestamp, the compiler lifts it onto the route, and the sitemap prints it.",
+    why: "Two compiler tests build a real project that loads @jxsuite/parser (and, for feeds, @jxsuite/feed), so a change to either extension's src can break a compiler test. The sitemap one spans three packages by construction: the parser carries an entry's timestamp, the compiler lifts it onto the route, and the sitemap prints it. The refactor engine reads the parser's class descriptors by absolute path to drive its write-back capabilities against the real Csv and Markdown declarations, which is the one thing the parity suite cannot do — it stages starters into a temp directory, where a bare @jxsuite/parser resolves to the PUBLISHED package. Server is already a dependent of compiler, so this seed is redundant today and is named anyway: it is the edge that is actually asserted, and a later narrowing of the compiler seed must not silently un-gate it.",
   },
   {
     patterns: ["packages/starters/sites/portfolio/**", "packages/starters/sites/real-estate/**"],

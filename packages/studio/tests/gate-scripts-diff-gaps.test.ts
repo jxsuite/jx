@@ -134,7 +134,9 @@ describe("report", () => {
     staleFocusRings: [],
     contrast: [],
     guidelineTokens: [],
-    underScrim: [],
+    overlayOrder: [],
+    spectrum: [],
+    duplicateAnimations: [],
   };
   const logs: string[] = [];
   const sink = (...args: unknown[]): void => {
@@ -160,20 +162,40 @@ describe("report", () => {
     }
   });
 
-  test("fails on a card left under its own scrim, naming the card and its line", () => {
-    const underScrim = [
-      { file: "src/panels/publish-panel.ts", line: 42, text: ".progress-modal is not stacked" },
+  test("fails on a mis-stacked overlay layer, naming it and what it is under", () => {
+    /* Its predecessor reported a modal card left under an `<sp-underlay>`. That element cannot be
+       constructed any more, so the same guarantee is asked of the layer ORDER — which is why those
+       four z-indices are classes in `styles/shell-frame.json` rather than inline attributes. */
+    const overlayOrder = [
+      {
+        file: "styles/shell-frame.css",
+        line: 0,
+        text: ".jx-layer--toast is at z-index 500, not above .jx-layer--dialog at 3000",
+      },
     ];
-    expect(report({ ...empty, underScrim })).toBe(1);
+    expect(report({ ...empty, overlayOrder })).toBe(1);
     const said = logs.join("\n");
-    expect(said).toContain("1 modal card(s) opened under their own scrim");
-    expect(said).toContain("src/panels/publish-panel.ts:42");
-    expect(said).toContain(".progress-modal is not stacked");
+    expect(said).toContain("1 overlay layer(s) mis-stacked");
+    expect(said).toContain(".jx-layer--toast is at z-index 500");
   });
 
-  test("the same result with the card lifted passes and says every card is stacked", () => {
+  test("fails on a Spectrum name, names the file and the name, and lists them once", () => {
+    const spectrum = [
+      { file: "src/ui/media-picker.ts", line: 12, text: "sp-textfield" },
+      { file: "styles/panels.css", line: 8, text: "--spectrum-gray-100" },
+    ];
+    expect(report({ ...empty, spectrum })).toBe(1);
+    const said = logs.join("\n");
+    expect(said).toContain("2 Spectrum name(s) in 2 file(s)");
+    expect(said).toContain("src/ui/media-picker.ts:12  sp-textfield");
+    expect(said).toContain("Names: --spectrum-gray-100, sp-textfield");
+  });
+
+  test("the clean result passes and says both rules were asked", () => {
     expect(report(empty)).toBe(0);
-    expect(logs.join("\n")).toContain("every underlay-bearing card stacked above its scrim");
+    const said = logs.join("\n");
+    expect(said).toContain("no Spectrum name (0 allowed)");
+    expect(said).toContain("the four overlay layers strictly stacked");
   });
 });
 
@@ -181,30 +203,34 @@ describe("report", () => {
 
 describe("iconProblems", () => {
   const base = {
-    imported: new Map([["IconGhost", "real/IconGhost.js"]]),
-    installed: (specifier: string) => specifier.startsWith("real/"),
     keys: new Map<string, string>(),
     registered: new Set<string>(),
     rows: new Set<string>(),
     tags: new Map<string, string[]>(),
   };
 
-  test("a registration no template writes is a dead row, and the message says both fixes", () => {
-    // Imported, installed, and drawn by nobody: the registry row is either stale or the tag is
-    // Written by a Spectrum component's own shadow DOM — which is what UNWRITTEN is for.
-    const [problem, ...rest] = iconProblems({ ...base, registered: new Set(["sp-icon-ghost"]) });
+  test("a tag the kit does not define is an empty box, and the message says which fix", () => {
+    /* This used to assert the OTHER direction — a registered element no template writes — which
+       existed because Spectrum's registry was hand-written and a stale row was a real mistake, held
+       back by an `UNWRITTEN` allow-list for the icons Spectrum's own shadow roots constructed. The
+       kit defines one element per document it ships, so the only direction that can be silent here
+       is a document naming a tag nothing will define. */
+    const [problem, ...rest] = iconProblems({
+      ...base,
+      tags: new Map([["jx-ghost", ["surfaces/rail.json"]]]),
+    });
     expect(rest).toEqual([]);
-    expect(problem).toContain("sp-icon-ghost is registered as an element");
-    expect(problem).toContain("no template writes <sp-icon-ghost>");
-    expect(problem).toContain("UNWRITTEN");
+    expect(problem).toContain("<jx-ghost> is declared by surfaces/rail.json");
+    expect(problem).toContain("empty box");
+    expect(problem).toContain("packages/ui/components/");
   });
 
-  test("…and writing the tag anywhere silences it", () => {
+  test("…and defining the element silences it", () => {
     expect(
       iconProblems({
         ...base,
-        registered: new Set(["sp-icon-ghost"]),
-        tags: new Map([["sp-icon-ghost", ["panels/a.ts"]]]),
+        registered: new Set(["jx-ghost"]),
+        tags: new Map([["jx-ghost", ["surfaces/rail.json"]]]),
       }),
     ).toEqual([]);
   });

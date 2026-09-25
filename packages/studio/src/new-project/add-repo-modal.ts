@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
- * Repository picker modal — a filterable picker over `platform.listRepos` (every repo the
- * platform's account link can reach, personal and organization). Two modes share the dialog:
+ * Repository picker flow — a filterable picker over `platform.listRepos` (every repo the platform's
+ * account link can reach, personal and organization). Two modes share the dialog:
  *
  * - "add" (Add Existing Repository): the unfiltered adoption path.
  * - "open" (Open Project on `openProjectPicker: "repo-list"` platforms): only write-access
@@ -16,9 +16,21 @@
  * access footer: per-installation links to widen the App's repository selection, a link to install
  * it on another account, and Refresh — the user grants access in a GitHub tab, comes back, and
  * reloads the list without losing the dialog.
+ *
+ * **The dialog is a document.** `surfaces/add-repo.json` draws it and `surfaces/add-repo.ts` mounts
+ * it; this module keeps the listing, the ordering, the adoption and the promise. What it used to be
+ * is worth recording, because it is the shape every converted surface starts from: a whole template
+ * re-rendered from module state on every keystroke, inside a fixed card that painted its own panel
+ * beside an `<sp-underlay>` and needed `z-index: 1000` to climb back out from under its own scrim.
+ * A modal `<dialog>` is in the top layer by construction, so none of that stacking is left to get
+ * wrong, and a filter keystroke now moves one binding rather than rebuilding every row.
+ *
+ * **`closeAddRepoModal` went with it.** It existed because the lit card had to answer its own
+ * Escape key, its own underlay click and its own close button, and all three of those belong to the
+ * platform now: every way out raises the dialog's `cancel`, which arrives here as `onClosed`. A
+ * closer nothing in the app called was left over from drawing the box by hand.
  */
 
-import { html, nothing } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
   getAccountStatus,
@@ -27,12 +39,14 @@ import {
   needsAppInstall,
 } from "../account-status";
 import { getPlatform } from "../platform";
-import { openModal } from "../ui/layers";
+import { layerHost } from "../ui/layers";
+import { openAddRepoSurface } from "../surfaces/add-repo";
+import type { AddRepoRow, AddRepoSurfaceHandle, AddRepoView } from "../surfaces/add-repo";
 import type { RepoInfo } from "../types";
 
 type PickerMode = "add" | "open";
 
-let _handle: ReturnType<typeof openModal> | null = null;
+let _handle: AddRepoSurfaceHandle | null = null;
 let _mode: PickerMode = "add";
 let _repos: RepoInfo[] | null = null;
 let _filter = "";
@@ -70,14 +84,36 @@ function openPicker(mode: PickerMode): Promise<{ root: string } | null> {
     return Promise.resolve(null);
   }
   _mode = mode;
+  _repos = null;
   _filter = "";
+  _error = "";
   _importing = "";
-
-  loadRepos();
 
   return new Promise((resolve) => {
     _resolve = resolve;
-    renderModal();
+    _handle = openAddRepoSurface({
+      layer: layerHost("dialog"),
+      onChoose: (fullName) => {
+        void chooseRepo(fullName);
+      },
+      /* Escape, the Cancel button and a programmatic close all arrive here, and all of them mean
+         the same thing: nothing was adopted. A native `<dialog>` has already closed by the time it
+         says so, which is why this settles rather than deciding whether to allow it — an adoption
+         still in flight is dropped on the way out (`chooseRepo` finds the picker gone), exactly as
+         a listing that lands after a dismissal is. */
+      onClosed: () => {
+        settle(null);
+      },
+      onFilter: (value) => {
+        _filter = value;
+        redraw();
+      },
+      onRefresh: () => {
+        loadRepos();
+      },
+      view: viewOf(),
+    });
+    loadRepos();
   });
 }
 
@@ -88,10 +124,10 @@ function openPicker(mode: PickerMode): Promise<{ root: string } | null> {
 function loadRepos(): void {
   _repos = null;
   _error = "";
-  // Paints the loading state on a refresh; a no-op on open, where the caller renders next.
-  renderIfOpen();
+  // Paints the loading state on a refresh; a no-op on open, where the surface opens on this view.
+  redraw();
 
-  void hydrateAccountStatus().then(renderIfOpen);
+  void hydrateAccountStatus().then(redraw);
 
   void getPlatform()
     .listRepos?.()
@@ -103,52 +139,49 @@ function loadRepos(): void {
       _error = errorMessage(error);
     })
     .finally(() => {
-      renderIfOpen();
+      redraw();
     });
 }
 
-/** Render only while the dialog is still up — a load settling after close must not reopen it. */
-function renderIfOpen(): void {
-  if (_resolve) {
-    renderModal();
-  }
+/** Push the current state at the surface — a no-op once the dialog is gone. */
+function redraw(): void {
+  _handle?.update(viewOf());
 }
 
-export function closeAddRepoModal() {
-  if (!_handle || _importing) {
+/**
+ * Resolve the promise once, and take the dialog down with it.
+ *
+ * The promise is resolved BEFORE the dialog is closed, and the order is load-bearing rather than
+ * tidy: closing raises the platform's own `close`, which arrives back here as a dismissal, so a
+ * `settle` that closed first would resolve an adopted project's promise with `null` a frame after
+ * the adoption succeeded. Clearing `_handle` and `_resolve` first is what makes that second pass a
+ * no-op.
+ */
+function settle(result: { root: string } | null): void {
+  const handle = _handle;
+  const resolve = _resolve;
+  _handle = null;
+  _resolve = null;
+  _importing = "";
+  resolve?.(result);
+  handle?.close();
+}
+
+async function chooseRepo(fullName: string) {
+  if (_importing) {
     return;
   }
-  _handle.close();
-  _handle = null;
-  if (_resolve) {
-    _resolve(null);
-    _resolve = null;
-  }
-}
-
-function finish(result: { root: string }) {
-  _importing = "";
-  if (_handle) {
-    _handle.close();
-    _handle = null;
-  }
-  if (_resolve) {
-    _resolve(result);
-    _resolve = null;
-  }
-}
-
-async function chooseRepo(repo: RepoInfo) {
-  if (_importing) {
+  const repo = (_repos ?? []).find((candidate) => candidate.fullName === fullName);
+  if (!repo) {
     return;
   }
   _importing = repo.fullName;
   _error = "";
-  renderModal();
+  redraw();
   try {
     const imported = await getPlatform().importProject?.({ name: repo.name, owner: repo.owner });
     if (imported) {
-      finish(imported);
+      settle(imported);
       return;
     }
     _error = "This platform cannot import repositories.";
@@ -156,7 +189,7 @@ async function chooseRepo(repo: RepoInfo) {
     _error = errorMessage(error);
   }
   _importing = "";
-  renderModal();
+  redraw();
 }
 
 function visibleRepos(): RepoInfo[] {
@@ -171,68 +204,33 @@ function visibleRepos(): RepoInfo[] {
   return query ? repos.filter((r) => r.fullName.toLowerCase().includes(query)) : repos;
 }
 
-function repoRowTpl(repo: RepoInfo) {
-  return html`
-    <button
-      class="add-repo-row"
-      ?disabled=${Boolean(_importing)}
-      title=${repo.fullName}
-      @click=${() => {
-        void chooseRepo(repo);
-      }}
-    >
-      <span class="add-repo-name">${repo.fullName}</span>
-      <span class="add-repo-meta">
-        ${repo.isJxProject ? html`<span class="add-repo-badge">Jx</span>` : nothing}
-        ${repo.private ? html`<span class="add-repo-badge">private</span>` : nothing}
-        <span>${repo.defaultBranch} · ${repo.permission}</span>
-      </span>
-      ${
-        _importing === repo.fullName ? html`<span class="add-repo-busy">Importing…</span>` : nothing
-      }
-    </button>
-  `;
+/** One repository as the list draws it: strings and flags, nothing the document has to interpret. */
+function rowOf(repo: RepoInfo): AddRepoRow {
+  return {
+    disabled: _importing !== "",
+    fullName: repo.fullName,
+    importing: _importing === repo.fullName,
+    isJx: repo.isJxProject,
+    isPrivate: repo.private,
+    meta: `${repo.defaultBranch} · ${repo.permission}`,
+  };
 }
 
-function emptyTpl() {
+/**
+ * Why the list is empty, when it is.
+ *
+ * Read only once the listing has landed and filtering has taken everything out, and the order is
+ * the order the remedies come in: a filter the reader typed, a permission only an admin can widen,
+ * an App that was never installed, and an App that is installed and reaches nothing.
+ */
+function emptyStateOf(): AddRepoView["emptyState"] {
   if (_filter) {
-    return html`<div class="add-repo-empty">No repositories match the filter.</div>`;
+    return "filter";
   }
   if (_mode === "open" && (_repos ?? []).length > 0) {
-    return html`<div class="add-repo-empty">
-      No repositories with write access. Widen the Jx Suite GitHub App's repository access below, or
-      ask a repository admin for write access.
-    </div>`;
+    return "write";
   }
-  if (needsAppInstall()) {
-    return html`<div class="add-repo-empty">
-      No repositories are reachable yet.
-      <a
-        class="add-repo-install"
-        href=${getAccountStatus()?.appInstallUrl ?? "#"}
-        target="_blank"
-        rel="noreferrer"
-      >
-        Install the Jx Suite GitHub App
-      </a>
-      to grant repository access, then use Refresh below.
-    </div>`;
-  }
-  return html`<div class="add-repo-empty">
-    No repositories are reachable. Install the GitHub App (or widen its repository access) and try
-    again.
-  </div>`;
-}
-
-function bodyTpl() {
-  if (_repos === null) {
-    return html`<div class="add-repo-empty">Loading repositories…</div>`;
-  }
-  const repos = visibleRepos();
-  if (repos.length === 0) {
-    return emptyTpl();
-  }
-  return html`<div class="add-repo-list">${repos.map((repo) => repoRowTpl(repo))}</div>`;
+  return needsAppInstall() ? "install" : "none";
 }
 
 /**
@@ -240,88 +238,39 @@ function bodyTpl() {
  * offers a way out of that boundary — widen an existing installation, install on another account,
  * then Refresh to pick up the newly reachable repositories.
  */
-function accessTpl() {
+function accessOf(): AddRepoView["access"] {
   const links = getRepoAccessLinks();
   if (!links) {
-    return nothing;
+    return [];
   }
-  return html`
-    <div class="add-repo-access">
-      <span class="add-repo-access-note">
-        Missing a repository? Grant the Jx Suite GitHub App access to more of them:
-      </span>
-      <span class="add-repo-access-links">
-        ${links.manage.map(
-          (entry) => html`
-            <a
-              class="add-repo-access-link"
-              href=${entry.url}
-              target="_blank"
-              rel="noreferrer"
-              title="Manage repository access for ${entry.account}"
-            >
-              ${entry.account}
-            </a>
-          `,
-        )}
-        ${
-          links.installUrl
-            ? html`<a
-                class="add-repo-access-link"
-                href=${links.installUrl}
-                target="_blank"
-                rel="noreferrer"
-                title="Install the Jx Suite GitHub App on another account"
-              >
-                Another account…
-              </a>`
-            : nothing
-        }
-      </span>
-      <button
-        class="add-repo-refresh"
-        ?disabled=${_repos === null || Boolean(_importing)}
-        @click=${() => loadRepos()}
-      >
-        Refresh
-      </button>
-    </div>
-  `;
+  return [
+    ...links.manage.map((entry) => ({
+      label: entry.account,
+      title: `Manage repository access for ${entry.account}`,
+      url: entry.url,
+    })),
+    ...(links.installUrl
+      ? [
+          {
+            label: "Another account…",
+            title: "Install the Jx Suite GitHub App on another account",
+            url: links.installUrl,
+          },
+        ]
+      : []),
+  ];
 }
 
-function renderModal() {
-  const tpl = html`
-    <sp-underlay open @close=${closeAddRepoModal}></sp-underlay>
-    <div class="new-project-modal add-repo-modal">
-      <div class="new-project-modal-header">
-        <h2 class="new-project-modal-title">
-          ${_mode === "open" ? "Open Project" : "Add existing repository"}
-        </h2>
-        <sp-action-button quiet size="s" @click=${closeAddRepoModal} title="Close">
-          <sp-icon-close slot="icon"></sp-icon-close>
-        </sp-action-button>
-      </div>
-      <div class="new-project-modal-body">
-        <sp-textfield
-          class="add-repo-filter"
-          placeholder="Filter repositories…"
-          value=${_filter}
-          @input=${(e: Event) => {
-            _filter = (e.target as HTMLInputElement).value;
-            renderModal();
-          }}
-        ></sp-textfield>
-        ${bodyTpl()} ${_error ? html`<div class="new-project-error">${_error}</div>` : nothing}
-        ${accessTpl()}
-      </div>
-    </div>
-  `;
-  if (_handle) {
-    _handle.update(tpl);
-  } else {
-    _handle = openModal(tpl, {
-      label: _mode === "open" ? "Open Project" : "Add existing repository",
-      onDismiss: closeAddRepoModal,
-    });
-  }
+/** Everything the dialog draws, as one record. The only place this module's state becomes a view. */
+function viewOf(): AddRepoView {
+  return {
+    access: accessOf(),
+    emptyState: emptyStateOf(),
+    failure: _error,
+    filter: _filter,
+    installUrl: getAccountStatus()?.appInstallUrl ?? "",
+    loading: _repos === null,
+    rows: visibleRepos().map((repo) => rowOf(repo)),
+    title: _mode === "open" ? "Open Project" : "Add existing repository",
+  };
 }

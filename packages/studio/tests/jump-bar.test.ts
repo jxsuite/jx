@@ -5,9 +5,13 @@
  * names behaviour, it never renders a step it invented, it never leaves a hole in the chain, and it
  * contributes no command of its own. The two half-breadcrumbs it merged are asserted gone in
  * `statusbar.test.ts` (the ancestor trail) and `pane-context.test.ts` (the second Back).
+ *
+ * The bar is a Jx document now (`surfaces/jump-bar.json`), so every assertion here names a ROLE, a
+ * `part` or a region — never a class, of which the surface emits none — and the menu a chevron
+ * opens is the kit's, `surfaces/menu.ts`, addressed by `jx-menu-item` rather than by a popover
+ * selector of its own.
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
-import { nothing, render as litRender } from "lit-html";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
 import { readFileSync } from "node:fs";
@@ -21,12 +25,13 @@ import {
 } from "../src/workspace/workspace";
 import { setPaneDerivation } from "../src/workspace/pane-derive";
 import { setProjectState } from "../src/store";
+import { initLayers } from "../src/ui/layers";
 import {
   applyJumpBarOffset,
+  attachJumpBarHost,
   crumbSiblings,
   documentLabel,
   dismissJumpMenu,
-  jumpBarTemplate,
   jumpSegments,
   mountJumpBar,
   renderJumpBar,
@@ -43,8 +48,14 @@ import type { AnyCommand } from "../src/commands/registry";
 let host: HTMLElement;
 
 beforeAll(() => {
+  for (const id of ["layer-popover", "layer-modal", "layer-dialog", "layer-toast"]) {
+    const layer = document.createElement("div");
+    layer.id = id;
+    document.body.append(layer);
+  }
+  initLayers();
   host = document.createElement("div");
-  host.id = "jump-bar";
+  host.id = "jump-bar-host";
   document.body.append(host);
 });
 
@@ -84,24 +95,37 @@ beforeEach(() => {
   setProjectState(null as never);
   ran.length = 0;
   ctx = makeContext({ document: { open: true } });
-  litRender(nothing, host);
   setActiveRegistry(buildRegistry());
 });
 
-afterEach(() => {
+afterEach(async () => {
   unmountJumpBar();
   dismissJumpMenu();
   setActiveRegistry(null);
-  for (const slot of document.querySelectorAll("sp-popover")) {
-    slot.parentElement?.remove();
-  }
+  await flush();
+  document.querySelector("#layer-popover")?.replaceChildren();
 });
 
-const crumbs = () => [...host.querySelectorAll(".jb-crumb")].map((e) => e.textContent?.trim());
-const kinds = () =>
-  [...host.querySelectorAll<HTMLElement>(".jb-seg")].map((e) => e.dataset.jumpKind);
+/**
+ * Mount the primary pane's bar and let its document settle.
+ *
+ * A mounted surface takes more turns than a lit render did: the mount resolves, then the keyed
+ * `$map` reconciles, then the `$switch` inside each step does. Three is what that costs.
+ */
+async function paint(into: HTMLElement = host): Promise<void> {
+  mountJumpBar(into);
+  await flush(3);
+}
+
+const bar = (into: HTMLElement = host) => into.querySelector('nav[part="bar"]');
+const crumbs = (into: HTMLElement = host) =>
+  [...into.querySelectorAll('[part="crumb"]')].map((e) => e.textContent?.trim());
+const kinds = (into: HTMLElement = host) =>
+  [...into.querySelectorAll<HTMLElement>("[data-jump-kind]")].map((e) => e.dataset.jumpKind);
 const menuRows = () =>
-  [...document.querySelectorAll("sp-popover sp-menu-item")].map((e) => e.textContent?.trim());
+  [...document.querySelectorAll("#layer-popover jx-menu-item")].map((e) =>
+    e.querySelector('[part="label"]')?.textContent?.trim(),
+  );
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -311,34 +335,36 @@ describe("jumpSegments", () => {
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
 describe("the rendered bar", () => {
-  test("paints nothing at all with no tab open — and no dead band under the welcome screen", () => {
-    mountJumpBar(host);
-    renderJumpBar();
-    expect(host.querySelector(".jump-bar")).toBeNull();
+  test("prints nothing at all with no tab open — and no dead band under the welcome screen", async () => {
+    await paint();
+    // The document stays mounted and states its own emptiness: the next tab open is one
+    // Assignment away, and re-mounting would cost a frame of blank chrome.
+    expect(bar()!.hasAttribute("hidden")).toBe(true);
+    expect(crumbs()).toEqual([]);
     expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("0px");
   });
 
-  test("paints one crumb per segment, separated, and reserves its own height", () => {
+  test("prints one crumb per segment, separated, and reserves its own height", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab(
       { children: [{ children: [{ tagName: "li" }], tagName: "ul" }], tagName: "div" },
       { documentPath: "/p/index.json" },
     );
     tab.session.selection = [["children", 0, "children", 0]];
-    mountJumpBar(host);
-    renderJumpBar();
+    await paint();
+    expect(bar()!.hasAttribute("hidden")).toBe(false);
     expect(crumbs()).toEqual(["My Site", "index.json", "ul", "li"]);
     expect(kinds()).toEqual(["project", "file", "node", "node"]);
-    expect(host.querySelectorAll(".jb-sep")).toHaveLength(3);
+    expect(host.querySelectorAll('[part="separator"]')).toHaveLength(3);
     expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("24px");
   });
 
   /* THE BAR ASKS ABOUT ITS OWN PANE. `jumpSegments` takes the derivation as an argument — the
-     tests above prove it turns Open into Keep — and `jumpBarTemplate` is where the argument comes
-     from. Passing `null` there compiles, keeps every `jumpSegments` test green, and draws a
+     tests above prove it turns Open into Keep — and the per-pane projection is where the argument
+     comes from. Passing `null` there compiles, keeps every `jumpSegments` test green, and draws a
      following pane's address bar as an ordinary one: Open Files where Keep This Document belongs,
      and no way to stop the follow from the one control that is always on screen. */
-  test("a derived pane's bar reads ITS pane's derivation, not the app's", () => {
+  test("a derived pane's bar reads ITS pane's derivation, not the app's", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab({ children: [], tagName: "div" }, { documentPath: "/p/index.json" });
     openTab({ document: { tagName: "div" }, documentPath: "/p/side.json", id: "side" });
@@ -365,37 +391,37 @@ describe("the rendered bar", () => {
        the verb is the observable, and the bar deliberately carries no `data-command` for a test to
        read instead. */
     const fileCrumbTitle = (into: HTMLElement) =>
-      [...into.querySelectorAll(".jb-crumb")]
+      [...into.querySelectorAll('[part="crumb"]')]
         .map((el) => el.getAttribute("title") ?? "")
         .find((title) => title.includes("index.json"));
     try {
-      litRender(jumpBarTemplate(SECONDARY_PANE), sideHost);
+      await paint();
+      attachJumpBarHost(SECONDARY_PANE, sideHost);
+      await flush(3);
       expect(fileCrumbTitle(sideHost)).toContain("Keep This Document");
       // …and the pane that owns the document still offers Open.
-      litRender(jumpBarTemplate(PRIMARY_PANE), host);
       expect(fileCrumbTitle(host)).not.toContain("Keep This Document");
     } finally {
+      attachJumpBarHost(SECONDARY_PANE, null);
       sideHost.remove();
     }
   });
 
-  test("the bar is one addressable region, not a CSS selector the camera has to know", () => {
+  test("the bar is one addressable region, not a CSS selector the camera has to know", async () => {
     resetWorkspaceWithTab();
-    mountJumpBar(host);
-    renderJumpBar();
+    await paint();
     expect(host.querySelector('[data-jx-region="pane.primary/jump"]')).not.toBeNull();
   });
 
-  test("a crumb click RUNS its command with its args — there is no bespoke handler", () => {
+  test("a crumb click RUNS its command with its args — there is no bespoke handler", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab({
       children: [{ children: [{ tagName: "li" }], tagName: "ul" }],
       tagName: "div",
     });
     tab.session.selection = [["children", 0, "children", 0]];
-    mountJumpBar(host);
-    renderJumpBar();
-    const buttons = [...host.querySelectorAll("button.jb-crumb")] as HTMLElement[];
+    await paint();
+    const buttons = [...host.querySelectorAll('button[part="crumb"]')] as HTMLElement[];
     buttons[0]!.click();
     buttons[2]!.click();
     expect(ran).toEqual([
@@ -404,38 +430,37 @@ describe("the rendered bar", () => {
     ]);
   });
 
-  test("a crumb's tooltip is the record's own title, never a second wording", () => {
+  test("a crumb's tooltip is the record's own title, never a second wording", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
-    mountJumpBar(host);
-    renderJumpBar();
-    expect(host.querySelector("button.jb-crumb")!.getAttribute("title")).toContain("Open Recent…");
+    await paint();
+    expect(host.querySelector('button[part="crumb"]')!.getAttribute("title")).toContain(
+      "Open Recent…",
+    );
   });
 
-  test("a step whose command is unregistered becomes a READOUT — the chain keeps no hole", () => {
+  test("a step whose command is unregistered becomes a READOUT — the chain keeps no hole", async () => {
     setActiveRegistry(buildRegistry(["project.openRecent"]));
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
-    mountJumpBar(host);
-    renderJumpBar();
+    await paint();
     // Both steps are still there; only the file step lost its button. The status bar drops an item
     // With no command — an address may not, because a gap in it is a lie about containment.
     expect(crumbs()).toEqual(["My Site", "index.json"]);
-    expect(host.querySelectorAll("button.jb-crumb")).toHaveLength(1);
-    expect(host.querySelectorAll(".jb-crumb--static")).toHaveLength(1);
+    expect(host.querySelectorAll('button[part="crumb"]')).toHaveLength(1);
+    expect(host.querySelectorAll('span[part="crumb"]')).toHaveLength(1);
   });
 
-  test("no registry at all still paints the address, as readouts", () => {
+  test("no registry at all still prints the address, as readouts", async () => {
     setActiveRegistry(null);
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
-    mountJumpBar(host);
-    renderJumpBar();
+    await paint();
     expect(crumbs()).toEqual(["My Site", "index.json"]);
     expect(host.querySelectorAll("button")).toHaveLength(0);
   });
 
-  test("a disabled command renders a disabled crumb carrying the record's own `requires`", () => {
+  test("a disabled command renders a disabled crumb carrying the record's own `requires`", async () => {
     const registry = createCommandRegistry({ getContext: () => ctx });
     registry.register({
       ...stub("project.openRecent", "Open Recent…", "project"),
@@ -445,24 +470,22 @@ describe("the rendered bar", () => {
     setActiveRegistry(registry);
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
-    mountJumpBar(host);
-    renderJumpBar();
-    const button = host.querySelector("button.jb-crumb") as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    await paint();
+    const button = host.querySelector('button[part="crumb"]') as HTMLButtonElement;
+    expect(button.hasAttribute("disabled")).toBe(true);
     expect(button.title).toContain("requires a recent project");
   });
 
-  test("the leaf is marked as where you are, and is still a control", () => {
+  test("the leaf is marked as where you are, and is still a control", async () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
     tab.session.selection = [["children", 0]];
-    mountJumpBar(host);
-    renderJumpBar();
-    expect(host.querySelector(".jb-crumb[aria-current]")?.textContent?.trim()).toBe("p");
+    await paint();
+    expect(host.querySelector('[part="crumb"][aria-current]')?.textContent?.trim()).toBe("p");
   });
 });
 
 describe("a segment's alternatives", () => {
-  function openFirstMenu() {
+  async function openFirstMenu() {
     const tab = resetWorkspaceWithTab({
       children: [
         {
@@ -476,64 +499,66 @@ describe("a segment's alternatives", () => {
       tagName: "div",
     });
     tab.session.selection = [["children", 0, "children", 0]];
-    mountJumpBar(host);
-    renderJumpBar();
-    const chevron = host.querySelector(".jb-alts") as HTMLElement;
-    chevron.click();
+    await paint();
+    (host.querySelector('[part="alternatives"]') as HTMLElement).click();
+    await flush(3);
     return tab;
   }
 
-  test("a chevron appears only where there is more than one place to go", () => {
-    openFirstMenu();
+  test("a chevron appears only where there is more than one place to go", async () => {
+    await openFirstMenu();
     // Project, file and `ul` have no alternatives; only the leaf `li` does.
-    expect(host.querySelectorAll(".jb-alts")).toHaveLength(1);
+    expect(host.querySelectorAll('[part="alternatives"]')).toHaveLength(1);
   });
 
-  test("the menu lists the siblings and marks the one you are on", () => {
-    openFirstMenu();
+  test("the menu lists the siblings and marks the one you are on", async () => {
+    await openFirstMenu();
     expect(menuRows()).toEqual(["one", "two"]);
-    expect(
-      document.querySelector("sp-popover sp-menu-item[aria-current]")?.textContent?.trim(),
-    ).toBe("one");
+    const rows = [...document.querySelectorAll("#layer-popover jx-menu-item")];
+    expect(rows.map((row) => row.getAttribute("aria-checked"))).toEqual(["true", "false"]);
   });
 
-  test("choosing a sibling is `selection.set` with THAT sibling's path", () => {
-    openFirstMenu();
-    const rows = [...document.querySelectorAll("sp-popover sp-menu-item")] as HTMLElement[];
+  test("choosing a sibling is `selection.set` with THAT sibling's path", async () => {
+    await openFirstMenu();
+    const rows = [...document.querySelectorAll("#layer-popover jx-menu-item")] as HTMLElement[];
     rows[1]!.click();
+    await flush();
     expect(ran).toEqual([{ args: { path: ["children", 0, "children", 1] }, id: "selection.set" }]);
     // Choosing dismisses: a menu left open over the surface it just moved is a second answer.
-    expect(document.querySelector("sp-popover")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 
-  test("opening a second menu closes the first", () => {
-    openFirstMenu();
-    (host.querySelector(".jb-alts") as HTMLElement).click();
-    expect(document.querySelectorAll("sp-popover")).toHaveLength(1);
+  test("opening a second menu closes the first", async () => {
+    await openFirstMenu();
+    (host.querySelector('[part="alternatives"]') as HTMLElement).click();
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
   });
 
   test("a click away closes it, and the bar forgets it", async () => {
-    openFirstMenu();
-    await flush();
+    await openFirstMenu();
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(document.querySelector("sp-popover")).toBeNull();
+    await flush();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
     // Forgotten, not merely hidden: re-opening must not leave the first slot in the layer.
-    (host.querySelector(".jb-alts") as HTMLElement).click();
-    expect(document.querySelectorAll("sp-popover")).toHaveLength(1);
+    (host.querySelector('[part="alternatives"]') as HTMLElement).click();
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
   });
 
   test("a repaint closes it — a menu of siblings for a node no longer on the bar is a lie", async () => {
-    const tab = openFirstMenu();
-    expect(document.querySelector("sp-popover")).not.toBeNull();
+    const tab = await openFirstMenu();
+    expect(document.querySelector("#layer-popover jx-menu")).not.toBeNull();
     tab.session.selection = [];
-    await flush();
-    expect(document.querySelector("sp-popover")).toBeNull();
+    await flush(3);
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 
-  test("unmounting closes it too", () => {
-    openFirstMenu();
+  test("unmounting closes it too", async () => {
+    await openFirstMenu();
     unmountJumpBar();
-    expect(document.querySelector("sp-popover")).toBeNull();
+    await flush();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 });
 
@@ -544,20 +569,18 @@ describe("mountJumpBar", () => {
       { children: [{ tagName: "p" }], tagName: "div" },
       { documentPath: "/p/index.json" },
     );
-    mountJumpBar(host);
-    await flush();
+    await paint();
     expect(crumbs()).toEqual(["My Site", "index.json"]);
     tab.session.selection = [["children", 0]];
-    await flush();
+    await flush(3);
     expect(crumbs()).toEqual(["My Site", "index.json", "p"]);
   });
 
   test("repaints when a takeover editor opens", async () => {
     const tab = resetWorkspaceWithTab();
-    mountJumpBar(host);
-    await flush();
+    await paint();
     tab.session.ui.editingFormula = { defName: "total", type: "def" } as never;
-    await flush();
+    await flush(3);
     expect(crumbs()).toContain("fx total");
   });
 
@@ -565,10 +588,10 @@ describe("mountJumpBar", () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
     mountJumpBar(host);
     mountJumpBar(host);
-    await flush();
+    await flush(3);
     tab.session.selection = [["children", 0]];
-    await flush();
-    expect(host.querySelectorAll(".jump-bar")).toHaveLength(1);
+    await flush(3);
+    expect(host.querySelectorAll('nav[part="bar"]')).toHaveLength(1);
   });
 
   test("unmount stops the repaint and gives the height back", async () => {
@@ -577,13 +600,13 @@ describe("mountJumpBar", () => {
       { children: [{ tagName: "p" }], tagName: "div" },
       { documentPath: "/p/index.json" },
     );
-    mountJumpBar(host);
-    await flush();
+    await paint();
     unmountJumpBar();
     expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("0px");
+    // The host is empty, so nothing is left to repaint into.
     tab.session.selection = [["children", 0]];
-    await flush();
-    expect(crumbs()).toEqual(["My Site", "index.json"]);
+    await flush(3);
+    expect(crumbs()).toEqual([]);
   });
 
   test("renderJumpBar before a mount is a no-op, not a crash", () => {
@@ -624,7 +647,19 @@ describe("the bar is wired to the app, not to a stub", () => {
     expect(source).not.toContain("jumpBarCommands");
   });
 
-  test("the bootstrap mounts the bar into a cell the shell actually has", () => {
+  test("the chevron opens the KIT menu, not a second list of its own", () => {
+    // §12.5: a second list of actions is a defect. The flow projects rows and hands them to
+    // `surfaces/menu.ts`; the panel, the caret, typeahead and Escape are that surface's.
+    const source = readFileSync(
+      join(resolve(import.meta.dir, "..", "src"), "panels", "jump-bar.ts"),
+      "utf8",
+    );
+    expect(source).toContain('import { openMenu } from "../surfaces/menu"');
+    expect(source).not.toContain("renderPopover");
+    expect(source).not.toContain("lit-html");
+  });
+
+  test("the bootstrap mounts the bar into a cell the shell actually has", async () => {
     // `app-commands-composition.test.ts` guards the projection; this guards the other half — a
     // Surface nothing mounts is exactly as unreachable as a command nothing registers.
     //
@@ -636,19 +671,26 @@ describe("the bar is wired to the app, not to a stub", () => {
       "utf8",
     );
     expect(bootstrap).toContain("mountJumpBar(primaryCell");
+    /* The cell is a Jx DOCUMENT now, so the host is a `part` the document draws and the bar is
+       handed that element as it is CREATED — `surfaces/pane-grid.ts` reports the node, and
+       `panels/pane-grid.ts` passes it on. Two files, because the markup and the flow are two
+       files; the class the template used to carry is gone from both. */
+    const doc = readFileSync(
+      join(resolve(import.meta.dir, "..", "src"), "surfaces", "pane-grid.json"),
+      "utf8",
+    );
+    expect(doc).toContain('"part": "jump"');
+    expect(doc).not.toContain('"class"');
     const grid = readFileSync(
       join(resolve(import.meta.dir, "..", "src"), "panels", "pane-grid.ts"),
       "utf8",
     );
-    // The cell is a lit template now, so the host is a `class="pane-jump"` in it and the bar is
-    // Handed the element by the `ref()` beside it rather than by a `createElement` + `append`.
-    expect(grid).toContain('<div class="pane-jump"');
-    expect(grid).toContain("attachJumpBarHost(paneId,");
+    expect(grid).toContain("attachJumpBarHost(paneId, element)");
     /* And the FRAME really has a pane grid and no bar of its own. Asserted against the rendered
        tree rather than index.html's text: the frame is src/shell/tree.ts now, and the document
        carries an empty body. */
     const frame = document.createElement("div");
-    mountShellTree(frame);
+    await mountShellTree(frame);
     expect(frame.querySelector("#pane-grid")).not.toBeNull();
     expect(frame.querySelector("#jump-bar")).toBeNull();
   });

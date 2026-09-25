@@ -66,11 +66,18 @@ function makeCtx(): Ctx {
 let primaryHost: HTMLElement;
 let sideHost: HTMLElement;
 
-/** The labels of the param pickers a host painted, with the options each offers. */
+/**
+ * The param pickers a host painted, each by the route param it is FOR and the values it offers.
+ *
+ * By `part` and `data-param`, never by a class: the bar is a Jx document, so its structure is parts
+ * and its identity is the data attribute the projection stamps. `data-param` rather than the
+ * accessible name because the name is a sentence ("Preview value for [sku]") and the param is the
+ * fact this file is about.
+ */
 function pickers(host: HTMLElement): { label: string; items: string[] }[] {
-  return [...host.querySelectorAll("sp-picker.pc-param")].map((picker) => ({
-    items: [...picker.querySelectorAll("sp-menu-item")].map((o) => o.textContent?.trim() ?? ""),
-    label: picker.getAttribute("label") ?? "",
+  return [...host.querySelectorAll<HTMLElement>('[part="param"]')].map((picker) => ({
+    items: [...picker.querySelectorAll("option")].map((o) => o.textContent?.trim() ?? ""),
+    label: picker.dataset.param ?? "",
   }));
 }
 
@@ -108,7 +115,8 @@ async function twoDynamicPanes() {
   expect(splitRight()?.id).toBe(SECONDARY_PANE);
   paneContext.mount(primaryHost, makeCtx());
   paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
-  await flush();
+  // A mounted document settles over several turns; the bar is a surface now, not a lit render.
+  await flush(8);
 }
 
 describe("two panes on dynamic routes", () => {
@@ -137,7 +145,7 @@ describe("two panes on dynamic routes", () => {
     await twoDynamicPanes();
     for (let turn = 0; turn < 3; turn += 1) {
       paneContext.render();
-      await flush();
+      await flush(4);
     }
     const primary = pickers(primaryHost);
     const side = pickers(sideHost);
@@ -182,10 +190,10 @@ describe("two panes on dynamic routes", () => {
       { documentPath: "pages/products/[sku].json", id: "solo" },
     );
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
     for (let turn = 0; turn < 5; turn += 1) {
       paneContext.render();
-      await flush();
+      await flush(4);
     }
     expect(loadCalls).toEqual(["pages/products/[sku].json"]);
     expect(pickers(primaryHost)).toEqual([{ items: ["alpha", "beta"], label: "sku" }]);

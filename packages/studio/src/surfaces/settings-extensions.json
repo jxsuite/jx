@@ -1,0 +1,486 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsExtensions",
+  "$description": "Project Settings › Extensions: what this backend offers, what the project already has, and what `project.json` names that nothing could describe. The adapter (`surfaces/settings-extensions.ts`) hands in the groups already composed — each row carrying its own title, its package name, the sections it owns, the sentence its state deserves and why its switch cannot be used — plus whatever the last operation failed with. The document draws them and hands every flip straight back with what the switch now holds. Nothing here reads `project.json` or the catalogue: which extensions exist is the backend's answer, and a second definition of it in the markup would be wrong for a fork.",
+  "tagName": "div",
+  "attributes": {
+    "part": "extensions"
+  },
+  "style": {
+    "$description": "The Extensions section's own look — what `.settings-extension-group`, `.settings-extension-group-title`, `.settings-toggle-row`, `.settings-toggle-row--broken`, `.settings-toggle-body`, `.settings-toggle-title`, `.settings-toggle-package`, `.settings-toggle-desc`, `.settings-toggle-sections`, `.settings-toggle-section`, `.settings-toggle-note`, `.settings-toggle-note--warn`, `.settings-toggle-actions`, `.settings-extension-toggle` and `.settings-extension-remove` used to say in `styles/panels.css`, keyed on `part` and re-pointed at the studio token layer. Those fifteen were this section's alone and go with it. Every one of them sized text with `var(--spectrum-font-size-75, 12px)` or a bare `10px`, and the first of those resolved only inside `<sp-theme>` — a document is mounted in the settings pane, where that name is not in scope and every rule would have taken its hard-coded fallback — so the sizes here are the kit's scale. `.settings-section-title`, `.settings-field-desc` and `.settings-field-error` are NOT deleted with them: seven other settings sections are still lit and still name them, so those rules keep their stylesheet and this document carries its own copy of each until the last of those converts.",
+    "display": "block",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"intro\"], & [part=\"group-desc\"]": {
+      "$description": "The secondary line, twice: the section's own sentence and the sentence over each group. Both were `.settings-field-desc`.",
+      "margin": "0 0 6px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"error\"]": {
+      "$description": "The last operation that failed, said under the section title. Not a second announcement: `updateSiteConfig` already files a Problem for a rejected write and `activity.fail` files one for a rejected install. §13.1 makes INLINE the tier for \"the value is on screen, and nothing else is the right place\" — the Problem is about the file, and this line is about the switch the reader is looking at.",
+      "margin": "6px 0 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "marginBottom": "16px"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0 0 2px",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"row\"]": {
+      "$description": "A wrapping row, never an overflowing one (guidelines §4.6): the package name is author-supplied and unbounded, and Project Settings renders at two very different widths.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "flex-start",
+      "gap": "8px",
+      "padding": "8px",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "marginTop": "4px"
+    },
+    "& [part=\"row\"][data-broken]": {
+      "$description": "Enabled in `project.json` and not installed — the one state that fails the next build, so the row says so at its edge as well as in its note.",
+      "borderColor": "var(--warning)"
+    },
+    "& [part=\"body\"]": {
+      "$description": "`min-width: 0` is the declaration that makes the wrap work: without it the package name below refuses to shrink past its min-content and sets the row's width.",
+      "flex": "1 1 220px",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px"
+    },
+    "& [part=\"row-title\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"package\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"desc\"]": {
+      "margin": "2px 0 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"sections\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "4px",
+      "marginTop": "4px"
+    },
+    "& [part=\"section\"]": {
+      "$description": "One `project.json` key this extension owns, drawn as a chip so the reader can see what enabling it adds to the file.",
+      "padding": "1px 6px",
+      "borderRadius": "var(--radius)",
+      "background": "var(--accent-15)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"note\"], & [part=\"note-warn\"]": {
+      "margin": "4px 0 0",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"note-warn\"]": {
+      "color": "var(--warning)"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "4px",
+      "flexShrink": "0"
+    },
+    "& [part=\"toggle\"]": {
+      "$description": "The switch and the Remove button sit at the row's edges and do not take part in its wrap.",
+      "flexShrink": "0",
+      "marginTop": "2px"
+    },
+    "& [part=\"remove\"]": {
+      "flexShrink": "0"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template, and a document cannot call one. What is kept is the pattern's rules (§11) — one sentence saying what the region is FOR, never \"no extensions\", then where its content comes from — in the compact shape, which reads as a note inside an otherwise populated pane rather than as a whole empty region. It offers no action because there is nothing here to act on: a backend that lists no catalogue is not a project waiting to be filled in.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "4px",
+      "padding": "8px 12px",
+      "textAlign": "left",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"], & [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-detail\"]": {
+      "opacity": "0.8"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "Extensions"
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "intro"
+      },
+      "textContent": "Extensions add what the core does not do on its own: content collections, search, feeds, sign-ins and databases. Turning one on installs its package and enables it; turning it off leaves the package installed."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "error-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "error",
+            "role": "alert"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "list-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/listState"
+      },
+      "cases": {
+        "empty": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Extensions add what the core does not do on its own: content collections, search, feeds, sign-ins and databases."
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-detail"
+              },
+              "textContent": "This backend lists no catalogue, so nothing can be offered here yet."
+            }
+          ]
+        },
+        "groups": {
+          "tagName": "div",
+          "attributes": {
+            "part": "groups",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/groups"
+              },
+              "key": {
+                "$ref": "$map/item/origin"
+              },
+              "map": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "group",
+                  "data-origin": "${$map.item.origin}"
+                },
+                "children": [
+                  {
+                    "tagName": "h4",
+                    "attributes": {
+                      "part": "group-title"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "p",
+                    "attributes": {
+                      "part": "group-desc"
+                    },
+                    "textContent": "${$map.item.blurb}"
+                  },
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/rows"
+                    },
+                    "key": {
+                      "$ref": "$map/item/name"
+                    },
+                    "map": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "row",
+                        "data-package": "${$map.item.name}",
+                        "data-broken": "${$map.item.broken ? '' : null}"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-switch",
+                          "attributes": {
+                            "part": "toggle"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": {
+                              "$ref": "$map/item/title"
+                            },
+                            "checked": {
+                              "$ref": "$map/item/enabled"
+                            },
+                            "disabled": {
+                              "$ref": "$map/item/blocked"
+                            },
+                            "hint": {
+                              "$ref": "$map/item/blockedReason"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/toggle"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/specifier"
+                                  },
+                                  {
+                                    "$ref": "event#/target/checked"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "body"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "row-title"
+                              },
+                              "textContent": "${$map.item.title}"
+                            },
+                            {
+                              "tagName": "code",
+                              "attributes": {
+                                "part": "package"
+                              },
+                              "textContent": "${$map.item.name}"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "desc-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/hasDescription"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "desc"
+                                  },
+                                  "textContent": "${$map.item.description}"
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "sections-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/hasSections"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "sections"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "$map/item/sections"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "map": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "section"
+                                        },
+                                        "textContent": "${$map.item.key}"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "note-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/noteTone"
+                              },
+                              "cases": {
+                                "note": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "note"
+                                  },
+                                  "textContent": "${$map.item.note}"
+                                },
+                                "warn": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "note-warn"
+                                  },
+                                  "textContent": "${$map.item.note}"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "actions"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "remove-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/canRemove"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "jx-action-button",
+                                  "attributes": {
+                                    "part": "remove"
+                                  },
+                                  "$props": {
+                                    "icon": "trash",
+                                    "size": "sm",
+                                    "label": {
+                                      "$ref": "$map/item/removeLabel"
+                                    },
+                                    "hint": {
+                                      "$ref": "$map/item/removeHint"
+                                    },
+                                    "disabled": {
+                                      "$ref": "$map/item/removeDisabled"
+                                    }
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/remove"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/name"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

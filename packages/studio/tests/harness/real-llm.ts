@@ -7,7 +7,7 @@
  * prompt / tools / recovery loop (the logic axes); the studio keeps the browser-only axes
  * (rendered-DOM Correctness, Undo/Redo).
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 1.
+ * See docs/extending/contributing/ai-evals.md.
  *
  * Config via env (per-run, so models swap freely): JX_AI_KEY — API key (required) JX_AI_BASE_URL —
  * OpenAI-compatible base URL (default OpenAI: https://api.openai.com/v1) JX_AI_MODEL — model id

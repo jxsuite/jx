@@ -44,6 +44,9 @@ const responses: Record<string, unknown> = {
   // Format-host proxies (descriptor-contributed settings + Monaco schema registration)
   fetchProjectSchemas: { document: { $ref: "doc/v1" }, project: { $ref: "project/v2" } },
   listExtensions: [{ name: "@jxsuite/parser", specifier: "@jxsuite/parser" }],
+  listExtensionCatalog: [
+    { installed: true, name: "@jxsuite/feed", sections: [{ key: "feed" }], source: "first-party" },
+  ],
   listFormats: [{ extensions: [".md"], mediaType: "text/markdown", name: "Markdown" }],
   listPackages: [{ name: "lodash", version: "^4.0.0" }],
   dependenciesNeedInstall: true,
@@ -595,6 +598,18 @@ describe("chromium desktop platform", () => {
     ]);
   });
 
+  test("listExtensionCatalog returns what this backend can offer", async () => {
+    const catalog = await platform.listExtensionCatalog!();
+    expect(catalog).toEqual([
+      {
+        installed: true,
+        name: "@jxsuite/feed",
+        sections: [{ key: "feed" }],
+        source: "first-party",
+      },
+    ] as never);
+  });
+
   test("listExtensions returns the extensions payload", async () => {
     const extensions = await platform.listExtensions!();
     expect(extensions).toEqual([
@@ -881,6 +896,21 @@ describe("chromium desktop platform", () => {
     getPreviewNavigateHandler()!("https://example.com/fallback/");
     await until(() => windowOpen.mock.calls.length > before);
     expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/fallback/");
+  });
+
+  /* `{ ok: false }` is a REFUSAL the backend answers, not a rejection — distinct from the thrown-error
+     case above. Branching only on a caught error would leave the click doing nothing at all whenever
+     the desktop answers but has no opener to hand the URL to. */
+  test("a resolved refusal ({ ok: false }) also falls back to a new browser tab", async () => {
+    responses.openExternal = { ok: false };
+    const before = windowOpen.mock.calls.length;
+    try {
+      getPreviewNavigateHandler()!("https://example.com/refused/");
+      await until(() => windowOpen.mock.calls.length > before);
+      expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/refused/");
+    } finally {
+      responses.openExternal = { ok: true };
+    }
   });
 });
 

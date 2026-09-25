@@ -290,7 +290,18 @@ describe("elements-meta.json", () => {
     }
   });
 
-  test("$inlineActions entries have required fields", () => {
+  /**
+   * `icon` was a required field here and is now a forbidden one, which is the same claim inverted.
+   *
+   * The data file carried an `sp-icon-*` name on every action, and nothing ever read it: the bar
+   * draws `toolOf(registry, command, …)`, so the glyph comes off the `format.*` COMMAND RECORD
+   * (`panels/block-action-bar.ts`, kit keys like `text-b`). Two definition sites for one glyph is
+   * the defect studio-ui-guidelines.md §12.5 names, and this one had already drifted: the records
+   * moved to kit keys while the data file still said Spectrum. Asserting its ABSENCE is what keeps
+   * the second site from growing back — deleting the line would have left the field free to
+   * return.
+   */
+  test("$inlineActions entries carry their vocabulary, and not a second glyph", () => {
     for (const [_tag, def] of Object.entries(elementsMeta.$defs) as [string, MetaEntry][]) {
       let actions = def.$inlineActions;
       if (typeof actions === "string") {
@@ -302,8 +313,11 @@ describe("elements-meta.json", () => {
       for (const action of actions) {
         expect(typeof action.tag).toBe("string");
         expect(typeof action.label).toBe("string");
-        expect(typeof action.icon).toBe("string");
         expect(typeof action.command).toBe("string");
+        expect(
+          action,
+          `${action.tag}: the glyph is the format.${action.command} record's`,
+        ).not.toHaveProperty("icon");
       }
     }
   });

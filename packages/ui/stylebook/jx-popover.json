@@ -1,0 +1,123 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookPopover",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-checkbox.json"
+    },
+    {
+      "$ref": "../components/jx-popover.json"
+    }
+  ],
+  "state": {
+    "grid": true,
+    "guides": false,
+    "rulers": false
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& button": {
+      "font": "inherit",
+      "color": "var(--jx-fg)",
+      "background": "var(--jx-bg-input)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "var(--jx-space-2) var(--jx-space-4)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-popover"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A panel is a native auto popover with one unnamed slot. Light dismiss, Escape and focus restoration are the platform's; the element adds no key of its own. It is placed by measured viewport coordinates, and the gap between it and its trigger is the --jx-popover-offset token."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A named panel of controls"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A panel holding controls MUST set label: it becomes a named role=\"group\", so the panel announces a boundary on entry. An unnamed group is invisible to every gate, which is why the element cannot leave this to the consumer's judgement alone."
+    },
+    {
+      "tagName": "button",
+      "attributes": {
+        "popovertarget": "stylebook-popover-grid"
+      },
+      "textContent": "Grid options…"
+    },
+    {
+      "tagName": "jx-popover",
+      "attributes": {
+        "id": "stylebook-popover-grid"
+      },
+      "$props": {
+        "label": "Grid options",
+        "x": 24,
+        "y": 200,
+        "arrow": true
+      },
+      "children": [
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": {
+              "$ref": "#/state/grid"
+            },
+            "label": "Show grid"
+          }
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": {
+              "$ref": "#/state/guides"
+            },
+            "label": "Show guides"
+          }
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": {
+              "$ref": "#/state/rulers"
+            },
+            "label": "Show rulers"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "How a page opens one"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The trigger above is a raw <button popovertarget>, which every caller of the overlay lints accepts. So is $props: { popovertarget } on a kit button, because the lints read a node's attributes and never its $props. The third spelling, popovertarget in a kit button's attributes, DEPENDS ON THE CALLER: the rule judges the tag the document writes rather than the tag the definition renders, so a caller that names the kit's invoker tags (Studio does) reports nothing, and a caller that names none reports invoker-not-button."
+    }
+  ]
+}

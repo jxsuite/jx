@@ -14,10 +14,32 @@ const PROJECT = { owner: "octocat", repo: "my-site", branch: "main" };
 const BASE = "/api/v1/p/octocat/my-site/main/studio";
 
 const realFetch = globalThis.fetch;
+/* Captured before any test stubs window.setTimeout — `until` must keep running on the real clock
+   even inside a test that has replaced the platform's one. */
+const realSetTimeout = globalThis.setTimeout;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
+
+/**
+ * Wait for something cfConnect does asynchronously.
+ *
+ * CfConnect reads a BASELINE connection before it opens the popup, so neither the popup, the
+ * message listener nor the poll timer exists synchronously any more — a test that dispatches its
+ * relay in the same turn dispatches it into nothing.
+ */
+async function until(done: () => boolean, what: string): Promise<void> {
+  for (let i = 0; i < 200; i += 1) {
+    if (done()) {
+      return;
+    }
+    await new Promise((resolve) => {
+      realSetTimeout(resolve, 0);
+    });
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
 
 interface Call {
   url: string;
@@ -83,7 +105,7 @@ describe("project binding", () => {
     const platform = createCloudPlatform(PROJECT);
     const opened = await platform.openProject();
     expect(opened?.config.name).toBe("My Site");
-    expect(opened?.handle.root).toBe("octocat/my-site");
+    expect(opened?.handle.root).toBe("octocat/my-site@main");
   });
 
   test("open-project picking routes through the studio repo picker in both modes", () => {
@@ -107,6 +129,28 @@ describe("project binding", () => {
     const probe = await platform.probeRootProject();
     expect(probe?.info.isSiteProject).toBe(false);
     expect(probe?.meta.name).toBe("my-site");
+  });
+
+  /* The Recent list is written from `probeRootProject`'s meta.root and re-opened by parsing it back
+     as a root key, so a branchless root here was a Recent row that did nothing when clicked while
+     the catalogue's row for the same project — built by `projectRootKey` — opened it. */
+  test("the bound project's root is the catalogue root key, branch included", async () => {
+    mockFetch({
+      "/project-info": {
+        body: {
+          root: "octocat/my-site",
+          name: "my-site",
+          defaultBranch: "main",
+          permission: "write",
+          projectConfig: { name: "My Site" },
+        },
+      },
+    });
+    const platform = createCloudPlatform(PROJECT);
+    expect(platform.projectRoot).toBe(projectRootKey(PROJECT));
+    const probe = await platform.probeRootProject();
+    expect(probe?.meta.root).toBe(projectRootKey(PROJECT));
+    expect(parseRootKey(platform.projectRoot)).toEqual(PROJECT);
   });
 });
 
@@ -400,6 +444,45 @@ describe("project-less mode (/studio)", () => {
       config: null,
     });
   });
+
+  /* Recent rows written by studios that shipped before the root key carried a branch are still in
+     people's browsers. They name a project but not a branch, so the catalogue answers with the one
+     that project's Projects row opens. */
+  test("setWindowProject resolves a branchless recent through the catalogue", async () => {
+    const calls = mockFetch({
+      "/api/v1/projects": {
+        body: [
+          {
+            fullName: "octocat/site",
+            owner: "octocat",
+            name: "site",
+            defaultBranch: "trunk",
+            permission: "admin",
+          },
+        ],
+      },
+    });
+    const realAssign = location.assign;
+    const assigned: string[] = [];
+    (location as { assign: unknown }).assign = (url: string) => {
+      assigned.push(url);
+    };
+    try {
+      const p = createCloudPlatform(null);
+      expect(await p.setWindowProject?.("octocat/site")).toEqual({ deduped: true, config: null });
+      expect(calls.some((c) => c.url.includes("/api/v1/projects"))).toBe(true);
+      expect(assigned).toEqual([editUrl({ owner: "octocat", repo: "site", branch: "trunk" })]);
+    } finally {
+      (location as { assign: unknown }).assign = realAssign;
+    }
+  });
+
+  test("setWindowProject fails on a key that names nothing openable", async () => {
+    mockFetch({ "/api/v1/projects": { body: [] } });
+    const p = createCloudPlatform(null);
+    expect(p.setWindowProject?.("octocat/gone")).rejects.toThrow(/No project to open/);
+    expect(p.setWindowProject?.("not a root key")).rejects.toThrow(/No project to open/);
+  });
 });
 
 /**
@@ -603,6 +686,99 @@ describe("identity & cloudflare surface", () => {
     expect(await p.cfConnection?.()).toBeNull();
   });
 
+  test("cfConnection surfaces a lapsed grant instead of flattening it into a healthy row", async () => {
+    mockFetch({
+      "/api/v1/cf/connection": {
+        body: {
+          code: "cf_reconnect_required",
+          connected: true,
+          expiresAt: 1_700_000_000,
+          hasRefreshToken: false,
+          needsAccount: false,
+          needsReconnect: true,
+          reason: "refresh_failed",
+        },
+      },
+    });
+    const p = createCloudPlatform(null);
+    // Dropping needsReconnect here is what let cfConnect's poll close the popup over a dead row.
+    expect(await p.cfConnection?.()).toEqual({
+      code: "cf_reconnect_required",
+      connected: true,
+      expiresAt: 1_700_000_000,
+      hasRefreshToken: false,
+      needsReconnect: true,
+      reason: "refresh_failed",
+    });
+  });
+
+  test("cfConnection carries needsAccount through for a connection with no account chosen", async () => {
+    mockFetch({
+      "/api/v1/cf/connection": {
+        body: { code: "cf_account_required", connected: true, needsAccount: true },
+      },
+    });
+    const p = createCloudPlatform(null);
+    expect(await p.cfConnection?.()).toEqual({
+      code: "cf_account_required",
+      connected: true,
+      needsAccount: true,
+    });
+  });
+
+  test("cfAccounts lists the grant's accounts and surfaces the broker's unusable payload", async () => {
+    const calls = mockFetch({
+      "/api/v1/cf/accounts": { body: [{ id: "a1", name: "Acme" }] },
+    });
+    const p = createCloudPlatform(null);
+    expect(await p.cfAccounts?.()).toEqual([{ id: "a1", name: "Acme" }]);
+    expect(calls[0]?.url).toBe("/api/v1/cf/accounts");
+    expect(calls[0]?.init?.credentials).toBe("include");
+
+    mockFetch({
+      "/api/v1/cf/accounts": {
+        status: 401,
+        body: {
+          code: "cf_reconnect_required",
+          error: "Your Cloudflare connection has expired — reconnect to continue",
+        },
+      },
+    });
+    expect(p.cfAccounts?.()).rejects.toThrow(/has expired/);
+  });
+
+  test("cfSelectAccount posts the chosen account and surfaces a refusal", async () => {
+    const calls = mockFetch({ "/api/v1/cf/select-account": { body: { ok: true } } });
+    const p = createCloudPlatform(null);
+    await p.cfSelectAccount?.({ id: "a1", name: "Acme" });
+    expect(calls[0]?.url).toBe("/api/v1/cf/select-account");
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      accountId: "a1",
+      accountName: "Acme",
+    });
+
+    mockFetch({
+      "/api/v1/cf/select-account": {
+        status: 401,
+        body: { code: "cf_not_connected", error: "Cloudflare not connected" },
+      },
+    });
+    expect(p.cfSelectAccount?.({ id: "a1" })).rejects.toThrow(/not connected/);
+  });
+
+  test("cfDisconnect deletes the brokered connection and surfaces a failure", async () => {
+    const calls = mockFetch({ "/api/v1/cf/connection": { body: { ok: true } } });
+    const p = createCloudPlatform(null);
+    await p.cfDisconnect?.();
+    expect(calls[0]?.url).toBe("/api/v1/cf/connection");
+    expect(calls[0]?.init?.method).toBe("DELETE");
+    expect(calls[0]?.init?.credentials).toBe("include");
+
+    mockFetch({ "/api/v1/cf/connection": { status: 500, body: { error: "D1 unavailable" } } });
+    expect(p.cfDisconnect?.()).rejects.toThrow(/D1 unavailable/);
+  });
+
   test("cfApi unwraps the envelope and surfaces joined error messages", async () => {
     const calls = mockFetch({
       "/api/v1/cf/proxy/accounts": { body: { success: true, result: [{ id: "a1" }] } },
@@ -623,12 +799,20 @@ describe("identity & cloudflare surface", () => {
   test("cfConnect falls back to a full-page redirect when the popup is blocked", async () => {
     mockFetch({});
     const realOpen = window.open;
+    const realAssign = location.assign;
+    const assigned: string[] = [];
+    (location as { assign: unknown }).assign = (url: string) => {
+      assigned.push(url);
+    };
     (window as { open: unknown }).open = mock(() => null);
     try {
       const p = createCloudPlatform(null);
-      expect(await p.cfConnect?.()).toBeNull();
+      // Not null and not a failure: the page itself is navigating, so the caller renders nothing.
+      expect(await p.cfConnect?.()).toEqual({ status: "redirect" });
+      expect(assigned).toEqual(["/api/v1/cf/connect"]);
     } finally {
       (window as { open: unknown }).open = realOpen;
+      (location as { assign: unknown }).assign = realAssign;
     }
   });
 
@@ -638,10 +822,12 @@ describe("identity & cloudflare surface", () => {
     });
     const realOpen = window.open;
     const popup = { close: mock(() => {}), closed: false };
-    (window as { open: unknown }).open = mock(() => popup);
+    const open = mock(() => popup);
+    (window as { open: unknown }).open = open;
     try {
       const p = createCloudPlatform(null);
       const pending = p.cfConnect?.();
+      await until(() => open.mock.calls.length > 0, "the connect popup");
       // Foreign-source noise is ignored; the jx-cf relay settles the promise.
       window.dispatchEvent(
         new MessageEvent("message", { data: { source: "other" }, origin: location.origin }),
@@ -652,7 +838,10 @@ describe("identity & cloudflare surface", () => {
           origin: location.origin,
         }),
       );
-      expect(await pending).toEqual({ connected: true, accountId: "acct" });
+      expect(await pending).toEqual({
+        connection: { connected: true, accountId: "acct" },
+        status: "connected",
+      });
     } finally {
       (window as { open: unknown }).open = realOpen;
     }
@@ -662,10 +851,12 @@ describe("identity & cloudflare surface", () => {
     mockFetch({});
     const realOpen = window.open;
     const popup = { close: mock(() => {}), closed: false };
-    (window as { open: unknown }).open = mock(() => popup);
+    const open = mock(() => popup);
+    (window as { open: unknown }).open = open;
     try {
       const p = createCloudPlatform(null);
       const pending = p.cfConnect?.();
+      await until(() => open.mock.calls.length > 0, "the connect popup");
       window.dispatchEvent(
         new MessageEvent("message", {
           data: {
@@ -758,7 +949,7 @@ describe("bound session surface", () => {
     expect(await p.locateFile("index.md")).toBe("pages/index.md");
     expect(await p.searchFiles("index", [".md"])).toHaveLength(1);
     const ctx = await p.resolveSiteContext("pages/index.md");
-    expect(ctx.sitePath).toBe("octocat/my-site");
+    expect(ctx.sitePath).toBe("octocat/my-site@main");
     expect(ctx.fileRelPath).toBe("pages/index.md");
   });
 
@@ -882,6 +1073,47 @@ describe("formats (session backend registry)", () => {
     expect(await projectless.listExtensions?.()).toEqual([]);
   });
 
+  /*
+   * The catalogue is a CAPABILITY rather than a constant precisely because of this backend: a
+   * Worker ships a fixed set of extension packages (specs/extensions.md §5.5), decided by the
+   * platform build rather than by this repository's extensions/ tree. So cloud asks its gateway,
+   * and never serves the shipped first-party list.
+   */
+  test("listExtensionCatalog asks the gateway and marks everything bundled", async () => {
+    const calls = mockFetch({
+      "/catalog": {
+        body: [
+          { name: "@jxsuite/parser", sections: [{ key: "content" }], source: "first-party" },
+          { name: "@jxsuite/feed", sections: [{ key: "feed" }], source: "first-party" },
+        ],
+      },
+      "/file?path=package.json": {
+        body: { content: JSON.stringify({ dependencies: { "@jxsuite/parser": "^1.7.0" } }) },
+      },
+    });
+    const p = createCloudPlatform(PROJECT);
+    const catalog = await p.listExtensionCatalog?.();
+
+    // Nothing resolves a module in a Worker, so enabling one of these is a project.json write
+    // Alone — which is what `bundled` means.
+    expect(catalog?.every((e) => e.bundled === true)).toBe(true);
+    // `installed` degrades to DECLARED, the only fact this adapter has.
+    expect(catalog?.find((e) => e.name === "@jxsuite/parser")?.installed).toBe(true);
+    expect(catalog?.find((e) => e.name === "@jxsuite/feed")?.installed).toBe(false);
+    expect(calls.some((c) => c.url === `${BASE}/catalog`)).toBe(true);
+  });
+
+  test("the catalogue degrades to nothing rather than to the shipped list", async () => {
+    /*
+     * The whole contract. A session whose gateway predates the route must offer NOTHING: offering
+     * five extensions three of which the Worker cannot load would put a toggle in front of the
+     * reader that silently does not work.
+     */
+    mockFetch({ "/catalog": { status: 404, body: { error: "no such route" } } });
+    expect(await createCloudPlatform(PROJECT).listExtensionCatalog?.()).toEqual([]);
+    expect(await createCloudPlatform(null).listExtensionCatalog?.()).toEqual([]);
+  });
+
   /* The cloud composes the entry documents server-side from bundled artifacts (it has no
      node_modules and no filesystem), so the studio just registers what it is handed. Before this
      member existed the cloud always fell back to the core schemas, and extension sections got no
@@ -1001,7 +1233,9 @@ describe("navigation members under a DOM", () => {
       const p = createCloudPlatform(null);
       await p.openProjectInNewWindow?.("octocat/site@main");
       expect(openMock).toHaveBeenCalled();
-      await p.openProjectInNewWindow?.("malformed"); // Parse-fail path: no call.
+      // Unresolvable: it must fail rather than answer, because the caller reports "Opened in
+      // Another window" for any call that returns.
+      expect(p.openProjectInNewWindow?.("malformed")).rejects.toThrow(/No project to open/);
       expect(openMock).toHaveBeenCalledTimes(1);
     } finally {
       (window as { open: unknown }).open = realOpen;
@@ -1236,5 +1470,82 @@ describe("the cloud adapter's buildSite", () => {
       failure = error;
     }
     expect((failure as Error | undefined)?.message).toContain("No project is open");
+  });
+});
+
+describe("importSite", () => {
+  /** An NDJSON body, since `streamImport` reads a stream rather than a JSON document. */
+  function ndjson(lines: string[]): Call[] {
+    const calls: Call[] = [];
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return Promise.resolve(
+        new Response(lines.map((line) => `${line}\n`).join(""), {
+          headers: { "Content-Type": "application/x-ndjson" },
+          status: 200,
+        }),
+      );
+    }) as unknown as typeof fetch;
+    return calls;
+  }
+
+  test("posts to the platform route with no project open, and adopts on done", async () => {
+    /* Importing is how a cloud project comes into existence, so the ONE mode it has to work in is
+       the project-less hub — where a session-scoped path has no base to be scoped to. The route is
+       deliberately not under /p/<owner>/<repo>/<branch>/studio for exactly that reason.
+
+       And this backend sends no `ready` line: adopting mid-run would navigate the page to the
+       editor and abort the request still writing the import. A caller that waited for `ready`
+       would hang forever, so the adoption has to come off `done`. */
+    const calls = ndjson([
+      '{"type":"progress","phase":"crawl","message":"Reading the site"}',
+      '{"type":"done","root":"acme/site@main","config":{"name":"Site"}}',
+    ]);
+    const phases: string[] = [];
+    const ready: string[] = [];
+    const result = await createCloudPlatform(null).importSite!(
+      {
+        aiComponents: false,
+        depth: 0,
+        directory: "acme/site",
+        maxPages: 1,
+        name: "Site",
+        url: "https://clone.example/",
+      },
+      (evt) => phases.push(evt.phase),
+      undefined,
+      ({ root }) => ready.push(root),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("/api/v1/import/site");
+    expect(calls[0]!.init?.method).toBe("POST");
+    expect(phases).toEqual(["crawl"]);
+    expect(ready).toEqual([]);
+    expect(result.root).toBe("acme/site@main");
+  });
+
+  test("a bring-your-own-key run forwards its key and base URL", async () => {
+    /* The hosted backend brokers Workers AI, but a user who has typed their own key is entitled to
+       spend it here too — and the only way the backend learns that is these two headers, which the
+       shared client already sets. A cloud-shaped option would have been a second way to say it. */
+    const calls = ndjson(['{"type":"done","root":"acme/site@main","config":{"name":"Site"}}']);
+    await createCloudPlatform(null).importSite!(
+      {
+        aiComponents: true,
+        apiKey: "sk-test",
+        baseUrl: "https://llm.example/v1",
+        depth: 0,
+        directory: "acme/site",
+        maxPages: 1,
+        name: "Site",
+        url: "https://clone.example/",
+      },
+      () => {},
+    );
+
+    const headers = calls[0]!.init?.headers as Record<string, string>;
+    expect(headers["X-Api-Key"]).toBe("sk-test");
+    expect(headers["X-Api-Base-URL"]).toBe("https://llm.example/v1");
   });
 });

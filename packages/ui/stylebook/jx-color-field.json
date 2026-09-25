@@ -1,0 +1,261 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookColorField",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-field.json"
+    },
+    {
+      "$ref": "../components/jx-swatch.json"
+    },
+    {
+      "$ref": "../components/jx-swatch-group.json"
+    },
+    {
+      "$ref": "../components/jx-color-field.json"
+    }
+  ],
+  "state": {
+    "background": "#1d4ed8"
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-4)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "color": "var(--jx-fg-muted)",
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-color-field"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The composed control: a swatch that opens the picker, a text field for the value, and the two doors to the system's own picker. Inside the picker are a saturation and brightness square, a hue track and, with alpha on, an opacity track. Five controls, one value, and one pair of events: input and change come from the element, so e.target.value is the colour whichever control the reader touched."
+    },
+    {
+      "tagName": "p",
+      "textContent": "The text field accepts hex, rgb() and oklch() whatever the field writes, and refuses only on the commit, so a half-typed value is never reformatted under the caret."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Bound both ways"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound value"
+      },
+      "children": [
+        {
+          "tagName": "jx-color-field",
+          "$props": {
+            "label": "Background",
+            "value": {
+              "$ref": "#/state/background"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/background"
+                },
+                "value": {
+                  "$ref": "event#/target/value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.background}"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Formats, alpha and doors"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Formats"
+      },
+      "children": [
+        {
+          "tagName": "jx-color-field",
+          "$props": {
+            "label": "Border",
+            "format": "oklch",
+            "value": "oklch(62.8% 0.258 29.2)"
+          }
+        },
+        {
+          "tagName": "jx-color-field",
+          "$props": {
+            "label": "Overlay",
+            "alpha": true,
+            "value": "#0f172a99"
+          }
+        },
+        {
+          "tagName": "jx-color-field",
+          "$props": {
+            "label": "Ink",
+            "system": false,
+            "eyedropper": false,
+            "value": "#111827"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Sizes and states"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-color-field",
+          "$props": { "label": "Small", "size": "sm", "value": "#22c55e" }
+        },
+        {
+          "tagName": "jx-color-field",
+          "$props": { "label": "Medium", "value": "#22c55e" }
+        },
+        {
+          "tagName": "jx-color-field",
+          "$props": { "label": "Large", "size": "lg", "value": "#22c55e" }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-color-field",
+          "$props": { "label": "Unset" }
+        },
+        {
+          "tagName": "jx-color-field",
+          "$props": { "label": "Fill", "value": "#8b5cf6", "disabled": true }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "With a project palette in the picker"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Anything slotted into tokens is drawn under the sliders. A swatch group there is a second way to the same value: choosing one writes the field's value, and the picker's own controls follow it."
+    },
+    {
+      "tagName": "jx-color-field",
+      "$props": {
+        "label": "Surface",
+        "value": "#0ea5e9"
+      },
+      "children": [
+        {
+          "tagName": "jx-swatch-group",
+          "attributes": {
+            "slot": "tokens"
+          },
+          "$props": {
+            "label": "Project palette",
+            "columns": 5,
+            "value": "#0ea5e9"
+          },
+          "children": [
+            { "tagName": "jx-swatch", "$props": { "color": "#ef4444", "label": "Red" } },
+            { "tagName": "jx-swatch", "$props": { "color": "#f97316", "label": "Orange" } },
+            { "tagName": "jx-swatch", "$props": { "color": "#22c55e", "label": "Green" } },
+            { "tagName": "jx-swatch", "$props": { "color": "#0ea5e9", "label": "Sky" } },
+            { "tagName": "jx-swatch", "$props": { "color": "#8b5cf6", "label": "Violet" } }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A reference this page cannot resolve"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A value only the browser can resolve is kept and drawn as itself. When the browser cannot resolve it either, because the token is defined in a page other than the one drawing the field, resolved is the host saying what the reference stands for: the swatch draws it, the picker opens on it, and the value stays the reference. This field holds var(--brand-accent), which this page never defines."
+    },
+    {
+      "tagName": "jx-color-field",
+      "$props": {
+        "label": "Brand accent",
+        "value": "var(--brand-accent)",
+        "resolved": "#0ea5e9"
+      }
+    },
+    {
+      "tagName": "h2",
+      "textContent": "In a field row"
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Accent",
+        "description": "Used for links, focus rings and the selected state."
+      },
+      "attributes": {
+        "data-prop": "accent"
+      },
+      "children": [
+        {
+          "tagName": "jx-color-field",
+          "$props": { "label": "Accent", "value": "#3b82f6" }
+        }
+      ]
+    }
+  ]
+}

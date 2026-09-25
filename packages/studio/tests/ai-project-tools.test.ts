@@ -13,6 +13,8 @@ import { createToolRegistry } from "@jxsuite/ai";
 import { registerProjectTools } from "../src/services/ai-project-tools";
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
+import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
 import type { CreateProjectDestination, DirEntry } from "../src/types";
 
 /** The shape of the `createProject` options the create_project tool sends to the platform. */
@@ -263,16 +265,21 @@ describe("ai-project-tools — write_file", () => {
     expect(reloadTab).toHaveBeenCalledWith("pages/index.json");
   });
 
-  test("a project.json write syncs the config through onProjectConfigWritten", async () => {
-    const onProjectConfigWritten = mock((_c: object) => {});
+  test("a project.json write syncs the config through onProjectConfigWritten, text and all", async () => {
+    const onProjectConfigWritten = mock((_c: object, _text: string) => {});
     const { registry, state } = makeHarness({}, { onProjectConfigWritten });
-    const res = await registry.execute("write_file", {
-      content: JSON.stringify({ name: "Renamed Site" }),
-      path: "project.json",
-    });
+    /* Laid out as no serializer here would lay it: the text is the model's, and the configuration
+       document derives the file's layout record from it (issue 331), so the callback has to receive
+       the bytes that reached the platform — verbatim, not a re-rendering of the parse. */
+    const content = '{\n  "name": "Renamed Site",\n\n  "style": { "--a": "1" }\n}\n';
+    const res = await registry.execute("write_file", { content, path: "project.json" });
     expect(res.success).toBe(true);
-    expect(onProjectConfigWritten).toHaveBeenCalledWith({ name: "Renamed Site" });
+    expect(onProjectConfigWritten).toHaveBeenCalledWith(
+      { name: "Renamed Site", style: { "--a": "1" } },
+      content,
+    );
     expect(writes(state)).toHaveLength(1);
+    expect(writes(state)[0]![2]).toBe(content);
 
     const bad = await registry.execute("write_file", {
       content: "nope{",
@@ -671,6 +678,44 @@ describe("ai-project-tools — create_project", () => {
     expect(res.success).toBe(true);
     expect(res.summary).toContain("not opened in this window");
     expect(onProjectAdopted).not.toHaveBeenCalled();
+  });
+
+  /* The project is on disk once the platform has created it, opened here or not, and no undo
+     reaches it. Recorded, it is what the turn changed; a failed scaffold records nothing. */
+  test("records the created project as a disk write, and a failed scaffold records nothing", async () => {
+    resetAiWrites();
+    const created = makeHarness(
+      {},
+      { adoptProject: async () => {} },
+      { createProject: async () => ({ config: {}, root: "/abs/solo" }) },
+    );
+    const createdCall = recordingContext();
+    await created.registry.execute(
+      "create_project",
+      { location: "/home/dev/Sites", name: "Solo" },
+      createdCall,
+    );
+    expect(fileTurn("m1", createdCall.ledger.writes)).toEqual([
+      { disk: true, ok: true, path: "/abs/solo", tool: "create_project" },
+    ]);
+
+    const failing = makeHarness(
+      {},
+      {},
+      {
+        createProject: async () => {
+          throw new Error("directory exists");
+        },
+      },
+    );
+    const failedCall = recordingContext();
+    await failing.registry.execute(
+      "create_project",
+      { location: "/home/dev/Sites", name: "Dup" },
+      failedCall,
+    );
+    expect(fileTurn("m2", failedCall.ledger.writes)).toEqual([]);
+    resetAiWrites();
   });
 
   test("surfaces scaffolding errors and adoption failures", async () => {

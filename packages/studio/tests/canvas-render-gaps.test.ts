@@ -146,6 +146,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   // Error, not a missing stub at call time.
   postOpenSlash: () => {},
   postApplyFormat: () => {},
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
   /* The non-lazy way out of `liveHosts`: `panels/pane-grid.ts` calls it as a cell is
@@ -154,7 +155,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   setToolbarRefresh: () => {},
 }));
 
-void mock.module("../src/panels/welcome-screen.js", () => ({
+void mock.module("../src/surfaces/welcome.js", () => ({
   initWelcome: () => {},
   renderWelcome: () => {},
 }));
@@ -174,7 +175,7 @@ void mock.module("../src/panels/formula-workspace.js", () => ({
   revealLogicPanel: () => {},
 }));
 
-void mock.module("../src/panels/statusbar.js", () => ({
+void mock.module("../src/surfaces/statusbar.js", () => ({
   forgetSavedTimes: () => {},
   mountStatusbar: () => {},
   noteDocumentSaved: () => {},

@@ -1,9 +1,8 @@
-import { join, dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
 import type { JxElement } from "@jxsuite/schema/types";
 import { componentize } from "./componentize.ts";
 import { stripClasses } from "./strip-classes.ts";
 import type { ComponentizeOptions, ComponentizeResult } from "./componentize.ts";
+import type { ImportIo } from "./io.ts";
 
 /**
  * The `$media` key the base width lives under — a number of CSS pixels, not a query.
@@ -21,14 +20,22 @@ function mediaKeyWidth(key: string): number {
 }
 
 export interface EmitResult {
-  /** Absolute paths of every file written. */
+  /** Project-relative, forward-slashed paths of every file written, in the order they were written. */
   files: string[];
   /** How many source-site class names were removed on the way out. */
   classesStripped: number;
+  /**
+   * The exact `project.json` text that was written.
+   *
+   * Returned rather than left to be read back, because a caller with no filesystem cannot read it
+   * back at all: Jx Cloud commits the emitted file set to git and needs the configuration to name
+   * the project, and re-deriving it here would be a second writer on the same bytes.
+   */
+  projectJson: string;
 }
 
 export interface EmitOptions {
-  outDir: string;
+  io: ImportIo;
   title: string;
   document: JxElement;
   sourceUrl: string;
@@ -41,7 +48,8 @@ export interface EmitOptions {
 }
 
 export interface MultiEmitOptions {
-  outDir: string;
+  /** Where the emitted files go. See `io.ts` — a disk is one implementation, not the requirement. */
+  io: ImportIo;
   title: string;
   sourceUrl: string;
   /** Map of route path (e.g. "pages/index.json") → Jx document. */
@@ -65,7 +73,7 @@ export interface MultiEmitOptions {
 }
 
 export async function emitProject({
-  outDir,
+  io,
   title,
   document,
   sourceUrl,
@@ -74,7 +82,7 @@ export async function emitProject({
   componentizeOptions,
 }: EmitOptions): Promise<EmitResult> {
   return emitMultiPageProject({
-    outDir,
+    io,
     title,
     sourceUrl,
     pages: new Map([["pages/index.json", document]]),
@@ -85,7 +93,7 @@ export async function emitProject({
 }
 
 export async function emitMultiPageProject({
-  outDir,
+  io,
   title,
   pages,
   layout,
@@ -97,10 +105,12 @@ export async function emitMultiPageProject({
   fontRewriteMap,
   styleTokens,
 }: MultiEmitOptions): Promise<EmitResult> {
-  await mkdir(join(outDir, "pages"), { recursive: true });
-  await mkdir(join(outDir, "layouts"), { recursive: true });
-  await mkdir(join(outDir, "components"), { recursive: true });
-  await mkdir(join(outDir, "public"), { recursive: true });
+  /* Seeded even when nothing lands in them, so a host that opened the project at the seed event
+     sees the shape it expects rather than a directory that grows one folder at a time. A sink with
+     no directories declines by not implementing it. */
+  for (const dir of ["pages", "layouts", "components", "public"]) {
+    await io.mkdir?.(dir);
+  }
 
   /*
    * Only keys the project schema declares (#228). `title` and `description` are page-level keys and
@@ -156,10 +166,16 @@ export async function emitMultiPageProject({
         tagName: comp.tagName,
       };
 
-      const state: Record<string, string> = {};
-      extractStateDefaults(comp.template, state);
+      /* Derived placeholders fill in for props the template interpolates but nobody declared;
+         a value the template DECLARED wins over them. This was an assignment over the spread, so
+         a component that carried its own `state` — the `active` index a tab group switches on —
+         lost it on the way out, and every interpolation referencing it went dead. */
+      const derived: Record<string, string> = {};
+      extractStateDefaults(comp.template, derived);
+      const declared = (comp.template.state ?? {}) as Record<string, unknown>;
+      const state = { ...derived, ...declared };
       if (Object.keys(state).length > 0) {
-        compDoc.state = state;
+        compDoc.state = state as Record<string, string>;
       }
 
       componentFiles.set(fileName, compDoc);
@@ -207,10 +223,8 @@ export async function emitMultiPageProject({
         fontCss = fontCss.replaceAll(pattern, (m) => byForm.get(m) ?? m);
       }
     }
-    const fontsDir = join(outDir, "public", "assets");
-    await mkdir(fontsDir, { recursive: true });
-    const fontsCssPath = join(fontsDir, "fonts.css");
-    await Bun.write(fontsCssPath, fontCss);
+    const fontsCssPath = "public/assets/fonts.css";
+    await io.write(fontsCssPath, fontCss);
     files.push(fontsCssPath);
 
     // Add fonts.css to project head
@@ -223,9 +237,9 @@ export async function emitMultiPageProject({
     });
   }
 
-  const projectPath = join(outDir, "project.json");
-  await Bun.write(projectPath, `${JSON.stringify(projectJson, null, 2)}\n`);
-  files.push(projectPath);
+  const projectText = `${JSON.stringify(projectJson, null, 2)}\n`;
+  await io.write("project.json", projectText);
+  files.push("project.json");
 
   /*
    * Classes go here, at the last possible moment, and that placement is the whole design.
@@ -245,8 +259,8 @@ export async function emitMultiPageProject({
 
   // Write components
   for (const [fileName, compDoc] of componentFiles) {
-    const compPath = join(outDir, "components", fileName);
-    await Bun.write(compPath, `${JSON.stringify(compDoc, null, 2)}\n`);
+    const compPath = `components/${fileName}`;
+    await io.write(compPath, `${JSON.stringify(compDoc, null, 2)}\n`);
     files.push(compPath);
   }
 
@@ -267,14 +281,12 @@ export async function emitMultiPageProject({
         ...((pageDoc.$elements as JxElement[]) ?? []),
       ] as JxElement[];
     }
-    const pagePath = join(outDir, route);
-    await mkdir(dirname(pagePath), { recursive: true });
-    await Bun.write(pagePath, `${JSON.stringify(pageDoc, null, 2)}\n`);
-    files.push(pagePath);
+    await io.write(route, `${JSON.stringify(pageDoc, null, 2)}\n`);
+    files.push(route);
   }
 
   // Write layout
-  const layoutPath = join(outDir, "layouts", "base.json");
+  const layoutPath = "layouts/base.json";
   const layoutDoc: JxElement = layout ?? {
     tagName: "div",
     children: [{ tagName: "slot" }],
@@ -286,22 +298,35 @@ export async function emitMultiPageProject({
     ];
   }
   classesStripped += stripClasses(layoutDoc);
-  await Bun.write(layoutPath, `${JSON.stringify(layoutDoc, null, 2)}\n`);
+  await io.write(layoutPath, `${JSON.stringify(layoutDoc, null, 2)}\n`);
   files.push(layoutPath);
 
-  return { classesStripped, files };
+  return { classesStripped, files, projectJson: projectText };
+}
+
+/**
+ * The state key a whole-string `${state.x}` names, or null.
+ *
+ * The identifier check is the point. The capture used to be `([^}]+)`, so `${state.active !== 0}` —
+ * an expression, not a reference — minted a state entry literally called `active !== 0` beside the
+ * real one. Only a bare identifier is a key; anything else is an expression over state and has no
+ * default of its own to declare.
+ */
+function stateKey(text: string): string | undefined {
+  const key = text.match(/^\$\{state\.([^}]+)\}$/)?.[1];
+  return key !== undefined && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : undefined;
 }
 
 function extractStateDefaults(node: JxElement | string, out: Record<string, string>) {
   if (typeof node === "string") {
-    const key = node.match(/^\$\{state\.([^}]+)\}$/)?.[1];
+    const key = stateKey(node);
     if (key && !(key in out)) {
       out[key] = "";
     }
     return;
   }
   if (typeof node.textContent === "string") {
-    const key = node.textContent.match(/^\$\{state\.([^}]+)\}$/)?.[1];
+    const key = stateKey(node.textContent);
     if (key && !(key in out)) {
       out[key] = "";
     }
@@ -309,7 +334,7 @@ function extractStateDefaults(node: JxElement | string, out: Record<string, stri
   if (node.attributes) {
     for (const v of Object.values(node.attributes)) {
       if (typeof v === "string") {
-        const key = v.match(/^\$\{state\.([^}]+)\}$/)?.[1];
+        const key = stateKey(v);
         if (key && !(key in out)) {
           out[key] = "";
         }

@@ -61,3 +61,4 @@ Some Studio platforms connect to GitHub through the **Jx Suite GitHub App** inst
 - **[Source control](/docs/studio/publish/source-control)** is the day-to-day commit and sync flow.
 - **[Publish](/docs/studio/publish)** covers how a push becomes a live site.
 - **[Cloudflare Pages](/docs/studio/publish/cloudflare)** is the next link in the chain, a provider that builds the repository on every push.
+  - packages/studio/src/surfaces/github-auth.ts

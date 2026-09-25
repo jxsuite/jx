@@ -227,7 +227,7 @@ export function isBottomTabId(value: unknown): value is BottomTabId {
   return typeof value === "string" && (BOTTOM_TAB_IDS as readonly string[]).includes(value);
 }
 
-/** The Studio chrome's Spectrum theme — the `color` attribute on `<sp-theme>`. */
+/** The Studio chrome's themes — the `data-theme` stamp on `<html>` (studio-ui-guidelines.md §1.1). */
 export const CHROME_THEMES = ["light", "dark"] as const;
 
 export type ChromeTheme = (typeof CHROME_THEMES)[number];
@@ -264,6 +264,16 @@ export interface ShellGit {
   loading: boolean;
   error: string | null;
   diffState: GitDiffState | null;
+  /**
+   * Bumped whenever the working tree may have moved under an open comparison.
+   *
+   * A comparison is two texts read once, so nothing about it notices a save. That was invisible
+   * while the artboards merely drew two documents; with change marks on them, the tint and the
+   * count go stale the moment the author edits the file they are reviewing — and a review loop
+   * whose marks lie is worse than one with no marks. This is the one input both holders of a
+   * comparison watch: the panel's `diffState` re-reads, and a Diff lens's memo re-issues.
+   */
+  rev: number;
   logEntries: GitLogEntry[] | null;
   /** "changes" | "history" — the panel's sub-tab. */
   subTab: string;
@@ -325,7 +335,7 @@ export interface ShellState {
    * COMMAND (`view.setBottomTab`) is what refuses an undeclared id, at the one door callers use.
    */
   bottomTab: string;
-  /** The Studio chrome's Spectrum theme. One of {@link CHROME_THEMES}. */
+  /** The Studio chrome's theme. One of {@link CHROME_THEMES}. */
   theme: ChromeTheme;
   docks: Record<DockId, DockState>;
   /**
@@ -368,8 +378,9 @@ const PROJECT_STORAGE_PREFIX = "jx-studio-project::";
 /**
  * The chrome theme Studio wakes up in.
  *
- * `index.html` hard-codes `color="dark"` on `<sp-theme>` so the first paint has a theme before this
- * module evaluates; the default here has to agree with it or the shell flashes.
+ * `styles/tokens.css` carries the kit's DARK values as its hex fallbacks, so the first paint has a
+ * theme before this module evaluates; the default here has to agree with them or the shell
+ * flashes.
  */
 const DEFAULT_THEME: ChromeTheme = "dark";
 
@@ -455,6 +466,17 @@ interface PersistedDocks {
 export const DEFAULT_PANE_SPLIT = 0.5;
 
 /**
+ * The supported range for {@link ShellState.paneSplit}, and the ONE place it is written down.
+ *
+ * It was written three times — the read clamp, the write clamp, and the drag's own bounds — which
+ * is three chances to disagree about one number. The surface now hands the same two values to
+ * `jx-split` as its `min` and `max`, so the element, the writer and the reader all bound the split
+ * alike, and a splitter can no longer report a position the store would refuse to keep.
+ */
+export const PANE_SPLIT_MIN = 0.2;
+export const PANE_SPLIT_MAX = 0.8;
+
+/**
  * Coerce a stored split into the supported range.
  *
  * Clamped here, at the READ, rather than at the drag site: the drag already refuses to leave the
@@ -462,12 +484,14 @@ export const DEFAULT_PANE_SPLIT = 0.5;
  * one caller that has to be defended.
  */
 function clampPaneSplit(value: unknown): number {
-  return typeof value === "number" && value >= 0.2 && value <= 0.8 ? value : DEFAULT_PANE_SPLIT;
+  return typeof value === "number" && value >= PANE_SPLIT_MIN && value <= PANE_SPLIT_MAX
+    ? value
+    : DEFAULT_PANE_SPLIT;
 }
 
 /** Move the splitter. Clamped, and the one writer every control routes through. */
 export function setPaneSplit(value: number): void {
-  shell.paneSplit = Math.min(0.8, Math.max(0.2, value));
+  shell.paneSplit = Math.min(PANE_SPLIT_MAX, Math.max(PANE_SPLIT_MIN, value));
 }
 
 /** Read the persisted dock record, tolerating absent/corrupt storage. */
@@ -488,6 +512,7 @@ function freshGit(): ShellGit {
     lastUpdated: null,
     loading: false,
     logEntries: null,
+    rev: 0,
     status: null,
     subTab: "changes",
   };
@@ -942,7 +967,7 @@ export function resetLayout(deps: LayoutDeps): void {
  * The Monaco theme that goes with a chrome theme.
  *
  * Monaco paints its own chrome from its own registry and cannot read a CSS custom property, so it
- * is the one surface in the app the Spectrum theme does not reach. Both editors used to be created
+ * is the one surface in the app the chrome theme does not reach. Both editors used to be created
  * with a literal `"vs-dark"`, which is how a light Studio kept a black code view in the middle of
  * it. `"vs"` is Monaco's stock light theme — the counterpart of the `"vs-dark"` already in use, not
  * a new palette to maintain.
@@ -952,11 +977,11 @@ export function monacoTheme(theme: ChromeTheme = shell.theme): string {
 }
 
 /**
- * Project the theme record onto `<sp-theme>` and onto Monaco.
+ * Project the theme record onto the document and onto Monaco.
  *
- * The predecessor was a raw `document.querySelector("sp-theme")?.setAttribute(...)` inside the
- * automation hook — a presentation poke no user could make and no surface could read back. It is a
- * shell input like the docks, so it lives on the record and is applied by the same effect.
+ * The predecessor was a raw `document.querySelector(...)?.setAttribute(...)` inside the automation
+ * hook — a presentation poke no user could make and no surface could read back. It is a shell input
+ * like the docks, so it lives on the record and is applied by the same effect.
  *
  * `setTheme` is global to Monaco and repaints every live editor, so an open code view follows the
  * switch rather than waiting to be remounted. It goes through {@link loadedMonaco} — never
@@ -964,13 +989,16 @@ export function monacoTheme(theme: ChromeTheme = shell.theme): string {
  * session that has not opened one. With no editor loaded there is nothing to repaint, and the
  * `theme:` option each mount passes reads the record when it eventually happens.
  *
- * The `data-theme` stamp on `<html>` exists for ONE rule, and only because `<html>` is an ancestor
- * of `<sp-theme>`: the backdrop in `styles/tokens.css` cannot read a `--spectrum-*` token from up
- * there (see that file's note on why the semantic layer is not on `:root`), so it painted a fixed
- * near-black behind every theme. An attribute is the only channel that reaches it.
+ * **The `data-theme` stamp is now the ONLY channel, and that is the removal rather than a
+ * simplification of it.** There were two: this stamp, and a `color` attribute on the `sp-theme`
+ * element the frame was wrapped in. Two writers meant a theme could half-apply — `color="light"`
+ * over a colour fragment Spectrum had never been given adopted no palette at all, so the setting
+ * moved the backdrop and nothing else, which is how Light once shipped as a switch that did
+ * nothing. The kit declares every colour as a `light-dark()` pair on `:root` and reads the scheme
+ * off this attribute, so the stamp now paints the whole chrome and there is no second thing to
+ * forget.
  */
 export function applyChromeTheme(): void {
-  document.querySelector("sp-theme")?.setAttribute("color", shell.theme);
   document.documentElement.dataset.theme = shell.theme;
   loadedMonaco()?.editor.setTheme(monacoTheme());
 }
@@ -1281,14 +1309,8 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       group: "4_docks",
       requires: "an open project",
       when: projectOpen,
-      aiTool: {
-        description:
-          "Show one of the Navigator panels (Files, Search, Source Control, Languages, Outline, " +
-          "Page, Data, Packages, Insert) and open the Navigator dock if it is closed. Languages is " +
-          "the translation-parity grid, and it exists only in a project that declares two or more " +
-          "locales. Problems is a Bottom dock tab — use show_bottom_tab for it.",
-        name: "show_navigator_panel",
-      },
+      /* No `aiTool`: application-level, which `register()` refuses to project — an application verb
+         acts on the editor, which the model cannot see (§12.4, chrome). */
       run: (_ctx, args) => {
         const tab = enumArg("view.setActivity", args, "tab", NAVIGATOR_PANEL_IDS);
         // The record's own `when`, asked here because `enablement` cannot see an argument — the
@@ -1392,12 +1414,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       level: "application",
       menus: ["palette"],
       group: "4_docks",
-      aiTool: {
-        description:
-          "Show one of the Bottom dock's tabs (Problems, Diff, Logic, Activity) and open the " +
-          "Bottom dock if it is closed.",
-        name: "show_bottom_tab",
-      },
+      /* No `aiTool`: application-level chrome, refused at registration (§12.4). */
       run: (_ctx, args) => {
         const tab = enumArg("view.setBottomTab", args, "tab", BOTTOM_TAB_IDS);
         // The record's own `when`, asked here because `enablement` cannot see an argument — the
@@ -1460,12 +1477,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       group: "4_layouts",
       requires: "an open project",
       when: projectOpen,
-      aiTool: {
-        description:
-          "Adopt one of the project's named layouts (Write, Design, Build, Ship, or one the user " +
-          "saved): its Navigator panel, its dock widths and visibility, and its Inspector tab.",
-        name: "set_layout",
-      },
+      /* No `aiTool`: application-level chrome, refused at registration (§12.4). */
       run: (_ctx, args) => {
         applyLayout(stringArg("view.setLayout", args, "layout"), deps);
       },

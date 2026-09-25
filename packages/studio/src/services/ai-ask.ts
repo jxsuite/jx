@@ -25,7 +25,6 @@
 
 import { createToolDefinition, toolError, toolSuccess } from "@jxsuite/ai/tools";
 import { reactive } from "../reactivity";
-import { currentToolCallId, turnSignal } from "./ai-turn-signal";
 
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 
@@ -81,17 +80,17 @@ export function isAwaitingAnswer(): boolean {
  * Register a question and suspend until it is settled.
  *
  * @param {PendingAsk} ask
+ * @param {AbortSignal} [signal] - The asking call's signal. Without one the question can still be
+ *   settled by {@link cancelAsk}, but a Stop would leave the turn awaiting a promise nothing could
+ *   resolve.
  * @returns {Promise<AskAnswer>} Resolves on an answer, a skip, or the turn being stopped (`{
  *   answer: null, skipped: false }` — the shape the tool reports as a failure).
  */
-export function askUser(ask: PendingAsk): Promise<AskAnswer> {
+export function askUser(ask: PendingAsk, signal?: AbortSignal): Promise<AskAnswer> {
   return new Promise<AskAnswer>((resolve) => {
     state.pending = ask;
     settle = resolve;
 
-    /* The turn's signal, not a parameter: `ToolRegistry.execute` has nowhere to pass one. Without
-       this, Stop would leave the loop awaiting a promise nothing could ever resolve. */
-    const signal = turnSignal();
     if (signal?.aborted) {
       clear();
       resolve({ answer: null, skipped: false });
@@ -163,10 +162,26 @@ export function resetAsk(): void {
  *
  * @param {Pick<ToolRegistry, "register">} registry
  */
-export function registerAskTool(registry: Pick<ToolRegistry, "register">): void {
+/** What the host that registers the question tool may hook. */
+export interface AskToolOptions {
+  /**
+   * Called once a question has been put to the author, before the turn waits on the answer. A host
+   * saves the conversation here: a turn suspended on a person may wait for as long as they like,
+   * and a reload in the meantime must still find the question to restore as open (specs/ai.md
+   * §3.4).
+   */
+  onPending?: () => void;
+}
+
+export function registerAskTool(
+  registry: Pick<ToolRegistry, "register">,
+  { onPending }: AskToolOptions = {},
+): void {
   registry.register(
     createToolDefinition({
       name: "ask_user",
+      // It suspends the turn on the author, so a round that only asked spends no work budget.
+      interactive: true,
       description:
         "Pause and put a question to the user; the turn waits for their reply and resumes with " +
         "it. Use it ONLY for a judgement that is genuinely theirs — which pages matter, whether to " +
@@ -196,7 +211,7 @@ export function registerAskTool(registry: Pick<ToolRegistry, "register">): void 
         },
         required: ["question"],
       },
-      execute: async (args) => {
+      execute: async (args, ctx) => {
         /* Everything `unknown`, and every field narrowed by `typeof` rather than by `?.`. The
            registry's `validate()` is "a lightweight structural check, not a JSON Schema validator",
            `strict: false` skips it entirely, and this tool may be registered into someone else's
@@ -219,15 +234,23 @@ export function registerAskTool(registry: Pick<ToolRegistry, "register">): void 
               .slice(0, MAX_OPTIONS)
           : [];
 
-        const { answer, skipped } = await askUser({
-          context: typeof context === "string" ? context.trim() : "",
-          /* The tool-call id, so the chip the transcript draws and the question this registers are
-             the same thing. Without it a restored, permanently unanswered question would render
-             identically to the live one. */
-          id: currentToolCallId(),
-          options: choices,
-          question: question.trim(),
-        });
+        const answering = askUser(
+          {
+            context: typeof context === "string" ? context.trim() : "",
+            /* The tool-call id, so the chip the transcript draws and the question this registers
+               are the same thing. Without it a restored, permanently unanswered question would
+               render identically to the live one. */
+            id: ctx.callId,
+            options: choices,
+            question: question.trim(),
+          },
+          ctx.signal,
+        );
+        // The question is published by now (`askUser` sets it synchronously); the answer is not.
+        if (isAwaitingAnswer()) {
+          onPending?.();
+        }
+        const { answer, skipped } = await answering;
 
         if (skipped) {
           /* A success: the model asked, and "you decide" is an answer. Rendering it as a failure

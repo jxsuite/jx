@@ -9,16 +9,6 @@ import { defaultContentFormat } from "../format/format-host";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /**
- * CamelCase → kebab-case for inline style attributes
- *
- * @param {string} str
- * @returns {string}
- */
-export function camelToKebab(str: string) {
-  return str.replaceAll(/[A-Z]/g, (c: string) => `-${c.toLowerCase()}`);
-}
-
-/**
  * Convert camelCase property name to "Title Case" label (e.g. "backgroundColor" → "Background
  * Color")
  *

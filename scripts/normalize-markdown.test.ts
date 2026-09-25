@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeMarkdown } from "./normalize-markdown.ts";
+import {
+  formatMarkdown,
+  isFormattable,
+  normalizeMarkdown,
+  tableDefects,
+} from "./normalize-markdown.ts";
 
 /**
  * The rules are narrow on purpose: an escape is removed only where Markdown never needed one. Most
@@ -118,5 +123,104 @@ describe("idempotence and fidelity", () => {
   test("cannot recover a flattened link or bold — that is not its job", () => {
     const flattened = "| RFC 6901 | Borrowed | §7 |";
     expect(norm(flattened)).toBe(flattened);
+  });
+});
+
+describe("formatMarkdown runs both rules", () => {
+  test("unescapes and unwraps in one pass", () => {
+    const result = formatMarkdown([String.raw`## 2\. Two`, "", "One two", "three.", ""].join("\n"));
+    expect(result.text).toBe("## 2. Two\n\nOne two three.\n");
+    expect(result.escaped).toEqual([1]);
+    expect(result.wrapped).toEqual([4]);
+  });
+
+  /*
+   * The escape pass runs first because `## 18\.` is a heading the unwrapper has to recognise as
+   * one. Left escaped, the line is an ordinary paragraph and the text under it folds into it.
+   */
+  test("an escaped heading is a heading by the time the unwrapper sees it", () => {
+    const source = [String.raw`## 18\. Standards`, "Body text.", ""].join("\n");
+    expect(formatMarkdown(source).text).toBe("## 18. Standards\nBody text.\n");
+  });
+
+  /*
+   * `--no-wrap`. The repo-wide sweep has not landed, so the gate and the pre-commit hook pass this
+   * and rewrite nobody's line breaks. Deleting it from the two package.json strings is what turns
+   * the rule on.
+   */
+  test("wrap: false leaves line breaks exactly as they were", () => {
+    const source = [String.raw`## 2\. Two`, "", "One two", "three.", ""].join("\n");
+    const result = formatMarkdown(source, { wrap: false });
+    expect(result.text).toBe("## 2. Two\n\nOne two\nthree.\n");
+    expect(result.escaped).toEqual([1]);
+    expect(result.wrapped).toEqual([]);
+  });
+});
+
+describe("isFormattable", () => {
+  // Bytes that belong to something other than a formatter: a bot, a fixture, a pinned submodule.
+  const skipped = [
+    "CHANGELOG.md",
+    "packages/formulas/CHANGELOG.md",
+    "scripts/docs/_fixtures/cadenced.md",
+    "packages/server/tests/_studio_fixtures/md-components/plain.md",
+    "packages/desktop/tests/_fixtures_content/content/docs/advanced.md",
+    "vendor/electrobun/package/README.md",
+  ];
+  for (const path of skipped) {
+    test(`skips ${path}`, () => {
+      expect(isFormattable(path)).toBe(false);
+    });
+  }
+
+  const swept = ["README.md", "docs/README.md", "specs/spec.md", "packages/site/README.md"];
+  for (const path of swept) {
+    test(`sweeps ${path}`, () => {
+      expect(isFormattable(path)).toBe(true);
+    });
+  }
+
+  // A file merely NAMED changelog is prose, not release-please's output.
+  test("only a real CHANGELOG.md is skipped", () => {
+    expect(isFormattable("docs/extending/reference/spec-changelog.md")).toBe(true);
+  });
+});
+
+describe("tableDefects", () => {
+  /* A renderer silently drops the surplus cells, so a row that grew one ships a mangled column to
+     the published page while every other gate stays green. Both cases below are real: the escaped
+     pipe is what a script splitting on `|` trips over (it happened to specs/ui.md's element
+     catalogue), and the unescaped one is what a generated type union produced. */
+  const table = (...rows: string[]) => ["| A | B | C |", "| - | - | - |", ...rows].join("\n");
+
+  test("accepts a row whose cells match its header", () => {
+    expect(tableDefects(table("| 1 | 2 | 3 |"))).toEqual([]);
+  });
+
+  test("names a row with one cell too many", () => {
+    expect(tableDefects(table("| 1 | 2 | 3 | 4 |"))).toEqual([3]);
+  });
+
+  test("names a row with one too few", () => {
+    expect(tableDefects(table("| 1 | 2 |"))).toEqual([3]);
+  });
+
+  test("an escaped pipe is a literal, not a cell boundary", () => {
+    // `popover="auto\|manual"` is one cell, and reading it as two is the bug this rule catches.
+    expect(tableDefects(table('| `popover="auto\\|manual"` | 2 | 3 |'))).toEqual([]);
+  });
+
+  test("a pipe inside a fenced block is not a table at all", () => {
+    const source = ["```", "| A | B |", "| - | - |", "| 1 | 2 | 3 |", "```"].join("\n");
+    expect(tableDefects(source)).toEqual([]);
+  });
+
+  test("a table ends at a blank line, so the next one sets its own width", () => {
+    const source = [table("| 1 | 2 | 3 |"), "", "| A | B |", "| - | - |", "| 1 | 2 |"].join("\n");
+    expect(tableDefects(source)).toEqual([]);
+  });
+
+  test("prose that merely contains a pipe is not judged", () => {
+    expect(tableDefects("A sentence with a | in it.\n")).toEqual([]);
   });
 });

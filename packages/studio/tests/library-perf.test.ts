@@ -119,7 +119,7 @@ async function mount(): Promise<HTMLElement> {
 
 /** Give the scroller the box happy-dom never computes, then force one repaint. */
 async function layOutPane() {
-  const body = host.querySelector(".library-body") as HTMLElement;
+  const body = host.querySelector('[part="body"]') as HTMLElement;
   Object.defineProperty(body, "clientHeight", { configurable: true, value: VIEWPORT.height });
   Object.defineProperty(body, "clientWidth", { configurable: true, value: VIEWPORT.width });
   body.dispatchEvent(new Event("scroll"));
@@ -128,7 +128,19 @@ async function layOutPane() {
 }
 
 function cards(): number {
-  return host.querySelectorAll(".library-card").length;
+  return host.querySelectorAll('[part="card"]').length;
+}
+
+/**
+ * Nodes inside the SCROLLER, which is the number the window is about.
+ *
+ * Not the whole host: the toolbar is a fixed cost that does not grow with the project, and the kit
+ * is light DOM, so its buttons and glyphs are nodes this count can see where Spectrum's shadow
+ * roots hid them. Counting them would put a constant on both sides of a ratio and make a
+ * five-hundred-fold collapse in the list look like a four-fold one.
+ */
+function bodyNodes(): number {
+  return host.querySelector('[part="body"]')!.querySelectorAll("*").length;
 }
 
 /**
@@ -171,21 +183,21 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
     await mount();
     const unwindowedMs = performance.now() - unwindowedStart;
     const unwindowed = cards();
-    const unwindowedNodes = host.querySelectorAll("*").length;
+    const unwindowedNodes = bodyNodes();
     const unwindowedPreviews = previewReads.length;
 
     const windowedStart = performance.now();
     await layOutPane();
     const windowedMs = performance.now() - windowedStart;
     const windowed = cards();
-    const windowedNodes = host.querySelectorAll("*").length;
+    const windowedNodes = bodyNodes();
 
     // Printed rather than asserted: a wall-clock threshold in CI measures the runner, not the code.
     console.error(
       `[library perf] ${PAGE_COUNT} pages, "All", cards layout, ${VIEWPORT.width}×${VIEWPORT.height} pane\n` +
-        `  before (no window): ${unwindowed} cards · ${unwindowedNodes} DOM nodes · ` +
+        `  before (no window): ${unwindowed} cards · ${unwindowedNodes} list nodes · ` +
         `${unwindowedPreviews} preview reads · ${unwindowedMs.toFixed(0)} ms first paint\n` +
-        `  after  (windowed):  ${windowed} cards · ${windowedNodes} DOM nodes · ` +
+        `  after  (windowed):  ${windowed} cards · ${windowedNodes} list nodes · ` +
         `${previewReads.length} preview reads · ${windowedMs.toFixed(0)} ms repaint`,
     );
 
@@ -200,7 +212,7 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
   test("scrolling moves the window instead of growing it", async () => {
     const body = await windowedPane();
     const first = cards();
-    const firstPaths = [...host.querySelectorAll<HTMLElement>(".library-card")].map(
+    const firstPaths = [...host.querySelectorAll<HTMLElement>('[part="card"]')].map(
       (c) => c.dataset.path,
     );
 
@@ -208,7 +220,7 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
     body.dispatchEvent(new Event("scroll"));
     await flush();
 
-    const scrolledPaths = [...host.querySelectorAll<HTMLElement>(".library-card")].map(
+    const scrolledPaths = [...host.querySelectorAll<HTMLElement>('[part="card"]')].map(
       (c) => c.dataset.path,
     );
     // Mid-list the window also overscans ABOVE, so it is a little larger than at the top — what
@@ -241,10 +253,10 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
   test("the Table layout windows too, at its own row height", async () => {
     setLibraryLayout("table");
     await mount();
-    expect(host.querySelectorAll(".library-table-row").length).toBe(PAGE_COUNT);
+    expect(host.querySelectorAll('[part="table-row"]').length).toBe(PAGE_COUNT);
     await layOutPane();
     // 700px / 32px = 22 visible rows, +1 partial, +3 overscan.
-    expect(host.querySelectorAll(".library-table-row").length).toBe(26);
+    expect(host.querySelectorAll('[part="table-row"]').length).toBe(26);
   });
 
   test("the same project in two languages renders the same window, and one language less", async () => {
@@ -288,7 +300,7 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
     await flush();
     expect(cards()).toBe(40);
     expect(
-      [...host.querySelectorAll<HTMLElement>(".library-card")].every((c) =>
+      [...host.querySelectorAll<HTMLElement>('[part="card"]')].every((c) =>
         c.dataset.path?.startsWith("pages/fr/"),
       ),
     ).toBe(true);
@@ -300,8 +312,8 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
     await layOutPane();
     expect(previewReads).toEqual([]);
     // One capped column, and the count it prints is the honest total.
-    expect(host.querySelectorAll(".library-list-item").length).toBe(25);
-    expect(host.querySelector(".library-board-count")?.textContent).toBe(String(PAGE_COUNT));
-    expect(host.querySelector(".library-truncated")?.textContent).toContain("275 more");
+    expect(host.querySelectorAll('[part="list-item"]').length).toBe(25);
+    expect(host.querySelector('[part="count"]')?.textContent).toBe(String(PAGE_COUNT));
+    expect(host.querySelector('[part="truncated"]')?.textContent).toContain("275 more");
   });
 });

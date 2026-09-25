@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.5.8-draft
-**Status:** Partial
-**Updated:** 2026-08-26
+**Version:** 0.6.22-draft\
+**Status:** Partial\
+**Updated:** 2026-09-14\
 **License:** MIT
 
 ---
@@ -203,6 +203,8 @@ export function handleInput(state, event) {
 ```
 
 `this` is never used in Jx-managed code. All component state is accessed via `state`.
+
+**Listener options are not part of the grammar.** An `on*` key is attached with `addEventListener(type, fn)` and nothing else, in every one of the four spellings a handler has — a `$ref` to a function, a structured body (§20), a string body, an `$expression` — so `capture`, `once`, `passive` and a listener `signal` cannot be written in a document at all. Capture is the one of the four that changes an outcome rather than a cost: a handler declared on an ancestor runs AFTER a descendant's, so anything inside the subtree that calls `stopPropagation` silently takes the ancestor's handler with it, and the document has no way to say it meant to go first. A host that needs the capture phase attaches that one listener itself, after the mount, on a node it holds — `watchPaneFocus` in `packages/studio/src/panels/pane-grid.ts` is the worked example, and it records at its own definition site that it lives there because a document cannot express the option. A custom element may do the same from its behaviour sidecar. Either way the listener's lifetime is the node's, so nothing has to remove it.
 
 ---
 
@@ -549,6 +551,8 @@ Template literal syntax `${}` is valid **anywhere a string value appears in the 
 }
 ```
 
+**A binding writes when its SOURCE moves, not when its target differs.** The effect behind `"value": "${state.query}"` re-runs only when something it read changed, and it then skips a write equal to what the element already holds — the second half is deliberate, because re-setting `value` on a focused control moves the caret and collapses the selection. Together they mean a document cannot RE-ASSERT a value it has already written. After the reader has typed over a bound control, writing the scope value the scope already held is not a change, so the effect never re-runs and the field keeps what the reader typed; the write that would have emptied it is exactly the one that is skipped. There is no write-only spelling that fires on every pass, and reaching for the element and assigning `value` is not the alternative — that is the host writing into a tree the document owns. The host makes the correction visible instead: it announces the raw value the control now holds, and the value it settled on is then a real move rather than an equal write. `packages/studio/src/ui/form-controls.ts` carries that bounce so a refused rename snaps back, and `packages/studio/src/panels/git-panel.ts` so that dismissing a "New branch…" pick can put the picker back on the branch that is checked out.
+
 ### 6.2 Reactive style properties
 
 ```json
@@ -696,29 +700,26 @@ Non-standard attributes are set via the `attributes` object:
 }
 ```
 
-**A boolean value is written the way the attribute is read.** HTML spells a boolean two
-incompatible ways, so an attribute whose value is `true` or `false` — declared directly, or resolved
-from a `${...}` template or `$ref` — is emitted according to the family its NAME puts it in:
+**A boolean value is written the way the attribute is read.** HTML spells a boolean two incompatible ways, so an attribute whose value is `true` or `false` — declared directly, or resolved from a `${...}` template or `$ref` — is emitted according to the family its NAME puts it in:
 
 | Family                                                                                                     | `true`    | `false`          |
 | ---------------------------------------------------------------------------------------------------------- | --------- | ---------------- |
 | **Presence** — `open`, `disabled`, `checked`, `hidden`, `required`, and every other HTML boolean attribute | bare name | attribute absent |
 | **Enumerated** — every `aria-*`, plus `contenteditable`, `draggable`, `spellcheck`                         | `="true"` | `="false"`       |
 
-Neither form is a stylistic choice. A presence attribute counts _any_ value as true, so
-`<details open="false">` is an open `<details>`; an enumerated attribute reads an empty value as
-unset, so a bare `aria-hidden` is not hidden and an absent `contenteditable` means "inherit" rather
-than `false`. Writing either as the other inverts it in silence.
+Neither form is a stylistic choice. A presence attribute counts _any_ value as true, so `<details open="false">` is an open `<details>`; an enumerated attribute reads an empty value as unset, so a bare `aria-hidden` is not hidden and an absent `contenteditable` means "inherit" rather than `false`. Writing either as the other inverts it in silence.
 
-A **string** is never reinterpreted in either family: `"aria-current": "false"` is emitted verbatim,
-because an enumerated attribute carries its value in its text.
+A **string** is never reinterpreted in either family: `"aria-current": "false"` is emitted verbatim, because an enumerated attribute carries its value in its text.
 
-Every renderer applies this identically — the static compiler writing HTML source and the runtime
-writing live elements — so an element does not change meaning when a prerendered page hydrates.
+**Nothing is an attribute the element does not have.** A value that resolves to `null` or `undefined` — a `$ref` to a missing entry, a `${…}` template whose single expression yields one — removes the attribute rather than writing an empty string. An `aria-checked=""` or a `title=""` is not absence: the first is an invalid token on a menu item and the second is an empty tooltip. This is what lets one template carry an attribute that exists only in some states, `"aria-haspopup": "${state.haspopup ? 'menu' : null}"`, without a second binding to take it away.
 
-> **Status: Implemented.** `booleanAttrValue()` in `@jxsuite/runtime` is the single decision; the
-> compiler's `buildAttrs()` and the runtime's `applyAttributes()` both defer to it, and the runtime
-> removes the attribute rather than writing `"false"` when a binding flips.
+Every renderer applies this identically — the static compiler writing HTML source and the runtime writing live elements — so an element does not change meaning when a prerendered page hydrates.
+
+**`popover` is enumerated, and is deliberately emitted through the presence branch.** Its keywords are `auto`, `manual` and `hint`; its MISSING-value default is `auto`, so a bare `popover` and `popover=""` are both auto popovers — which is what the presence branch produces for `true`. Its INVALID-value default is `manual`, so emitting `popover="true"` would silently give up light dismiss and Escape. The house spelling is therefore the keyword itself, `"popover": "auto"`, and a boolean `popover` is a defect a document report names rather than an emission a renderer corrects. It is the one attribute for which the paragraph above needs a caveat: a presence attribute counts any value as true, but `popover="false"` is a _manual_ popover rather than a true-ish one.
+
+> **Status: Implemented.** `booleanAttrValue()` in `@jxsuite/runtime` is the single decision, and all FOUR writers defer to it: the compiler's `buildAttrs()`, its custom-element and client targets, and the runtime's `applyAttributes()`. The runtime removes the attribute rather than writing `"false"` when a binding flips, and the two generated-module targets do the same through an inlined copy of the rule whose enumerated-name list is serialized from `enumeratedAttrNames()` — those modules load without `@jxsuite/runtime`, and a test asserts the emitted literal still equals that export.
+>
+> The element and client targets did NOT defer to it until they were made to: they stringified booleans, so a component's `open: true` compiled to `open="true"` and a bound `open` that flipped false wrote `open="false"` — an OPEN element the author had closed. Only the static emitter was ever correct, which is why this note used to name two writers.
 
 ### 8.4 Child Arrays
 
@@ -757,22 +758,13 @@ When all children are bare strings with no element siblings, prefer the simpler 
 
 #### Computed Children (Build Time)
 
-The entire `children` value may be a `${…}` template string that resolves **at
-site-build time** to an array of child definitions. This is the mechanism for
-injecting parsed content (e.g. a content entry's `$children` from
-`@jxsuite/parser`) into a wrapper element:
+The entire `children` value may be a `${…}` template string that resolves **at site-build time** to an array of child definitions. This is the mechanism for injecting parsed content (e.g. a content entry's `$children` from `@jxsuite/parser`) into a wrapper element:
 
 ```json
 { "tagName": "bl-prose", "children": "${state.entry.$children}" }
 ```
 
-The compiler's template pass replaces `children` with the resolved array and
-recurses into it. Scope of the feature: the template must resolve to an array
-during the site build (e.g. from `$paths`-bound state or a compiler-timing
-prototype). A computed-children string is **not** re-evaluated at runtime —
-runtime-reactive content swapping is not supported through this form — and a
-plain non-template string is not a valid `children` value at all (text
-children must be array items, per above).
+The compiler's template pass replaces `children` with the resolved array and recurses into it. Scope of the feature: the template must resolve to an array during the site build (e.g. from `$paths`-bound state or a compiler-timing prototype). A computed-children string is **not** re-evaluated at runtime — runtime-reactive content swapping is not supported through this form — and a plain non-template string is not a valid `children` value at all (text children must be array items, per above).
 
 ### 8.5 Slot Support
 
@@ -821,11 +813,52 @@ Any element may carry `$title` and `$description` as developer-facing metadata a
 
 > **Status: Implemented.** Runtime RESERVED_KEYS includes both; schema validates them on ElementDef.
 
+### 8.7 Overlays: popover, dialog, invoker commands
+
+A document's overlays are the platform's: a **popover** (`popover="auto|manual|hint"` on any element, opened by a `<button>` or `<input>` carrying `popovertarget`), a **dialog** (`<dialog>`, opened modally with `showModal()` and closed by Escape or a close command, its dismissal governed by `closedby="any|closerequest|none"`), and the **invoker commands** that drive either without script: a `<button>` carrying `command` and `commandfor`. Jx adds no overlay mechanism of its own; what it adds is the checking, because each of these is a set of facts that is easy to get wrong and hard to see on the page:
+
+- `command` and `commandfor` belong to `HTMLButtonElement` and to no other interface — not `<input>`, which `popovertarget` does allow. On any other element they parse and do nothing.
+- `command` is enumerated: `toggle-popover`, `show-popover`, `hide-popover` act on a popover; `show-modal`, `close`, `request-close` act on a dialog; a value starting with `--` is a custom command the target answers through `oncommand`. Anything else is the invalid-value state, and a button in that state does nothing.
+- A command aimed at the other kind of target is silently ignored, and so is a custom command whose target handles no command.
+- `closedby` is enumerated too, and a modal dialog with `closedby="none"` and no close control inside it traps the reader, because a modal makes the rest of the page inert.
+- A closed dialog is hidden by the browser's own `dialog:not([open]) { display: none }`, a UA-origin rule any author `display` beats; the same is true of a closed popover. So `display` belongs in the open rule — `&[open]`, `:popover-open` — and nowhere else.
+
+`popover` is deliberately not in the enumerated-attribute family (§8.3); `command` and `closedby` are kept out for the same reason, so a boolean or an unknown keyword is a reported defect rather than a silently corrected one.
+
+> **Status: Implemented.** `@jxsuite/schema/overlays` (`findPopoverDefects`) judges popovers and `@jxsuite/schema/dialogs` (`findDialogDefects`) judges dialogs and invoker commands, over one walker, with one defect shape and one repair contract (`popoverDisplayRepair`, `dialogDisplayRepair`); Studio files both under one Problems source (`services/popover-report.ts`). `docs/framework/concepts/overlays.md` is the author-facing statement of the same rules.
+
+### 8.8 Accessibility rules
+
+> **Status: Implemented.** `@jxsuite/schema/a11y` (`findA11yDefects`), over the same walker and defect shape as §8.7; surfaced by Studio's Accessibility problems (`services/a11y-report.ts`, which keeps the page-level checks of its own), by `jx validate` (advisory, fatal with `--strict`), and by the conformance tests of the UI kit, the Studio surfaces and every starter.
+
+A Jx document is judged for the accessibility facts that can be read off its tree, by rules that each stand on one WCAG 2.2 success criterion and that stay silent whenever the fact they need is BOUND rather than written — a `${…}` template or a `{ $ref }` in a name, a role or an id is a value the document decides at run time, and a rule that accused an author of a defect it could not see would teach them to ignore it.
+
+| Rule                             | What it judges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Criterion |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| `interactive-unnamed`            | A button, a linked `<a>`, a linked `<area>`, a `<summary>`, a form control, or an element with an interactive role, with no accessible name: no content (for roles named from content), `aria-label`, `aria-labelledby`, `title`, and for form controls no `<label for>`, enclosing `<label>`, `placeholder`, `value` (button types) or `alt` (image type). A `<slot>` counts as content. An `<area>` with an `href` is named by its `alt`, and an empty one does not excuse it the way it does an `<img>`: the area IS the link text, so there is nothing else to hear. An `<area>` with no `href` is not a link and is not judged. | 4.1.2     |
+| `img-alt-missing`                | An `<img>` with no `alt` at all. An empty `alt` is a decision; a `presentation` role is one too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1.1.1     |
+| `aria-target-missing`            | An `aria-labelledby`, `-describedby`, `-controls`, `-owns`, `-activedescendant`, `-details`, `-errormessage` or `-flowto` token naming an id nothing in the document has. Asleep while any id in the document is bound.                                                                                                                                                                                                                                                                                                                                                                                                              | 1.3.1     |
+| `tab-outside-tablist`            | A `tab` with no `tablist` ancestor, and no `tablist` owning it through `aria-owns`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 1.3.1     |
+| `menuitem-outside-menu`          | A `menuitem`, `menuitemcheckbox` or `menuitemradio` with no `menu` or `menubar` ancestor, and none owning it through `aria-owns`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 1.3.1     |
+| `option-outside-listbox`         | An `option` with no `listbox`, `<select>` or `<datalist>` ancestor, and no `listbox` owning it through `aria-owns`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 1.3.1     |
+| `tablist-none-selected`          | A `tablist` whose tabs carry literal `aria-selected` values and none is `true`. A warning.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 4.1.2     |
+| `dialog-unnamed`                 | A `<dialog>`, or a `dialog` or `alertdialog` role, with no `aria-label` or `aria-labelledby`; a dialog's content does not name it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 4.1.2     |
+| `activedescendant-not-focusable` | `aria-activedescendant` on an element that is not natively focusable and has no `tabindex`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 2.1.1     |
+| `custom-element-in-select`       | A custom element anywhere inside a `<select>`, or inside a definition that IS one. A `<select>` builds its own rows, so an element it does not know is not in `select.options`: it cannot be picked, cannot be reached with the arrow keys and fires no `change` — while `role="option"` on it still makes the accessibility tree read as though it could. Native `option`, `optgroup`, `hr` and `slot` are untouched, which is the whole legal vocabulary of a `<select>`.                                                                                                                                                          | 4.1.2     |
+
+The three container rules are silent for the document root and under any custom-element ancestor, because a definition supplies its own container roles at its usage site — a `role="tab"` row slotted into a `jx-tabs` is judged inside `jx-tabs`'s definition, not against the page. They are silent under a bound ancestor role for the same reason.
+
+**`custom-element-in-select` is the one rule that does the opposite**, and the asymmetry is the point: it is keyed on the ANCESTOR being a custom element rather than silenced by it, because `jx-select` is a `<select>` and a row put inside one is exactly the case it exists to refuse. It replaced a structural defence rather than adding to a set of them. A custom element inside a `<select>` survives insertion, draws, and with `role="option"` reads convincingly in the accessibility tree while the control does nothing at all — measured in Chrome as `select.options.length` 0, ArrowDown then Enter giving `value ""` and `selectedIndex -1`, and no `change` event. A test asserting the TREE passes while the control is inert, so as long as the UI kit shipped no `jx-option` the absence of the element was the only defence that held (ui.md §5.1). The element exists now, as a `jx-listbox` row, so this rule is what stands in its place.
+
+They are also silent for an element a container of the right role claims through `aria-owns`. ARIA states containment where the DOM tree cannot: an element a `tablist` names in `aria-owns` is that tablist's child in the accessibility tree wherever it sits in the markup, and the attribute exists for exactly the arrangements a subtree cannot express. The owner's role is what decides, so this is a silence rather than a hole: a `role="group"` that names a tab in `aria-owns` owns nothing a tab may belong to, and the tab is still reported. A bound `aria-owns`, or a bound id on the element itself, silences the family for the same reason a bound ancestor role does.
+
+Deliberately not judged: colour and contrast, target size, focus order and reading order. Those are properties of built output in a browser, and a document tree cannot answer them; Studio's report names each one it could not check rather than passing it.
+
 ---
 
 ## 9. Styling
 
-### 9.1 Inline Styles as Objects
+### 9.1 Style Objects
 
 The `style` property accepts an object with camelCase CSS property names:
 
@@ -840,6 +873,16 @@ The `style` property accepts an object with camelCase CSS property names:
   }
 }
 ```
+
+Every declaration in that object becomes a **CSS rule**, not an inline style attribute — see §9.6 for the runtime and §9.3 for the compiler. That is what makes the nested blocks of §9.2 work: an inline declaration beats any non-`!important` rule, so a base property written inline could never be overridden by the `:hover` or `@media` block beside it. A custom property (`--name`) is a declaration like any other and keeps its exact spelling, because custom property names are case-sensitive.
+
+**A declaration value may be reactive**: a `"${…}"` template, or a `{ "$ref": … }`. Both mean the same thing — a value the runtime resolves against the live scope and keeps current — and both are how a component renders in a value it cannot know until it runs, such as a row drawn in the typeface it names. The mechanism is §9.6.
+
+A **reactive value on a custom property, in a rule targeting the element itself**, is written inline under the author's own name and contributes no declaration to the rule. That is deliberate and it is what makes a repeater affordable: the indirection §9.6 describes puts a per-element variable name INTO the rule text, and rules are interned by their text, so a hundred rows each carrying their own value would be a hundred rules. Writing the author's own name inline leaves the rule text identical across rows, so they share one. The declaration that READS the variable — `font-family: var(--row-face, inherit)` — belongs to the element that owns the layout, and interns once. A rule targeting a DESCENDANT keeps the indirection, because a `var()` resolves from the nearest ancestor that set it and a shared descendant rule would otherwise read the wrong element's value.
+
+**A number the host MEASURED is such a value**, and that is worth stating because its absence has twice been read as an exception. A floating panel's placement in viewport pixels reaches the scope as data like any other number — the measurement is the host's and belongs to the moment it was taken, but what the document does with it is an ordinary binding — so the declaration that positions the panel reads it there, and a document never has to assemble a `style` ATTRIBUTE to carry one. Two Studio surfaces did, on the belief that this paragraph did not cover them; `packages/studio/src/surfaces/block-action-bar.json` and `formula-palette.json` now bind the declaration, and each says so in its own `$description`.
+
+An author's own `attributes: { "style": "…" }` is untouched by any of this; it remains a literal attribute, at inline precedence, and overrides the object.
 
 ### 9.2 Nested CSS Selectors
 
@@ -856,12 +899,13 @@ CSS nesting is supported via special keys. Keys beginning with `:`, `.`, `&`, or
 }
 ```
 
-Inline properties are applied directly to the element. Nested rules are emitted as a scoped `<style>` block keyed on a **generated class** — `.<tagName>-<n>`, assigned to the element in the compiled HTML. (`data-jx-static` and `data-jx-prerendered` exist on emitted elements but are hydration markers, never CSS selectors.)
+Base and nested declarations alike become rules in one stylesheet, keyed on a handle the emitter chooses: the compiler prefers the element's own `#id`, then a **generated class** `.<tagName>-<n>` assigned in the compiled HTML; the runtime uses `data-jx` (§9.6). Base rules are emitted before nested ones, so an equal-specificity override wins by source order. (`data-jx-static` and `data-jx-prerendered` exist on emitted elements but are hydration markers, never CSS selectors.)
 
-Nesting is **recursive**: selector groups and at-rule groups (`@`-prefixed
-keys — named breakpoints per §9.4, or standard at-rules like
-`@starting-style`) may nest to arbitrary depth, e.g. breakpoint → selector →
-pseudo-class:
+Nesting is **flattened by the emitter**, never handed to the browser as CSS Nesting: `&` is resolved before anything is written, and no `&` reaches the output. This is deliberate rather than incidental. A key like `.child` COMPOUNDS onto its scope here (`#box.child`), where CSS Nesting resolves the same key as a descendant, so a style object handed to a nesting parser would silently mean something else.
+
+A **selector list** on either side distributes, member by member, as CSS Nesting's implicit `:is()` would: a key `"& .a, & .b"` holding a `":hover"` block yields `#box .a:hover, #box .b:hover`, and every `&` in a member is the scope. A comma inside `:is()`, `:where()`, `:not()`, an attribute value or a quoted string is not a separator.
+
+Nesting is **recursive**: selector groups and at-rule groups (`@`-prefixed keys — named breakpoints per §9.4, or standard at-rules like `@starting-style`) may nest to arbitrary depth, e.g. breakpoint → selector → pseudo-class:
 
 ```json
 {
@@ -874,15 +918,70 @@ pseudo-class:
 }
 ```
 
-Both the compiler and the runtime resolve nesting recursively; the component
-and project style schemas model the same recursive contract. (Known compiler
-limitation: inside an at-rule group, only one selector level is currently
-emitted — at-rule → selector → pseudo is accepted by the schema and runtime
-but not yet fully emitted by the static compiler.)
+Both the compiler and the runtime resolve nesting recursively; the component and project style schemas model the same recursive contract. Selector groups and at-rule groups compose in **either order and to any depth** — `@media → selector → pseudo` and `selector → @media` are the same tree read two ways, and one emitter answers for both (§9.6).
+
+**Some at-rules take a DECLARATION body rather than a selector body**, and both emitters recognise them by name: `@position-try`, `@property`, `@font-face` and `@counter-style`. Their block is emitted verbatim with no selector inside it and is not scoped to the element whose `style` object declares it, because the name such a rule declares is document-global — the same way an author writes one in a plain stylesheet, near the rule that uses it:
+
+```json
+{
+  "style": {
+    "position-anchor": "--menu-button",
+    "position-try-fallbacks": "--flip-up",
+    "@position-try --flip-up": { "inset-block-start": "auto" }
+  }
+}
+```
+
+The name is part of the key, so the test is a prefix match.
+
+**A declaration at-rule may be written more than once, as an ARRAY of blocks**, emitted in the order given. An object's keys are unique, so a key names a rule once — and `@font-face` is the one at-rule of the four whose identity is NOT in its key, so a family with three weights had no spelling at all:
+
+```json
+{
+  "style": {
+    "@font-face": [
+      { "font-family": "JetBrains Mono", "font-weight": "400", "src": "url(\"mono-400.woff2\")" },
+      { "font-family": "JetBrains Mono", "font-weight": "700", "src": "url(\"mono-700.woff2\")" }
+    ]
+  }
+}
+```
+
+**A block may document itself.** A `$description` in a style block is prose — why the rule exists, in the author's words — and is never a declaration. It is carried on the emitted rule rather than inside its text, because the text is what a sheet inserts and what the runtime interns rules by: prose there would make two otherwise identical rules two rules, and would put a paragraph into every adopted sheet. A static build renders it as a comment above the rule; every other consumer ignores it. **Every `$`-prefixed key in a style block is metadata** for the same reason it is everywhere else in a document, and no CSS property begins with `$` — a custom property begins with `--` — so the prefix can be refused whole. Writing one used to emit `$description: why this exists;`, an invalid declaration the parser drops in silence.
+
+**Only these four keys take the form**, and the narrowness is deliberate. They are leaves — their bodies are declarations and nothing recurses into them — so a list there teaches no other reader anything new. Under a selector key an array would say what one block already says, while every style walker outside the emitter assumes a block key holds ONE block; admitting it there would leave those readers stepping past it in silence. A validator refuses the array under any other key, so the schema and the emitters agree about what a document means rather than one of them dropping what the other accepted.
+
+**`@keyframes` is the third body shape**, and the only one: its children are neither declarations nor element selectors but **keyframe selectors** — `from`, `to`, `50%`, `"0%, 100%"` — each naming a point on an animation's timeline. Three rules follow, and each of them is a correctness requirement rather than a formatting preference:
+
+1. A keyframe selector is taken **verbatim**. It is never resolved against the enclosing scope, never distributed as a selector list (`"0%, 100%"` is already one valid keyframe selector), and never passed to a host's selector transposition. A scoped stop — `@keyframes toast-in { #box from { … } }` — is parsed into a keyframes rule holding NO keyframes, so the `animation` declaration beside it names a live animation that animates nothing.
+2. The block is emitted **once**, whole. Where two `@keyframes` rules share a name the last in document order wins and every earlier one is ignored, so a block split into one rule per stop is valid CSS that animates only its final stop.
+3. The block is **unscoped** and hoisted like a declaration-body at-rule (§9.6), because the name it declares is document-global. Two elements that declare different bodies under one name therefore collide, and the later insertion wins; that is CSS, not an emitter choice.
+
+A stop is **not a declaration on the element**, and nothing that scans a style object for what the author declared may count one. `display` is the case that bites: a custom element is `inline` until the runtime supplies `display: block`, and it withholds that default when the author declares a `display` of their own. Animating `display` is the ordinary shape of an `allow-discrete` reveal, so a scan that counted a stop left the element `inline` whenever it was still.
+
+A **reactive value inside a stop is dropped** rather than indirected through a custom property. The indirection of §9.6 writes the variable inline on the one element that declared the style, while this rule belongs to the whole document, so the `var()` would be read where nothing set it. A stop's values are still passed through a host's value transposition, so the canvas keeps rewriting viewport units inside an animation.
+
+A keyframes block nested inside `@media` or `@supports` keeps that wrapper. Inside a **scheme query** (§9.5) it is emitted once, under the media-guarded copy only: the forced-scheme twin re-points a selector, and a keyframes name has none to re-point, so a second copy would be a second definition of one name.
+
+```json
+{
+  "style": {
+    "animation": "toast-in 180ms ease-out",
+    "@keyframes toast-in": {
+      "from": { "opacity": "0", "translate": "0 1rem" },
+      "to": { "opacity": "1", "translate": "0 0" }
+    }
+  }
+}
+```
+
+> **Status: Implemented.** Wrapping a declaration-body at-rule in a selector produced a block the parser discards without a word, which is why an anchor-positioned panel could declare no custom fallback at all. Scoping a keyframe stop produced the same silence one layer down: no parse error, no warning, and a live `Animation` object with no keyframes in it.
 
 ### 9.3 Static Style Extraction
 
 The compiler extracts all static `style` definitions into a single `<style>` block in the document `<head>`.
+
+**A reactive declaration is a runtime declaration, and a static emitter drops it.** It resolves against a live scope, which a built page has only where the runtime is present, so there is nothing for the compiler to write. That is correct, and it was silent — a document was right in the editor and simply unstyled in the built page. The compiler now reports each dropped declaration by property, source and selector. A project's own `style` block cannot carry one at all: it becomes the site stylesheet at build time, with no scope to resolve against, so the project schema does not admit a reactive value where the document schema does.
 
 ### 9.4 Named Media Breakpoints (`$media`)
 
@@ -899,10 +998,7 @@ Named breakpoints are declared at root level using `$media`, following the CSS `
 }
 ```
 
-Within any `style` object, `@--name` keys reference named breakpoints. `@(condition)` keys are
-literal media queries, where the parentheses belong to the query itself — a feature query keeps
-them (`@(min-width: 1280px)`), while a bare media type does not, so `@(print)` emits
-`@media print`:
+Within any `style` object, `@--name` keys reference named breakpoints. `@(condition)` keys are literal media queries, where the parentheses belong to the query itself — a feature query keeps them (`@(min-width: 1280px)`), while a bare media type does not, so `@(print)` emits `@media print`:
 
 ```json
 {
@@ -917,56 +1013,57 @@ them (`@(min-width: 1280px)`), while a bare media type does not, so `@(print)` e
 
 `$media` declarations propagate through the component scope.
 
-A `$media` entry whose value is a _pure_ `prefers-color-scheme` query — exactly
-`(prefers-color-scheme: light)` or `(prefers-color-scheme: dark)`, no other conditions — is a
-**scheme query**. Scheme queries participate in the forced-scheme contract defined in §9.5.
+A `$media` entry whose value is a _pure_ `prefers-color-scheme` query — exactly `(prefers-color-scheme: light)` or `(prefers-color-scheme: dark)`, no other conditions — is a **scheme query**. Scheme queries participate in the forced-scheme contract defined in §9.5.
 
 > **Status: Implemented.** Runtime `applyStyle` handles nested selectors, media breakpoints, and scoped style generation.
 
 ### 9.5 Color-Scheme Variants and Forced Schemes
 
-Declaring a scheme query in `$media` opts a document (or site) into the color-scheme contract.
-Two normative constants define the visitor-facing override mechanism:
+Declaring a scheme query in `$media` opts a document (or site) into the color-scheme contract. Two normative constants define the visitor-facing override mechanism:
 
-- **`data-color-scheme`** — attribute on the root element (`<html>`). Value `"light"` or
-  `"dark"` forces that scheme; an absent attribute means _auto_ (follow the OS
-  `prefers-color-scheme`).
-- **`jx-color-scheme`** — `localStorage` key a site switcher persists the visitor's forced
-  scheme under. Values `"light"` or `"dark"`; absent means auto.
+- **`data-color-scheme`** — attribute on the root element (`<html>`). Value `"light"` or `"dark"` forces that scheme; an absent attribute means _auto_ (follow the OS `prefers-color-scheme`).
 
-**Dual emission.** Every style block keyed by a scheme query (`@--dark { … }` or a literal
-`@(prefers-color-scheme: …) { … }`) is emitted twice:
+`color-scheme` declared in a project's `style` block lands on `:root`, not on `body`. The site builder otherwise routes a custom property to `:root` and every other declaration to `body`, and this is the one property that must not follow that rule: `light-dark()` resolves against the element carrying `color-scheme`, so a scheme on `body` leaves every token declared on `:root` resolving against the wrong element. It is also what made the site builder and the runtime's own theme installer, which puts the same authored block on `:root`, disagree about one project.
 
-1. a media-guarded copy that applies only while no scheme is forced — root-level rules are
-   guarded as `:root:where(:not([data-color-scheme]))`, scoped rules as
-   `:where(:root:not([data-color-scheme])) <selector>`;
-2. an unconditional forced copy under the attribute — `:root:where([data-color-scheme="dark"])`
-   for root-level rules, `:where(:root[data-color-scheme="dark"]) <selector>` for scoped rules.
+- **`jx-color-scheme`** — `localStorage` key a site switcher persists the visitor's forced scheme under. Values `"light"` or `"dark"`; absent means auto.
 
-All guards are wrapped in `:where()` so specificity matches the unguarded selector and source
-order decides the cascade: base rules are always emitted **before** conditional blocks.
-At the project level, custom properties inside a scheme block land on `:root` and direct
-properties on `body`, mirroring the base emission.
+**Dual emission.** Every style block keyed by a scheme query (`@--dark { … }` or a literal `@(prefers-color-scheme: …) { … }`) is emitted twice:
 
-**Compound-query limitation.** A query that combines `prefers-color-scheme` with any other
-condition (e.g. `(prefers-color-scheme: dark) and (min-width: 768px)`) is _not_ a scheme query:
-it keeps plain `@media` emission and does not respond to the forced attribute.
+1. a media-guarded copy that applies only while no scheme is forced — root-level rules are guarded as `:root:where(:not([data-color-scheme]))`, scoped rules as `:where(:root:not([data-color-scheme])) <selector>`;
+2. an unconditional forced copy under the attribute — `:root:where([data-color-scheme="dark"])` for root-level rules, `:where(:root[data-color-scheme="dark"]) <selector>` for scoped rules.
 
-**`color-scheme` declaration.** When a scheme query is declared, the compiler emits
-`:root { color-scheme: light dark }` plus per-attribute overrides
-(`:root:where([data-color-scheme="light"]) { color-scheme: light }` and the dark equivalent) so
-native widgets, scrollbars, and form controls follow the forced scheme. Authors who set
-`colorScheme` in the project `style` suppress this emission.
+All guards are wrapped in `:where()` so specificity matches the unguarded selector and source order decides the cascade: base rules are always emitted **before** conditional blocks. At the project level, custom properties inside a scheme block land on `:root` and direct properties on `body`, mirroring the base emission.
 
-**Pre-paint script.** Site and standalone compilation targets inject a small synchronous inline
-`<script>` into `<head>` — ahead of all style blocks — that reads `jx-color-scheme` from
-`localStorage` and sets `data-color-scheme` on the root element, eliminating any flash of the
-wrong scheme on load. Declaring a scheme query is the sole opt-in; no other configuration
-exists.
+**Compound-query limitation.** A query that combines `prefers-color-scheme` with any other condition (e.g. `(prefers-color-scheme: dark) and (min-width: 768px)`) is _not_ a scheme query: it keeps plain `@media` emission and does not respond to the forced attribute.
 
-> **Status: Implemented.** `pureSchemeOf`/`schemeSelectors` (runtime, re-exported by the
-> compiler) define the shared selector contract; `applyStyle`, `compileStyles`, and the site
-> pipeline all dual-emit through them.
+**`color-scheme` declaration.** When a scheme query is declared, the compiler emits `:root { color-scheme: light dark }` plus per-attribute overrides (`:root:where([data-color-scheme="light"]) { color-scheme: light }` and the dark equivalent) so native widgets, scrollbars, and form controls follow the forced scheme. Authors who set `colorScheme` in the project `style` suppress this emission.
+
+**Pre-paint script.** Site and standalone compilation targets inject a small synchronous inline `<script>` into `<head>` — ahead of all style blocks — that reads `jx-color-scheme` from `localStorage` and sets `data-color-scheme` on the root element, eliminating any flash of the wrong scheme on load. Declaring a scheme query is the sole opt-in; no other configuration exists.
+
+> **Status: Implemented.** `pureSchemeOf`/`schemeSelectors` (runtime, re-exported by the compiler) define the shared selector contract; `applyStyle`, `compileStyles`, and the site pipeline all dual-emit through them.
+
+### 9.6 The Runtime Stylesheet Engine
+
+The runtime delivers an element's styles as **CSS rules in a constructable stylesheet adopted by the document**, reached through `document.adoptedStyleSheets`. Nothing an author writes in a `style` object is written as an inline declaration.
+
+**The handle is `data-jx`, and its value is a content hash.** A rule is scoped by `[data-jx="jx-<hash>"]`, specificity (0,1,0), stamped on the element by the runtime. It is not a generated class, because a class handle would be destroyed by a static `attributes: { "class": … }` applied after the style; and it is not random, because the hash is what lets two elements that style alike SHARE one rule set and what makes the handle stable across a server render and the client render that follows it. Everything that can vary per call site is an input to that hash: the authored object, the resolved `$media` map, and any host-specific value or selector transposition.
+
+**A custom element carries TWO style objects, and they merge.** Its definition's, and the one written at the usage site — and the usage site wins where the two collide, at equal specificity by source order, the same promise this section already makes for a base block before a nested one. The merge is deep: a call site declaring `&:hover` replaces only the declarations it repeats inside it, never the definition's whole block. This has to be a merge rather than two applications, because each application releases what the last one interned; before it was one, the call site's rules were written while the element was detached and deleted the moment it connected, so a document could not style an element instance at all.
+
+**A custom element with no `display` in its BASE block gets `display: block` in its own rule.** Not inline: an inline declaration is beaten only by `!important`, and a default is meant to be the weakest thing in the cascade rather than the strongest. At (0,1,0) a consumer's rule, a cascade layer or a parent's descendant rule all override it normally. Only the base block is consulted — a `display` appearing solely inside `&:hover` or a breakpoint is not the author supplying one, and reading it as such left the element `inline` at rest and a block on hover, which is wrong whenever it is still. An author who wants the platform's own value writes `display: revert-layer` in the base block, which this sees and which rolls the cascade back one layer rather than beating anything — the spelling that lets an element whose visibility the UA owns, such as a `popover`, keep it. Plain `revert` is weaker and is a trap: it rolls back to the user-agent ORIGIN, so it works on a shipped page and fails wherever a host has re-supplied the UA rule in a cascade layer of its own, which is exactly what an editing canvas does when it de-links an overlay (studio.md §4.2.2). `revert-layer` holds in both.
+
+**Reactive declarations are indirected through a custom property.** A value carrying a `${…}` template or a `{ "$ref": … }` is emitted as `property: var(--jx-r<n>-<m>)`, and the element sets that variable inline as its source changes. The declaration therefore stays in the rule, where a `:hover` or `@media` block can override it, while only the variable moves. A reactive element never shares a rule set with another: a `var()` resolves from the nearest ancestor that set it, so a shared descendant rule would read the wrong element's value.
+
+**Unscoped at-rules are hoisted.** The four declaration-body at-rules of §9.2, and `@keyframes` alongside them, declare a document-global NAME, so they are written once for the document and released when the last element that declares one lets go, rather than emitted per element.
+
+Two cascade premises hold this together, and neither is Jx's to change:
+
+1. **Adopted sheets cascade after the document's own `<style>` and `<link>`.** An adopted rule therefore wins an equal-specificity tie against a page stylesheet.
+2. **Jx emits no cascade layer of its own.** An unlayered rule beats a layered one at any specificity, and third-party CSS arrives through `$head` unlayered; layering Jx's rules would hand every page's `$head` a win over the document's own styles. An authored `"@layer name"` key is passed through verbatim, as any other at-rule is.
+
+A host that cannot construct a stylesheet falls back to a `<style>` element carrying the same rules, in the same order.
+
+> **Status: Implemented.** `buildStyleRules` (`@jxsuite/runtime/css`) is the single definition of what a style object means as CSS, shared by `applyStyle`, the static compiler and the site-style builder, so a preview and the shipped page resolve the same nesting.
 
 ---
 
@@ -974,10 +1071,7 @@ exists.
 
 ### 10.1 Array Namespace Syntax
 
-A dynamic list is an array **pseudo-element** — an object with `$prototype: "Array"` that sits as a
-**member of a `children` array**, nestled among sibling elements or as the sole child. It renders
-**wrapper-less**: its mapped items become direct children of the array's parent (no intervening
-container).
+A dynamic list is an array **pseudo-element** — an object with `$prototype: "Array"` that sits as a **member of a `children` array**, nestled among sibling elements or as the sole child. It renders **wrapper-less**: its mapped items become direct children of the array's parent (no intervening container).
 
 ```json
 {
@@ -996,10 +1090,7 @@ container).
 }
 ```
 
-> **Backward compatibility.** The legacy form where `children` is _itself_ the Array object
-> (`"children": { "$prototype": "Array", … }`) is still accepted: the runtime and compiler render its
-> items directly into the parent element, and the studio normalizes it to a single array member on
-> load.
+> **Backward compatibility.** The legacy form where `children` is _itself_ the Array object (`"children": { "$prototype": "Array", … }`) is still accepted: the runtime and compiler render its items directly into the parent element, and the studio normalizes it to a single array member on load.
 
 ### 10.2 Iteration Context
 
@@ -1010,10 +1101,7 @@ container).
 
 Template strings inside the map read the same context as `${$map.item…}` and `${$map.index}` (§6.6).
 
-**From a handler.** An event handler bound anywhere inside a map — on the map body or on any of its
-descendants — reads its iteration off state as `state.$map`, carrying `item` and `index`. The
-iteration is published before the handler body runs, so a handler shared by every row can tell which
-row invoked it. A nested map shadows the outer context for handlers within it.
+**From a handler.** An event handler bound anywhere inside a map — on the map body or on any of its descendants — reads its iteration off state as `state.$map`, carrying `item` and `index`. The iteration is published before the handler body runs, so a handler shared by every row can tell which row invoked it. A nested map shadows the outer context for handlers within it.
 
 ### 10.3 Filtering and Sorting
 
@@ -1027,8 +1115,32 @@ row invoked it. A nested map shadows the outer context for handlers within it.
 }
 ```
 
-> **Status: Implemented.** The runtime renders array members inline (wrapper-less) via
-> `renderMappedArrayInto()`, handling items, filter, sort, `$map/item`, and `$map/index`.
+> **Status: Implemented.** The runtime renders array members inline (wrapper-less) via `renderMappedArrayInto()`, handling items, filter, sort, `$map/item`, and `$map/index`.
+
+### 10.4 Keys
+
+A mapped array MAY declare a `key`: a `$map/item` pointer evaluated once per item that names the row's identity.
+
+Both spellings of a `$map` pointer resolve: the bare `$map/item/x` and the `#/$map/item/x` form that matches how every other pointer in the schema is written. Only the bare one used to, and the other returned null — so a mapped array over it rendered no rows and reported nothing.
+
+```json
+{
+  "$prototype": "Array",
+  "items": { "$ref": "#/state/rows" },
+  "key": { "$ref": "$map/item/id" },
+  "map": { "tagName": "li", "textContent": "${$map.item.title}" }
+}
+```
+
+Rows are reconciled by key. A row whose key survives a change keeps its DOM node and its effects: a reorder moves the node, an insertion creates only the new rows, a removal tears down only the removed ones, and `$map/index` updates in place on a row that moved. Focus, scroll position, an open `<details>` and a half-typed value therefore survive a change to the list, which is what makes a mapped array usable for a tree, a menu or a table the author is interacting with. Without `key`, rows are keyed by their index: the same reconciliation applies, so identity is preserved by position, and an insertion in the middle rewrites every row after it.
+
+`{ "$ref": "$map/item" }` keys by the item itself — identity for an object, value for a primitive. A key that evaluates to nothing falls back to the index; a duplicate key is reported once, and every occurrence after the first is rebuilt on each change. `$map/index` is not a key, and the schema rejects it: an index names a position rather than a row.
+
+Each row's bindings live in an effect scope of their own, stopped when the row is removed, and reads made while a row is constructed do not subscribe the list: a change to one row's data re-runs that row's bindings, never the list. A host may observe a move through `JxRenderOptions.onNodeMoved`, which reports the reused node and its new document path.
+
+The first render of a list is synchronous; every later reconciliation is coalesced into one microtask. An array mutated in place — `reverse()`, `sort()`, an index write — notifies once per element it touches, and a reconciliation run between two of those writes would see an array that is half of each state, tearing down a row that is only transiently absent. A row's own bindings stay synchronous.
+
+> **Status: Implemented.** Runtime `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place. The compiler's `repeat()` lowering for keyed lists is pending.
 
 ---
 
@@ -1072,26 +1184,18 @@ Web APIs are accessed via `$prototype` in a `state` entry:
 
 > **Status: Implemented.**
 
-Three attributes are **derived rather than taken as declared**, because a browser that disagrees
-with a cookie's attributes drops it silently — the write appears to succeed and the value is simply
-never there again ([RFC 6265bis](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis)
-§4.1.3, §5.4.7):
+Three attributes are **derived rather than taken as declared**, because a browser that disagrees with a cookie's attributes drops it silently — the write appears to succeed and the value is simply never there again ([RFC 6265bis](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis) §4.1.3, §5.4.7):
 
-- A **`__Host-`** name forces `Secure`, forces `Path=/`, and drops any declared `Domain`. Honoring a
-  declared path or domain would produce a cookie no browser stores.
+- A **`__Host-`** name forces `Secure`, forces `Path=/`, and drops any declared `Domain`. Honoring a declared path or domain would produce a cookie no browser stores.
 - A **`__Secure-`** name forces `Secure`, and leaves path and domain alone.
 - **`SameSite=None`** forces `Secure`.
 
 Two attributes are absent on purpose, and neither is a missing feature:
 
-- **`HttpOnly`** cannot be set from script and would make the value unreadable to the binding that
-  wrote it. Its absence is the correct behavior for a script-written cookie.
-- **`Expires`** is not supported. `Max-Age` covers the same ground, §5.5 makes `Max-Age` win
-  wherever both appear, and `Expires` takes an HTTP-date whose mis-spelling fails silently in the
-  direction of a cookie that never expires.
+- **`HttpOnly`** cannot be set from script and would make the value unreadable to the binding that wrote it. Its absence is the correct behavior for a script-written cookie.
+- **`Expires`** is not supported. `Max-Age` covers the same ground, §5.5 makes `Max-Age` win wherever both appear, and `Expires` takes an HTTP-date whose mis-spelling fails silently in the direction of a cookie that never expires.
 
-The cookie **name is data, never pattern syntax**: the reader splits the cookie header rather than
-building a regular expression from an author-supplied name.
+The cookie **name is data, never pattern syntax**: the reader splits the cookie header rather than building a regular expression from an author-supplied name.
 
 ### 11.3 Timing Values
 
@@ -1375,6 +1479,8 @@ A component instance is created by **registering** the component document in the
 
 > **Status: Removed.** A node-level external `$ref` child — `{ "$ref": "./card.json", "$props": {…} }` placed directly in `children` — is **not** a component instance. The runtime does not fetch or render it (it produces an empty `<div>`, and `renderNode` emits a one-time console warning). Register the document in `$elements` and instantiate it by its custom-element tag, as above. `$switch` cases (§14) and `$elements` entries (§16) are the resolved external-`$ref` positions.
 
+**There is no document-local element fragment either, and that is the more common cost.** A `$ref` in `children` renders an empty `<div>` and warns whatever it points at — an intra-document pointer as much as an external URL — and `#/$defs` could not be the place for one anyway: `$defs` holds JSON Schema type definitions and nothing else (§5.2), so a subtree parked there would be neither a schema nor reachable. The two positions that DO resolve a `$ref` to a document, an `$elements` entry (§16) and a `$switch` case (§14), both resolve an EXTERNAL one into an isolated scope — which is the property that makes them component boundaries and also the reason neither answers this. A fragment drawn inside a `$map` row reads that row, and neither position can see it without a props contract, a tag name and a definition of its own; that is the price of a component, and a row is not one. So a subtree drawn in two places is authored twice, and two shapes pay for it today. Where the two lists differ only by data, the host folds them into ONE projection carrying a discriminant and the document draws a single keyed `$map` over it — `packages/studio/src/surfaces/seo.json` says exactly that of its two groups, whose headings are data so the row template below them stays single. Where they do not, the fragment is repeated: `packages/studio/src/surfaces/panel-signals.json` writes its `[part="error-slot"]` subtree eight times, once inside each inline case of the `$switch` that picks a field's control.
+
 ### 13.2 Explicit Props
 
 Props are passed via `$props` on the instance node. This is the only mechanism for passing state across component boundaries:
@@ -1390,15 +1496,7 @@ Props are passed via `$props` on the instance node. This is the only mechanism f
 }
 ```
 
-**An instance supplies a prop, or it does not.** The runtime takes a value from the instance only
-where the instance genuinely carries one — an own JS property, or an attribute of that name. Probing
-the element for the key alone is not enough, because a state key that collides with a **reflected**
-DOM property (`title`, `role`, `id`, `lang`, `dir`, `slot`, `hidden`) always answers: the accessor
-lives on the prototype and reports `""` when nothing is set, which would otherwise beat the
-component's declared default and render blank. Testing for an own property alone is equally wrong in
-the other direction — assigning a reflected name goes through that same accessor and creates no own
-property, so a real `$props.title` would be discarded. The attribute the accessor writes is what
-distinguishes the two.
+**An instance supplies a prop, or it does not.** The runtime takes a value from the instance only where the instance genuinely carries one — an own JS property, or an attribute of that name. Probing the element for the key alone is not enough, because a state key that collides with a **reflected** DOM property (`title`, `role`, `id`, `lang`, `dir`, `slot`, `hidden`) always answers: the accessor lives on the prototype and reports `""` when nothing is set, which would otherwise beat the component's declared default and render blank. Testing for an own property alone is equally wrong in the other direction — assigning a reflected name goes through that same accessor and creates no own property, so a real `$props.title` would be discarded. The attribute the accessor writes is what distinguishes the two.
 
 ### 13.3 Signal Forwarding
 
@@ -1441,9 +1539,13 @@ Signal scope is bounded at the component (custom element) level. Child component
 
 **Scope.** The two forms differ in scope, mirroring §13/§15: an inline case renders in the parent component's scope, so parent `state` is directly visible to its bindings. An external case builds an isolated scope from the referenced document — a component boundary with no `$props` pass-through, so parent state is not visible inside it.
 
+**Discriminant.** `$switch` holds a `$ref` to a state entry — or, inside a mapped array's template, to the row's `$map/item` or `$map/index` — so a per-row conditional is a switch on the row: a divider above the row that starts a group, a chord only where one is bound. The container carries the `slot` a slotted child needs, because the case content renders inside it.
+
+**An unchanged key keeps its case.** A discriminant that re-resolves to the same key — a mapped row whose item was replaced by an equal one, a state entry rewritten with the value it had — leaves the rendered case in place: its subtree, its effects and its state survive. Only a different key empties the container.
+
 **Matching.** The resolved discriminant is matched against `cases` keys by its string form (JSON object keys are strings — the same normalization the expression-level `switch` operator applies, §19.4b). No matching case leaves the container empty.
 
-> **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope.
+> **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope resolved against the mount's base. Each case renders in an effect scope of its own, stopped before the next case renders, so a switch never accumulates the effects of the cases it has left; a stale external load — one that resolves after the discriminant moved on, to an inline case included — is discarded.
 
 ---
 
@@ -1496,6 +1598,8 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
 }
 ```
 
+**A definition's root-level event handlers listen on the host element.** `onclick`, `onkeydown`, `ontoggle` and the rest, written beside `tagName` and `state`, attach to the element itself exactly as they would to an element inside a document, with the definition's own scope as `state` and the host as `event.currentTarget`. That is where an element's contract lives: a menu row's activation, a panel's keyboard handling and the `toggle` a popover fires all arrive at the host, and a definition that had to render an inner wrapper to hear them would be one element that looks like two. The other root-level keys — `observedAttributes`, `emits`, `description` — describe the element and are never written onto an instance.
+
 ### 16.2 Property-First Interface
 
 Custom elements use JavaScript properties as their primary data interface. `$props` can include signal references, functions, objects, and scalars. HTML observed attributes are a secondary mechanism.
@@ -1522,6 +1626,10 @@ Dependencies are registered depth-first before the parent.
 | `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
 | `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
 
+`onMount` receives `(state, host)` — the element's scope and the element itself. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. The other three hooks take `(state)`.
+
+A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
+
 > **Status: Implemented.**
 
 ### 16.5 Observed Attributes
@@ -1536,28 +1644,27 @@ Dependencies are registered depth-first before the parent.
 
 Type coercion: `string` → no conversion, `number` → `Number()`, `boolean` → presence check.
 
+An observed attribute already on the element when it connects is read into state before `$props` are merged, so `<user-card username="Ada">` renders with `Ada` and a property a parent set before connection still wins (§16.2). The same coercion applies at connection and on every later change.
+
+REMOVING an observed attribute restores the state entry's declared default. The removal is reported as a null value, and writing that through gave a `string` entry the value `null` and a `number` entry `Number(null)`, which is `0` — so a numeric prop could never express "unset", and clearing one wrote a zero where the author meant to delete a key. The default is the value the entry held before anyone set the attribute, which is what the removal asks to go back to. An entry declared in the shorthand form (`"username": "Guest"`) has that literal as its default; an entry that is computed (`$expression`, `$prototype`, `$ref`, `$src`) has none and a removal leaves it alone. A `boolean` is unaffected, because presence already IS its value. An entry with no declared default falls back by type: `0` for a number, the empty string otherwise, never null.
+
 > **Status: Implemented.**
 
 ### 16.6 Light DOM Rendering
 
-Custom elements render to the light DOM. No shadow root is attached anywhere in the compiler or the
-runtime, and none is offered: there is no `attachShadow`, no `shadowrootmode`, no `::part` and no
-`adoptedStyleSheets`.
+Custom elements render to the light DOM by default. No shadow root is attached there, and none of the shadow-scoped styling primitives apply: no `attachShadow`, no `shadowrootmode`, no `::part`.
 
-Scoping is therefore selector-based, in two parts: a component's own rules are prefixed with its
-**tag name** (`sty-card { … }`, `sty-card .inner { … }`), and a nested element carrying its own
-`style` gets a **generated class**, `.<tagName>-<n>`. `data-jx-static` and `data-jx-prerendered`
-appear on emitted elements but mark hydration state and are never used as selectors.
+**A `<slot>` leaves no node.** Distribution replaces the literal `<slot>` with its matched children, or, when nothing matches it, with its own fallback children. The slot element itself is gone from the rendered tree. It used to survive and hold its matches, which looked right — a slot is `display: contents`, so the box tree was unaffected — and was wrong in the SELECTOR tree: a definition's `& > x` rule addressed a grandchild and silently stopped matching, so a component could not style what a consumer gave it. A consequence worth stating on its own: **a `part` written on a `<slot>` names nothing**, and a rule asking whether a slot received anything asks it of the containing part, whose `:empty` is now true exactly when nothing was slotted.
 
-What that buys and what it costs is the same fact stated twice: a page's own CSS can reach into a
-component and restyle it, and so can a stylesheet the author never wrote.
+Scoping is therefore selector-based, in two parts: a component's own rules are prefixed with its **tag name** (`sty-card { … }`, `sty-card .inner { … }`), and a nested element carrying its own `style` gets a **generated class**, `.<tagName>-<n>`. `data-jx-static` and `data-jx-prerendered` appear on emitted elements but mark hydration state and are never used as selectors.
 
-**A component may opt into a shadow root.** `$shadow: "open" | "closed" | false` on the component,
-`defaults.shadow` for the project, `false` if neither says otherwise. A component's own value wins
-in both directions, so `$shadow: false` opts one component out of a project that opted in.
+`adoptedStyleSheets` IS used, on the DOCUMENT rather than on a shadow root: it is where the runtime delivers an element's rules (§9.6). That is a delivery mechanism, not a scoping one — an adopted sheet is document-wide, so the selector handle above is still what confines a rule to its element.
 
-Light DOM remains the default and is not a placeholder for this. The two modes differ in ways an
-author has to mean:
+What that buys and what it costs is the same fact stated twice: a page's own CSS can reach into a component and restyle it, and so can a stylesheet the author never wrote.
+
+**A component may opt into a shadow root.** `$shadow: "open" | "closed" | false` on the component, `defaults.shadow` for the project, `false` if neither says otherwise. A component's own value wins in both directions, so `$shadow: false` opts one component out of a project that opted in.
+
+Light DOM remains the default and is not a placeholder for this. The two modes differ in ways an author has to mean:
 
 |                     | Light DOM                                                                  | Shadow DOM                                          |
 | ------------------- | -------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -1567,38 +1674,19 @@ author has to mean:
 | Stylesheet          | `<link>` in the document head                                              | `<link>` inside the shadow root                     |
 | Page CSS reaches in | yes                                                                        | no                                                  |
 
-Slot distribution is the difference that cannot be papered over, and the reason shadow cannot
-become the default: the emulation _moves_ children into the rendered tree, while a real `<slot>`
-leaves them in the light tree and projects them.
+Slot distribution is the difference that cannot be papered over, and the reason shadow cannot become the default: the emulation _moves_ children into the rendered tree, while a real `<slot>` leaves them in the light tree and projects them.
 
-**Server rendering is a declarative shadow root.** A prerendered shadow component emits
-`<template shadowrootmode="open|closed">` containing its markup and its stylesheet link, with the
-slotted light children as **siblings outside** the template — where the slot projects them from.
-The parser materializes that root before any script runs, so the component paints correctly with
-JavaScript disabled or still loading.
+**Server rendering is a declarative shadow root.** A prerendered shadow component emits `<template shadowrootmode="open|closed">` containing its markup and its stylesheet link, with the slotted light children as **siblings outside** the template — where the slot projects them from. The parser materializes that root before any script runs, so the component paints correctly with JavaScript disabled or still loading.
 
-**The element adopts that root rather than replacing it.** Calling `attachShadow` over an existing
-declarative root throws, and even where it did not, replacing it would discard the markup the
-feature exists to ship. An `open` root is found on the element; a `closed` one is not — by
-definition — and `ElementInternals` is the standard's only way back to it, which is why the two
-modes emit different lookups rather than one call with a mode string.
+**The element adopts that root rather than replacing it.** Calling `attachShadow` over an existing declarative root throws, and even where it did not, replacing it would discard the markup the feature exists to ship. An `open` root is found on the element; a `closed` one is not — by definition — and `ElementInternals` is the standard's only way back to it, which is why the two modes emit different lookups rather than one call with a mode string.
 
-What the client render then does is **replace**, not hydrate: lit renders its own tree, so the
-declarative markup is cleared first, exactly as the light path clears `innerHTML`. The stylesheet
-link is the one child kept, because it styles that root and the document's head cannot reach in.
-Jx does not use lit-ssr's `hydrate`, so a declarative shadow root is a first paint rather than a
-hydration target — the same contract the light path has always had.
+What the client render then does is **replace**, not hydrate: lit renders its own tree, so the declarative markup is cleared first, exactly as the light path clears `innerHTML`. The stylesheet link is the one child kept, because it styles that root and the document's head cannot reach in. Jx does not use lit-ssr's `hydrate`, so a declarative shadow root is a first paint rather than a hydration target — the same contract the light path has always had.
 
-**A style object means the same thing in both modes.** `:host` and `:host(.sel)` are translated
-rather than passed through: inside a root they stand alone, and outside they become the tag name
-and `<tag>.sel`, which is what "the host, matching this" means when there is no root. Moving a
-component between modes therefore does not silently break its styles.
+**A style object means the same thing in both modes.** `:host` and `:host(.sel)` are translated rather than passed through: inside a root they stand alone, and outside they become the tag name and `<tag>.sel`, which is what "the host, matching this" means when there is no root. Moving a component between modes therefore does not silently break its styles.
 
-**Content-Security-Policy is unaffected.** The component stylesheet stays an external `<link>`,
-merely relocated, so no hash changes (site-architecture.md §14.3.1).
+**Content-Security-Policy is unaffected.** The component stylesheet stays an external `<link>`, merely relocated, so no hash changes (site-architecture.md §14.3.1).
 
-> **Status: Implemented.** Light DOM is the default; the `$shadow` opt-in emits and adopts a
-> declarative shadow root, verified in a browser for both modes.
+> **Status: Implemented.** Light DOM is the default; the `$shadow` opt-in emits and adopts a declarative shadow root, verified in a browser for both modes.
 
 ### 16.7 Development vs. Production
 
@@ -1619,6 +1707,21 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 - `attribute` and `reflects` on typed `state` entries
 
 > **Status: Partial.** Schema includes CEM fields. Studio has CEM editing UI. Full CEM document export is pending.
+
+### 16.9 Instantiation Limits
+
+**A definition that renders itself with the same props is an error, not a hang.** A definition's `children` may instantiate other definitions, and those may instantiate others, to any depth the page needs; each instance is one frame on an **instantiation chain** — its tag and the props it was given — that runs from the page-level instance down through every definition rendering inside it. Slot content is not on the chain of the instance it is slotted into: those nodes belong to whoever wrote them, so `<x-box><x-box/></x-box>` on a page is two instances of one tag, not a definition rendering itself. Two rules bind the chain, and they are the same two on both sides of the build:
+
+1. **An instance whose frame is already on its chain is refused.** Same tag, same props, means the same render, forever — the one shape that can never terminate. The diagnostic names the chain: `Component <user-card> renders itself: user-card → user-card. A component cannot appear inside its own definition with the same props — the expansion would never end.`
+2. **A chain of 32 frames is the cap.** A self-reference whose props change at every level — a tree node drawing its children until a `$switch` on its depth says stop — is data-driven recursion and is allowed, because the seen-set cannot tell a stop case that will come from one that was forgotten. The cap is what turns the second into a diagnostic: `Component nesting exceeds 32 levels: tree-node → … A component that renders itself with changing props needs a case that stops.` Thirty-two is beyond any component library's real depth and well inside the call stack's.
+
+A prop's identity on the chain is the value the instance supplied that its definition's state reads, by whichever route it arrived — a JS property set before connection (§16.2), an observed attribute (§16.5), a `props.*` attribute, or the `data-jx-props` payload a prerendered instance upgrades with. Values compare by reference first and by JSON structure second, so a `$ref` forwarding the parent's own value and a payload parsed twice are each one value; a value that cannot be serialised is different from everything, and a page that forwards one is bounded by the cap alone rather than refused on a guess.
+
+The **compiler** enforces both rules along the expansion path of every route it builds ([compiler.md](./compiler.md) §8.1): the route fails with the diagnostic and the other routes still build. The **interpreter** enforces them at connection: an instance that would never finish is refused before it has a state, a style or a child, so it stands as an empty host, and the rest of the page — the refused instance's siblings, and every other instance of the same tag, each on its own chain — renders as it would have. The refusal is reported two ways: the diagnostic goes to the runtime's console surface (`Jx: <user-card> was not rendered:` followed by the error), and the refused element dispatches a bubbling, composed `ErrorEvent` named **`jx-error`**, its `error` and `message` set to the diagnostic, so a page or a host wrapping one (the studio canvas around an iframe) can collect it where a console line reaches nobody. A refused host that is no longer in the document by the time the verdict is in — one an enclosing prerendered upgrade discarded as slot content while it awaited its scope — reports nothing, since the instance drawn in its place reports for it. A definition that builds is a definition that renders, and one that never settled the interpreter now names itself instead.
+
+One boundary separates the two sides. The interpreter asks rule 1 only within a single **expansion**: the synchronous pass in which a definition's `children` render, instances connect and their definitions render in turn. A subtree an effect renders later — a `$switch` case that flips after the first paint, a `$map` row that arrives with new data — connects under the chain of the definition that drew the switch or the list, so rule 2 counts every frame above it, but the frames above the re-run are not searched for a repeat. The compiler searches its whole path because a build is one deterministic expansion; the interpreter cannot tell an `onMount` that flips a node into the same tag every time from a click that opens one more level of a node that starts closed, and the second is a page asking for one more, not a definition rendering itself. So the shape that repeats only across re-runs is ended by the cap rather than by the cycle check: thirty-three hosts and the nesting diagnostic, not a page that never settles.
+
+> **Status: Implemented.** The compiler's check in `renderComponentInstance`; the interpreter's in the element's `connectedCallback`, carried from an enclosing render to the instances it creates across the asynchronous scope build. Verified in `packages/runtime/tests/self-instantiation.test.ts`.
 
 ---
 
@@ -1663,19 +1766,24 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 
 External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). Two things once listed here are **not** standards and are therefore prose rather than rows: reactivity is `@vue/reactivity`, a library; and the `$media` breakpoint syntax borrows the shape of CSS `@custom-media`, a Media Queries Level 5 feature no browser ships, which Jx resolves itself at build and run time. The Custom Elements Manifest (§16.8) is a community format with no standards body.
 
-| Standard                                                                                  | Class         | Binds    | Evidence                                                                                                                                     | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------------------------------------------------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [ECMA-404](https://ecma-international.org/publications-and-standards/standards/ecma-404/) | **Adopted**   | §3       | packages/schema/src/parse.ts                                                                                                                 | A Jx document is JSON. Nothing in the format extends the syntax.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/schema)                       | **Divergent** | §3.2, §5 | packages/schema/src/schema.ts, packages/schema/tests/schema.test.ts                                                                          | `$defs` holds genuine 2020-12 type definitions and a document validates as an _instance_ against a conformant meta-schema. Three deviations: Jx declares no `$vocabulary`, so it is not a dialect; `$id` is a display name and establishes no base URI for relative `$ref`; and `$schema` is an editor "schema for this instance" pointer, not a dialect declaration.                                                                                                                                                                                                                                  |
-| [ECMA-262](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | **Subset**    | §19, §20 | packages/runtime/src/expression.ts, packages/runtime/tests/expression.test.ts                                                                | Operator punctuators and their arity are ECMAScript's, and aggregate operations follow `Array.prototype` semantics — but only an allow-listed subset is evaluable, and `if`/`then`/`else` statements are imperative control flow over a statement list rather than anything from JSON Schema.                                                                                                                                                                                                                                                                                                          |
-| [WHATWG DOM](https://dom.spec.whatwg.org/)                                                | **Subset**    | §16, §20 | packages/compiler/src/targets/compile-element.ts                                                                                             | Custom elements are defined and `dispatchEvent` emits a real `CustomEvent`. Shadow trees are not used at all (§16.6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| [WHATWG HTML](https://html.spec.whatwg.org/)                                              | **Subset**    | §16.6    | packages/compiler/src/shadow.ts, packages/compiler/src/targets/compile-element.ts, packages/compiler/tests/shadow-dom.test.ts                | Custom elements are defined and upgraded as the standard describes and render into the **light DOM by default**. A component may opt into a shadow root with `$shadow` (a project into all of them with `defaults.shadow`), which emits a declarative `<template shadowrootmode>` the element then adopts — `open` through `element.shadowRoot`, `closed` through `ElementInternals`. Not offered: `ElementInternals` for form association, and `::part` addressed from outside a component.                                                                                                           |
-| [CSS Scoping](https://www.w3.org/TR/css-scoping-1/)                                       | **Subset**    | §16.6    | packages/compiler/src/shared.ts, packages/compiler/tests/shadow-dom.test.ts                                                                  | `:host`, `:host()` and `::slotted()` are emitted for a shadow component, and `:host`/`:host()` are translated to the tag name in light DOM so one style object serves both modes. `:host-context()` is not offered — it never reached a second engine.                                                                                                                                                                                                                                                                                                                                                 |
-| [CSSOM](https://www.w3.org/TR/cssom-1/)                                                   | **Adopted**   | §9.1     | packages/runtime/src/runtime.ts                                                                                                              | `style` keys are the CSSOM camelCase IDL attribute names, so a property name needs no translation table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| [CSS Color 4](https://www.w3.org/TR/css-color-4/)                                         | **Adopted**   | §9.5     | packages/compiler/src/shared.ts, packages/compiler/tests/shared.test.ts                                                                      | `color-scheme: light dark` is emitted with per-attribute overrides, so native controls follow a forced scheme rather than only the author's own rules.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)                                        | **Divergent** | §7       | packages/runtime/src/pointer.ts                                                                                                              | Pointer syntax is implemented as written, `~0`/`~1` escapes included, with `/` as the only separator. Four enumerated deviations: a `$ref` binds a live value off the reactive scope rather than resolving a node of a JSON document; a token matching nothing yields `undefined` instead of failing evaluation (§4); the `-` array token (§4) is not special and reads a member named `-`; and the `#`-fragment schemes (`window#/`, `parent#/`, `event#/`) are Jx extensions, not the URI fragment representation of §6 — they are not percent-decoded.                                              |
-| [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Divergent** | §21      | packages/compiler/tests/no-eval.test.ts                                                                                                      | Compiled output contains no `new Function` and no `eval`, proven by a committed test, so it runs under a policy without `'unsafe-eval'`. The **interpreting** runtime compiles templates and function bodies at load time and therefore requires `'unsafe-eval'` permanently — §21.3 states this as a property, not a defect.                                                                                                                                                                                                                                                                          |
-| [Trusted Types](https://www.w3.org/TR/trusted-types/)                                     | **Subset**    | §21.5    | packages/studio/src/services/trusted-types.ts, packages/studio/tests/trusted-types.test.ts, packages/compiler/src/targets/compile-element.ts | The injection-sink half only. No `innerHTML` write remains in code Jx ships — the runtime's four and the one the compiler emitted became `replaceChildren()` — and the shell's markdown goes through a policy that asserts and throws naming what it found, with `createScript`/`createScriptURL` refusing. **Enforcement is declined, not deferred**: `require-trusted-types-for 'script'` gates `eval` and `new Function`, which the interpreter is made of (§21.3), and the shell's remaining sinks belong to its dependencies. A report-only run established this and was removed with its header. |
+| Standard                                                                                  | Class         | Binds       | Evidence                                                                                                                                     | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------- | ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [ECMA-404](https://ecma-international.org/publications-and-standards/standards/ecma-404/) | **Adopted**   | §3          | packages/schema/src/parse.ts                                                                                                                 | A Jx document is JSON. Nothing in the format extends the syntax.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/schema)                       | **Divergent** | §3.2, §5    | packages/schema/src/schema.ts, packages/schema/tests/schema.test.ts                                                                          | `$defs` holds genuine 2020-12 type definitions and a document validates as an _instance_ against a conformant meta-schema. Three deviations: Jx declares no `$vocabulary`, so it is not a dialect; `$id` is a display name and establishes no base URI for relative `$ref`; and `$schema` is an editor "schema for this instance" pointer, not a dialect declaration.                                                                                                                                                                                                                                  |
+| [ECMA-262](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | **Subset**    | §19, §20    | packages/runtime/src/expression.ts, packages/runtime/tests/expression.test.ts                                                                | Operator punctuators and their arity are ECMAScript's, and aggregate operations follow `Array.prototype` semantics — but only an allow-listed subset is evaluable, and `if`/`then`/`else` statements are imperative control flow over a statement list rather than anything from JSON Schema.                                                                                                                                                                                                                                                                                                          |
+| [WHATWG DOM](https://dom.spec.whatwg.org/)                                                | **Subset**    | §16, §20    | packages/compiler/src/targets/compile-element.ts                                                                                             | Custom elements are defined and `dispatchEvent` emits a real `CustomEvent`. Shadow trees are not used at all (§16.6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| [WHATWG HTML](https://html.spec.whatwg.org/)                                              | **Subset**    | §8.7, §16.6 | packages/compiler/src/shadow.ts, packages/compiler/src/targets/compile-element.ts, packages/compiler/tests/shadow-dom.test.ts                | Custom elements are defined and upgraded as the standard describes and render into the **light DOM by default**. A component may opt into a shadow root with `$shadow` (a project into all of them with `defaults.shadow`), which emits a declarative `<template shadowrootmode>` the element then adopts — `open` through `element.shadowRoot`, `closed` through `ElementInternals`. Not offered: `ElementInternals` for form association, and `::part` addressed from outside a component.                                                                                                           |
+| [WAI-ARIA](https://www.w3.org/TR/wai-aria-1.2/)                                           | **Subset**    | §8.8        | packages/schema/src/a11y.ts, packages/schema/tests/a11y.test.ts                                                                              | The role vocabulary the rules read (tab/tablist, menuitem/menu, option/listbox, dialog/alertdialog, the interactive roles) and the required-context and required-state relationships they enforce; the id-reference attributes as ARIA defines them. No conformance claimed for the runtime's own widgets.                                                                                                                                                                                                                                                                                             |
+| [Accessible Name and Description Computation](https://www.w3.org/TR/accname-1.2/)         | **Subset**    | §8.8        | packages/schema/src/a11y.ts, packages/schema/tests/a11y.test.ts                                                                              | The name sources `interactive-unnamed` and `dialog-unnamed` honour, in accname's order of precedence — `aria-labelledby`, `aria-label`, native labelling (`<label>`, `alt`, `value`, `placeholder`), name from content for the roles that allow it, `title` — judged statically, so a bound source is taken as present.                                                                                                                                                                                                                                                                                |
+| [WCAG 2.2](https://www.w3.org/TR/WCAG22/)                                                 | **Subset**    | §8.8        | packages/schema/src/a11y.ts, packages/schema/tests/a11y.test.ts, packages/studio/src/services/a11y-report.ts                                 | Success criteria 1.1.1, 1.3.1, 2.1.1 and 4.1.2, as the criteria the rules cite; each finding names its criterion. No level is claimed: the static rules are a subset of what a criterion asks, and the report says what it could not check.                                                                                                                                                                                                                                                                                                                                                            |
+| [CSS Scoping](https://www.w3.org/TR/css-scoping-1/)                                       | **Subset**    | §16.6       | packages/compiler/src/shared.ts, packages/compiler/tests/shadow-dom.test.ts                                                                  | `:host`, `:host()` and `::slotted()` are emitted for a shadow component, and `:host`/`:host()` are translated to the tag name in light DOM so one style object serves both modes. `:host-context()` is not offered — it never reached a second engine.                                                                                                                                                                                                                                                                                                                                                 |
+| [CSSOM](https://www.w3.org/TR/cssom-1/)                                                   | **Adopted**   | §9.1, §9.6  | packages/runtime/src/runtime.ts, packages/runtime/tests/stylesheet-engine.test.ts                                                            | `style` keys are the CSSOM camelCase IDL attribute names, so a property name needs no translation table. The runtime also builds a constructable `CSSStyleSheet` and delivers an element's rules through `document.adoptedStyleSheets`, using `insertRule`/`deleteRule`/`replaceSync` as specified; a host that cannot construct one falls back to a `<style>` element carrying the same rules.                                                                                                                                                                                                        |
+| [CSS Nesting](https://www.w3.org/TR/css-nesting-1/)                                       | **Borrowed**  | §9.2        | packages/runtime/src/css.ts, packages/runtime/tests/css.test.ts                                                                              | The shape of a nested style block is taken; conformance is not claimed and `&` is never handed to a parser. Jx flattens nesting itself, and it has to: a `.child` key COMPOUNDS onto its scope here where CSS Nesting resolves it as a descendant, so the same source would mean two different things.                                                                                                                                                                                                                                                                                                 |
+| [CSS Animations](https://www.w3.org/TR/css-animations-1/)                                 | **Subset**    | §9.2        | packages/runtime/src/css.ts, packages/runtime/tests/css.test.ts                                                                              | The `@keyframes` at-rule and its keyframe-selector grammar — `from`, `to`, a percentage, and a comma-separated list of those — are bound as authored: a stop key is copied verbatim, the block is emitted once and unscoped, and the last-definition-wins rule for a repeated name is why. None of the animation engine is implemented, and the standard's rule that `animation-*` properties and `!important` are ignored inside a keyframe block is not enforced.                                                                                                                                    |
+| [CSS Color 4](https://www.w3.org/TR/css-color-4/)                                         | **Adopted**   | §9.5        | packages/compiler/src/shared.ts, packages/compiler/tests/shared.test.ts                                                                      | `color-scheme: light dark` is emitted with per-attribute overrides, so native controls follow a forced scheme rather than only the author's own rules.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)                                        | **Divergent** | §7          | packages/runtime/src/pointer.ts                                                                                                              | Pointer syntax is implemented as written, `~0`/`~1` escapes included, with `/` as the only separator. Four enumerated deviations: a `$ref` binds a live value off the reactive scope rather than resolving a node of a JSON document; a token matching nothing yields `undefined` instead of failing evaluation (§4); the `-` array token (§4) is not special and reads a member named `-`; and the `#`-fragment schemes (`window#/`, `parent#/`, `event#/`) are Jx extensions, not the URI fragment representation of §6 — they are not percent-decoded.                                              |
+| [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Divergent** | §21         | packages/compiler/tests/no-eval.test.ts                                                                                                      | Compiled output contains no `new Function` and no `eval`, proven by a committed test, so it runs under a policy without `'unsafe-eval'`. The **interpreting** runtime compiles templates and function bodies at load time and therefore requires `'unsafe-eval'` permanently — §21.3 states this as a property, not a defect.                                                                                                                                                                                                                                                                          |
+| [Trusted Types](https://www.w3.org/TR/trusted-types/)                                     | **Subset**    | §21.5       | packages/studio/src/services/trusted-types.ts, packages/studio/tests/trusted-types.test.ts, packages/compiler/src/targets/compile-element.ts | The injection-sink half only. No `innerHTML` write remains in code Jx ships — the runtime's four and the one the compiler emitted became `replaceChildren()` — and the shell's markdown goes through a policy that asserts and throws naming what it found, with `createScript`/`createScriptURL` refusing. **Enforcement is declined, not deferred**: `require-trusted-types-for 'script'` gates `eval` and `new Function`, which the interpreter is made of (§21.3), and the shell's remaining sinks belong to its dependencies. A report-only run established this and was removed with its header. |
 
 ---
 
@@ -2042,10 +2150,7 @@ A named `state` expression may be bound to multiple elements via `$ref` (`"oncli
 
 A **pure** expression (§19.1) used as a `state` entry is a computed value — it is read via `$ref` or `${}` like any Shape 3 computed (`"textContent": { "$ref": "#/state/total" }`). A **mutating** expression used as a `state` entry is a handler, bound to events. The mode follows from the operator; it is not declared.
 
-3. **As an element's `tagName`** — a tag chosen when the element is created, narrowed to the
-   `TagExpression` shape: `?:` or `switch`, whose every result is a literal `TagName`. This is the
-   one position where an `$expression` is **not live** — the tag is resolved once, at creation, and
-   never re-read.
+3. **As an element's `tagName`** — a tag chosen when the element is created, narrowed to the `TagExpression` shape: `?:` or `switch`, whose every result is a literal `TagName`. This is the one position where an `$expression` is **not live** — the tag is resolved once, at creation, and never re-read.
 
    ```json
    {
@@ -2062,18 +2167,9 @@ A **pure** expression (§19.1) used as a `state` entry is a computed value — i
    }
    ```
 
-   **Why the results are tag names and not operands.** The candidate set has to be readable without
-   evaluating anything: the compiler emits one template per candidate (lit cannot bind a tag name),
-   `jx validate` refuses an illegal name at authoring time, and the void-element, preformatted and
-   slot analyses that read a tag structurally keep a finite set to reason about. A `${…}` template
-   here would surrender all of it — and did: nothing in the pipeline evaluated one, so each consumer
-   failed differently and silently.
+   **Why the results are tag names and not operands.** The candidate set has to be readable without evaluating anything: the compiler emits one template per candidate (lit cannot bind a tag name), `jx validate` refuses an illegal name at authoring time, and the void-element, preformatted and slot analyses that read a tag structurally keep a finite set to reason about. A `${…}` template here would surrender all of it — and did: nothing in the pipeline evaluated one, so each consumer failed differently and silently.
 
-   **Why once and not live.** A tag that changed after mount means replacing the element, and the
-   subtree's listeners, focus, typed input values and component instances go with it. `jx validate`
-   warns when a tag discriminant is also an assignment target, so the case where the rule bites is
-   caught before it ships. The document ROOT's `tagName` and a `$head` entry's stay literal — they
-   are a custom element's name and a head tag.
+   **Why once and not live.** A tag that changed after mount means replacing the element, and the subtree's listeners, focus, typed input values and component instances go with it. `jx validate` warns when a tag discriminant is also an assignment target, so the case where the rule bites is caught before it ships. The document ROOT's `tagName` and a `$head` entry's stay literal — they are a custom element's name and a head tag.
 
 ### 19.7 Shape Detection (amends §5.7)
 
@@ -2193,22 +2289,24 @@ Every statement kind reuses a web-platform name — §19.4's law extended to sta
 | Branch     | `{ if, then, else? }` — statement lists in then/else | JSON Schema 2020-12 conditional keywords     |
 | Multiway   | `{ $switch, cases, default? }` — statement lists     | Element-level `$switch` (§14), ECMA switch   |
 | Dispatch   | `{ dispatchEvent, detail?, bubbles?, composed? }`    | WHATWG DOM `dispatchEvent`/`CustomEventInit` |
+| Stop       | `{ stopPropagation: true }`                          | WHATWG DOM `Event.stopPropagation()`         |
+| Cancel     | `{ preventDefault: true }`                           | WHATWG DOM `Event.preventDefault()`          |
 
 - The branch `if` and the `$switch` discriminant hold **pure** operands; `$switch` matches by string form, exactly like §19.4b.
+- `stopPropagation` and `preventDefault` act on the handler's own event — the one the body is running for — and are no-ops in a body run without one (a parameterised callable, a lifecycle hook). Each is spelled as the member set to `true`, so the statement reads as the call it lowers to. They exist because bubbling composes badly with nesting: a click inside a menu row that owns a submenu is also a click on the row that owns it, and without `stopPropagation` both activate.
 - **Result capture** composes — an assignment statement whose `value` is a `call` node — so no dedicated capture field exists.
 - `dispatchEvent` dispatches from the handler's `event.currentTarget` (interpreter and client islands) or the component instance (compiled custom elements); the entry's `emits` (CEM) remains the declaration the editor autocompletes from.
 - Statements execute sequentially; a statement whose value is a thenable is awaited before the next (ECMA async/await semantics).
 
 ### 20.3 Lowering
 
-`body: Statement[]` follows the named-formula pattern (§19.4c): without `parameters` the entry lowers to an event handler `(state, event)`; with `parameters` it lowers to a positional callable whose arguments bind to `$args/` names. The engine is `runStatements` (interpreter) + `compileStatements` (JS emitter) — one module, both halves, mirroring §19.8: `if`/`else` and `switch` emit their genuine ECMAScript statement forms, and dispatch emits `dispatchEvent(new CustomEvent(type, init))`. Inline event bindings accept structured bodies through the existing Function binding form — `JxEventBinding` is unchanged.
+`body: Statement[]` follows the named-formula pattern (§19.4c): without `parameters` the entry lowers to an event handler `(state, event)`; with `parameters` it lowers to a positional callable whose arguments bind to `$args/` names. The engine is `runStatements` (interpreter) + `compileStatements` (JS emitter) — one module, both halves, mirroring §19.8: `if`/`else` and `switch` emit their genuine ECMAScript statement forms, dispatch emits `dispatchEvent(new CustomEvent(type, init))`, and the two event verbs emit `event?.stopPropagation()` and `event?.preventDefault()`. Inline event bindings accept structured bodies through the existing Function binding form — `JxEventBinding` is unchanged.
 
 ---
 
 ## 21. Evaluation Surface
 
-> **Status: Partial.** The surface is stated accurately, which is what this section is for; a
-> Trusted Types policy guards the shell's own injection sink; enforcement is declined (§21.5).
+> **Status: Partial.** The surface is stated accurately, which is what this section is for; a Trusted Types policy guards the shell's own injection sink; enforcement is declined (§21.5).
 
 Jx documents contain executable code — `${}` templates and `body`/`$src` functions. Where and how that code runs differs by mode, and the security posture differs with it. This section states the surface honestly so hosts can make an informed decision.
 
@@ -2228,6 +2326,8 @@ During a build the compiler evaluates project code (resolving `timing: "compiler
 
 The interpreting runtime — the dev server, the Studio canvas, and `@jxsuite/runtime` used directly as a library — compiles `${}` templates and inline `body` functions with `new Function` on the fly (§6.6). Any page hosting the interpreter must allow `'unsafe-eval'` in its CSP. This is why the compiled path exists: ship compiled output to production and the eval requirement disappears. A future restricted evaluator (§6.6) would remove this requirement from the interpreter as well.
 
+Jx Studio's own shell is such a page: its chrome mounts documents through the interpreter ([embedding.md](./embedding.md) §8), so the shell requires `'unsafe-eval'` for as long as it does. That is a property of the shell, stated, rather than a defect of the canvas it hosts.
+
 ### 21.4 Trust Model for Documents
 
 A Jx document is **executable input**. Loading and rendering an untrusted document in the interpreting runtime runs its code; compiling an untrusted document runs its code at build time. Jx does not sandbox document code — treat a `.json` document with the same trust you would treat a `.js` file from the same source.
@@ -2238,55 +2338,24 @@ A Jx document is **executable input**. Loading and rendering an untrusted docume
 
 > **Status: Implemented** as a decision. Enforcement is **declined**, not pending — see below.
 
-There are **two** profiles here, not one profile with an outstanding TODO, and saying so is the
-point of this section: "remove `eval` from the runtime" has been living as an implied task, and it
-is not one. The interpreter **is** those `new Function` sites — an interpreter that does not compile
-expressions at runtime is a compiler.
+There are **two** profiles here, not one profile with an outstanding TODO, and saying so is the point of this section: "remove `eval` from the runtime" has been living as an implied task, and it is not one. The interpreter **is** those `new Function` sites — an interpreter that does not compile expressions at runtime is a compiler.
 
 | Profile                     | `'unsafe-eval'` | Why                                                                        |
 | --------------------------- | --------------- | -------------------------------------------------------------------------- |
 | **Compiled output**         | never           | §21.1, with a committed test asserting the emitted JS contains neither     |
 | **The interpreting canvas** | permanently     | §21.3 — it evaluates `${}` templates and `body` functions as they are read |
 
-**What Trusted Types actually gates, verified rather than assumed.** The tempting reading is that
-`require-trusted-types-for 'script'` covers DOM injection sinks and leaves `eval` to `script-src`.
-It does not: under Trusted Types, `eval()` and `new Function()` are gated as well, and throw when no
-default policy exists. The escape hatch is a **default policy whose `createScript` passes its input
-through**, which re-permits evaluation and makes the script half of Trusted Types a rubber stamp.
+**What Trusted Types actually gates, verified rather than assumed.** The tempting reading is that `require-trusted-types-for 'script'` covers DOM injection sinks and leaves `eval` to `script-src`. It does not: under Trusted Types, `eval()` and `new Function()` are gated as well, and throw when no default policy exists. The escape hatch is a **default policy whose `createScript` passes its input through**, which re-permits evaluation and makes the script half of Trusted Types a rubber stamp.
 
-That settles the staging question by removing it. The shell is not a deployment target: it is the
-development environment, and it is powered by the interpreter it exists to drive. Enforcing Trusted
-Types on it would mean a default policy whose `createScript` passes its input through — which
-re-permits evaluation for the whole shell and buys a type-level ceremony in place of a control.
+That settles the staging question by removing it. The shell is not a deployment target: it is the development environment, and it is powered by the interpreter it exists to drive. Enforcing Trusted Types on it would mean a default policy whose `createScript` passes its input through — which re-permits evaluation for the whole shell and buys a type-level ceremony in place of a control.
 
-**What Jx adopts, and what it declines.** The injection-sink half is worth having on its own terms
-and is taken; the script half cannot apply to either profile, and is declined rather than left as an
-implied task.
+**What Jx adopts, and what it declines.** The injection-sink half is worth having on its own terms and is taken; the script half cannot apply to either profile, and is declined rather than left as an implied task.
 
-- **No `innerHTML` write remains in code Jx ships.** The four in `@jxsuite/runtime` and the one the
-  compiler emitted into every light-DOM element module became `replaceChildren()` — identical
-  semantics for clearing an element, and not an injection sink. That is a real reduction in a
-  shipped site's surface, independent of any policy.
-- **The shell's markdown goes through a policy that asserts.** `createHTML` throws naming what it
-  found (`packages/studio/src/services/trusted-types.ts`); `createScript` and `createScriptURL`
-  refuse outright. A `createHTML` returning its input unchanged would satisfy the API and defend
-  nothing.
-- **Enforcement is not planned, on either profile.** The canvas evaluates permanently (§21.3). The
-  shell evaluates too — Ajv's codegen in `jx-validate.ts`, Monaco's worker URL, and the interpreter
-  itself running in the shell document for Library preview, render-check and component preview — and
-  its remaining DOM sinks belong to its dependencies: `<sp-theme>` writes
-  `templateElement.innerHTML` before any author has clicked anything, and Tabulator and Monaco carry
-  their own. None is reachable from `jx-studio`, and the only lever over them is a `trusted-types`
-  allow-list, which admits the pass-through this section rejects.
+- **No `innerHTML` write remains in code Jx ships.** The four in `@jxsuite/runtime` and the one the compiler emitted into every light-DOM element module became `replaceChildren()` — identical semantics for clearing an element, and not an injection sink. That is a real reduction in a shipped site's surface, independent of any policy.
+- **The shell's markdown goes through a policy that asserts.** `createHTML` throws naming what it found (`packages/studio/src/services/trusted-types.ts`); `createScript` and `createScriptURL` refuse outright. A `createHTML` returning its input unchanged would satisfy the API and defend nothing.
+- **Enforcement is not planned, on either profile.** The canvas evaluates permanently (§21.3). The shell evaluates too — Ajv's codegen in `jx-validate.ts`, Monaco's worker URL, and the interpreter itself running in the shell document for Library preview, render-check and component preview — and its remaining DOM sinks belong to its dependencies: Tabulator and Monaco each carry their own. None is reachable from `jx-studio`, and the only lever over them is a `trusted-types` allow-list, which admits the pass-through this section rejects. The list was one longer while Adobe Spectrum was registered — `<sp-theme>` wrote `templateElement.innerHTML` before any author had clicked anything — and that one left with the library rather than being solved, which is the only kind of progress an allow-list cannot make.
 
-**The observation stage ran, and has been removed.** Both servers briefly sent the shell
-`Content-Security-Policy-Report-Only: require-trusted-types-for 'script'` and filed each
-`SecurityPolicyViolationEvent` as a Problem. It answered its question — every violation belongs to a
-dependency or to the interpreter, and no Jx-owned sink remained — so it was deleted along with the
-header that fed it. Keeping it would have put a permanent warning in §16's Problems panel about a
-decision already taken, and a panel that reports what its reader cannot act on teaches its reader to
-stop looking. Four properties of the standard were established during that run and are recorded here
-because they would otherwise have to be rediscovered:
+**The observation stage ran, and has been removed.** Both servers briefly sent the shell `Content-Security-Policy-Report-Only: require-trusted-types-for 'script'` and filed each `SecurityPolicyViolationEvent` as a Problem. It answered its question — every violation belongs to a dependency or to the interpreter, and no Jx-owned sink remained — so it was deleted along with the header that fed it. Keeping it would have put a permanent warning in §16's Problems panel about a decision already taken, and a panel that reports what its reader cannot act on teaches its reader to stop looking. Four properties of the standard were established during that run and are recorded here because they would otherwise have to be rediscovered:
 
 | Established                                                                                | Consequence                                                                                                                              |
 | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2516,6 +2585,30 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.22-draft** (2026-09-14) — §16.9 Instantiation Limits: a definition that instantiates its own tag with the same props is refused and a 32-frame chain is the cap, with the same diagnostics on both sides of the build; the interpreter reports a refusal with a jx-error ErrorEvent.
+- **0.6.21-draft** (2026-09-10) — a style declaration may bind a value the host measured, which two surfaces had worked around as impossible.
+- **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
+- **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
+- **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
+- **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
+- **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
+- **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
+- **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
+- **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
+- **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
+- **0.6.11-draft** (2026-09-02) — the container rules honour aria-owns.
+- **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.
+- **0.6.9-draft** (2026-09-02) — Accessibility rules (§8.8): nine static rules over the overlay walker, each citing its WCAG criterion, with WAI-ARIA, accname and WCAG alignment rows.
+- **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
+- **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
+- **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
+- **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
+- **0.6.4-draft** (2026-09-02) — Statements gain stopPropagation and preventDefault (§20.2); a definition's root-level event handlers listen on the host (§16.1); an attribute value that resolves to null or undefined removes the attribute (§8.3).
+- **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
+- **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
+- **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
+- **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
+- **0.5.9-draft** (2026-08-31) — popover is enumerated and emitted through the presence branch; declaration-body at-rules (@position-try, @property) emit verbatim; all four boolean-attribute writers now defer to booleanAttrValue.
 - **0.5.8-draft** (2026-08-26) — §5.3: $lazy on a $src Function defers the module to first call.
 - **0.5.7-draft** (2026-08-26) — §8.3: a boolean attribute value is emitted by family — presence for HTML boolean attributes, the written word for aria-* and the enumerated three.
 - **0.5.6-draft** (2026-08-25) — Clarify that the parentheses in an @(condition) style key belong to the query, so a bare media type emits without them (§9).
@@ -2578,4 +2671,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.5.8-draft — subject to revision_
+_Jx Specification v0.6.22-draft — subject to revision_

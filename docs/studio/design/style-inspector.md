@@ -6,11 +6,10 @@ spec:
   - studio.md#6.7
 code:
   - packages/studio/src/panels/style-panel.ts
-  - packages/studio/src/panels/target-line.ts
+  - packages/studio/src/surfaces/style-panel.ts
+  - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/provenance.ts
-  - packages/studio/src/panels/style-inputs.ts
   - packages/studio/src/utils/inherited-style.ts
-  - packages/studio/src/ui/dynamic-slot.ts
   - packages/studio/src/ui/value-source.ts
   - packages/studio/src/ui/unit-selector.ts
   - packages/studio/src/ui/color-selector.ts
@@ -69,7 +68,7 @@ Collapsed section headers carry the same states as a tally: a heading with dots 
 
 ## Sections and the filter
 
-Properties are grouped into accordion sections: **Layout**, **Size**, **Spacing**, **Positioning**, **Typography**, **Background**, **Border**, and **Effects**. Sections that already have values open automatically. The filter box narrows the list. Type part of a property's name or label, and every matching section stays open while you filter.
+Properties are grouped into accordion sections: **Layout**, **Size**, **Spacing**, **Positioning**, **Typography**, **Background**, **Border**, and **Effects**. A section that already has values in it opens by itself the first time you meet it, and a section you close stays closed while you work. The filter box narrows the list. Type part of a property's name or label, and every matching section stays open while you filter.
 
 Clicking the accent dot on a section header clears everything set in that section.
 
@@ -80,9 +79,9 @@ Some rows appear only when they're relevant: alignment and gap controls show onc
 Each property gets a control built for it:
 
 - **Number + unit**: type the number, pick the unit (`px`, `rem`, `%`, `vw`, and friends) or a keyword like `auto` from the attached menu.
-- **Color**: a swatch that opens a full picker, with your project's color tokens on offer; a token shows by its name, like **Primary Blue**. See **[Design tokens](/docs/studio/design/tokens)**.
-- **Font family**: a combobox listing your font tokens and a set of ready-made font stacks; the menu previews each option in its own face. Picking a preset saves it as a font token automatically.
-- **Keyword menus**: properties with fixed values get a dropdown; typography menus preview each choice (weights render at their weight, transforms as they transform).
+- **Color**: a swatch beside the value, and behind the swatch a picker holding a saturation square, a hue track, an opacity track and your project's color tokens. Picking a token writes the reference, so the value reads `var(--color-primary-blue)` and follows the token wherever you take it, and the swatch shows the colour the token stands for; moving any of the tracks replaces it with a literal, because that is what moving a picker means. The value box takes anything CSS can read, a named color or a `color-mix()` included, and keeps it as you wrote it. See **[Design tokens](/docs/studio/design/tokens)**.
+- **Font family**: type a font stack, or pick one from the list under the field, which shows your project's font tokens first, each named beside its token, and then a set of ready-made stacks. Every row is drawn in its own typeface, so you choose by looking. Picking a ready-made stack saves it as a font token the moment you commit, so the next element that wants it points at the token rather than repeating the stack. The field shows a token by its name, `--font-body` rather than `var(--font-body)`, and a stack you type is written as you typed it.
+- **Keyword lists**: a property with a known set of values lists them under the field, opened by its chevron or by :kbd[↓]. The field stays typable, because a CSS keyword list is a set of suggestions rather than a closed one: a value the list does not offer is still a value you can write, and pressing :kbd[Enter] commits what you typed unless you arrowed onto a row first. The typography rows draw each value as itself: weights at their weight, styles leaning, transforms applied, decorations drawn, all in the element's own typeface.
 
 Shorthand rows like **Padding** and **Margin** take a combined value, or expand with their chevron into per-side fields; border rows expand into width, style, and color. Studio recombines the sides into the shortest form when it writes the value. A shorthand's chip answers for the whole family. It reads **set here** when the shorthand or any one side is set, and clicking it clears all five at once.
 

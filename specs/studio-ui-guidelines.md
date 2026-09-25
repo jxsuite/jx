@@ -1,17 +1,23 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.3.16
-**Status:** Implemented
-**Updated:** 2026-08-27
+**Version:** 0.8.8-draft\
+**Status:** Partial\
+**Updated:** 2026-09-18\
 **Applies to:** `packages/studio/`
 
 ---
 
 ## 1. Design System Foundation
 
-Jx Studio builds on **Adobe Spectrum Web Components** (`@spectrum-web-components/*`) at `scale="medium"`. All UI chrome uses Spectrum components; the canvas renders content via the Jx runtime on a light background in **both** chrome themes — a document is a document, and does not follow the chrome.
+> **Status: Implemented.** The kit's theme is adopted at boot and Studio's token names alias it (§1.1); every surface is a Jx document over the kit (§9.3), and Adobe Spectrum is removed from the package (§6.1).
 
-The chrome ships two themes, `color="dark"` (the default the app boots in) and `color="light"`, chosen in Preferences → Appearance. Each is a Spectrum colour fragment, and **a theme named in `CHROME_THEMES` must have its fragment registered in `src/ui/spectrum.ts`**: `<sp-theme>` adopts the fragment registered under the `color` it is given and silently adopts none for a name it does not know, which leaves every `--spectrum-*` colour token undefined and the chrome unchanged. That is not a hypothetical — it is how Light shipped as a setting that did nothing.
+Jx Studio's chrome is built from **the Jx UI kit** (`@jxsuite/ui`, [`ui.md`](./ui.md)): interface elements authored as Jx documents and interpreted by the runtime, with one theme of design tokens and one icon set. `registerKit()` (`src/ui/kit.ts`) defines every element and adopts the theme before the shell mounts, and a surface is a Jx document mounted by an adapter (§9.3). The canvas renders content via the Jx runtime on a light background in **both** chrome themes — a document is a document, and does not follow the chrome.
+
+**Adobe Spectrum Web Components are removed, and the removal is enforced rather than merely done.** They drew every Studio surface until the kit replaced them, registered beside it through `src/ui/spectrum.ts` while the migration ran and painting one palette with it through a brand fragment re-valued from the kit's ramp. Both files are gone, with the 36 dependency entries behind them. `scripts/check-styles.ts` bans an `sp-` tag and a `--spectrum-*` token across everything that ships — `styles/*.css`, `src/**/*.css`, `src/**/*.ts` and `src/surfaces/**/*.json` — with an allow-list that is empty on purpose (`tests/` is outside it deliberately, because the assertions there read `querySelector("sp-underlay")` and expect null, which is the ban working), and `.oxlintrc.json` refuses the module specifier — because the failure that matters is not the import that will not resolve, it is somebody reinstalling one package to reach one control and the family following it back in through its own dependencies. Neither ban reads a comment or a `$description`: the migration record is the most valuable thing in those files, and a rule that made them coy would delete more than it protected. What remains of the coexistence rule is the half that is still about design: a surface is a Jx document over the kit, never a mix of substrates, and `scripts/check-surface-purity.ts` refuses one.
+
+The chrome ships two themes, dark (the default the app boots in) and light, chosen in Preferences → Appearance. The kit declares every colour token as a `light-dark()` pair on `:root`, and the shell stamps `data-theme` on `<html>` to force one (`applyChromeTheme()`, `src/shell.ts`). **That stamp is now the only channel, and the removal of the second one is the point.** There were two: this attribute, and a `color` attribute on the `sp-theme` element the frame was wrapped in — so a theme could half-apply. `<sp-theme>` adopted the colour fragment registered under the name it was given and adopted none at all for a name it did not know, so `color="light"` was a valid attribute over an empty palette: every Spectrum colour went undefined, Studio's semantic layer fell through to its dark hex fallbacks, and Light shipped as a setting that moved the backdrop and nothing else. **A theme named in `CHROME_THEMES` must still have a rule of its own in the kit's theme block**, because the failure survived its mechanism: a `data-theme` value the kit declares no `color-scheme` for inherits `light dark` and lets the OS choose. `tests/chrome-theme.test.ts` counts what each declared theme actually gets and pins an undeclared name as the negative control.
+
+**This reverses a recorded decision.** The plan that preceded this one held that Studio "does not need a design system — it has a good one", and that adding a second is how the first one died. It was right about enforcement and wrong about ownership: a design system this application does not author cannot be edited on its own canvas, and the self-hosting principle (`studio.md` §2) was not true of a chrome whose components were someone else's classes. What that plan got right still binds — no string DSL for `when`, no floating docks by default, the horizontal tab strip stays, no recursive pane tree, `CANVAS_MODES` and the stylebook wire format do not change, no autosave — and the enforcement it built (`check-styles.ts`, one overlay contract, the region grammar) is what the migration is held to.
 
 ### 1.1 Theme Tokens
 
@@ -19,23 +25,37 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 > The **Fallback** column is checked against `styles/tokens.css` by `packages/studio/scripts/check-styles.ts`, and the check is why the values below are right. Seven of them had been wrong for months — this table named `#1e1e1e` for `--bg` where the app had shipped `#111111` since the brand ramp landed — so anyone designing against the documented palette was designing against one that no longer existed. A correction without a gate only resets the clock.
 >
-> Every token below is a reference to a Spectrum token, so it is the **declaration** that is the contract and the fallback that is merely checkable. The fallbacks are the dark ramp because dark is what the app boots in; under `color="light"` the same declarations resolve to the light ramp in `src/ui/jx-theme.ts` (`--bg` `#f4f4f5`, `--bg-panel` `#ffffff`, `--fg` `#27272a`, `--accent` `#2563eb`) with nothing in `tokens.css` branching on the theme. A token that has to be spelled twice, once per theme, is a token that belongs in the brand fragment instead.
+> Every token below is an **alias of a kit token** (`ui.md` §4): `--bg: var(--jx-bg, #111114)`, declared on `:root` where the kit's own declarations are in scope. The declaration is the contract and the fallback is merely checkable. The fallbacks are the dark values because dark is what the app boots in; the kit token is a `light-dark()` pair, so under `data-theme="light"` the same alias resolves to the light value (`--bg` `#f7f7f9`, `--bg-panel` `#ffffff`, `--fg` `#1d1d22`, `--accent` `#2563eb`) with nothing in `tokens.css` branching on the theme. A token that has to be spelled twice, once per theme, belongs in the kit's `project.json` instead.
+>
+> **`styles/tokens.css` is a BUILD OUTPUT.** Its source is `styles/tokens.json`, a Jx style block like any surface's, and `scripts/build-tokens.ts` writes the stylesheet from it: `bun run tokens:check` is the gate and `bun run tokens:sync` is the fixer, the same pair `schema:verify` and `schema:sync` are for the committed schemas. Never hand-edit the CSS; the fix belongs in the JSON.
+>
+> **It stays a linked stylesheet, and that is the design rather than an exception to it.** Every declaration in it is PRE-PAINT — the kit's own theme is adopted from JavaScript at boot, so these hex fallbacks are what paints the shell before that lands, and the `@font-face` rules are what keep the first frame out of a fallback face. Moving them into the adopted sheet would delete the thing they exist to be. So the SOURCE moves into the schema and the artifact stays a `<link>`, which is the only arrangement that is both. `styles/shell-frame.css` is generated too, from `styles/shell-frame.json`: the `#app` grid, the cells every surface mounts into, the resize handles and edges, the collapsed-dock variants and the four overlay layers. It stays a linked stylesheet for the reason the token layer does — the frame is what the first paint lays out — and it is emitted UNSCOPED because its cells are addressed by id rather than styled by a document: `store.ts`'s `initShellRefs` adopts five of them and the overlay API renders into four more, so those ids are a contract. The frame's MARKUP is `src/surfaces/shell.json`, mounted by `src/surfaces/shell.ts` — the frame is a Jx document, which is what makes the shell openable in its own editor. **`mountShellTree()` is therefore asynchronous and every caller must await it**: `store.ts`'s `initShellRefs` reads five of these cells with `querySelector` on the line after the mount and `ui/panel-resize.ts` reads three more, so a mount that has not settled hands each of them a null — silently, because a null host is only noticed by whatever renders into it later. The runtime renders one microtask after insertion and waits for the kit to be defined first, so there is no synchronous spelling to fall back on. The four overlay LAYERS stay a lit template: they belong to `ui/layers.ts` rather than to the frame, and they move when that module does.
+>
+> `styles/forced-colors.css` is generated the same way, from `styles/forced-colors.json`, and its rules are emitted UNSCOPED — a `.pane-tab` key under `:root` would resolve to `:root.pane-tab` and match nothing, because a class key compounds onto its scope — so each selector still reaches what it always did, and the sheet is still linked last so it wins a specificity tie without `!important`. Each of its rules carries the sentence that was written beside it as a `$description` (`spec.md` §9.2): the reasoning in the stylesheets being replaced is the most valuable thing in them, and a migration that moved the declarations and dropped it would be a loss no gate could see.
+>
+> **A converted surface takes its rules with it, and the About dialog is the pattern.** Its style block is the document's own, keyed on `part` — not a stylesheet, and not the generated kind either, because a surface's look belongs to the surface. Four things that conversion settles for the ones after it. A rule the kit already draws is DELETED rather than moved: `.about-modal` positioned a fixed box, drew its panel and scrolled its body, and `jx-dialog` is all three, so two rules went and none replaced them. A token that resolved only inside `<sp-theme>` had to be re-pointed at the studio layer — the links read `--spectrum-accent-color-1000` with a hex fallback, and a document mounted in the dialog layer would have taken the fallback every time. A class the surface shared with a lit module is that module's problem now, named for what it is there rather than borrowed: `.about-muted` became `.settings-muted` in the dependencies editor, which the orphan rule caught the moment About stopped defining it. And an exported closer usually dies with the conversion, because the platform's `<dialog>` answers Escape and the kit draws the button — `reachability.test.ts` is what says so.
+>
+> **Await the element, not just the mount.** `mountSurface` resolving means the DOCUMENT rendered; the element's own template is one `connectedCallback` later. `showModal` in between finds no `<dialog>` to open, and every assertion about content passes against a dialog nobody can see — happy-dom renders it just as willingly. `whenReady` from `surfaces/dialog.ts` is the one answer for a `jx-dialog`.
+>
+> **The three `@keyframes` blocks stay where they are**, in `shell.css` and `inspector.css`, until the surfaces that use them become documents. Moving them now would delete no stylesheet — both files remain — and would separate each animation from its only consumer. What did land is the gate the move will need: a `@keyframes` name is document-global, and CSS keeps the LAST definition while ignoring every earlier one with no parse error either way, so `check-styles.ts` now fails when a name is defined twice and names both sites. That is a latent trap while the three sit one per stylesheet and a certain one once each surface hoists its own by rule text (`spec.md` §9.6).
+>
+> **`styles/spectrum.css` is gone, and where its declarations went is the substance of the deletion rather than a footnote.** It was the one hand-written sheet left: everything declared ON the `sp-theme` element, where Spectrum's own ramp was in scope and `:root` was not. The box is `#shell-root` in `shell-frame.json` — a plain div the mount owns, kept because `mountResizeEdges()` puts its own container on the body one line earlier and a clear-and-eject aimed at the body would take the four resize edges with it. The typography is four declarations on `:root` in `tokens.json`: the sans stack is the kit's, and 12px is `--jx-text-md`, which is what `--spectrum-font-size-75` resolved to. `--case-c` and `--slot-c` are aliases in the same idiom as `--switch-c`, at exactly the values `panel-outline.json` had already written down as their fallbacks. Four `--canvas-*` steps are mixed from the `black` and `white` KEYWORDS and deliberately do not follow the theme, because they colour surfaces that render as a light DOCUMENT in both chromes; seven more steps were declared beside them and no rule in the package ever read one, so those did not move. Nor did the four `--data-*` syntax colours, for the reason `panel-data.json` states outright: nothing read them either. Every stylesheet is generated now, and `check-styles.ts` fails on a `--spectrum-*` name in any of them.
 
-| Token         | Purpose                           | Fallback                                                                |
-| ------------- | --------------------------------- | ----------------------------------------------------------------------- |
-| `--bg`        | App background                    | `#111111`                                                               |
-| `--bg-panel`  | Panel background                  | `#1a1a1a`                                                               |
-| `--bg-input`  | Input field background            | `#1a1a1a`                                                               |
-| `--border`    | Borders and separators            | `#222222`                                                               |
-| `--fg`        | Primary text                      | `#e4e4e7`                                                               |
-| `--fg-dim`    | Secondary text (labels, hints)    | `#a1a1aa`                                                               |
-| `--accent`    | Interactive elements, focus rings | `#3b82f6`                                                               |
-| `--accent-fg` | Text on accent backgrounds        | `#ffffff`                                                               |
-| `--danger`    | Destructive actions, errors       | `#f44747`                                                               |
-| `--success`   | Positive states                   | `#89d185`                                                               |
-| `--warning`   | Caution states                    | `#c5a332`                                                               |
-| `--radius`    | Standard border radius            | `3px`                                                                   |
-| `--hover-bg`  | Hover overlay                     | `color-mix(in srgb, var(--spectrum-gray-900, #fafafa) 5%, transparent)` |
+| Token         | Purpose                           | Fallback                                                             |
+| ------------- | --------------------------------- | -------------------------------------------------------------------- |
+| `--bg`        | App background                    | `#111114`                                                            |
+| `--bg-panel`  | Panel background                  | `#17171b`                                                            |
+| `--bg-input`  | Input field background            | `#1d1d22`                                                            |
+| `--border`    | Borders and separators            | `#2f2f36`                                                            |
+| `--fg`        | Primary text                      | `#eeeef2`                                                            |
+| `--fg-dim`    | Secondary text (labels, hints)    | `#a2a2af`                                                            |
+| `--accent`    | Interactive elements, focus rings | `#3b82f6`                                                            |
+| `--accent-fg` | Text on accent backgrounds        | `#ffffff`                                                            |
+| `--danger`    | Destructive actions, errors       | `#e86460`                                                            |
+| `--success`   | Positive states                   | `#4fb27a`                                                            |
+| `--warning`   | Caution states                    | `#e5ae4a`                                                            |
+| `--radius`    | Standard border radius            | `var(--jx-radius-sm, 4px)`                                           |
+| `--hover-bg`  | Hover overlay                     | `var(--jx-hover-bg, color-mix(in oklab, var(--fg) 6%, transparent))` |
 
 **Accent opacity variants** for backgrounds:
 
@@ -45,10 +65,10 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 | Token        | Purpose                               |
 | ------------ | ------------------------------------- |
-| `--tag`      | Element tag names (`#93c5fd`)         |
-| `--signal`   | State signals (`#dcdcaa`)             |
-| `--handler`  | Functions/handlers (`#c586c0`)        |
-| `--map`      | Repeaters (`#5b4fc7`)                 |
+| `--tag`      | Element tag names (`#8fb5fb`)         |
+| `--signal`   | State signals (`#f2cc7c`)             |
+| `--handler`  | Functions/handlers (`#c8a2e0`)        |
+| `--map`      | Repeaters (`#8b83e6`)                 |
 | `--switch-c` | Switch conditionals (uses `--danger`) |
 
 ---
@@ -68,7 +88,7 @@ Use CSS custom properties from `:root` — never hardcode color values.
 | Size     | Usage                                                               |
 | -------- | ------------------------------------------------------------------- |
 | **12px** | Base body text, main UI                                             |
-| **11px** | Form labels (`sp-field-label`), breadcrumbs, accordion headers      |
+| **11px** | Form labels (`jx-field`), breadcrumbs, accordion headers            |
 | **10px** | Hints (`.style-row-label`), badges, data explorer, secondary labels |
 | **9px**  | Layer toggle icons, micro indicators                                |
 
@@ -105,15 +125,13 @@ Use CSS custom properties from `:root` — never hardcode color values.
 - Activity bar: 48px wide, icon tabs (48x48px each)
 - Toolbar height: 36px
 - Status bar height: 24px — `role="status"` + `aria-live="polite"`, the app's one status channel
-- A collapsed column sets its width variable to `0px` and `display: none`s the region and its resize
-  handle. The assistant column starts collapsed; every column's state round-trips through
-  `localStorage` in both directions (a remembered "open" must reopen a default-closed column)
+- A collapsed column sets its width variable to `0px` and `display: none`s the region and its resize handle. The assistant column starts collapsed; every column's state round-trips through `localStorage` in both directions (a remembered "open" must reopen a default-closed column)
 
 ### 3.2 Panel Structure
 
 Both left and right panels follow the same anatomy:
 
-1. **Panel tabs** — `sp-tabs` at the top for switching views
+1. **Panel tabs** — `jx-tabs` at the top for switching views
 2. **Panel body** — Scrollable content area (`overflow-y: auto`)
 3. **Content sections** — Accordion items or flat lists depending on context
 
@@ -125,13 +143,17 @@ Both left and right panels follow the same anatomy:
 
 The canonical form layout. Labels sit above full-width inputs.
 
-```html
-<div class="style-row">
-  <div class="style-row-label">
-    <sp-field-label size="s">Label Text</sp-field-label>
-  </div>
-  <sp-textfield size="s" .value="${value}" @input="${handler}"></sp-textfield>
-</div>
+A row is a document's markup, not a template's — this is the shape the `style` block keys on `part`.
+
+```json
+{
+  "tagName": "div",
+  "part": "style-row",
+  "children": [
+    { "tagName": "div", "part": "style-row-label", "children": ["Label Text"] },
+    { "tagName": "jx-textfield", "size": "sm", "value": "${$scope/value}" }
+  ]
+}
 ```
 
 **CSS:**
@@ -151,10 +173,9 @@ The canonical form layout. Labels sit above full-width inputs.
   font-size: 10px;
   color: var(--fg-dim);
 }
-.style-row > sp-textfield,
-.style-row > sp-number-field,
-.style-row > sp-picker,
-.style-row > sp-combobox,
+.style-row > jx-textfield,
+.style-row > jx-number-field,
+.style-row > jx-select,
 .style-row > textarea {
   width: 100%;
 }
@@ -162,8 +183,8 @@ The canonical form layout. Labels sit above full-width inputs.
 
 **Rules:**
 
-- Always use `size="s"` on Spectrum inputs
-- Labels use `sp-field-label` inside `.style-row-label` — never bare `<label>` elements
+- Always use `size="sm"` on kit inputs
+- A label is the row's own `[part="style-row-label"]`, or the kit field's `label` — never a bare `<label>` element
 - Inputs take full width of the container
 - Child/nested rows indent with `.style-row--child` (`padding-left: 16px`)
 
@@ -171,11 +192,15 @@ The canonical form layout. Labels sit above full-width inputs.
 
 When a property has an explicit value, show a small accent dot to the left of the label. Clicking it clears the value.
 
-```html
-<div class="style-row-label">
-  <span class="set-dot" title="Clear ${prop}" @click="${onDelete}"></span>
-  <sp-field-label size="s">${label}</sp-field-label>
-</div>
+```json
+{
+  "tagName": "div",
+  "part": "style-row-label",
+  "children": [
+    { "tagName": "span", "part": "set-dot", "title": "Clear ${$scope/prop}" },
+    { "tagName": "span", "children": ["${$scope/label}"] }
+  ]
+}
 ```
 
 **CSS:**
@@ -197,33 +222,31 @@ When a property has an explicit value, show a small accent dot to the left of th
 - Use `.set-dot--section` (7x7px) for accordion heading indicators
 - Only show when the property is explicitly set — absent means inherited/default
 
-**The dot is the "set here" state of the provenance chip, not a separate affordance.** A field label
-carries exactly one chip, in four states (`studio.md` §6.7): accent for set-here and clickable to
-clear; amber for inherited, **naming the donor** and clickable to jump there; violet for bound,
-naming the signal; and nothing at all for default, because absence is the ghost state and an
-explicit "not set" badge on every unset row is noise on the majority of rows.
+**The dot is the "set here" state of the provenance chip, not a separate affordance.** A field label carries exactly one chip, in four states (`studio.md` §6.7): accent for set-here and clickable to clear; amber for inherited, **naming the donor** and clickable to jump there; violet for bound, naming the signal; and nothing at all for default, because absence is the ghost state and an explicit "not set" badge on every unset row is noise on the majority of rows.
 
 Three rules follow, and they are what stop the chip becoming decoration:
 
-- **An inherited chip that does not name its donor is a bug.** "Inherited" alone is what an input
-  placeholder already said, and a placeholder is visually identical to the CSS initial value.
-- **A collapsed section header carries the same states as a tally**, which is why there is no
-  separate "show only the properties that are set" toggle.
-- **Where a value differs across a multiple selection the chip reads Mixed**, and the row must not
-  offer a plain clear affordance as though the selection agreed.
+- **An inherited chip that does not name its donor is a bug.** "Inherited" alone is what an input placeholder already said, and a placeholder is visually identical to the CSS initial value.
+- **A collapsed section header carries the same states as a tally**, which is why there is no separate "show only the properties that are set" toggle.
+- **Where a value differs across a multiple selection the chip reads Mixed**, and the row must not offer a plain clear affordance as though the selection agreed.
 
 ### 4.3 Input Components
 
-| Component                                   | When to Use                                                                                      |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `sp-textfield`                              | Free-text string values                                                                          |
-| `sp-number-field`                           | Numeric values with optional min/max/step                                                        |
-| `sp-picker`                                 | Fixed option sets (enums)                                                                        |
-| `sp-checkbox`                               | Boolean toggles                                                                                  |
-| `sp-switch`                                 | On/off feature toggles                                                                           |
-| `sp-action-group` (compact, toggle buttons) | Small mutually-exclusive mode sets in bar chrome (e.g. the Auto/Light/Dark color-scheme preview) |
-| `jx-styled-combobox`                        | Hybrid: fixed options with styled preview + free-text fallback                                   |
-| `textarea.field-input`                      | Multi-line text (code, JSON, expressions)                                                        |
+The catalogue is `ui.md` §5; this is which of it answers which question. Every row was a Spectrum element and is a kit one — the mapping is not a rename, because two of the old rows had no kit counterpart and were answered by composition instead.
+
+| Component                              | When to Use                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `jx-textfield`                         | Free-text string values                                                                          |
+| `jx-number-field`                      | Numeric values with optional min/max/step                                                        |
+| `jx-select`                            | Fixed option sets (enums)                                                                        |
+| `jx-checkbox`                          | Boolean toggles                                                                                  |
+| `jx-switch`                            | On/off feature toggles                                                                           |
+| `jx-action-group` (toggle buttons)     | Small mutually-exclusive mode sets in bar chrome (e.g. the Auto/Light/Dark color-scheme preview) |
+| `jx-color-field`                       | A colour, with its area, its sliders and the project's named swatches (`ui.md` §5.6)             |
+| a field beside a `jx-menu` trigger     | Hybrid: fixed options with a styled preview and a free-text fallback                             |
+| `textarea` with `[part="field-input"]` | Multi-line text (code, JSON, expressions)                                                        |
+
+The hybrid row is the one worth reading twice. It was `jx-value-selector`, a `LitElement` over `sp-picker`/`sp-textfield` that snapped to an option or accepted free text, and it is not a kit element — it is a field and a menu, composed by the two surfaces that wanted it. §6.2 records why that was a deletion rather than a port.
 
 ### 4.4 Debounce Pattern
 
@@ -254,31 +277,18 @@ let debounce;
 | `@input`  | Value is changing (keystroke)          | Debounced |
 | `@change` | Value committed (menu selection, blur) | Immediate |
 
-For `sp-picker` and menu-based inputs, use `@change` directly — no debounce needed. For `sp-textfield` and `textarea`, always debounce `@input`.
+For `jx-select` and menu-based inputs, use `@change` directly — no debounce needed. For `jx-textfield` and `textarea`, always debounce `@input`.
 
 ### 4.6 A Row Wraps; It Never Overflows
 
-Every form in the Inspector renders at a width the author chooses, and in two docks of very different
-sizes. A field that leaves the panel is not a cosmetic problem: the control is unreachable, and the
-author's only recourse is to widen a dock they may not have room to widen.
+Every form in the Inspector renders at a width the author chooses, and in two docks of very different sizes. A field that leaves the panel is not a cosmetic problem: the control is unreachable, and the author's only recourse is to widen a dock they may not have room to widen.
 
-- **A row is a wrapping flex row**, and the wrap threshold is a `flex-basis`, never a fixed width. The
-  same markup is then one line where there is room and a stack where there is not, without a second
-  template or a media query.
-- **`min-width: 0` on every flex child in the chain.** A flex item refuses to shrink below its
-  min-content by default, and a Spectrum field is 192px wide (`--spectrum-field-width`) before it
-  starts negotiating — one operand row of a mode picker, a type picker and a field therefore demands
-  ~360px in a 280px dock and simply overflows. This one declaration is the difference.
-- **A `flex` shorthand belongs in a row.** `.style-row` (§4.1) is `flex-direction: column`, so
-  `flex: 1` on one of its children is permission to grow TALL, not wide — which is how a text field
-  came to render 128px high beside a picker in the Logic tab. Widen a child of a `.style-row` with
-  `width: 100%`; spend a basis only inside a container that is genuinely a row.
-- **Long values ellipsize or wrap.** A `$ref` path, a formula and a component name are all
-  author-supplied and unbounded; none of them may set the width of the form that contains them.
+- **A row is a wrapping flex row**, and the wrap threshold is a `flex-basis`, never a fixed width. The same markup is then one line where there is room and a stack where there is not, without a second template or a media query.
+- **`min-width: 0` on every flex child in the chain.** A flex item refuses to shrink below its min-content by default, and a field with a `size` and a placeholder has a min-content width of its own before it starts negotiating — one operand row of a mode picker, a type picker and a field therefore demands ~360px in a 280px dock and simply overflows. This one declaration is the difference. It mattered most when a Spectrum field was 192px wide by token (`--spectrum-field-width`) whatever the dock; the kit's fields size to their container, so the rule is now a guard rather than a daily fight.
+- **A `flex` shorthand belongs in a row.** `.style-row` (§4.1) is `flex-direction: column`, so `flex: 1` on one of its children is permission to grow TALL, not wide — which is how a text field came to render 128px high beside a picker in the Logic tab. Widen a child of a `.style-row` with `width: 100%`; spend a basis only inside a container that is genuinely a row.
+- **Long values ellipsize or wrap.** A `$ref` path, a formula and a component name are all author-supplied and unbounded; none of them may set the width of the form that contains them.
 
-The rule is checkable without a browser — assert the structure that produces the layout, not computed
-pixels, which happy-dom does not lay out — but the judgement is not. A change here is looked at in a
-real browser at the narrowest dock the app allows and at a wide one.
+The rule is checkable without a browser — assert the structure that produces the layout, not computed pixels, which happy-dom does not lay out — but the judgement is not. A change here is looked at in a real browser at the narrowest dock the app allows and at a wide one.
 
 ---
 
@@ -286,30 +296,27 @@ real browser at the narrowest dock the app allows and at a wide one.
 
 ### 5.1 Structure
 
-Use Spectrum `sp-accordion` for collapsible sections in all panels.
+Use the kit's `jx-accordion` for collapsible sections in all panels (`ui.md` §5.3).
 
-```html
-<sp-accordion allow-multiple size="s">
-  <sp-accordion-item
-    label="Section Title"
-    ?open="${isOpen}"
-    @sp-accordion-item-toggle="${toggleHandler}"
-  >
-    <!-- section content -->
-  </sp-accordion-item>
-</sp-accordion>
+```json
+{
+  "tagName": "jx-accordion",
+  "multiple": true,
+  "size": "sm",
+  "children": [
+    {
+      "tagName": "jx-accordion-item",
+      "label": "Section Title",
+      "open": "${$scope/isOpen}",
+      "children": ["…"]
+    }
+  ]
+}
 ```
 
 ### 5.2 Styling
 
-```css
-.panel-class sp-accordion {
-  border: none;
-}
-.panel-class sp-accordion-item {
-  --spectrum-accordion-item-header-font-size: 11px;
-}
-```
+A section's look is the surface's own `style` block, keyed on `part` — the kit element carries no border of its own to remove, and its header text is `--jx-text-sm`. What this used to say instead is the shape of the difference: `.panel-class sp-accordion { border: none }` deleted a border the component drew, and `--mod-accordion-item-header-font-size` reached into it to re-size text, both from a stylesheet that had to know the component's internals to say anything at all.
 
 ### 5.3 State Tracking
 
@@ -319,11 +326,12 @@ Accordion open/closed state uses one of two patterns:
 
 ```javascript
 const collapsed = new Set();
-@sp-accordion-item-toggle=${() => {
+// The adapter's `onToggle` host callable, named by $ref in the document's handler position.
+export function onToggle(key) {
   if (collapsed.has(key)) collapsed.delete(key);
   else collapsed.add(key);
   rerender();
-}}
+}
 ```
 
 **State object** (for inspector sections that persist with the document):
@@ -337,45 +345,32 @@ const collapsed = new Set();
 
 ## 6. Component Inventory
 
-### 6.1 Spectrum Components in Use
+### 6.1 The Element Set
 
-Registered in `packages/studio/src/ui/spectrum.ts`:
+> **Status: Implemented.** One element family: the Jx UI kit, catalogued in `ui.md` §5.
 
-**Layout:** `sp-theme`, `sp-tabs`, `sp-tab`, `sp-tab-panel`, `sp-divider`
-**Inputs:** `sp-textfield`, `sp-number-field`, `sp-picker`, `sp-combobox`, `sp-checkbox`, `sp-switch`, `sp-field-label`, `sp-search`, `sp-help-text`
-**Actions:** `sp-action-button`, `sp-action-group`, `sp-action-bar`, `sp-picker-button`
-**Overlays:** `sp-overlay`, `sp-popover`, `sp-tooltip`
-**Dialogs:** `sp-dialog`, `sp-dialog-wrapper`, `sp-underlay`
-**Menus:** `sp-menu`, `sp-menu-item`, `sp-menu-divider`, `sp-menu-group`
-**Data:** `sp-accordion`, `sp-accordion-item`, `sp-swatch`, `sp-swatch-group`
-**Color:** `sp-color-area`, `sp-color-slider`, `sp-color-handle`
-**Icons:** 58 `sp-icon-*` components (workflow set)
+Studio's chrome is drawn by `@jxsuite/ui` and nothing else. `registerKit()` (`src/ui/kit.ts`) defines every element from the component documents the bundle carries and adopts the kit's theme, once, with no network — and there is no second registry beside it.
+
+This section used to be an INVENTORY: the 62 rows of `src/ui/spectrum.ts`, grouped by kind, with the note that it "shrinks as each surface moves". It reached zero. The file, the 36 `@spectrum-web-components` dependency entries behind it (50 resolved, and `colorjs.io`, `@lit-labs/virtualizer` and `lit` itself came out with them), the brand fragment that held the two families to one palette and `styles/spectrum.css` are all deleted, and the shipped `studio.js` fell 4140570 → 2640946 bytes with them, a third of the bundle.
+
+**What replaced the inventory is a ban, and that is the deliberate part.** A list of what is in use is only ever true on the day it is written — this one claimed 58 `sp-icon-*` components when the registry held 16. Three rules answer instead, each mechanical:
+
+- `scripts/check-styles.ts` fails on an `sp-` tag or a `--spectrum-*` token anywhere in the package, with an allow-list that is empty on purpose. Neither name fails loudly on its own: an `sp-` tag parses as an `HTMLUnknownElement` that paints nothing and swallows every event, and a `--spectrum-*` read silently takes its hex fallback and stops following the theme.
+- `.oxlintrc.json` refuses the module specifier, which is the door the family would come back through — one package reinstalled for one control brings the rest in as its own dependencies.
+- `scripts/check-icons.ts` fails on a `"tagName": "jx-*"` in a surface document that `KIT_TAGS` does not contain, which is the same silent-empty-box failure asked of the substrate that exists.
 
 ### 6.2 Custom Components
 
-Studio defines exactly two custom elements, both `LitElement`, both registered from the manual
-table in `src/ui/spectrum.ts` — there are no decorators anywhere in the package.
+> **Status: Implemented.** **Studio owns no custom elements.** Every element the chrome uses is a kit element — a Jx custom element in light DOM with `part` attributes as its only style hooks (`ui.md` §3.2) — and a surface is a document, not a class. `static styles` stays unused in Studio for the reason it always was: the design system is one cascade — now the kit's layer, with Studio's own unlayered rules above it.
 
-| Element             | Class             | File                       | Purpose                                                     |
-| ------------------- | ----------------- | -------------------------- | ----------------------------------------------------------- |
-| `jx-value-selector` | `JxValueSelector` | `src/ui/value-selector.ts` | Dual-mode picker/combobox: snaps to an option, or free-text |
-| `jx-color-popover`  | `JxColorPopover`  | `src/ui/color-selector.ts` | Colour area, sliders and swatches, kept in sync             |
+Studio defines zero custom elements. There is no `LitElement` subclass and no `customElements.define()` call anywhere in `packages/studio/src`, no decorators anywhere in the package, and `lit` itself is no longer a dependency — only `lit-html`, for the handful of imperative render roots §9.3 names. The assertion that used to hold this line was `tests/spectrum-registry.test.ts`, checking that the Spectrum manifest carried no `jx-` tag; the manifest is gone, and what holds it now is `scripts/check-surface-purity.ts` (a kit tag may not appear in a lit template) together with the typecheck having no `LitElement` to extend.
 
-**`jx-value-selector` API:**
+Two `LitElement`s used to live here and each was deleted rather than ported, because in both cases the class was the thing standing in for an element the kit did not have yet:
 
-- Properties: `value`, `placeholder`, `size`, `.options` (array)
-- Options format: `{ value, label, style? }` or `{ divider: true }`
-- Events: `change` (selection), `input` (typing)
-- Mode: auto-switches between `sp-picker` (value matches an option) and textfield-plus-dropdown
+- `jx-color-popover` (`src/ui/color-selector.ts`) — a colour area, its sliders and its swatches, kept in sync by hand. `ui.md` §5.6 landed the family, so the Inspector's Style and Content tabs each draw a `jx-color-field` in their own document. What survives in that module is `colorTokens()`, a projection of the colours the project has named, which is a question about the document rather than a control.
+- `jx-value-selector` (`src/ui/value-selector.ts`) — a dual-mode picker/combobox that snapped to an option or accepted free text. Both callers were converted away from it before it was deleted: the Style tab's unit row is `style-panel.json`'s `group` widget (a field beside a button that opens the kit menu), and the Logic tab's event name is the kit's menu plus the prompt dialog Studio already has. No template wrote the tag by the time it was deleted.
 
-**Both render into the light DOM** — `createRenderRoot() { return this; }` — and every new element
-must. Spectrum's theming reaches its descendants through `sp-theme`, and the whole 232 KB chrome
-stylesheet under `styles/` is written against a light tree; a shadow root cuts both off. That is
-also why `static styles` is not used here: the design system is one cascade, not per-component.
-
-Everything else in the shell is a plain function returning a `lit-html` template, rendered by its
-own module into its own root. A component class earns its keep when a surface owns local state that
-no store should hold — which is what both of these do — and not otherwise.
+A surface's local state does not earn a class. It belongs to the module that renders the surface, and the surface itself is a document; a class earns its keep only when a genuinely new ELEMENT is needed, and a new element belongs in the kit (`ui.md` §5), not here.
 
 ---
 
@@ -398,114 +393,77 @@ No formal spacing scale — use these established values consistently:
 
 ## 8. Interactive Patterns
 
-> **Status: Partial.** Selection and the canvas caret are built. **Drag and drop has no
-> non-dragging alternative**: the drag surface declares no roles, installs no keyboard path, and
-> announces nothing, so every reordering and insertion it offers is unavailable without a pointer.
-> The tree and layers panels are the counter-example — both carry full roving-tabindex keyboard
-> navigation — which is why the gap is a gap rather than a house style. See §14.
+> **Status: Partial.** Selection and the canvas caret are built. **Drag and drop has no non-dragging alternative**: the drag surface declares no roles, installs no keyboard path, and announces nothing, so every reordering and insertion it offers is unavailable without a pointer. The tree and layers panels are the counter-example — both carry full roving-tabindex keyboard navigation — which is why the gap is a gap rather than a house style. See §14.
 
 ### 8.1 Selection
 
-A canvas click does two things at once: it places the text caret at the clicked character and
-selects that block. There is no separate gesture for "select" versus "edit".
+A canvas click does two things at once: it places the text caret at the clicked character and selects that block. There is no separate gesture for "select" versus "edit".
 
 - Canvas click resolves the target through its stamped `data-jx-path`
 - Selection path format: `["children", 0, "children", 2]`
 - Selection highlight: 2px solid accent outline
 - Hover highlight: 1px dashed accent outline at reduced opacity
-- A block may also be selected WITHOUT a caret (from the layers panel, or by a structural edit
-  moving the selection); surfaces that act on a text range must handle that state
+- A block may also be selected WITHOUT a caret (from the layers panel, or by a structural edit moving the selection); surfaces that act on a text range must handle that state
 
-**Selection is a list.** `session.selection` is a `JxPath[]`; `[]` means nothing is selected and the
-root path is `[[]]`. The first entry is the range anchor, the last is the **primary**, and every
-surface that addresses one node resolves it through a single shared function so that a
-one-element selection is indistinguishable from the single-path field it replaced.
+**Selection is a list.** `session.selection` is a `JxPath[]`; `[]` means nothing is selected and the root path is `[[]]`. The first entry is the range anchor, the last is the **primary**, and every surface that addresses one node resolves it through a single shared function so that a one-element selection is indistinguishable from the single-path field it replaced.
 
-- **Shift extends from the anchor; Ctrl/Cmd accumulates.** A range is authored in the **Outline**,
-  because a list of rows is where "everything between these two" has an unambiguous meaning.
-  Accumulate works wherever an element can be clicked — the Outline and the **canvas** both toggle a
-  node into the set. A marquee is a third gesture and is deliberately absent: a half-built marquee
-  in the canvas hit test is worse than none.
-- **A command that cannot express itself over several targets stays single-target and says so.**
-  "Move six nodes up one slot" has no answer when they are not siblings; those verbs act on the
-  primary rather than guessing.
-- **A structural command over a selection is one transaction**, so the batch is one undo step, and
-  it must not be able to leave the document partly mutated and unrecorded — an edit the author can
-  see but cannot undo or save is worse than a refused edit.
+- **Shift extends from the anchor; Ctrl/Cmd accumulates.** A range is authored in the **Outline**, because a list of rows is where "everything between these two" has an unambiguous meaning. Accumulate works wherever an element can be clicked — the Outline and the **canvas** both toggle a node into the set. A marquee is a third gesture and is deliberately absent: a half-built marquee in the canvas hit test is worse than none.
+- **A command that cannot express itself over several targets stays single-target and says so.** "Move six nodes up one slot" has no answer when they are not siblings; those verbs act on the primary rather than guessing.
+- **A structural command over a selection is one transaction**, so the batch is one undo step, and it must not be able to leave the document partly mutated and unrecorded — an edit the author can see but cannot undo or save is worse than a refused edit.
 
 ### 8.2 Drag and Drop
 
-Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering and canvas element manipulation.
+Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering, canvas element manipulation, the tab strip (reorder, and a move between panes) and the pane grid's right-edge drop zone (creating a second pane).
 
 - Drag indicator: `.dragging` class (opacity 0.4)
 - Drop target: `.drop-target` class (accent-15 background, dashed outline)
 - Drop line: 2px tall accent bar between elements
-- On the CANVAS, a drag may be initiated only from the block action bar's drag handle. Pressing and
-  dragging within text selects text — the canvas is a writing surface first
+- On the CANVAS, a drag may be initiated only from the block action bar's drag handle. Pressing and dragging within text selects text — the canvas is a writing surface first
 
 #### Moving without dragging (WCAG 2.2 SC 2.5.7)
 
 > **Status: Implemented.**
 
-**Every move a drag performs is also reachable without one.** SC 2.5.7 asks that any function
-operated by a dragging movement have a single-pointer alternative, and the alternative here is the
-pair the editor already had: **cut** the node, select the destination, **paste**. Both are commands,
-so both have a chord, a context-menu item and a palette entry; both run through the same document
-mutation the drag does, and both report through `notify`, so a screen-reader user is told the move
-happened.
+**Every move a drag performs is also reachable without one.** SC 2.5.7 asks that any function operated by a dragging movement have a single-pointer alternative, and the alternative here is the pair the editor already had: **cut** the node, select the destination, **paste**. Both are commands, so both have a chord, a context-menu item and a palette entry; both run through the same document mutation the drag does, and both report through `notify`, so a screen-reader user is told the move happened.
 
-Deliberately **not** an APG keyboard-drag mode. Building a grab/move/drop state machine would add a
-mode with its own keys, its own escape semantics and its own announcements — a second way to do
-something the editor can already do, and one more thing to keep correct. The cheaper answer is to
-say plainly that cut and paste ARE the alternative, and to make sure they announce.
+Deliberately **not** an APG keyboard-drag mode. Building a grab/move/drop state machine would add a mode with its own keys, its own escape semantics and its own announcements — a second way to do something the editor can already do, and one more thing to keep correct. The cheaper answer is to say plainly that cut and paste ARE the alternative, and to make sure they announce.
 
-The block action bar's **Move up** / **Move down** cover the common same-parent case in one
-keystroke, without a clipboard round trip.
+The block action bar's **Move up** / **Move down** cover the common same-parent case in one keystroke, without a clipboard round trip.
+
+**Moving a tab between panes has two non-drag equivalents.** **Split Right** (`pane.splitRight`, `⌘\`) moves the focused pane's active tab to a new pane at the grid's right edge — the keyboard form of dragging a tab onto that edge — and a file row's **Open to the Side** (`document.openToSide`) is the Files tree's own route to the same `receivingPane` a cross-pane drag resolves through.
 
 #### External (OS) file drags
 
-Files dragged in from the desktop are NOT pragmatic sources — they arrive as native `dragover`/
-`drop` events and need their own handlers. Every such handler opens by testing
-`dataTransfer.types.includes("Files")`, so an in-app pragmatic drag falls straight through.
+Files dragged in from the desktop are NOT pragmatic sources — they arrive as native `dragover`/ `drop` events and need their own handlers. Every such handler opens by testing `dataTransfer.types.includes("Files")`, so an in-app pragmatic drag falls straight through.
 
 - `dropEffect` is `"copy"` (never `"move"` — the file stays where it was)
-- A handler that accepts the drag MUST `preventDefault()` on `dragover`, or the browser shows the
-  "not allowed" cursor and swallows the drop
-- Directory rows reuse the tree's own `.drag-over` / `.drag-over-root` highlight
+- A handler that accepts the drag MUST `preventDefault()` on `dragover`, or the browser shows the "not allowed" cursor and swallows the drop
+- Directory rows reuse the tree's own drop highlight, which is `data-drop` on the `jx-tree-item` and `data-drop` on the `jx-tree` — attributes the ELEMENT styles and deliberately does not BIND, because a prop mirroring one would be a second writer that a repaint clears mid-drag (`ui.md` §5.5). Two classes stood here before the kit did, and a state a handler adds and forgets to take off is exactly the stale affordance a cancelled drag used to leave on screen
 - Row handlers `stopPropagation()`, so a drop on a row never also fires the container's handler
-- On the CANVAS exactly one affordance draws at a time: `.canvas-replace-target` (a solid accent box
-  over the image the drop would replace) or the usual `.canvas-drop-indicator` (where a new element
-  would be inserted). They answer different questions; both at once would be ambiguous
-- A drop inside the canvas is `preventDefault()`ed in the capture phase before the contenteditable
-  root sees it, so the browser never inserts its own `blob:` image alongside the real mutation
+- On the CANVAS exactly one affordance draws at a time: `.canvas-replace-target` (a solid accent box over the image the drop would replace) or the usual `.canvas-drop-indicator` (where a new element would be inserted). They answer different questions; both at once would be ambiguous
+- A drop inside the canvas is `preventDefault()`ed in the capture phase before the contenteditable root sees it, so the browser never inserts its own `blob:` image alongside the real mutation
 
 ### 8.3 The Canvas Caret
 
-The canvas render container is a single `contenteditable`; individual blocks are not toggled in and
-out of it. A caret inside a block IS the edit — there is no session to enter, and no modal state.
+The canvas render container is a single `contenteditable`; individual blocks are not toggled in and out of it. A caret inside a block IS the edit — there is no session to enter, and no modal state.
 
 - The caret lands where the author clicked, never at the end of the block
 - Motion, selection and IME are the browser's; the studio intercepts only structural intent
 - Component instances are `contenteditable="false"` islands the caret treats as atomic
 - The active block carries `data-jx-active-block` for affordances (the empty-block slash hint)
-- Blur does NOT end anything: the parent's toolbar takes focus on every click, and the caret must
-  survive that
+- Blur does NOT end anything: the parent's toolbar takes focus on every click, and the caret must survive that
 - Escape dismisses the caret; text is committed, not discarded
 
 ### 8.4 Menus
 
-Rendered with `sp-menu` inside `sp-overlay` / `sp-popover`, mounted through `renderPopover` (§8.7).
-There are two triggers, and they are different contracts:
+> **Status: Implemented.** Every menu in Studio is a `jx-menu` — a native `popover` panel, its rows `jx-menu-item`s and its submenus child menus in the same hierarchy (`ui.md` §5.1, §6). The **element context menu is the first surface built this way**: `src/surfaces/menu.json` is the document, `src/surfaces/menu.ts` the adapter that projects a placement's records into rows and mounts the document into a `getLayerSlot("popover", "context")` slot, so the region is `overlay.menu:context` and `layers.ts` remains the only overlay API. The kit owns the keyboard contract, light dismissal and Escape through the platform's popover; the adapter owns nothing but the projection, the origin and what runs on `select`, and binds no document listener. The panel is placed by explicit viewport coordinates and clamped after a frame until CSS anchor positioning lands. The **rail's ⚙ Settings menu is the second**, through the same surface: its rows are the projection `panels/settings-menu.ts` builds, a row that takes a `section` argument carries its sections as `children`, and the surface renders them as a child `jx-menu` in the row's `submenu` slot — so a parent row runs its own command and owns a submenu because the element works that way, not because this file hand-rolls a second popover around it. The scope is reactive: a section registering while the menu is up reaches it through `setRows()`, and the keyed rows keep their nodes and the caret. The menu hangs off the gear with its bottom flush with the rail's, which is also the `floor` the kit keeps every submenu above. The **Files tree's per-row menu is the third**, and it is what settles the mixed case: the tree's own verbs — Open, New File…, Upload Files…, Rename…, Delete — are rows with a `run` of their own, and the declared `context/file` records sit between them, so one list carries both without a second answer to "what can this row do". The hand-written clamp went with the `sp-popover` it replaces: a `ref` that measured the panel a frame after it opened and pushed it back inside the viewport, which the kit now does for every menu. The **tab strip's two are the last to arrive**: the overflow list and the `context/tab` menu, each a projection this strip hands over rather than a panel it draws, which is why the strip's own chrome being a document (§9.3) never made its menus one — a list of commands is a surface of its own rather than part of the strip. Two things went with them that the kit already owned: the clamp, again, and the `Math.min(clientX, innerWidth - 4)` guess that stood in for it; and the `context/tab` menu's stated boolean, which had to be a sentence in a row's description line because `sp-menu` reassigned every item's role one frame after connect whenever the menu declared no `selects`, and `selects` would have made all six rows checkboxes. `jx-menu-item` derives `role` and `aria-checked` from `checked`, so a row that names a state is a real `menuitemcheckbox` and the five that name none stay plain. That was the last one, and there is no lit popover left in the package: `surfaces/menu.ts` is the one way a menu opens. Nothing below about triggers, placements, the chord, or the submenu rule changes with the element.
 
-- **Right-click**, in the canvas or on a row. The menu appears at the pointer and is clamped into
-  the viewport.
-- **A menu button** — a control that opens a menu instead of running a command. It carries
-  `aria-haspopup="menu"` and a live `aria-expanded`, and it prints no chord of its own, because the
-  chords belong to the rows. The rail foot's ⚙ **Settings** is the worked example.
+Rendered as a `jx-menu` in a popover layer slot, opened through `openMenu()` (§8.7). There are two triggers, and they are different contracts:
 
-**A menu's rows come from a placement** (§12.1), never from an array beside the trigger (§12.5).
-Dividers fall where the record's `group` changes — or, where a placement admits two levels, where
-the **level** changes, which is the same boundary the Navigator rail draws between its own groups.
+- **Right-click**, in the canvas or on a row. The menu appears at the pointer (`origin`) and is clamped into the viewport.
+- **A menu button** — a control that opens a menu instead of running a command. It carries `aria-haspopup="menu"` and a live `aria-expanded`, and it prints no chord of its own, because the chords belong to the rows. The rail foot's ⚙ **Settings** is the worked example. A caller that names the `opener` and no coordinates gets the menu hung below it by the platform's anchor positioning (ui.md §5.1), with the opener's box as the fallback coordinates; a caller that names an `origin` or a `place` meant that position, and a `floor` keeps the stack on its coordinates.
+
+**A menu's rows come from a placement** (§12.1), never from an array beside the trigger (§12.5). Dividers fall where the record's `group` changes — or, where a placement admits two levels, where the **level** changes, which is the same boundary the Navigator rail draws between its own groups.
 
 #### Submenus
 
@@ -513,144 +471,67 @@ A row may own a submenu. It is a second popover, and the levels form a stack:
 
 - One submenu open at a time. Opening another, or entering a sibling row, closes the first.
 - `ArrowRight` opens and moves in; `ArrowLeft` closes and returns focus to the parent row.
-- `Escape` closes **one level** — the submenu if one is open, the whole menu otherwise. `Tab`
-  dismisses everything.
-- **Outside-click dismissal is one handler for the whole stack.** Per-popover dismissal treats a
-  click in the submenu as outside the root, and removing the root's node means the submenu row's
-  own `click` never arrives — so following a section silently does nothing.
-- A submenu row is named by the **argument value** it passes, not by a reworded command title. That
-  is state, so it does not violate §12.3.
+- `Escape` closes **one level** — the submenu if one is open, the whole menu otherwise. `Tab` dismisses everything.
+- **Outside-click dismissal is one handler for the whole stack.** Per-popover dismissal treats a click in the submenu as outside the root, and removing the root's node means the submenu row's own `click` never arrives — so following a section silently does nothing.
+- A submenu row is named by the **argument value** it passes, not by a reworded command title. That is state, so it does not violate §12.3.
 
-> **A parent row that owns a submenu still runs its own command.** This is a deliberate deviation
-> from the WAI-ARIA APG menu pattern, which gives such a row no action of its own, and it is why
-> these menus are hand-rolled: Spectrum's stock `slot="submenu"` enforces the APG reading outright —
-> `Menu.handlePointerBasedSelection` bails on `hasSubmenu` so the parent emits no `change`, and
-> `MenuItem.handleSubmenuChange` reports the **parent's** value to the outer menu, which would break
-> the deep link as well. Nothing is unreachable: Enter runs the row, ArrowRight reaches every child,
-> `aria-haspopup` announces the popup, and every child has a second door of its own. Recorded again
-> in §14.
+> **A parent row that owns a submenu still runs its own command.** This is a deliberate deviation from the WAI-ARIA APG menu pattern, which gives such a row no action of its own, and it is why these menus are hand-rolled: Spectrum's stock `slot="submenu"` enforces the APG reading outright — `Menu.handlePointerBasedSelection` bails on `hasSubmenu` so the parent emits no `change`, and `MenuItem.handleSubmenuChange` reports the **parent's** value to the outer menu, which would break the deep link as well. Nothing is unreachable: Enter runs the row, ArrowRight reaches every child, `aria-haspopup` announces the popup, and every child has a second door of its own. Recorded again in §14.
 
 ### 8.5 Slash Menu
 
-Block insertion menu triggered by typing `/` at a block start or after whitespace. Positioned
-absolutely below the cursor. Filtered by typing after the slash.
+Block insertion menu triggered by typing `/` at a block start or after whitespace. Positioned absolutely below the cursor. Filtered by typing after the slash.
 
 ### 8.6 Floating Action Bar
 
 Fixed-position toolbar that follows the selected element:
 
 - Shows element tag name, drag handle, and context actions
-- ONE shape: the bar does not rearrange itself when the author starts typing. Controls that cannot
-  act are disabled, not removed — a toolbar whose buttons move under the cursor is worse than one
-  with a greyed button
-- **It steps aside when the author leaves the canvas.** A pointerdown in parent chrome outside the
-  canvas hides the bar; a selection change or a pointerdown back in the canvas brings it back. The
-  bar is `position: fixed` and clamped into the window, so a bar that outlived the author's attention
-  sat over the Document Header, the pane context bar and the docks — chrome the author was reaching
-  for. Hiding it never clears the SELECTION: the Inspector's whole job is editing what is selected
+- ONE shape: the bar does not rearrange itself when the author starts typing. Controls that cannot act are disabled, not removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button
+- **It steps aside when the author leaves the canvas.** A pointerdown in parent chrome outside the canvas hides the bar; a selection change or a pointerdown back in the canvas brings it back. The bar is `position: fixed` and clamped into the window, so a bar that outlived the author's attention sat over the Document Header, the pane context bar and the docks — chrome the author was reaching for. Hiding it never clears the SELECTION: the Inspector's whole job is editing what is selected
 - Z-index: 100
 - Shadow: standard elevation shadow
 
 ### 8.7 Dialogs and Overlay Layers
 
-Studio renders every transient surface into one of three fixed, full-viewport hosts declared in
-`packages/studio/index.html` — `#layer-popover`, `#layer-modal`, `#layer-dialog` — bound once at boot
-by `initLayers()`. Each host is `pointer-events: none`; individual slots re-enable pointer events, so
-the layers never swallow canvas input.
+> **Status: Implemented.** The three flows — `showConfirmDialog`, `showSaveDiscardDialog` and `showPromptDialog` — are on the native substrate: one document, `src/surfaces/dialog.json`, over the kit's `jx-dialog`, mounted by `src/surfaces/dialog.ts` into the dialog layer and opened with `showModal()`, so the platform owns inertness, focus restoration and Escape, and the flows keep only their state machines (which answer resolves what, when a prompt's value is refused). A prompt's format choice is `jx-select part="choice"` (`ui.md` §5.1), and the projection it takes carries no `selected` at all: the flow names the chosen row's VALUE beside the list, once, and the element's sidecar keeps the control on it. The `selected` attribute it replaced was right up to the reader's first pick and wrong after it, because the pick sets the option's dirtiness flag and the attribute stops moving selectedness from that moment — and the `value` property binding beside it needed the caller to defer its write a microtask so the option it named would exist. Neither ordering is a caller's problem now. A choice's rows are its `options`; a `dividerBefore` on one of them still draws nothing, because a delimiter in that element belongs to a GROUP and carries a heading. **`openModal` is gone**, with `ModalOptions` and the hand-rolled Tab trap: every persistent modal is a `jx-dialog` surface document mounted into the modal layer (`surfaces/progress-modal.ts`, `surfaces/publish.ts`), so `showModal()` supplies modality, focus containment, focus restoration and Escape, and the helper was deleted when its last caller was converted rather than parked. **`showDialog` is gone**, with the slot helper under it — the `role`/`aria-modal` stamp, the accessible name scraped off a wrapper's `headline` after render, the deferred focus move, the focus restore and the Escape-to-`close` translation. Every line of that existed because a bespoke body is arbitrary markup rather than a dialog element, and the platform's `<dialog>` supplies all of it. Its last caller was Open Project's _New Window / This Window / Cancel_ question, which was never bespoke — a headline, a sentence and three answers is `surfaces/dialog.json` — so `editor/shortcuts.ts` calls `openDialogSurface` and the helper was deleted rather than parked (§12.5). A body genuinely richer than a sentence is an ISLAND: `message` still takes a lit template and the flow renders it into the document's `[part="island"]` (§9.4). **`renderPopover` is gone too**, and for the same reason `openModal` was: `surfaces/menu.ts` is the one way a popover opens, so when the tab strip's overflow list and `context/tab` menu became projections handed to it (§8.4) the helper had no caller left, and a lit popover kept alive for a menu that no longer wants one is a second answer to a settled question. Anchored panels are `getLayerSlot("popover", id)` plus a mounted document; the rAF-armed outside-click listener it carried is the platform's light dismissal now. The contract below stays as stated. `packages/studio/src/ui/layers.ts` keeps every export named below; its internals are native `<dialog>` and `popover` (`ui.md` §6). `isModalOpen()` reads `dialog[open]` in attribute form, because a test DOM never matches `:modal`.
+
+Studio renders every transient surface into one of three fixed, full-viewport hosts declared in `packages/studio/index.html` — `#layer-popover`, `#layer-modal`, `#layer-dialog` — bound once at boot by `initLayers()`. Each host is `pointer-events: none`; individual slots re-enable pointer events, so the layers never swallow canvas input.
 
 `packages/studio/src/ui/layers.ts` is the only sanctioned way to open one:
 
-| Helper                  | Resolves                               | Use for                                          |
-| ----------------------- | -------------------------------------- | ------------------------------------------------ |
-| `showDialog<T>`         | `T` (whatever `done()` is called with) | Bespoke dialog bodies (multi-field forms)        |
-| `showConfirmDialog`     | `boolean`                              | Confirm / cancel, `destructive: true` for danger |
-| `showSaveDiscardDialog` | `"save" \| "discard" \| "cancel"`      | Unsaved-work decisions                           |
-| `showPromptDialog`      | `string \| null` (trimmed)             | Single-value text entry                          |
-| `openModal`             | handle with `update()` / `close()`     | Persistent modals (New Project, About)           |
-| `renderPopover`         | handle with `update()` / `dismiss()`   | Anchored popovers and context menus              |
+| Helper                  | Resolves                          | Use for                                          |
+| ----------------------- | --------------------------------- | ------------------------------------------------ |
+| `showConfirmDialog`     | `boolean`                         | Confirm / cancel, `destructive: true` for danger |
+| `showSaveDiscardDialog` | `"save" \| "discard" \| "cancel"` | Unsaved-work decisions                           |
+| `showPromptDialog`      | `string \| null` (trimmed)        | Single-value text entry                          |
 
-**Native browser dialogs are not permitted.** `window.prompt()`, `window.confirm()`, and
-`window.alert()` are unstyled, untranslatable, block the entire renderer, and are unavailable in
-sandboxed contexts. The `no-alert` lint rule (oxlint `restriction` category, enabled repo-wide in
-`.oxlintrc.json`) enforces this; suppressing it requires justification in the change set.
+**Native browser dialogs are not permitted.** `window.prompt()`, `window.confirm()`, and `window.alert()` are unstyled, untranslatable, block the entire renderer, and are unavailable in sandboxed contexts. The `no-alert` lint rule (oxlint `restriction` category, enabled repo-wide in `.oxlintrc.json`) enforces this; suppressing it requires justification in the change set.
 
 `showPromptDialog(headline, opts)` is the replacement for `window.prompt()`:
 
-- `value` pre-fills the field; `select` controls what is highlighted on focus — `"all"`, `"stem"`
-  (everything before the last dot, so renaming a file keeps its extension), or `"none"`.
-- `validate(value, chosen)` returns `""` for valid input, or a message. A non-empty message renders
-  as `sp-help-text[slot="negative-help-text"]`, marks the field `invalid`, and blocks confirmation
-  without closing the dialog. The default rejects blank input.
-- `message` renders explanatory copy above the field; `placeholder` (a string, or a function read on
-  every render), `confirmLabel`, and `cancelLabel` follow the usual Spectrum semantics.
+- `value` pre-fills the field; `select` controls what is highlighted on focus — `"all"`, `"stem"` (everything before the last dot, so renaming a file keeps its extension), or `"none"`.
+- `validate(value, chosen)` returns `""` for valid input, or a message. A non-empty message renders as the field's own error text (`jx-textfield`'s `[part="help"]`), marks the field `invalid`, and blocks confirmation without closing the dialog. The default rejects blank input.
+- `message` renders explanatory copy above the field; `placeholder` (a string, or a function read on every render), `confirmLabel`, and `cancelLabel` name the dialog's answers and are drawn by `jx-dialog`.
 - Confirming resolves the **trimmed** value; cancel, close, and dismissal all resolve `null`.
-- <kbd>Enter</kbd> in the field confirms. The field takes focus on open, once — re-renders triggered
-  by validation must not steal the caret back.
-- `choice` adds a picker ABOVE the field whose selection the dialog **owns** — its value reaches
-  `validate` as the second argument, and picking a row re-runs it. Owning it is the point: `check`
-  and the in-place re-render are private to the helper, so a caller-built control could change the
-  selection but could never make the field's refusal catch up with it. The New File format picker is
-  exactly that case — switching from Markdown to JSON changes whether the typed name is already
-  taken, with no keystroke to notice.
-  - `options` is a **function**, read on every render. A snapshot taken when the options object was
-    built freezes a list the project may still be loading.
-  - A pick always re-renders, unlike a keystroke, which re-renders only when the error string
-    changed: a pick can alter the placeholder, the selected row and the composed value with the
-    error text unchanged.
-  - A pick REFRESHES an error already on screen and never mints the first one. A dialog that opens
-    on a valid prefill must not paint a complaint under a field nobody has touched; the confirm
-    still refuses, because it validates unconditionally.
-  - The `sp-textfield` stays in ONE template position in every mode. A conditional branch builds a
-    new element, re-fires the field ref, hits the focus latch and strands the caret mid-name.
-  - The picker carries no focusing ref, and <kbd>Enter</kbd> stays bound to the field: `sp-picker`
-    does not stop Enter propagating, so a wrapper-level handler would confirm the dialog out from
-    under an open menu. It does stop <kbd>Escape</kbd>, so an Escape closing the menu does not reach
-    the dialog.
+- <kbd>Enter</kbd> in the field confirms. The field takes focus on open, once — re-renders triggered by validation must not steal the caret back.
+- `choice` adds a picker ABOVE the field whose selection the dialog **owns** — its value reaches `validate` as the second argument, and picking a row re-runs it. Owning it is the point: `check` and the in-place re-render are private to the helper, so a caller-built control could change the selection but could never make the field's refusal catch up with it. The New File format picker is exactly that case — switching from Markdown to JSON changes whether the typed name is already taken, with no keystroke to notice.
+  - `options` is a **function**, read on every render. A snapshot taken when the options object was built freezes a list the project may still be loading.
+  - A pick always re-renders, unlike a keystroke, which re-renders only when the error string changed: a pick can alter the placeholder, the selected row and the composed value with the error text unchanged.
+  - A pick REFRESHES an error already on screen and never mints the first one. A dialog that opens on a valid prefill must not paint a complaint under a field nobody has touched; the confirm still refuses, because it validates unconditionally.
+  - The field stays in ONE position in every mode. A conditional branch builds a new element, re-fires the field ref, hits the focus latch and strands the caret mid-name.
+  - The choice carries no focusing ref, and <kbd>Enter</kbd> stays bound to the field. This was a Spectrum constraint before it was a design one: `sp-picker` did not stop Enter propagating, so a wrapper-level handler would confirm the dialog out from under an open menu, and it did stop Escape, so an Escape closing the menu never reached the dialog. `jx-select` is a native `<select>`, whose popup the platform owns, and the rule survives because the reason under it does: a key that means something to an open list must not also mean something to the dialog behind it.
 
-Dialog attributes are kebab-case on `sp-dialog-wrapper` (`confirm-label`, `cancel-label`,
-`secondary-label`). The camelCase property names are not observed attributes; using them silently
-renders a dialog with no buttons.
+**Modal surfaces own the keyboard, and the element owns it now.** The layer stack used to: `showDialog` was a thin wrapper over one internal slot helper so that no lit body could ship without focus handling, and the three bullets below are what that helper did. Every one of them is the platform's on a `jx-dialog` opened with `showModal()` — inertness, focus containment, the initial focus and the restore — so the helper went with its last caller and none of it is reimplemented anywhere. The bullets are kept as the CONTRACT a modal surface must meet, not as a description of code.
 
-**Modal surfaces own the keyboard.** Studio opens `sp-dialog-wrapper` through its `open` attribute
-rather than Spectrum's `sp-overlay` (this layer stack owns stacking), and the wrapper only manages
-focus when an overlay drives it. The layer stack therefore does it, once: `showDialog` and
-`openModal` are both thin wrappers over one internal slot helper, so no surface can ship without the
-machinery and no body hand-rolls its own.
-
-- On open the slot moves focus into itself — the first enabled focusable in the body, else the
-  dialog wrapper's own cancel button (DialogWrapper renders cancel → secondary → confirm, so the
-  first shadow button is the least destructive landing spot), else the slot itself, which carries
-  `tabindex="-1"` so a body of static content (a progress spinner) still receives keys. A body that
-  already claimed focus (`showPromptDialog`'s field) keeps it.
+- On open the surface moves focus into itself — the first enabled focusable in the body, else the dialog's own cancel button (the footer is drawn cancel → secondary → confirm, so the first button is the least destructive landing spot), else the dialog itself, so a body of static content (a progress spinner) still receives keys. A body that already claimed focus (`showPromptDialog`'s field) keeps it.
 - On close the slot hands focus back to whatever held it before the surface opened.
-- <kbd>Escape</kbd> is centralised on the slot. In `showDialog` it fires the wrapper's `close`
-  event, so each helper's own `@close` binding decides what "dismissed" resolves to; a bespoke body
-  with no `sp-dialog-wrapper` owns its own keys.
+- <kbd>Escape</kbd> arrives as the platform's `cancel` on the dialog element, and each flow's own handler decides what "dismissed" resolves to. Nothing translates a key into a synthetic event on the way, and no slot runs a keydown listener that a body's own keys have to get past.
 
-`openModal(template, opts)` adds the rest of the modal contract **at the wrapper**, never in the
-body:
+**Nothing in Studio traps <kbd>Tab</kbd> any more.** The slot helper used to, for `openModal` alone, and the trap was deleted with it: a persistent modal is a `jx-dialog` surface opened with `showModal()`, and a modal `<dialog>` makes the rest of the page inert by itself — the containment is the platform's, not a light-DOM cycle's. `showDialog` never trapped either, for a reason that outlived it: its action buttons lived in a Spectrum shadow root a light-DOM cycle cannot enumerate, so a trap would have stranded the caret on the body and never reached Cancel. The kit's elements render into light DOM and there is no shadow root left to be stranded outside, but nothing reintroduces the trap: what answers for a screen reader is the dialog element's own `aria-modal`, which constrains the virtual cursor a trap could never reach.
 
-- `opts.label` is **required** and becomes `aria-label` on the slot, which is also the
-  `role="dialog"` / `aria-modal="true"` element. A modal body must not declare its own `role` — the
-  duplicate would nest one dialog inside another.
-- <kbd>Tab</kbd> and <kbd>Shift</kbd>+<kbd>Tab</kbd> cycle the body's enabled focusables, wrapping at
-  both ends; with nothing focusable the caret stays on the slot. Tabbing out of a surface the mouse
-  cannot leave either would strand the keyboard behind the underlay. `showDialog` does **not** trap:
-  its action buttons live in a shadow root a light-DOM cycle cannot enumerate, so a trap there would
-  strand the caret on the body and never reach Cancel.
-- <kbd>Escape</kbd> dismisses. `opts.onDismiss` overrides what that runs — pass the call site's own
-  close function when it keeps bookkeeping (a module-level handle to clear); the default is the
-  handle's `close()`. `opts.dismissible: false` opts out entirely, for a modal that must not vanish
-  mid-flight.
-- Dismissal `preventDefault`s and stops propagation, so the same keystroke does not ALSO clear the
-  canvas selection behind the underlay.
+A persistent modal is therefore a surface document, and the contract it once got from the helper it now gets from the element: the accessible name is the dialog's headline, the `role`/`aria-modal` pair is `jx-dialog`'s own (a body must not declare a second one, which would nest a dialog inside a dialog), focus goes back to the opener on close, and <kbd>Escape</kbd> arrives as the platform's `cancel` for the flow to answer. A flow that must not vanish mid-flight answers it with something other than a close — `surfaces/progress-modal.json` maps Escape onto _run in the background_, which stops the blocking rather than the work.
 
-`isModalOpen()` reports whether a surface with an underlay is up — a `showDialog` dialog, or an
-`openModal` body that renders its own `sp-underlay`. It is derived from the live DOM, not a
-registration counter, so the rule is simply _whatever blocks the mouse blocks the keyboard_: the
-app-level keydown handlers (`editor/shortcuts.ts`, `panels/block-action-bar.ts`) return early while
-it is true. Without that gate, <kbd>Delete</kbd>, <kbd>Enter</kbd>, ⌘S, ⌘W and ⌘Z keep driving the
-document behind a surface the author cannot even click on.
+`isModalOpen()` reports whether a surface with an underlay is up — an open `dialog` in either the dialog or the modal layer. It read `jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]`, and the two Spectrum halves were kept deliberately while Spectrum was registered, on the argument that the question is about the live DOM and it cost nothing to keep answering for an element a surface could still put in a layer. **Removal inverts that argument rather than merely retiring it**: `sp-underlay` is no longer an element anybody can construct, so it parses as an `HTMLUnknownElement` that paints nothing and blocks nothing, and a match on it would be a FALSE positive — the shortcuts would stand down for a scrim that is not there, and ⌘S would stop working under a stray tag. `dialog[open]` replaces both, and it is the substrate rather than a second vocabulary. It is derived from the live DOM, not a registration counter, so the rule is simply _whatever blocks the mouse blocks the keyboard_: the app-level keydown handlers (`editor/shortcuts.ts`, `panels/block-action-bar.ts`) return early while it is true. Without that gate, <kbd>Delete</kbd>, <kbd>Enter</kbd>, ⌘S, ⌘W and ⌘Z keep driving the document behind a surface the author cannot even click on.
 
 - Auto-hides when no selection
 
@@ -678,54 +559,37 @@ S.document.children[0].style.color = "red";
 - Each entry snapshots `{ document, selection }`
 - `undo()` / `redo()` from `state.js`
 
-**History covers project documents too.** `project.json` is a Tab (`studio.md` §17), so a settings
-mistake is undone with the same chord as a document mistake. This is not a convenience: it is the
-precondition for making configuration non-modal at all. A surface that can change the file defining
-the project, with no undo behind it, is more dangerous the easier it is to reach — so recoverability
-lands before, not after.
+**History covers project documents too.** `project.json` is a Tab (`studio.md` §17), so a settings mistake is undone with the same chord as a document mistake. This is not a convenience: it is the precondition for making configuration non-modal at all. A surface that can change the file defining the project, with no undo behind it, is more dangerous the easier it is to reach — so recoverability lands before, not after.
 
-A batch of related edits is **one** entry, and a failed write leaves no entry at all: the document,
-its frontmatter, the selection and the dirty flag are all restored. A change the author can see but
-cannot undo or save is worse than a refused change.
+A batch of related edits is **one** entry, and a failed write leaves no entry at all: the document, its frontmatter, the selection and the dirty flag are all restored. A change the author can see but cannot undo or save is worse than a refused change.
 
 ### 9.3 Render Orchestration
 
-**There is no root render, and no central dispatcher.** The description this section used to carry —
-an `update()` that selectively re-renders three regions — has not matched the code for some time.
-What actually runs is about thirty independent pairs, each a module-scope `effectScope` holding one
-`effect()` that reads its own dependency list and calls one `litRender()` into its own host.
+> **Status: Implemented.** **Every surface is `src/surfaces/*.json` — the directory is the list, and this section deliberately does not repeat it.** It named each one inline while there were eight; there are 88, and a hand-kept second copy of a list the filesystem already holds is the same defect §12 forbids for actions. What is normative is the SHAPE below, not the membership. A surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. What lit still renders is named and bounded **by a gate rather than by this sentence**: `scripts/check-lit-conventions.ts`'s `LIT_TEMPLATE_AUTHORS` carries every module that may still write a template, each with the reason it cannot be a document, and the list only ratchets down — a module that starts drawing has to argue for an entry, and one that stops must leave. It named four when this was written: Tabulator's cell editors, the Activity panel's two seam containers, the frame's overlay layer hosts, and one rich confirm body §9.4 sanctions as an island. This paragraph used to enumerate them in prose and cite a map that did not hold the list, which is how the claim went stale without anything noticing.
 
-`store.ts` additionally keeps a name-to-callback registry — `registerRenderer` / `render()` /
-`renderOnly(...)` — but it holds only seven entries, all registered from the bootstrap, and the
-bootstrap calls it "compat during migration". Every surface added since (statusbar, toolbar, activity
-bar, tab strip, jump bar, pane context, pane grid, bottom dock, the assistant, settings, library) is
-driven by its own effect alone. `render()` coalesces nothing: two calls in one tick paint twice.
+**Studio edits its own chrome, and the registry is what makes a save visible.** `packages/studio/project.json` and `packages/ui/project.json` are Jx projects, so a surface document and a kit component are files Studio opens like any other. `services/live-surfaces.ts` is the lane behind a save: keyed on the saved PATH joined to the open project's root — `packages/studio/src/surfaces/<name>.json` re-registers the surface and re-mounts every root of that name over the host scope it already had; `packages/ui/components/<tag>.json` redefines the element through the runtime (embedding.md §7) and re-mounts every root whose render instantiated it — and inert for any other path, which is what keeps every other project's saves, and the shipped app, away from it. The document that re-mounts is the one the tab just wrote, handed over by `files/file-ops.ts`'s save listener; nothing reads the chrome back from disk, and nothing watches the filesystem, so an edit made outside Studio still arrives on the next reload. A surface file no adapter mounts and a component whose `tagName` disagrees with its file are refused with a problem rather than applied under either spelling. A saved component reaches the canvas frames too: `canvas-render.ts`'s `redefineElementOnCanvases` posts the `redefineElement` frame message to every live frame with the FILE's URL under the project as its base — the frame draws a project's elements from the project's own files, so a sibling `$ref` in the definition must resolve to the project's copy — and then renders every pane, because a frame's instances keep the definition they rendered until something renders them again (embedding.md §7). The frame can hold the definition because it answers `jx-ui:` behaviour specifiers from the loaders `iframe-entry.ts` registers at boot (`@jxsuite/ui/loaders`, one chunk per module on first use; ui.md §10). Measured in Chrome with the button stylebook page live in a second pane: `jx-button saved and re-mounted in 7 places and on 2 canvases`, and every button in both frames drew the saved change.
 
-Three schedulers sit between an effect and its `litRender`, and each exists for a reason worth
-knowing before adding a fourth:
+**A controlled input is authoritative only while the scope value moves.** A document binds a field's `value` to a scope path, and the runtime re-runs that binding only when what it reads CHANGES. An adapter that rewrites what the reader typed — consuming a prefix, normalising a value, trimming an edge — must therefore make the rewrite something the binding can see: when the raw field text and the value the adapter settled on have parted, announce the raw text on the scope first, so the projection that follows is a change rather than a no-op. `panels/quick-search.ts` does exactly that for a bare mode prefix, where the character moves into the chip and leaves the query exactly what it already was; without the bounce the field keeps the prefix the state discarded and the next keystroke is parsed as a prefixed one all over again. Writing the element's `value` directly is not the alternative — [`ui.md`](./ui.md) §2 rule 5 forbids a surface touching the DOM beyond focus, measurement and the popover and modal calls — and the bounce costs no extra paint, because the runtime skips a write equal to the live element.
 
-- `panels/panel-scheduler.ts` coalesces to one animation frame **and withholds a repaint entirely
-  while a text input inside the panel root has focus**, publishing `data-jx-stale` on the host while
-  it does. Without it, a repaint mid-typing truncated or dropped characters.
+**There is no root render, and no central dispatcher.** The description this section used to carry — an `update()` that selectively re-renders three regions — has not matched the code for some time. What actually runs is about thirty independent pairs, each a module-scope `effectScope` holding one `effect()` that reads its own dependency list and calls one `litRender()` into its own host.
+
+`store.ts` additionally keeps a name-to-callback registry — `registerRenderer` / `render()` / `renderOnly(...)` — but it holds only seven entries, all registered from the bootstrap, and the bootstrap calls it "compat during migration". Every surface added since (statusbar, toolbar, activity bar, tab strip, jump bar, pane context, pane grid, bottom dock, the assistant, settings, library) is driven by its own effect alone. `render()` coalesces nothing: two calls in one tick paint twice.
+
+Three schedulers sit between an effect and its `litRender`, and each exists for a reason worth knowing before adding a fourth:
+
+- `panels/panel-scheduler.ts` coalesces to one animation frame **and withholds a repaint entirely while a text input inside the panel root has focus**, publishing `data-jx-stale` on the host while it does. Without it, a repaint mid-typing truncated or dropped characters.
 - `panels/overlays.ts` coalesces on a microtask.
-- `panels/ai-panel.ts` runs its own frame loop and deliberately BYPASSES the focus guard, so a
-  streaming reply repaints while the composer is focused.
+- `panels/ai-panel.ts` runs its own frame loop and deliberately BYPASSES the focus guard, so a streaming reply repaints while the composer is focused.
 
-Re-render granularity is therefore per-surface, not per-app. Below that, per-pane canvas state lives
-on the pane's `CanvasSurface`, and below THAT an edit usually causes no render at all — the canvas
-patcher classifies the operation and posts it to the iframe instead (`studio.md` §4).
+Re-render granularity is therefore per-surface, not per-app. Below that, per-pane canvas state lives on the pane's `CanvasSurface`, and below THAT an edit usually causes no render at all — the canvas patcher classifies the operation and posts it to the iframe instead (`studio.md` §4).
 
-Module-local state (Sets, variables) persists across renders and does not need to go through the
-state system.
+Module-local state (Sets, variables) persists across renders and does not need to go through the state system.
 
 ### 9.4 Template Conventions
 
 > **Status:** Implemented
 
-The template is the only writer of what it renders. Both halves of that have been broken in shipped
-code, so both are gated by `packages/studio/scripts/check-lit-conventions.ts`, which carries a
-ratcheting backlog per rule and fails both ways — a new occurrence fails, and an entry left behind
-after its site is fixed fails too.
+The template is the only writer of what it renders. Both halves of that have been broken in shipped code, so both are gated by `packages/studio/scripts/check-lit-conventions.ts`, which carries a ratcheting backlog per rule and fails both ways — a new occurrence fails, and an entry left behind after its site is fixed fails too.
 
 | Convention                                             | Instead of                                        |
 | ------------------------------------------------------ | ------------------------------------------------- |
@@ -734,39 +598,33 @@ after its site is fixed fails too.
 | `classMap({ … })`                                      | a class attribute built by string concatenation   |
 | `styleMap({ … })`, with **hyphenated** keys            | a `style` attribute built by string concatenation |
 | `repeat(items, keyFn, tpl)` for a keyed collection     | `.map()` where children hold state or reorder     |
-| `.value=${live(v)}` on a Spectrum control              | `value=${v}`                                      |
+| `.value=${live(v)}` on a self-mutating control         | `value=${v}`                                      |
 | `guard([id], …)` around a third-party mount            | relying on the template shape staying the same    |
 
-**Spectrum controls bind their own state as a live property.** `sp-textfield`, `sp-picker`,
-`sp-search`, `sp-switch`, `sp-checkbox` and `sp-accordion-item` all move `value` / `checked` / `open`
-themselves when the reader touches them, and none of them reflects that back to the attribute. So an
-attribute binding is committed once and then dirty-checked away on exactly the render that needed to
-correct it — the control keeps a value the document does not have, silently. `live()` compares
-against the live property instead.
+**A control that owns its own state binds it as a live property.** `<input>`, `<select>`, `<textarea>` and `<details>` all move `value` / `checked` / `open` themselves when the reader touches them, and none of them reflects that back to the attribute. So an attribute binding is committed once and then dirty-checked away on exactly the render that needed to correct it — the control keeps a value the document does not have, silently. `live()` compares against the live property instead. The rule was written for Spectrum's self-mutating set and the tag list is the NATIVE one now: nothing about the hazard was Spectrum's, it is why lit ships `live()` at all, and `grid/cell-editors.ts` still renders three of these from a template — the one module left that does. Re-aiming it turned up two unguarded bindings there on the first run, and both were given `live()` rather than a debt entry, because the pill editor calls its own `doRender()` on every Enter and so has a real re-render path through it. It deliberately does not cover the kit's controls — those are only ever written by a Jx document, which `check-surface-purity.ts` enforces, and a document's binding is not dirty-checked against what lit last committed.
 
-**A module holds its own nodes.** A node found by selector is real only until the next render
-replaces it, and with a second pane open the query can return the other pane's copy. `ref()` is how
-you get a handle; `src/panels/target-line.ts` states the rule at its definition site. This does not
-object to imperative USE — measuring, scrolling into view, moving focus — only to re-finding the
-node each time instead of holding it.
+**A module holds its own nodes.** A node found by selector is real only until the next render replaces it, and with a second pane open the query can return the other pane's copy. `ref()` is how you get a handle; `src/panels/target-line.ts` states the rule at its definition site. This does not object to imperative USE — measuring, scrolling into view, moving focus — only to re-finding the node each time instead of holding it.
 
-**Hyphenated `styleMap` keys are load-bearing.** `check-styles.ts` finds `font-size:` and
-`border-radius:` textually, so `styleMap({ fontSize: "12px" })` is invisible to the token nudge while
-`styleMap({ "font-size": "12px" })` is not. Converting a literal class name to a computed one has the
-mirror effect on the orphan rule.
+**Hyphenated `styleMap` keys are load-bearing.** `check-styles.ts` finds `font-size:` and `border-radius:` textually, so `styleMap({ fontSize: "12px" })` is invisible to the token nudge while `styleMap({ "font-size": "12px" })` is not. Converting a literal class name to a computed one has the mirror effect on the orphan rule.
 
-**Where the rules stop.** `src/canvas/**` is imperative by design, not by neglect: the patcher exists
-so that nothing re-renders on an edit, the overlay places boxes per pointer-move against measured
-geometry, and the iframe modules run in a realm lit does not reach. Those modules are named in the
-gate's `EXCLUDED` map with the reason, so the exemption is a statement rather than a gap.
+**The gate reads a surface's `style` object too, and it had to before the surfaces arrived rather than after.** A surface is a Jx document, so its declarations live in JSON rather than in a stylesheet — and the walk was `styles/*.css`, `src/**/*.css` and `src/**/*.ts`, none of which is that. Every surface converted from lit would have taken its colours out of a file the gate reads and put them in one it does not, so the raw-hex rule and the token nudge would have stopped watching Studio one surface at a time, in silence, with the gate still reporting success. `scanJsonStyle` reads only STYLE VALUES — a hex in a `textContent` or a `$description` is content or commentary, and a gate that flagged those is a gate somebody switches off — and it accepts both spellings, so `"fontSize"` is no more invisible than `"font-size"`. `surfaceClasses` holds a class a document names to the same orphan rule, which is how the rule that a document styles through `part` rather than through a class (`ui.md` §3.1) stays enforced rather than remembered.
 
-**LitElement adoption is deferred, deliberately.** Four reasons, recorded so the question restarts
-from them: shadow DOM is already excluded (§6.2), which removes most of what the component model
-buys; `@vue/reactivity` owns the update model and is version-pinned to `@jxsuite/runtime`, so
-`@lit/context` would sit beside it rather than replace it; `probe.idle()` — the predicate that
-replaced 115 sleeps, and the foundation of the screenshot lane — would gain a second settling
-condition it cannot see in every element's `updateComplete`; and every defect found in the last audit
-of the template layer was fixed by a binding, a key or a ref.
+**Where the rules stop.** `src/canvas/**` is imperative by design, not by neglect: the patcher exists so that nothing re-renders on an edit, the overlay places boxes per pointer-move against measured geometry, and the iframe modules run in a realm lit does not reach. Those modules are named in the gate's `EXCLUDED` map with the reason, so the exemption is a statement rather than a gap.
+
+**LitElement adoption is deferred, deliberately.** Four reasons, recorded so the question restarts from them: shadow DOM is already excluded (§6.2), which removes most of what the component model buys; `@vue/reactivity` owns the update model and is version-pinned to `@jxsuite/runtime`, so `@lit/context` would sit beside it rather than replace it; `probe.idle()` — the predicate that replaced 115 sleeps, and the foundation of the screenshot lane — would gain a second settling condition it cannot see in every element's `updateComplete`; and every defect found in the last audit of the template layer was fixed by a binding, a key or a ref.
+
+**Document conventions.**
+
+> **Status: Implemented.** These bind every surface (§9.3), and each is checked where a check can reach it: `scripts/check-surface-purity.ts` for the substrate rules, `scripts/check-styles.ts` for a document's `style` object and for the Spectrum ban, `scripts/check-icons.ts` for a `tagName` the kit will not define.
+
+- A host function in handler position is named by `$ref` and receives `(scope, event)`; one that takes arguments is called through `$expression` `call`, positionally (`embedding.md` §4).
+- A key is a `$switch` on `event#/key` in a structured body; a focus move is the one thing a kit behaviour sidecar is for.
+- Every host array a document renders is a keyed `$map` (`spec.md` §10.4), so a registry tick never rebuilds a row the reader is on.
+- `data-jx-region` is written in the document's `attributes` or stamped by the adapter; `data-prop` stays on a field row.
+- No `body` strings, and no `$prototype: "Request"` in a surface: its skip flag is process-global, and data arrives through host callables over the PAL.
+- An island — Monaco, a drag handle, a measured window — attaches through `onNodeCreated`; the document renders its host node and nothing else.
+- No kit tag in a lit template, and no lit import in an adapter: a surface is one substrate or the other. (`check-surface-purity.ts` also refused an `sp-*` tag in a document; that half is `check-styles.ts`'s package-wide ban now — §6.1.)
+- `live()` has no counterpart here. A document's bindings skip an equal write, so a control the reader touched is never reset by a re-run that resolved to the value it already holds.
 
 ---
 
@@ -774,41 +632,31 @@ of the template layer was fixed by a binding, a key or a ref.
 
 When building new UI in Studio, verify:
 
-- [ ] Uses `.style-row` vertical layout (not `.field-row` horizontal)
-- [ ] Labels are Title Case via `sp-field-label` inside `.style-row-label`
-- [ ] Inputs use `size="s"` and take full container width
+- [ ] A new surface is a Jx document mounted through `mountSurface()` (§9.3) — never a new lit template; no kit tag inside a lit template and no lit import in an adapter (`scripts/check-surface-purity.ts`)
+- [ ] A surface's actions arrive as a projection of command records in its scope (§12) and the document prints title, chord and `requires` exactly as given
+- [ ] An inspector row is a `jx-field` inside the tab's own document — `.style-row` and `.field-row` are gone with `ui/field-row.ts`, and so is `renderProvenanceChip`: the chip is each document's `[part="chip"]`, drawn from `panels/provenance.ts`'s words
+- [ ] Labels are Title Case, and are the field element's own label rather than a sibling of the control
+- [ ] Inputs use `size="sm"` and take full container width
 - [ ] Text inputs are debounced (400ms standard)
 - [ ] Pickers commit on `@change` without debounce
-- [ ] Collapsible sections use `sp-accordion` / `sp-accordion-item`
+- [ ] Collapsible sections use `jx-accordion` / `jx-accordion-item` (§5.1)
 - [ ] Colors reference CSS custom properties, not hex values
 - [ ] State mutations are immutable (produce new objects)
-- [ ] Custom components use light DOM (`createRenderRoot() { return this; }`)
-- [ ] Spectrum controls bind the state they move themselves as `.value=${live(v)}` / `.checked=` /
-      `.open=` — never as a plain attribute (§9.4; an attribute binding is dirty-checked away on the
-      render that needed it)
+- [ ] A new ELEMENT belongs in the kit (`ui.md` §5), not in Studio — `packages/studio/src` defines none, and there is no `LitElement` left to extend (§6.2). The kit's own elements render into light DOM (`ui.md` §3.2), which is what keeps `styles/*.css` able to reach them.
+- [ ] A control that moves its own state binds it as `.value=${live(v)}` / `.checked=` / `.open=` — never as a plain attribute (§9.4; an attribute binding is dirty-checked away on the render that needed it)
 - [ ] A node this module renders is held with `ref()`, not re-found with `querySelector` (§9.4)
-- [ ] A list whose children hold state or can reorder uses `repeat()` with a real key — a canvas
-      iframe, a `details` the reader opened, or a field mid-edit is not index-addressable (§9.4)
-- [ ] A container handed to a third-party widget (Monaco, Tabulator) is `guard()`ed on the identity
-      it belongs to, so no repaint can take it back (§9.4)
-- [ ] Event handlers call `e.stopPropagation()` when wrapping Spectrum events in light DOM components
+- [ ] A list whose children hold state or can reorder uses `repeat()` with a real key — a canvas iframe, a `details` the reader opened, or a field mid-edit is not index-addressable (§9.4)
+- [ ] A container handed to a third-party widget (Monaco, Tabulator) is `guard()`ed on the identity it belongs to, so no repaint can take it back (§9.4)
+- [ ] Event handlers call `e.stopPropagation()` when a wrapper re-emits an inner control's event under the same name
 - [ ] Text entry and confirmation go through `ui/layers.ts` (§8.7) — never `prompt()`, `confirm()`, or `alert()`
-- [ ] `sp-dialog-wrapper` labels use kebab-case attributes (`confirm-label`, not `confirmLabel`)
-- [ ] Every class emitted from TypeScript has a rule in `styles/*.css` — no `style=` attribute doing
-      a stylesheet's job (`scripts/check-styles.ts` fails on orphans, and on allow-list entries that
-      have since been styled)
-- [ ] A control carries ONE accessible name. `title` and `aria-label` with the same string make
-      screen readers announce it twice — pick the one the component actually uses
+- [ ] A dialog's answers are named in the surface's projection — `confirmLabel`, `cancelLabel`, `secondaryLabel` (§8.7) — never drawn as buttons the flow places itself
+- [ ] Every class emitted from TypeScript has a rule in `styles/*.css` — no `style=` attribute doing a stylesheet's job (`scripts/check-styles.ts` fails on orphans, and on allow-list entries that have since been styled)
+- [ ] A control carries ONE accessible name. `title` and `aria-label` with the same string make screen readers announce it twice — pick the one the component actually uses
 - [ ] A control that cannot act renders **disabled with the reason in its tooltip**, never absent
-- [ ] `outline: none` is scoped to `:focus:not(:focus-visible)` and paired with a `:focus-visible`
-      ring — suppressing the ring on plain `:focus` makes the control untraversable by keyboard
-- [ ] An empty region renders through `renderEmptyState()` (§11) — never a bare container, never a
-      hand-written block, never a noun phrase like "No state defined"
-- [ ] A control that invokes an action renders it from its command record (§12): the record's title
-      as the accessible name, its chord formatted by the one formatter, its `requires` as the
-      disabled tooltip — never a hand-maintained `{ label, action }` list
-- [ ] A control that opens a MENU carries `aria-haspopup="menu"` and a live `aria-expanded`, prints
-      no chord of its own, and draws its rows from a placement (§8.4, §12.1, §12.5)
+- [ ] `outline: none` is scoped to `:focus:not(:focus-visible)` and paired with a `:focus-visible` ring — suppressing the ring on plain `:focus` makes the control untraversable by keyboard
+- [ ] An empty region says its piece through `EmptyStateSpec` (§11) — mounted by `surfaces/empty-state.ts`, or drawn by the surface's own `[part="empty"]` block — never a bare container, never a hand-written block, never a noun phrase like "No state defined"
+- [ ] A control that invokes an action renders it from its command record (§12): the record's title as the accessible name, its chord formatted by the one formatter, its `requires` as the disabled tooltip — never a hand-maintained `{ label, action }` list
+- [ ] A control that opens a MENU carries `aria-haspopup="menu"` and a live `aria-expanded`, prints no chord of its own, and draws its rows from a placement (§8.4, §12.1, §12.5)
 
 ---
 
@@ -816,51 +664,36 @@ When building new UI in Studio, verify:
 
 **Status:** Implemented
 
-Every region of the shell that can be empty renders through **one** pattern —
-`renderEmptyState()` in `src/panels/empty-state.ts`. A region with no object to show never paints a
-bare container, and it never hand-writes its own block: the copy rules below are inherited, not
-re-decided per panel.
+Every region of the shell that can be empty says its piece through **one** vocabulary — `EmptyStateSpec` in `src/panels/empty-state.ts`, which owns the copy rules below and nothing about how they look. A region with no object to show never paints a bare container, and it never re-decides the rules per panel.
+
+There are two renderers of that one spec, and they are the same markup: `src/surfaces/empty-state.json`, mounted by `surfaces/empty-state.ts` for a region that is still a lit render root, and the `[part="empty"]` block a converted surface draws inside its own document. `renderEmptyState()` — the lit template that was the single renderer — is gone with its last caller; a lit region gets the document as a NODE it interpolates (`emptyState(host, spec)`), because a document clears the host it is given and lit renders beside foreign nodes, so the two cannot share a container.
 
 ### 11.1 The three copy rules
 
-1. **One sentence saying what the region is _for_** — never what is absent. "No state defined" is a
-   dead end; "Data this page can read, compute or fetch lives here" tells the reader what the region
-   would contain and why they might want one. The sentence is `spec.message`; an optional second
-   sentence (`spec.detail`) says where the content comes from.
+1. **One sentence saying what the region is _for_** — never what is absent. "No state defined" is a dead end; "Data this page can read, compute or fetch lives here" tells the reader what the region would contain and why they might want one. The sentence is `spec.message`; an optional second sentence (`spec.detail`) says where the content comes from.
 
-2. **The action that fills it, as a real button that does the thing.** `spec.actions` are
-   `{ label, run }` records rendered as `sp-action-button`s. The label is imperative and names the
-   outcome — "Add a value", not "Go to the Data panel". The single exception is a `compact:true`
-   state sitting directly above its own add form: there, the form _is_ the action, and a button
-   duplicating it would be a second definition site for one capability.
+2. **The action that fills it, as a real button that does the thing.** `spec.actions` are `{ label, run }` records rendered as `jx-button size="sm"`s. There is no `icon` field: it was typed `TemplateResult` and every value passed to it was an `sp-icon-*`, which is a Spectrum element smuggled through a shared vocabulary into surfaces that have no other Spectrum in them, and it went with its last caller. The label is imperative and names the outcome — "Add a value", not "Go to the Data panel". The single exception is a `compact:true` state sitting directly above its own add form: there, the form _is_ the action, and a button duplicating it would be a second definition site for one capability.
 
-3. **One shared verb across equivalent surfaces.** Everything that needs a canvas selection says
-   `clickAnythingTo(outcome)` — "Click anything on the canvas to ⟨style it / edit its content / wire
-   it up⟩". Everything that needs an open document offers `openPageAction()`. Three panels that all
-   want the same thing must not read as three different requirements.
+3. **One shared verb across equivalent surfaces.** Everything that needs a canvas selection says `clickAnythingTo(outcome)` — "Click anything on the canvas to ⟨style it / edit its content / wire it up⟩". Everything that needs an open document offers `openPageAction()`. Three panels that all want the same thing must not read as three different requirements.
 
-`staleSelectionMessage()` is the fourth case, and it is the shape every "it's gone" message takes:
-name what disappeared, then hand back the shared verb — "That element is no longer on the page.
-Click anything on the canvas to pick another one."
+`staleSelectionMessage()` is the fourth case, and it is the shape every "it's gone" message takes: name what disappeared, then hand back the shared verb — "That element is no longer on the page. Click anything on the canvas to pick another one."
 
 ### 11.2 Structure and styling
 
-| Element                | Class                   | Notes                                                       |
-| ---------------------- | ----------------------- | ----------------------------------------------------------- |
-| Container              | `.empty-state`          | plus `.empty-state--teach`                                  |
-| Inline (in-panel) form | `.empty-state--compact` | tighter, left-aligned; sits inside an otherwise full panel  |
-| Sentence               | `.empty-state-message`  | required                                                    |
-| Second sentence        | `.empty-state-detail`   | optional                                                    |
-| Action row             | `.empty-state-actions`  | omitted entirely when there are no actions                  |
-| Action                 | `.empty-state-action`   | `sp-action-button size="s"`; `?disabled` carries its reason |
+| Element                | `part`          | Notes                                                      |
+| ---------------------- | --------------- | ---------------------------------------------------------- |
+| Container              | `empty`         | `data-compact` marks the inline variant                    |
+| Inline (in-panel) form | `empty`         | tighter, left-aligned; sits inside an otherwise full panel |
+| Sentence               | `empty-message` | required                                                   |
+| Second sentence        | `empty-detail`  | optional; an empty string is no detail, not a blank line   |
+| Action row             | `empty-actions` | omitted entirely when there are no actions                 |
+| Action                 | `empty-action`  | `jx-button size="sm"`; `disabled` carries its reason       |
 
-Layout lives in `styles/panels.css`; no empty state carries a `style=` attribute.
+The vocabulary is `part`, not class: an empty state emits no class at all, and its rules live in the style block of whichever document draws it. `.empty-state*` survives in `styles/panels.css` and `styles/overlays.css` with no emitter left.
 
 ### 11.3 Jargon
 
-The empty state is where a new author meets the vocabulary, so it uses the plain word, with the
-Jx term in apposition at most once: "Data this page can read (its **state**)". A panel title may be
-a term of art; the sentence beneath it may not be a second one.
+The empty state is where a new author meets the vocabulary, so it uses the plain word, with the Jx term in apposition at most once: "Data this page can read (its **state**)". A panel title may be a term of art; the sentence beneath it may not be a second one.
 
 ---
 
@@ -868,16 +701,11 @@ a term of art; the sentence beneath it may not be a second one.
 
 **Status:** Partial — the registry and the CI checks ship; the surfaces are being ported onto them.
 
-Every capability Studio has is a **command record** (`specs/studio.md` §13). This section governs
-how those records are _rendered_: where a record may appear, how many may appear at once, and what
-every appearance must print.
+Every capability Studio has is a **command record** (`specs/studio.md` §13). This section governs how those records are _rendered_: where a record may appear, how many may appear at once, and what every appearance must print.
 
 ### 12.1 The level × placement matrix
 
-`level` states what a command acts on; a **placement** is a surface it declares itself into via
-`menus`. Each placement admits a fixed set of levels. This table is the normative copy;
-`packages/studio/src/commands/levels.ts` (`PLACEMENT_MATRIX`) mirrors it, and
-`scripts/check-command-levels.ts` validates every registered command's `menus` against it in CI.
+`level` states what a command acts on; a **placement** is a surface it declares itself into via `menus`. Each placement admits a fixed set of levels. This table is the normative copy; `packages/studio/src/commands/levels.ts` (`PLACEMENT_MATRIX`) mirrors it, and `scripts/check-command-levels.ts` validates every registered command's `menus` against it in CI.
 
 | Placement             | Admits levels                             | Why                                                                                                                                                         |
 | --------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -898,65 +726,39 @@ every appearance must print.
 | `palette`             | application, project, document, selection | the level-agnostic surface; it groups its rows by level                                                                                                     |
 | `never`               | application, project, document, selection | keyboard- and API-only; there is no rendered surface to be misplaced in                                                                                     |
 
-`blockbar/format` is one surface with two budgets, and that is why it is a row rather than a note.
-The bar's verb cluster is capped at five (`CHROME_BUDGET.commandbarPrimary`'s sibling), and the
-inline-format vocabulary is eight — Bold, Italic, Underline, Strikethrough, Superscript, Subscript,
-Code, Link — so sharing one cap would have pushed Bold behind a `⋮`. Same level, same region,
-separate budget: the status bar's three single-level placements are the precedent.
+`blockbar/format` is one surface with two budgets, and that is why it is a row rather than a note. The bar's verb cluster is capped at five (`CHROME_BUDGET.commandbarPrimary`'s sibling), and the inline-format vocabulary is eight — Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Code, Link — so sharing one cap would have pushed Bold behind a `⋮`. Same level, same region, separate budget: the status bar's three single-level placements are the precedent.
 
-`settings/menu` is the second row admitting more than one level, and the reason is the same one
-`commandbar/overflow` has: a **menu** prints each row's own name, chord and gate beside it, so
-nothing about a row's level has to be inferred from where the control sits. A **pinned slot** cannot
-do that — it has room for one thing and must lie about the rest by omission, which is why the rail's
-foot held only application-level Preferences for a release while project configuration lived
-elsewhere. The levels are still separated, in two places: the row admits exactly application and
-project, and the menu draws a divider where the level changes. The rail's **pinned** groups stay
-single-level, in `PANEL_PLACEMENT_MATRIX` — a panel is filed by what it writes, and there is no menu
-to say so for it.
+`settings/menu` is the second row admitting more than one level, and the reason is the same one `commandbar/overflow` has: a **menu** prints each row's own name, chord and gate beside it, so nothing about a row's level has to be inferred from where the control sits. A **pinned slot** cannot do that — it has room for one thing and must lie about the rest by omission, which is why the rail's foot held only application-level Preferences for a release while project configuration lived elsewhere. The levels are still separated, in two places: the row admits exactly application and project, and the menu draws a divider where the level changes. The rail's **pinned** groups stay single-level, in `PANEL_PLACEMENT_MATRIX` — a panel is filed by what it writes, and there is no menu to say so for it.
 
-Panel placements — the two Navigator rail groups (project above, document below), the Navigator dock
-body, the Bottom dock (project and document, with the panel header stating which) and the Inspector
-dock (selection) — belong to the same matrix. They admit **Panel** records rather than commands, and
-they are `PANEL_PLACEMENT_MATRIX` in `levels.ts`, checked by `registerPanel()` at registration.
+Panel placements — the two Navigator rail groups (project above, document below), the Navigator dock body, the Bottom dock (project and document, with the panel header stating which) and the Inspector dock (selection) — belong to the same matrix. They admit **Panel** records rather than commands, and they are `PANEL_PLACEMENT_MATRIX` in `levels.ts`, checked by `registerPanel()` at registration.
 
 Three rules follow from the table and are not negotiable in review:
 
-- **A record with no `menus` defaults to `["palette"]`**, which admits every level. A command has to
-  opt _in_ to a region before it can be misplaced.
-- **Mixed regions are mixed in the table, never by prose exemption.** The status bar is three
-  separate single-level placements, not one "mixed" region.
-- **A region that genuinely needs a second level gets a new row**, with its reason in the `note`
-  field — not a comment excusing one command.
+- **A record with no `menus` defaults to `["palette"]`**, which admits every level. A command has to opt _in_ to a region before it can be misplaced.
+- **Mixed regions are mixed in the table, never by prose exemption.** The status bar is three separate single-level placements, not one "mixed" region.
+- **A region that genuinely needs a second level gets a new row**, with its reason in the `note` field — not a comment excusing one command.
 
-The check validates placement only. Whether a panel _reads_ state above its level is a separate
-defect with a separate rule: a record declared `level:"project"` may not source its state from
-`activeTab`, or its badge disappears when the last tab closes.
+The check validates placement only. Whether a panel _reads_ state above its level is a separate defect with a separate rule: a record declared `level:"project"` may not source its state from `activeTab`, or its badge disappears when the last tab closes.
 
 ### 12.2 The chrome budget
 
-Chrome is earned by frequency and capped by a build check
-(`scripts/check-chrome-budget.ts`, thresholds in `src/commands/budget.ts`):
+Chrome is earned by frequency and capped by a build check (`scripts/check-chrome-budget.ts`, thresholds in `src/commands/budget.ts`):
 
-| Cap                                                | Limit |
-| -------------------------------------------------- | ----- |
-| Commands declaring `menus: ["commandbar/primary"]` | 5     |
-| Tabs in any one dock or rail group                 | 4     |
+| Cap                                                                                   | Limit |
+| ------------------------------------------------------------------------------------- | ----- |
+| Commands declaring `menus: ["commandbar/primary"]`                                    | 5     |
+| Tabs in any one dock or rail group                                                    | 4     |
+| Assistant tools in the richest state — hand rows plus every record declaring `aiTool` | 30    |
 
-Raising a cap is a design decision and happens in `budget.ts`, in one place, deliberately.
+Raising a cap is a design decision and happens in `budget.ts`, in one place, deliberately. The assistant's cap is chrome for a model: every advertised tool costs attention, and a naive projection of every declaration would have taken the list from 22 to 67. It is asserted in `packages/studio/tests/ai-command-tools.test.ts` rather than by the bare-Bun budget script, because the hand table lives in a module that imports the store; the number lives in `budget.ts` either way.
 
-**Retiring a control costs three things**: (a) a discoverable command name, (b) a bindable chord, and
-usually (c) a status-bar or context-menu residue. Retiring without all three is deletion, not
-consolidation. Moving a command to `commandbar/overflow` satisfies (a) and (c) for free — it keeps
-its name, its chord and its palette row.
+**Retiring a control costs three things**: (a) a discoverable command name, (b) a bindable chord, and usually (c) a status-bar or context-menu residue. Retiring without all three is deletion, not consolidation. Moving a command to `commandbar/overflow` satisfies (a) and (c) for free — it keeps its name, its chord and its palette row.
 
-Stripping labels is **not** a way to stay under the cap. A container query that hides every button's
-text below a breakpoint converts a crowding problem into an anonymity problem: an unlabelled icon is
-a control the reader must hover to identify.
+Stripping labels is **not** a way to stay under the cap. A container query that hides every button's text below a breakpoint converts a crowding problem into an anonymity problem: an unlabelled icon is a control the reader must hover to identify.
 
 ### 12.3 Every invoking surface prints the name and the chord
 
-Wherever a command is rendered — Command Bar button, palette row, context-menu item, block-action
-button, rail entry — the surface prints:
+Wherever a command is rendered — Command Bar button, palette row, context-menu item, block-action button, rail entry — the surface prints:
 
 | What                | From                     | Rule                                                                      |
 | ------------------- | ------------------------ | ------------------------------------------------------------------------- |
@@ -968,25 +770,15 @@ Consequences:
 
 - **No unlabelled icon** without its command title as accessible name and its binding in the tooltip.
 - **No context-menu row without its chord** when the command has one.
-- **No surface renames a command.** A placement chooses _whether_ to show a record; it never chooses
-  what it is called, when it is available, or what it does.
-- **A control that cannot act renders disabled with `requires` in its tooltip**, never absent (§10)
-  — and the palette shows unavailable commands greyed with the same sentence rather than hiding
-  them, because "why can't I" is the question a palette is uniquely good at answering.
-- **`destructive: true` derives the danger styling**, and `group` derives menu ordering
-  (`"1_clipboard"`, `"3_structure"`, `"9_danger"`); neither is re-decided per menu.
-- **A row that owns a submenu still runs its own command.** The submenu is opened by hover,
-  ArrowRight or the chevron — never by activating the row, which would leave the parent's own verb
-  with no surface at all (§8.4).
-- **A submenu row prints no chord.** The chord belongs to the command, and the parent already
-  prints it; repeating it on every child would teach that each child has one of its own.
+- **No surface renames a command.** A placement chooses _whether_ to show a record; it never chooses what it is called, when it is available, or what it does.
+- **A control that cannot act renders disabled with `requires` in its tooltip**, never absent (§10) — and the palette shows unavailable commands greyed with the same sentence rather than hiding them, because "why can't I" is the question a palette is uniquely good at answering.
+- **`destructive: true` derives the danger styling**, and `group` derives menu ordering (`"1_clipboard"`, `"3_structure"`, `"9_danger"`); neither is re-decided per menu.
+- **A row that owns a submenu still runs its own command.** The submenu is opened by hover, ArrowRight or the chevron — never by activating the row, which would leave the parent's own verb with no surface at all (§8.4).
+- **A submenu row prints no chord.** The chord belongs to the command, and the parent already prints it; repeating it on every child would teach that each child has one of its own.
 
 ### 12.4 One surface, one availability rule
 
-**Every command in a family that acts on the same state declares the SAME precondition.** A family
-is defined by what its `run` WRITES, not by its id namespace: five zoom verbs over one pan-zoom
-surface, three publish verbs over one deploy provider, twenty-one element verbs over one document
-tree.
+**Every command in a family that acts on the same state declares the SAME precondition.** A family is defined by what its `run` WRITES, not by its id namespace: five zoom verbs over one pan-zoom surface, three publish verbs over one deploy provider, twenty-one element verbs over one document tree.
 
 Six families disagreed with themselves, and in every one the loose member was the one that wrote:
 
@@ -999,48 +791,42 @@ Six families disagreed with themselves, and in every one the loose member was th
 | Inspector tabs     | `view.setRightTab` required a document; the `inspector.focus.*` chords required nothing | Reported success, moved focus, did not switch the tab         |
 | `collab.*`         | Four required a document path; `showStatus` required only a tab                         | Reported on a session that cannot exist                       |
 
-Two rules over one surface is not caution. The strict member's refusal is evidence that the state
-is unsafe to write, and the loose member writes it anyway — so the disagreement converts a refusal
-that protects into a refusal that merely annoys, while the damage goes through the other door.
+Two rules over one surface is not caution. The strict member's refusal is evidence that the state is unsafe to write, and the loose member writes it anyway — so the disagreement converts a refusal that protects into a refusal that merely annoys, while the damage goes through the other door.
 
-**The agent counts as a surface.** `Command.aiTool` says "the human's gate and the agent's gate
-stay one predicate", so an assistant tool that writes what a command writes is bound by the
-command's rule — and binds to it by READING the same `CommandContext`, not by recomputing the same
-test. Two predicates that agree today drift the first time either is edited. The assistant's
-`document` tier asked only whether a tab was open, so with Project Settings focused the agent was
-advertised `remove_node` and `move_node` and ran them against `project.json` while the person's
-`delete_node` was refused; `remove_node`'s own guard stops at the document root, which is weaker
-than `structurallyEditable`, so a repeater template was removable by the agent and not by the
-person. Element-tree writers now sit in a `document-tree` tier whose predicate is the registry's
-own `editor.kind === "canvas"`. Reads are not affected: the rule is about writing.
+**The agent counts as a surface, and its tool IS the command.** A record that declares `aiTool` is projected to the assistant by `services/ai-command-tools.ts`, a view over the window's registry: the tool's `execute` is `registry.run(id, args)`, its `parameters` is the record's own `args` object, its description is the record's, and it is advertised exactly while the record's own `when` / `enablement` holds — the same closures the palette evaluates, module-state included. A selection-level verb composes through `selection.setPaths` with `paths` REQUIRED, because the model addresses nodes by path and "act on whatever is selected" would be a verb over state it cannot observe. There is no registration step between the declaration and the tool, so there is nothing to omit; what cannot be honoured is refused at registration (`studio.md` §13.1). The refusal the model reads is the person's own sentence: `CommandUnavailableError` from the gate, or the `RangeError` the schema coercion or the `run` body throws.
+
+The model reads `report`, a projection of post-run state written beside `run` — one sentence over the same reads the UI makes, optionally structured `data` (a findings list) and the `wrote` paths — and the ledger reads `undo`: `"document"` files the active document, `"project"` files `project.json`, `"none"` files whatever `wrote` names and is held to naming it. A record with `undo: "document"` is also held to having WRITTEN: `transactDoc` replaces the document's root reference on every applied transaction, so an unchanged reference after `run` answers "changed nothing" rather than success. That witness is why a tier alone was not enough. Before the projection, `delete_node` was declared on `selection.delete` and the model received `remove_node`, a hand-written tool whose guard stopped at the document root — weaker than `structurallyEditable`, so a repeater template was removable by the agent and not by the person — and which reported a removal the collab freeze had refused as a success. The first fix was a `document-tree` tier reading the registry's `editor.kind`; the second predicate went with the hand tool. The seven hand tree writers that remain (`set_property`, `set_style`, `set_text`, `add_child`, `move_node`, `add_state`, `update_state`) stay in that tier because each addresses a node by PATH with no command twin — the person writes these through the Inspector, which is not a command surface — and `packages/studio/tests/ai-hand-writers.test.ts` is the closed table that says so, one reason per file.
+
+**Not every record projects, and the four rules that decide it** are what keep the prompt from growing by forty-seven tools:
+
+1. **Chrome and navigation.** A verb whose whole effect is what the person is looking at — opening a surface, arranging panes, a listing filter — is not a tool. The model has `open_document` and `read_file` for the file itself.
+2. **`run` waits on a person.** A dialog, a prompt, a confirm. The loop does not count it as interactive, the turn hangs on the author, and a cancel returns nothing a report could describe. `selection.repeat`, `content.newEntry`, `i18n.createTranslation`, `library.newEntry`, `grid.saveView`, `redirects.import`, `file.convertFormat`, `publish.setUp` and `project.new` are that set, and the test holds it closed.
+3. **Outside the tree, irreversible, and the model has no read to judge by.** The `git.*` family and `publish.deploy`; reconsidered together when `git.commit` becomes a record, since without it the agent could not ship its own edits anyway.
+4. **Redundant with a tool it already has.** `selection.setPaths` is the bridge's own selector step; a second selection tool would be prompt cost with no second job.
+
+Three review rules follow for a record that does project:
+
+- **A projected `run` refuses by THROWING.** A `notify.error` plus `return` is a refusal only the person can read; `i18n.addLocale` used to toast a malformed tag and now throws the `RangeError` the model reads.
+- **A projected `run` may not await a dialog** — rule 2, applied to a record that already projects.
+- **A projected record's `args` getters and `report` may close over module state, never over injected deps.** The view reads the LIVE record, so this is hygiene rather than correctness, and it stays because `appCommandSet()`'s no-op instances are what the tests read.
+
+Reads are not affected by the surface rule: it is about writing.
 
 Corollaries:
 
-- **An `enablement` never restates its own `when`.** The same rule written twice is two places to
-  drift, and the drift is invisible because both spellings look deliberate.
-- **A `requires` sentence names the gate it actually has.** `canvas.setFit` said "an open document"
-  while refusing for the MODE, which sends the reader to open a document they already have open.
-- **When a precondition depends on an ARGUMENT, refuse the argument.** `enablement` cannot see one,
-  so a setter taking an enum checks the target's own predicate inside `run` and throws a
-  `RangeError` naming the value — the shape `pane.derive` uses for a preset the document cannot
-  support.
+- **An `enablement` never restates its own `when`.** The same rule written twice is two places to drift, and the drift is invisible because both spellings look deliberate.
+- **A `requires` sentence names the gate it actually has.** `canvas.setFit` said "an open document" while refusing for the MODE, which sends the reader to open a document they already have open; `selection.delete` said "not the document root" for a gate that also refuses a repeater's template and a switch case, and now names all three.
+- **When a precondition depends on an ARGUMENT, refuse the argument.** `enablement` cannot see one. The SHAPE is the schema's: `registry.run` coerces every received record against `args` through `coerceArgs`, for every caller, before `run` is entered, so a value outside a `derivedEnumProperty` or a key the schema does not declare is refused with the sentence the palette's choice list implied. What the schema cannot say — a breakpoint the document defines, a path that addresses a node, a preset the document cannot support — the `run` body refuses itself with a `RangeError` naming the value, the shape `pane.derive` uses. Both refusals are SYNCHRONOUS out of `registry.run`, so a surface does not call it bare: a click, chord or notice action runs through `commands/run-reported.ts`'s `runReported`, which catches the throw and the later rejection alike and files the sentence in Problems under the surface's name — the one place a refusal is read, whichever surface it came from. A crash out of a `run` body (anything but the two refusal shapes) is filed the same way and ALSO reaches the console with its stack, because a refusal is a whole sentence and a bug is not. The sweep in `tests/run-reported.test.ts` holds the tree to that spelling; the `?.run(` sites it has not reached yet are a ratchet there, named one by one, that only shrinks.
 
 ### 12.5 A second list of actions is a defect
 
-If a surface maintains its own array of `{ label, action }` records for capabilities that already
-exist, that array is the bug — not a shortcut around one. The symptom is always the same: two
-surfaces disagree about one capability. `Cmd+W` refusing to close the last tab while the tab strip's
-`×` closed it happily is the canonical example, and it is exactly what one record with one chord and
-one `run` makes impossible.
+If a surface maintains its own array of `{ label, action }` records for capabilities that already exist, that array is the bug — not a shortcut around one. The symptom is always the same: two surfaces disagree about one capability. `Cmd+W` refusing to close the last tab while the tab strip's `×` closed it happily is the canonical example, and it is exactly what one record with one chord and one `run` makes impossible.
 
 ## 13. Notification Tiers
 
-**Status:** Partial — the three tiers and their surfaces ship; the Diff and Logic tabs of the Bottom
-dock are declared and empty.
+**Status:** Partial — the three tiers and their surfaces ship; the Diff and Logic tabs of the Bottom dock are declared and empty.
 
-The normative contract is `specs/studio.md` §16. This section governs how those records are
-_rendered_ — what each tier looks like, and the rules a reviewer applies when someone proposes a
-fourth one.
+The normative contract is `specs/studio.md` §16. This section governs how those records are _rendered_ — what each tier looks like, and the rules a reviewer applies when someone proposes a fourth one.
 
 ### 13.1 Choosing a tier
 
@@ -1052,60 +838,35 @@ The question is never "how bad is this?" — it is **what does the reader have t
 | must fix something before moving on | Problem | it must outlive the frame the reader was not looking at |
 | typed a value the app cannot accept | inline  | the value is on screen; nothing else is the right place |
 
-Severity picks the default tier and the call site overrides it. Severity is not the tier: a warning
-that must be fixed is a Problem, and an error the user cannot act on is a toast with a `detail`.
+Severity picks the default tier and the call site overrides it. Severity is not the tier: a warning that must be fixed is a Problem, and an error the user cannot act on is a toast with a `detail`.
 
 ### 13.1a Every record is announced
 
 > **Status: Implemented.**
 
-**One live region, called from `notify()` itself.** WCAG 2.2 SC 4.1.3 asks that a status message be
-programmatically determinable without receiving focus, and this app had one region — on the _toast_
-host. Since `error` defaults to the **Problem** tier, that meant **a failure reached no live region
-at all**: the app posted "Save failed", rendered it in a panel, and a screen-reader user was told
-nothing.
+**One live region, called from `notify()` itself.** WCAG 2.2 SC 4.1.3 asks that a status message be programmatically determinable without receiving focus, and this app had one region — on the _toast_ host. Since `error` defaults to the **Problem** tier, that meant **a failure reached no live region at all**: the app posted "Save failed", rendered it in a panel, and a screen-reader user was told nothing.
 
-A region inside the Problems panel would not have fixed it either. The panel lives in the Bottom
-dock, and a region inside a hidden tab announces nothing — so the announcer belongs to no surface.
-It is called where the record is created, which makes "posted" and "announced" the same event and
-gives any future host the behaviour without having to remember.
+A region inside the Problems panel would not have fixed it either. The panel lives in the Bottom dock, and a region inside a hidden tab announces nothing — so the announcer belongs to no surface. It is called where the record is created, which makes "posted" and "announced" the same event and gives any future host the behaviour without having to remember.
 
-Two regions, because politeness is not a style choice: an error is `assertive` and interrupts,
-everything else is `polite` and waits. The attribute is read when a region is created rather than
-when its text changes, so one region cannot serve both. The text is cleared and re-set on a later
-turn, because a live region announces a _change_ — without that, a second identical failure would be
-silent, which is the failure a reader would be least able to explain.
+Two regions, because politeness is not a style choice: an error is `assertive` and interrupts, everything else is `polite` and waits. The attribute is read when a region is created rather than when its text changes, so one region cannot serve both. The text is cleared and re-set on a later turn, because a live region announces a _change_ — without that, a second identical failure would be silent, which is the failure a reader would be least able to explain.
 
-The message carries its `source` when it has one: a listener has none of the visual grouping the
-panel's own column gives everyone else.
+The message carries its `source` when it has one: a listener has none of the visual grouping the panel's own column gives everyone else.
 
 ### 13.2 Rendering rules
 
-- **Four toasts at most, newest at the bottom.** Beyond that the oldest retires early — a stack that
-  grows without bound is a wall, and a wall is not read.
-- **Success and info rest for 4s, warnings and errors for 8s.** A reader who has to decide gets
-  twice as long as a reader who is being told.
-- **One line of text, one glyph.** A toast is a sentence, not an illustration; anything longer
-  belongs in `detail`, which is a Problem's second line.
-- **The recovery button prints the command's own title.** Never a bespoke verb — the button and the
-  palette row must be the same words, because they are the same command.
-- **A Problem row states its source and its path**, and clicking it goes there. A Problem nobody can
-  navigate from is a log line with better typography.
-- **An inline error renders after the control, with `role="alert"`, and takes precedence over a
-  warning state on the same row.** Where a row can carry several, it counts them from two up.
+- **Four toasts at most, newest at the bottom.** Beyond that the oldest retires early — a stack that grows without bound is a wall, and a wall is not read.
+- **Success and info rest for 4s, warnings and errors for 8s.** A reader who has to decide gets twice as long as a reader who is being told.
+- **One line of text, one glyph.** A toast is a sentence, not an illustration; anything longer belongs in `detail`, which is a Problem's second line.
+- **The recovery button prints the command's own title.** Never a bespoke verb — the button and the palette row must be the same words, because they are the same command.
+- **A Problem row states its source and its path**, and clicking it goes there. A Problem nobody can navigate from is a log line with better typography.
+- **An inline error renders after the control, with `role="alert"`, and takes precedence over a warning state on the same row.** Where a row can carry several, it counts them from two up.
 
 ### 13.3 The rules that keep this from becoming a fourth surface
 
-1.  **The status bar never carries an outcome.** It is ambient state. This is the single rule that
-    the 78-call-site predecessor broke, and every regression here starts by breaking it again.
-2.  **A modal is not a notification.** Blocking is reserved for an operation that cannot proceed
-    while the author edits — in practice, dependency installation — and even then it offers to run
-    in the background. Everything else reports and gets out of the way.
-3.  **Nothing is announced twice.** An operation with an Activity entry does not also toast its
-    completion; a failure raises exactly one Problem, deduped by `key`.
-4.  **Timed surfaces declare themselves to `probe.idle()`.** A toast settling in is not idle; a toast
-    at rest is. Without the second half of that sentence a screenshot run would wait forever on a
-    toast that is deliberately being held open.
+1.  **The status bar never carries an outcome.** It is ambient state. This is the single rule that the 78-call-site predecessor broke, and every regression here starts by breaking it again.
+2.  **A modal is not a notification.** Blocking is reserved for an operation that cannot proceed while the author edits — in practice, dependency installation — and even then it offers to run in the background. Everything else reports and gets out of the way.
+3.  **Nothing is announced twice.** An operation with an Activity entry does not also toast its completion; a failure raises exactly one Problem, deduped by `key`.
+4.  **Timed surfaces declare themselves to `probe.idle()`.** A toast settling in is not idle; a toast at rest is. Without the second half of that sentence a screenshot run would wait forever on a toast that is deliberately being held open.
 
 ---
 
@@ -1113,43 +874,64 @@ panel's own column gives everyone else.
 
 > **Status: Implemented.**
 
-Every picture in `/docs` is captured by `scripts/screenshots/`, never taken by hand. The contract
-governing what a shot may say lives in `scripts/screenshots/README.md`; this section records the one
-thing that is a **standards** decision rather than a policy one.
+Every picture in `/docs` is captured by `scripts/screenshots/`, never taken by hand. The contract governing what a shot may say lives in `scripts/screenshots/README.md`; this section records the one thing that is a **standards** decision rather than a policy one.
 
-**The pipeline drives the browser over [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/), not
-CDP.** CDP is Chrome's own protocol and no standard describes it. Everything the pipeline asks of a
-browser — viewport, media features, init scripts, navigation, evaluation, frame enumeration,
-screenshots — is in BiDi, and the captured bytes are identical under both: the same shot captured
-over each protocol, with everything else held equal, hashes the same. That equality was the
-acceptance criterion, and it is what makes the switch a change of protocol rather than a change of
-pictures.
+**The pipeline drives the browser over [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/), not CDP.** CDP is Chrome's own protocol and no standard describes it. Everything the pipeline asks of a browser — viewport, media features, init scripts, navigation, evaluation, frame enumeration, screenshots — is in BiDi, and the captured bytes are identical under both: the same shot captured over each protocol, with everything else held equal, hashes the same. That equality was the acceptance criterion, and it is what makes the switch a change of protocol rather than a change of pictures.
 
-**One thing did have to change, and it is the kind of difference worth writing down.** The pipeline
-parked the pointer at `(-1, -1)` between shots so that nothing matched `:hover`. CDP accepted
-off-canvas coordinates; **BiDi does not** — `input.performActions` refuses a move beyond the
-viewport, and every shot failed the moment the pipeline spoke the standard's protocol. The pointer
-now parks at the viewport's bottom-right corner, which has the property the negative coordinates
-were chosen for and is a position the standard allows. A vendor protocol's tolerance is not a
-contract; this is what depending on one looks like when you stop.
+**One thing did have to change, and it is the kind of difference worth writing down.** The pipeline parked the pointer at `(-1, -1)` between shots so that nothing matched `:hover`. CDP accepted off-canvas coordinates; **BiDi does not** — `input.performActions` refuses a move beyond the viewport, and every shot failed the moment the pipeline spoke the standard's protocol. The pointer now parks at the viewport's bottom-right corner, which has the property the negative coordinates were chosen for and is a position the standard allows. A vendor protocol's tolerance is not a contract; this is what depending on one looks like when you stop.
 
-`JX_SHOTS_PROTOCOL=cdp` falls back, so a BiDi regression in a Chromium release costs one environment
-variable rather than a revert.
+`JX_SHOTS_PROTOCOL=cdp` falls back, so a BiDi regression in a Chromium release costs one environment variable rather than a revert.
 
 ## 14. Standards Alignment
 
-External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). Spectrum Web Components is a component library rather than a standard; §6 records which of its components are in use.
+External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). The Jx UI kit is a library rather than a standard, and its own alignment table is [`ui.md`](./ui.md) §11; §6 records that it is the only element family Studio has. Adobe Spectrum Web Components was the other one, and this row used to say so.
 
-| Standard                                                                          | Class       | Binds            | Evidence                                                                                                                                                                                                                                              | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| --------------------------------------------------------------------------------- | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [WAI-ARIA](https://www.w3.org/TR/wai-aria-1.2/)                                   | **Subset**  | §6, §8, §12      | packages/studio/src/files/files.ts, packages/studio/src/panels/layers-panel.ts, packages/studio/src/editor/context-menu.ts, packages/studio/src/panels/settings-menu.ts, packages/studio/src/panels/quick-search.ts, packages/studio/src/ui/layers.ts | `gap:apg-coverage` The tree, menu, toolbar and radiogroup patterns are implemented with their full state and keyboard contracts, and two more now are: the **combobox** (Quick Access carries `aria-controls`, `aria-activedescendant` and an `aria-expanded` that is false when nothing matched — it was the literal string `true`) and the **dialog** (`role`, `aria-modal` and a name off the wrapper's headline). The tab strips still carry no tab semantics, and the Tabulator data grid is virtualized — hand-authoring `role="grid"` over rows that do not exist in the DOM would make it worse, not better. One deviation from the menu pattern is deliberate and is recorded in §8.4: the rail foot's Settings menu gives a row that owns a submenu **an action of its own**, which the APG does not describe. It is the requirement rather than an oversight — the heading opens the surface and the submenu deep-links a section — and Spectrum's stock `slot="submenu"` forbids it outright, which is why that menu is hand-rolled. Nothing is unreachable: Enter runs the row, ArrowRight reaches every child, `aria-haspopup` announces the popup, and every child has a second door. |
-| [Accessible Name and Description Computation](https://www.w3.org/TR/accname-1.2/) | **Adopted** | §10              | packages/studio/src/panels/problems-panel.ts                                                                                                                                                                                                          | §10's rule that a control carries exactly one accessible name — `title` and `aria-label` with the same string announce it twice — is this algorithm's precedence order restated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| [WCAG 2.2](https://www.w3.org/TR/WCAG22/)                                         | **Subset**  | §1.1, §8.2, §8.7 | packages/studio/src/services/announce.ts, packages/studio/styles/forced-colors.css, packages/studio/scripts/check-styles.ts, packages/studio/tests/announce.test.ts                                                                                   | `gap:wcag-conformance` No level is claimed, and conformance is not tested end to end — that needs a browser. Four criteria are met deliberately and checked: **SC 4.1.3** (Status Messages) — one live region, called from `notify()` itself, so a failure that lands in the Problems panel is still announced; **SC 2.5.7** (Dragging Movements) — cut/paste is the stated alternative to every drag; **SC 1.4.3/1.4.11** (Contrast) — a required-pairs table gated in `check-styles.ts`, with one entry on the debt list; **SC 1.4.1** — a `forced-colors` block redraws the selection and focus affordances Windows High Contrast deletes with `box-shadow`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| [ATAG 2.0](https://www.w3.org/TR/ATAG20/)                                         | **Subset**  | §8, §13.1a       | packages/studio/src/services/announce.ts, packages/studio/src/services/a11y-report.ts                                                                                                                                                                 | Part A — the tool's own accessibility — is answered by §13.1a's live region and §8.2's keyboard alternative to every drag. Part B is `studio.md` §16.6: a check over the author's document, filing a Problem per finding with its WCAG criterion. Neither part claims a conformance level, which needs a browser.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/)                           | **Adopted** | §15              | scripts/screenshots/lib/browser.ts, scripts/screenshots/lib/browser.test.ts, scripts/screenshots/lib/shot.ts                                                                                                                                          | The documentation screenshot pipeline drives Chromium over the W3C protocol rather than CDP. Verified by capturing the same shot over each with everything else held equal and hashing the results: byte-identical. The one behavioural difference — BiDi refuses a pointer move outside the viewport, where CDP allowed `(-1, -1)` — is fixed in the pipeline rather than worked around, and §15 records it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Standard                                                                          | Class       | Binds            | Evidence                                                                                                                                                                                                                                              | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------- | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [WAI-ARIA](https://www.w3.org/TR/wai-aria-1.2/)                                   | **Subset**  | §6, §8, §12      | packages/studio/src/files/files.ts, packages/studio/src/panels/layers-panel.ts, packages/studio/src/editor/context-menu.ts, packages/studio/src/panels/settings-menu.ts, packages/studio/src/panels/quick-search.ts, packages/studio/src/ui/layers.ts | `gap:apg-coverage` The tree, menu, toolbar and radiogroup patterns are implemented with their full state and keyboard contracts, and two more now are: the **combobox** (Quick Access carries `aria-controls`, `aria-activedescendant` and an `aria-expanded` that is false when nothing matched — it was the literal string `true`) and the **dialog** (`role`, `aria-modal` and a name off the wrapper's headline). Every tab strip in the shell carries real `tablist`/`tab`/`tabpanel` semantics (`jx-tabs`), the PANE strip included. **Both trees are `jx-tree` now**, which is the same correction one level down: the Outline and the Files tree each wrote out `role="tree"`, `role="treeitem"`, `aria-level`, `aria-posinset`, `aria-setsize`, a roving `tabindex` and their own arrow-key cases, and nothing held the two copies in agreement — ← climbed to a parent in one and only closed a directory in the other, Home and End existed in one and not the other, and neither had typeahead. The element owns all of it and both trees gained the half they were missing; what the panels keep is the half a windowed tree cannot delegate, because the DOM holds a slice: the counts describe the full set, a caret move past the drawn rows comes back as `move`, and ← climbs to the parent the ROW MODEL recorded rather than to the nearest painted row at a shallower level. It was the last one out, because a Studio tab chip carries a pin toggle, an origin marker and a draft pill and `jx-tab` accepted no slotted content; the gap was one `<slot>` in the kit's element rather than a missing keyboard contract, and closing it took three (`ui.md` §5.4, slots `icon`, `status` and `actions`). The chip keeps all three marks and is a `tab` inside a `tablist`: one stop in the tab order with a roving caret inside it, arrows with wrap, Home and End, and **Delete closing a document** — a path the `×` had never had, and the reason this gap was worth closing in the element rather than around it. The Tabulator data grid is virtualized — hand-authoring `role="grid"` over rows that do not exist in the DOM would make it worse, not better. One deviation from the menu pattern is deliberate and is recorded in §8.4: the rail foot's Settings menu gives a row that owns a submenu **an action of its own**, which the APG does not describe. It is the requirement rather than an oversight — the heading opens the surface and the submenu deep-links a section — and it is why these menus were hand-rolled before the kit had one: Spectrum's stock `slot="submenu"` forbade it outright. Nothing is unreachable: Enter runs the row, ArrowRight reaches every child, `aria-haspopup` announces the popup, and every child has a second door. |
+| [Accessible Name and Description Computation](https://www.w3.org/TR/accname-1.2/) | **Adopted** | §10              | packages/studio/src/panels/problems-panel.ts                                                                                                                                                                                                          | §10's rule that a control carries exactly one accessible name — `title` and `aria-label` with the same string announce it twice — is this algorithm's precedence order restated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| [WCAG 2.2](https://www.w3.org/TR/WCAG22/)                                         | **Subset**  | §1.1, §8.2, §8.7 | packages/studio/src/services/announce.ts, packages/studio/styles/forced-colors.css, packages/studio/scripts/check-styles.ts, packages/studio/tests/announce.test.ts                                                                                   | `gap:wcag-conformance` No level is claimed, and conformance is not tested end to end — that needs a browser. Four criteria are met deliberately and checked: **SC 4.1.3** (Status Messages) — one live region, called from `notify()` itself, so a failure that lands in the Problems panel is still announced; **SC 2.5.7** (Dragging Movements) — cut/paste is the stated alternative to every drag; **SC 1.4.3/1.4.11** (Contrast) — a required-pairs table gated in `check-styles.ts`, with one entry on the debt list; **SC 1.4.1** — a `forced-colors` block redraws the selection and focus affordances Windows High Contrast deletes with `box-shadow`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| [ATAG 2.0](https://www.w3.org/TR/ATAG20/)                                         | **Subset**  | §8, §13.1a       | packages/studio/src/services/announce.ts, packages/studio/src/services/a11y-report.ts                                                                                                                                                                 | Part A — the tool's own accessibility — is answered by §13.1a's live region and §8.2's keyboard alternative to every drag. Part B is `studio.md` §16.6: a check over the author's document, filing a Problem per finding with its WCAG criterion. Neither part claims a conformance level, which needs a browser.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/)                           | **Adopted** | §15              | scripts/screenshots/lib/browser.ts, scripts/screenshots/lib/browser.test.ts, scripts/screenshots/lib/shot.ts                                                                                                                                          | The documentation screenshot pipeline drives Chromium over the W3C protocol rather than CDP. Verified by capturing the same shot over each with everything else held equal and hashing the results: byte-identical. The one behavioural difference — BiDi refuses a pointer move outside the viewport, where CDP allowed `(-1, -1)` — is fixed in the pipeline rather than worked around, and §15 records it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## Changelog
 
+- **0.8.8-draft** (2026-09-18) — The tab strip and the pane grid's right-edge zone are pragmatic drag targets too; Split Right and Open to the Side are their non-drag equivalents.
+- **0.8.7-draft** (2026-09-14) — §12.4 a surface runs a command through runReported, which files a synchronous refusal and a later rejection alike in Problems under the surface's name, and a crash also reaches the console.
+- **0.8.6-draft** (2026-09-13) — §12.4 the agent's tool IS the command: the projection contract, the four deletion rules and the three review rules; the argument corollary names the schema coercion; §12.2 gains the assistant tool cap.
+- **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.
+- **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.
+- **0.8.3-draft** (2026-09-11) — §9.3 records the live chrome lane: a saved surface or kit component re-mounts the roots it draws in the shell, keyed on the path under packages/studio or packages/ui, and names the canvas half that waits on the frame seeding the kit's modules.
+- **0.8.2-draft** (2026-09-10) — Both Studio trees are jx-tree: the role, the counts, the roving tab stop and the arrow keys are the element's, and the two hand-written copies of that contract are gone; §8.2's drop highlight is named as the element's data-drop.
+- **0.8.1-draft** (2026-09-10) — The bound on surviving lit templates is a gate (LIT_TEMPLATE_AUTHORS) rather than prose (§9.3).
+- **0.8.0-draft** (2026-09-10) — Adobe Spectrum is removed: one element family, styles/spectrum.css re-homed into the token source, and the inventory in 6.1 replaced by a ban with an empty allow-list.
+- **0.7.0-draft** (2026-09-10) — Studio owns no custom elements: §6.2 graduates as the last LitElement (jx-value-selector) is deleted with its two retired callers, and the checklist item that governed them names the kit instead.
+- **0.6.1-draft** (2026-09-10) — showDialog and its slot helper are gone: Open Project's three-way question was never bespoke and calls openDialogSurface, so the last lit dialog body converted; the empty-state pattern is one spec with two renderers and no class of its own; the inspector row vocabulary drops .style-row/.field-row with ui/field-row.ts.
+- **0.6.0-draft** (2026-09-10) — renderPopover is gone: the tab strip's overflow list and context/tab menu are projections handed to the kit menu, which leaves the lit popover helper with no caller and takes its row out of the layers API table.
+- **0.5.1-draft** (2026-09-10) — The pane tab strip is a Jx document over jx-tabs; every strip in the shell now carries real tab semantics (gap:apg-coverage).
+- **0.5.0-draft** (2026-09-10) — openModal and the hand-rolled Tab trap are deleted with their last caller; a persistent modal is a jx-dialog surface document (§8.7).
+- **0.4.21-draft** (2026-09-10) — The dock tab strips carry real tab semantics; the pane strip waits on a slot in jx-tab (gap:apg-coverage).
+- **0.4.20-draft** (2026-09-10) — The Files tree's per-row menu is the kit menu: the tree's own verbs and the declared context/file records in one list, and the hand-written viewport clamp gone with the sp-popover.
+- **0.4.19-draft** (2026-09-09) — The migrated-surface list is the src/surfaces directory rather than an enumeration in the prose (§9.3).
+- **0.4.18-draft** (2026-09-09) — the About dialog is a document: the pattern a converted surface follows, and the readiness trap it hit.
+- **0.4.17-draft** (2026-09-09) — the shell frame is a Jx document, and mounting it is asynchronous because initShellRefs reads its cells on the next line.
+- **0.4.16-draft** (2026-09-09) — the shell frame's stylesheet is generated from a style block; its markup waits because initShellRefs reads the hosts synchronously.
+- **0.4.15-draft** (2026-09-09) — forced-colors.css is generated from a style block with its reasoning intact; the keyframes stay put and gain the duplicate-name gate.
+- **0.4.14-draft** (2026-09-09) — tokens.css is a build output generated from tokens.json, and stays a linked stylesheet because everything in it is pre-paint.
+- **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
+- **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
+- **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
+- **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.
+- **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).
+- **0.4.8-draft** (2026-09-02) — The toast stack is a Jx document projected by ui/layers.ts (§9.3).
+- **0.4.7-draft** (2026-09-02) — The confirm, save-or-discard and prompt dialogs are a Jx document over jx-dialog, opened modally on the native substrate (§8.7, §9.3).
+- **0.4.6-draft** (2026-09-02) — The Command Bar is a Jx document: surfaces/commandbar.json over the registry's projections, with the Studio menu on the menu surface (§9.3).
+- **0.4.5-draft** (2026-09-02) — The Start pane is a surface: the first whole pane as a document (§9.3).
+- **0.4.4-draft** (2026-09-02) — The status bar is a surface: three projected fields, buttons where an item names a command (§9.3).
+- **0.4.3-draft** (2026-09-02) — The Navigator rail is a surface: stacked jx-action-buttons held by the shell, the gear a menu button, panel icons as kit glyph names (§9.3).
+- **0.4.2-draft** (2026-09-02) — The rail's Settings menu is the second surface on the menu document: sections as a child jx-menu, live rows through a reactive scope, the rail's bottom as the stack's floor (§8.4, §9.3).
+- **0.4.1-draft** (2026-09-02) — The element context menu is the first surface built as a Jx document: surfaces/menu.json over a jx-menu, mounted through a popover layer slot (§8.4, §9.3).
+- **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
 - **0.3.16** (2026-08-27) — showPromptDialog carries an optional choice control beside its field.
 - **0.3.15** (2026-08-26) — §8.4 becomes Menus: menu-button triggers, submenus and the APG deviation; §12.1 gains the settings/menu placement.
 - **0.3.14** (2026-08-22) — Template conventions (9.4) and the gate behind them; render orchestration described as it is; custom components corrected to the two that exist.

@@ -1,0 +1,232 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioMenu",
+  "$description": "A Studio menu: one jx-menu whose rows are a projection of command records the adapter hands in as `rows`. Nothing here decides what a row says; a row prints its record's title, chord, disabled reason and destructive flag, a divider falls where the adapter marked a group boundary, and a row with children owns a one-level submenu of the same shape. The chord and the reason are rendered only when present, so a row's text is its title.",
+  "tagName": "jx-menu",
+  "$props": {
+    "label": {
+      "$ref": "#/state/label"
+    },
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    },
+    "floor": {
+      "$ref": "#/state/floor"
+    },
+    "placement": {
+      "$ref": "#/state/placement"
+    }
+  },
+  "onselect": {
+    "$ref": "#/state/select"
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/rows"
+      },
+      "key": {
+        "$ref": "$map/item/id"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "role": "none"
+        },
+        "children": [
+          {
+            "tagName": "div",
+            "attributes": {
+              "role": "none"
+            },
+            "$switch": {
+              "$ref": "$map/item/dividerAbove"
+            },
+            "cases": {
+              "true": {
+                "tagName": "hr"
+              }
+            }
+          },
+          {
+            "tagName": "jx-menu-item",
+            "$props": {
+              "value": {
+                "$ref": "$map/item/id"
+              },
+              "disabled": {
+                "$ref": "$map/item/disabled"
+              },
+              "destructive": {
+                "$ref": "$map/item/destructive"
+              },
+              "requires": {
+                "$ref": "$map/item/requires"
+              },
+              "checked": {
+                "$ref": "$map/item/checked"
+              },
+              "haspopup": {
+                "$ref": "$map/item/haspopup"
+              }
+            },
+            "attributes": {
+              "data-command-id": "${$map.item.id}"
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "${$map.item.title}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "slot": "value"
+                },
+                "$switch": {
+                  "$ref": "$map/item/noChord"
+                },
+                "cases": {
+                  "false": {
+                    "tagName": "kbd",
+                    "textContent": "${$map.item.chord}"
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "slot": "description"
+                },
+                "$switch": {
+                  "$ref": "$map/item/enabled"
+                },
+                "cases": {
+                  "false": {
+                    "tagName": "span",
+                    "textContent": "Needs ${$map.item.requires}"
+                  }
+                }
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "slot": "submenu"
+                },
+                "$switch": {
+                  "$ref": "$map/item/haspopup"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "jx-menu",
+                    "$props": {
+                      "label": {
+                        "$ref": "$map/item/submenuLabel"
+                      }
+                    },
+                    "children": [
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/children"
+                        },
+                        "key": {
+                          "$ref": "$map/item/id"
+                        },
+                        "map": {
+                          "tagName": "div",
+                          "attributes": {
+                            "role": "none"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "role": "none"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/dividerAbove"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "hr"
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "jx-menu-item",
+                              "$props": {
+                                "value": {
+                                  "$ref": "$map/item/id"
+                                },
+                                "disabled": {
+                                  "$ref": "$map/item/disabled"
+                                },
+                                "destructive": {
+                                  "$ref": "$map/item/destructive"
+                                },
+                                "requires": {
+                                  "$ref": "$map/item/requires"
+                                },
+                                "checked": {
+                                  "$ref": "$map/item/checked"
+                                }
+                              },
+                              "attributes": {
+                                "data-command-id": "${$map.item.id}"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "${$map.item.title}"
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "slot": "value"
+                                  },
+                                  "$switch": {
+                                    "$ref": "$map/item/noChord"
+                                  },
+                                  "cases": {
+                                    "false": {
+                                      "tagName": "kbd",
+                                      "textContent": "${$map.item.chord}"
+                                    }
+                                  }
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "slot": "description"
+                                  },
+                                  "$switch": {
+                                    "$ref": "$map/item/enabled"
+                                  },
+                                  "cases": {
+                                    "false": {
+                                      "tagName": "span",
+                                      "textContent": "Needs ${$map.item.requires}"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

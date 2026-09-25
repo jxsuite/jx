@@ -62,3 +62,4 @@ A repeater is stored in the file as an `Array` node with `items` (the binding), 
 
 - Feed repeaters from the collections defined in **[Content types](/docs/studio/projects/content-types)**.
 - Make the template a reusable component with **[Working with components](/docs/studio/design/components)**.
+  - packages/studio/src/surfaces/convert-repeater.ts

@@ -1,0 +1,8 @@
+{
+  "$schema": "./project.schema.json",
+  "name": "Jx Studio",
+  "url": "https://jxsuite.com/studio",
+  "defaults": {
+    "lang": "en"
+  }
+}

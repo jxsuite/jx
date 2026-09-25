@@ -361,7 +361,10 @@ describe("slash menu", () => {
     el.textContent = "/he";
     caretAt(el.firstChild!, 3);
     el.dispatchEvent(new Event("input", { bubbles: true }));
-    const items = document.querySelectorAll("sp-menu-item");
+    // The menu is a listbox document now (`surfaces/slash-menu.json`), and it reconciles a couple
+    // Of turns after the keystroke that narrowed it.
+    await flush(3);
+    const items = document.querySelectorAll('[part="option"]');
     expect(items.length).toBe(3); // Heading 1/2/3
   });
 

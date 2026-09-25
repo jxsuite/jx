@@ -139,7 +139,7 @@
         },
         "StyleObject": {
           "additionalProperties": {
-            "oneOf": [
+            "anyOf": [
               {
                 "type": "string"
               },
@@ -151,8 +151,29 @@
               }
             ]
           },
-          "description": "CSS style definition. camelCase property names follow CSSOM convention. Keys starting with :, ., &, or [ are treated as nested CSS selectors. Keys matching $media breakpoint names (or other @-prefixed at-rules) group nested rules. Nesting is recursive: selector and at-rule groups may nest to arbitrary depth (e.g. breakpoint → selector → pseudo-class), mirroring the compiler's recursive emission.",
-          "properties": {},
+          "description": "CSS style definition. camelCase property names follow CSSOM convention. Keys starting with :, ., &, or [ are treated as nested CSS selectors. Keys matching $media breakpoint names (or other @-prefixed at-rules) group nested rules. Nesting is recursive: selector and at-rule groups may nest to arbitrary depth (e.g. breakpoint → selector → pseudo-class), mirroring the compiler's recursive emission. An object carrying $ref is a reactive VALUE, and the runtime reads it as one. It also matches the nested-block branch vacuously, since a block admits a string under any key, which is why these branches are anyOf rather than oneOf. A DECLARATION at-rule (@font-face, @property, @position-try, @counter-style) may hold an ARRAY of blocks, which is that key written more than once, in order: an object's keys are unique, so @font-face — the at-rule whose identity is not in its key — could not otherwise state a family's second weight at all.",
+          "patternProperties": {
+            "^@(font-face|property|position-try|counter-style)": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/project-core-v2/$defs/StyleObject"
+                },
+                {
+                  "items": {
+                    "$ref": "#/$defs/project-core-v2/$defs/StyleObject"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          "properties": {
+            "$description": {
+              "description": "Why this rule exists. Emitted as a comment by static builds, ignored at runtime.",
+              "type": "string"
+            }
+          },
           "type": "object"
         }
       },

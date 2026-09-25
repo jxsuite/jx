@@ -415,8 +415,14 @@ describe("the backfill lane", () => {
     // Screenshots.yml needs one: Chromium does not re-encode a PNG byte-for-byte, so that lane can
     // Photograph its own output forever. `JSON.stringify` does, so the run this lane's push
     // Triggers regenerates to identical bytes and pushes nothing. If the generators ever stop
-    // Being deterministic, this test is where to start reading.
-    expect(JSON.stringify(workflow)).not.toContain("github.actor");
+    // Being deterministic, this test is where to start reading. A refusal is a job-level `if:`;
+    // The concurrency group reads `github.actor` too, as a grouping key (bot versus human, so the
+    // Approved bot-head run cannot cancel its approver — approve-held-runs.test.ts), which
+    // Declines nothing.
+    expect(JSON.stringify(job.if ?? "")).not.toContain("github.actor");
+    for (const step of steps) {
+      expect(JSON.stringify(step.if ?? "")).not.toContain("github.actor");
+    }
   });
 });
 

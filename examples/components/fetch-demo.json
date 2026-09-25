@@ -123,6 +123,7 @@
         },
         {
           "tagName": "select",
+          "attributes": { "aria-label": "Filter by user" },
           "value": "${state.selectedUserId}",
           "onchange": { "$ref": "#/state/onUserFilter" },
           "style": {

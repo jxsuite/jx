@@ -22,13 +22,14 @@
  * replaced.
  */
 
-import { html } from "lit-html";
 import { getPlatform } from "../platform";
 import { shouldInstallAutomation } from "../services/automation";
-import { showConfirmDialog } from "../ui/layers";
+import { layerHost } from "../ui/layers";
+import { openJxsuiteUpdateSurface } from "../surfaces/jxsuite-update";
 import { showProgressModal } from "../ui/progress-modal";
 import { notify } from "../services/notify";
 import { isUpgrade } from "./semver";
+import type { JxsuiteUpdateSurfaceHandle } from "../surfaces/jxsuite-update";
 
 const JXSUITE_PREFIX = "@jxsuite/";
 
@@ -133,6 +134,71 @@ export async function applyJxsuiteUpdate(outdated: JxsuiteUpdate[]): Promise<voi
 }
 
 /**
+ * Put the offer up and wait for an answer.
+ *
+ * The promise is this module's, not the surface's: the dialog reports three things as callbacks —
+ * confirmed, declined, closed — and lets the flow decide what each one means, so `resolve` happens
+ * here and taking the dialog down is a consequence of the answer rather than the thing that
+ * produces it. `settle` is guarded because both ends arrive: answering closes the dialog, which
+ * raises `onClosed` behind it, and a resolved promise must not be re-resolved a tick later.
+ *
+ * Every path that is not an explicit Update resolves `false`, the platform's own close included — a
+ * dialog the reader dismissed with Escape declined the offer just as surely as the Not now button
+ * did, and the dismissal key is what makes the difference visible later.
+ */
+function askToUpdate(outdated: JxsuiteUpdate[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    let answered = false;
+    const settle = (value: boolean): void => {
+      if (answered) {
+        return;
+      }
+      answered = true;
+      resolve(value);
+    };
+    /**
+     * Take the dialog down, once.
+     *
+     * Guarded here rather than trusted to the handle, because closing is what RAISES `onClosed` —
+     * so a teardown that re-entered through it would call itself until the stack ran out.
+     */
+    let closing = false;
+    const takeDown = (): void => {
+      if (closing) {
+        return;
+      }
+      closing = true;
+      handle.close();
+    };
+    const handle: JxsuiteUpdateSurfaceHandle = openJxsuiteUpdateSurface({
+      layer: layerHost("dialog"),
+      onCancel: () => {
+        takeDown();
+      },
+      /* Closing too, not only settling: a `close` the flow did not ask for — Escape, or a
+         dismissal the platform allows — must ALSO take the document out of the dialog layer, or
+         the surface outlives the dialog it drew. `settle` has already answered by then if
+         anything did. */
+      onClosed: () => {
+        settle(false);
+        takeDown();
+      },
+      onConfirm: () => {
+        settle(true);
+        takeDown();
+      },
+      // `^<its own latest>`, spelled once: this is the same string `applyJxsuiteUpdate` writes into
+      // The manifest, so the row cannot promise a range the install would not produce.
+      packages: outdated.map((p) => ({
+        current: p.current,
+        name: p.name,
+        target: `^${p.latest}`,
+      })),
+    });
+  });
+}
+
+/**
  * Prompt to update on open. Skips when there is nothing to do or the user already declined this
  * exact set of versions for this project (remembered in localStorage).
  */
@@ -141,15 +207,16 @@ export async function maybePromptJxsuiteUpdate(projectRoot: string): Promise<voi
   // Ensure-deps.ts states, and for the same reason: confirming here calls `setPackageVersions`,
   // Which rewrites the opened project's package.json.
   //
-  // It also has to hold when nobody confirms anything. `showConfirmDialog` renders an
-  // `<sp-dialog-wrapper open underlay>`, and an underlay swallows every pointer event across the
-  // Viewport — so a prompt raised at boot means every subsequent click in a shot lands in a scrim.
-  // That is not hypothetical: it put this dialog into the middle of 33 committed screenshots,
-  // Including docs/images/hero.png, which is the jxsuite.com marketing hero.
+  // It also has to hold when nobody confirms anything. The offer is a modal `<dialog>`, and a
+  // Modal dialog makes the rest of the page inert — so a prompt raised at boot means every
+  // Subsequent click in a shot lands on nothing at all. That is not hypothetical: with the
+  // Underlay this surface used to paint it put the dialog into the middle of 33 committed
+  // Screenshots, including docs/images/hero.png, which is the jxsuite.com marketing hero. The
+  // Substrate changed and the hazard did not: inertness is what an underlay was imitating.
   //
   // Correct pins are NOT sufficient on their own. This compares the range's BASE version against
   // The registry's `latest`, not whether the range resolves it — so a project pinned `^1.4.1` is
-  // Behind the moment 1.4.2 publishes, and every starter shot would be scrimmed again by the next
+  // Behind the moment 1.4.2 publishes, and every starter shot would be blocked again by the next
   // Patch release of any @jxsuite package.
   if (shouldInstallAutomation(location.search)) {
     return;
@@ -162,16 +229,7 @@ export async function maybePromptJxsuiteUpdate(projectRoot: string): Promise<voi
   if (outdated.length === 0 || isDismissed(projectRoot, outdated)) {
     return;
   }
-  const list = outdated.map((p) => `${p.name} ${p.current} → ^${p.latest}`).join("\n");
-  const confirmed = await showConfirmDialog(
-    "Update @jxsuite packages?",
-    html`Newer versions of these packages have been published. Update the project to them?
-      <br /><br /><span
-        style="font-size:var(--spectrum-font-size-75, 12px);color:var(--fg-dim);white-space:pre-line"
-        >${list}</span
-      >`,
-    { cancelLabel: "Not now", confirmLabel: "Update" },
-  );
+  const confirmed = await askToUpdate(outdated);
   if (!confirmed) {
     setDismissed(projectRoot, outdated);
     return;

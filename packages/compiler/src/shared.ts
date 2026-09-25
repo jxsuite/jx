@@ -11,15 +11,16 @@ import {
   COLOR_SCHEME_STORAGE_KEY,
   RESERVED_KEYS,
   booleanAttrValue,
+  buildStyleRules,
+  enumeratedAttrNames,
+  isNestedSelectorKey,
   camelToKebab,
   isSingleExpression,
-  pureSchemeOf,
-  resolveAtQuery,
-  schemeSelectors,
-  toCSSText,
+  splitSelectorList,
 } from "@jxsuite/runtime";
 import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
+import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
   bodyReturnsValue,
   childrenContainArray,
@@ -37,7 +38,7 @@ import {
   paramNames,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
-import { styleScopePrefix } from "./shadow.ts";
+import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
 import type { ShadowMode } from "./shadow.ts";
 import type { ExpressionNode } from "@jxsuite/runtime/expression";
 import { readPath } from "@jxsuite/runtime/pointer";
@@ -50,6 +51,7 @@ import type {
   JxStateDefinition,
   JxStateObject,
   JxStyle,
+  ProjectConfig,
 } from "@jxsuite/schema/types";
 
 // Re-export runtime utilities used by submodules
@@ -850,12 +852,58 @@ export function cloneValue(value: unknown) {
 // ─── HTML building ────────────────────────────────────────────────────────────
 
 /**
+ * The inline `style` declarations of one node: its template-string entries, resolved against
+ * `scope`. Everything else in a `style` object is a stylesheet rule (`collectStyles` gives it a
+ * class handle), so only a per-instance value is written on the element.
+ *
+ * @param {JxStyle | null | undefined} style
+ * @param {Record<string, unknown> | null} scope
+ * @returns {string} `prop: value; prop: value`, or "" when nothing resolves
+ */
+export function inlineStyleDeclarations(
+  style: JxStyle | null | undefined,
+  scope: Record<string, unknown> | null,
+): string {
+  if (!style || !scope) {
+    return "";
+  }
+  return Object.entries(style)
+    .filter(
+      ([k, v]) =>
+        !k.startsWith(":") &&
+        !k.startsWith(".") &&
+        !k.startsWith("&") &&
+        !k.startsWith("[") &&
+        !k.startsWith("@") &&
+        v !== null &&
+        typeof v !== "object" &&
+        typeof v === "string" &&
+        isTemplateString(v),
+    )
+    .map(([k, v]) => {
+      const value = resolveStaticValue(v, scope);
+      return value == null ? null : `${camelToKebab(k)}: ${value}`;
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+/**
  * Build an HTML attribute string from a static element definition.
  *
  * @param {JxElement | JxMutableNode} def
- * @param {Record<string, unknown>} scope @returns {string}
+ * @param {Record<string, unknown>} scope
+ * @param {string} [hostStyle] - Declarations resolved by the caller against ANOTHER scope, folded
+ *   into the same `style` attribute after the node's own. A nested component instance is the one
+ *   caller: its own `style` resolves against the parent's scope, while the definition's host style
+ *   resolves against the instance's, and an element cannot carry two `style` attributes.
+ * @returns {string}
  */
-export function buildAttrs(def: JxElement | JxMutableNode, scope: Record<string, unknown> | null) {
+export function buildAttrs(
+  def: JxElement | JxMutableNode,
+  scope: Record<string, unknown> | null,
+  hostStyle = "",
+) {
   let out = "";
 
   const id = resolveStaticValue(def.id, scope);
@@ -888,29 +936,20 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: Record<string,
     out += ` dir="${escapeHtml(String(dir))}"`;
   }
 
-  if (def.style && scope) {
-    const inline = Object.entries(def.style)
-      .filter(
-        ([k, v]) =>
-          !k.startsWith(":") &&
-          !k.startsWith(".") &&
-          !k.startsWith("&") &&
-          !k.startsWith("[") &&
-          !k.startsWith("@") &&
-          v !== null &&
-          typeof v !== "object" &&
-          typeof v === "string" &&
-          isTemplateString(v),
-      )
-      .map(([k, v]) => {
-        const value = resolveStaticValue(v, scope);
-        return value == null ? null : `${camelToKebab(k)}: ${value}`;
-      })
-      .filter(Boolean)
-      .join("; ");
-    if (inline) {
-      out += ` style="${inline}"`;
-    }
+  // The host declarations go last: in one `style` attribute the later declaration of a property
+  // Wins, and the page walk gives the definition's resolved host style the same precedence over an
+  // Instance's own (`{ ...node.style, ...resolvedStyle }`), so the two paths agree.
+  const inline = [inlineStyleDeclarations(def.style, scope), hostStyle].filter(Boolean).join("; ");
+  if (inline) {
+    /*
+     * Escaped like every other attribute. Both halves carry values a template string resolved
+     * from data — a `background-image: url("…")` host style reads its target from a prop — and a
+     * `"` in that data would otherwise end the attribute and hand the rest of the value to the
+     * parser as attributes. The HTML parser decodes `&quot;` before the CSS parser sees the
+     * declaration, so `url(&quot;…&quot;)` renders exactly as `url("…")`, and `rewriteHtmlBase`
+     * already reads the entity-wrapped form back when it re-roots a `url()`.
+     */
+    out += ` style="${escapeHtml(inline)}"`;
   }
   if (def.attributes) {
     for (const [k, v] of Object.entries(def.attributes)) {
@@ -1040,78 +1079,140 @@ export function colorSchemePrePaintScript(): string {
 }
 
 /**
- * Resolve an `@`-prefixed style key into an emit function that pushes conditional rules. Pure
- * color-scheme queries dual-emit per the forced-scheme contract (spec §9.5): a media-guarded copy
- * that applies while no scheme is forced plus an unconditional copy under the forced root
- * attribute.
+ * Push the rules one style object becomes, scoped to `selector`.
  *
- * @param {string} atKey
- * @param {Record<string, string>} mediaQueries
+ * The single door from the compiler to `buildStyleRules`, which is now the ONE definition of what a
+ * Jx style object means as CSS — shared with the DOM runtime and the site-style builder. Three
+ * emitters used to answer that question separately, and each dropped a different combination: this
+ * one emitted `selector → @media` but only ever ONE selector level inside an at-rule group, so
+ * `@media → .card → :hover` was silently lost, while the runtime dropped the opposite order.
+ *
+ * Template-string and `$ref` values are omitted rather than resolved: a compiled page's CSS is
+ * static by construction, and the runtime writes those declarations at render time.
+ *
  * @param {string[]} rules
- * @returns {(selector: string, props: string) => void}
- * @docs framework/concepts/color-schemes
+ * @param {JxStyle} style
+ * @param {string | null} selector - The scope, or null for a bare declaration-body at-rule
+ * @param {Record<string, string>} mediaQueries
  */
-function conditionalRuleEmitter(
-  atKey: string,
-  mediaQueries: Record<string, string>,
+function pushStyleRules(
   rules: string[],
-): (selector: string, props: string) => void {
-  const query = resolveAtQuery(atKey, mediaQueries);
-  const atRule = query === null ? atKey : `@media ${query}`;
-  const scheme = query === null ? null : pureSchemeOf(query);
-  return (selector: string, props: string) => {
-    if (!props) {
-      return;
-    }
-    if (scheme) {
-      const { auto, forced } = schemeSelectors(selector, scheme);
-      rules.push(`${atRule} { ${auto} { ${props} } }`, `${forced} { ${props} }`);
-    } else {
-      rules.push(`${atRule} { ${selector} { ${props} } }`);
-    }
-  };
+  style: JxStyle,
+  selector: string | null,
+  mediaQueries: Record<string, string>,
+) {
+  for (const rule of buildStyleRules(style, {
+    mediaQueries,
+    /* Records what a STATIC build drops, and returns `null` so it drops exactly as before — the
+       emitted bytes are unchanged. A reactive declaration is a runtime declaration: it resolves
+       against a live scope, which a compiled page has only where the runtime is present, so a
+       static emitter has always dropped it. Silently, which is the defect: a document is correct
+       in Studio and simply unstyled in the built page, with nothing said. */
+    resolveValue: (property, value) => recordDroppedReactive(property, value, selector),
+    scope: selector,
+  })) {
+    rules.push(rule.text);
+  }
 }
 
 /**
- * Push the rules for one `@`-prefixed style block scoped to `selector`: flat props plus one level
- * of nested selectors, routed through conditionalRuleEmitter (scheme-aware).
+ * Record a reactive declaration a static build drops, and answer `null` so it is dropped.
  *
- * @param {string[]} rules
- * @param {string} atKey
- * @param {Record<string, string>} mediaQueries
- * @param {string} selector
- * @param {Record<string, unknown>} obj
+ * One recorder for both emitters the build reaches — `pushStyleRules` for element styles, and
+ * `buildSiteStyleCSS` for the project block, which takes it as its resolver — so a `${…}` in
+ * `project.json#/style` is reported the way one in an element's `style` is.
  */
-function pushConditionalRule(
-  rules: string[],
-  atKey: string,
-  mediaQueries: Record<string, string>,
-  selector: string,
-  obj: Record<string, unknown>,
-) {
-  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
-    return;
-  }
-  const emit = conditionalRuleEmitter(atKey, mediaQueries, rules);
-  emit(selector, toCSSText(obj));
-  for (const [sel, sub] of Object.entries(obj)) {
-    if (sub === null || typeof sub !== "object" || Array.isArray(sub)) {
-      continue;
-    }
-    if (sel.startsWith("@")) {
-      continue;
-    }
-    const resolved = sel.startsWith("&")
-      ? sel.replace("&", selector)
-      : sel.startsWith(":") || sel.startsWith(".") || sel.startsWith("[")
-        ? `${selector}${sel}`
-        : `${selector} ${sel}`;
-    emit(resolved, toCSSText(sub));
-  }
+function recordDroppedReactive(
+  property: string,
+  value: string | JxRef,
+  selector: string | null,
+): null {
+  const source = typeof value === "string" ? value : value.$ref;
+  _droppedReactive.push({ property, selector, source });
+  return null;
+}
+
+/** One entry per reactive declaration a static build dropped, since the last drain. */
+const _droppedReactive: { property: string; selector: string | null; source: string }[] = [];
+
+/**
+ * Take the reactive declarations dropped since the last call, as warning lines, and clear them.
+ *
+ * A build drains this once and reports what it finds. Draining is what keeps two builds in one
+ * process from inheriting each other's, and what keeps the list from growing without bound.
+ *
+ * @returns {string[]} One line per dropped declaration, naming the property and where it was.
+ */
+export function takeDroppedReactiveStyles(): string[] {
+  const lines = _droppedReactive.map(
+    ({ property, selector, source }) =>
+      `A static build drops the reactive style declaration \`${property}: ${source}\`` +
+      `${selector ? ` on \`${selector}\`` : ""}. It resolves against a live scope, which a ` +
+      "built page has only where the runtime is present, so the declaration is absent from the " +
+      "page. Give it a static value, or move it to an element the runtime renders.",
+  );
+  _droppedReactive.length = 0;
+  return lines;
+}
+
+/**
+ * The name of the boolean-attribute helper the generated modules call.
+ *
+ * Prefixed and improbable because it lands in the same scope as the author's own bindings.
+ */
+export const ATTR_HELPER = "__jxAttrText";
+
+/**
+ * The source of that helper, to be emitted into a generated module's preamble.
+ *
+ * **Why an inlined copy rather than an import.** `booleanAttrValue` is the single decision about
+ * which family an attribute belongs to, and `buildAttrs` here calls it directly — but the element
+ * and client targets emit standalone ES modules that a built site loads with `lit-html` and
+ * `@vue/reactivity` and nothing else. Importing `@jxsuite/runtime` into every compiled component to
+ * reach four lines would put the whole renderer on the critical path of pages that never use it.
+ *
+ * So the rule is inlined, and the enumerated names are SERIALIZED from `enumeratedAttrNames()`
+ * rather than retyped. `compile-element.test.ts` asserts the emitted literal still equals that
+ * export, which is what keeps this from becoming a fourth, drifting definition — the exact failure
+ * the essay above `buildAttrs` exists to prevent, and the one these two targets shipped for months:
+ * they stringified booleans, so a component's `open: true` compiled to `open="true"` and a bound
+ * `open` that flipped false wrote `open="false"` — an OPEN `<details>` the author had closed.
+ *
+ * Returns the text to write, or `null` to mean "remove the attribute"; each caller adapts that null
+ * to its own idiom (`nothing` in a lit template, `removeAttribute` in the hydration script).
+ *
+ * @returns {string} One `function` declaration, ready to push into a module's line list.
+ */
+export function attrHelperSource(): string {
+  const names = JSON.stringify(enumeratedAttrNames());
+  return (
+    `const __jxEnumAttrs = new Set(${names});\n` +
+    `function ${ATTR_HELPER}(n, v) {\n` +
+    `  if (typeof v !== 'boolean') return v;\n` +
+    `  const l = n.toLowerCase();\n` +
+    `  if (l.startsWith('aria-') || __jxEnumAttrs.has(l)) return String(v);\n` +
+    `  return v ? '' : null;\n` +
+    `}`
+  );
 }
 
 /**
  * Walk the entire document tree and collect all static nested CSS rules.
+ *
+ * The project block is NOT split here. `buildSiteStyleCSS` (`@jxsuite/site/site-style`) is the one
+ * definition of how `project.json#/style` becomes a page's stylesheet — custom properties and
+ * `color-scheme` on `:root`, other declarations on `body`, `&`-keyed blocks as states of `:root`,
+ * selector keys as their own rules, `@`-blocks resolved and dual-emitted, then the forced-scheme
+ * `color-scheme` triplet — and the built page calls it with an identity transposer, so the canvas
+ * and the live preview show what the build ships by construction. This function used to carry its
+ * own copy of that split, and the two copies disagreed on two shapes the site builder had right: a
+ * top-level `&[data-theme="light"]` reached the page as a raw `&` selector, which no engine
+ * matches, and a top-level `colorScheme` went to `body`, where `light-dark()` on the root reads the
+ * UA default instead (#329, spec.md §9.5).
+ *
+ * The one thing the build adds is the resolver: a host drops a reactive project declaration in
+ * silence because it has nothing to evaluate it against, and a static build drops it for the same
+ * reason but SAYS SO, through the same recorder `pushStyleRules` uses for element styles.
  *
  * @param {JxElement | JxMutableNode} doc
  * @param {Record<string, string>} [mediaQueries]
@@ -1125,119 +1226,17 @@ export function compileStyles(
 ) {
   const rules: string[] = [];
 
-  // Emit project-level (site-wide) styles — CSS custom properties go on :root,
-  // Everything else on body.  Project-level style is implicitly :root, so a
-  // Flat object like { "--bg": "#000", "margin": "0" } is the expected format.
-  if (projectStyle && typeof projectStyle === "object") {
-    const emitProjectRules = (selector: string, obj: Record<string, unknown>) => {
-      const props = toCSSText(obj);
-      if (props) {
-        rules.push(`${selector} { ${props} }`);
-      }
-      for (const [key, val] of Object.entries(obj)) {
-        if (val === null || typeof val !== "object" || Array.isArray(val)) {
-          continue;
-        }
-        if (key.startsWith("@")) {
-          pushConditionalRule(rules, key, mediaQueries, selector, val as Record<string, unknown>);
-          continue;
-        }
-        const resolved = key.startsWith("&")
-          ? key.replace("&", selector)
-          : key.startsWith(":") || key.startsWith(".") || key.startsWith("[")
-            ? `${selector}${key}`
-            : `${selector} ${key}`;
-        emitProjectRules(resolved, val as Record<string, unknown>);
-      }
-    };
-
-    // Collect CSS custom properties into :root {}
-    const rootProps: Record<string, unknown> = {};
-    // Collect direct CSS properties into body {}
-    const bodyProps: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(projectStyle)) {
-      if (
-        key.startsWith(":") ||
-        key.startsWith(".") ||
-        key.startsWith("[") ||
-        key.startsWith("@")
-      ) {
-        continue;
-      }
-      if (val !== null && typeof val === "object" && !Array.isArray(val)) {
-        continue;
-      }
-      if (key.startsWith("--")) {
-        rootProps[key] = val;
-      } else {
-        bodyProps[key] = val;
-      }
-    }
-    // Base rules precede conditional blocks so equal-specificity overrides win by source order.
-    const rootCSS = toCSSText(rootProps);
-    if (rootCSS) {
-      rules.push(`:root { ${rootCSS} }`);
-    }
-    const bodyCSS = toCSSText(bodyProps);
-    if (bodyCSS) {
-      rules.push(`body { ${bodyCSS} }`);
-    }
-
-    for (const [key, val] of Object.entries(projectStyle)) {
-      if (key.startsWith(":") || key.startsWith(".") || key.startsWith("[")) {
-        emitProjectRules(key, val as Record<string, unknown>);
-      } else if (
-        val !== null &&
-        typeof val === "object" &&
-        !Array.isArray(val) &&
-        !key.startsWith("@") &&
-        !key.startsWith("--")
-      ) {
-        emitProjectRules(key, val as Record<string, unknown>);
-      } else if (
-        key.startsWith("@") &&
-        val !== null &&
-        typeof val === "object" &&
-        !Array.isArray(val)
-      ) {
-        // Conditional block at project top level: custom properties override :root, direct
-        // Properties override body, selector-keyed sub-objects their own selector.
-        const emit = conditionalRuleEmitter(key, mediaQueries, rules);
-        const condRoot: Record<string, unknown> = {};
-        const condBody: Record<string, unknown> = {};
-        const condSubs: [string, Record<string, unknown>][] = [];
-        for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-          if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-            if (!k.startsWith("@")) {
-              condSubs.push([k, v as Record<string, unknown>]);
-            }
-            continue;
-          }
-          if (k.startsWith("--")) {
-            condRoot[k] = v;
-          } else {
-            condBody[k] = v;
-          }
-        }
-        emit(":root", toCSSText(condRoot));
-        emit("body", toCSSText(condBody));
-        for (const [sel, sub] of condSubs) {
-          emit(sel, toCSSText(sub));
-        }
-      }
-    }
-  }
-
-  // Forced-scheme UA hint: native widgets follow the forced attribute, not only the OS scheme.
-  if (
-    Object.values(mediaQueries).some((q) => pureSchemeOf(q) !== null) &&
-    !(projectStyle && typeof projectStyle === "object" && "colorScheme" in projectStyle)
-  ) {
-    rules.push(
-      ":root { color-scheme: light dark }",
-      `:root:where([${COLOR_SCHEME_ATTR}="light"]) { color-scheme: light }`,
-      `:root:where([${COLOR_SCHEME_ATTR}="dark"]) { color-scheme: dark }`,
-    );
+  /* An absent project block is an empty one: the builder emits nothing for `{}` except the
+     `color-scheme` triplet a scheme query in `$media` still calls for, which is exactly what a
+     page with a scheme query and no project style has always carried. */
+  const projectSheet = buildSiteStyleCSS(
+    projectStyle && typeof projectStyle === "object" ? projectStyle : {},
+    mediaQueries,
+    (value) => value,
+    recordDroppedReactive,
+  );
+  if (projectSheet !== "") {
+    rules.push(projectSheet);
   }
 
   const counter = { n: 0 };
@@ -1259,41 +1258,6 @@ export function compileStyles(
  */
 export function escapeStyleText(css: string): string {
   return css.replaceAll(/<\/(?=style)/gi, String.raw`<\/`);
-}
-
-/**
- * Recursively emit CSS rules for a nested element selector.
- *
- * @param {string} selector
- * @param {Record<string, unknown>} obj
- * @param {string[]} rules
- * @param {Record<string, string>} mediaQueries
- */
-function emitNestedElement(
-  selector: string,
-  obj: Record<string, unknown>,
-  rules: string[],
-  mediaQueries: Record<string, string>,
-) {
-  const props = toCSSText(obj);
-  if (props) {
-    rules.push(`${selector} { ${props} }`);
-  }
-  for (const [key, val] of Object.entries(obj)) {
-    if (val === null || typeof val !== "object" || Array.isArray(val)) {
-      continue;
-    }
-    if (key.startsWith("@")) {
-      pushConditionalRule(rules, key, mediaQueries, selector, val as Record<string, unknown>);
-      continue;
-    }
-    const resolved = key.startsWith("&")
-      ? key.replace("&", selector)
-      : key.startsWith(":") || key.startsWith(".") || key.startsWith("[")
-        ? `${selector}${key}`
-        : `${selector} ${key}`;
-    emitNestedElement(resolved, val as Record<string, unknown>, rules, mediaQueries);
-  }
 }
 
 /**
@@ -1333,49 +1297,7 @@ export function collectStyles(
       : tagSelector;
 
   if (def.style) {
-    const baseDecls = [];
-    for (const [prop, value] of Object.entries(def.style)) {
-      if (
-        prop.startsWith(":") ||
-        prop.startsWith(".") ||
-        prop.startsWith("&") ||
-        prop.startsWith("[") ||
-        prop.startsWith("@")
-      ) {
-        continue;
-      }
-      if (value === null || typeof value === "object") {
-        continue;
-      }
-      if (typeof value === "string" && isTemplateString(value)) {
-        continue;
-      }
-      baseDecls.push(`  ${camelToKebab(prop)}: ${value};`);
-    }
-    if (baseDecls.length > 0) {
-      rules.push(`${selector} {\n${baseDecls.join("\n")}\n}`);
-    }
-
-    for (const [prop, val] of Object.entries(def.style)) {
-      if (val === null || typeof val !== "object" || Array.isArray(val)) {
-        continue;
-      }
-      if (prop.startsWith("@")) {
-        pushConditionalRule(rules, prop, mediaQueries, selector, val as Record<string, unknown>);
-      } else {
-        const resolved = prop.startsWith("&")
-          ? prop.replace("&", selector)
-          : prop.startsWith(":") || prop.startsWith(".") || prop.startsWith("[")
-            ? `${selector}${prop}`
-            : `${selector} ${prop}`;
-        emitNestedElement(
-          resolved,
-          /** @type {Record<string, unknown>} */ val,
-          rules,
-          mediaQueries,
-        );
-      }
-    }
+    pushStyleRules(rules, def.style, selector, mediaQueries);
   }
 
   if (Array.isArray(def.children)) {
@@ -1566,6 +1488,148 @@ export function resolveStaticTagName(
 }
 
 /**
+ * What the static renderer needs to expand a component instance it meets INSIDE a definition.
+ *
+ * Without one, a custom-element tag in a component's `children` is an element like any other: the
+ * generic path emits `<inner-chip></inner-chip>` with the instance's own (empty) children, no
+ * content and no host style — and because the parent still looks static, no module ever loads to
+ * fill it (issue #286). The page walk in `site-build` has always expanded the instances it meets in
+ * the PAGE tree; this is the same registry, handed down so the definition walk expands too.
+ *
+ * `path` is the chain of instances currently being expanded, outermost first. It is what makes the
+ * recursion terminate: a component graph is bounded, but a definition may name itself.
+ */
+export interface ComponentPrerenderContext {
+  /** Tag name → parsed definition, the registry the page walk expands from. */
+  componentDefs: ReadonlyMap<string, JxElement>;
+  /** Project defaults, read for `defaults.shadow` (spec.md §16.6). */
+  defaults?: ProjectConfig["defaults"] | undefined;
+  /** The instances being expanded, outermost first; empty at a page-level instance. */
+  path?: readonly PrerenderFrame[] | undefined;
+}
+
+/** One instance on the expansion path: its tag, and its resolved props as an identity. */
+interface PrerenderFrame {
+  tag: string;
+  /** `JSON.stringify` of the resolved props — two frames with equal keys are the same instance. */
+  key: string;
+}
+
+/**
+ * How deep component nesting may go before the build refuses to continue.
+ *
+ * The cycle check below catches a definition that renders ITSELF — same tag, same props — which is
+ * the only shape that can never terminate. A self-reference whose props change at every level
+ * (`depth: "${state.depth + 1}"`) is data-driven recursion, legitimate when a `$switch` bottoms it
+ * out and unbounded when the author forgot to. The seen-set cannot tell those apart, so this cap is
+ * what turns the second into a diagnostic instead of a stack overflow. Thirty-two is far beyond any
+ * component library's real depth and far below the call stack's.
+ */
+export const MAX_COMPONENT_NESTING = 32;
+
+/**
+ * Lift literal `props.*` attribute keys off an instance's attributes.
+ *
+ * JSON-authored instances pass props as literal `props.*` attribute keys (markdown directives are
+ * normalized to `$props` by the parser's `expandDotPaths`, but JSON is parsed verbatim). They are
+ * lifted so the prerender sees them, and stripped so they do not leak into the emitted HTML. Values
+ * stay raw strings — no coercion, matching the markdown path and the runtime's `$props` semantics.
+ * Pure: the page walk writes the result back onto its node, the definition walk must not touch a
+ * definition every page shares.
+ *
+ * @param {Record<string, JxAttributeValue> | undefined} attributes
+ * @returns {{ lifted: Record<string, JsonValue> | null; rest: Record<string, JxAttributeValue> }}
+ *   The lifted props (null when there were none) and the attributes that remain
+ */
+export function liftPropsAttributes(attributes: JxElement["attributes"]): {
+  lifted: Record<string, JsonValue> | null;
+  rest: NonNullable<JxElement["attributes"]>;
+} {
+  let lifted: Record<string, JsonValue> | null = null;
+  const rest: NonNullable<JxElement["attributes"]> = {};
+  for (const [key, value] of Object.entries(attributes ?? {})) {
+    if (key.startsWith("props.") && key.length > "props.".length) {
+      lifted ??= {};
+      // JxAttributeValue is JSON-representable (primitives or a $ref object), so the narrowing to
+      // JsonValue is sound.
+      lifted[key.slice("props.".length)] = value as JsonValue;
+    } else {
+      rest[key] = value;
+    }
+  }
+  return { lifted, rest };
+}
+
+/**
+ * The build-time scope of one component instance: the definition's `state` with the instance's
+ * props laid over it.
+ *
+ * A prop for an entry declared as an object keeps the declaration and replaces its `default`, so a
+ * typed entry stays typed; a bare or undeclared entry is the value itself. Shared by the inner
+ * render and the host-style resolution so both read the same instance — they used to build the
+ * scope separately, in two slightly different ways.
+ *
+ * @param {JxElement} doc - Component definition
+ * @param {Record<string, JsonValue> | null} props - Instance-specific prop values
+ * @returns {Record<string, unknown>}
+ */
+export function buildInstanceScope(
+  doc: JxElement,
+  props: Record<string, JsonValue> | null,
+): Record<string, unknown> {
+  let stateDefs: Record<string, JxStateDefinition> = doc.state ?? {};
+  if (props) {
+    stateDefs = { ...stateDefs };
+    for (const [key, value] of Object.entries(props)) {
+      if (key in stateDefs) {
+        const existing = stateDefs[key];
+        stateDefs[key] =
+          existing &&
+          typeof existing === "object" &&
+          !Array.isArray(existing) &&
+          "default" in existing
+            ? { .../** @type {JxStateObject} */ existing, default: value }
+            : (value as JxStateDefinition);
+      } else {
+        stateDefs[key] = value as JxStateDefinition;
+      }
+    }
+  }
+  return buildInitialScope(stateDefs, null);
+}
+
+/**
+ * The definition's host `style` entries that depend on the instance, resolved against it.
+ *
+ * Only template-string values are per-instance (`maskImage: "${'var(--icon-' + state.name +
+ * ')'}"`); a literal declaration is in the component's stylesheet already. This is the resolution
+ * the page walk performs for a page-level instance, extracted so a nested instance gets the same
+ * one.
+ *
+ * @param {JxStyle | null | undefined} style - The definition's `style`
+ * @param {Record<string, unknown>} scope - The instance's scope (`buildInstanceScope`)
+ * @returns {Record<string, unknown>} Resolved values by (camelCase) property
+ */
+export function resolveHostStyle(
+  style: JxStyle | null | undefined,
+  scope: Record<string, unknown>,
+): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  if (!style) {
+    return resolved;
+  }
+  for (const [prop, value] of Object.entries(style)) {
+    if (typeof value === "string" && isTemplateString(value)) {
+      const val = resolveStaticValue(value, scope);
+      if (val != null) {
+        resolved[prop] = val;
+      }
+    }
+  }
+  return resolved;
+}
+
+/**
  * The content of one node: `textContent`, else `innerHTML`, else rendered `children`.
  *
  * Shared with `preRenderComponentHtml`, which returns a component's innerHTML and so cannot call
@@ -1576,12 +1640,14 @@ export function resolveStaticTagName(
  * @param {JxElement | JxMutableNode} node
  * @param {Record<string, unknown> | null} scope
  * @param {string | null} slotContent
+ * @param {ComponentPrerenderContext | null} context
  * @returns {string}
  */
 function renderInner(
   node: JxElement | JxMutableNode,
   scope: Record<string, unknown> | null,
   slotContent: string | null,
+  context: ComponentPrerenderContext | null,
 ): string {
   if (node.textContent !== undefined) {
     const val = resolveStaticValue(node.textContent, scope);
@@ -1593,7 +1659,9 @@ function renderInner(
   }
   if (Array.isArray(node.children)) {
     return node.children
-      .map((c: JxElement | JxMutableNode | string) => renderStaticNode(c, scope, slotContent))
+      .map((c: JxElement | JxMutableNode | string) =>
+        renderStaticNode(c, scope, slotContent, context),
+      )
       .join("\n");
   }
   return "";
@@ -1605,12 +1673,15 @@ function renderInner(
  * @param {JxElement | JxMutableNode | string} node
  * @param {Record<string, unknown>} scope
  * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
+ * @param {ComponentPrerenderContext | null} [context] - The component registry, when a custom
+ *   element tag met here should be expanded rather than emitted bare
  * @returns {string}
  */
 export function renderStaticNode(
   node: JxElement | JxMutableNode | string,
   scope: Record<string, unknown> | null,
   slotContent: string | null = null,
+  context: ComponentPrerenderContext | null = null,
 ): string {
   if (typeof node === "string") {
     if (isTemplateString(node) && scope) {
@@ -1625,7 +1696,7 @@ export function renderStaticNode(
   if (Array.isArray(node)) {
     return (node as (JxElement | JxMutableNode | string)[])
       .map((c: JxElement | JxMutableNode | string): string =>
-        renderStaticNode(c, scope, slotContent),
+        renderStaticNode(c, scope, slotContent, context),
       )
       .join("\n");
   }
@@ -1651,7 +1722,7 @@ export function renderStaticNode(
         : (node.cases as Record<string, JxElement | string> | undefined)?.[String(key)];
     const inner =
       caseDef !== undefined && !isRefObject(caseDef)
-        ? renderStaticNode(caseDef, scope, slotContent)
+        ? renderStaticNode(caseDef, scope, slotContent, context)
         : "";
     return `<${switchTag}${attrs}>${inner}</${switchTag}>`;
   }
@@ -1667,13 +1738,119 @@ export function renderStaticNode(
     return slotContent;
   }
 
+  // A registered component: expanded exactly as the page walk expands one, not emitted bare.
+  const def = context?.componentDefs.get(tag);
+  if (def && context) {
+    return renderComponentInstance(node, def, scope, slotContent, context);
+  }
+
   const attrs = buildAttrs(node, scope);
 
   if (SELF_CLOSING.has(tag)) {
     return `<${tag}${attrs}>`;
   }
 
-  return `<${tag}${attrs}>${renderInner(node, scope, slotContent)}</${tag}>`;
+  return `<${tag}${attrs}>${renderInner(node, scope, slotContent, context)}</${tag}>`;
+}
+
+/**
+ * Render one component instance met inside a definition, with everything the page walk gives a
+ * page-level instance — the expansion is the same in both places, so the pieces are shared.
+ *
+ * - Props: `props.*` attributes lifted, then `$props`; a template value resolves against the PARENT's
+ *   scope, which is what `resolveDocTemplates` does for a page-level instance before the page walk
+ *   reaches it.
+ * - Slot content: the instance's own children, rendered in the parent's scope and with the parent's
+ *   slot content, so a `<slot>` written among them passes the grandparent's through.
+ * - Shadow mode: a declarative shadow root with the stylesheet link inside it (spec.md §16.6).
+ * - Host style: the definition's template-string entries resolved against the INSTANCE, written on
+ *   the element — the page walk's `resolvedStyle` in inline form, since there is no page stylesheet
+ *   to append a class rule to from here.
+ * - `data-jx-props` when the instance is not static, so the props survive the element's re-render on
+ *   upgrade (compiler.md §4.4); `data-jx-static` / `data-jx-prerendered` by the same predicate.
+ *
+ * Termination: a frame equal to one already on the path — same tag, same props — is the instance
+ * rendering itself, and a path at the cap is recursion that never settled. Both are the author's
+ * error and both name the chain, because "Maximum call stack size exceeded" names nothing.
+ *
+ * @param {JxElement | JxMutableNode} node - The instance as written in the parent's tree
+ * @param {JxElement} def - The registered definition for its tag
+ * @param {Record<string, unknown> | null} scope - The parent's scope
+ * @param {string | null} slotContent - The parent's slot content
+ * @param {ComponentPrerenderContext} context
+ * @returns {string}
+ * @docs framework/build
+ */
+function renderComponentInstance(
+  node: JxElement | JxMutableNode,
+  def: JxElement,
+  scope: Record<string, unknown> | null,
+  slotContent: string | null,
+  context: ComponentPrerenderContext,
+): string {
+  const tag = def.tagName as string;
+  const { lifted, rest: attributes } = liftPropsAttributes(node.attributes);
+  const written = { ...lifted, ...node.$props };
+  const props: Record<string, JsonValue> = {};
+  for (const [key, value] of Object.entries(written)) {
+    props[key] = (resolveStaticValue(value, scope) as JsonValue | null) ?? value;
+  }
+  const hasProps = Object.keys(props).length > 0;
+
+  const path = context.path ?? [];
+  const frame: PrerenderFrame = { key: JSON.stringify(props), tag };
+  const chain = [...path.map((f) => f.tag), tag].join(" → ");
+  if (path.some((f) => f.tag === frame.tag && f.key === frame.key)) {
+    throw new Error(
+      `Component <${tag}> renders itself: ${chain}. A component cannot appear inside its own ` +
+        `definition with the same props — the expansion would never end.`,
+    );
+  }
+  if (path.length >= MAX_COMPONENT_NESTING) {
+    throw new Error(
+      `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${chain}. A component that ` +
+        `renders itself with changing props needs a case that stops.`,
+    );
+  }
+  const nested: ComponentPrerenderContext = { ...context, path: [...path, frame] };
+
+  // The instance's children are the parent's nodes: parent scope, parent slot, parent path.
+  const slot =
+    Array.isArray(node.children) && node.children.length > 0
+      ? node.children
+          .map((c: JxElement | JxMutableNode | string) =>
+            renderStaticNode(c, scope, slotContent, context),
+          )
+          .join("\n")
+      : null;
+
+  const shadow = resolveShadowMode(def, context.defaults);
+  const isStatic = isComponentFullyStatic(def);
+  const instanceScope = buildInstanceScope(def, hasProps ? props : null);
+  const inner = renderInner(def, instanceScope, shadow ? null : slot, nested);
+  const innerHTML = shadow
+    ? `<template shadowrootmode="${shadow}">` +
+      `<link rel="stylesheet" href="/components/${tag}.css">` +
+      `${inner}</template>${slot ?? ""}`
+    : inner;
+
+  const hostStyle = Object.entries(resolveHostStyle(def.style, instanceScope))
+    .map(([prop, value]) => `${camelToKebab(prop)}: ${value}`)
+    .join("; ");
+
+  // The element as the page walk would leave it: props consumed, children rendered, stamped. A
+  // Copy, because `node` is a definition every page shares.
+  const instance: JxElement = { ...(node as JxElement) };
+  delete instance.$props;
+  delete instance.children;
+  instance.attributes =
+    !isStatic && hasProps ? { ...attributes, "data-jx-props": JSON.stringify(props) } : attributes;
+  if (isStatic) {
+    instance.$static = true;
+  } else {
+    instance.$prerendered = true;
+  }
+  return `<${tag}${buildAttrs(instance, scope, hostStyle)}>${innerHTML}</${tag}>`;
 }
 
 /**
@@ -1683,33 +1860,17 @@ export function renderStaticNode(
  * @param {Record<string, JsonValue> | null} [propsOverride] - Instance-specific prop values to
  *   merge into state
  * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
+ * @param {ComponentPrerenderContext | null} [context] - The component registry; with one, an
+ *   instance of a registered component inside `doc` is expanded rather than emitted bare
  * @returns {string} The pre-rendered innerHTML
  */
 export function preRenderComponentHtml(
   doc: JxElement,
   propsOverride: Record<string, JsonValue> | null = null,
   slotContent: string | null = null,
+  context: ComponentPrerenderContext | null = null,
 ) {
-  let stateDefs: Record<string, JxStateDefinition> = doc.state ?? {};
-  if (propsOverride) {
-    stateDefs = { ...stateDefs };
-    for (const [key, value] of Object.entries(propsOverride)) {
-      if (key in stateDefs) {
-        const existing = stateDefs[key];
-        stateDefs[key] =
-          existing &&
-          typeof existing === "object" &&
-          !Array.isArray(existing) &&
-          "default" in existing
-            ? { .../** @type {JxStateObject} */ existing, default: value }
-            : (value as JxStateDefinition);
-      } else {
-        stateDefs[key] = value as JxStateDefinition;
-      }
-    }
-  }
-  const scope = buildInitialScope(stateDefs, null);
-  return renderInner(doc, scope, slotContent);
+  return renderInner(doc, buildInstanceScope(doc, propsOverride), slotContent, context);
 }
 
 /**
@@ -1808,8 +1969,21 @@ const SHADOW_STANDALONE = /^(?:::slotted\(|::part\()/;
  * @returns {string}
  */
 function resolveSelector(prop: string, scope: string): string {
+  /* Member by member, for the reason css.ts's `resolveNestedSelector` does it: a key may be a
+     SELECTOR LIST, and splicing one as a single string spliced only its first `&`. `"& .a, & .b"`
+     came out as `sty-card .a, & .b`, and a raw `&` in a built stylesheet is not a nesting selector
+     at all — the browser discards the list and the component silently loses those rules. This is
+     the one selector path that does not go through the shared builder, because `:host` has to be
+     translated before the scope is applied, so it needed the same fix separately. */
+  return splitSelectorList(prop)
+    .map((member) => resolveSelectorMember(member, scope))
+    .join(", ");
+}
+
+/** One member of {@link resolveSelector}'s list against the scope. */
+function resolveSelectorMember(prop: string, scope: string): string {
   if (prop.startsWith("&")) {
-    return prop.replace("&", scope);
+    return prop.replaceAll("&", scope);
   }
   if (prop.startsWith(":host")) {
     const inner = /^:host\((.*)\)$/.exec(prop)?.[1];
@@ -1842,41 +2016,33 @@ export function buildComponentCSS(
   const scope = styleScopePrefix(tagName, shadow);
 
   if (styleDef && typeof styleDef === "object") {
-    const decls: string[] = [];
+    /* The top level is walked here rather than handed straight to the builder, because ONE of its
+       keys does not mean what `resolveNestedSelector` would make of it: `:host` and `:host(.foo)`
+       are TRANSLATED per {@link resolveSelector} so a style object means the same thing in both
+       modes. Everything below the top level is ordinary nesting, so each block goes to the builder
+       whole — which is also what gives a component's nested selectors the recursion they never had
+       (this used to emit exactly one level and drop anything under it). */
+    const own: JxStyle = {};
+    const blocks: [string, JxStyle][] = [];
     for (const [prop, value] of Object.entries(styleDef)) {
-      if (
-        prop.startsWith(":") ||
-        prop.startsWith(".") ||
-        prop.startsWith("&") ||
-        prop.startsWith("[") ||
-        prop.startsWith("@")
-      ) {
-        continue;
+      /* `isRef` first, and it is the whole point: an object carrying `$ref` is a reactive VALUE,
+         not a nested block (spec.md §9.1). Sorted into `blocks` it matched neither branch below —
+         not an at-rule, not a nested selector — and was dropped without reaching the builder at
+         all, so the one emitter that could have reported it never saw it. */
+      if (isRef(value)) {
+        own[prop] = value as never;
+      } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        blocks.push([prop, value]);
+      } else if (!prop.startsWith("@") && !isNestedSelectorKey(prop)) {
+        own[prop] = value;
       }
-      if (value === null || typeof value === "object") {
-        continue;
-      }
-      if (typeof value === "string" && isTemplateString(value)) {
-        continue;
-      }
-      decls.push(`  ${camelToKebab(prop)}: ${value};`);
     }
-    if (decls.length > 0) {
-      rules.push(`${scope} {\n${decls.join("\n")}\n}`);
-    }
-
-    for (const [prop, val] of Object.entries(styleDef)) {
+    pushStyleRules(rules, own, scope, mediaQueries);
+    for (const [prop, val] of blocks) {
       if (prop.startsWith("@")) {
-        pushConditionalRule(rules, prop, mediaQueries, scope, val as Record<string, unknown>);
-      } else if (
-        prop.startsWith(":") ||
-        prop.startsWith(".") ||
-        prop.startsWith("&") ||
-        prop.startsWith("[")
-      ) {
-        rules.push(
-          `${resolveSelector(prop, scope)} { ${toCSSText(val as Record<string, unknown>)} }`,
-        );
+        pushStyleRules(rules, { [prop]: val }, scope, mediaQueries);
+      } else if (isNestedSelectorKey(prop)) {
+        pushStyleRules(rules, val, resolveSelector(prop, scope), mediaQueries);
       }
     }
   }

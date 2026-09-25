@@ -1,0 +1,110 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPushPlan",
+  "$description": "What pushing the schema would do, or what it did. The dry run is the whole point of the surface: a push rewrites a live database's shape, so the plan is read before the apply, and the confirm dialog around this document is the one that gates it. The ISLAND of `ui/layers.ts`'s confirm dialog rather than a dialog of its own (§12.5).",
+  "tagName": "div",
+  "attributes": {
+    "part": "plan"
+  },
+  "style": {
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-2)",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"steps\"]": {
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px",
+      "maxHeight": "40vh",
+      "overflowY": "auto"
+    },
+    "& [part=\"step\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "padding": "2px var(--jx-space-2)",
+      "borderLeft": "2px solid var(--border)"
+    },
+    "& [part=\"step\"][data-kind=\"drop\"]": {
+      "borderLeftColor": "var(--danger)"
+    },
+    "& [part=\"step\"][data-kind=\"create\"]": {
+      "borderLeftColor": "var(--success, var(--accent))"
+    },
+    "& [part=\"warning\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--warning, var(--fg-dim))"
+    },
+    "& [part=\"error\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--danger)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "ul",
+      "attributes": {
+        "part": "steps"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/steps"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "li",
+            "attributes": {
+              "part": "step",
+              "data-kind": "${$map.item.kind}"
+            },
+            "textContent": "${$map.item.summary}"
+          }
+        }
+      ]
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/warnings"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "p",
+        "attributes": {
+          "part": "warning"
+        },
+        "textContent": "${$map.item.text}"
+      }
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/errors"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "p",
+        "attributes": {
+          "part": "error",
+          "role": "alert"
+        },
+        "textContent": "${$map.item.text}"
+      }
+    }
+  ]
+}

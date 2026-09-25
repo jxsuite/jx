@@ -37,19 +37,19 @@ function mirrorResolver(): (id: string) => HTMLElement | null {
   ) => HTMLElement | null;
 }
 
-function build(): void {
+async function build(): Promise<void> {
   /* The real frame, plus the inspector rows this file is actually about. The frame used to be
      pasted here too; it stamps its own region ids now (src/shell/tree.ts), which is what the
      `stampShellRegions()` call under this used to be for. */
-  mountShellTree();
+  await mountShellTree();
   const inspector = document.querySelector("#right-panel")!;
   litRender(
     html`
       <div class="kv-row" data-prop="image">
-        <sp-action-button class="media-picker-browse"></sp-action-button>
+        <button part="browse" type="button"></button>
       </div>
       <div class="kv-row" data-prop="og:image">
-        <sp-action-button class="media-picker-browse"></sp-action-button>
+        <button part="browse" type="button"></button>
       </div>
       <div class="kv-row" data-prop="href"></div>
     `,
@@ -77,8 +77,8 @@ const CORPUS = [
 ];
 
 describe("the shot runner's region mirror", () => {
-  test("resolves every id to the same element the app does", () => {
-    build();
+  test("resolves every id to the same element the app does", async () => {
+    await build();
     const mirror = mirrorResolver();
     const disagreements: string[] = [];
     for (const id of CORPUS) {
@@ -94,12 +94,12 @@ describe("the shot runner's region mirror", () => {
     expect(disagreements).toEqual([]);
   });
 
-  test("and the derived browse id is one of them, not a coincidence", () => {
-    build();
+  test("and the derived browse id is one of them, not a coincidence", async () => {
+    await build();
     const mirror = mirrorResolver();
     // The id the mirror used to miss. Both must reach the BUTTON, not the row.
-    expect(resolveRegion("inspector/field:image/browse")?.className).toBe("media-picker-browse");
-    expect(mirror("inspector/field:image/browse")?.className).toBe("media-picker-browse");
+    expect(resolveRegion("inspector/field:image/browse")?.getAttribute("part")).toBe("browse");
+    expect(mirror("inspector/field:image/browse")?.getAttribute("part")).toBe("browse");
     // A prop with no picker answers null on both sides rather than falling back to the row.
     expect(resolveRegion("inspector/field:href/browse")).toBeNull();
     expect(mirror("inspector/field:href/browse")).toBeNull();

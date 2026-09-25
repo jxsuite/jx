@@ -1,5 +1,112 @@
 # Changelog
 
+## [5.1.3](https://github.com/jxsuite/jx/compare/desktop-v5.1.2...desktop-v5.1.3) (2026-09-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/studio bumped to 5.3.0
+  * devDependencies
+    * @jxsuite/ui bumped to 0.3.0
+
+## [5.1.2](https://github.com/jxsuite/jx/compare/desktop-v5.1.1...desktop-v5.1.2) (2026-09-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.3.1
+    * @jxsuite/server bumped to 4.2.2
+    * @jxsuite/studio bumped to 5.2.0
+  * devDependencies
+    * @jxsuite/server bumped to 4.2.2
+
+## [5.1.1](https://github.com/jxsuite/jx/compare/desktop-v5.1.0...desktop-v5.1.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **desktop:** the first changed file's path no longer loses its first character ([ff03c52](https://github.com/jxsuite/jx/commit/ff03c52c20393788c093c01320fcb010e0425283))
+* **desktop:** the first changed file's path no longer loses its first character ([8278dc8](https://github.com/jxsuite/jx/commit/8278dc81d8ba8d1d903078c8d6b2a062216f5d7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 4.0.1
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/parser bumped to 1.8.1
+    * @jxsuite/server bumped to 4.2.1
+    * @jxsuite/starters bumped to 1.8.1
+    * @jxsuite/studio bumped to 5.1.0
+  * devDependencies
+    * @jxsuite/server bumped to 4.2.1
+    * @jxsuite/ui bumped to 0.2.0
+
+## [5.1.0](https://github.com/jxsuite/jx/compare/desktop-v5.0.1...desktop-v5.1.0) (2026-09-14)
+
+
+### Features
+
+* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+* **studio:** highlight what changed in a diff, and open every changed file ([a54fa6d](https://github.com/jxsuite/jx/commit/a54fa6dc15fbe4ad7e8617d4e788c1670292ea2b))
+
+
+### Bug Fixes
+
+* **desktop,server:** the coverage gates the new catalogue member missed ([18eccd9](https://github.com/jxsuite/jx/commit/18eccd9af978bb7ed3a627939c14cb7e72e2f759))
+* **studio,server:** the diff view drew line numbers and no text ([76d8d97](https://github.com/jxsuite/jx/commit/76d8d97f600622d2e381f3e1b2e37e88b0c40663))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 4.0.0
+    * @jxsuite/create bumped to 1.3.10
+    * @jxsuite/parser bumped to 1.8.0
+    * @jxsuite/protocol bumped to 2.3.0
+    * @jxsuite/schema bumped to 2.2.0
+    * @jxsuite/server bumped to 4.2.0
+    * @jxsuite/starters bumped to 1.8.0
+    * @jxsuite/studio bumped to 5.0.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.6.0
+    * @jxsuite/server bumped to 4.2.0
+    * @jxsuite/ui bumped to 0.1.0
+
+## [5.0.1](https://github.com/jxsuite/jx/compare/desktop-v5.0.0...desktop-v5.0.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **desktop:** exclude vendor from the Nix source so the published path is the one consumers ask for ([81d60bc](https://github.com/jxsuite/jx/commit/81d60bca5ea8e67b99a1e789a7c1881f9b2e018a))
+* **desktop:** exclude vendor from the Nix source so the published path is the one consumers ask for ([65debec](https://github.com/jxsuite/jx/commit/65debec14fef2a13f775a36fe5f5529d8504c923)), closes [#250](https://github.com/jxsuite/jx/issues/250)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 3.1.0
+    * @jxsuite/create bumped to 1.3.9
+    * @jxsuite/parser bumped to 1.7.0
+    * @jxsuite/protocol bumped to 2.2.0
+    * @jxsuite/schema bumped to 2.1.0
+    * @jxsuite/server bumped to 4.1.0
+    * @jxsuite/starters bumped to 1.7.0
+    * @jxsuite/studio bumped to 4.1.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.5.7
+    * @jxsuite/server bumped to 4.1.0
+
 ## [5.0.0](https://github.com/jxsuite/jx/compare/desktop-v4.0.0...desktop-v5.0.0) (2026-08-27)
 
 

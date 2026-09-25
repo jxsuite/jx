@@ -7,9 +7,24 @@ import type { CemParameter } from "@jxsuite/schema/types";
 import { BANNER, frontmatter } from "./shared.ts";
 
 /** Render one parameter row. */
+/**
+ * A cell's text, with any pipe escaped.
+ *
+ * A type union arrives as `unknown[] | string`, and an unescaped pipe in a Markdown table opens a
+ * new cell — so the row grew a fourth column, the renderer dropped the surplus, and the published
+ * page showed `string` as the description while the real one vanished. `docs:markdown` now refuses
+ * a row whose cell count differs from its header, which is what found this.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function cell(text: string): string {
+  return text.replaceAll("|", String.raw`\|`);
+}
+
 function parameterRow(param: string | CemParameter): string {
   if (typeof param === "string") {
-    return `| \`${param}\` | — | — |`;
+    return `| \`${cell(param)}\` | — | — |`;
   }
   const type =
     typeof param.type === "object" && param.type !== null && "text" in param.type
@@ -17,7 +32,7 @@ function parameterRow(param: string | CemParameter): string {
       : param.type !== undefined
         ? JSON.stringify(param.type)
         : "—";
-  return `| \`${param.name}\`${param.optional ? " (optional)" : ""} | ${type} | ${param.description ?? "—"} |`;
+  return `| \`${cell(param.name)}\`${param.optional ? " (optional)" : ""} | ${cell(type)} | ${cell(param.description ?? "—")} |`;
 }
 
 /** Render the formula-catalog reference page. */

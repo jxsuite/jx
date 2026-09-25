@@ -3,6 +3,7 @@ title: "Formula workspace"
 description: "Edit a formula in the Bottom dock's Logic tab: chip navigation, live values at every step, the formula catalog, and the page still rendering beside it."
 code:
   - packages/studio/src/panels/formula-workspace.ts
+  - packages/studio/src/surfaces/logic-workspace.ts
   - packages/studio/src/panels/bottom-dock.ts
   - packages/studio/src/services/live-preview.ts
 ---

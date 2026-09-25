@@ -1,5 +1,5 @@
 /** Tests for src/packages/pull-package-sync.ts — pull orchestration with package-conflict recovery. */
-import { flush, installMockPlatform } from "./harness";
+import { flush, installMockPlatform, topDialog } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { initLayers } from "../src/ui/layers";
@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 function dialog(): HTMLElement | null {
-  return document.querySelector("#layer-dialog sp-dialog-wrapper");
+  return topDialog();
 }
 
 function progressCard(): Element | null {

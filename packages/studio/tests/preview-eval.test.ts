@@ -1,8 +1,7 @@
-import "./with-dom.js";
-import { describe, expect, test } from "bun:test";
-import { render } from "lit-html";
+import { flush } from "./harness";
+import { afterEach, describe, expect, test } from "bun:test";
 import { formatPreviewValue, previewExpression } from "../src/services/preview-eval";
-import { renderExpressionEditor } from "../src/ui/expression-editor";
+import { mountExpressionEditor } from "../src/ui/expression-editor";
 
 const ref = ($ref: string) => ({ $ref });
 
@@ -88,79 +87,89 @@ describe("formatPreviewValue", () => {
   });
 });
 
-describe("renderExpressionEditor — live badges and new operators", () => {
-  test("renders live value badges from a preview", () => {
+/**
+ * The editor is a MOUNTED DOCUMENT now, so these read `[part="badge"]` where they read
+ * `.expr-live-badge`, and every mount is awaited. What they assert is unchanged: a preview's
+ * path-keyed values reach the rows that stand for those paths.
+ */
+describe("the editor draws a preview's live values", () => {
+  const hosts: HTMLElement[] = [];
+
+  afterEach(() => {
+    for (const host of hosts.splice(0)) {
+      host.remove();
+    }
+  });
+
+  /** Mount the editor over a node and its own preview, into an attached host. */
+  async function mount(node: unknown, opts: Record<string, unknown>): Promise<HTMLElement> {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    mountExpressionEditor(host, node, () => {}, {
+      allowEventRef: false,
+      ...opts,
+    } as never);
+    await flush(6);
+    return host;
+  }
+
+  /** Every live value the editor's own rows show — the chip strip's badges excluded. */
+  function rowBadges(host: HTMLElement): (string | null)[] {
+    return [...host.querySelectorAll('[part="row"] [part="badge"]')].map((b) => b.textContent);
+  }
+
+  test("renders live value badges from a preview", async () => {
     const node = {
       operator: "+",
       target: ref("#/state/a"),
       value: ref("#/state/b"),
     };
-    const preview = previewExpression(node, { a: 2, b: 3 });
-    const container = document.createElement("div");
-    render(
-      renderExpressionEditor(node, () => {}, {
-        allowEventRef: false,
-        preview,
-        stateDefs: ["a", "b"],
-      }),
-      container,
-    );
-    const badges = [...container.querySelectorAll(".expr-live-badge")].map((b) => b.textContent);
+    const host = await mount(node, {
+      preview: previewExpression(node, { a: 2, b: 3 }),
+      stateDefs: ["a", "b"],
+    });
+    const badges = rowBadges(host);
     expect(badges).toContain("5");
     expect(badges).toContain("2");
     expect(badges).toContain("3");
   });
 
-  test("renders the switch cases editor with per-case badges", () => {
+  test("renders the switch cases with per-case badges", async () => {
     const node = {
       cases: { done: "Finished" },
       default: "Working",
       operator: "switch",
       target: ref("#/state/status"),
     };
-    const preview = previewExpression(node, { status: "done" });
-    const container = document.createElement("div");
-    render(
-      renderExpressionEditor(node, () => {}, {
-        allowEventRef: false,
-        preview,
-        stateDefs: ["status"],
-      }),
-      container,
-    );
-    expect(container.querySelector(".switch-cases")).not.toBeNull();
-    const badges = [...container.querySelectorAll(".expr-live-badge")].map((b) => b.textContent);
+    const host = await mount(node, {
+      preview: previewExpression(node, { status: "done" }),
+      stateDefs: ["status"],
+    });
+    expect(host.querySelector('[part="case-key"]')).not.toBeNull();
+    const badges = rowBadges(host);
     expect(badges).toContain('"Finished"');
     expect(badges).toContain('"Working"');
   });
 
-  test("renders ?: with If/Then/Else labels", () => {
-    const node = {
-      initial: "no",
-      operator: "?:",
-      target: true,
-      value: "yes",
-    };
-    const container = document.createElement("div");
-    render(
-      renderExpressionEditor(node, () => {}, { allowEventRef: false, stateDefs: [] }),
-      container,
+  test("renders ?: with If/Then/Else labels", async () => {
+    const host = await mount(
+      { initial: "no", operator: "?:", target: true, value: "yes" },
+      { stateDefs: [] },
     );
-    expect(container.textContent).toContain("If");
-    expect(container.textContent).toContain("Then");
-    expect(container.textContent).toContain("Else");
+    expect(host.textContent).toContain("If");
+    expect(host.textContent).toContain("Then");
+    expect(host.textContent).toContain("Else");
   });
 
-  test("renders without badges when preview is null", () => {
-    const container = document.createElement("div");
-    render(
-      renderExpressionEditor({ operator: "!", target: ref("#/state/x") }, () => {}, {
-        allowEventRef: false,
+  test("renders without badges when preview is null", async () => {
+    const host = await mount(
+      { operator: "!", target: ref("#/state/x") },
+      {
         preview: null,
         stateDefs: ["x"],
-      }),
-      container,
+      },
     );
-    expect(container.querySelector(".expr-live-badge")).toBeNull();
+    expect(host.querySelector('[part="badge"]')).toBeNull();
   });
 });

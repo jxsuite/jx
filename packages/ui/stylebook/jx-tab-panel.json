@@ -1,0 +1,147 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTabPanel",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-tab.json"
+    },
+    {
+      "$ref": "../components/jx-tab-panel.json"
+    },
+    {
+      "$ref": "../components/jx-tabs.json"
+    }
+  ],
+  "state": {
+    "current": "design",
+    "onChange": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/current"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& jx-tab-panel": {
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tab-panel"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A panel is hidden rather than removed, so the ids its tab names stay resolvable and a find-in-page never lands in a panel nobody can see. It takes one tab stop when it is showing, which is the price of a panel whose whole content may be static text."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Paired with its tab"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Each panel's aria-labelledby names the tab that controls it, and that tab's aria-controls names the panel's id. Nothing in the kit or the lints checks that pairing, so both ids are minted here from one key, the section's own, which is the only thing that keeps them true. Showing: ${state.current}"
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "label": "Panel demonstration",
+        "selected": "${state.current}"
+      },
+      "onchange": {
+        "$ref": "#/state/onChange"
+      },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "id": "stylebook-tab-design",
+            "value": "design",
+            "label": "Design",
+            "panel": "stylebook-panel-design"
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "id": "stylebook-tab-content",
+            "value": "content",
+            "label": "Content",
+            "panel": "stylebook-panel-content"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tab-panel",
+      "attributes": {
+        "id": "stylebook-panel-design",
+        "labelledby": "stylebook-tab-design",
+        "active": "${state.current === 'design'}"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "textContent": "Size, spacing and colour for the selected node."
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tab-panel",
+      "attributes": {
+        "id": "stylebook-panel-content",
+        "labelledby": "stylebook-tab-content",
+        "active": "${state.current === 'content'}"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "textContent": "The text and media this node renders."
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Hidden, not gone"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Whichever panel above is not showing is still in the document, carrying hidden. That is what keeps the tab pointing at it honest, and it is why the panel declares what hidden means to it: an element that sets its own display must also unset it."
+    }
+  ]
+}

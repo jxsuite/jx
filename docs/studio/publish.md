@@ -73,3 +73,4 @@ Three commands, in [Quick Access](/docs/studio/interface/quick-access) under **P
 ## Next
 
 - Understand the build and routing in **[Site architecture](/docs/framework/site)**
+  - packages/studio/src/surfaces/panel-deploy-checklist.ts

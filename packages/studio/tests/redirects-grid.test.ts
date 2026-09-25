@@ -22,12 +22,13 @@ void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
 let dialogDriver: ((host: HTMLElement, done: (value: unknown) => void) => void) | null = null;
 
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},
-  openModal: () => ({ close: () => {}, update: () => {} }),
   // The media picker asks which layer its anchor sits in; these fields are in a panel.
-  popoverLayerFor: () => "popover",
   renderPopover: (template: unknown) => {
     const host = document.createElement("div");
     document.body.append(host);
@@ -53,8 +54,22 @@ void mock.module("../src/ui/layers.js", () => ({
         done(null);
       }
     }),
-  showPromptDialog: async () => null,
+  /* The paste box IS the prompt dialog with a multiline field (§12.5), so the driver here is the
+     prompt's answer rather than a template to render. What the flow asked for is kept, because
+     "multiline" is the difference between a paste box and a one-line field. */
+  showPromptDialog: async (headline: string, opts: Record<string, unknown> = {}) => {
+    lastPrompt = { headline, opts };
+    return promptAnswer;
+  },
+  // `services/idle.ts` imports this at module load time — `store.ts` reaches it transitively, so a
+  // Mock without it fails the whole file at import time exactly as a missing `layerHost` would.
+  // No toast this file ever shows, so "nothing settling" is the only honest answer.
+  overlayIdleBlockers: () => [],
 }));
+
+/** What the mocked prompt answers, and what it was asked for. */
+let promptAnswer: string | null = null;
+let lastPrompt: { headline: string; opts: Record<string, unknown> } = { headline: "", opts: {} };
 void mock.module("../src/ui/progress-modal.js", () => ({
   showProgressModal: () => ({ done: () => {}, fail: () => {}, setStatus: () => {} }),
 }));
@@ -108,6 +123,8 @@ beforeEach(() => {
   resetProjectConfigDocument();
   FakeTabulator.reset();
   dialogDriver = null;
+  promptAnswer = null;
+  lastPrompt = { headline: "", opts: {} };
   for (const host of document.querySelectorAll(".test-dialog-host")) {
     host.remove();
   }
@@ -477,19 +494,20 @@ describe("import", () => {
     expect(problems.find((p) => p.key === "redirects.import")).toBeUndefined();
   });
 
-  test("the paste dialog returns what was typed, and null when it is dismissed", async () => {
-    dialogDriver = (host, done) => {
-      const box = host.querySelector("textarea")!;
-      box.value = "/a /b 302";
-      box.dispatchEvent(new Event("input"));
-      host.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("confirm"));
-      done("unused");
-    };
+  test("the paste box is a multiline prompt: it returns what was typed, or null", async () => {
+    promptAnswer = "/a /b 302";
     expect(await promptRedirectImport()).toBe("/a /b 302");
 
-    dialogDriver = (host) => {
-      host.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("cancel"));
-    };
+    expect(lastPrompt.headline).toBe("Import Redirects");
+    /* Not decoration: a one-line field cannot show a pasted `_redirects` file back to the author,
+       and Enter in it would submit the dialog on the second line. Both formats are column-aligned
+       in the file they were copied out of, so it is monospaced too. */
+    expect(lastPrompt.opts.multiline).toBeTrue();
+    expect(lastPrompt.opts.mono).toBeTrue();
+    expect(lastPrompt.opts.rows).toBe("10");
+    expect(String(lastPrompt.opts.message)).toContain("_redirects");
+
+    promptAnswer = null;
     expect(await promptRedirectImport()).toBeNull();
   });
 });
@@ -512,7 +530,12 @@ describe("commands", () => {
       expect(record.menus).toEqual(["palette"]);
       expect(record.when!(openCtx)).toBeTrue();
       expect(record.when!({ project: { open: false } } as never)).toBeFalse();
-      expect(record.aiTool).toBeDefined();
+      // Only the check projects to the assistant: opening the table is a surface for a person, and
+      // Importing waits on a paste dialog (§12.4's first and second deletion rules).
+      expect([record.id, record.aiTool?.name]).toEqual([
+        record.id,
+        record.id === "redirects.validate" ? "validate_redirects" : undefined,
+      ]);
     }
   });
 
@@ -530,6 +553,27 @@ describe("commands", () => {
     expect(problems.filter((p) => p.source === "Redirects")).toEqual([]);
   });
 
+  test("validate_redirects reports the filed list as data, or the clean sentence", async () => {
+    /* `validate_redirects` is this record — a declaration makes a tool — and the report is the
+       Problems store by this source: the only way to check redirects without reading the routes. */
+    const facts = { after: openCtx, args: undefined as never, before: openCtx };
+    setup({ "/about": "/contact" });
+    await byId("redirects.validate").run(openCtx, undefined as never);
+    const report = byId("redirects.validate").aiTool!.report(facts) as {
+      data: { key?: string; message: string }[];
+      summary: string;
+    };
+    expect(report.summary).toBe("Filed 1 redirect problem in Problems.");
+    expect(report.data.map((finding) => finding.key)).toEqual(["redirects.shadow:/about"]);
+
+    setup({ "/old": "/new" });
+    await byId("redirects.validate").run(openCtx, undefined as never);
+    expect(byId("redirects.validate").aiTool!.report(facts)).toEqual({
+      data: [],
+      summary: "No redirect problems: no chains, loops or shadowed rules.",
+    });
+  });
+
   test("redirects.import takes its text as an argument, for automation and the assistant", async () => {
     setup();
     await byId("redirects.import").run(openCtx, { text: "/a /b 302\n/c /d\n" } as never);
@@ -543,7 +587,7 @@ describe("commands", () => {
 
   test("redirects.import with no text asks, and a dismissed dialog imports nothing", async () => {
     setup();
-    dialogDriver = null; // Dismissed.
+    promptAnswer = null; // Dismissed.
     await byId("redirects.import").run(openCtx, {} as never);
     expect(workspace.tabs.has(REDIRECTS_TAB_ID)).toBeFalse();
   });

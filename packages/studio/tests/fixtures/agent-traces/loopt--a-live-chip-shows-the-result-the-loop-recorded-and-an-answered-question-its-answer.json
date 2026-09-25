@@ -1,0 +1,122 @@
+{
+  "chatCalls": [
+    "sendMessage(\"ask me\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"q1\", \"ask_user\")",
+    "appendToolCallDelta(\"q1\", \"{\\\"options\\\":[\\\"Home\\\",\\\"Blog\\\"],\\\"question\\\":\\\"Which pages?\\\"}\")",
+    "appendToolCallEnd(\"q1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"q1\", {\"success\":true,\"data\":{\"answer\":\"Blog\",\"skipped\":false},\"summary\":\"The user answered: \\\"Blog\\\"\"})",
+    "pushToolResultMessage(\"q1\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"Blog\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"Blog\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "ask me"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": ["ask_user"]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "q1",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"options\":[\"Home\",\"Blog\"],\"question\":\"Which pages?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "q1",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"Blog\",\"skipped\":false},\"summary\":\"The user answered: \\\"Blog\\\"\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "ask me"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"options\":[\"Home\",\"Blog\"],\"question\":\"Which pages?\"}",
+          "id": "q1",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "Blog",
+              "skipped": false
+            },
+            "summary": "The user answered: \"Blog\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"Blog\",\"skipped\":false},\"summary\":\"The user answered: \\\"Blog\\\"\"}",
+      "toolCallId": "q1"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "answer": "Blog",
+    "askState": "answered"
+  }
+}

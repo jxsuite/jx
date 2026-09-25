@@ -1,0 +1,563 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelActivity",
+  "$description": "The Activity feed: one row per operation this session, newest last, drawn from the projection `panels/activity-panel.ts` hands in. A row is a glyph, a head line (what the operation is, who is running it, how long it has taken), the line it is doing now, the plan it declared, the log it captured and — only when the operation handed a callback over — its Cancel. Every conditional the row has is a boolean field on the projected item, because `$switch` over a value is the only conditional a document has and \"is this entry cancellable\" is a question the panel has already answered. Nothing here reads the activity store: the panel owns what an operation IS, and the surface owns what it looks like.",
+  "tagName": "div",
+  "attributes": {
+    "part": "panel"
+  },
+  "style": {
+    "$description": "What `.activity-panel`, `.activity-actions`, `.activity-list`, `.activity-row`, `.activity-icon`, `.activity-body`, `.activity-head`, `.activity-title`, `.activity-source`, `.activity-duration`, `.activity-status`, `.activity-steps`, `.activity-step`, `.activity-step-icon`, `.activity-log-toggle` and `.activity-log` said in `styles/panels.css`, keyed on `part`. Two rules were DELETED rather than moved: `.activity-clear` and `.activity-cancel` drew a small bordered button by hand, and `jx-button` is that button — so the sizes, the border, the hover fill and the disabled state are the kit's now. Three token names changed meaning on the way: `--spectrum-font-size-50`, `--spectrum-font-size-75` and `--spectrum-corner-radius-75` resolve only inside `<sp-theme>`, and this document is mounted into the Bottom dock's body where that element is not an ancestor — every one of them would silently have taken its px fallback. They are the kit's own scale here (`--jx-text-sm`, `--jx-text-md`, `--jx-radius-xs`), which is the step each of them was. The `.activity-*` rules stay in the stylesheet regardless: `publish/deploy-checklist.ts` still draws the checklist above this feed in that same vocabulary, and it is a lit template until it converts.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "8px",
+    "padding": "8px",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"feed\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "8px",
+      "minWidth": "0"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "justifyContent": "flex-end"
+    },
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"row\"]": {
+      "$description": "The left border is the state, at 3px, which is the one thing that must be legible in a column of twenty rows without reading any of them. Its default is the dim foreground so a state nobody has a colour for still draws a border rather than a gap.",
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "8px",
+      "padding": "6px 8px",
+      "border": "1px solid var(--border)",
+      "borderLeft": "3px solid var(--fg-dim)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"row\"][data-state=\"running\"]": {
+      "borderLeftColor": "var(--accent)"
+    },
+    "& [part=\"row\"][data-state=\"done\"]": {
+      "borderLeftColor": "var(--success)"
+    },
+    "& [part=\"row\"][data-state=\"failed\"]": {
+      "borderLeftColor": "var(--danger)"
+    },
+    "& [part=\"row\"][data-state=\"cancelled\"]": {
+      "borderLeftColor": "var(--fg-dim)"
+    },
+    "& [part=\"icon\"]": {
+      "flex": "none",
+      "width": "14px",
+      "textAlign": "center",
+      "fontWeight": "700",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"row\"][data-state=\"running\"] [part=\"icon\"]": {
+      "color": "var(--accent)"
+    },
+    "& [part=\"row\"][data-state=\"done\"] [part=\"icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"row\"][data-state=\"failed\"] [part=\"icon\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"body\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px"
+    },
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "8px",
+      "minWidth": "0"
+    },
+    "& [part=\"row-title\"]": {
+      "fontWeight": "700",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"source\"], & [part=\"duration\"]": {
+      "flex": "none",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"duration\"]": {
+      "$description": "Pushed to the far edge so a column of rows reads as a column of times.",
+      "marginLeft": "auto"
+    },
+    "& [part=\"status\"]": {
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"steps\"]": {
+      "$description": "The plan, declared up front, so \"which of the three steps is this on\" is answered by looking rather than by reading the status line and remembering what came before it.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "1px",
+      "margin": "2px 0 0",
+      "padding": "0",
+      "listStyle": "none",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"step\"]": {
+      "display": "flex",
+      "gap": "6px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"step\"][data-state=\"running\"]": {
+      "color": "var(--fg)"
+    },
+    "& [part=\"step\"][data-state=\"done\"] [part=\"step-icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"step\"][data-state=\"failed\"] [part=\"step-icon\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"step-icon\"]": {
+      "flex": "none",
+      "width": "10px",
+      "textAlign": "center"
+    },
+    "& [part=\"log-toggle\"]": {
+      "$description": "A plain button rather than a kit one, and the one element here that is not the kit's. The control has to carry `aria-expanded` on the node the reader actually focuses, and a `jx-button` forwards a fixed set of ARIA properties to the control inside its shadow root — an attribute written on the host would name the wrapper and not the button. Its wording is the disclosure's whole state (`docs/studio/interface/problems-and-progress.md` calls it the Show log disclosure), so nothing else has to draw one.",
+      "alignSelf": "flex-start",
+      "padding": "0",
+      "border": "none",
+      "background": "none",
+      "color": "var(--accent)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-sm)",
+      "cursor": "pointer",
+      ":hover": {
+        "textDecoration": "underline"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    },
+    "& [part=\"log\"]": {
+      "$description": "The captured output the progress modal used to show once and then lose. It scrolls inside the row rather than growing it, so one 400-line `bun install` failure does not become the whole panel.",
+      "maxHeight": "180px",
+      "margin": "2px 0 0",
+      "padding": "6px",
+      "overflow": "auto",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--bg)",
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "whiteSpace": "pre-wrap"
+    },
+    "& [part=\"cancel\"]": {
+      "flex": "none"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template and a document cannot call one. What it says is what is kept — one sentence saying what the region is FOR, then where its content comes from — and this region's fill is an operation somebody else starts, so it offers no button.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "8px",
+      "padding": "24px",
+      "textAlign": "center",
+      "fontSize": "13px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"], & [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-detail\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "opacity": "0.8"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "feed-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasRows"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "feed"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "actions-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasFinished"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true
+                      },
+                      "attributes": {
+                        "part": "clear"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/clearFinished"
+                            }
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "${state.clearLabel}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "ul",
+              "attributes": {
+                "part": "list"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/id"
+                  },
+                  "map": {
+                    "tagName": "li",
+                    "attributes": {
+                      "part": "row",
+                      "data-state": "${$map.item.state}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "icon",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "${$map.item.icon}"
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "body"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "head"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "row-title"
+                                },
+                                "textContent": "${$map.item.title}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "source-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/hasSource"
+                                },
+                                "cases": {
+                                  "true": {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "source"
+                                    },
+                                    "textContent": "${$map.item.source}"
+                                  }
+                                }
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "duration"
+                                },
+                                "textContent": "${$map.item.duration}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "status-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/hasStatus"
+                            },
+                            "cases": {
+                              "true": {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "status"
+                                },
+                                "textContent": "${$map.item.status}"
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "steps-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/hasSteps"
+                            },
+                            "cases": {
+                              "true": {
+                                "tagName": "ol",
+                                "attributes": {
+                                  "part": "steps"
+                                },
+                                "children": [
+                                  {
+                                    "$prototype": "Array",
+                                    "items": {
+                                      "$ref": "$map/item/steps"
+                                    },
+                                    "key": {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    "map": {
+                                      "tagName": "li",
+                                      "attributes": {
+                                        "part": "step",
+                                        "data-state": "${$map.item.state}"
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "step-icon",
+                                            "aria-hidden": "true"
+                                          },
+                                          "textContent": "${$map.item.icon}"
+                                        },
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "step-label"
+                                          },
+                                          "textContent": "${$map.item.label}"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "log-toggle-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/hasLog"
+                            },
+                            "cases": {
+                              "true": {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "log-toggle",
+                                  "type": "button",
+                                  "aria-expanded": "${$map.item.expanded ? 'true' : 'false'}"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/toggleLog"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/id"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "textContent": "${$map.item.logLabel}"
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "log-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/showLog"
+                            },
+                            "cases": {
+                              "true": {
+                                "tagName": "pre",
+                                "attributes": {
+                                  "part": "log"
+                                },
+                                "textContent": "${$map.item.logText}"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "cancel-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/cancellable"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "jx-button",
+                            "$props": {
+                              "size": "sm"
+                            },
+                            "attributes": {
+                              "part": "cancel",
+                              "title": "Stop this operation"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/cancel"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/id"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "Cancel"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "false": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Long operations show their progress, their log and their Cancel button here."
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-detail"
+              },
+              "textContent": "Installs, clones, publishes and imports report here while they run."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

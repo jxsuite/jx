@@ -4,6 +4,8 @@ description: "Application settings in Jx Studio: the theme, the AI provider, eve
 spec: studio.md#15
 code:
   - packages/studio/src/settings/preferences-dialog.ts
+  - packages/studio/src/surfaces/preferences.json
+  - packages/studio/src/surfaces/preferences.ts
   - packages/studio/src/settings/preferences-sections.ts
   - packages/studio/src/panels/settings-menu.ts
   - packages/studio/src/settings/preferences-accounts.ts
@@ -41,6 +43,8 @@ Every credential Studio is holding, in one list: **GitHub**, the **AI provider**
 A connected GitHub account also says **where** the credential is kept, because that differs by build: the desktop app holds it in a file in its own configuration folder that only your user account can read; a browser keeps it in that browser's storage. A connected account offers **Disconnect**, which forgets it on this machine immediately and takes its row back to the disconnected wording. Nothing else is touched (disconnecting the AI provider leaves GitHub signed in), and anything that was waiting on that credential notices at once, so the assistant's setup notice appears or disappears without you reopening anything.
 
 The list never shows the credential itself, only that one is stored.
+
+On Jx Cloud the Cloudflare row is different in one way that matters: the connection is held for you by the platform rather than stored on this machine, so the row reports what the platform says about it. It names the connected account, or tells you the authorization has expired and offers **Reconnect**, or offers to pick an account when your Cloudflare login covers several and none has been chosen yet. **Disconnect** there reaches the platform and drops the authorization itself, not just a local copy of it.
 
 ## Keyboard
 

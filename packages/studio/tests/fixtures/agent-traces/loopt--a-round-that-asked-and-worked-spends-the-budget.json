@@ -1,0 +1,552 @@
+{
+  "chatCalls": [
+    "sendMessage(\"ask and work\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a0\", \"ask_user\")",
+    "appendToolCallDelta(\"a0\", \"{\\\"question\\\":\\\"Which?\\\"}\")",
+    "appendToolCallEnd(\"a0\")",
+    "appendToolCallStart(\"w0\", \"read_document\")",
+    "appendToolCallDelta(\"w0\", \"{}\")",
+    "appendToolCallEnd(\"w0\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a0\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a0\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "appendToolResult(\"w0\", {\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}})",
+    "pushToolResultMessage(\"w0\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"children\\\":[{\\\"tagName\\\":\\\"p\\\",\\\"textContent\\\":\\\"Hello\\\"}],\\\"tagName\\\":\\\"div\\\"}}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a1\", \"ask_user\")",
+    "appendToolCallDelta(\"a1\", \"{\\\"question\\\":\\\"Which?\\\"}\")",
+    "appendToolCallEnd(\"a1\")",
+    "appendToolCallStart(\"w1\", \"read_document\")",
+    "appendToolCallDelta(\"w1\", \"{}\")",
+    "appendToolCallEnd(\"w1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a1\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a1\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "appendToolResult(\"w1\", {\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}})",
+    "pushToolResultMessage(\"w1\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"children\\\":[{\\\"tagName\\\":\\\"p\\\",\\\"textContent\\\":\\\"Hello\\\"}],\\\"tagName\\\":\\\"div\\\"}}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a2\", \"ask_user\")",
+    "appendToolCallDelta(\"a2\", \"{\\\"question\\\":\\\"Which?\\\"}\")",
+    "appendToolCallEnd(\"a2\")",
+    "appendToolCallStart(\"w2\", \"read_document\")",
+    "appendToolCallDelta(\"w2\", \"{}\")",
+    "appendToolCallEnd(\"w2\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a2\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a2\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "appendToolResult(\"w2\", {\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}})",
+    "pushToolResultMessage(\"w2\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"children\\\":[{\\\"tagName\\\":\\\"p\\\",\\\"textContent\\\":\\\"Hello\\\"}],\\\"tagName\\\":\\\"div\\\"}}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a3\", \"ask_user\")",
+    "appendToolCallDelta(\"a3\", \"{\\\"question\\\":\\\"Which?\\\"}\")",
+    "appendToolCallEnd(\"a3\")",
+    "appendToolCallStart(\"w3\", \"read_document\")",
+    "appendToolCallDelta(\"w3\", \"{}\")",
+    "appendToolCallEnd(\"w3\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a3\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a3\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "appendToolResult(\"w3\", {\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}})",
+    "pushToolResultMessage(\"w3\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"children\\\":[{\\\"tagName\\\":\\\"p\\\",\\\"textContent\\\":\\\"Hello\\\"}],\\\"tagName\\\":\\\"div\\\"}}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a4\", \"ask_user\")",
+    "appendToolCallDelta(\"a4\", \"{\\\"question\\\":\\\"Which?\\\"}\")",
+    "appendToolCallEnd(\"a4\")",
+    "appendToolCallStart(\"w4\", \"read_document\")",
+    "appendToolCallDelta(\"w4\", \"{}\")",
+    "appendToolCallEnd(\"w4\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a4\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a4\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "appendToolResult(\"w4\", {\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}})",
+    "pushToolResultMessage(\"w4\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"children\\\":[{\\\"tagName\\\":\\\"p\\\",\\\"textContent\\\":\\\"Hello\\\"}],\\\"tagName\\\":\\\"div\\\"}}\")",
+    "setError(\"I ran out of tool-call rounds (5) before finishing.\\n\\nYou can continue by sending another message, or try a more specific request.\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "ask and work"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a0",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"Which?\"}"
+                }
+              },
+              {
+                "id": "w0",
+                "type": "function",
+                "function": {
+                  "name": "read_document",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a0",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w0",
+            "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a1",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"Which?\"}"
+                }
+              },
+              {
+                "id": "w1",
+                "type": "function",
+                "function": {
+                  "name": "read_document",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a1",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w1",
+            "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}"
+          }
+        ],
+        "carried": 4
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 4,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a2",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"Which?\"}"
+                }
+              },
+              {
+                "id": "w2",
+                "type": "function",
+                "function": {
+                  "name": "read_document",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a2",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w2",
+            "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}"
+          }
+        ],
+        "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 5,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a3",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"Which?\"}"
+                }
+              },
+              {
+                "id": "w3",
+                "type": "function",
+                "function": {
+                  "name": "read_document",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a3",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w3",
+            "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}"
+          }
+        ],
+        "carried": 10
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#14\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "ask and work"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"Which?\"}",
+          "id": "a0",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        },
+        {
+          "arguments": "{}",
+          "id": "w0",
+          "name": "read_document",
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a0"
+    },
+    {
+      "id": "msg#4",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}",
+      "toolCallId": "w0"
+    },
+    {
+      "id": "msg#5",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"Which?\"}",
+          "id": "a1",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        },
+        {
+          "arguments": "{}",
+          "id": "w1",
+          "name": "read_document",
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#6",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a1"
+    },
+    {
+      "id": "msg#7",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}",
+      "toolCallId": "w1"
+    },
+    {
+      "id": "msg#8",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"Which?\"}",
+          "id": "a2",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        },
+        {
+          "arguments": "{}",
+          "id": "w2",
+          "name": "read_document",
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#9",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a2"
+    },
+    {
+      "id": "msg#10",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}",
+      "toolCallId": "w2"
+    },
+    {
+      "id": "msg#11",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"Which?\"}",
+          "id": "a3",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        },
+        {
+          "arguments": "{}",
+          "id": "w3",
+          "name": "read_document",
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#12",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a3"
+    },
+    {
+      "id": "msg#13",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}",
+      "toolCallId": "w3"
+    },
+    {
+      "id": "msg#14",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"Which?\"}",
+          "id": "a4",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        },
+        {
+          "arguments": "{}",
+          "id": "w4",
+          "name": "read_document",
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#15",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a4"
+    },
+    {
+      "id": "msg#16",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"Hello\"}],\"tagName\":\"div\"}}",
+      "toolCallId": "w4"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "I ran out of tool-call rounds (5) before finishing.\n\nYou can continue by sending another message, or try a more specific request.",
+    "model": "test",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0,
+  "extra": {
+    "answered": 5
+  }
+}

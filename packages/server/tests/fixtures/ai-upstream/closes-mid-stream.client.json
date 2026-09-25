@@ -1,0 +1,26 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Working on it"
+    },
+    {
+      "type": "tool_call_start",
+      "id": "call_T",
+      "name": "set_text"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_T",
+      "args": "{\"path\":[0"
+    },
+    {
+      "type": "tool_call_end",
+      "id": "call_T"
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ]
+}

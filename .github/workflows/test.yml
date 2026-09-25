@@ -45,6 +45,10 @@ jobs:
       # rather than skip. `--init` never moves the gitlink, so it cannot mask a pin/submodule
       # disagreement — the check inside it still reports one.
       - run: bun scripts/check-electrobun-vendor.ts --init
+      # The derived docs pages are gitignored build outputs (`scripts/docs/generators/pages.ts`),
+      # and the link and nav tests under scripts/docs read the page set off disk; `postinstall`
+      # skips the generator under CI, so it runs here. Under a second.
+      - run: bun run docs:generate
       # The gate proves itself before it gates. This also gives scripts/*.test.ts its only home in
       # CI: scripts/ is not a coverage workspace and the matrix below only runs `bun test` with
       # cwd INSIDE a workspace, so these files previously ran nowhere.
@@ -106,7 +110,14 @@ jobs:
         # Test Analytics: Bun's JUnit reporter (written above) feeds Codecov's
         # flaky-test / failure tracking. Runs even when tests fail so failures
         # are recorded — only skipped if the job is cancelled.
+        #
+        # And it can NEVER fail the job. The tests above are the verdict; this is a report about
+        # them, sent to a third party over the network, and a `read ECONNRESET` from Codecov's
+        # side once turned a green `catalog` suite into a red required `ci` on a PR that touched
+        # neither. `codecov-action` above carries `fail_ci_if_error: false` by default for the
+        # same reason; this action has no such input, so the step says it at the workflow level.
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: codecov/test-results-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -268,6 +279,12 @@ jobs:
       # this is green on the release PR's first run; it fires when a template gains a dependency or
       # an extra-files entry is dropped. `bun run templates:sync` fixes it.
       - run: bun run templates:check
+      # The extension catalogue is generated from every extensions/*/jx-extension.json and the
+      # class descriptors it names. A new extension, a renamed section key, a reworded manifest
+      # title or a package that lost its `exports["./jx-extension.json"]` all move these bytes;
+      # `bun run catalog:sync` fixes it. Its own gate because check-schema-freshness derives its
+      # file set from tracked *schema.json and would never see this artifact.
+      - run: bun run catalog:verify
       # Studio commands: every declared `menus` placement must admit the command's
       # containment level (the level × placement matrix — UX-REDESIGN-PLAN §5.1,
       # normative copy in specs/studio-ui-guidelines.md §12).
@@ -286,21 +303,36 @@ jobs:
       # Neither is expressible in the type system — `ViewState` has an index signature and a
       # module-level `let active` is well-typed — so the guard is a ratcheting allow-list.
       - run: bun --cwd packages/studio scripts/check-pane-singletons.ts
-      # The template layer's two rules: a Spectrum control binds the state it moves ITSELF as a
-      # live property (an attribute binding is dirty-checked away exactly when it mattered), and a
+      # The template layer's two rules: a control that moves its own state binds it as a live
+      # property (an attribute binding is dirty-checked away exactly when it mattered), and a
       # module holds its own rendered nodes with ref() rather than re-finding them by selector.
       # Both carry a ratcheting backlog; source-only, about a second.
       - run: bun --cwd packages/studio scripts/check-lit-conventions.ts
+      - run: bun --cwd packages/studio scripts/check-surface-purity.ts
       # What the package promises about itself: the stylesheet list IS the stylesheets (a sheet the
       # list omits is one no document links — the 2.1.0 dead-links outage), `files` covers every
       # manifest path and every import that escapes src/, the abstraction declares no backend
       # package, and node: stays confined to the stager. Source-only, about a second.
       - run: bun --cwd packages/studio scripts/check-studio-package.ts
+      # The styling gate over the LIVE tree, which nothing here ran until now: raw hexes, orphan
+      # classes, the contrast pairs, the guidelines token table, the banned identifiers and the
+      # silent-catch budget were all enforced only by a human typing `bun run lint:styles`. Its unit
+      # tests ran in the matrix and its rules did not, so a gate could be extended — and was, for the
+      # surface documents — while never once judging the repository.
+      - run: bun --cwd packages/studio run lint:styles
+      # styles/tokens.css and styles/forced-colors.css are GENERATED from their .json sources. Same shape as `schema:verify`: the
+      # generator owns the bytes, a reviewer reads the meaning, and a hand-edit is a red X here.
+      - run: bun --cwd packages/studio run styles:check
       # The hosting contract, compiled under a CONSUMER's flags rather than this repo's.
       # jx-platform sets exactOptionalPropertyTypes, verbatimModuleSyntax and isolatedModules, none
       # of which the root tsconfig sets — and two type errors in the contract were found by
       # consuming it rather than by building it. See the note in that tsconfig.
       - run: bunx tsc -p packages/studio/src/hosting/tsconfig.json
+      # @jxsuite/ai's Worker-safe subpaths (./streaming-client, ./tools), compiled with only a Worker's
+      # globals: bare ES2023 lib and @cloudflare/workers-types, no bun-types, no DOM. The bundle half of
+      # the gate (no node:, bun, @vue/reactivity or Studio module in the graph) runs in the packages/ai
+      # test matrix as tests/worker-safety.test.ts. See packages/ai/tsconfig.worker.json.
+      - run: bun run typecheck:ai-worker
       - run: bun --cwd packages/studio scripts/check-icons.ts
       # The desktop's electrobun config, judged WITHOUT building the app. The CLI is a compiled Bun
       # binary whose resolver takes node: builtins and relative paths and NOT bare specifiers — and
@@ -326,8 +358,9 @@ jobs:
       # Type-aware (tsgolint) pass — Flow-soundness rules in .oxlintrc.strict.json.
       # The tsgolint binary ships with the oxlint-tsgolint dev dep (installed above).
       - run: bun run lint:typecheck
-      # Docs: generated reference pages must match their sources (diff gate), and
-      # /docs frontmatter ↔ specs/code/screenshots/nav must agree.
+      # Docs: the derived reference pages are gitignored build outputs, so this WRITES them first
+      # (docs:check does; every later docs gate reads the same set), then /docs frontmatter ↔
+      # specs/code/screenshots/nav must agree, and every referenced image must be in the lock.
       - run: bun run docs:verify
       # Marketing copy + README: no unbacked claims, dead download links, or wrong
       # starter counts; LICENSE files present. See scripts/docs/check-site-claims.ts.
@@ -348,6 +381,12 @@ jobs:
       # Markdown: no visual-editor escapes (`## 18\.`, `RESERVED\_KEYS`). One of these once made
       # spec.md's whole Standards Alignment section unfindable, so twelve rows silently stopped
       # being validated. See scripts/normalize-markdown.ts; `bun run format:md` fixes it.
+      #
+      # `--no-wrap` holds back the SECOND rule that script now carries: one paragraph per line.
+      # The sweep that would satisfy it rewrites ~80 files and conflicts with every open pull
+      # request, so it is a separate change; dropping the flag here and from nano-staged's `*.md`
+      # entry in package.json is what turns the rule on, once the sweep has landed. Until then this
+      # step is exactly what it was.
       - run: bun run docs:markdown
       # Standards: every spec's `## N. Standards Alignment` table cites a known standard at its
       # canonical URL, binds a real numbered section, backs a present-tense claim with committed

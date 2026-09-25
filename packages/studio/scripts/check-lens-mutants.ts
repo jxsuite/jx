@@ -166,11 +166,14 @@ const OUTSIDE_THE_TABLE: readonly OutsideRow[] = [
       "DELETED. `markConsumed`'s empty-list guard, `renderPane`'s `kind === \"lens\" ||` disjunct, " +
       "`runUnsplit`'s `activePaneId === PRIMARY ? SECONDARY : activePaneId` fallback, " +
       "`gitChangeFor`'s null-path guard, `rawDocOf`'s `toRaw`, `pane.derive`'s `|| null` and its " +
-      "trailing `target.activeTabId = null`, and the chip branch's `_lastActive`/`_overflowing` " +
-      "resets. Each was verified unreachable or value-identical before removal, and the reason is " +
-      "written at the line that used to be there. A mutation nothing can observe is not a gap in " +
-      "the table; it is dead code, and the honest answer is to delete it rather than to invent an " +
-      "assertion for it.",
+      "trailing `target.activeTabId = null`, the chip branch's `_lastActive`/`_overflowing` " +
+      "resets, and `revealOpenTab`'s `holder.id !== wanted` conjunct — `moveTabToPane` is " +
+      "idempotent for a tab already in `paneId`, so entering the block and calling it anyway " +
+      "reaches the identical final `activateTab` the guard's absence already reached. Each was " +
+      "verified unreachable or value-identical before removal, and the reason is written at the " +
+      "line that used to be there. A mutation nothing can observe is not a gap in the table; it " +
+      "is dead code, and the honest answer is to delete it rather than to invent an assertion " +
+      "for it.",
     what: "the lines whose inversion no state the app can reach could observe",
   },
   {
@@ -637,21 +640,7 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `  if (wanted !== undefined && holder && holder.id !== wanted) {`,
-        replace: `  if (wanted !== undefined && holder) {`,
-      },
-    ],
-    file: "src/files/files.ts",
-    id: "files.ts · a tab already in the requested pane is still ACTIVATED",
-    means:
-      "re-opening the document a pane is already showing takes the third case's early return, so " +
-      "the request is swallowed and the keyboard never arrives in the pane that was named",
-    test: "tests/files.test.ts",
-  },
-  {
-    edits: [
-      {
-        find: `    if (holder.activeTabId === tabId) {\n      return;\n    }\n    moveTabToPane(tabId, wanted);`,
+        find: `    if (holder.activeTabId === tabId && opts.focus === false) {\n      return;\n    }\n    moveTabToPane(tabId, wanted);`,
         replace: `    moveTabToPane(tabId, wanted);`,
       },
     ],
@@ -786,9 +775,7 @@ const MUTANTS: Mutant[] = [
     test: "tests/lens-chrome.test.ts",
   },
   {
-    edits: [
-      { find: `                focusPane(row.pane);`, replace: `                void row.pane;` },
-    ],
+    edits: [{ find: `      focusPane(row.pane);`, replace: `      void row.pane;` }],
     file: "src/panels/pane-context.ts",
     id: "pane-context.ts · a menu row acts on the pane it is a row of",
     means:
@@ -840,8 +827,13 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `              if (row.disabled === null) {`,
-        replace: `              if (true) {`,
+        /* The rows are projected for the KIT menu now, and the refusal is the projected flag
+           rather than a conditional in a click handler: `jx-menu-item` raises no `select` while
+           `aria-disabled` is true, so this one line is the whole guard — which is also why the
+           lit version's second check inside `run` went with the conversion. Same discriminator,
+           one frame further back. */
+        find: `    disabled: row.disabled !== null,`,
+        replace: `    disabled: false,`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -854,8 +846,10 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `      ${"${"}lens ? nothing : readOnlyBannerTemplate(tab)}`,
-        replace: `      ${"${"}readOnlyBannerTemplate(tab)}`,
+        /* The bar is a Jx document, so the banner is a projected FLAG rather than a branch in a
+           template — the same discriminator the lit version carried, one line further back. */
+        find: `    bannerState: !lens && readOnly ? "shown" : "hidden",`,
+        replace: `    bannerState: readOnly ? "shown" : "hidden",`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -890,8 +884,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `${"${"}zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom(surface) / 1.2, surface))}`,
-        replace: `${"${"}zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom() / 1.2))}`,
+        find: `      setUserZoom(stageZoom(surface) / 1.2, surface);`,
+        replace: `      setUserZoom(stageZoom() / 1.2);`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -904,8 +898,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `${"${"}zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom(surface) * 1.2, surface))}`,
-        replace: `${"${"}zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom() * 1.2))}`,
+        find: `      setUserZoom(stageZoom(surface) * 1.2, surface);`,
+        replace: `      setUserZoom(stageZoom() * 1.2);`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -916,10 +910,12 @@ const MUTANTS: Mutant[] = [
 
   // ─── panels/properties-panel.ts ─────────────────────────────────────────────
   {
+    /* The Content tab is a Jx document now, so the guard is a projected FLAG rather than a
+       conditional in a template — same discriminator, one line further back. */
     edits: [
       {
-        find: `\${deriveRefusal(workspace.activePaneId) === null ? openLayoutTpl() : nothing}`,
-        replace: `\${openLayoutTpl()}`,
+        find: `    layoutCanOpen: deriveRefusal(workspace.activePaneId) === null,`,
+        replace: `    layoutCanOpen: true,`,
       },
     ],
     file: "src/panels/properties-panel.ts",
@@ -993,8 +989,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `<span class="tab-derivation-of">${"${"}of ? tabLabel(of) : "no document"}</span>`,
-        replace: `<span class="tab-derivation-of">${"${"}of ? tabLabel(of) : ""}</span>`,
+        find: `  const subject = of ? tabLabel(of) : "no document";`,
+        replace: `  const subject = of ? tabLabel(of) : "";`,
       },
     ],
     file: "src/panels/tab-strip.ts",
@@ -1007,12 +1003,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find:
-          `      class=\${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}\n` +
-          `      @mousedown=\${() => focusPane(pane.id)}`,
-        replace:
-          `      class=\${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}\n` +
-          `      @mousedown=\${() => void pane.id}`,
+        find: `      focusPane(drawnPane(host)?.id ?? PRIMARY_PANE);`,
+        replace: `      void drawnPane(host);`,
       },
     ],
     file: "src/panels/tab-strip.ts",
@@ -1026,7 +1018,16 @@ const MUTANTS: Mutant[] = [
 
   // ─── studio.ts — the per-pane render inputs and the drill-in ────────────────
   {
-    edits: [{ find: `  const target = receivingPane();`, replace: `  const target = sidePane();` }],
+    edits: [
+      {
+        find: `  activePane,\n  activeTab,`,
+        replace: `  activePane,\n  activeTab,\n  paneBeside,`,
+      },
+      {
+        find: `  const target = receivingPane(activePane().id);`,
+        replace: `  const target = paneBeside(activePane().id);`,
+      },
+    ],
     file: "src/studio.ts",
     id: 'studio.ts · "Edit definition" lands in a pane that can OWN the tab',
     means:
@@ -1217,7 +1218,10 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `    if (derived.diff?.filePath === path) {`,
+        find: `    if (
+      derived.diff?.filePath === path &&
+      (derived.diffRev === undefined || derived.diffRev === shell.git.rev)
+    ) {`,
         replace: `    if (derived.diff !== null) {`,
       },
     ],
@@ -1229,12 +1233,26 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `(file) => file.path === path && (file.status === "M" || file.status === "A"),`,
-        replace: `(file) => file.path === path,`,
+        find: `      (derived.diffRev === undefined || derived.diffRev === shell.git.rev)`,
+        replace: `      true`,
       },
     ],
     file: "src/workspace/pane-derive.ts",
-    id: "pane-derive.ts · only M and A have a pair of texts to compare",
+    id: "pane-derive.ts · a held comparison is only current at the revision it was read at",
+    means:
+      "the lens holds the texts it read when it opened forever, so the change marks describe a " +
+      "file the author has since edited while looking at it",
+    test: "tests/pane-derive.test.ts",
+  },
+  {
+    edits: [
+      {
+        find: `        file.path === path && (file.status === "M" || file.status === "A" || file.status === "U"),`,
+        replace: `        file.path === path,`,
+      },
+    ],
+    file: "src/workspace/pane-derive.ts",
+    id: "pane-derive.ts · a lens compares only a status it can build a pair of texts for",
     means: "Diff is offered for an untracked or deleted file, and the comparison cannot be built",
     test: "tests/pane-derive.test.ts",
   },
@@ -1632,7 +1650,7 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `  if (path === null || !change || _diffLoads.get(paneId)?.path === path) {`,
+        find: `  if (path === null || !change || (asked?.path === path && asked.rev === rev)) {`,
         replace: `  if (path === null || !change) {`,
       },
     ],
@@ -1736,17 +1754,19 @@ const MUTANTS: Mutant[] = [
      screenshot, and shell.css says so at the rule.
      **This list is now empty.** An honest exclusion is still available — see {@link Mutant.browserOnly} —
      but every claim in the table is executed. */
+  /* Moved with its subject. The rule was `.tab-derivation` in `styles/shell.css` until the strip
+     became a document; it is the same declaration, now inside the surface that draws it. */
   {
     edits: [
       {
-        find: `  padding: 4px 10px;\n  border-bottom: 2px solid transparent;`,
-        replace: `  padding: 0;\n  border-bottom: 2px solid transparent;`,
+        find: `"padding": "4px 10px",\n      "borderBottom": "2px solid transparent",`,
+        replace: `"padding": "0",\n      "borderBottom": "2px solid transparent",`,
       },
     ],
-    file: "styles/shell.css",
-    id: "shell.css · a derivation chip's row keeps the tab row's vertical box",
+    file: "src/surfaces/tab-strip.json",
+    id: "tab-strip.json · a derivation chip's row keeps the tab row's vertical box",
     means: "the derived pane's strip collapses against the tab row in the pane beside it",
-    test: "tests/lens-chrome.test.ts",
+    test: "tests/tab-strip.test.ts",
   },
 ];
 

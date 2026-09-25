@@ -1,0 +1,416 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxDialog",
+  "tagName": "jx-dialog",
+  "observedAttributes": [
+    "headline",
+    "confirm-label",
+    "secondary-label",
+    "cancel-label",
+    "destructive",
+    "dismissible",
+    "size"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-button.json"
+    }
+  ],
+  "state": {
+    "headline": {
+      "type": "string",
+      "default": "",
+      "attribute": "headline",
+      "description": "The dialog's title, which is also its accessible name. Empty for a dialog named by its content."
+    },
+    "confirmLabel": {
+      "type": "string",
+      "default": "OK",
+      "attribute": "confirm-label",
+      "description": "The primary button's text; empty for no primary button."
+    },
+    "secondaryLabel": {
+      "type": "string",
+      "default": "",
+      "attribute": "secondary-label",
+      "description": "A third answer beside confirm and cancel, such as Discard; empty for none."
+    },
+    "cancelLabel": {
+      "type": "string",
+      "default": "Cancel",
+      "attribute": "cancel-label",
+      "description": "The cancel button's text; empty for no cancel button."
+    },
+    "destructive": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "destructive",
+      "description": "The primary action destroys something: its button draws in the negative variant, and the dialog opens with CANCEL focused instead of it, so a reader who answers with Enter does not destroy anything."
+    },
+    "dismissible": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "dismissible",
+      "description": "A click outside the dialog closes it, as Escape always does. Off for an answer the reader must give."
+    },
+    "size": {
+      "type": "string",
+      "default": "sm",
+      "attribute": "size",
+      "description": "sm, md or lg: the dialog's width."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the dialog is showing. Read-only state, mirrored from the platform: open it with showModal(host) from the behaviours module, or with a --show invoker command aimed at the element."
+    },
+    "hasHeadline": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/headline"
+        },
+        "value": ""
+      }
+    },
+    "hasConfirm": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/confirmLabel"
+        },
+        "value": ""
+      }
+    },
+    "hasSecondary": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/secondaryLabel"
+        },
+        "value": ""
+      }
+    },
+    "hasCancel": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/cancelLabel"
+        },
+        "value": ""
+      }
+    },
+    "confirmVariant": "${state.destructive ? 'negative' : 'accent'}",
+    "closedby": "${state.dismissible ? 'any' : 'closerequest'}",
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onToggle",
+      "description": "The platform's toggle on the inner dialog, mirrored into open."
+    },
+    "onNativeCancel": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onNativeCancel",
+      "description": "Escape or a light dismissal: the platform closes the dialog, and the element dispatches cancel.",
+      "emits": [
+        {
+          "name": "cancel",
+          "description": "The reader declined: Escape, a dismissal, or the cancel button."
+        }
+      ]
+    },
+    "onNativeClose": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onNativeClose",
+      "description": "The platform's close, whatever closed it, dispatched as close.",
+      "emits": [
+        {
+          "name": "close",
+          "description": "The dialog closed, for any reason."
+        }
+      ]
+    },
+    "onCommand": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onCommand",
+      "description": "An invoker command aimed at the element: --show opens it modally, --close closes it."
+    },
+    "onConfirm": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onConfirm",
+      "description": "The primary button: dispatches confirm and leaves closing to the host, so a refused value can keep the dialog open.",
+      "emits": [
+        {
+          "name": "confirm",
+          "description": "The primary button was activated."
+        }
+      ]
+    },
+    "onSecondary": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onSecondary",
+      "description": "The secondary button: dispatches secondary.",
+      "emits": [
+        {
+          "name": "secondary",
+          "description": "The secondary button was activated."
+        }
+      ]
+    },
+    "onCancelClick": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/dialog.ts",
+      "$export": "onCancelClick",
+      "description": "The cancel button: dispatches cancel and closes the dialog."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the element has rendered and carries its native dialog, so a host may open it."
+    }
+  },
+  "oncommand": {
+    "$ref": "#/state/onCommand"
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-open": "${state.open ? '' : null}",
+    "data-destructive": "${state.destructive ? '' : null}"
+  },
+  "style": {
+    "display": "contents",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"dialog\"]": {
+      "boxSizing": "border-box",
+      "width": "min(90vw, 24rem)",
+      "maxHeight": "85vh",
+      "margin": "auto",
+      "padding": "0",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--jx-bg-overlay)",
+      "color": "var(--jx-fg)",
+      "boxShadow": "var(--jx-shadow-dialog)",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "overflow": "auto",
+      "&::backdrop": {
+        "background": "rgba(0, 0, 0, 0.4)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)"
+      }
+    },
+    "&[data-size=\"md\"] > [part=\"dialog\"]": {
+      "width": "min(90vw, 32rem)"
+    },
+    "&[data-size=\"lg\"] > [part=\"dialog\"]": {
+      "width": "min(90vw, 44rem)"
+    },
+    "& [part=\"header\"]": {
+      "padding": "var(--jx-space-5) var(--jx-space-5) 0"
+    },
+    "& [part=\"header\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"headline\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "lineHeight": "var(--jx-leading-lg)",
+      "fontWeight": "600"
+    },
+    "& [part=\"body\"]": {
+      "padding": "var(--jx-space-4) var(--jx-space-5)"
+    },
+    "& [part=\"footer\"]": {
+      "display": "flex",
+      "justifyContent": "flex-end",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "0 var(--jx-space-5) var(--jx-space-5)"
+    },
+    "& [part=\"secondary\"]": {
+      "marginRight": "auto"
+    },
+    "& [part=\"secondary-slot\"], & [part=\"cancel-slot\"], & [part=\"confirm-slot\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "dialog",
+      "attributes": {
+        "part": "dialog",
+        "closedby": "${state.closedby}",
+        "aria-label": "${state.headline || null}"
+      },
+      "ontoggle": {
+        "$ref": "#/state/onToggle"
+      },
+      "oncancel": {
+        "$ref": "#/state/onNativeCancel"
+      },
+      "onclose": {
+        "$ref": "#/state/onNativeClose"
+      },
+      "children": [
+        {
+          "tagName": "header",
+          "attributes": {
+            "part": "header"
+          },
+          "$switch": {
+            "$ref": "#/state/hasHeadline"
+          },
+          "cases": {
+            "true": {
+              "tagName": "h2",
+              "attributes": {
+                "part": "headline"
+              },
+              "textContent": "${state.headline}"
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        },
+        {
+          "tagName": "footer",
+          "attributes": {
+            "part": "footer"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "role": "none",
+                "part": "secondary-slot"
+              },
+              "$switch": {
+                "$ref": "#/state/hasSecondary"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "quiet": true
+                  },
+                  "attributes": {
+                    "part": "secondary"
+                  },
+                  "onclick": {
+                    "$ref": "#/state/onSecondary"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.secondaryLabel}",
+                      "attributes": {
+                        "part": "secondary-label"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "role": "none",
+                "part": "cancel-slot"
+              },
+              "$switch": {
+                "$ref": "#/state/hasCancel"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "cancel",
+                    "autofocus": "${state.destructive ? '' : null}"
+                  },
+                  "onclick": {
+                    "$ref": "#/state/onCancelClick"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.cancelLabel}",
+                      "attributes": {
+                        "part": "cancel-label"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "role": "none",
+                "part": "confirm-slot"
+              },
+              "$switch": {
+                "$ref": "#/state/hasConfirm"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "variant": {
+                      "$ref": "#/state/confirmVariant"
+                    }
+                  },
+                  "attributes": {
+                    "part": "confirm",
+                    "autofocus": "${state.destructive ? null : ''}"
+                  },
+                  "onclick": {
+                    "$ref": "#/state/onConfirm"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.confirmLabel}",
+                      "attributes": {
+                        "part": "confirm-label"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "overlay-slot"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -8,10 +8,52 @@
  * rendered element (never an HTML string, which Tabulator would inject as innerHTML).
  *
  * Native inputs (the data-grid precedent) rather than Spectrum controls: cells are 24px
- * micro-controls where SWC shadow focus handling fights Tabulator's editor lifecycle. Rich popover
- * editors (media, relationship pickers) layer on in a later phase.
+ * micro-controls where SWC shadow focus handling fights Tabulator's editor lifecycle.
+ *
+ * ## This surface stays lit, and the reason is structural rather than a shortage of will
+ *
+ * Every other control in the grid is a document — the frame, the toolbar, both popovers, and the
+ * value picker for the two kinds that edit OUT of the cell (`surfaces/grid-cell.json`). These do
+ * not, because they render into TABULATOR's DOM on Tabulator's clock, and a Jx document is mounted
+ * asynchronously: `ui/surface.ts`'s `mountSurface` awaits `kitReady()` and then `mount()`. Three
+ * things in the engine read the editor's own subtree in the SAME statement sequence that parents
+ * it, so an empty box handed over now and filled a microtask later is not the same object:
+ *
+ * 1. `Edit.edit()` runs `element.appendChild(cellEditor)` and then `rendered()` on the next line —
+ *    that is the `onRendered` callback below, whose whole job is to focus and select the control.
+ *    With nothing in the box there is nothing to focus, so the keystroke that opened the editor
+ *    lands on the table and the edit module blur-cancels the session.
+ * 2. The statement after that walks `element.children` and adds a click-stopper to each. A child that
+ *    arrives later never gets one, so the first click inside the editor bubbles to the cell and the
+ *    SelectRange module reads it as a range interaction.
+ * 3. `navigateNext`/`navigatePrev` call `nextCell.getComponent().edit()` SYNCHRONOUSLY inside the
+ *    keydown handler, so Tab commits one editor and builds the next in one turn. That is what rules
+ *    out the obvious escape — a pool of pre-mounted documents re-seeded per session — because a
+ *    scope write flushes in a microtask (`@vue/reactivity` batches; `src/reactivity.ts` says so at
+ *    its definition), and the second editor would open showing the first cell's value.
+ *
+ * The formatters are blocked a second way, which no seam fixes. `Cell._generateContents()` wipes
+ * the cell and appends whatever the formatter returned, and it runs for every visible cell on every
+ * render; with `renderVertical: "virtual"` (see `grid-view.ts`) `Row.wipe()`/`deleteCells()`
+ * destroy those cells as they scroll out, and NOTHING calls back to say so. A document per cell
+ * would enter `services/surface-registry.ts` on the way in and never leave it — an unbounded
+ * registry keyed to nodes the engine has already thrown away — and would repaint asynchronously
+ * while the reader scrolls.
+ *
+ * So the boundary is the cell, and it is the same boundary §9.4 already draws around Tabulator: the
+ * engine is an island, and this file is the inside of it. The two kinds whose picker is bigger than
+ * a cell escaped it by leaving the cell entirely, and that is the shape any future conversion has
+ * to take — a document ANCHORED at the cell, not mounted in it. What would actually unblock the
+ * rest is a synchronous mount path in the runtime (a document rendered into a detached host with
+ * the kit already registered, no awaits), at which point 1 and 2 dissolve and only the formatter's
+ * lifetime problem is left, which needs a teardown hook Tabulator does not have.
  */
 import { html, render } from "lit-html";
+/* The two cell editors below are re-rendered while they are open — the pill editor calls its own
+   `doRender()` on every Enter — and an `<input>` moves `value`/`checked` itself without reflecting
+   either. A plain property binding is dirty-checked against what lit last committed, so the write
+   would be skipped exactly when the reader had changed it. `check-lit-conventions.ts` rule 1. */
+import { live } from "lit-html/directives/live.js";
 import { cellToText, coerceCellInput } from "./schema-columns";
 import type { GridCellValue, GridColumn } from "./grid-source";
 
@@ -57,7 +99,7 @@ function inputEditor(makeHost: HostFactory, column: GridColumn, inputType: strin
       html`<input
         class="jx-grid-input"
         type=${inputType}
-        .value=${initial}
+        .value=${live(initial)}
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Enter") {
             commit((e.target as HTMLInputElement).value);
@@ -86,7 +128,7 @@ function checkboxEditor(makeHost: HostFactory): CellEditorFn {
       html`<input
         class="jx-grid-checkbox"
         type="checkbox"
-        .checked=${cell.getValue() === true}
+        .checked=${live(cell.getValue() === true)}
         @change=${(e: Event) => {
           if (!done) {
             done = true;

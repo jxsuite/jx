@@ -1,0 +1,569 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelI18n",
+  "$description": "The Languages panel: a grid over ABSENCE, one row per translation key and one column per declared locale, drawn from the projection `panels/i18n-panel.ts` hands in. Every square is a button and every button is a command run by id, so the document draws a state, a glyph and a sentence and decides nothing: which command a cell runs, whether it is refused and what the refusal says are all settled before the scope is written. Three bodies rather than one, because a monolingual project and a project still being read are not empty versions of the grid — they are different answers to the same question.",
+  "tagName": "div",
+  "attributes": {
+    "part": "panel"
+  },
+  "style": {
+    "$description": "The panel's own look, taken out of `styles/panels.css`'s `.i18n-*` block. Three tokens changed meaning on the way: `--spectrum-font-size-50`, `--spectrum-font-size-75` and `--spectrum-corner-radius-75` resolved only inside `<sp-theme>`, and this document is mounted into the Navigator's `.panel-body`, where that element is not an ancestor — every one of them would silently have taken its px fallback. They are the kit's scale here (`--jx-text-sm`, `--jx-text-md`, `--jx-radius-xs`), which is what those three Spectrum steps were.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "8px",
+    "padding": "8px",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"empty\"]": {
+      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template and a document cannot call one. Its rules are what is kept — one sentence saying what the region is FOR, then where its content comes from, then the action that fills it — in the centred shape a whole empty region uses.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "8px",
+      "padding": "24px",
+      "textAlign": "center",
+      "fontSize": "13px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty\"][data-compact=\"true\"]": {
+      "$description": "The same state as a note INSIDE an otherwise populated panel — the grid's summary and its Rescan button are still above it, so a centred block with 24px of air around it would read as a second, emptier panel.",
+      "alignItems": "flex-start",
+      "gap": "4px",
+      "padding": "8px 12px",
+      "textAlign": "left",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"empty-message\"], & [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-detail\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "opacity": "0.8"
+    },
+    "& [part=\"empty-actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "justifyContent": "center",
+      "gap": "8px"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "justifyContent": "space-between",
+      "gap": "8px"
+    },
+    "& [part=\"summary\"]": {
+      "margin": "0",
+      "minWidth": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"rescan\"]": {
+      "flex": "none",
+      "padding": "2px 8px",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "var(--fg-dim)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-sm)",
+      "cursor": "pointer"
+    },
+    "& [part=\"rescan\"]:hover": {
+      "color": "var(--fg)",
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"incomplete\"]": {
+      "$description": "A directory the scan could not read makes the whole grid a partial answer, so it says so ABOVE the table rather than letting an unreadable `content/` read as a project with no content.",
+      "margin": "0",
+      "padding": "4px 6px",
+      "borderLeft": "3px solid var(--warning)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"parity\"]": {
+      "$description": "The Navigator is narrow and a key is a path, so the table scrolls sideways rather than wrapping every path onto four lines.",
+      "display": "block",
+      "overflowX": "auto",
+      "borderCollapse": "collapse",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"key-head\"], & [part=\"locale-head\"]": {
+      "padding": "2px 6px",
+      "borderBottom": "1px solid var(--border)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "textAlign": "start",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.04em",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"default-mark\"]": {
+      "marginInlineStart": "4px",
+      "color": "var(--accent)",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "letterSpacing": "normal"
+    },
+    "& [part=\"row\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"key\"]": {
+      "maxWidth": "220px",
+      "overflow": "hidden",
+      "padding": "2px 6px",
+      "color": "var(--fg)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "400",
+      "textAlign": "start",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"cell\"]": {
+      "padding": "2px 6px",
+      "textAlign": "center"
+    },
+    "& [part=\"cell-button\"]": {
+      "$description": "The glyph carries the state and the colour repeats it, the way a problem row's severity does, because a column of squares is read by scanning rather than by reading. The state is an attribute rather than a class: a document styles through `part` and the data it already carries, never through a class name (ui.md §3.1).",
+      "inlineSize": "22px",
+      "blockSize": "18px",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "var(--fg-dim)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "1",
+      "cursor": "pointer"
+    },
+    "& [part=\"cell-button\"]:hover:not(:disabled)": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"cell-button\"]:disabled": {
+      "cursor": "default",
+      "opacity": "0.45"
+    },
+    "& [part=\"cell-button\"][data-state=\"present\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"cell-button\"][data-state=\"stale\"]": {
+      "color": "var(--warning)",
+      "borderColor": "var(--warning)"
+    },
+    "& [part=\"cell-button\"][data-state=\"missing\"]": {
+      "color": "var(--accent)",
+      "borderStyle": "dashed"
+    },
+    "& [part=\"truncated\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/mode"
+      },
+      "cases": {
+        "mono": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "This project is written in one language."
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-detail"
+              },
+              "textContent": "Declare them under Locales in the project's settings, then a page's translations are sibling files under a directory named for each language."
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-actions"
+              },
+              "children": [
+                {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "size": "sm",
+                    "disabled": {
+                      "$ref": "#/state/settingsDisabled"
+                    }
+                  },
+                  "attributes": {
+                    "part": "settings"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openSettings"
+                        }
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Open project settings…"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "scanning": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Looking for translations…"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-detail"
+              },
+              "textContent": "Reading pages/ and content/ to find out which languages each page is written in."
+            }
+          ]
+        },
+        "grid": {
+          "tagName": "div",
+          "attributes": {
+            "part": "grid",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "actions"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "summary"
+                  },
+                  "textContent": "${state.summary}"
+                },
+                {
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "rescan",
+                    "type": "button",
+                    "title": "Read pages/ and content/ again"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/rescan"
+                        }
+                      }
+                    ]
+                  },
+                  "textContent": "Rescan"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "incomplete-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasIncomplete"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "incomplete"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "This list is incomplete — "
+                    },
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.incomplete}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "list-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasRows"
+              },
+              "cases": {
+                "false": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty",
+                    "data-compact": "true"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-message"
+                      },
+                      "textContent": "There is nothing to translate yet."
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-detail"
+                      },
+                      "textContent": "Add a page under pages/, or an entry to a content collection."
+                    }
+                  ]
+                },
+                "true": {
+                  "tagName": "table",
+                  "attributes": {
+                    "part": "parity"
+                  },
+                  "children": [
+                    {
+                      "tagName": "thead",
+                      "children": [
+                        {
+                          "tagName": "tr",
+                          "children": [
+                            {
+                              "tagName": "th",
+                              "attributes": {
+                                "part": "key-head",
+                                "scope": "col"
+                              },
+                              "textContent": "Page"
+                            },
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/heads"
+                              },
+                              "key": {
+                                "$ref": "$map/item/locale"
+                              },
+                              "map": {
+                                "tagName": "th",
+                                "attributes": {
+                                  "part": "locale-head",
+                                  "scope": "col",
+                                  "title": "${$map.item.locale}"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "default-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/isDefault"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "default-mark"
+                                        },
+                                        "textContent": "source"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "tbody",
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/rows"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "tr",
+                            "attributes": {
+                              "part": "row"
+                            },
+                            "children": [
+                              {
+                                "tagName": "th",
+                                "attributes": {
+                                  "part": "key",
+                                  "scope": "row",
+                                  "title": "${$map.item.key}"
+                                },
+                                "textContent": "${$map.item.key}"
+                              },
+                              {
+                                "$prototype": "Array",
+                                "items": {
+                                  "$ref": "$map/item/cells"
+                                },
+                                "key": {
+                                  "$ref": "$map/item/locale"
+                                },
+                                "map": {
+                                  "tagName": "td",
+                                  "attributes": {
+                                    "part": "cell"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "button",
+                                      "attributes": {
+                                        "part": "cell-button",
+                                        "type": "button",
+                                        "data-state": "${$map.item.state}",
+                                        "disabled": {
+                                          "$ref": "$map/item/disabled"
+                                        },
+                                        "title": "${$map.item.title}",
+                                        "aria-label": "${$map.item.title}"
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/runCell"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/command"
+                                              },
+                                              {
+                                                "$ref": "$map/item/locale"
+                                              },
+                                              {
+                                                "$ref": "$map/item/rowPath"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "aria-hidden": "true"
+                                          },
+                                          "textContent": "${$map.item.glyph}"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "truncated-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasTruncated"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "truncated"
+                  },
+                  "textContent": "${state.truncated}"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

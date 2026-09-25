@@ -5,12 +5,10 @@ import {
   BORDER_STYLES,
   allConditionsPass,
   autoOpenSections,
-  camelToKebab,
   compressBorderSide,
   compressShorthand,
   conditionPasses,
   cssMeta,
-  currentFontFamily,
   expandBorderSide,
   expandShorthand,
   getCssInitialMap,
@@ -112,6 +110,15 @@ describe("autoOpenSections", () => {
   test("preserves already-open sections and handles missing style", () => {
     const node = { tagName: "div" } as unknown as JxMutableNode;
     expect(autoOpenSections(node, { border: true })).toEqual({ border: true });
+  });
+
+  test("a section somebody CLOSED stays closed, even with a value in it", () => {
+    const node = { style: { display: "flex" }, tagName: "div" } as unknown as JxMutableNode;
+    // The distinction is `false` versus absent, and it is what makes the accordion obey a click:
+    // The Style tab re-projects the moment the record moves, so treating "closed" as "never
+    // Opened" re-opened the section in the same frame the reader closed it.
+    expect(autoOpenSections(node, { layout: false })).toEqual({ layout: false });
+    expect(autoOpenSections(node, {})).toEqual({ layout: true });
   });
 });
 
@@ -235,58 +242,32 @@ describe("getFontVars", () => {
       { name: "--font-weight-ish", value: "700" },
     ]);
   });
-});
 
-describe("currentFontFamily", () => {
-  test("returns empty without a tab or selection", () => {
-    expect(currentFontFamily()).toBe("");
-    resetWorkspaceWithTab();
-    expect(currentFontFamily()).toBe("");
-  });
-
-  test("returns the node's literal fontFamily", () => {
-    const tab = resetWorkspaceWithTab({
-      children: [{ style: { fontFamily: "Georgia, serif" }, tagName: "p" }],
+  test("the site's fonts are offered under the document's, and the document's spelling wins", () => {
+    /* A project declares its fonts once, in `project.json`; a list that read only the document
+       offered a component none of its project's fonts. The effective style is site then document,
+       so a token both declare is the document's. */
+    resetStudioState({
+      projectConfig: {
+        style: { "--font-body": "Georgia, serif", "--font-ui": "Inter, sans-serif" },
+      },
+    });
+    resetWorkspaceWithTab({
+      children: [],
+      style: { "--font-body": "Charter, serif" },
       tagName: "div",
     } as unknown as JxMutableNode);
-    tab.session.selection = [["children", 0]];
-    expect(currentFontFamily()).toBe("Georgia, serif");
-  });
-
-  test("resolves var() references against the document root style", () => {
-    const tab = resetWorkspaceWithTab({
-      children: [{ style: { fontFamily: "var(--font-body)" }, tagName: "p" }],
-      style: { "--font-body": "Inter, sans-serif" },
-      tagName: "div",
-    } as unknown as JxMutableNode);
-    tab.session.selection = [["children", 0]];
-    expect(currentFontFamily()).toBe("Inter, sans-serif");
-  });
-
-  test("unresolvable var() reference yields empty string", () => {
-    const tab = resetWorkspaceWithTab({
-      children: [{ style: { fontFamily: "var(--font-missing)" }, tagName: "p" }],
-      tagName: "div",
-    } as unknown as JxMutableNode);
-    tab.session.selection = [["children", 0]];
-    expect(currentFontFamily()).toBe("");
-  });
-
-  test("node without fontFamily yields empty string", () => {
-    const tab = resetWorkspaceWithTab({
-      children: [{ style: { color: "red" }, tagName: "p" }],
-      tagName: "div",
-    } as unknown as JxMutableNode);
-    tab.session.selection = [["children", 0]];
-    expect(currentFontFamily()).toBe("");
+    expect(getFontVars()).toEqual([
+      { name: "--font-body", value: "Charter, serif" },
+      { name: "--font-ui", value: "Inter, sans-serif" },
+    ]);
   });
 });
 
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
 describe("re-exports", () => {
-  test("camelToKebab and cssMeta are re-exported", () => {
-    expect(camelToKebab("backgroundColor")).toBe("background-color");
+  test("cssMeta is re-exported", () => {
     expect(Array.isArray(cssMeta.$sections)).toBe(true);
     expect(cssMeta.$defs.display).toBeDefined();
   });

@@ -1,0 +1,325 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTreeItem",
+  "tagName": "jx-tree-item",
+  "$description": "One row of a `jx-tree`, and a row is ALL it is: it draws itself, announces itself, and knows nothing about the rows either side of it. THE HOST OWNS THE ROW SET AND THE COUNTS. `level`, `posinset` and `setsize` are props rather than anything derived, because a windowed tree's DOM holds one screen of a model that may be four thousand rows long: a row that counted its own siblings would count the ones that happen to be drawn, and a reader would be told there are eleven items in a directory holding ten thousand. So `aria-setsize` and `aria-posinset` describe the FULL set, they are the host's to supply, and this element will never invent them — a row given neither writes neither, which is ARIA's own way of saying \"ask the tree\", and is right for the one case where the DOM is the whole model. `aria-selected` is written only when the row IS selected: a `false` on every row is what tells assistive technology a tree supports multiple selection, the row cannot see whether its tree does, and `aria-multiselectable` on `jx-tree` is where that answer actually lives. The three `data-` attributes it styles but does not write — `data-dragging`, `data-drop` and the drag island generally — are the pointer half of moving a row, and they are deliberately not props: pragmatic-drag-and-drop attaches through the HOST (studio-ui-guidelines.md §9.4) and writes them directly, so a binding here would be a second writer that clobbers the island on the next repaint. What the element owes the non-drag half is `cut`, which draws a row already lifted, and a keyboard that lets go of every chord it does not own.",
+  "observedAttributes": [
+    "value",
+    "label",
+    "level",
+    "posinset",
+    "setsize",
+    "expanded",
+    "selected",
+    "disabled",
+    "cut",
+    "grip"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What the row stands for: the detail of every event it provokes, and what the tree's `current` is matched against. A path, an id, a `JxPath` key — whatever the host's model already calls this row, because the tree hands it straight back and never parses it."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The words on the row, its accessible name, and what typeahead matches. Written to `aria-label` as well as drawn, for the reason `jx-tab` gives: a `treeitem` names itself from its content, so a badge, a status pill and a row action would all join the row's name and a reader would hear \"div Hero More actions\". `aria-label` wins over name-from-content in accname's precedence order, so the name stays exactly the string the row draws and each slotted control keeps announcing its own. It is therefore REQUIRED once anything is slotted, and a consumer whose row is a badge PLUS a name composes both into this one string rather than hoping the concatenation comes out right."
+    },
+    "level": {
+      "type": "number",
+      "default": 1,
+      "attribute": "level",
+      "description": "How deep the row sits, one-based, exactly as `aria-level` counts. It is also the indent: the row's inline padding is `--jx-tree-indent` times one less than this, so the arithmetic that decides what a level LOOKS like lives with the declarations rather than being composed per row in a host's TypeScript. A flat projection is what makes this a prop at all — under windowing there is no ancestor in the DOM to count."
+    },
+    "posinset": {
+      "type": "number",
+      "default": 0,
+      "attribute": "posinset",
+      "description": "Which of its siblings this row is, one-based, IN THE MODEL. Zero writes no `aria-posinset` at all, which is how a small tree that draws every row says \"count me from the DOM\". A windowed tree must supply it: the drawn slice is not the set, and a position computed from it is a number a reader can act on and be wrong about."
+    },
+    "setsize": {
+      "type": "number",
+      "default": 0,
+      "attribute": "setsize",
+      "description": "How many siblings the row has, IN THE MODEL — the total under its parent, not the number drawn. Zero writes no `aria-setsize`, the same \"ask the DOM\" as `posinset`. The pair is what keeps ARIA true while the tree windows, and it is the whole reason the counts are the host's."
+    },
+    "expanded": {
+      "type": "string",
+      "default": "",
+      "attribute": "expanded",
+      "description": "Empty for a LEAF, which owns no `aria-expanded` and no twisty; `true` or `false` for a row that has children. Three values rather than a boolean because \"closed\" and \"cannot open\" are different things to a reader and to the keyboard: `ArrowRight` opens a closed row and steps into an open one, and does nothing at all on a leaf. The same string spelling `jx-menu-item`'s `checked` uses, for the same reason."
+    },
+    "selected": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "selected",
+      "description": "Whether the row is in the selection. The HOST writes it, and it is the one row prop the tree is NOT the single writer of: a selection is a set, a windowed tree draws part of it, and an element that owned it would forget every row it scrolled past. Written to `aria-selected` only when true — see the element's description."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "A row that cannot be acted on. It stays DRAWN and stays counted, because a row that vanished would renumber its siblings, but the caret steps over it, a click on it does nothing, and it never takes the tree's tab stop."
+    },
+    "cut": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "cut",
+      "description": "The row is on the clipboard, waiting for a paste to land it somewhere. Drawn faded, and deliberately invisible to assistive technology: cut and paste are the keyboard alternative to dragging (WCAG 2.2 SC 2.5.7, studio-ui-guidelines.md §8.2), both are host commands, and the host announces the move through its own live region — a reader is told what happened by the page, not by an opacity."
+    },
+    "grip": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "grip",
+      "description": "Draws the drag handle. A plain `aria-hidden` span rather than a control, because it is the grab affordance for a pointer drag the drag island owns and NOT a second way to move the row: the keyboard path is cut and paste, and a focusable handle with no keyboard operation of its own would be an SC 2.1.1 failure dressed as an affordance."
+    },
+    "caret": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this row holds the tree's one tab stop. `jx-tree` is the single writer of it — a host moves the caret by writing the TREE's `current`, never a row's. It is a prop rather than a `tabindex` the sidecar writes directly so that a repaint cannot lose it: the attribute is derived from state, so re-rendering the row restores the caret instead of quietly resetting it to -1."
+    },
+    "onTwisty": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        },
+        {
+          "dispatchEvent": "toggle",
+          "detail": {
+            "$ref": "#/state/value"
+          },
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "toggle",
+          "description": "The row's twisty was pressed; detail is its value. The TREE's internal protocol: `jx-tree` catches it, works out which way the row should go, and answers with its own `expand`."
+        }
+      ],
+      "description": "The click stops at the twisty, so opening a row does not also select it — the judgement `jx-menu-item` makes for a submenu chevron and `jx-tab` for its close button."
+    },
+    "onActions": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        }
+      ],
+      "description": "A click inside the actions slot stops there, so pressing a control a consumer put on the row never ALSO moves the selection. It stops at the CONTAINER rather than at the host: `stopPropagation` halts an event at the node it is called on and every node after it, never the listeners already run below it, so the slotted control's own handler has fired and only the TREE's delegated click is cut off. Nothing is stopped for `icon` or `status`: those hold marks rather than controls, and a click on a mark is a click on the row."
+    }
+  },
+  "attributes": {
+    "role": "treeitem",
+    "tabindex": "${state.caret ? '0' : '-1'}",
+    "aria-label": "${state.label || null}",
+    "aria-level": "${state.level}",
+    "aria-posinset": "${state.posinset > 0 ? state.posinset : null}",
+    "aria-setsize": "${state.setsize > 0 ? state.setsize : null}",
+    "aria-expanded": "${state.expanded || null}",
+    "aria-selected": "${state.selected ? 'true' : null}",
+    "aria-disabled": "${state.disabled ? 'true' : null}",
+    "data-value": "${state.value}",
+    "data-cut": "${state.cut ? '' : null}"
+  },
+  "style": {
+    "$description": "The row's block size is a CONTRACT rather than a look: a tree windows, and a window can only reserve the right amount of scroll for the rows it did not draw if every row is exactly one row tall. `--jx-control-h` follows the density setting, which a hard-coded 24px could not. The indent is padding rather than a margin or a spacer element for the same reason — a row whose HEIGHT depended on its depth would make the scrollbar a lie.",
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "boxSizing": "border-box",
+    "blockSize": "var(--jx-control-h)",
+    "paddingInline": "calc(var(--jx-space-3) + var(--jx-tree-indent, 16px) * ${state.level - 1}) var(--jx-space-3)",
+    "borderInlineStart": "2px solid transparent",
+    "color": "inherit",
+    "cursor": "default",
+    "userSelect": "none",
+    "whiteSpace": "nowrap",
+    "outline": "none",
+    ":hover": {
+      "background": "var(--jx-hover-bg)"
+    },
+    ":focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "&[aria-selected=\"true\"]": {
+      "background": "var(--jx-accent-20)",
+      "borderInlineStartColor": "var(--jx-accent-solid)"
+    },
+    "&[aria-disabled=\"true\"]": {
+      "opacity": "0.5"
+    },
+    "&[data-cut]": {
+      "opacity": "0.5"
+    },
+    "&[data-dragging]": {
+      "$description": "The two attributes the DRAG ISLAND writes, styled here and bound nowhere. Pragmatic-drag-and-drop attaches to the rows through the host and sets them imperatively for the length of a gesture; a prop mirroring either would be a second writer, and the repaint that cleared it mid-drag is exactly the stale affordance a cancelled drag used to leave on screen.",
+      "opacity": "0.4"
+    },
+    "&[data-drop]": {
+      "background": "var(--jx-accent-15)",
+      "outline": "1px dashed var(--jx-accent-solid)",
+      "outlineOffset": "-1px"
+    },
+    "& [part=\"twisty\"]": {
+      "$description": "A leaf draws no chevron and still occupies the box, which is what lines every name in the tree up whether or not its row can be opened. It is `aria-hidden` and not a button: the row itself carries `aria-expanded`, `ArrowRight` and `ArrowLeft` operate it, and a focusable control inside a composite would put a second tab stop on every row.",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "inlineSize": "14px",
+      "flex": "none",
+      "color": "var(--jx-fg-dim)",
+      "--jx-icon-size": "12px"
+    },
+    "& [part=\"label\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"icon\"], & [part=\"status\"], & [part=\"actions\"], & [part=\"grip-slot\"]": {
+      "$description": "The four consumer zones generate no box of their own. `display: contents` is what makes an EMPTY one cost nothing — as ordinary flex items they would each take the row's gap, which is dead space on every row that slotted nothing — and it is what puts slotted content in the ROW's flex line rather than one box deeper, so an icon, a language chip and a pin button line up with the name on one gap rather than on three.",
+      "display": "contents"
+    },
+    "& [part=\"grip\"]": {
+      "$description": "Revealed on hover, on the selected row, and whenever anything inside the row has focus. The third is what keeps it visible for a reader who arrived by keyboard, even though they will move the row with cut and paste rather than with this.",
+      "display": "none",
+      "flex": "none",
+      "color": "var(--jx-fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "cursor": "grab"
+    },
+    "&:hover [part=\"grip\"], &[aria-selected=\"true\"] [part=\"grip\"], &:focus-within [part=\"grip\"]": {
+      "display": "inline-block"
+    },
+    "@(forced-colors: active)": {
+      "&[aria-selected=\"true\"]": {
+        "$description": "The selected row, redrawn. Every author colour is replaced by one from the user's palette in forced colours, so the accent wash behind the row collapses into the page and the inline-start edge is the only marker left.",
+        "borderInlineStartColor": "Highlight"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "twisty",
+        "aria-hidden": "true"
+      },
+      "onclick": {
+        "$ref": "#/state/onTwisty"
+      },
+      "$switch": {
+        "$ref": "#/state/expanded"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-icon",
+          "$props": {
+            "name": "caret-down",
+            "weight": "bold"
+          },
+          "attributes": {
+            "part": "twisty-icon"
+          }
+        },
+        "false": {
+          "tagName": "jx-icon",
+          "$props": {
+            "name": "caret-right",
+            "weight": "bold"
+          },
+          "attributes": {
+            "part": "twisty-icon"
+          }
+        }
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "icon"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "icon"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "label"
+      },
+      "textContent": "${state.label}"
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "status"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "status"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "grip-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/grip"
+      },
+      "cases": {
+        "true": {
+          "tagName": "span",
+          "attributes": {
+            "part": "grip",
+            "aria-hidden": "true",
+            "title": "Drag to reorder"
+          },
+          "textContent": "⠿"
+        }
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "actions"
+      },
+      "onclick": {
+        "$ref": "#/state/onActions"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "actions"
+          }
+        }
+      ]
+    }
+  ]
+}

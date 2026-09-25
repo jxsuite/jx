@@ -357,6 +357,7 @@ describe("StreamingClient", () => {
     expect(STREAM_EVENT_TYPES.TOOL_CALL_START).toBe("tool_call_start");
     expect(STREAM_EVENT_TYPES.TOOL_CALL_DELTA).toBe("tool_call_delta");
     expect(STREAM_EVENT_TYPES.TOOL_CALL_END).toBe("tool_call_end");
+    expect(STREAM_EVENT_TYPES.USAGE).toBe("usage");
     expect(STREAM_EVENT_TYPES.DONE).toBe("done");
     expect(STREAM_EVENT_TYPES.ERROR).toBe("error");
   });

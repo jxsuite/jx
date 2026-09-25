@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Halfway"
+    },
+    {
+      "type": "tool_call_start",
+      "id": "call_R",
+      "name": "set_text"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_R",
+      "args": "{\"path\""
+    },
+    {
+      "type": "error",
+      "message": "Stream error: connection reset by peer"
+    }
+  ]
+}

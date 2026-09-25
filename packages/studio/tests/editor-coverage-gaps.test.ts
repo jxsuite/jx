@@ -9,7 +9,7 @@
  * - Context-menu: text/html clipboard content that converts to nothing (text/plain fallback) and
  *   pasting onto a dangling selection.
  */
-import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, resetStudioState, resetWorkspaceWithTab, topDialog } from "./harness";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { SlashCommand } from "../src/editor/inline-edit";
@@ -129,14 +129,16 @@ describe("convert-to-repeater gaps", () => {
     tab.session.selection = [["children", 0]];
 
     const done = convertToRepeater();
-    await flush();
-    const field = document.querySelector("#layer-dialog sp-textfield") as HTMLElement & {
-      value?: string;
-    };
+    /* Three turns: the kit element registers, then the runtime renders its template. */
+    await flush(3);
+    const field = document.querySelector<HTMLInputElement>(
+      '#layer-dialog [part="new-name"] [part="input"]',
+    );
     expect(field).not.toBeNull();
-    field.value = "viaEnter";
-    field.dispatchEvent(new Event("input", { bubbles: true }));
-    field.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    field!.value = "viaEnter";
+    field!.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+    field!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await done;
 
     const doc = tab.doc.document as Record<string, unknown>;
@@ -156,7 +158,7 @@ describe("convert-to-repeater gaps", () => {
 
     const done = convertToRepeater();
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper")!;
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     dialog.dispatchEvent(new Event("confirm"));
     await done;
@@ -258,13 +260,14 @@ describe("context-menu conversion actions", () => {
   });
 
   function clickItem(label: string) {
-    const item = [...document.querySelectorAll("#layer-popover sp-menu-item")].find(
-      (el) => el.textContent?.trim() === label,
+    const item = [...document.querySelectorAll("#layer-popover jx-menu-item")].find(
+      (el) => el.querySelector('[part="label"]')?.textContent?.trim() === label,
     ) as HTMLElement;
     item.click();
   }
 
-  function openMenu() {
+  /** Right-click the first child and wait for the menu surface to mount. */
+  async function openMenu(): Promise<void> {
     const e = new MouseEvent("contextmenu", {
       bubbles: true,
       cancelable: true,
@@ -272,13 +275,14 @@ describe("context-menu conversion actions", () => {
       clientY: 20,
     });
     showContextMenu(e, ["children", 0]);
+    await flush();
   }
 
   test("Repeat... opens the repeater dialog (cancel leaves the doc untouched)", async () => {
-    openMenu();
+    await openMenu();
     clickItem("Repeat...");
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     dialog!.dispatchEvent(new Event("cancel"));
     await flush();
@@ -288,10 +292,10 @@ describe("context-menu conversion actions", () => {
   });
 
   test("Convert to Component opens the name prompt (cancel leaves the doc untouched)", async () => {
-    openMenu();
+    await openMenu();
     clickItem("Convert to Component");
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     dialog!.dispatchEvent(new Event("cancel"));
     await flush();

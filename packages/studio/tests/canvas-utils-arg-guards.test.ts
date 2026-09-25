@@ -37,6 +37,9 @@ const deps = {
   getCanvasMode: () => "design",
   renderPane: (paneId: string) => renderedPanes.push(paneId),
   setCanvasMode: () => {},
+  setOpenPopover: () => {},
+  setOpenDialog: () => {},
+
   setResolvingOpen: () => {},
 };
 
@@ -107,10 +110,14 @@ describe("the pane a rendering-context verb addresses", () => {
 });
 
 describe("canvas.setBreakpoint", () => {
+  /* The two shape refusals below are the SCHEMA's — `media` is `type: ["string", "null"]`, and
+     `registry.run` coerces against it before `run` — so they read the typed row's sentence rather
+     than the body's "expected a breakpoint key or null". The body's own check still stands for a
+     caller that reaches it directly; what the registry hands it has already been read. */
   test("refuses a media that is neither a breakpoint key nor null", () => {
     openWithMedia();
     expect(() => registry.run("canvas.setBreakpoint", { media: 42 })).toThrow(
-      'command "canvas.setBreakpoint" argument "media": expected a breakpoint key or null',
+      'command "canvas.setBreakpoint" argument "media": expected string or null, got number 42',
     );
     expect(activeTab.value?.session.ui.activeMedia).toBeNull();
     expect(renderedPanes).toEqual([]);
@@ -120,7 +127,7 @@ describe("canvas.setBreakpoint", () => {
     openWithMedia();
     activeTab.value!.session.ui.activeMedia = "md";
     expect(() => registry.run("canvas.setBreakpoint", {})).toThrow(
-      'command "canvas.setBreakpoint" argument "media": expected a breakpoint key or null',
+      'command "canvas.setBreakpoint" argument "media": expected string or null, got missing',
     );
     // The one that would be silently wrong: `{}` clearing the breakpoint back to base.
     expect(activeTab.value?.session.ui.activeMedia).toBe("md");

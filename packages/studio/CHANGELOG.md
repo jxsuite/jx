@@ -1,5 +1,224 @@
 # Changelog
 
+## [5.3.0](https://github.com/jxsuite/jx/compare/studio-v5.2.0...studio-v5.3.0) (2026-09-22)
+
+
+### Features
+
+* **studio:** batch modulepreload links, cache scroller/track resolution ([441c7cc](https://github.com/jxsuite/jx/commit/441c7cc658ca48f2e43a2f2789ae8c28167c9364))
+
+
+### Bug Fixes
+
+* **studio:** account for the persistent formula-palette mount in expression-editor.test.ts ([283cd48](https://github.com/jxsuite/jx/commit/283cd48ede0ec6601318a6e0beb7e0f7fca67353))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ui bumped to 0.3.0
+
+## [5.2.0](https://github.com/jxsuite/jx/compare/studio-v5.1.0...studio-v5.2.0) (2026-09-18)
+
+
+### Features
+
+* **studio:** tabs move between panes by drag, split, or Open to the Side ([aec888b](https://github.com/jxsuite/jx/commit/aec888bafea876aec8a659ba4b9b6d315cef1106))
+* **studio:** tabs move between panes by drag, split, or Open to the Side ([f431368](https://github.com/jxsuite/jx/commit/f431368950250dd5b7c61347554c99ad8c141f15))
+
+
+### Bug Fixes
+
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+* **studio:** mark Command Bar controls no-drag in a form Electrobun can see ([46589ff](https://github.com/jxsuite/jx/commit/46589ff00c7084752bea3294199e0c16e02b7692))
+* **studio:** mark Command Bar controls no-drag in a form Electrobun can see ([9b48272](https://github.com/jxsuite/jx/commit/9b482724ce367edf67a41cbe13c56c47cb33dfa1))
+* **studio:** stub proxyModelsErrorMessage in the ai-models test doubles ([cb14b70](https://github.com/jxsuite/jx/commit/cb14b706fa40f01ef9a4332ea0b13e40a96d626e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.37.2
+    * @jxsuite/protocol bumped to 2.3.1
+
+## [5.1.0](https://github.com/jxsuite/jx/compare/studio-v5.0.0...studio-v5.1.0) (2026-09-14)
+
+
+### Features
+
+* **studio:** open_document and set_canvas_mode are projections; project writes get a witness ([782e70e](https://github.com/jxsuite/jx/commit/782e70ee1ee3be9f754d566427aa830c8ecaa910))
+* **studio:** open_document and set_canvas_mode are projections; project writes get a witness ([4bfb727](https://github.com/jxsuite/jx/commit/4bfb727308238017f033e23e1ba5234a8d276309)), closes [#334](https://github.com/jxsuite/jx/issues/334)
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([fa176d3](https://github.com/jxsuite/jx/commit/fa176d317ee5b1f2f4892a3e6027090bf60d6fe1))
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([#332](https://github.com/jxsuite/jx/issues/332)) ([f3826ee](https://github.com/jxsuite/jx/commit/f3826ee79fa43066f9d5b41c9621d7dbdc1eeea2))
+
+
+### Bug Fixes
+
+* **desktop:** the first changed file's path no longer loses its first character ([ff03c52](https://github.com/jxsuite/jx/commit/ff03c52c20393788c093c01320fcb010e0425283))
+* **studio:** every surface runs a command through runReported, and the shot check matches coercion ([f23283c](https://github.com/jxsuite/jx/commit/f23283c020deacc503c93355138b998824e458cd))
+* **studio:** every surface runs a command through runReported, and the shot check matches coercion ([4a9a24b](https://github.com/jxsuite/jx/commit/4a9a24be3e036f157f154897f142c384cf1e9903)), closes [#333](https://github.com/jxsuite/jx/issues/333)
+* **studio:** saving a component definition updates its registry entry for the instances ([2581b84](https://github.com/jxsuite/jx/commit/2581b841c545721931ad0a07b222dd8ca7b05e71))
+* **studio:** saving a component definition updates its registry entry for the instances ([56d6425](https://github.com/jxsuite/jx/commit/56d64250fea5a6d8181822e9d556c95e80d2d9c4))
+* **studio:** the layout record and key order travel with the assistant's project.json write ([bb2972c](https://github.com/jxsuite/jx/commit/bb2972cfabd91be78ac5a1000af8b8bbad586307))
+* **studio:** the layout record and key order travel with the assistant's project.json write ([a44ca5a](https://github.com/jxsuite/jx/commit/a44ca5a13412f7634039966fc56a5a2840c8404a)), closes [#331](https://github.com/jxsuite/jx/issues/331)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/formulas bumped to 0.0.18
+    * @jxsuite/runtime bumped to 4.0.1
+    * @jxsuite/site bumped to 2.0.1
+    * @jxsuite/ui bumped to 0.2.0
+
+## [5.0.0](https://github.com/jxsuite/jx/compare/studio-v4.1.0...studio-v5.0.0) (2026-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler,site,studio:** `@jxsuite/runtime` no longer writes authored declarations to `el.style`, so code reading them back off an element after `applyStyle` sees nothing. The `elementStyleTags` export is replaced by `releaseElementStyles` and `resetDocumentStyles`, which refcount a shared rule set rather than handing out an element to remove by hand; `documentStyleText` reads back what was written.
+
+### Features
+
+* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
+* **runtime,site:** [@keyframes](https://github.com/keyframes) is a third at-rule body shape ([6bd5245](https://github.com/jxsuite/jx/commit/6bd52455575c6a4db3eb87a1bedd4aeb2ad1f743))
+* **runtime,studio:** a style block may document itself, and forced-colors.css is generated from one ([8f714b8](https://github.com/jxsuite/jx/commit/8f714b89200d3d5f37e263501e61b06fc7d7f114))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
+* **runtime,ui,studio:** the canvas loads kit behaviours lazily, and a kit save reaches every frame ([e91b660](https://github.com/jxsuite/jx/commit/e91b66089adb3eb18ce3d227900b5d0ff133196a))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
+* **schema:** dialog and invoker-command rules, beside the popover ones (spec §8.7) ([b7b391e](https://github.com/jxsuite/jx/commit/b7b391eb827622738a398fd6c6f6f105fe828f27))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+* **studio,ui,runtime:** the Command Bar as a Jx document, closing the C2 surfaces ([da1fc54](https://github.com/jxsuite/jx/commit/da1fc54640b55bbd50873abae03d0b70c62a0413))
+* **studio,ui:** the Navigator rail as a Jx surface, on stacked action buttons ([fa5697e](https://github.com/jxsuite/jx/commit/fa5697e848bf301e210224db4d092a9bd218ab2a))
+* **studio,ui:** the settings menu on the menu surface, with a submenu level and live rows ([ab4b755](https://github.com/jxsuite/jx/commit/ab4b755a1640248d15151e3130632799783ce086))
+* **studio,ui:** the three dock edges are jx-split, so a keyboard can size a dock ([302d756](https://github.com/jxsuite/jx/commit/302d7562e96a37be7da8dd60516ee8be30771354))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+* **studio:** declaring aiTool makes the assistant's tool, and nothing else can ([eb97e3f](https://github.com/jxsuite/jx/commit/eb97e3f79ebfc8d8e901517e825615b1e2e8e766))
+* **studio:** declaring aiTool makes the assistant's tool, and nothing else can ([6bc405c](https://github.com/jxsuite/jx/commit/6bc405c171bf4ed535500aad76a41f85223dfec7)), closes [#273](https://github.com/jxsuite/jx/issues/273)
+* **studio:** four more surfaces are documents, and two report why they cannot be ([5e13c7f](https://github.com/jxsuite/jx/commit/5e13c7f9ddc2669c6c9d292cdd8033cc51dfdb80))
+* **studio:** four settings sections are documents, and mixed sections stop fighting over one host ([ca5f67d](https://github.com/jxsuite/jx/commit/ca5f67db5e710ee0dfbe39bac83a252d44916b08))
+* **studio:** highlight what changed in a diff, and open every changed file ([a54fa6d](https://github.com/jxsuite/jx/commit/a54fa6dc15fbe4ad7e8617d4e788c1670292ea2b))
+* **studio:** highlight what changed in a diff, and open every changed file ([248c9de](https://github.com/jxsuite/jx/commit/248c9de8b5109898f0f4b442d7c805abdf9cdd70))
+* **studio:** registry.run coerces every command's args against its schema before run ([8da7492](https://github.com/jxsuite/jx/commit/8da74927c9f29f5d33e1c78b6051d46a3bb31db5))
+* **studio:** registry.run coerces every command's args against its schema before run ([2e917d7](https://github.com/jxsuite/jx/commit/2e917d73d57e321a55f619c0dd53a9e7071c4e47)), closes [#273](https://github.com/jxsuite/jx/issues/273)
+* **studio:** six navigator and dock panels are documents ([829c695](https://github.com/jxsuite/jx/commit/829c6957065744feac6fe066e529b09c13c14da4))
+* **studio:** Studio edits its own chrome — a saved surface or kit component re-mounts the shell ([46cc18b](https://github.com/jxsuite/jx/commit/46cc18b7f60bf28d6698f52d877ab250a01e1314))
+* **studio:** the About dialog is a document, and the pattern slice 13 follows ([2c0ca5c](https://github.com/jxsuite/jx/commit/2c0ca5c6dbfbef12b6bcde92764407d718fe60c5))
+* **studio:** the AI forms, publish, SEO, stylebook and the document header are documents ([1ef6790](https://github.com/jxsuite/jx/commit/1ef679071f6de159a614d4491555a186188eb62a))
+* **studio:** the application frame is a Jx document ([2634af7](https://github.com/jxsuite/jx/commit/2634af70029a9e6896e23b4d3d6fe0fffebb61cb))
+* **studio:** the canvas chrome, both trees, the grid and the docks are documents ([d257789](https://github.com/jxsuite/jx/commit/d257789a903e843224b26368658106a44a6c55c6))
+* **studio:** the canvas opens a popover in place, and reports the ones it cannot fix ([4eb4a6f](https://github.com/jxsuite/jx/commit/4eb4a6ffe4e8a582b9c3826ac392fefaed479be3))
+* **studio:** the command palette as a Jx document ([160a184](https://github.com/jxsuite/jx/commit/160a184baf3766d15e7667a4db8676547433bc43))
+* **studio:** the confirm, save-or-discard and prompt dialogs as a Jx document over jx-dialog ([66d2ca4](https://github.com/jxsuite/jx/commit/66d2ca44e43628ad0776e901a473334fed0a9968))
+* **studio:** the Edit canvas resizes by dragging, and the breakpoint follows the width ([d31e301](https://github.com/jxsuite/jx/commit/d31e301d04750cc63b90f4855b829db2ddc80295))
+* **studio:** the Edit canvas resizes by dragging, and the breakpoint follows the width ([73ec4e8](https://github.com/jxsuite/jx/commit/73ec4e8ab265a16f95c762c7b3ca66fed318caa5))
+* **studio:** the form engine, New Project, Preferences, the assistant and git are documents ([d402e19](https://github.com/jxsuite/jx/commit/d402e19cdf86513addd2cac8182e7754b05be0be))
+* **studio:** the last lit surfaces are documents, and the stylesheets are 1,650 lines ([729ae9b](https://github.com/jxsuite/jx/commit/729ae9b2de3e809810895652af1583f98ab8b03f))
+* **studio:** the Library, the formula palette and the repo picker are documents ([214630e](https://github.com/jxsuite/jx/commit/214630ef9609b6544c00f1467541635cac5a98d9))
+* **studio:** the settings family is documents — six more sections, and the family is done ([4e747a8](https://github.com/jxsuite/jx/commit/4e747a8324bae5987f20a3c45ed55c6328596608))
+* **studio:** the shell frame's stylesheet is generated from a style block ([05524ae](https://github.com/jxsuite/jx/commit/05524aef155b406c0debf02736c54874ea4d8a2a))
+* **studio:** the Start pane as a Jx surface — the first whole pane as a document ([3eec3f1](https://github.com/jxsuite/jx/commit/3eec3f1673efe060f36c07b21abf9cd4a15f432f))
+* **studio:** the status bar as a Jx surface ([821dc53](https://github.com/jxsuite/jx/commit/821dc53bb5b30bffac8fae77bd2e8dfa7863d197))
+* **studio:** the styling gate reads a surface's style object, before there are surfaces to lose ([97912f5](https://github.com/jxsuite/jx/commit/97912f591c2d45039c43ad61e9d4494534fa3f0c))
+* **studio:** the toast stack as a Jx document ([318e5ae](https://github.com/jxsuite/jx/commit/318e5ae8bfa9aa77aec5d90b34e6a2f95c24e440))
+* **studio:** the UI kit at boot, the surface façade, and the chrome's tokens aliased to the kit ([dd1e94e](https://github.com/jxsuite/jx/commit/dd1e94e558422d295092f01b343bb5b5c1dd9a6d))
+* **studio:** the whole Inspector is documents, and its dead lit helpers are gone ([074fcc6](https://github.com/jxsuite/jx/commit/074fcc6c1fc40d2e10539c2ef034453018c438b9))
+* **studio:** tokens.css is generated from a Jx style block, and the styling gate finally runs in CI ([d8034de](https://github.com/jxsuite/jx/commit/d8034dee857fbb10153fd009ecf2c4a4aa9ba56b))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
+* **ui,studio:** a button's hint is a jx-tooltip while it can act and a title while it cannot ([c050634](https://github.com/jxsuite/jx/commit/c050634080be7fdd7b6d99324179f1d1882c42e3)), closes [#299](https://github.com/jxsuite/jx/issues/299)
+* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([173cf17](https://github.com/jxsuite/jx/commit/173cf175d455565a36d837097a40bbe2aa40fe4c))
+* **ui,studio:** jx-menu hangs from its button by anchor positioning, submenus beside their rows ([2364faa](https://github.com/jxsuite/jx/commit/2364faabf57b0d2e1eb59d6d2f4d7e6590b420f3))
+* **ui,studio:** jx-tab takes slotted content, and the pane tab strip is a document ([60fe21f](https://github.com/jxsuite/jx/commit/60fe21f6e468d6ace5589159bdc5435fb0a739e0))
+* **ui,studio:** jx-toolbar and jx-split, and a workaround for a limitation that never existed ([d04f6e4](https://github.com/jxsuite/jx/commit/d04f6e461697d0b8f42d1c40596b74aa71b7b337))
+* **ui,studio:** jx-tree and jx-combobox, and the five surfaces that hand-rolled them ([9bca549](https://github.com/jxsuite/jx/commit/9bca5493ed58fc62a83ce31f46d6be7bc7904702))
+* **ui,studio:** the Edit column, the colour well and the credentials form finish on the kit ([66e693f](https://github.com/jxsuite/jx/commit/66e693f6af7215c9e0be5502abf58a036fd26570))
+* **ui,studio:** the kit has a colour family, and Studio's last Spectrum surface is a document ([c7427a6](https://github.com/jxsuite/jx/commit/c7427a6593a957fae05583a4f5c2b342053e0202))
+* **ui,studio:** the Style tab's keyword rows are jx-combobox, and ui.md's principles have evidence ([2445df2](https://github.com/jxsuite/jx/commit/2445df2c8693b6ca1a794cef59af50100fee3fd7))
+* **ui:** compact density draws 24px controls, and a button's hint is a jx-tooltip while it can act ([cb0b843](https://github.com/jxsuite/jx/commit/cb0b8435983e73594d54fc1f3aceddf1b624c5d7))
+* **ui:** compact density draws 24px controls, the WCAG 2.2 SC 2.5.8 floor at every density ([f3cb68f](https://github.com/jxsuite/jx/commit/f3cb68fa0aa7865dd5d6d927991e0e990525db50)), closes [#309](https://github.com/jxsuite/jx/issues/309)
+* **ui:** jx-popover is placed by CSS anchor positioning against the platform's implicit anchor ([8f1a0b5](https://github.com/jxsuite/jx/commit/8f1a0b56049c9319d04c8bb5cabdec5ad0a72ae9))
+
+
+### Bug Fixes
+
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([9b0d735](https://github.com/jxsuite/jx/commit/9b0d7353897444825087cace1b4489bc6965e9fb))
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([d0b7fe1](https://github.com/jxsuite/jx/commit/d0b7fe19e0b40660f4ecb69e585df2682b05a129))
+* restore three spec releases the merge dropped, and one type-aware lint ([9b11526](https://github.com/jxsuite/jx/commit/9b11526d4e937fb211490a3c9a083a18bc44b818))
+* **runtime:** removing an observed attribute restores the declared default ([06c71c8](https://github.com/jxsuite/jx/commit/06c71c82950e9063f683e13361980e47d9cf78b6))
+* **schema,runtime,studio:** the overlay tools could not see a custom element ([af93456](https://github.com/jxsuite/jx/commit/af934567e242aca87d7890dff534fc69ad07e855))
+* **studio,server:** the diff view drew line numbers and no text ([76d8d97](https://github.com/jxsuite/jx/commit/76d8d97f600622d2e381f3e1b2e37e88b0c40663))
+* **studio,ui,runtime,schema:** thirteen findings from the branch review ([8c21b6c](https://github.com/jxsuite/jx/commit/8c21b6cde4a90e21bc655abe10a6f3f1955e638c))
+* **studio,ui:** three ways an overlay betrayed the reader ([2dfc15e](https://github.com/jxsuite/jx/commit/2dfc15ed9a62cfef64d1620869e5f630d05c413e))
+* **studio:** a cloud recent project opens the project it names ([876310f](https://github.com/jxsuite/jx/commit/876310fc71050e8cc9b60b98640becca88e5f74b))
+* **studio:** a cloud recent project opens the project it names ([b30652c](https://github.com/jxsuite/jx/commit/b30652c33035a65d5438f4a2bc74ea28c066ddca))
+* **studio:** a JSON save keeps the file's layout, so one edit is a one-line diff ([8f5943a](https://github.com/jxsuite/jx/commit/8f5943a73f8de6983d37e2a47a35088189e6f84c))
+* **studio:** a JSON save keeps the file's layout, so one edit is a one-line diff ([307322b](https://github.com/jxsuite/jx/commit/307322b56bf990b93e4326cf76f4451553b4eb60)), closes [#308](https://github.com/jxsuite/jx/issues/308)
+* **studio:** a media tab has no document, so Save must not write one over the file ([8909b62](https://github.com/jxsuite/jx/commit/8909b62001ab6d03ee3b636430f05030fba943c7))
+* **studio:** the four gates the change-review branch broke ([6167375](https://github.com/jxsuite/jx/commit/616737567ec604611b1de6551da0ce860ba98d23))
+* **studio:** the prompt's format choice is jx-select, and names a value rather than marking a row ([67614f1](https://github.com/jxsuite/jx/commit/67614f1bee6a761f4a56575f9ba9f6f79f4656ca))
+* **studio:** three overlay regions ride on the node that has a box, so the lane can crop them ([88d8f2a](https://github.com/jxsuite/jx/commit/88d8f2a510d96ef6b891d0afbd6c297d3bf2fd90))
+* stylized font and color selectors ([26bd94b](https://github.com/jxsuite/jx/commit/26bd94b119a8553041a596cb98329ed3d6fdc58a))
+* **ui,studio,schema:** the five defects a browser found that no unit test could ([024f725](https://github.com/jxsuite/jx/commit/024f725d331236777791b1011ae8045bd33ca065))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.37.1
+    * @jxsuite/collab bumped to 0.9.0
+    * @jxsuite/create bumped to 1.3.10
+    * @jxsuite/formulas bumped to 0.0.17
+    * @jxsuite/markup bumped to 0.4.10
+    * @jxsuite/protocol bumped to 2.3.0
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+    * @jxsuite/site bumped to 2.0.0
+    * @jxsuite/ui bumped to 0.1.0
+
+## [4.1.0](https://github.com/jxsuite/jx/compare/studio-v4.0.0...studio-v4.1.0) (2026-08-30)
+
+
+### Features
+
+* **parser,schema,server:** a format may declare rewrite, repairing a reference a CSV row names ([bca762e](https://github.com/jxsuite/jx/commit/bca762eea4a3a1cd55de02892b7db322155fb1ec))
+* **parser,schema,server:** a format may declare rewrite, repairing a reference a CSV row names ([29a0f36](https://github.com/jxsuite/jx/commit/29a0f36a43319e294e2e69b14c694ff9796bdc5c)), closes [#246](https://github.com/jxsuite/jx/issues/246)
+* **studio,ai:** the assistant uses the backend's per-model capabilities ([4f7a9dd](https://github.com/jxsuite/jx/commit/4f7a9ddab4ca039a0dea83741dd39bc8345b87ea))
+* **studio:** a hosted backend can import a site into a repository ([2bcbeee](https://github.com/jxsuite/jx/commit/2bcbeee9fdaa5aa5d6b8a879bc3d8f510d451752))
+* **studio:** link About dialog in the Studio menu, add desktop window favicon ([e49fd41](https://github.com/jxsuite/jx/commit/e49fd41b95f540411b62e6749a2986421c78c4f7))
+* **studio:** link About dialog in the Studio menu, add desktop window favicon ([5a48a1c](https://github.com/jxsuite/jx/commit/5a48a1c409ad93137d23140c570fa193e1bd8801))
+
+
+### Bug Fixes
+
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([83102d2](https://github.com/jxsuite/jx/commit/83102d2eaf64752895efe8118afacc605eaa2aff))
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([4887415](https://github.com/jxsuite/jx/commit/4887415119c8640e269fc3a5cd878367d946706d))
+* **studio:** drop the class the Verify switch never needed ([cbb8114](https://github.com/jxsuite/jx/commit/cbb8114fd5cadbc710f04ed8afe8506e97b1cb1c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.37.0
+    * @jxsuite/collab bumped to 0.8.5
+    * @jxsuite/create bumped to 1.3.9
+    * @jxsuite/formulas bumped to 0.0.16
+    * @jxsuite/markup bumped to 0.4.9
+    * @jxsuite/protocol bumped to 2.2.0
+    * @jxsuite/runtime bumped to 3.1.0
+    * @jxsuite/schema bumped to 2.1.0
+    * @jxsuite/site bumped to 1.1.0
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/studio-v3.0.0...studio-v4.0.0) (2026-08-27)
 
 

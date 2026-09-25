@@ -34,7 +34,7 @@ const TABLES: Record<string, TableDef> = {
   },
   posts: {
     connection: "main",
-    permissions: { insert: "public", read: "public", update: "public" },
+    permissions: { delete: "public", insert: "public", read: "public", update: "public" },
     schema: {
       properties: {
         tags: { items: { $ref: "#/data/tags" }, type: "array" },
@@ -183,6 +183,10 @@ describe("wire contract", () => {
 
     const created = await json(call("POST", "/_jx/data/comments", { message: "x" }));
     expect(await statusOf(call("PATCH", `/_jx/data/comments/${created.id}`, {}))).toBe(400);
+    // A patch that fails type coercion is a 400 too, and names the field.
+    expect(
+      await statusOf(call("PATCH", `/_jx/data/comments/${created.id}`, { views: "abc" })),
+    ).toBe(400);
 
     const harness = makeHarness();
     const rawBad = new Request("http://site.test/_jx/data/comments", {
@@ -191,6 +195,20 @@ describe("wire contract", () => {
     });
     const parsed = await handleDataRequest(rawBad, {}, harness.options, {}, harness.state);
     expect(parsed.status).toBe(400);
+
+    // The same malformed-JSON guard on the PATCH path specifically (a distinct branch from POST's).
+    const rawBadPatch = new Request(`http://site.test/_jx/data/comments/${created.id}`, {
+      body: "{not json",
+      method: "PATCH",
+    });
+    const parsedPatch = await handleDataRequest(
+      rawBadPatch,
+      {},
+      harness.options,
+      {},
+      harness.state,
+    );
+    expect(parsedPatch.status).toBe(400);
   });
 
   test("integer-id tables parse path ids numerically", async () => {
@@ -237,6 +255,45 @@ describe("wire contract", () => {
       call("GET", `/_jx/data/comments/${comment.id}?include=author,ghost`),
     );
     expect((withAuthor.author as Record<string, unknown>).name).toBe("kevin");
+
+    // A to-one include with no row carrying that ref: nothing to fetch, but no crash either.
+    const solo = await json(call("POST", "/_jx/data/comments", { message: "no author" }));
+    const withoutAuthor = await json(call("GET", `/_jx/data/comments/${solo.id}?include=author`));
+    expect(withoutAuthor.author).toBeUndefined();
+
+    // Deleting a row with live junction links cleans up those link rows too.
+    expect(await statusOf(call("DELETE", `/_jx/data/posts/${post.id}`))).toBe(200);
+  });
+
+  test("a patch touching only a junction field, on a table with no timestamps, still applies", async () => {
+    // With timestamps off, a patch containing only `tags` leaves the direct-column row empty —
+    // The update falls back to a plain re-select instead of an (empty) UPDATE statement.
+    const tables: Record<string, TableDef> = {
+      posts: {
+        connection: "main",
+        permissions: { insert: "public", read: "public", update: "public" },
+        schema: {
+          properties: {
+            tags: { items: { $ref: "#/data/tags" }, type: "array" },
+            title: { type: "string" },
+          },
+          type: "object",
+        },
+        timestamps: false,
+      },
+      tags: {
+        connection: "main",
+        permissions: { insert: "public", read: "public" },
+        schema: { properties: { name: { type: "string" } }, type: "object" },
+      },
+    };
+    const { call } = makeHarness({}, tables);
+    const tag = await json(call("POST", "/_jx/data/tags", { name: "x" }));
+    const post = await json(call("POST", "/_jx/data/posts", { title: "hello" }));
+    const patched = await call("PATCH", `/_jx/data/posts/${post.id}`, { tags: [tag.id] });
+    expect(patched.status).toBe(200);
+    const after = await json(call("GET", `/_jx/data/posts/${post.id}?include=tags`));
+    expect((after.tags as Record<string, unknown>[]).map((t) => t.name)).toEqual(["x"]);
   });
 
   test("Data.mount returns a memoizing fetch-style handler and projectData echoes the section", async () => {
@@ -288,6 +345,40 @@ describe("wire contract", () => {
     expect(missingProv.status).toBe(500);
     const body = await json(missingProv);
     expect(body.error).toContain("provider");
+  });
+
+  test("an error inside the action itself (not connection setup) is also a 500", async () => {
+    // With autoSync off, getDb succeeds without querying; the query that fails is the read itself,
+    // Which is caught by handleDataRequest's own try/catch rather than getDb's connection guard.
+    const options: DataMountOptions = {
+      autoSync: false,
+      connectors: {
+        test: {
+          dialect: () =>
+            createBunSqliteDialect({
+              database: {
+                prepare: () => {
+                  throw new Error("disk I/O error");
+                },
+              },
+            }),
+          kind: "sqlite",
+        },
+      },
+      sections: {
+        connections: { main: { provider: "test" } },
+        data: { comments: TABLES.comments! },
+      },
+    };
+    const response = await handleDataRequest(
+      new Request("http://x/_jx/data/comments"),
+      {},
+      options,
+      {},
+    );
+    expect(response.status).toBe(500);
+    const body = await json(response);
+    expect(body.error).toBe("disk I/O error");
   });
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/compiler",
-  "version": "3.0.0",
+  "version": "4.0.1",
   "description": "Jx static HTML compiler, island detector, and site builder",
   "license": "MIT",
   "repository": {
@@ -45,18 +45,18 @@
     "upgrade": "bun update --latest && bun install"
   },
   "dependencies": {
-    "@apidevtools/json-schema-ref-parser": "^16.0.1",
+    "@apidevtools/json-schema-ref-parser": "^16.0.3",
     "@jxsuite/create": "workspace:^",
     "@jxsuite/runtime": "workspace:^",
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",
-    "@vue/reactivity": "3.5.41",
+    "@vue/reactivity": "3.5.43",
     "esbuild": "^0.28.2",
     "lit-html": "^3.3.3",
     "sharp": "^0.35.4"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.8",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/parser": "workspace:^",
     "@types/mdast": "^4.0.4"

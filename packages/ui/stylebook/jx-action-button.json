@@ -1,0 +1,276 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookActionButton",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-spinner.json"
+    },
+    {
+      "$ref": "../components/jx-action-button.json"
+    },
+    {
+      "$ref": "../components/jx-toolbar.json"
+    }
+  ],
+  "state": {
+    "bold": false,
+    "note": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/bold"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"toolbar\"], & [role=\"radiogroup\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)",
+      "padding": "var(--jx-space-1)",
+      "background": "var(--jx-bg-panel)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "width": "fit-content",
+      "margin": "0 0 var(--jx-space-4)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-action-button"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Icon-first tool buttons: quiet in a toolbar, a toggle with aria-pressed, an emphasized selection, a text-and-icon form, and a segmented radiogroup whose selection the HOST owns — one checked segment both announces itself and is drawn selected, tabindex roves, and the button never flips itself. Bold is ${state.bold ? 'on' : 'off'}."
+    },
+    {
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Formatting"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Bold",
+            "icon": "text-b",
+            "toggles": true
+          },
+          "onchange": {
+            "$ref": "#/state/note"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Italic",
+            "icon": "text-italic",
+            "toggles": true,
+            "selected": true
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Link",
+            "icon": "link"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Undo",
+            "icon": "arrow-u-up-left",
+            "disabled": true
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Emphasized and sized"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Selected, emphasized",
+            "icon": "eye",
+            "toggles": true,
+            "selected": true,
+            "emphasized": true
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Not quiet",
+            "icon": "gear",
+            "quiet": false
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Small",
+            "icon": "plus",
+            "size": "sm"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Large",
+            "icon": "plus",
+            "size": "lg"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Save",
+            "icon": "floppy-disk",
+            "quiet": false
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Save"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "radiogroup",
+        "aria-label": "Horizontal alignment"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Space between",
+            "icon": "arrows-out-line-horizontal",
+            "checked": "true",
+            "tabindex": "0"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Space around",
+            "icon": "arrows-in-line-horizontal",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Space evenly",
+            "icon": "arrows-horizontal",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Baseline",
+            "icon": "text-a-underline",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Stretch",
+            "icon": "arrows-out-line-vertical",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Working, and named from elsewhere"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Refresh",
+            "hint": "Refresh the signal list",
+            "icon": "arrows-clockwise",
+            "loading": true
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Refresh",
+            "hint": "Refresh the signal list",
+            "icon": "arrows-clockwise"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "id": "ab-desc"
+          },
+          "textContent": "Runs every signal again."
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Rerun",
+            "icon": "play",
+            "describedby": "ab-desc",
+            "labelledby": ""
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Problems",
+            "icon": "warning-circle",
+            "badge": "3"
+          }
+        }
+      ]
+    }
+  ]
+}

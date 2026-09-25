@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.37.2](https://github.com/jxsuite/jx/compare/ai-v0.37.1...ai-v0.37.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.3.1
+
+## [0.37.1](https://github.com/jxsuite/jx/compare/ai-v0.37.0...ai-v0.37.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([9b0d735](https://github.com/jxsuite/jx/commit/9b0d7353897444825087cace1b4489bc6965e9fb))
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([d0b7fe1](https://github.com/jxsuite/jx/commit/d0b7fe19e0b40660f4ecb69e585df2682b05a129))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.3.0
+
+## [0.37.0](https://github.com/jxsuite/jx/compare/ai-v0.36.5...ai-v0.37.0) (2026-08-30)
+
+
+### Features
+
+* **studio,ai:** the assistant uses the backend's per-model capabilities ([4f7a9dd](https://github.com/jxsuite/jx/commit/4f7a9ddab4ca039a0dea83741dd39bc8345b87ea))
+
+
+### Bug Fixes
+
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([83102d2](https://github.com/jxsuite/jx/commit/83102d2eaf64752895efe8118afacc605eaa2aff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.2.0
+
 ## [0.36.5](https://github.com/jxsuite/jx/compare/ai-v0.36.4...ai-v0.36.5) (2026-08-27)
 
 

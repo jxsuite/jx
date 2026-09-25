@@ -133,18 +133,49 @@ describe("i18n.openTranslation", () => {
     ).toThrow(/no document is open in pane/);
   });
 
+  test("addresses a named file rather than the focus — the Languages panel's row", async () => {
+    // The focused tab is `pages/about.json`; the row the panel clicked is another file entirely,
+    // And it need not be open in any pane.
+    installMockPlatform({}, { "pages/fr/contact.json": "{}" });
+    await liveRegistry().run("i18n.openTranslation", { locale: "fr", path: "pages/contact.json" });
+    expect(opened).toEqual(["pages/fr/contact.json"]);
+  });
+
+  test("a file AND a pane is two addresses, and is refused rather than picked between", () => {
+    const pane = workspace.activePaneId;
+    expect(() =>
+      liveRegistry().run("i18n.openTranslation", {
+        locale: "fr",
+        pane,
+        path: "pages/contact.json",
+      }),
+    ).toThrow(
+      'command "i18n.openTranslation" argument "path": names a file while "pane" names a pane',
+    );
+    expect(opened).toEqual([]);
+  });
+
   test("a missing translation names the verb that would create it, and opens nothing", async () => {
     await liveRegistry().run("i18n.openTranslation", { locale: "fr" });
     expect(opened).toEqual([]);
     expect(said()).toContain("no français translation");
     // `warn`, so it rests and fades: a translation that does not exist yet is not a fault to fix.
-    expect(toasts.some((t) => t.action === "i18n.createTranslation")).toBe(true);
+    // The action carries the whole address: `locale` is required, and the toast may be clicked
+    // After the author has moved to another document.
+    expect(toasts.find((t) => t.action === "i18n.createTranslation")?.actionArgs).toEqual({
+      locale: "fr",
+      path: "pages/about.json",
+    });
   });
 
-  test("a locale the project does not declare is refused, not silently defaulted", async () => {
-    await liveRegistry().run("i18n.openTranslation", { locale: "de" });
+  test("a locale the project does not declare is refused, not silently defaulted", () => {
+    // The schema's refusal, before `run`: `locale` is a derived enum over the declared locales and
+    // `registry.run` coerces against it, so the sentence names what the project DOES declare — the
+    // Toast `siblingPath` raises remains for a caller that reaches the body directly.
+    expect(() => liveRegistry().run("i18n.openTranslation", { locale: "de" })).toThrow(
+      'command "i18n.openTranslation" argument "locale": "de" is not declared — declared: en, fr',
+    );
     expect(opened).toEqual([]);
-    expect(said()).toContain("does not declare");
   });
 
   test("a file that cannot carry a locale says so rather than inventing a path", async () => {
@@ -203,6 +234,30 @@ describe("i18n.createTranslation", () => {
     await liveRegistry().run("i18n.createTranslation", { locale: "fr" });
     expect(created).toEqual([]);
     expect(said()).toContain("already exists");
+    expect(toasts.find((t) => t.action === "i18n.openTranslation")?.actionArgs).toEqual({
+      locale: "fr",
+      path: "pages/about.json",
+    });
+  });
+
+  test("seeds from the file `path` names, whatever document has the focus", async () => {
+    // What the Languages panel's "+" cell sends: the ROW's file, which is not the focused tab.
+    installMockPlatform({}, { "pages/contact.json": '{"tagName":"section"}' });
+    createResult = "pages/fr/contact.json";
+    await liveRegistry().run("i18n.createTranslation", {
+      locale: "fr",
+      path: "pages/contact.json",
+    });
+    expect(created).toEqual([
+      {
+        content: '{"tagName":"section"}',
+        dir: "pages/fr",
+        source: "Languages",
+        suggestedName: "contact.json",
+        title: "New français translation",
+      },
+    ]);
+    expect(opened).toEqual(["pages/fr/contact.json"]);
   });
 
   test("an unreadable source is reported with its path and creates nothing", async () => {
@@ -245,13 +300,68 @@ describe("i18n.addLocale", () => {
     expect(written.i18n).toEqual({ defaultLocale: "en", locales: ["en", "ja"] });
   });
 
-  test("a malformed tag is refused with words and writes nothing", async () => {
+  test("a malformed tag is refused by THROWING, names the tag, and writes nothing", async () => {
+    /* It used to toast and return — a refusal only the person could read. `add_project_locale`
+       is this record now (a declaration makes a tool), and the model reads a thrown `RangeError`
+       exactly as it reads every other argument refusal; the Locales form still refuses under its
+       own field, before it ever gets here. */
     const { state } = installMockPlatform();
     resetStudioState({ projectConfig: { i18n: { locales: ["en"] } } });
-    await liveRegistry().run("i18n.addLocale", { locale: "en_US" });
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
+    await expect(liveRegistry().run("i18n.addLocale", { locale: "en_US" })).rejects.toThrow(
+      'command "i18n.addLocale" argument "locale": "en_US" is not a well-formed BCP 47 tag',
+    );
     await flush(2);
     expect(state.files.has("project.json")).toBe(false);
-    expect(said()).toContain("not a well-formed language tag");
+    expect(said()).toBe("");
+  });
+
+  test("the assistant's report names the canonical tag and the list it joined", async () => {
+    installMockPlatform();
+    resetStudioState({ projectConfig: { i18n: { defaultLocale: "en", locales: ["en"] } } });
+    const registry = liveRegistry();
+    const facts = {
+      after: makeContext(),
+      args: { locale: "pt-br" } as never,
+      before: makeContext(),
+    };
+    await registry.run("i18n.addLocale", { locale: "pt-br" });
+    await flush(2);
+    expect(registry.get("i18n.addLocale")!.aiTool!.report(facts)).toBe(
+      "Declared pt-BR; project locales are now en, pt-BR.",
+    );
+    // Asking again is a statement, not a change: `addProjectLocale` toasts and returns, and the
+    // Report says so rather than claiming a declaration — with `wrote: []`, so the bridge files no
+    // `project.json` entry for a run that never touched it (the `undo: "project"` default would).
+    await registry.run("i18n.addLocale", { locale: "pt-BR" });
+    await flush(2);
+    expect(registry.get("i18n.addLocale")!.aiTool!.report(facts)).toEqual({
+      summary:
+        "Português (Brasil) was already one of this project's languages; the locales are en, pt-BR.",
+      wrote: [],
+    });
+  });
+
+  test("a defaultLocale the array does not hold is NOT already declared: the write and the report agree", async () => {
+    /* The report used to decide "already declared" against the RESOLVED locales, which unshift a
+       `defaultLocale` missing from the array, while `addProjectLocale` decides against the raw
+       array the author wrote. With `{ defaultLocale: "en", locales: ["fr"] }` the write declared
+       `en` and the report said it was already there. The latch is now the write's own answer. */
+    const { state } = installMockPlatform();
+    resetStudioState({ projectConfig: { i18n: { defaultLocale: "en", locales: ["fr"] } } });
+    const registry = liveRegistry();
+    await registry.run("i18n.addLocale", { locale: "en" });
+    await flush(2);
+    expect((JSON.parse(state.files.get("project.json")!) as { i18n: unknown }).i18n).toEqual({
+      defaultLocale: "en",
+      locales: ["fr", "en"],
+    });
+    const report = registry.get("i18n.addLocale")!.aiTool!.report({
+      after: makeContext(),
+      args: { locale: "en" } as never,
+      before: makeContext(),
+    });
+    expect(typeof report === "string" ? report : report.summary).toMatch(/^Declared en; /);
   });
 
   test("is reachable in a project that declares nothing at all", async () => {

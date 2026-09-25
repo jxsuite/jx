@@ -2,6 +2,7 @@ import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { resetActivities } from "../src/panels/activity-panel";
+import type { RepoOptions } from "../src/surfaces/github-publish";
 import type { StudioPlatform } from "../src/types";
 
 if (globalThis.localStorage === undefined) {
@@ -44,11 +45,45 @@ function setupFetch(responses: { ok?: boolean; json: unknown; status?: number }[
 
 let mockPlatform: Partial<StudioPlatform>;
 let statusMessages: string[] = [];
-let showDialogResult: any = null;
+let repoAnswer: RepoOptions | null = null;
 
 void mock.module("../src/ui/layers.js", () => ({
+  layerHost: () => document.body,
   showConfirmDialog: async () => true,
-  showDialog: async () => showDialogResult,
+}));
+
+/*
+ * The dialog is a document now (`src/surfaces/github-publish.json`), and this file is about the
+ * FLOW: the token, the three requests and every failure they can raise. So the surface is doubled
+ * with one that answers immediately — `repoAnswer` is what the reader would have typed, and `null`
+ * is the reader cancelling. `tests/github-publish-gaps.test.ts` mounts the real one.
+ *
+ * `close()` reports the closure, because that is what the real handle does and it is what the
+ * flow's cancel path resolves on: the answer arrives on a microtask, after the flow has the handle
+ * its callbacks close over.
+ */
+void mock.module("../src/surfaces/github-publish.js", () => ({
+  openGithubPublishSurface: (options: {
+    onCancel: () => void;
+    onClosed: () => void;
+    onConfirm: (values: RepoOptions) => void;
+  }) => {
+    const host = document.createElement("div");
+    queueMicrotask(() => {
+      if (repoAnswer) {
+        options.onConfirm(repoAnswer);
+      } else {
+        options.onCancel();
+      }
+    });
+    return {
+      close: () => {
+        options.onClosed();
+      },
+      host,
+      ready: Promise.resolve(host),
+    };
+  },
 }));
 
 void mock.module("../src/github/github-auth.js", () => ({
@@ -90,7 +125,7 @@ describe("createGithubRepository", () => {
     details.length = 0;
     localStorage.removeItem(STORAGE_KEY);
     statusMessages = [];
-    showDialogResult = null;
+    repoAnswer = null;
     mockPlatform = {
       gitAddRemote: mock(() => Promise.resolve()),
       gitPush: mock(() => Promise.resolve()),
@@ -108,14 +143,14 @@ describe("createGithubRepository", () => {
 
   test("returns false when repo dialog is cancelled", async () => {
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = null;
+    repoAnswer = null;
     const result = await createGithubRepository({ projectName: "test-project" });
     expect(result).toBe(false);
   });
 
   test("creates repo, adds remote, and pushes on success", async () => {
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = {
+    repoAnswer = {
       description: "A test",
       isPrivate: true,
       name: "my-repo",
@@ -153,7 +188,7 @@ describe("createGithubRepository", () => {
 
   test("returns false and reports error when GitHub API fails", async () => {
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = { description: "", isPrivate: false, name: "my-repo" };
+    repoAnswer = { description: "", isPrivate: false, name: "my-repo" };
 
     setupFetch([
       {
@@ -176,7 +211,7 @@ describe("createGithubRepository", () => {
 
   test("returns false when push fails", async () => {
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = {
+    repoAnswer = {
       description: "",
       isPrivate: true,
       name: "push-fail-repo",
@@ -200,7 +235,7 @@ describe("createGithubRepository", () => {
 
   test("a fetch that never lands is reported, not swallowed", async () => {
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = { description: "", isPrivate: true, name: "unreachable" };
+    repoAnswer = { description: "", isPrivate: true, name: "unreachable" };
     // @ts-expect-error -- a rejecting fetch is the whole point of this stub
     globalThis.fetch = async () => {
       throw new TypeError("Failed to fetch");
@@ -215,7 +250,7 @@ describe("createGithubRepository", () => {
     // `gitAddRemote` had no error path at all before this: an `origin` that already existed
     // Surfaced as a push failure describing the push.
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = { description: "", isPrivate: true, name: "remote-fail" };
+    repoAnswer = { description: "", isPrivate: true, name: "remote-fail" };
     mockPlatform.gitAddRemote = mock(() => Promise.reject(new Error("remote origin exists")));
     setupFetch([
       {
@@ -237,7 +272,7 @@ describe("createGithubRepository", () => {
 
   test("sends correct Accept header to GitHub API", async () => {
     localStorage.setItem(STORAGE_KEY, "ghp_test_token");
-    showDialogResult = {
+    repoAnswer = {
       description: "desc",
       isPrivate: false,
       name: "header-test",

@@ -1,0 +1,426 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxButton",
+  "tagName": "jx-button",
+  "observedAttributes": [
+    "variant",
+    "size",
+    "quiet",
+    "disabled",
+    "loading",
+    "type",
+    "autofocus",
+    "label",
+    "hint",
+    "labelledby",
+    "describedby",
+    "popovertarget",
+    "popovertargetaction",
+    "command",
+    "commandfor"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-spinner.json"
+    },
+    {
+      "$ref": "./jx-tooltip.json"
+    }
+  ],
+  "state": {
+    "variant": {
+      "type": "string",
+      "default": "secondary",
+      "attribute": "variant",
+      "description": "How much the button asks for: accent (the one primary action on a surface), primary (a solid neutral), secondary (the default outline) or negative (a destructive action)."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The control height is the kit's, so a row of controls lines up."
+    },
+    "quiet": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "quiet",
+      "description": "No fill and no border until hovered: a button that sits in a toolbar or beside text."
+    },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the control inside, not the host, so a jx-toolbar moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot act. Disabled, never absent; a reason belongs in the surrounding text or in hint, which a disabled button draws as the control's native title because a disabled control can open no tip."
+    },
+    "loading": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "loading",
+      "description": "Working on the last activation: blocks another one, keeps its width, and says so through aria-busy."
+    },
+    "type": {
+      "type": "string",
+      "default": "button",
+      "attribute": "type",
+      "description": "The native button type: button, submit or reset."
+    },
+    "autofocus": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "autofocus",
+      "description": "Takes focus when the surface it is on opens. Forwarded to the inner control, which is the element the platform reads it from: a dialog's showModal() focuses the first focusable descendant unless one claims autofocus."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name when the visible text is not it, or there is none. Forwarded to the inner control as aria-label."
+    },
+    "hint": {
+      "type": "string",
+      "default": "",
+      "attribute": "hint",
+      "description": "A tooltip beside the name, for a button whose visible text is cut short or whose disabled state needs a reason; empty, the usual case, draws nothing. The same shape as jx-action-button's: while the button is ENABLED it is a jx-tooltip child of this element — shown on keyboard focus at once and on hover after the tip's delay, hoverable and dismissible with Escape (SC 1.4.13) — named on the control in aria-describedby so it describes rather than names; while the button is DISABLED it is the control's native title instead, the one affordance a control that receives no focus and no pointer still has. Never both at once."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby, after the hint's own tip when there is one."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This button's own id stem, minted on mount by the tooltip sidecar. The control's id, the tip's id and the three attributes that wire one to the other are all built from it, so a consumer writes none of them. Empty until the mount microtask, which is why every binding that reads it guards on it."
+    },
+    "hasTip": {
+      "$expression": {
+        "operator": "&&",
+        "target": {
+          "operator": "!",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/hint"
+            }
+          }
+        },
+        "value": {
+          "operator": "&&",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "operator": "!==",
+            "target": {
+              "$ref": "#/state/uid"
+            },
+            "value": ""
+          }
+        }
+      }
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "mintHintId",
+      "description": "Mints the id stem the hint's tooltip is wired by. A document cannot: the closed operator set has no counter and no identity."
+    },
+    "popovertarget": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertarget",
+      "description": "The popover this button invokes; forwarded to the inner control, which is the element the platform reads it from."
+    },
+    "popovertargetaction": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertargetaction",
+      "description": "toggle, show or hide; forwarded with popovertarget."
+    },
+    "command": {
+      "type": "string",
+      "default": "",
+      "attribute": "command",
+      "description": "The invoker command this button sends; forwarded to the inner control."
+    },
+    "commandfor": {
+      "type": "string",
+      "default": "",
+      "attribute": "commandfor",
+      "description": "The element the command is sent to; forwarded to the inner control."
+    },
+    "notLoading": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/loading"
+        }
+      }
+    },
+    "onSwallow": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "The swallow, on the INNER CONTROL rather than the host: stopPropagation halts an event at the node it is called on and every node after it, not the other listeners on that same node — so a swallow on the host cancels the default and then runs the host's own click listeners anyway, which is the one path a consumer actually uses. Called one node earlier, the click never reaches the host at all."
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "The second half of the swallow, for a click dispatched AT the host: that one never passes the inner control, so this is the only guard that sees it. Its default (a form submission, a popover, a command) is cancelled either way. A disabled button never gets this far, because its inner control is disabled."
+    }
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "attributes": {
+    "data-variant": "${state.variant}",
+    "data-size": "${state.size}",
+    "data-quiet": "${state.quiet ? '' : null}",
+    "data-loading": "${state.loading ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"control\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-4)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer",
+      "whiteSpace": "nowrap",
+      "outline": "none",
+      "transition": "background var(--jx-dur-1) var(--jx-ease-out), border-color var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      },
+      "&[aria-busy=\"true\"]": {
+        "cursor": "progress"
+      }
+    },
+    "&[data-variant=\"accent\"] > [part=\"control\"]": {
+      "background": "var(--jx-accent-solid)",
+      "borderColor": "transparent",
+      "color": "var(--jx-accent-fg)",
+      ":hover": {
+        "background": "var(--jx-accent-hover)"
+      }
+    },
+    "&[data-variant=\"primary\"] > [part=\"control\"]": {
+      "background": "var(--jx-fg)",
+      "borderColor": "transparent",
+      "color": "var(--jx-bg)",
+      ":hover": {
+        "background": "var(--jx-fg-dim)"
+      }
+    },
+    "&[data-variant=\"negative\"] > [part=\"control\"]": {
+      "background": "var(--jx-danger)",
+      "borderColor": "transparent",
+      "color": "var(--jx-accent-fg)",
+      ":hover": {
+        "filter": "brightness(1.1)"
+      }
+    },
+    "&[data-quiet] > [part=\"control\"]": {
+      "background": "transparent",
+      "borderColor": "transparent",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      }
+    },
+    "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "$description": "A small button draws 4px under the kit's control height, and the control height is the WCAG 2.2 SC 2.5.8 floor (ui.md §4.3), so the drawn box alone would be a 20px pointer target at the default density. The `::before` is the hit area: an empty pseudo-element that reaches 2px past the drawn box on every side, so what accepts the pointer is exactly `--jx-control-h` square while the picture stays small — jx-tab's close button's technique, and the criterion measures the region that accepts the pointer, not the paint. The inset is -3px and not -2px because an absolutely positioned box is offset from its containing block's PADDING edge, and this control draws a 1px border: the border width comes first, then half of the 4px the box is under. jx-tab's close button is borderless, which is why -4px was exact there, and why the number did not carry over unchanged. In a jx-toolbar (a 4px gap) two extended neighbours abut and neither loses a pixel; jx-action-group's own sheet zeroes the packed axis in a compact group, where the boxes touch and an extension could only steal a strip of the neighbour. Held by target-size.test.ts and the conformance gate, both of which read the border and subtract it. `contain: layout` is the other half of drawing the hit area OUTSIDE the button's own box: an absolutely positioned descendant still contributes to the SCROLLABLE overflow of the nearest ancestor whose `overflow` isn't `visible`, whether or not anything clips or paints it, so every `sm` button inside a host that scrolls (Preferences · Assistant's `Refresh models` and `Save` both are) was quietly widening and heightening that host's scrollable region by a few px — enough, with jx-textfield's clear button and jx-combobox's toggle doing the same thing beside it, to draw a scrollbar over a panel whose visible content fit.",
+      "position": "relative",
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "padding": "0 var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "contain": "layout",
+      "::before": {
+        "content": "\"\"",
+        "position": "absolute",
+        "inset": "-3px"
+      }
+    },
+    "&[data-size=\"lg\"] > [part=\"control\"]": {
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "padding": "0 var(--jx-space-5)",
+      "fontSize": "var(--jx-text-lg)"
+    },
+    "& > [part=\"control\"] > [part=\"icon\"]": {
+      "display": "contents"
+    },
+    "& [part=\"spinner\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"spinner\"][hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"tooltip\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "button",
+      "onclick": {
+        "$ref": "#/state/onSwallow"
+      },
+      "attributes": {
+        "part": "control",
+        "id": "${state.uid || null}",
+        "type": "${state.type}",
+        "disabled": {
+          "$ref": "#/state/disabled"
+        },
+        "aria-disabled": "${state.loading ? 'true' : null}",
+        "aria-busy": "${state.loading ? 'true' : null}",
+        "aria-label": "${state.label || null}",
+        "title": "${state.disabled && state.hint ? state.hint : null}",
+        "interestfor": "${state.hasTip ? state.uid + '-tip' : null}",
+        "aria-labelledby": "${state.labelledby || null}",
+        "aria-describedby": "${[state.hasTip ? state.uid + '-tip' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
+        "tabindex": "${state.tabindex || null}",
+        "popovertarget": "${state.popovertarget || null}",
+        "popovertargetaction": "${state.popovertargetaction || null}",
+        "command": "${state.command || null}",
+        "commandfor": "${state.commandfor || null}",
+        "autofocus": {
+          "$ref": "#/state/autofocus"
+        }
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "icon"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "name": "icon"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-spinner",
+          "attributes": {
+            "part": "spinner"
+          },
+          "hidden": {
+            "$ref": "#/state/notLoading"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "tooltip"
+      },
+      "$switch": {
+        "$ref": "#/state/hasTip"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-tooltip",
+          "attributes": {
+            "part": "tip",
+            "id": "${state.uid}-tip",
+            "for": "${state.uid}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "tip-text"
+              },
+              "textContent": "${state.hint}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

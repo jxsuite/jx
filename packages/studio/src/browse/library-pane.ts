@@ -10,12 +10,13 @@
  * available to the assistant. `manage` was already in `commands/context.ts`'s `EDITOR_KIND_BY_MODE`
  * — the map just had nothing behind it.
  *
- * Four things this module is careful about:
+ * The MARKUP is `surfaces/library-pane.json`, a Jx document over the kit; this module is the
+ * projection and the decisions. Four things it is careful about:
  *
  * 1. **It never says "No files found" for two different reasons.** A scan that could not read a
  *    directory is INCOMPLETE, not empty; it raises a Problem carrying the directory and a Retry
- *    (`library.refresh`), and the surface says so. A filter that matched nothing says which
- *    filter.
+ *    (`library.refresh`), and the surface says so. A filter that matched nothing says which filter.
+ *    The four states are one word on the scope, so no two of them can be true at once.
  * 2. **The rendered item count is proportional to the viewport, not to the project.** See
  *    `../ui/virtual-window.ts` and `library-preview.ts`; the acceptance case is 300 pages in
  *    "All".
@@ -29,13 +30,12 @@
  * @docs studio/projects/browse
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
 import { effect, effectScope, reactive } from "../reactivity";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import { beginActivity } from "../panels/activity-panel";
-import { renderPopover, showPromptDialog } from "../ui/layers";
+import { showPromptDialog } from "../ui/layers";
+import { openMenu } from "../surfaces/menu";
 import { rectOf } from "../utils/geometry";
 import { getPlatform } from "../platform";
 import { invalidateUsages } from "../services/references";
@@ -60,23 +60,20 @@ import { createLibrarySource, libraryColumns } from "./library-source";
 import { createPreviewCache, createPreviewObserver, previewFor } from "./library-preview";
 import { computeWindow } from "../ui/virtual-window";
 import { paneRegion } from "../ui/regions";
-import {
-  LAYOUT_METRICS,
-  boardTpl,
-  calendarTpl,
-  cardsTpl,
-  columnsAt,
-  mediaTpl,
-  tableHeadTpl,
-  tableRowsTpl,
-} from "./library-layouts";
+import { LAYOUT_METRICS, boardView, calendarView, columnsAt, libraryRow } from "./library-layouts";
+import { mountLibrarySurface } from "../surfaces/library-pane";
 import type { ActivityHandle } from "../panels/activity-panel";
 import type { FormatChoice } from "../files/files";
 import type { EffectScope } from "@vue/reactivity";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { LibraryFile, LibraryLayout } from "./library-model";
 import type { LibrarySource } from "./library-source";
-import type { LayoutContext } from "./library-layouts";
-import type { PreviewCache, PreviewObserver } from "./library-preview";
+import type {
+  LibraryChip,
+  LibrarySurfaceHandle,
+  LibraryView,
+  LibraryViewKind,
+} from "../surfaces/library-pane";
 import type { WindowRange } from "../ui/virtual-window";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
@@ -167,13 +164,17 @@ export function setLibraryLocale(locale: string): void {
  *
  * Called by every surface that changes the project's file set — an upload, a creation, a rename, a
  * delete — so the Library is never showing a file that is gone.
+ *
+ * The SLOT table survives, and that is the difference between this and a teardown: clearing the
+ * cache detaches every rendered preview from the box it was in, and those boxes are still on
+ * screen. The document reconciles a row whose path survived in place, so nothing re-announces the
+ * box; the settle pass below is what fills it again.
  */
 export function invalidateLibrary(): void {
   source = null;
   scanAttempted = false;
   for (const panel of _active.values()) {
     panel.cache.clear();
-    panel.slots.clear();
   }
   bump();
 }
@@ -269,22 +270,27 @@ interface ActiveLibraryPane {
   tabId: string;
   scope: EffectScope;
   wrap: HTMLElement;
-  cache: PreviewCache;
-  observer: PreviewObserver;
-  /** The scroller, once lit has created it. */
+  surface: LibrarySurfaceHandle;
+  cache: ReturnType<typeof createPreviewCache>;
+  observer: ReturnType<typeof createPreviewObserver>;
+  /** The scroller, once the document has rendered it. Announced through `onNodeCreated`. */
   scroller: HTMLElement | null;
   /** Slot elements awaiting a preview, keyed by the element itself. */
-  pending: WeakMap<Element, LibraryFile>;
-  /** The live preview slot for each path in the CURRENT window, so a resolved render finds it. */
-  slots: Map<string, Element>;
+  pending: WeakMap<Element, string>;
+  /** The live preview slot for each path, so a resolved render finds it. */
+  slots: Map<string, HTMLElement>;
   /**
    * Paths whose preview is being built right now.
    *
-   * Without this a repaint mid-load asks for the same document again: lit hands a fresh `ref`
-   * closure on every render, so the slot is re-registered before the first read has resolved, and a
-   * scroll through a long list would read each document several times over.
+   * Without this a repaint mid-load asks for the same document again: the settle pass runs over
+   * every slot on screen, so a slot whose first read has not resolved would be asked a second time,
+   * and a scroll through a long list would read each document several times over.
    */
   pendingPaths: Set<string>;
+  /** Whether a drag is over the body. Held here so a dragover does not recompute the window. */
+  dropActive: boolean;
+  /** The coalesced post-repaint pass; see {@link scheduleSettle}. */
+  settleTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /**
@@ -307,7 +313,9 @@ function activeIn(paneId: string): ActiveLibraryPane | null {
 /** Whether the Library is live in this pane for this tab — the canvas-render fast-path guard. */
 export function libraryPaneMounted(paneId: string, tab: Tab): boolean {
   const panel = activeIn(paneId);
-  return panel !== null && panel.tabId === tab.id && panel.wrap.isConnected;
+  return (
+    panel !== null && panel.tabId === tab.id && panel.wrap.isConnected && panel.surface.attached()
+  );
 }
 
 /** Tear one pane's Library down (mode change, tab switch, project close). Idempotent. */
@@ -316,20 +324,29 @@ export function detachLibraryPane(paneId: string): void {
   if (!panel) {
     return;
   }
+  if (panel.settleTimer !== null) {
+    clearTimeout(panel.settleTimer);
+    panel.settleTimer = null;
+  }
   panel.observer.destroy();
   panel.cache.clear();
   panel.slots.clear();
   panel.pendingPaths.clear();
   panel.scope.stop();
+  panel.surface.dispose();
   _active.delete(paneId);
 }
 
 // ─── Geometry ────────────────────────────────────────────────────────────────
 
 /** The window for the current layout, or the whole list for a layout that does not window. */
-function windowFor(panel: ActiveLibraryPane, layout: LibraryLayout, count: number): WindowRange {
+function windowFor(
+  panel: ActiveLibraryPane | null,
+  layout: LibraryLayout,
+  count: number,
+): WindowRange {
   const metric = LAYOUT_METRICS[layout];
-  const { scroller } = panel;
+  const scroller = panel?.scroller ?? null;
   if (!metric.windowed || !scroller) {
     return { end: count, padBottom: 0, padTop: 0, start: 0, totalRows: count };
   }
@@ -345,131 +362,218 @@ function windowFor(panel: ActiveLibraryPane, layout: LibraryLayout, count: numbe
 // ─── Previews ────────────────────────────────────────────────────────────────
 
 /** Build a preview and attach it to whichever slot is currently showing that path. */
-async function fillPreview(panel: ActiveLibraryPane, file: LibraryFile) {
-  // Only ever entered once per path at a time: `mountPreview` is the sole caller and refuses to
-  // Observe a slot whose path is already in flight.
-  panel.pendingPaths.add(file.path);
+async function fillPreview(panel: ActiveLibraryPane, path: string) {
+  // Only ever entered once per path at a time: both callers refuse a path already in flight.
+  panel.pendingPaths.add(path);
   try {
-    const rendered = await previewFor(file.path, panel.cache);
+    const rendered = await previewFor(path, panel.cache);
     if (!rendered || activeIn(panel.paneId) !== panel) {
       return;
     }
-    const slot = panel.slots.get(file.path);
+    const slot = panel.slots.get(path);
     if (slot?.isConnected && !slot.firstElementChild) {
       slot.append(rendered);
     }
   } finally {
-    panel.pendingPaths.delete(file.path);
+    panel.pendingPaths.delete(path);
   }
 }
 
-/** The `ref` callback every previewable card carries. */
-function mountPreview(panel: ActiveLibraryPane, element: Element | undefined, file: LibraryFile) {
-  if (!element) {
-    return;
-  }
-  panel.slots.set(file.path, element);
+/** Fill a slot from the cache, or watch it — whichever the cache and the in-flight set allow. */
+function tendSlot(panel: ActiveLibraryPane, slot: HTMLElement, path: string): void {
   // Read the cache BEFORE the "already filled" shortcut, because the read is what marks the entry
   // As recently used. Skipping it let a preview that was on screen — and therefore never touched —
   // Drift to the tail of the LRU, get evicted, get detached, and be re-rendered on the next
   // Repaint: the 300-page measurement showed 560 reads for 300 documents until this line moved.
-  const cached = panel.cache.get(file.path);
-  if (element.firstElementChild) {
+  const cached = panel.cache.get(path);
+  if (slot.firstElementChild) {
     return;
   }
   if (cached) {
-    element.append(cached);
+    slot.append(cached);
     return;
   }
-  if (panel.pendingPaths.has(file.path)) {
+  if (panel.pendingPaths.has(path)) {
     return;
   }
-  panel.pending.set(element, file);
-  panel.observer.observe(element);
+  panel.pending.set(slot, path);
+  panel.observer.observe(slot);
+}
+
+/**
+ * What the document announced: a preview box, created and still detached.
+ *
+ * The one seam a live preview can arrive through — the document renders the box and nothing inside
+ * it (specs/studio-ui-guidelines.md §9.4, "an island attaches through `onNodeCreated`").
+ */
+function previewSlot(panel: ActiveLibraryPane, slot: HTMLElement, path: string): void {
+  panel.slots.set(path, slot);
+  tendSlot(panel, slot, path);
+}
+
+/**
+ * The pass that runs once the document has reconciled, coalesced onto a task of its own.
+ *
+ * It exists because a document repaint is not a moment this module is present at: writing the
+ * projection returns immediately and the runtime's keyed arrays reconcile a microtask later, so
+ * "the window has moved" is only true one task after the write. Two things have to happen then and
+ * cannot happen before.
+ *
+ * The first is releasing observations. A card outside the new window is now detached, and an
+ * observation of a detached node can never fire again: it is pure cost — the browser walks it on
+ * every scroll frame — and it pins the card's whole subtree. The intersect callback cannot be the
+ * only release path, because a card flicked past before it ever intersected is never reported.
+ *
+ * The second is tending the slots that ARE on screen. A row the reconciler kept keeps its preview
+ * box, so nothing re-announces it — and an LRU eviction detaches the render that was inside it. So
+ * every visible slot is touched here: the touch is what keeps it at the head of the LRU, and the
+ * refill is what puts a preview back into a box eviction emptied.
+ */
+function scheduleSettle(panel: ActiveLibraryPane): void {
+  if (panel.settleTimer !== null) {
+    return;
+  }
+  panel.settleTimer = setTimeout(() => {
+    panel.settleTimer = null;
+    if (activeIn(panel.paneId) !== panel) {
+      return;
+    }
+    panel.observer.releaseDetached();
+    const previews = PREVIEW_LAYOUTS.has(libraryView.layout);
+    for (const [path, slot] of panel.slots) {
+      if (!slot.isConnected) {
+        panel.slots.delete(path);
+        continue;
+      }
+      if (previews) {
+        tendSlot(panel, slot, path);
+      }
+    }
+  }, 0);
 }
 
 // ─── Context menu ────────────────────────────────────────────────────────────
 
-let contextHandle: ReturnType<typeof renderPopover> | null = null;
+/**
+ * The menu the Library has up, whichever it is.
+ *
+ * One handle for both the per-file menu and the New menu, because only one of them can be open: the
+ * kit's menu is a popover on the platform's own top layer, and opening a second while the first is
+ * up is how two of them end up light-dismissing each other.
+ */
+let _menu: MenuHandle | null = null;
 
-function dismissLibraryContextMenu() {
-  contextHandle?.dismiss();
-  contextHandle = null;
+function closeLibraryMenu(): void {
+  _menu?.close();
+  _menu = null;
 }
 
-interface MenuItem {
-  label: string;
-  action?: () => void | Promise<void>;
-  danger?: boolean;
-}
-
-function showLibraryContextMenu(event: MouseEvent, file: LibraryFile) {
-  event.preventDefault();
-  event.stopPropagation();
-  dismissLibraryContextMenu();
-
-  const items: MenuItem[] = [
-    {
-      action: () => {
-        void openFileInTab(file.path);
-      },
-      label: "Open",
-    },
-    { label: "—" },
-    { action: () => renameLibraryFile(file), label: "Rename…" },
-    { action: () => duplicateLibraryFile(file), label: "Duplicate" },
-    { label: "—" },
-    { action: () => deleteLibraryFile(file), danger: true, label: "Delete" },
-  ];
-
-  let x = event.clientX;
-  let y = event.clientY;
-
-  contextHandle = renderPopover(
-    html`<sp-popover
-      open
-      style="position:fixed;left:${x}px;top:${y}px"
-      ${ref((el) => {
-        if (!el) {
-          return;
-        }
-        requestAnimationFrame(() => {
-          const popover = el as HTMLElement;
-          const menuRect = rectOf(popover);
-          if (x + menuRect.width > window.innerWidth) {
-            x = window.innerWidth - menuRect.width - 4;
-          }
-          if (y + menuRect.height > window.innerHeight) {
-            y = window.innerHeight - menuRect.height - 4;
-          }
-          popover.style.left = `${x}px`;
-          popover.style.top = `${y}px`;
-        });
-      })}
-    >
-      <sp-menu>
-        ${items.map((item) =>
-          item.label === "—"
-            ? html`<sp-menu-divider></sp-menu-divider>`
-            : html`<sp-menu-item
-                style=${item.danger ? "color: var(--danger)" : ""}
-                @click=${() => {
-                  dismissLibraryContextMenu();
-                  void item.action?.();
-                }}
-                >${item.label}</sp-menu-item
-              >`,
-        )}
-      </sp-menu>
-    </sp-popover>`,
-    {
-      dismissOnOutsideClick: true,
-      layer: "dialog",
-      onDismiss: () => {
-        contextHandle = null;
-      },
-    },
+/** The scanned file at a path, or null when the scan has moved on since the row was drawn. */
+function fileAt(path: string): LibraryFile | null {
+  return (
+    librarySource()
+      .files()
+      .find((file) => file.path === path) ?? null
   );
+}
+
+/**
+ * The per-file menu, opened at the pointer.
+ *
+ * The rows are the `menu` surface's own projections, so the Library's Delete is drawn, keyed and
+ * dismissed exactly as the element menu's is — including the edge clamping, which was a hand-rolled
+ * `requestAnimationFrame` measurement here and is the kit's popover's job.
+ */
+function showLibraryContextMenu(path: string, x: number, y: number): void {
+  const file = fileAt(path);
+  if (!file) {
+    return;
+  }
+  closeLibraryMenu();
+  const row = (
+    id: string,
+    title: string,
+    run: () => void,
+    extra: Partial<MenuRowProjection> = {},
+  ): MenuRowProjection => ({
+    destructive: false,
+    disabled: false,
+    dividerAbove: false,
+    id,
+    run,
+    title,
+    ...extra,
+  });
+  _menu = openMenu({
+    label: "File actions",
+    onClosed: (handle) => {
+      if (_menu === handle) {
+        _menu = null;
+      }
+    },
+    origin: { x, y },
+    region: "library",
+    rows: [
+      row("open", "Open", () => {
+        void openFileInTab(file.path);
+      }),
+      row(
+        "rename",
+        "Rename…",
+        () => {
+          void renameLibraryFile(file);
+        },
+        { dividerAbove: true },
+      ),
+      row("duplicate", "Duplicate", () => {
+        void duplicateLibraryFile(file);
+      }),
+      row(
+        "delete",
+        "Delete",
+        () => {
+          void deleteLibraryFile(file);
+        },
+        { destructive: true, dividerAbove: true },
+      ),
+    ],
+  });
+}
+
+/** The New menu, opened under its own button. A second press closes it: the button is a toggle. */
+function showLibraryNewMenu(opener: HTMLElement): void {
+  if (_menu) {
+    closeLibraryMenu();
+    return;
+  }
+  const entries = libraryNewEntries();
+  _menu = openMenu({
+    label: "New",
+    onClosed: (handle) => {
+      if (_menu === handle) {
+        _menu = null;
+      }
+    },
+    opener,
+    place: () => {
+      const box = rectOf(opener);
+      return { x: box.left, y: box.bottom + 4 };
+    },
+    region: "library-new",
+    rows: entries.map((entry, index) => ({
+      destructive: false,
+      disabled: false,
+      /* The document kinds and the collections are two different creation flows, so the boundary
+         between them is drawn rather than left to be inferred from the folder names. */
+      dividerAbove:
+        entry.collection !== undefined && entries[index - 1]?.collection === undefined && index > 0,
+      id: entry.key,
+      title: `${entry.label} — ${entry.dir}/`,
+    })),
+    run: (id) => {
+      void createLibraryEntry(id);
+    },
+  });
 }
 
 /**
@@ -722,189 +826,15 @@ async function uploadIntoLibrary(files: FileList | File[]) {
   await loadLibrary();
 }
 
-// ─── Templates ───────────────────────────────────────────────────────────────
+// ─── The projection ──────────────────────────────────────────────────────────
 
-/**
- * The language facet, drawn only where it can change the answer.
- *
- * Its options come from ALL scanned files, never from the filtered ones: a picker whose choices
- * collapse to the choice just made cannot be used to make another. One locale — or none — means
- * every file already agrees, and a permanently-selected chip is chrome that says nothing.
- */
-function localeFilterTpl(files: readonly LibraryFile[]) {
-  const locales = libraryLocales(files);
-  if (locales.length < 2) {
-    return nothing;
-  }
-  const value = libraryView.locale === "" ? "all" : libraryView.locale;
-  return html`
-    <sp-picker
-      size="s"
-      quiet
-      class="library-locale-filter"
-      label="All languages"
-      .value=${value}
-      @change=${(e: Event) => {
-        const chosen = (e.target as HTMLElement & { value: string }).value;
-        setLibraryLocale(chosen === "all" ? "" : chosen);
-      }}
-    >
-      <sp-menu-item value="all">All languages</sp-menu-item>
-      ${locales.map((tag) => html`<sp-menu-item value=${tag}>${localeLabel(tag)}</sp-menu-item>`)}
-    </sp-picker>
-  `;
+/** A toolbar chip, marked when it is the one in force. */
+function chip(key: string, label: string, active: boolean): LibraryChip {
+  return { checked: active ? "true" : "false", key, label };
 }
 
-function toolbarTpl(panel: ActiveLibraryPane, files: readonly LibraryFile[]) {
-  const destination = uploadDirForCategory(libraryView.category);
-  return html`
-    <div class="library-toolbar">
-      <sp-action-group selects="single" size="s" compact>
-        ${LIBRARY_CATEGORIES.map(
-          (category) => html`
-            <sp-action-button
-              size="s"
-              ?selected=${libraryView.category === category.key}
-              @click=${() => setLibraryCategory(category.key)}
-            >
-              ${category.label}
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-      ${localeFilterTpl(files)}
-      <sp-search
-        size="s"
-        placeholder="Filter files…"
-        .value=${libraryView.query}
-        @input=${(e: Event) => setLibrarySearch((e.target as HTMLInputElement).value)}
-        @submit=${(e: Event) => e.preventDefault()}
-      ></sp-search>
-      <overlay-trigger placement="bottom-start" triggered-by="click">
-        <sp-action-button size="s" slot="trigger">
-          <sp-icon-add slot="icon"></sp-icon-add> New
-        </sp-action-button>
-        <sp-popover slot="click-content" tip>
-          <sp-menu
-            @change=${(e: Event) => {
-              void createLibraryEntry((e.target as HTMLSelectElement).value);
-            }}
-          >
-            ${libraryNewEntries().map(
-              (entry) =>
-                html`<sp-menu-item value=${entry.key}
-                  >${entry.label} — ${entry.dir}/</sp-menu-item
-                >`,
-            )}
-          </sp-menu>
-        </sp-popover>
-      </overlay-trigger>
-      <sp-action-button
-        size="s"
-        title=${destination === undefined ? "Upload — asks for a folder" : `Upload into ${destination}/`}
-        @click=${() => {
-          const input = panel.wrap.querySelector(
-            ".library-upload-input",
-          ) as HTMLInputElement | null;
-          input?.click();
-        }}
-      >
-        <sp-icon-upload slot="icon"></sp-icon-upload> Upload
-      </sp-action-button>
-      <input
-        type="file"
-        multiple
-        accept=${uploadAccept()}
-        class="library-upload-input"
-        @change=${(e: Event) => {
-          const input = e.target as HTMLInputElement;
-          if (input.files?.length) {
-            void uploadIntoLibrary(input.files);
-          }
-          input.value = "";
-        }}
-      />
-      <span class="library-spacer"></span>
-      <sp-action-group selects="single" size="s" compact class="library-layout-switch">
-        ${LIBRARY_LAYOUTS.map(
-          (layout) => html`
-            <sp-action-button
-              size="s"
-              ?selected=${libraryView.layout === layout}
-              title=${LIBRARY_LAYOUT_LABELS[layout]}
-              @click=${() => setLibraryLayout(layout)}
-            >
-              ${LIBRARY_LAYOUT_LABELS[layout]}
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-    </div>
-  `;
-}
-
-/**
- * The banner an INCOMPLETE listing carries.
- *
- * The Problem is the durable record; this is the same fact on the surface it is about, because a
- * reader looking at a short list needs to know it is short for a reason without going to the dock.
- */
-function failureBannerTpl(current: LibrarySource) {
-  const failures = current.failures();
-  if (failures.length === 0) {
-    return nothing;
-  }
-  return html`<div class="library-banner" role="status">
-    <span>
-      This list is incomplete — ${failures.length}
-      ${failures.length === 1 ? "directory" : "directories"} could not be read
-      (${failures[0]!.dir}${failures.length > 1 ? ", …" : ""}).
-    </span>
-    <sp-button
-      size="s"
-      variant="secondary"
-      @click=${() => {
-        void refreshLibrary();
-      }}
-      >Retry</sp-button
-    >
-  </div>`;
-}
-
-/**
- * The empty state, which is FOUR states and not one.
- *
- * The view this replaces printed "No files found" for every one of them, including the one where
- * the request had failed.
- */
-function emptyTpl(current: LibrarySource, total: number) {
-  if (libraryView.loading || !current.scanned()) {
-    return html`<div class="library-empty">Scanning the project…</div>`;
-  }
-  if (current.failures().length > 0) {
-    return html`<div class="library-empty">
-      <p>Nothing to show, and the scan did not finish.</p>
-      <p class="library-empty-detail">
-        ${current.failures().length}
-        ${current.failures().length === 1 ? "directory" : "directories"} could not be read, so this
-        is not the same as an empty project.
-      </p>
-      <sp-button
-        size="s"
-        variant="accent"
-        @click=${() => {
-          void refreshLibrary();
-        }}
-        >Retry</sp-button
-      >
-    </div>`;
-  }
-  if (total === 0) {
-    return html`<div class="library-empty">
-      <p>This project has no files yet.</p>
-      <p class="library-empty-detail">Use New to create a page, layout, component or entry.</p>
-    </div>`;
-  }
+/** The sentence a filter that matched nothing prints, naming both facets rather than one. */
+function noMatchMessage(): string {
   const category = libraryCategory(libraryView.category);
   // Both facets in one clause, so a reader who filtered twice is told about both rather than being
   // Sent to clear one and find the list still empty.
@@ -914,63 +844,21 @@ function emptyTpl(current: LibrarySource, total: number) {
   ].filter((scope) => scope !== "");
   const where = scopes.length === 0 ? "" : ` in ${scopes.join(" and ")}`;
   const term = libraryView.query.trim();
-  return html`<div class="library-empty">
-    <p>
-      No files match${term ? html` “${term}”` : nothing}${where}.
-      <span class="library-empty-detail">${total} file(s) in the project.</span>
-    </p>
-    <sp-button
-      size="s"
-      variant="secondary"
-      @click=${() => {
-        setLibrarySearch("");
-        setLibraryCategory("all");
-        setLibraryLocale("");
-      }}
-    >
-      Clear filters
-    </sp-button>
-  </div>`;
+  return `No files match${term ? ` “${term}”` : ""}${where}.`;
 }
 
-/** The body for one layout, windowed where the layout windows. */
-function bodyTpl(panel: ActiveLibraryPane, files: readonly LibraryFile[], ctx: LayoutContext) {
-  const { layout } = libraryView;
-  const range = windowFor(panel, layout, files.length);
-  const slice = files.slice(range.start, range.end);
-
-  switch (layout) {
-    case "board": {
-      return boardTpl(files, ctx);
-    }
-    case "calendar": {
-      return calendarTpl(files, ctx);
-    }
-    case "media": {
-      return html`<div
-        class="library-grid library-grid-media"
-        style="padding-top:${range.padTop}px;padding-bottom:${range.padBottom}px"
-      >
-        ${mediaTpl(slice, ctx)}
-      </div>`;
-    }
-    case "table": {
-      return html`<div class="library-table" role="table">
-        ${tableHeadTpl(ctx.columns)}
-        <div style="height:${range.padTop}px"></div>
-        ${tableRowsTpl(slice, ctx)}
-        <div style="height:${range.padBottom}px"></div>
-      </div>`;
-    }
-    default: {
-      return html`<div
-        class="library-grid library-grid-cards"
-        style="padding-top:${range.padTop}px;padding-bottom:${range.padBottom}px"
-      >
-        ${cardsTpl(slice, ctx)}
-      </div>`;
-    }
+/** Which of the nine things the body draws right now. */
+function viewKind(current: LibrarySource, matched: number, total: number): LibraryViewKind {
+  if (matched > 0) {
+    return libraryView.layout;
   }
+  if (libraryView.loading || !current.scanned()) {
+    return "loading";
+  }
+  if (current.failures().length > 0) {
+    return "incomplete";
+  }
+  return total === 0 ? "empty" : "nomatch";
 }
 
 // ─── Mount ───────────────────────────────────────────────────────────────────
@@ -986,52 +874,179 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
   }
   detachLibraryPane(paneId);
 
-  const scope = effectScope();
-  const panel: ActiveLibraryPane = {
-    cache: createPreviewCache(),
-    observer: createPreviewObserver(() => {
-      /* Replaced immediately below — the observer needs the panel to exist first. */
-    }),
-    paneId,
-    pending: new WeakMap(),
-    pendingPaths: new Set(),
-    scope,
-    scroller: null,
-    slots: new Map(),
-    tabId: tab.id,
-    wrap: canvasWrap,
-  };
-  panel.observer.destroy();
-  panel.observer = createPreviewObserver((element) => {
-    const file = panel.pending.get(element);
-    if (file) {
-      panel.pending.delete(element);
-      void fillPreview(panel, file);
+  let panel: ActiveLibraryPane | null = null;
+  const observer = createPreviewObserver((element) => {
+    const live = panel;
+    if (!live) {
+      return;
+    }
+    const path = live.pending.get(element);
+    if (path !== undefined) {
+      live.pending.delete(element);
+      void fillPreview(live, path);
     }
   });
-  _active.set(paneId, panel);
 
-  const ctx: LayoutContext = {
-    columns: libraryColumns(),
-    contextMenu: (event, file) => showLibraryContextMenu(event, file),
-    mountPreview: (element, file) => {
-      if (PREVIEW_LAYOUTS.has(libraryView.layout)) {
-        mountPreview(panel, element, file);
+  const view = (): LibraryView => {
+    const current = librarySource();
+    const { layout } = libraryView;
+    const files = filterLibrary(current.files(), {
+      category: libraryView.category,
+      locale: libraryView.locale,
+      query: libraryView.query,
+    });
+    const total = current.files().length;
+    const kind = viewKind(current, files.length, total);
+    const range = windowFor(panel, layout, files.length);
+    const slice = files.slice(range.start, range.end);
+    const failures = current.failures();
+    const locales = libraryLocales(current.files());
+    const destination = uploadDirForCategory(libraryView.category);
+    /* Cards is the only layout that draws a live document render inside a card. A Media tile is a
+       thumbnail of an ASSET — `library-layouts.ts` says why — so it asks for the glyph instead. */
+    const live = kind === "cards";
+    const calendar = kind === "calendar" ? calendarView(files) : { groups: [], truncated: "" };
+
+    return {
+      bannerState: failures.length > 0 ? "shown" : "hidden",
+      bannerText:
+        failures.length === 0
+          ? ""
+          : `This list is incomplete — ${failures.length} ${
+              failures.length === 1 ? "directory" : "directories"
+            } could not be read (${failures[0]!.dir}${failures.length > 1 ? ", …" : ""}).`,
+      categories: LIBRARY_CATEGORIES.map((category) =>
+        chip(category.key, category.label, libraryView.category === category.key),
+      ),
+      columns:
+        kind === "table" ? libraryColumns().map((c) => ({ field: c.field, title: c.title })) : [],
+      dropActive: panel?.dropActive ? "true" : "false",
+      dropRegion: paneRegion(paneId, "library/dropZone"),
+      emptyDetail:
+        kind === "incomplete"
+          ? `${failures.length} ${
+              failures.length === 1 ? "directory" : "directories"
+            } could not be read, so this is not the same as an empty project.`
+          : kind === "nomatch"
+            ? `${total} file(s) in the project.`
+            : "",
+      emptyMessage: kind === "nomatch" ? noMatchMessage() : "",
+      groups: kind === "board" ? boardView(files) : calendar.groups,
+      layouts: LIBRARY_LAYOUTS.map((name) =>
+        chip(name, LIBRARY_LAYOUT_LABELS[name], libraryView.layout === name),
+      ),
+      localeOptions: [
+        { label: "All languages", value: "all" },
+        ...locales.map((tag) => ({ label: localeLabel(tag), value: tag })),
+      ],
+      /* The facet's options come from ALL scanned files, never from the filtered ones: a picker
+         whose choices collapse to the choice just made cannot be used to make another. One locale —
+         or none — means every file already agrees. */
+      localeState: locales.length < 2 ? "hidden" : "shown",
+      localeValue: libraryView.locale === "" ? "all" : libraryView.locale,
+      pad: `padding-top:${range.padTop}px;padding-bottom:${range.padBottom}px`,
+      padBottom: `height:${range.padBottom}px`,
+      padTop: `height:${range.padTop}px`,
+      query: libraryView.query,
+      region: paneRegion(paneId, "library"),
+      rows:
+        kind === "cards" || kind === "media" || kind === "table"
+          ? slice.map((file) => libraryRow(file, kind === "table" ? libraryColumns() : [], live))
+          : [],
+      truncated: calendar.truncated,
+      truncatedState: calendar.truncated === "" ? "hidden" : "shown",
+      uploadAccept: uploadAccept(),
+      uploadHint:
+        destination === undefined ? "Upload — asks for a folder" : `Upload into ${destination}/`,
+      view: kind,
+    };
+  };
+
+  const draw = () => {
+    if (panel !== null && activeIn(paneId) === panel) {
+      panel.surface.update(view());
+      scheduleSettle(panel);
+    }
+  };
+
+  const mounted = mountLibrarySurface(canvasWrap, view(), {
+    contextMenu: (path, x, y) => showLibraryContextMenu(path, x, y),
+    dragOut: () => {
+      if (panel && panel.dropActive) {
+        panel.dropActive = false;
+        draw();
+      }
+    },
+    dragOver: () => {
+      if (panel && !panel.dropActive) {
+        panel.dropActive = true;
+        draw();
+      }
+    },
+    drop: (files) => {
+      if (panel) {
+        panel.dropActive = false;
+      }
+      draw();
+      if (files?.length) {
+        void uploadIntoLibrary(files);
       }
     },
     openFile: (path) => {
       void openFileInTab(path);
     },
-  };
+    openNewMenu: (opener) => showLibraryNewMenu(opener),
+    previewSlot: (element, path) => {
+      if (panel) {
+        previewSlot(panel, element, path);
+      }
+    },
+    reset: () => {
+      setLibrarySearch("");
+      setLibraryCategory("all");
+      setLibraryLocale("");
+    },
+    retry: () => {
+      void refreshLibrary();
+    },
+    scrolled: () => bump(),
+    scroller: (element) => {
+      if (panel) {
+        panel.scroller = element;
+      }
+    },
+    search: (value) => setLibrarySearch(value),
+    setCategory: (key) => setLibraryCategory(key),
+    setLayout: (key) => setLibraryLayout(key as LibraryLayout),
+    setLocale: (value) => setLibraryLocale(value === "all" ? "" : value),
+    upload: (input) => {
+      const chosen = input.files;
+      // Cleared before the upload starts: a file input that keeps its value refuses the same file
+      // Twice, and the picker is this surface's own control rather than a node it found.
+      input.value = "";
+      if (chosen?.length) {
+        void uploadIntoLibrary(chosen);
+      }
+    },
+  });
 
-  const onScroller = (element: Element | undefined) => {
-    const next = (element as HTMLElement | undefined) ?? null;
-    if (next === panel.scroller) {
-      return;
-    }
-    panel.scroller = next;
-    next?.addEventListener("scroll", () => bump(), { passive: true });
+  const scope = effectScope();
+  panel = {
+    cache: createPreviewCache(),
+    dropActive: false,
+    observer,
+    paneId,
+    pending: new WeakMap(),
+    pendingPaths: new Set(),
+    scope,
+    scroller: null,
+    settleTimer: null,
+    slots: new Map(),
+    surface: mounted,
+    tabId: tab.id,
+    wrap: canvasWrap,
   };
+  _active.set(paneId, panel);
 
   scope.run(() => {
     effect(() => {
@@ -1046,54 +1061,7 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       void libraryView.locale;
       void libraryView.loading;
 
-      const current = librarySource();
-      const files = filterLibrary(current.files(), {
-        category: libraryView.category,
-        locale: libraryView.locale,
-        query: libraryView.query,
-      });
-      const total = current.files().length;
-
-      // The slot table describes the CURRENT window only; the `ref` callbacks below refill it as
-      // Lit commits, and a stale entry would hand a resolved preview to a detached node.
-      panel.slots.clear();
-
-      litRender(
-        html`
-          <div class="library" data-jx-region=${paneRegion(paneId, "library")}>
-            ${toolbarTpl(panel, current.files())} ${failureBannerTpl(current)}
-            <div
-              class="library-body"
-              data-jx-region=${paneRegion(paneId, "library/dropZone")}
-              ${ref(onScroller)}
-              @dragover=${(e: DragEvent) => {
-                e.preventDefault();
-                (e.currentTarget as HTMLElement).classList.add("library-drop-active");
-              }}
-              @dragleave=${(e: DragEvent) => {
-                (e.currentTarget as HTMLElement).classList.remove("library-drop-active");
-              }}
-              @drop=${(e: DragEvent) => {
-                e.preventDefault();
-                (e.currentTarget as HTMLElement).classList.remove("library-drop-active");
-                const dropped = e.dataTransfer?.files;
-                if (dropped?.length) {
-                  void uploadIntoLibrary(dropped);
-                }
-              }}
-            >
-              ${files.length === 0 ? emptyTpl(current, total) : bodyTpl(panel, files, ctx)}
-            </div>
-          </div>
-        `,
-        canvasWrap,
-      );
-
-      // Lit has committed, so every card outside the new window is now detached. Hand those
-      // Observations back HERE and nowhere else: this is the only moment the pane knows the window
-      // Has moved, and the intersect callback cannot be the only release path — a card flicked past
-      // Before it ever intersected is never reported, so it would be watched until the tab closed.
-      panel.observer.releaseDetached();
+      draw();
 
       if (!scanAttempted && !libraryView.loading) {
         void loadLibrary();

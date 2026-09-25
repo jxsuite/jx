@@ -5,11 +5,13 @@ code:
   - packages/studio/src/panels/chat-panel.ts
   - packages/studio/src/services/ai-ask.ts
   - packages/studio/src/services/ai-import-tools.ts
+  - packages/studio/src/services/ai-command-tools.ts
   - packages/studio/src/services/ai-system-prompt.ts
   - packages/studio/src/services/ai-settings.ts
   - packages/studio/src/services/tool-executor.ts
   - packages/studio/src/ui/ai-credentials-form.ts
   - packages/studio/src/ui/ai-managed-connect.ts
+  - packages/studio/src/surfaces/ai-managed-connect.ts
   - packages/studio/src/services/ai-models.ts
 ---
 
@@ -19,15 +21,21 @@ Studio has a built-in AI assistant: a chat panel that answers questions about yo
 
 ![The assistant open beside a page on the canvas, mid-conversation](../images/ai-sidebar.png)
 
-The assistant is the **fourth tab of the Inspector**, beside Content, Style and Logic. Show it with :kbd[⌘⇧4] (macOS) / :kbd[Ctrl+Shift+4] (Windows/Linux), or by clicking the tab. Because it shares the Inspector's width, showing it costs the canvas nothing. It's available in every state: before you open a project, with a project open, and with a page on the canvas. What the assistant can do grows with each of those.
+The assistant is the **fourth tab of the Inspector**, beside Content, Style and Logic. Show it with :kbd[⌘⇧4] (macOS) / :kbd[Ctrl+Shift+4] (Windows/Linux), or by clicking the tab. Because it shares the Inspector's width, showing it costs the canvas nothing. It's available in every state: before you open a project, with a project open, and with a page on the canvas. What the assistant can do grows with each of those. The tab's body is built the first time the tab is shown; anything aimed at it before that (a pending prompt from the New Project hand-off, an automated seed) is queued with the panel and appears the moment the tab is first picked.
 
 ## What it can do
 
-**With nothing open**, the assistant bootstraps. Describe a site and it creates a project for you: name, folders, starter pages, and a design quickstart (colors and fonts) derived from your description, then keeps building inside it. It will ask you where to put the project before creating anything. Tell it a folder (or, on the cloud, a GitHub account or organization). It can also clone a live site. Point it at a URL and it crawls the pages, extracts the styles and assets, finds the shared layout and the repeating components, and opens the project straight away, so the Files panel fills up in front of you while the crawl runs. It reports each phase as it goes, and stops to ask you about the judgement calls that are yours to make. The **[New Project](/docs/studio/projects/create)** dialog's **Agent** and **Import** tabs are these same two jobs as a form you fill in.
+**With nothing open**, the assistant bootstraps. Describe a site and it creates a project for you: name, folders, starter pages, and a design quickstart (colors and fonts) derived from your description, then keeps building inside it. It will ask you where to put the project before creating anything. Tell it a folder (or, on the cloud, a GitHub account or organization). It can also clone a live site. Point it at a URL and it crawls the pages, extracts the styles and assets, finds the shared layout and the repeating components, and opens the project. Where Studio runs against your own machine it opens straight away, so the Files panel fills up in front of you while the crawl runs; where the project is a repository being built for you, it opens once the import is committed, because there is nothing to look at until then. It reports each phase as it goes, and stops to ask you about the judgement calls that are yours to make. The **[New Project](/docs/studio/projects/create)** dialog's **Agent** and **Import** tabs are these same two jobs as a form you fill in.
 
-**With a project open**, the assistant works across files. It can list and read any project file, find files by name, create new pages and components, and rewrite files whole. Anything it writes as a Jx document is validated before it touches disk. It can also open a page on the canvas to continue there.
+**With a project open**, the assistant works across files. It can list and read any project file, find files by name, create new pages and components, and rewrite files whole. Anything it writes as a Jx document is validated before it touches disk. It can also open a page on the canvas to continue there: that is the same **Open Document** command you would run from the palette, so a path that does not exist is refused rather than reported as opened, and the assistant is told which document is now in front of you and whether it is one it can edit.
 
-**With a page on the canvas**, the assistant edits that page live: text, styles, element properties, adding, moving, and removing elements, and the page's state entries. This is the most precise mode, and the one you can watch and undo; see **[Document assistant](/docs/studio/ai/document-assistant)**.
+It also knows which extensions your project has turned on and which ones your setup can run, so a request that needs a capability Jx does not have on its own can be answered by turning one on rather than by hand-building it. Ask for a blog and it enables the content extension before writing your first collection. It installs the package and enables it in one step, the same way the **[Extensions](/docs/studio/projects/settings)** section does, and it tells you which it turned on. Installing is not undoable, and it will not uninstall anything without asking.
+
+Two more project-wide commands are the same ones you would run yourself. It can validate your redirect rules for chains, loops and rules a real page shadows, and what it finds is filed under Redirects in the Problems tab, exactly as the palette command files it. It can also declare a new language for the project: that writes `i18n.locales` in `project.json` and unlocks the translation surfaces for its next step. Asking for a language the project already declares changes nothing, and the assistant is told so. That holds for every project-wide command it runs: a change that leaves `project.json` exactly as it was is reported as having changed nothing, and it never counts toward the changed files the reply lists.
+
+**With a page on the canvas**, the assistant edits that page live: text, styles, element properties, adding, moving, and removing elements, and the page's state entries. This is the most precise mode, and the one you can watch and undo; see **[Document assistant](/docs/studio/ai/document-assistant)**. Removing and duplicating elements go through the same commands the Outline's rows use, so what is refused for you (the document root, a repeater's template, a switch case) is refused for it in the same words, and a batch removal is one undo step. It can also run the accessibility and popover checks on the open page for you and read back what they filed. If the page in front of you is in Code view, or the assistant switched it there, it can put the page back on the canvas with the same **Set Canvas Mode** command the pane's Editor picker runs, and it learns from the answer whether its editing tools reach the page again.
+
+Every command the assistant can run is listed in the **Assistant** column of the **[Commands](/docs/studio/interface/commands)** reference. A tool there is the command itself: it is offered exactly while the command is available to you, and a refusal reads the same sentence a greyed-out row shows.
 
 In every state it also answers questions ("what does this page's state do?", "which component renders the header?") by reading the same files you see.
 
@@ -41,11 +49,13 @@ Until AI is connected, the tab shows the chat as usual with one line beneath it 
 
 Jx Cloud, the hosted Studio, is in development. On it that section leads with **Connect Cloudflare**: Studio brokers **Workers AI** on your own Cloudflare account, so you need no API key and no third-party provider account. Click **Connect Cloudflare**, approve the authorization in the Cloudflare window that opens, and you land back in Studio with the assistant connected. Inference runs on your own Cloudflare account and bills to it; Jx only brokers the request.
 
+If your Cloudflare login covers more than one account, Studio cannot guess which one to bill, so it asks: a short list appears, you pick the account, and the assistant unlocks. If you close that list without choosing, the button reads **Choose Cloudflare account** and opens the same list again, rather than sending you back through the Cloudflare approval you already gave. You can change that choice later in **[Preferences](/docs/studio/interface/preferences)** › **Accounts**.
+
 This option appears only where a platform can run that hosted flow. The desktop app and the dev server show the key form alone.
 
 #### When the connection expires
 
-A Cloudflare authorization does not last forever. When yours lapses, the same place in Preferences says so and the button reads **Reconnect Cloudflare**. One click through the same approval screen and the assistant works again. Nothing else about the project changes, and your model choice is remembered.
+A Cloudflare authorization does not last forever. When yours lapses, the same place in Preferences says so and the button reads **Reconnect Cloudflare**. One click through the same approval screen and the assistant works again. Nothing else about the project changes, and your model choice is remembered. If a session goes stale while you are working, the first request that hits the lapsed grant flips the panel back to **Reconnect Cloudflare** rather than leaving you with an assistant that quietly stops answering.
 
 :::doc-note
 If Cloudflare itself is briefly unreachable, Studio does **not** ask you to reconnect, because reconnecting would not help. The assistant reports the provider as unavailable and keeps the connection you already have.
@@ -57,13 +67,21 @@ Below the Cloudflare option (or on its own, everywhere else) is the **AI provide
 
 1. Paste an API key. Any OpenAI-compatible key works: OpenAI itself, a compatible hosted provider, or a local model server.
 2. Optionally set an **Endpoint**. Leave it empty for OpenAI, or point it at a compatible server such as a local LLM (for example `http://localhost:11434/v1`).
-3. Pick a **Model**. Click **Fetch models** to list what your key can use, or type a model ID directly. Leave it empty to use your provider's own default.
+3. Pick a **Model**. Click **Fetch models** to list what your key can use under the field, then open the list and choose one, or type a model ID directly: anything you type is accepted, whether or not the list has it, and if it does the list opens on your row. Leave it empty to use your provider's own default.
 4. Click **Save**. The form keeps showing what it saved, so you can see the endpoint it kept and the model it recorded.
 
 To change any of this later, click the gear button (**API key & endpoint**) at the bottom of the tab. It reopens **Preferences › Assistant**. You can also switch models per conversation with the model picker next to the message box.
 
 :::doc-tip
 Fetch models tests the key and endpoint **currently in the form**, not the ones already saved, so you can paste a new key and check it lists what you expect before saving it.
+:::
+
+:::doc-note
+**Cloudflare Workers AI**, used directly rather than through **Connect Cloudflare** above (for example from the desktop app or a dev server, where that managed option does not appear): set the endpoint to `https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1`, ending in `/v1` with nothing appended, and the key to a Cloudflare API token scoped to Workers AI. **Fetch models will not list anything**: Cloudflare's OpenAI-compatible surface has no models-listing route, only chat completions and embeddings. Type the model ID directly instead, for example `@cf/zai-org/glm-5.3-flash`.
+:::
+
+:::doc-note
+**Reasoning models work.** When a model streams its thinking beside its answer, Studio keeps that thinking with the turn and hands it back to the provider on the next round, which providers like DeepSeek require once the assistant starts calling tools. You never see it in the chat; it is part of what the model is owed, not part of the reply.
 :::
 
 :::doc-note
@@ -94,3 +112,5 @@ Requests travel through Studio's own local proxy straight to the endpoint you co
 - Create a project for the assistant to work in: **[New Project](/docs/studio/projects/create)**
 - The state entries it can add for you are explained in the **[Data panel](/docs/studio/logic/data)**
 - Working the same project from outside Studio, with a coding agent or in CI: **[Working with agents](/docs/framework/agents)**
+  - packages/studio/src/surfaces/ai-credentials-form.ts
+  - packages/studio/src/surfaces/ai-model-picker.ts

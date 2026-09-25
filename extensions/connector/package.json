@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/connector",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "description": "Jx database connections and dynamic data tables served over /_jx/data",
   "license": "MIT",
   "repository": {
@@ -58,15 +58,15 @@
   },
   "dependencies": {
     "@jxsuite/schema": "workspace:^",
-    "kysely": "^0.29.5",
+    "kysely": "^0.29.6",
     "kysely-d1": "^0.4.0",
-    "kysely-postgres-js": "^4.0.0",
+    "kysely-postgres-js": "^5.0.0",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260826.1",
+    "@cloudflare/workers-types": "^5.20260922.1",
     "ajv": "^8.20.0",
-    "hono": "^4.13.5"
+    "hono": "^4.13.9"
   },
   "jx": "./jx-extension.json"
 }

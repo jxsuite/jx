@@ -1,0 +1,497 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelProblems",
+  "$description": "The Bottom dock's Problems tab: everything that must be fixed, listed until it is. The adapter hands in one projection per row — its severity glyph, its message, the file it names, the captured log, and, where a recovery command exists, that command's own title and gate — grouped under the source that raised them in first-seen order. Nothing here reads the notification store or the command registry; a row asks the host to open, to run, or to dismiss, by the id it was given.",
+  "tagName": "div",
+  "attributes": {
+    "part": "panel"
+  },
+  "style": {
+    "$description": "What `.problems-panel`, `.problems-clear`, `.problem-group`, `.problem-group-title`, `.problem-list`, `.problem-row`, `.problem-icon`, `.problem-body`, `.problem-message`, `.problem-path`, `.problem-detail`, `.problem-action` and `.problem-dismiss` said in `styles/panels.css`, keyed on `part` and re-pointed at the studio token layer. Six of those rules are SHARED SELECTORS — `.problems-clear, .activity-clear` and five `.problem-*, .activity-*` pairs — so this document carries its own copy rather than moving one: the `.problem-*` half of each pair is dead the moment this lands, and the stylesheet rule itself can only go when the Activity panel has moved too. Nothing is deleted from `styles/panels.css` here. Three token names could not come with the declarations: `var(--spectrum-font-size-50, 11px)` (the Clear button, the group heading, the path and the log), `var(--spectrum-font-size-75, 12px)` (the row) and `var(--spectrum-corner-radius-75, 2px)` (three rules). Every one of them resolves only inside `<sp-theme>`, and a document mounted in the dock body would have taken the hard-coded fallback every time, so they are the kit's `--jx-text-sm`, `--jx-text-md` and `--jx-radius-xs` instead.",
+    "display": "flex",
+    "flexDirection": "column",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3)"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "justifyContent": "flex-end"
+    },
+    "& [part=\"clear\"] > [part=\"control\"]": {
+      "$description": "Bordered but unfilled, and dimmed until it is wanted: emptying the list is the one destructive control on this surface and it sits above rows the reader has not finished reading yet.",
+      "padding": "0 var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      ":hover": {
+        "color": "var(--fg)",
+        "background": "var(--hover-bg)"
+      }
+    },
+    "& [part=\"group\"]": {
+      "$description": "One source's rows, under its heading. A section rather than a run of rows so the heading and the problems it names cannot be separated by a scroll position.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0 0 var(--jx-space-1)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.04em"
+    },
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-3)",
+      "padding": "6px var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderLeft": "3px solid var(--fg-dim)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"row\"][data-severity=\"success\"]": {
+      "borderLeftColor": "var(--success)"
+    },
+    "& [part=\"row\"][data-severity=\"info\"]": {
+      "borderLeftColor": "var(--accent)"
+    },
+    "& [part=\"row\"][data-severity=\"warn\"]": {
+      "borderLeftColor": "var(--warning)"
+    },
+    "& [part=\"row\"][data-severity=\"error\"]": {
+      "borderLeftColor": "var(--danger)"
+    },
+    "& [part=\"row\"] > [part=\"icon\"]": {
+      "$description": "The severity, twice: as the glyph and as the row's left edge. Colour is never the only encoding here, which is what keeps the row readable in the forced-colours block below, where every author colour is replaced by the user's palette.",
+      "flex": "none",
+      "width": "14px",
+      "textAlign": "center",
+      "fontWeight": "700",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"row\"][data-severity=\"success\"] > [part=\"icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"row\"][data-severity=\"info\"] > [part=\"icon\"]": {
+      "color": "var(--accent)"
+    },
+    "& [part=\"row\"][data-severity=\"warn\"] > [part=\"icon\"]": {
+      "color": "var(--warning)"
+    },
+    "& [part=\"row\"][data-severity=\"error\"] > [part=\"icon\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"row-body\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"message\"]": {
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"file-path\"]": {
+      "$description": "The path is a control, not a label: it opens the file the problem is about, which is the click-through §7.1 asks for. Underlined on hover only — a permanently underlined path in a dense list reads as a paragraph of links. A plain button rather than a `jx-button`, for the reason the status bar's items are: what it has to look like is a line of text, and every fill, border and control height the kit draws would have to be taken back off again. Named `file-path` and not `path` because `jx-icon` puts `part=\"path\"` on the `<path>` of every glyph it draws, so `[part=\"path\"]` inside a row selects this button and both SVG paths beside it — a styling rule that reaches into the kit's own drawing, and a test or a devtools query that cannot tell them apart.",
+      "alignSelf": "flex-start",
+      "maxWidth": "100%",
+      "overflow": "hidden",
+      "margin": "0",
+      "padding": "0",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "none",
+      "color": "var(--accent)",
+      "font": "inherit",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "textAlign": "left",
+      "cursor": "pointer",
+      ":hover": {
+        "textDecoration": "underline"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    },
+    "& [part=\"detail\"]": {
+      "$description": "The captured log the progress modal used to own. It scrolls inside the row rather than growing it, so one 400-line `bun install` failure does not become the whole panel.",
+      "maxHeight": "180px",
+      "margin": "var(--jx-space-1) 0 0",
+      "padding": "6px",
+      "overflow": "auto",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--bg)",
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "whiteSpace": "pre-wrap"
+    },
+    "& [part=\"action\"]": {
+      "flex": "none"
+    },
+    "& [part=\"action\"] > [part=\"control\"]": {
+      "$description": "The recovery button wears the command's own title, so it is read as a verb and not as a decoration: the accent says it acts, and a refused command is dimmed with the reason it names in its tooltip.",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "var(--accent)",
+      ":hover:not(:disabled)": {
+        "background": "var(--hover-bg)"
+      },
+      ":disabled": {
+        "color": "var(--fg-dim)"
+      }
+    },
+    "& [part=\"dismiss\"]": {
+      "flex": "none"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template, and a document cannot call one. What is kept is the pattern's rules (§11) — one sentence saying what the region is FOR, then where its content comes from. It offers no action, because the action that fills this region is a failure and nothing here should invite one.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-6)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)",
+      "fontSize": "13px"
+    },
+    "& [part=\"empty-message\"], & [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-detail\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "opacity": "0.8"
+    },
+    "@(forced-colors: active)": {
+      "& [part=\"row\"]": {
+        "$description": "The severity bar, redrawn. In forced colours every author colour is replaced by one from the user's palette, so the four left-edge colours collapse into one and the row loses the marker `styles/forced-colors.css` restored for `.problem-row` while this surface was lit.",
+        "borderLeft": "2px solid Highlight"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasProblems"
+      },
+      "cases": {
+        "false": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Nothing needs fixing."
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-detail"
+              },
+              "textContent": "Failed writes, validation errors and render failures are listed here until fixed."
+            }
+          ]
+        },
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "body"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "actions"
+              },
+              "children": [
+                {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "size": "sm"
+                  },
+                  "attributes": {
+                    "part": "clear"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/clearAll"
+                        }
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.clearLabel}"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/groups"
+              },
+              "key": {
+                "$ref": "$map/item/source"
+              },
+              "map": {
+                "tagName": "section",
+                "attributes": {
+                  "part": "group",
+                  "data-source": "${$map.item.source}"
+                },
+                "children": [
+                  {
+                    "tagName": "h3",
+                    "attributes": {
+                      "part": "group-title"
+                    },
+                    "textContent": "${$map.item.source}"
+                  },
+                  {
+                    "tagName": "ul",
+                    "attributes": {
+                      "part": "list"
+                    },
+                    "children": [
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/rows"
+                        },
+                        "key": {
+                          "$ref": "$map/item/id"
+                        },
+                        "map": {
+                          "tagName": "li",
+                          "attributes": {
+                            "part": "row",
+                            "data-severity": "${$map.item.severity}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "icon",
+                                "aria-hidden": "true"
+                              },
+                              "textContent": "${$map.item.icon}"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "row-body"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "message"
+                                  },
+                                  "textContent": "${$map.item.message}"
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "file-path-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "$map/item/hasPath"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "button",
+                                      "attributes": {
+                                        "part": "file-path",
+                                        "type": "button",
+                                        "title": "${$map.item.pathTitle}"
+                                      },
+                                      "textContent": "${$map.item.path}",
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/openPath"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/path"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "detail-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "$map/item/hasDetail"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "pre",
+                                      "attributes": {
+                                        "part": "detail"
+                                      },
+                                      "textContent": "${$map.item.detail}"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "action-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/hasAction"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "jx-button",
+                                  "$props": {
+                                    "size": "sm",
+                                    "disabled": {
+                                      "$ref": "$map/item/actionDisabled"
+                                    }
+                                  },
+                                  "attributes": {
+                                    "part": "action",
+                                    "title": "${$map.item.actionTitle}"
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/runAction"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/id"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "textContent": "${$map.item.actionLabel}"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "jx-action-button",
+                              "$props": {
+                                "size": "sm",
+                                "icon": "x",
+                                "hint": "Dismiss",
+                                "label": {
+                                  "$ref": "$map/item/dismissLabel"
+                                }
+                              },
+                              "attributes": {
+                                "part": "dismiss"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/dismissRow"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

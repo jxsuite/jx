@@ -200,6 +200,23 @@ const structurallyEditable = (ctx: CommandContext) =>
   !ctx.selection.isRoot && ctx.selection.paths.every((path) => isSpliceablePath(path));
 
 /**
+ * The one sentence for {@link structurallyEditable}, read by Delete and Duplicate both.
+ *
+ * It names the gate the predicate actually has (§12.4's corollary): the old sentences said "not the
+ * document root" and "has a sibling position" for a gate that also refuses a repeater's template
+ * and a `$switch` case, which sent a reader who had selected a template looking for a root. Two
+ * records with one predicate carry one sentence, because the tooltip, the palette subtitle and the
+ * assistant's refusal are all this string.
+ */
+const SPLICEABLE_SELECTION =
+  "an element selected on the canvas that has a sibling position: not the document root, a " +
+  "repeater's template or a switch case";
+
+/** `[children, 0] and [children, 2]` — how a report names the paths it acted on. */
+const describePaths = (paths: readonly (readonly (string | number)[])[]) =>
+  paths.map((path) => `[${path.join(", ")}]`).join(" and ");
+
+/**
  * The default command set.
  *
  * Order is the order surfaces iterate in, so it is the order these read in the palette and in the
@@ -213,7 +230,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       title: "Save",
       category: "File",
       level: "document",
-      icon: "save",
+      icon: "floppy-disk",
       keybinding: "mod+s",
       menus: ["commandbar/primary", "statusbar/document", "palette"],
       group: "1_file",
@@ -239,7 +256,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       title: "Open in Browser",
       category: "View",
       level: "document",
-      icon: "browser",
+      icon: "arrow-square-out",
       keybinding: "mod+shift+o",
       menus: ["commandbar/primary", "statusbar/document", "palette"],
       group: "2_output",
@@ -281,7 +298,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       title: "Undo",
       category: "Edit",
       level: "document",
-      icon: "undo",
+      icon: "arrow-u-up-left",
       keybinding: "mod+z",
       menus: ["commandbar/primary", "palette"],
       group: "1_history",
@@ -295,7 +312,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       title: "Redo",
       category: "Edit",
       level: "document",
-      icon: "redo",
+      icon: "arrow-u-up-right",
       keybinding: ["mod+shift+z", "mod+y"],
       menus: ["commandbar/primary", "palette"],
       group: "1_history",
@@ -325,10 +342,18 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       // Document. Both surfaces that render this record had to hand-guard it before the record
       // Said so.
       enablement: structurallyEditable,
-      requires: "an element that has a sibling position",
+      requires: SPLICEABLE_SELECTION,
       aiTool: {
         name: "duplicate_node",
-        description: "Duplicate the currently selected element, inserting the copy after it.",
+        description:
+          "Duplicate elements in the document, inserting each copy after its original, as one " +
+          "undoable step. The copies become the selection.",
+        /* `mutateDuplicateNodes` selects the clones, so `after.selection.paths` IS the answer to
+           "where are the copies" — the same read the Inspector makes to address them. */
+        report: ({ after }) => {
+          const n = after.selection.paths.length;
+          return `Duplicated ${n} element${n === 1 ? "" : "s"}; the ${n === 1 ? "copy is" : "copies are"} selected at ${describePaths(after.selection.paths)}.`;
+        },
       },
       run: () => deps.duplicateSelection(),
     },
@@ -347,13 +372,12 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       // Already — its content is the single `map` template, not a child list.
       enablement: (ctx) => structurallyEditable(ctx) && !ctx.selection.isRepeater,
       requires: "an element with a sibling position that is not already a repeater",
-      aiTool: {
-        name: "repeat_node",
-        description:
-          "Turn the selected element into a repeater template, rendering it once per item of a " +
-          "data collection the author picks in the dialog this opens.",
-      },
       /*
+       * No `aiTool`, by §12.4's second deletion rule: `run` waits on a person. The dialog picks the
+       * collection, and a projected call would suspend the agent's turn on it while the loop counts
+       * the round as work; a cancel returns nothing a report could describe. A record with a
+       * `collection` argument that skips the dialog would be the way back in, and is a UX call.
+       *
        * The one record here whose implementation is not injected, and the reason is a property of
        * the implementation rather than of this record: `convertToRepeater()` is self-contained —
        * it reads the active tab, opens its own dialog and commits its own transaction — so there
@@ -391,10 +415,16 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       // Refused by the same gate, and refusing the whole batch is why a mixed selection can no
       // Longer half-apply.
       enablement: structurallyEditable,
-      requires: "an element selection that is not the document root",
+      requires: SPLICEABLE_SELECTION,
       aiTool: {
         name: "delete_node",
-        description: "Delete the currently selected element from the document.",
+        description: "Delete elements from the document as one undoable step.",
+        /* `before` is the context after the bridge's selector step, so its paths are what was
+           deleted; `after.selection` is what `mutateRemoveNode`'s repair left. */
+        report: ({ before, after }) => {
+          const n = before.selection.paths.length;
+          return `Deleted ${n} element${n === 1 ? "" : "s"} at ${describePaths(before.selection.paths)} in one undo step; the selection is now ${after.selection.count === 0 ? "empty" : "elsewhere"}.`;
+        },
       },
       run: () => deps.deleteSelection(),
     },

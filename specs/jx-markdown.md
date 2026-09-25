@@ -1,8 +1,8 @@
 # Jx Markdown Specification
 
-**Version:** 0.1.9-draft
-**Status:** Partial
-**Updated:** 2026-08-27
+**Version:** 0.1.10-draft\
+**Status:** Partial\
+**Updated:** 2026-08-31\
 **License:** MIT
 
 ---
@@ -206,11 +206,7 @@ This expands to:
 
 ### 6.5 Prototype Directives (`:::Array`)
 
-An array pseudo-element (repeater) has no `tagName`, so it serializes as a directive **named after
-its `$prototype`** — e.g. `:::Array`. The directive's attributes carry `items`/`filter`/`sort`
-(dot-path encoded), and its nested block content is the `map` template. On parse, the synthetic
-tagName is dropped and `$prototype` is restored. Because it is an ordinary block directive, a
-repeater can sit among sibling blocks:
+An array pseudo-element (repeater) has no `tagName`, so it serializes as a directive **named after its `$prototype`** — e.g. `:::Array`. The directive's attributes carry `items`/`filter`/`sort` (dot-path encoded), and its nested block content is the `map` template. On parse, the synthetic tagName is dropped and `$prototype` is restored. Because it is an ordinary block directive, a repeater can sit among sibling blocks:
 
 ```markdown
 # Recent posts
@@ -230,9 +226,7 @@ Expands to:
 }
 ```
 
-This is the canonical, round-trippable encoding. The older dot-path form
-(`children.prototype="Array" …` on the parent directive) is still accepted on parse for backward
-compatibility.
+This is the canonical, round-trippable encoding. The older dot-path form (`children.prototype="Array" …` on the parent directive) is still accepted on parse for backward compatibility.
 
 ### 6.6 HTML Attributes
 
@@ -317,7 +311,11 @@ Produces:
 }
 ```
 
-Recognized pseudo-class names: `hover`, `focus`, `active`, `visited`, `disabled`, `checked`, `valid`, `invalid`, `required`, `empty`, `first-child`, `last-child`, `focus-within`, `focus-visible`, `placeholder`, `selection`, `before`, `after`.
+Recognized pseudo-CLASS names: `hover`, `focus`, `active`, `visited`, `disabled`, `checked`, `valid`, `invalid`, `required`, `empty`, `first-child`, `last-child`, `focus-within`, `focus-visible`, `placeholder`, `selection`, `before`, `after`, `popover-open`, `open`, `modal`.
+
+Recognized pseudo-ELEMENT names, which take **two** colons: `backdrop`. A separate set because the prefix differs, not because the concept does; `before` and `after` keep their one-colon spelling, which CSS still accepts and which every existing `.md` component is written with.
+
+An unrecognized name is left unprefixed and is then read as a descendant TYPE selector — `style.popover-open.opacity=1` emitted `#panel popover-open { opacity: 1 }`, a rule matching nothing with nothing to say so. That is why the overlay states had to be named here: without them a popover authored in a `.md` component could not be styled open at all.
 
 ### 7.4 Media Queries in Style Attributes
 
@@ -370,16 +368,7 @@ Standard markdown nodes map to Jx elements:
 | `---`          | `hr`                                         |
 | Table          | `table` > `thead`/`tbody` > `tr` > `th`/`td` |
 
-Fenced code with a known language tag is syntax-highlighted at compile time in the node-side
-markdown path (`processMarkdown`): the `code` element's text is replaced by token `span`
-children, each carrying its light and dark colors as `--shiki-light` / `--shiki-dark` CSS
-custom properties, and the `code` element gains a `shiki` class alongside `language-<lang>`.
-The page stylesheet chooses which variable paints (typically via the color-scheme contract,
-spec.md §9.5). Grammars: json, typescript, javascript, markdown, html, shellscript, css, yaml
-(plus their registered aliases — `ts`, `js`, `bash`, `sh`, `md`, `yml`, …). Unknown languages
-and bare fences keep plain `textContent`. The browser-safe transpile module
-(`@jxsuite/parser/transpile`) never highlights — Studio and other browser callers see plain
-fences.
+Fenced code with a known language tag is syntax-highlighted at compile time in the node-side markdown path (`processMarkdown`): the `code` element's text is replaced by token `span` children, each carrying its light and dark colors as `--shiki-light` / `--shiki-dark` CSS custom properties, and the `code` element gains a `shiki` class alongside `language-<lang>`. The page stylesheet chooses which variable paints (typically via the color-scheme contract, spec.md §9.5). Grammars: json, typescript, javascript, markdown, html, shellscript, css, yaml (plus their registered aliases — `ts`, `js`, `bash`, `sh`, `md`, `yml`, …). Unknown languages and bare fences keep plain `textContent`. The browser-safe transpile module (`@jxsuite/parser/transpile`) never highlights — Studio and other browser callers see plain fences.
 
 ## 10. Limitations
 
@@ -446,6 +435,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.10-draft** (2026-08-31) — popover-open, open and modal are recognized pseudo-classes; backdrop is a pseudo-element taking two colons.
 - **0.1.9-draft** (2026-08-27) — 12.8: roundtrip serialization is lossless where expressible, not total.
 - **0.1.8-draft** (2026-08-15) — Number the sections so they are addressable, and add §13 Standards Alignment.
 - **0.1.7-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).

@@ -1,0 +1,281 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioEntryEditor",
+  "$description": "The Entry editor (§7.4) — one content entry's fields, in a pane, as a Jx document over the kit. The adapter (`surfaces/entry-editor.ts`) hands in a projection; `content/entry-editor.ts` decides everything in it — which collection the file belongs to, which record its fields live in, which required keys are absent and what a draft flag commits into. The FORM is an island: a schema is `ui/schema-form.ts`'s subject, so this document renders an empty `fields` node and the flow places the element that engine hands back (studio-ui-guidelines.md §9.3, §9.4). That is the whole of the difference between this and the card the lit version drew, and it is why the engine converting in batch 7 is what unblocked this one.",
+  "tagName": "div",
+  "attributes": {
+    "part": "entry",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "What `.entry-editor`, `.entry-editor-header`, `.entry-editor-collection`, `.entry-draft-switch`, `.entry-editor-fields`, `.entry-editor-note` and `.entry-editor-empty` said in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer. This editor was the only emitter of all seven, so those rules are dead in the stylesheet from here; a central sweep removes them rather than this change, which owns no stylesheet. Every `--spectrum-font-size-*` reference is gone rather than renamed: those names resolve only inside `<sp-theme>`, and a pane editor is mounted outside it, so each would silently have taken its hard-coded fallback.",
+    "height": "100%",
+    "padding": "var(--jx-space-5)",
+    "overflowY": "auto",
+    "background": "var(--bg-panel)",
+    "& [part=\"header\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "marginBottom": "var(--jx-space-5)"
+    },
+    "& [part=\"name\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"collection\"]": {
+      "padding": "1px var(--jx-space-3)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"draft\"]": {
+      "$description": "Pushed to the far end of the header rather than placed there: the heading and the collection chip are both content-width, so `margin-left: auto` is what keeps the switch on the right edge whatever the entry is called.",
+      "marginLeft": "auto"
+    },
+    "& [part=\"fields\"]": {
+      "$description": "The schema form's host is `display: contents`, so its rows are the flex items of THIS box — which is why the column lives here and not inside the engine.",
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& [part=\"note\"]": {
+      "margin": "0 0 var(--jx-space-4)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty\"]": {
+      "display": "flex",
+      "maxWidth": "46ch",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-3)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "1.5"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "stage-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/stage"
+      },
+      "cases": {
+        "entry": {
+          "tagName": "div",
+          "attributes": {
+            "part": "body",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "header"
+              },
+              "children": [
+                {
+                  "tagName": "h3",
+                  "attributes": {
+                    "part": "name"
+                  },
+                  "textContent": "${state.name}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "collection"
+                  },
+                  "textContent": "${state.collection}"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "draft-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/draftAxis"
+                  },
+                  "cases": {
+                    "shown": {
+                      "$description": "No `label`: the slotted word is on screen and carries the name, so an aria-label would be read twice. The tooltip is `hint`, which is what DRAFT_MEANING has always been.",
+                      "tagName": "jx-switch",
+                      "attributes": {
+                        "part": "draft"
+                      },
+                      "$props": {
+                        "checked": {
+                          "$ref": "#/state/draft"
+                        },
+                        "hint": "${state.draftHint}",
+                        "size": "sm"
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setDraft"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/checked"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Draft"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "note-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/noteState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "${state.note}"
+                }
+              }
+            },
+            {
+              "$description": "An island: `ui/schema-form.ts` draws this entry's fields into this node, and nothing in this document knows what a schema is.",
+              "tagName": "div",
+              "attributes": {
+                "part": "fields",
+                "data-jx-region": "${state.fieldsRegion}"
+              }
+            }
+          ]
+        },
+        "empty": {
+          "$description": "The mode is reachable from the palette and from `__jxAutomation` on any tab, so this state is real: it names the reason and the fix rather than drawing an empty form.",
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-line"
+              },
+              "textContent": "${state.emptyLine}"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "A collection is a "
+                },
+                {
+                  "tagName": "code",
+                  "textContent": "content"
+                },
+                {
+                  "tagName": "span",
+                  "textContent": " entry in "
+                },
+                {
+                  "tagName": "code",
+                  "textContent": "project.json"
+                },
+                {
+                  "tagName": "span",
+                  "textContent": " whose "
+                },
+                {
+                  "tagName": "code",
+                  "textContent": "source"
+                },
+                {
+                  "tagName": "span",
+                  "textContent": " directory contains this file and which declares a "
+                },
+                {
+                  "tagName": "code",
+                  "textContent": "schema"
+                },
+                {
+                  "tagName": "span",
+                  "textContent": "."
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "content-types"
+              },
+              "$props": {
+                "label": "Content types",
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openContentTypes"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Content types…"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

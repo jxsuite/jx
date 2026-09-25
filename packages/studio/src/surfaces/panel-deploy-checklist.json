@@ -1,0 +1,283 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelDeployChecklist",
+  "$description": "The deploy checklist, drawn above the Activity feed in the Bottom dock's Activity tab: what is MISSING before this project can ship, as one row with the chain of prerequisites under it. `publish/deploy-checklist.ts` owns the chain — which link is forged, which is merely unasked, and which command forges the next one — and hands this document a row, four steps and at most one action. Nothing here reads source control, the project config or the command registry. It draws in the Activity tab's own vocabulary because a deploy is an ordered list of stages that finish, which is exactly what a row of that feed already is; a fifth visual idiom for it would be a second design of a thing the tab has.",
+  "tagName": "div",
+  "attributes": {
+    "part": "checklist"
+  },
+  "style": {
+    "$description": "What `.activity-list`, `.activity-row`, `.activity-row--running`, `.activity-row--done`, `.activity-icon`, `.activity-body`, `.activity-head`, `.activity-title`, `.activity-source`, `.activity-status`, `.activity-steps`, `.activity-step`, `.activity-step--done` and `.activity-step-icon` said in `styles/panels.css`, keyed on `part`. This is the LAST reader of those rules — `surfaces/panel-activity.json` carried its own copy when the feed converted, and left the stylesheet standing because this file still drew from it — so the whole `.problem-*, .activity-*` block is dead once this lands. Three token names could not travel: `--spectrum-font-size-50`, `--spectrum-font-size-75` and `--spectrum-corner-radius-75` resolve only inside `<sp-theme>`, and a document mounted into the dock body is outside it, so each would silently have taken its hard-coded px fallback. They are the kit's own scale here. One thing changed meaning on purpose: the step's `data-state` is the checklist's own three-valued state rather than the two CSS classes it used to collapse into, so `unknown` — \"nobody has asked\" — is a state the styling can tell apart from `todo` the day it should.",
+    "display": "block",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"row\"]": {
+      "$description": "The left border is the state, at 3px, which is the one thing that must be legible without reading the row. Its default is the dim foreground so a state nobody has a colour for still draws a border rather than a gap.",
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-2)",
+      "padding": "6px var(--jx-space-2)",
+      "border": "1px solid var(--border)",
+      "borderLeft": "3px solid var(--fg-dim)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"row\"][data-state=\"running\"]": {
+      "borderLeftColor": "var(--accent)"
+    },
+    "& [part=\"row\"][data-state=\"done\"]": {
+      "borderLeftColor": "var(--success)"
+    },
+    "& [part=\"state-icon\"]": {
+      "$description": "Named `state-icon` rather than `icon`: `jx-button` puts `part=\"icon\"` on the glyph slot of every button it draws, and the action button below is inside this same light-DOM tree — a rule on the bare name would reach into the kit's own drawing and a devtools query could not tell the two apart.",
+      "flex": "none",
+      "width": "14px",
+      "textAlign": "center",
+      "fontWeight": "700",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"row\"][data-state=\"running\"] > [part=\"state-icon\"]": {
+      "color": "var(--accent)"
+    },
+    "& [part=\"row\"][data-state=\"done\"] > [part=\"state-icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"row-body\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "2px"
+    },
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "alignSelf": "stretch",
+      "minWidth": "0"
+    },
+    "& [part=\"row-title\"]": {
+      "fontWeight": "700",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"source\"]": {
+      "$description": "Pushed to the far edge, so the tab reads as a column of who raised what.",
+      "flex": "none",
+      "marginLeft": "auto",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"summary\"]": {
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"steps\"]": {
+      "$description": "The chain, declared up front, so \"which link is missing\" is answered by looking rather than by reading the summary and remembering what came before it.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "1px",
+      "margin": "2px 0 0",
+      "padding": "0",
+      "listStyle": "none",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"step\"]": {
+      "display": "flex",
+      "gap": "6px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"step\"][data-state=\"done\"] > [part=\"step-icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"step-icon\"]": {
+      "flex": "none",
+      "width": "10px",
+      "textAlign": "center"
+    },
+    "& [part=\"action\"]": {
+      "marginTop": "var(--jx-space-1)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasProject"
+      },
+      "cases": {
+        "true": {
+          "tagName": "ul",
+          "attributes": {
+            "part": "list"
+          },
+          "children": [
+            {
+              "tagName": "li",
+              "attributes": {
+                "part": "row",
+                "data-state": "${state.rowState}"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "state-icon",
+                    "aria-hidden": "true"
+                  },
+                  "textContent": "${state.rowIcon}"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "row-body"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "head"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "row-title"
+                          },
+                          "textContent": "Deploy checklist"
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "source"
+                          },
+                          "textContent": "Publish"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "summary"
+                      },
+                      "textContent": "${state.summary}"
+                    },
+                    {
+                      "tagName": "ol",
+                      "attributes": {
+                        "part": "steps"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/steps"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "li",
+                            "attributes": {
+                              "part": "step",
+                              "data-step": "${$map.item.id}",
+                              "data-state": "${$map.item.state}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "step-icon",
+                                  "aria-hidden": "true"
+                                },
+                                "textContent": "${$map.item.icon}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "step-text"
+                                },
+                                "textContent": "${$map.item.text}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "action-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasAction"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-button",
+                          "$description": "The recovery button wears the command's own title, so it reads as a verb rather than as a decoration, and a refused command is dimmed with the reason it names in its tooltip. A command the registry does not have, or whose `when` is false, draws NOTHING rather than a dead label — a surface may choose whether to show a command, never whether it exists (§12.4).",
+                          "$props": {
+                            "size": "sm",
+                            "disabled": {
+                              "$ref": "#/state/actionDisabled"
+                            }
+                          },
+                          "attributes": {
+                            "part": "action",
+                            "title": "${state.actionTitle}"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/runAction"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${state.actionLabel}"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

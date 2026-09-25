@@ -1,0 +1,154 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioBottomDock",
+  "$description": "⑪ The Bottom dock's chrome as a Jx document over the kit: a real `tablist` of the dock's tabs, the button that shuts it, and ONE `tabpanel` for whichever tab is showing. Every tab names that one panel — the dock draws the selected tab's body and no other, so there is exactly one panel element and its `aria-labelledby` follows the selection, which is the same shape `surfaces/git-panel.json` uses for its two sub-tabs. It draws no tab BODY: `panels/bottom-dock.ts` keeps the panel registry, the `when` filter, the badge in each tab's label, the Logic reveal and every tab's `afterRender`, and renders the active record into the one empty `[part=\"dock-body\"]` island this document leaves for it (studio-ui-guidelines.md §9.4).",
+  "tagName": "div",
+  "attributes": {
+    "part": "bottom-dock"
+  },
+  "style": {
+    "$description": "`styles/shell.css`'s four `.bd-*` rules, keyed on `part` and carried here — plus the flex column `#bottom-dock` itself was, because the document root is now the box between the shell cell and the strip and a column that stopped one level up would leave the body unable to scroll. Two rules are DELETED rather than moved: the close button's own padding, radius, hover fill and pointer are `jx-action-button`, and the strip's selected-tab underline is `jx-tab`.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"strip\"]": {
+      "display": "flex",
+      "flexShrink": "0",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)",
+      "padding": "0 var(--jx-space-1)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"tabs\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "border": "0",
+      "overflowX": "auto",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"close\"]": {
+      "flexShrink": "0"
+    },
+    "& [part=\"panel\"]": {
+      "$description": "The one scrolling region. `min-height: 0` because a flex item's auto minimum is its content, which would push the dock past its own track instead of scrolling inside it.",
+      "flex": "1",
+      "minHeight": "0",
+      "padding": "0",
+      "overflowY": "auto"
+    },
+    "& [part=\"dock-body\"]": {
+      "display": "block",
+      "minHeight": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "strip"
+      },
+      "children": [
+        {
+          "tagName": "jx-tabs",
+          "attributes": {
+            "part": "tabs",
+            "selected": "${state.tab}"
+          },
+          "$props": {
+            "label": "Bottom dock"
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/selectTab"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/detail"
+                  }
+                ]
+              }
+            ]
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/tabs"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "jx-tab",
+                "attributes": {
+                  "part": "tab",
+                  "id": "${$map.item.tabId}",
+                  "data-tab": "${$map.item.key}",
+                  "value": "${$map.item.key}",
+                  "label": "${$map.item.label}",
+                  "panel": "bottom-dock-panel"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "close",
+            "data-action": "close"
+          },
+          "$props": {
+            "icon": "x",
+            "size": "sm",
+            "quiet": true,
+            "label": "Close the Bottom dock",
+            "hint": "Close the Bottom dock"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/closeDock"
+                },
+                "value": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tab-panel",
+      "attributes": {
+        "part": "panel",
+        "id": "bottom-dock-panel"
+      },
+      "$props": {
+        "active": true,
+        "labelledby": {
+          "$ref": "#/state/tabId"
+        }
+      },
+      "children": [
+        {
+          "$description": "The island, and it stays empty: every tab of this dock is a `PanelRecord` whose `render` returns a lit template, so `panels/bottom-dock.ts` paints here and runs each tab's `afterRender` against this element. It is a slotted child rather than the panel itself because `jx-tab-panel` distributes its own slot.",
+          "tagName": "div",
+          "attributes": {
+            "part": "dock-body",
+            "data-jx-region": "${state.bodyRegion || null}"
+          }
+        }
+      ]
+    }
+  ]
+}

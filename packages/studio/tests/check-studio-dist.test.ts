@@ -58,7 +58,7 @@ function completeBuild(extra: Record<string, string> = {}): Record<string, strin
   /* The chunk stylesheets the real build emits. They belong in a "complete" fixture precisely
      because they are the thing UNREACHABLE_CSS carries — without them every allow-list entry reads
      as stale, which is a different finding. */
-  for (const name of ["javascript", "jsonMode", "monaco-setup", "tsMode"]) {
+  for (const name of ["grid-view", "javascript", "jsonMode", "monaco-setup", "tsMode"]) {
     files[`dist/chunks/${name}-abc123.css`] = "/* monaco */";
   }
   return { ...files, ...extra };

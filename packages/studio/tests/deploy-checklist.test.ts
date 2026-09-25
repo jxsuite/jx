@@ -1,13 +1,17 @@
 /**
  * Deploy checklist tests — the ordered prerequisite chain, its three states, the status-bar item
- * whose label IS the next blocking step, and the Activity-tab rendering.
+ * whose label IS the next blocking step, and the Activity-tab surface
+ * (`src/surfaces/panel-deploy-checklist.json`).
+ *
+ * The rendering half is addressed by `part` and `data-state`, never by a class: the checklist is a
+ * document now, and `.activity-row--running` is a name nothing writes any more.
  *
  * The assertion that matters most is the `unknown` one: "Cloudflare reports no deployments" and
  * "nobody has asked Cloudflare" are different sentences, and collapsing them is how a checklist
  * tells a user to redo a deploy that already succeeded.
  */
-import { flush, installMockPlatform, renderInto, resetStudioState } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { flush, installMockPlatform, resetStudioState } from "./harness";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { GitStatusResult } from "@jxsuite/protocol";
 
 const { shell } = await import("../src/shell");
@@ -22,8 +26,9 @@ const {
   nextDeployStep,
   noteDeployment,
   observedDeployment,
-  renderDeployChecklist,
+  syncDeployChecklist,
 } = await import("../src/publish/deploy-checklist");
+const { disposeDeployChecklistSurface } = await import("../src/surfaces/panel-deploy-checklist");
 
 function gitStatus(over: Partial<GitStatusResult> = {}): GitStatusResult {
   return { ahead: 0, behind: 0, branch: "main", files: [], isRepo: true, remotes: [], ...over };
@@ -206,28 +211,77 @@ describe("deployStatusItem — the status bar's project field", () => {
   });
 });
 
-describe("renderDeployChecklist", () => {
-  test("renders nothing at all when no project is open", async () => {
-    setProjectState(null as never);
-    const host = await renderInto(renderDeployChecklist() as never);
-    expect(host.textContent?.trim()).toBe("");
+describe("the deploy-checklist surface", () => {
+  afterEach(() => {
+    /* The checklist holds an effect scope and a mounted document; a suite that left one standing
+       would hand the next test a surface projecting the state it has just reset. */
+    disposeDeployChecklistSurface();
+    document.body.replaceChildren();
   });
 
-  test("draws every step in the Activity tab's own vocabulary", async () => {
+  /**
+   * Paint the tab's container the way the Activity panel does, and let the document mount into it.
+   *
+   * Two waits, not one: `mountSurface` resolves when the DOCUMENT has rendered, and the kit
+   * elements inside it settle their own templates one `connectedCallback` later.
+   */
+  async function paint(): Promise<HTMLElement> {
+    const host = document.createElement("div");
+    const container = document.createElement("div");
+    container.dataset.deployChecklist = "";
+    host.append(container);
+    document.body.append(host);
+    syncDeployChecklist(host);
+    await flush();
+    await flush();
+    return host;
+  }
+
+  function steps(host: HTMLElement): HTMLElement[] {
+    return [...host.querySelectorAll<HTMLElement>('[part="step"]')];
+  }
+
+  function stepStates(host: HTMLElement): string[] {
+    return steps(host).map((row) => row.dataset["state"] ?? "");
+  }
+
+  test("draws nothing at all when no project is open", async () => {
+    setProjectState(null as never);
+    const host = await paint();
+    expect(host.textContent?.trim()).toBe("");
+    expect(host.querySelector('[part="list"]')).toBeNull();
+  });
+
+  test("draws every link of the chain, each carrying its own state", async () => {
     shell.git.status = gitStatus({ branch: "", isRepo: false });
-    const host = await renderInto(renderDeployChecklist() as never);
-    // Reused classes, not new ones: the checklist is a list of stages that finish, which is what
-    // The Activity row already draws — and `scripts/check-styles.ts` has rules for all of them.
-    expect(host.querySelectorAll(".activity-step")).toHaveLength(4);
-    expect(host.querySelector(".activity-row--running")).toBeTruthy();
+    const host = await paint();
+    expect(steps(host)).toHaveLength(4);
+    expect(steps(host).map((row) => row.dataset["step"])).toEqual([
+      "repo",
+      "remote",
+      "provider",
+      "deployed",
+    ]);
+    expect(host.querySelector<HTMLElement>('[part="row"]')?.dataset["state"]).toBe("running");
     expect(host.textContent).toContain("Track this project with git");
     expect(host.textContent).toContain("Connect a deploy provider");
   });
 
+  /* `unknown` is not a third kind of "no", and the surface is where that stops being an internal
+     distinction: the step the app has not asked about is styled apart from the one it has. */
+  test("an unasked link draws as unknown rather than as a todo", async () => {
+    shell.git.status = null;
+    const host = await paint();
+    expect(stepStates(host).slice(0, 2)).toEqual(["unknown", "unknown"]);
+    expect(
+      host.querySelector('[part="step"][data-state="unknown"] [part="step-icon"]')?.textContent,
+    ).toBe("?");
+  });
+
   test("a step the registry cannot run draws no button, rather than a dead one", async () => {
     shell.git.status = gitStatus({ branch: "", isRepo: false });
-    const host = await renderInto(renderDeployChecklist() as never);
-    expect(host.querySelector("sp-action-button")).toBeNull();
+    const host = await paint();
+    expect(host.querySelector('[part="action"]')).toBeNull();
   });
 
   test("the next action carries the command's own title and runs it", async () => {
@@ -244,10 +298,10 @@ describe("renderDeployChecklist", () => {
       title: "Initialize Repository",
     });
     setActiveRegistry(registry);
-    const host = await renderInto(renderDeployChecklist() as never);
-    const action = host.querySelector("sp-action-button")!;
+    const host = await paint();
+    const action = host.querySelector<HTMLElement>('[part="action"]')!;
     expect(action.textContent).toContain("Initialize Repository");
-    action.dispatchEvent(new Event("click", { bubbles: true }));
+    action.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(runs).toEqual(["git.init"]);
   });
@@ -265,9 +319,10 @@ describe("renderDeployChecklist", () => {
       title: "Initialize Repository",
     });
     setActiveRegistry(registry);
-    const host = await renderInto(renderDeployChecklist() as never);
-    const action = host.querySelector("sp-action-button")!;
-    expect(action.hasAttribute("disabled")).toBe(true);
+    const host = await paint();
+    const action = host.querySelector<HTMLElement>('[part="action"]')!;
+    // `jx-button` draws the native control, and `disabled` is what that control carries.
+    expect(action.querySelector<HTMLButtonElement>('[part="control"]')?.disabled).toBe(true);
     expect(action.getAttribute("title")).toContain("requires an open project");
   });
 
@@ -285,9 +340,79 @@ describe("renderDeployChecklist", () => {
       status: "success",
       url: "https://abc.my-site.pages.dev",
     });
-    const host = await renderInto(renderDeployChecklist() as never);
-    expect(host.querySelector(".activity-row--done")).toBeTruthy();
-    expect(host.textContent).toContain("Everything this project needs to ship is in place.");
-    expect(host.querySelectorAll(".activity-step--done")).toHaveLength(4);
+    const host = await paint();
+    expect(host.querySelector<HTMLElement>('[part="row"]')?.dataset["state"]).toBe("done");
+    expect(host.querySelector('[part="summary"]')?.textContent).toBe(
+      "Everything this project needs to ship is in place.",
+    );
+    expect(stepStates(host)).toEqual(["done", "done", "done", "done"]);
+    expect(host.querySelector('[part="action"]')).toBeNull();
+  });
+
+  /* The whole reason the observation is reactive: a deploy that lands writes it, and the row moves
+     off "unknown" with nothing repainting the tab. As a lit template it was redrawn by whatever
+     else the dock happened to be doing, which is not a subscription. */
+  test("a deployment observed while the surface is up moves the row without a repaint", async () => {
+    shell.git.status = gitStatus({ remotes: ["origin"] });
+    setProjectState({
+      expanded: new Set(),
+      projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
+    } as never);
+    const host = await paint();
+    expect(stepStates(host).at(-1)).toBe("unknown");
+    noteDeployment({
+      createdOn: "2026-07-06T00:00:00Z",
+      environment: "production",
+      id: "d1",
+      stage: "deploy",
+      status: "success",
+      url: "https://abc.my-site.pages.dev",
+    });
+    await flush();
+    expect(stepStates(host).at(-1)).toBe("done");
+    expect(host.querySelector<HTMLElement>('[part="row"]')?.dataset["state"]).toBe("done");
+  });
+
+  /* The dock runs every tab's `afterRender` against the same painted body, so "no container" is
+     how this surface learns the Activity tab is not the one showing. */
+  test("a body with no container takes the standing document down", async () => {
+    shell.git.status = gitStatus({ branch: "", isRepo: false });
+    const host = await paint();
+    expect(host.querySelector('[part="list"]')).toBeTruthy();
+    const other = document.createElement("div");
+    syncDeployChecklist(other);
+    await flush();
+    expect(host.querySelector('[part="list"]')).toBeNull();
+  });
+
+  /* `afterRender` runs on EVERY paint of the dock, so being handed the container the document is
+     already standing in has to be a no-op rather than a second mount — two lists in one row is
+     what the guard prevents, and a document rebuilt under a reader's pointer is what it costs. */
+  test("being re-handed the same container mounts nothing new", async () => {
+    shell.git.status = gitStatus({ branch: "", isRepo: false });
+    const host = await paint();
+    const before = host.querySelector('[part="list"]');
+    syncDeployChecklist(host);
+    syncDeployChecklist(host);
+    await flush();
+    expect(host.querySelectorAll('[part="list"]')).toHaveLength(1);
+    expect(host.querySelector('[part="list"]')).toBe(before);
+  });
+
+  /* The dock repainted before the first mount had landed: the promise still resolves, and the
+     handle it carries belongs to a container that is no longer the one being drawn into. */
+  test("a mount that lands after the container moved disposes itself", async () => {
+    shell.git.status = gitStatus({ branch: "", isRepo: false });
+    const first = document.createElement("div");
+    const firstContainer = document.createElement("div");
+    firstContainer.dataset.deployChecklist = "";
+    first.append(firstContainer);
+    document.body.append(first);
+    syncDeployChecklist(first);
+
+    // Before the first mount resolves, which is the whole point.
+    const second = await paint();
+    expect(second.querySelector('[part="list"]')).toBeTruthy();
+    expect(first.querySelector('[part="list"]')).toBeNull();
   });
 });

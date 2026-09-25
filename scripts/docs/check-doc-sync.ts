@@ -94,10 +94,16 @@ for (const rel of new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })) {
   if (!match) {
     continue;
   }
-  let fm: { code?: unknown; spec?: unknown };
+  let fm: { code?: unknown; spec?: unknown; generated?: unknown };
   try {
-    fm = Bun.YAML.parse(match[1]!) as { code?: unknown; spec?: unknown };
+    fm = Bun.YAML.parse(match[1]!) as { code?: unknown; spec?: unknown; generated?: unknown };
   } catch {
+    continue;
+  }
+  /* A generated page is a projection of the sources its `code:` names, written at build from
+     them: it cannot be stale against an edit to those sources, and it is gitignored, so it can
+     never be in the diff either. Asking for it would be a finding nobody can satisfy. */
+  if (fm.generated === true) {
     continue;
   }
   const codes = Array.isArray(fm.code) ? fm.code : [];

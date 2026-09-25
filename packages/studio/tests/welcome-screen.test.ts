@@ -4,11 +4,17 @@
  * folder + last opened), the per-row remove and Clear all, the GitHub-App prompt, and the
  * catalogue.
  */
-import { installMockPlatform, pointer } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { flush, installMockPlatform, pointer } from "./harness";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-const { initWelcome, lastOpenedLabel, recentLocations, renderWelcome, shortenPath } =
-  await import("../src/panels/welcome-screen");
+const {
+  disposeWelcome,
+  initWelcome,
+  lastOpenedLabel,
+  recentLocations,
+  renderWelcome,
+  shortenPath,
+} = await import("../src/surfaces/welcome");
 const { hydrateProjectList, resetProjectList } = await import("../src/project-list");
 const { hydrateAccountStatus, resetAccountStatus } = await import("../src/account-status");
 
@@ -32,15 +38,26 @@ function makeCtx(): Ctx {
   };
 }
 
-function renderScreen(ctx: Ctx): HTMLElement {
+/** Draw the pane into a fresh host and let the surface mount, reconcile and connect. */
+async function renderScreen(ctx: Ctx): Promise<HTMLElement> {
   initWelcome(ctx as never);
   const host = document.createElement("div");
+  document.body.append(host);
   renderWelcome(host);
+  await flush();
+  await flush();
   return host;
 }
 
+/** Bring a drawn pane up to date with the stores, and let the rows reconcile. */
+async function redraw(host: HTMLElement): Promise<void> {
+  renderWelcome(host);
+  await flush();
+  await flush();
+}
+
 function actions(host: HTMLElement): HTMLElement[] {
-  return [...host.querySelectorAll(".welcome-action")] as HTMLElement[];
+  return [...host.querySelectorAll('[part="action"]')] as HTMLElement[];
 }
 
 function texts(host: HTMLElement, selector: string): (string | null)[] {
@@ -58,11 +75,17 @@ beforeEach(() => {
   installMockPlatform();
 });
 
+afterEach(async () => {
+  disposeWelcome();
+  document.body.replaceChildren();
+  await flush();
+});
+
 describe("renderWelcome — start commands", () => {
-  test("renders the title, the corrected tagline, and the two always-available commands", () => {
-    const host = renderScreen(makeCtx());
-    expect(host.querySelector(".welcome-title")?.textContent).toBe("Jx Studio");
-    expect(host.querySelector(".welcome-subtitle")?.textContent).toBe(
+  test("renders the title, the corrected tagline, and the two always-available commands", async () => {
+    const host = await renderScreen(makeCtx());
+    expect(host.querySelector('[part="title"]')?.textContent).toBe("Jx Studio");
+    expect(host.querySelector('[part="subtitle"]')?.textContent).toBe(
       "Design, build, and publish websites",
     );
 
@@ -76,9 +99,9 @@ describe("renderWelcome — start commands", () => {
     expect(host.textContent).not.toContain("Clone Git Repository");
   });
 
-  test("New Project and Open Project invoke the ctx callbacks", () => {
+  test("New Project and Open Project invoke the ctx callbacks", async () => {
     const ctx = makeCtx();
-    const host = renderScreen(ctx);
+    const host = await renderScreen(ctx);
     const [newBtn, openBtn] = actions(host);
     pointer(newBtn!, "click");
     expect(ctx.openNewProject).toHaveBeenCalledTimes(1);
@@ -88,13 +111,13 @@ describe("renderWelcome — start commands", () => {
     expect(ctx.cloneRepository).not.toHaveBeenCalled();
   });
 
-  test("shows Add Existing Repository when the platform can browse + import repos", () => {
+  test("shows Add Existing Repository when the platform can browse + import repos", async () => {
     installMockPlatform({
       importProject: (() => Promise.resolve({ root: "octocat/site@main" })) as never,
       listRepos: (() => Promise.resolve([])) as never,
     });
     const ctx = makeCtx();
-    const host = renderScreen(ctx);
+    const host = await renderScreen(ctx);
     const btns = actions(host);
     expect(btns).toHaveLength(3);
     expect(btns[2]!.textContent).toContain("Add Existing Repository…");
@@ -102,12 +125,12 @@ describe("renderWelcome — start commands", () => {
     expect(ctx.addExistingRepo).toHaveBeenCalledTimes(1);
   });
 
-  test("shows the clone action when the platform supports gitClone", () => {
+  test("shows the clone action when the platform supports gitClone", async () => {
     installMockPlatform({
       gitClone: (async () => ({ ok: true, root: "/cloned" })) as never,
     });
     const ctx = makeCtx();
-    const host = renderScreen(ctx);
+    const host = await renderScreen(ctx);
     const btns = actions(host);
     expect(btns).toHaveLength(3);
     expect(btns[2]!.textContent).toContain("Clone Git Repository…");
@@ -200,70 +223,78 @@ describe("lastOpenedLabel", () => {
 });
 
 describe("renderWelcome — recent projects", () => {
-  test("omits the Recent section when there are no recent projects", () => {
-    const host = renderScreen(makeCtx());
+  test("omits the Recent section when there are no recent projects", async () => {
+    const host = await renderScreen(makeCtx());
     expect(host.textContent).not.toContain("Recent");
-    expect(host.querySelectorAll(".welcome-recent")).toHaveLength(0);
+    expect(host.querySelectorAll('[part="recent"]')).toHaveLength(0);
   });
 
-  test("lists recents newest-first as name + folder + last opened, never a raw path", () => {
+  test("lists recents newest-first as name + folder + last opened, never a raw path", async () => {
     const now = Date.now();
     seedRecents([
       { name: "Beta", root: "/srv/sites/beta", timestamp: now - 2 * 86_400_000 },
       { name: "Alpha", root: "/home/user/dev/alpha", timestamp: now - 3_600_000 },
     ]);
-    const host = renderScreen(makeCtx());
+    const host = await renderScreen(makeCtx());
 
-    const rows = [...host.querySelectorAll("button.welcome-recent")] as HTMLButtonElement[];
+    const rows = [
+      ...host.querySelectorAll('[part="recent"]:not([data-catalogue])'),
+    ] as HTMLButtonElement[];
     expect(rows).toHaveLength(2);
-    expect(texts(host, ".welcome-recent-name")).toEqual(["Alpha", "Beta"]);
-    expect(texts(host, ".welcome-recent-path")).toEqual(["…/dev", "…/sites"]);
-    expect(texts(host, ".welcome-recent-when")).toEqual(["1 hour ago", "2 days ago"]);
+    expect(texts(host, '[part="recent"] [part="name"]')).toEqual(["Alpha", "Beta"]);
+    expect(texts(host, '[part="recent"] [part="path"]')).toEqual(["…/dev", "…/sites"]);
+    expect(texts(host, '[part="recent"] [part="when"]')).toEqual(["1 hour ago", "2 days ago"]);
     // The full root stays reachable as a tooltip, not as the row's headline.
     expect(rows[0]!.getAttribute("title")).toBe("/home/user/dev/alpha");
   });
 
-  test("same-named projects get enough path to tell them apart", () => {
+  test("same-named projects get enough path to tell them apart", async () => {
     seedRecents([
       { name: "My Site", root: "/home/user/clients/acme/site", timestamp: 2 },
       { name: "My Site", root: "/home/user/personal/acme/site", timestamp: 1 },
     ]);
-    const host = renderScreen(makeCtx());
-    expect(texts(host, ".welcome-recent-path")).toEqual(["…/clients/acme", "…/personal/acme"]);
+    const host = await renderScreen(makeCtx());
+    expect(texts(host, '[part="recent"] [part="path"]')).toEqual([
+      "…/clients/acme",
+      "…/personal/acme",
+    ]);
   });
 
-  test("clicking a recent project opens it by root", () => {
+  test("clicking a recent project opens it by root", async () => {
     seedRecents([{ name: "Alpha", root: "/home/user/dev/alpha", timestamp: 5 }]);
     const ctx = makeCtx();
-    const host = renderScreen(ctx);
-    pointer(host.querySelector("button.welcome-recent")!, "click");
+    const host = await renderScreen(ctx);
+    pointer(host.querySelector('[part="recent"]:not([data-catalogue])')!, "click");
     expect(ctx.openRecentProject).toHaveBeenCalledWith("/home/user/dev/alpha");
   });
 
-  test("each recent project has a remove control that drops just that entry", () => {
+  test("each recent project has a remove control that drops just that entry", async () => {
     seedRecents([
       { name: "Alpha", root: "/a", timestamp: 2 },
       { name: "Beta", root: "/b", timestamp: 1 },
     ]);
     const ctx = makeCtx();
-    const host = renderScreen(ctx);
-    const removes = [...host.querySelectorAll(".welcome-recent-remove")] as HTMLElement[];
+    const host = await renderScreen(ctx);
+    const removes = [...host.querySelectorAll('[part="remove"]')] as HTMLElement[];
     expect(removes).toHaveLength(2);
-    expect(removes[0]!.getAttribute("label")).toBe("Remove Alpha from Recent");
+    expect(removes[0]!.querySelector('[part="control"]')?.getAttribute("aria-label")).toBe(
+      "Remove Alpha from Recent",
+    );
     pointer(removes[0]!, "click"); // Alpha is newest-first
+    await flush();
     expect(ctx.openRecentProject).not.toHaveBeenCalled();
-    renderWelcome(host); // Reflect the mutation
-    expect(texts(host, ".welcome-recent-name")).toEqual(["Beta"]);
+    await redraw(host); // Reflect the mutation
+    expect(texts(host, '[part="recent"] [part="name"]')).toEqual(["Beta"]);
   });
 
-  test("Clear all empties the recent list", () => {
+  test("Clear all empties the recent list", async () => {
     seedRecents([{ name: "Alpha", root: "/a", timestamp: 1 }]);
-    const host = renderScreen(makeCtx());
-    const clear = host.querySelector(".welcome-clear") as HTMLElement;
+    const host = await renderScreen(makeCtx());
+    const clear = host.querySelector('[part="clear"]') as HTMLElement;
     expect(clear.textContent?.trim()).toBe("Clear all");
     pointer(clear, "click");
-    renderWelcome(host);
-    expect(host.querySelectorAll(".welcome-recent")).toHaveLength(0);
+    await redraw(host);
+    expect(host.querySelectorAll('[part="recent"]')).toHaveLength(0);
   });
 });
 
@@ -275,8 +306,8 @@ describe("renderWelcome — GitHub App install prompt", () => {
       getAccountStatus: () => Promise.resolve({ appInstallUrl: INSTALL_URL, installations: [] }),
     });
     await hydrateAccountStatus();
-    const host = renderScreen(makeCtx());
-    const link = [...host.querySelectorAll(".welcome-action")].at(-1) as HTMLElement;
+    const host = await renderScreen(makeCtx());
+    const link = host.querySelector('[part="link"]') as HTMLElement;
     expect(link.textContent).toContain("Install the Jx Suite GitHub App");
     expect(link.getAttribute("href")).toBe(INSTALL_URL);
     expect(host.textContent).toContain("Repository access");
@@ -291,15 +322,18 @@ describe("renderWelcome — GitHub App install prompt", () => {
         }),
     });
     await hydrateAccountStatus();
-    expect(renderScreen(makeCtx()).textContent).not.toContain("Repository access");
+    const screen1 = await renderScreen(makeCtx());
+    expect(screen1.textContent).not.toContain("Repository access");
 
     installMockPlatform(); // No getAccountStatus member at all.
     await hydrateAccountStatus();
-    expect(renderScreen(makeCtx()).textContent).not.toContain("Repository access");
+    const screen2 = await renderScreen(makeCtx());
+    expect(screen2.textContent).not.toContain("Repository access");
 
     installMockPlatform({ getAccountStatus: () => Promise.reject(new Error("offline")) });
     await hydrateAccountStatus();
-    expect(renderScreen(makeCtx()).textContent).not.toContain("Repository access");
+    const screen3 = await renderScreen(makeCtx());
+    expect(screen3.textContent).not.toContain("Repository access");
   });
 });
 
@@ -313,8 +347,10 @@ describe("renderWelcome — project catalogue", () => {
     installMockPlatform({ listProjects: () => Promise.resolve(CATALOGUE) });
     await hydrateProjectList();
     const ctx = makeCtx();
-    const host = renderScreen(ctx);
-    const rows = [...host.querySelectorAll("button.welcome-catalogue")] as HTMLButtonElement[];
+    const host = await renderScreen(ctx);
+    const rows = [
+      ...host.querySelectorAll('[part="recent"][data-catalogue]'),
+    ] as HTMLButtonElement[];
     expect(rows).toHaveLength(2);
     expect(rows[0]!.textContent).toContain("Portfolio");
     expect(rows[1]!.textContent).toContain("write access");
@@ -327,22 +363,22 @@ describe("renderWelcome — project catalogue", () => {
       listProjects: () => Promise.resolve([{ name: "Portfolio", root: "/home/dev/w/portfolio" }]),
     });
     await hydrateProjectList();
-    const host = renderScreen(makeCtx());
-    expect(texts(host, ".welcome-catalogue .welcome-recent-path")).toEqual(["…/w"]);
+    const host = await renderScreen(makeCtx());
+    expect(texts(host, '[part="recent"][data-catalogue] [part="path"]')).toEqual(["…/w"]);
   });
 
-  test("hides the section when the platform has no catalogue", () => {
+  test("hides the section when the platform has no catalogue", async () => {
     installMockPlatform();
-    const host = renderScreen(makeCtx());
-    expect(host.querySelectorAll("button.welcome-catalogue")).toHaveLength(0);
+    const host = await renderScreen(makeCtx());
+    expect(host.querySelectorAll('[part="recent"][data-catalogue]')).toHaveLength(0);
   });
 
   test("entries already in Recent are not duplicated, and Recent renders above the catalogue", async () => {
     seedRecents([{ name: "Portfolio", root: "sites/portfolio", timestamp: 1 }]);
     installMockPlatform({ listProjects: () => Promise.resolve(CATALOGUE) });
     await hydrateProjectList();
-    const host = renderScreen(makeCtx());
-    expect(texts(host, "button.welcome-catalogue .welcome-recent-name")).toEqual(["Shop"]);
-    expect(texts(host, ".welcome-recent-name")).toEqual(["Portfolio", "Shop"]);
+    const host = await renderScreen(makeCtx());
+    expect(texts(host, '[part="recent"][data-catalogue] [part="name"]')).toEqual(["Shop"]);
+    expect(texts(host, '[part="recent"] [part="name"]')).toEqual(["Portfolio", "Shop"]);
   });
 });

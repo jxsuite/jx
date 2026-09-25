@@ -1,0 +1,220 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookColorSlider",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-color-slider.json"
+    }
+  ],
+  "state": {
+    "hue": 210,
+    "opacity": 60
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-4)",
+      "margin": "0 0 var(--jx-space-4)",
+      "maxWidth": "420px"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "90px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [role=\"group\"] > jx-color-slider": {
+      "flex": "1 1 200px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-color-slider"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One native range drawn over a gradient. The platform supplies the slider role, the announced value, the thumb, the drag, the arrow keys with their clamping, and Home, End, PageUp and PageDown; the element adds a ten-step Shift+Arrow and re-says the platform's own input and change from itself, so a listener always reads e.target.value off the element."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Channels"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Hue, bound both ways"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Hue"
+        },
+        {
+          "tagName": "jx-color-slider",
+          "$props": {
+            "label": "Hue",
+            "channel": "hue",
+            "value": {
+              "$ref": "#/state/hue"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/hue"
+                },
+                "value": {
+                  "$ref": "event#/target/value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${Math.round(state.hue)} degrees"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Alpha over the hue above"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Opacity"
+        },
+        {
+          "tagName": "jx-color-slider",
+          "$props": {
+            "label": "Opacity",
+            "channel": "alpha",
+            "color": "hsl(${state.hue} 100% 50%)",
+            "value": {
+              "$ref": "#/state/opacity"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/opacity"
+                },
+                "value": {
+                  "$ref": "event#/target/value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${Math.round(state.opacity)}%"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "States"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "A band, a coarse grid and a refusal"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Band"
+        },
+        {
+          "tagName": "jx-color-slider",
+          "$props": {
+            "label": "Warm hues only",
+            "channel": "hue",
+            "min": 0,
+            "max": 60,
+            "value": 30
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Coarse grid"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Step 30"
+        },
+        {
+          "tagName": "jx-color-slider",
+          "$props": {
+            "label": "Hue, in twelfths",
+            "channel": "hue",
+            "step": 30,
+            "value": 120
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Disabled"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Disabled"
+        },
+        {
+          "tagName": "jx-color-slider",
+          "$props": {
+            "label": "Hue, not yours to change",
+            "channel": "hue",
+            "value": 280,
+            "disabled": true
+          }
+        }
+      ]
+    }
+  ]
+}

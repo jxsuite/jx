@@ -1,0 +1,2185 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioAiChat",
+  "$description": "The assistant — the Inspector dock's fourth tab — as a Jx document over the kit. The adapter (`panels/ai-panel.ts`) keeps every decision: which pane is showing, what the chat state holds, how a tool call turned out, what a turn changed, which `Assistant:` records the registry offers and what a send does. This document is handed one flat projection — rows already keyed by message id, chips already told their outcome, commands already resolved to a glyph, a label, a tooltip and whether they are refused — and it draws it. Nothing here parses a tool's arguments, reads the write ledger or asks the registry a question. Two islands: `[part=\"md\"]` is filled with sanitized model output by `ai-chat/chat-markdown.ts`, and `[part=\"composer-picker\"]` receives the model picker's own mounted surface — both through `onNodeCreated` (specs/studio-ui-guidelines.md §9.4). The transcript is a keyed `$map` on the message id and nothing below a row is keyed by position, so a token appended to the tail reconciles one text node instead of rebuilding the list under the reader's caret.",
+  "tagName": "div",
+  "attributes": {
+    "part": "assistant"
+  },
+  "style": {
+    "$description": "Fifty-odd `.ai-*` rules in `styles/shell.css`, keyed on `part` and carried here rather than moved: the stylesheet is outside this change's blast radius, so those rules are left behind as dead text for a central sweep. Three Spectrum names could not come with the declarations and are the kit's instead, at the same values — `--spectrum-font-size-50` (11px) is `--jx-text-sm`, `--spectrum-font-size-75` (12px) is `--jx-text-md`, and the 10px literals are `--jx-text-xs`. Four things changed on purpose. A SESSION ROW IS A BUTTON: it was a `<div>` with a click handler and no role, so the chat history could not be reached from the keyboard at all. THE TRANSCRIPT AND THE IMPORT LOG ARE FOCUSABLE, because a scroll region a pointer can reach and a keyboard cannot is one a keyboard reader cannot read. THE TYPING INDICATOR ANNOUNCES ITSELF as a status rather than being three decorative spans. And THE COMPOSER GROWS WITHOUT MEASURING: `field-sizing: content` over a one-row box replaces the per-keystroke `scrollHeight` write the lit composer ran, with `rows` as the height an engine without it keeps.",
+    "display": "flex",
+    "flexDirection": "column",
+    "flex": "1",
+    "minHeight": "0",
+    "overflow": "hidden",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"chat\"], & [part=\"sessions\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "flex": "1",
+      "minHeight": "0",
+      "overflow": "hidden"
+    },
+    "& [part=\"header\"]": {
+      "flexShrink": "0",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) 6px",
+      "minWidth": "0",
+      "borderBottom": "1px solid var(--border)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"title\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontWeight": "600"
+    },
+    "& [part=\"spacer\"]": {
+      "flex": "1"
+    },
+    "& [part=\"tokens\"]": {
+      "$description": "The conversation's share of the model's context. Quiet until it matters: past half the window the assistant starts dropping the oldest turns, and this is the only thing that says so.",
+      "fontSize": "var(--jx-text-xs)",
+      "fontVariantNumeric": "tabular-nums",
+      "color": "var(--fg-dim)",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)"
+    },
+    "& [part=\"tokens\"][data-tone=\"warn\"]": {
+      "color": "var(--warning)",
+      "background": "color-mix(in srgb, var(--warning) 14%, transparent)"
+    },
+    "& [part=\"messages\"]": {
+      "$description": "THE chat scroller — bounded by `min-height: 0` at every flex level above it. It carries `tabindex=\"0\"` because a scrollable region a pointer can reach and a keyboard cannot is one a keyboard reader cannot read at all, and the ring below is what that costs.",
+      "flex": "1 1 0",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "overscrollBehavior": "contain",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "1.5",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"empty\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "textAlign": "center",
+      "padding": "var(--jx-space-6) var(--jx-space-4)"
+    },
+    "& [part=\"row\"]": {
+      "alignSelf": "stretch",
+      "minWidth": "0"
+    },
+    "& [part=\"row\"][data-kind=\"user\"]": {
+      "alignSelf": "flex-end",
+      "maxWidth": "85%",
+      "background": "var(--accent-15)",
+      "borderRadius": "8px 8px var(--jx-radius-xs) 8px",
+      "padding": "6px 10px"
+    },
+    "& [part=\"row\"][data-kind=\"tool-error\"]": {
+      "background": "var(--hover-bg)",
+      "borderLeft": "2px solid var(--danger)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"user-body\"]": {
+      "whiteSpace": "pre-wrap",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"md\"]": {
+      "$description": "The island `panels/ai-chat/chat-markdown.ts` fills — the app's ONE injection sink, and the markup reaching it has been through `markdownToHtml` and the Trusted Types policy that asserts it did. The document renders the host node and nothing inside it (specs/studio-ui-guidelines.md §9.4).",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"md\"] > *:first-child": {
+      "marginTop": "0"
+    },
+    "& [part=\"md\"] > *:last-child": {
+      "marginBottom": "0"
+    },
+    "& [part=\"md\"] code": {
+      "background": "rgba(0, 0, 0, 0.3)",
+      "padding": "1px var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"md\"] pre": {
+      "background": "rgba(0, 0, 0, 0.3)",
+      "padding": "var(--jx-space-3)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "overflowX": "auto",
+      "margin": "6px 0"
+    },
+    "& [part=\"md\"] pre code": {
+      "background": "none",
+      "padding": "0"
+    },
+    "& [part=\"md\"] table": {
+      "borderCollapse": "collapse",
+      "margin": "6px 0"
+    },
+    "& [part=\"md\"] th, & [part=\"md\"] td": {
+      "border": "1px solid var(--border)",
+      "padding": "var(--jx-space-1) 6px"
+    },
+    "& [part=\"streaming\"]": {
+      "whiteSpace": "pre-wrap",
+      "overflowWrap": "anywhere",
+      "::after": {
+        "content": "\"▋\"",
+        "color": "var(--accent)",
+        "animation": "jx-ai-cursor 1s steps(2) infinite"
+      }
+    },
+    "@keyframes jx-ai-cursor": {
+      "50%": {
+        "opacity": "0"
+      }
+    },
+    "& [part=\"typing\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-1)"
+    },
+    "& [part=\"typing-dot\"]": {
+      "width": "6px",
+      "height": "6px",
+      "borderRadius": "50%",
+      "background": "var(--fg-dim)",
+      "animation": "jx-ai-typing 1.2s infinite"
+    },
+    "& [part=\"typing-dot\"]:nth-child(2)": {
+      "animationDelay": "0.2s"
+    },
+    "& [part=\"typing-dot\"]:nth-child(3)": {
+      "animationDelay": "0.4s"
+    },
+    "@keyframes jx-ai-typing": {
+      "0%, 60%, 100%": {
+        "opacity": "0.3"
+      },
+      "30%": {
+        "opacity": "1"
+      }
+    },
+    "& [part=\"tools\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "marginTop": "6px"
+    },
+    "& [part=\"tool-chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "alignSelf": "flex-start",
+      "maxWidth": "100%",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "background": "var(--hover-bg)",
+      "borderLeft": "2px solid var(--accent)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "3px var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"tool-glyph\"]": {
+      "--jx-icon-size": "12px"
+    },
+    "& [part=\"tool-chip-name\"]": {
+      "flex": "0 0 auto"
+    },
+    "& [part=\"tool-chip-outcome\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "fontFamily": "var(--jx-font-sans)"
+    },
+    "& [part=\"tool-chip\"][data-outcome=\"ok\"]": {
+      "borderLeftColor": "var(--success)"
+    },
+    "& [part=\"tool-chip\"][data-outcome=\"failed\"]": {
+      "borderLeftColor": "var(--danger)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"ask\"]": {
+      "$description": "A question the assistant is waiting on. Deliberately louder than a tool chip and quieter than an error: it is the one thing in the transcript that will not proceed without the reader.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "6px",
+      "alignSelf": "stretch",
+      "background": "var(--hover-bg)",
+      "borderLeft": "2px solid var(--accent)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "var(--jx-space-3) 10px"
+    },
+    "& [part=\"ask\"]:not([data-outcome=\"pending\"])": {
+      "borderLeftColor": "var(--border)"
+    },
+    "& [part=\"ask-question\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"ask-context\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"ask-options\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "6px"
+    },
+    "& [part=\"ask-skip\"]": {
+      "marginInlineStart": "auto"
+    },
+    "& [part=\"ask-answer\"]": {
+      "margin": "0",
+      "alignSelf": "flex-start",
+      "maxWidth": "100%",
+      "background": "var(--accent)",
+      "color": "var(--accent-fg)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "3px var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"ask-outcome\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"import\"]": {
+      "$description": "An import, under the chip that started it. It reports for minutes and then stays: the summary line is the run's outcome once it has one, and the log below is a scroller the reader owns — it follows the newest line until they scroll away from it, and stops following while they read.",
+      "alignSelf": "stretch",
+      "background": "var(--bg-input)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "6px var(--jx-space-3)"
+    },
+    "& [part=\"import-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg)",
+      "cursor": "pointer",
+      "listStyle": "none",
+      "::-webkit-details-marker": {
+        "display": "none"
+      }
+    },
+    "& [part=\"import-spinner\"]": {
+      "flex": "0 0 auto"
+    },
+    "& [part=\"import-message\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"import-count\"]": {
+      "$description": "How many lines are folded away, so a collapsed run still says how much it has to show.",
+      "flex": "0 0 auto",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"import-phase\"]": {
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono)",
+      "flex": "0 0 auto",
+      "marginRight": "var(--jx-space-2)"
+    },
+    "& [part=\"import-log\"]": {
+      "marginTop": "var(--jx-space-2)",
+      "maxHeight": "40vh",
+      "overflowY": "auto",
+      "overscrollBehavior": "contain",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "1.6",
+      "color": "var(--fg-dim)",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"import-log-line\"]": {
+      "$description": "Wraps rather than ellipses: a phase line names a page, a count or a file, and the end of it is usually the part worth reading.",
+      "overflowWrap": "anywhere",
+      "whiteSpace": "pre-wrap"
+    },
+    "& [part=\"changes\"]": {
+      "$description": "The turn's changed-files summary. Collapsed by default because the headline is the part that must never be missed; the list is for when it is.",
+      "marginTop": "6px",
+      "borderLeft": "2px solid var(--border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--hover-bg)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"changes-summary\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "cursor": "pointer"
+    },
+    "& [part=\"changes-list\"]": {
+      "margin": "6px 0 var(--jx-space-1)",
+      "paddingLeft": "14px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "3px"
+    },
+    "& [part=\"change\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "6px",
+      "alignItems": "baseline"
+    },
+    "& [part=\"change\"][data-ok=\"false\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"change-caveat\"]": {
+      "$description": "The undo caveat, rendered to the person holding the undo chord rather than appended to the model-facing tool summary.",
+      "color": "var(--warning)",
+      "fontStyle": "normal"
+    },
+    "& [part=\"error\"]": {
+      "borderLeft": "2px solid var(--danger)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--hover-bg)",
+      "padding": "6px var(--jx-space-3)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"error-message\"], & [part=\"error-advice\"]": {
+      "margin": "0"
+    },
+    "& [part=\"error-advice\"]": {
+      "marginTop": "var(--jx-space-2)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"error-actions\"]": {
+      "marginTop": "6px"
+    },
+    "& [part=\"context-chips\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)",
+      "marginTop": "6px"
+    },
+    "& [part=\"context-chip\"], & [part=\"composer-chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)",
+      "maxWidth": "100%",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "background": "var(--bg-input)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "1px 6px",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"composer\"]": {
+      "flexShrink": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "6px",
+      "padding": "var(--jx-space-3)",
+      "borderTop": "1px solid var(--border)"
+    },
+    "& [part=\"composer-chips\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"composer-input\"]": {
+      "$description": "A textarea the surface owns outright rather than a `jx-textfield`, for the reason `palette.json` gives about its own combobox: the field needs a ceiling (120px, then it scrolls) and the kit field exposes no token for one, so binding it would mean styling another component's `[part=\"input\"]` from outside. `field-sizing: content` is what grows it — no measurement and no handler per keystroke, where the lit composer wrote `scrollHeight` back on every input.",
+      "width": "100%",
+      "boxSizing": "border-box",
+      "resize": "none",
+      "fieldSizing": "content",
+      "minHeight": "30px",
+      "maxHeight": "120px",
+      "overflowY": "auto",
+      "background": "var(--bg-input)",
+      "color": "var(--fg)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "6px var(--jx-space-3)",
+      "fontSize": "var(--jx-text-md)",
+      "fontFamily": "inherit",
+      "lineHeight": "1.4",
+      "::placeholder": {
+        "color": "var(--fg-dim)"
+      },
+      ":focus": {
+        "borderColor": "var(--accent)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      }
+    },
+    "& [part=\"composer-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"composer-note\"]": {
+      "$description": "The chat-only-model note, under the picker that caused it. Advisory weight on purpose: the assistant still answers, it just cannot edit.",
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "1.3"
+    },
+    "& [part=\"setup\"]": {
+      "$description": "The in-panel residue of the retired credentials gate: one sentence and the action that fixes it, between the transcript and the composer.",
+      "flexShrink": "0",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-3)",
+      "padding": "6px var(--jx-space-3)",
+      "borderTop": "1px solid var(--border)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"session-list\"]": {
+      "flex": "1 1 0",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"sessions-empty\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "textAlign": "center",
+      "padding": "var(--jx-space-6) var(--jx-space-4)"
+    },
+    "& [part=\"session-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "borderBottom": "1px solid var(--border)",
+      "padding": "0 var(--jx-space-3) 0 0",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":hover [part=\"session-delete\"]": {
+        "visibility": "visible"
+      }
+    },
+    "& [part=\"session-open\"]": {
+      "$description": "A BUTTON, where the lit row was a `<div>` with a click handler and no role: the chat history could not be reached from the keyboard at all.",
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "1px",
+      "margin": "0",
+      "padding": "6px var(--jx-space-3)",
+      "border": "none",
+      "background": "none",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "left",
+      "cursor": "pointer",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"session-title\"]": {
+      "maxWidth": "100%",
+      "fontWeight": "600",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"session-meta\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"session-delete\"]": {
+      "flex": "0 0 auto",
+      "visibility": "hidden",
+      ":focus-within": {
+        "visibility": "visible"
+      }
+    },
+    "@(forced-colors: active)": {
+      "$description": "Every author colour is replaced by one from the user's palette in forced colours, so the washes behind a user bubble, a question card and an error collapse into the page. A border is what is left, and each is given a palette colour of its own so the three still read apart.",
+      "& [part=\"row\"][data-kind=\"user\"]": {
+        "border": "1px solid CanvasText"
+      },
+      "& [part=\"ask\"]": {
+        "borderLeftColor": "Highlight"
+      },
+      "& [part=\"tool-chip\"][data-outcome=\"failed\"]": {
+        "borderLeftColor": "LinkText"
+      },
+      "& [part=\"error\"]": {
+        "borderLeftColor": "LinkText"
+      }
+    },
+    "@(prefers-reduced-motion: reduce)": {
+      "& [part=\"streaming\"]::after": {
+        "animation": "none"
+      },
+      "& [part=\"typing-dot\"]": {
+        "animation": "none",
+        "opacity": "0.6"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "view-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/view"
+      },
+      "cases": {
+        "chat": {
+          "tagName": "div",
+          "attributes": {
+            "part": "chat"
+          },
+          "children": [
+            {
+              "tagName": "header",
+              "attributes": {
+                "part": "header"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/headLead"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "head-button",
+                      "data-command": "${$map.item.id}"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "icon": {
+                        "$ref": "$map/item/icon"
+                      },
+                      "label": {
+                        "$ref": "$map/item/label"
+                      },
+                      "hint": {
+                        "$ref": "$map/item/hint"
+                      },
+                      "disabled": {
+                        "$ref": "$map/item/disabled"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/run"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/id"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title"
+                  },
+                  "textContent": "${state.title}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "spacer",
+                    "role": "none"
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "tokens-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/tokensState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "tokens",
+                        "data-tone": "${state.tokensTone}",
+                        "title": "${state.tokensHint}"
+                      },
+                      "textContent": "${state.tokens}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "streaming-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/streaming"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "jx-spinner",
+                      "attributes": {
+                        "part": "busy"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "label": "The assistant is replying"
+                      }
+                    }
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/headTrail"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "head-button",
+                      "data-command": "${$map.item.id}"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "icon": {
+                        "$ref": "$map/item/icon"
+                      },
+                      "label": {
+                        "$ref": "$map/item/label"
+                      },
+                      "hint": {
+                        "$ref": "$map/item/hint"
+                      },
+                      "disabled": {
+                        "$ref": "$map/item/disabled"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/run"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/id"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "messages",
+                "role": "log",
+                "aria-label": "Conversation",
+                "tabindex": "0"
+              },
+              "onscroll": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/scrolled"
+                    }
+                  }
+                ],
+                "description": "The reader moved the transcript. The adapter records whether they are still at the newest message; a reader who has scrolled up is reading something, and pinning them back on every token is what makes a live transcript unreadable."
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/emptyState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "Ask the assistant to build or edit this page — it can add sections, restyle elements, and wire up components."
+                    }
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "row",
+                      "data-kind": "${$map.item.kind}",
+                      "data-message": "${$map.item.key}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "body-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/kind"
+                        },
+                        "cases": {
+                          "user": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "user-body"
+                            },
+                            "textContent": "${$map.item.body}"
+                          },
+                          "assistant": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "md"
+                            }
+                          },
+                          "streaming": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "streaming"
+                            },
+                            "textContent": "${$map.item.body}"
+                          },
+                          "typing": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "typing",
+                              "role": "status",
+                              "aria-label": "The assistant is replying"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "typing-dot"
+                                }
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "typing-dot"
+                                }
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "typing-dot"
+                                }
+                              }
+                            ]
+                          },
+                          "tool-error": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "tool-error"
+                            },
+                            "textContent": "${$map.item.body}"
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "context-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/hasContextChips"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "context-chips"
+                            },
+                            "children": [
+                              {
+                                "$prototype": "Array",
+                                "items": {
+                                  "$ref": "$map/item/contextChips"
+                                },
+                                "key": {
+                                  "$ref": "$map/item/key"
+                                },
+                                "map": {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "context-chip"
+                                  },
+                                  "textContent": "${$map.item.label}"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "tools-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/hasChips"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "tools"
+                            },
+                            "children": [
+                              {
+                                "$prototype": "Array",
+                                "items": {
+                                  "$ref": "$map/item/chips"
+                                },
+                                "key": {
+                                  "$ref": "$map/item/key"
+                                },
+                                "map": {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "chip",
+                                    "data-tool": "${$map.item.tool}"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "div",
+                                      "attributes": {
+                                        "part": "chip-slot",
+                                        "role": "none"
+                                      },
+                                      "style": {
+                                        "display": "contents"
+                                      },
+                                      "$switch": {
+                                        "$ref": "$map/item/kind"
+                                      },
+                                      "cases": {
+                                        "chip": {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "tool-chip",
+                                            "data-outcome": "${$map.item.outcome}",
+                                            "title": "${$map.item.hint}"
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "jx-icon",
+                                              "attributes": {
+                                                "part": "tool-glyph"
+                                              },
+                                              "$props": {
+                                                "name": "gear-six",
+                                                "label": "Tool call"
+                                              }
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "tool-chip-name"
+                                              },
+                                              "textContent": "${$map.item.label}"
+                                            },
+                                            {
+                                              "tagName": "div",
+                                              "attributes": {
+                                                "part": "tool-outcome-slot",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/outcomeState"
+                                              },
+                                              "cases": {
+                                                "shown": {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "tool-chip-outcome"
+                                                  },
+                                                  "textContent": "${$map.item.mark} ${$map.item.outcomeText}"
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        "ask": {
+                                          "tagName": "div",
+                                          "attributes": {
+                                            "part": "ask",
+                                            "data-outcome": "${$map.item.outcome}"
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "p",
+                                              "attributes": {
+                                                "part": "ask-question"
+                                              },
+                                              "textContent": "${$map.item.question}"
+                                            },
+                                            {
+                                              "tagName": "div",
+                                              "attributes": {
+                                                "part": "ask-context-slot",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/hasContext"
+                                              },
+                                              "cases": {
+                                                "true": {
+                                                  "tagName": "p",
+                                                  "attributes": {
+                                                    "part": "ask-context"
+                                                  },
+                                                  "textContent": "${$map.item.context}"
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "tagName": "div",
+                                              "attributes": {
+                                                "part": "ask-state-slot",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/askState"
+                                              },
+                                              "cases": {
+                                                "pending": {
+                                                  "tagName": "div",
+                                                  "attributes": {
+                                                    "part": "ask-options",
+                                                    "role": "group",
+                                                    "aria-label": "Answers the assistant offered"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "$prototype": "Array",
+                                                      "items": {
+                                                        "$ref": "$map/item/options"
+                                                      },
+                                                      "key": {
+                                                        "$ref": "$map/item/key"
+                                                      },
+                                                      "map": {
+                                                        "tagName": "jx-button",
+                                                        "attributes": {
+                                                          "part": "ask-option"
+                                                        },
+                                                        "$props": {
+                                                          "size": "sm",
+                                                          "variant": "secondary"
+                                                        },
+                                                        "children": [
+                                                          {
+                                                            "tagName": "span",
+                                                            "textContent": "${$map.item.label}"
+                                                          }
+                                                        ],
+                                                        "onclick": {
+                                                          "$prototype": "Function",
+                                                          "body": [
+                                                            {
+                                                              "operator": "call",
+                                                              "target": {
+                                                                "$ref": "#/state/answer"
+                                                              },
+                                                              "value": [
+                                                                {
+                                                                  "$ref": "$map/item/label"
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      }
+                                                    },
+                                                    {
+                                                      "tagName": "jx-action-button",
+                                                      "attributes": {
+                                                        "part": "ask-skip"
+                                                      },
+                                                      "$props": {
+                                                        "size": "sm",
+                                                        "quiet": true,
+                                                        "label": "You decide",
+                                                        "hint": "Let the assistant decide"
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "tagName": "span",
+                                                          "textContent": "You decide"
+                                                        }
+                                                      ],
+                                                      "onclick": {
+                                                        "$prototype": "Function",
+                                                        "body": [
+                                                          {
+                                                            "operator": "call",
+                                                            "target": {
+                                                              "$ref": "#/state/skip"
+                                                            },
+                                                            "value": []
+                                                          }
+                                                        ]
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                "unanswered": {
+                                                  "tagName": "p",
+                                                  "attributes": {
+                                                    "part": "ask-outcome"
+                                                  },
+                                                  "textContent": "This question was still open when the session was reloaded — reply below to carry on."
+                                                },
+                                                "answered": {
+                                                  "tagName": "p",
+                                                  "attributes": {
+                                                    "part": "ask-answer"
+                                                  },
+                                                  "textContent": "${$map.item.answer}"
+                                                },
+                                                "failed": {
+                                                  "tagName": "p",
+                                                  "attributes": {
+                                                    "part": "ask-outcome"
+                                                  },
+                                                  "textContent": "${$map.item.outcomeText}"
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "tagName": "div",
+                                      "attributes": {
+                                        "part": "import-slot",
+                                        "role": "none"
+                                      },
+                                      "style": {
+                                        "display": "contents"
+                                      },
+                                      "$switch": {
+                                        "$ref": "$map/item/importState"
+                                      },
+                                      "cases": {
+                                        "run": {
+                                          "tagName": "details",
+                                          "attributes": {
+                                            "part": "import"
+                                          },
+                                          "open": {
+                                            "$ref": "$map/item/importOpen"
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "summary",
+                                              "attributes": {
+                                                "part": "import-head"
+                                              },
+                                              "children": [
+                                                {
+                                                  "tagName": "div",
+                                                  "attributes": {
+                                                    "part": "import-spinner-slot",
+                                                    "role": "none"
+                                                  },
+                                                  "style": {
+                                                    "display": "contents"
+                                                  },
+                                                  "$switch": {
+                                                    "$ref": "$map/item/importSpinner"
+                                                  },
+                                                  "cases": {
+                                                    "busy": {
+                                                      "tagName": "jx-spinner",
+                                                      "attributes": {
+                                                        "part": "import-spinner"
+                                                      },
+                                                      "$props": {
+                                                        "size": "sm",
+                                                        "label": "Importing"
+                                                      }
+                                                    },
+                                                    "progress": {
+                                                      "tagName": "jx-spinner",
+                                                      "attributes": {
+                                                        "part": "import-spinner"
+                                                      },
+                                                      "$props": {
+                                                        "size": "sm",
+                                                        "label": "Importing",
+                                                        "value": {
+                                                          "$ref": "$map/item/importProgress"
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                },
+                                                {
+                                                  "tagName": "div",
+                                                  "attributes": {
+                                                    "part": "import-phase-slot",
+                                                    "role": "none"
+                                                  },
+                                                  "style": {
+                                                    "display": "contents"
+                                                  },
+                                                  "$switch": {
+                                                    "$ref": "$map/item/hasPhase"
+                                                  },
+                                                  "cases": {
+                                                    "true": {
+                                                      "tagName": "span",
+                                                      "attributes": {
+                                                        "part": "import-phase"
+                                                      },
+                                                      "textContent": "${$map.item.importPhase}"
+                                                    }
+                                                  }
+                                                },
+                                                {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "import-message"
+                                                  },
+                                                  "textContent": "${$map.item.importMessage}"
+                                                },
+                                                {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "import-count",
+                                                    "title": "Lines this run has reported"
+                                                  },
+                                                  "textContent": "${$map.item.importCount}"
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "tagName": "div",
+                                              "attributes": {
+                                                "part": "import-log",
+                                                "data-log": "${$map.item.key}",
+                                                "tabindex": "0",
+                                                "role": "log",
+                                                "aria-label": "Import log"
+                                              },
+                                              "children": [
+                                                {
+                                                  "$prototype": "Array",
+                                                  "items": {
+                                                    "$ref": "$map/item/importLog"
+                                                  },
+                                                  "key": {
+                                                    "$ref": "$map/item/key"
+                                                  },
+                                                  "map": {
+                                                    "tagName": "div",
+                                                    "attributes": {
+                                                      "part": "import-log-line"
+                                                    },
+                                                    "children": [
+                                                      {
+                                                        "tagName": "span",
+                                                        "attributes": {
+                                                          "part": "import-phase"
+                                                        },
+                                                        "textContent": "${$map.item.phase}"
+                                                      },
+                                                      {
+                                                        "tagName": "span",
+                                                        "attributes": {
+                                                          "part": "import-text"
+                                                        },
+                                                        "textContent": "${$map.item.message}"
+                                                      }
+                                                    ]
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "changes-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/changesState"
+                        },
+                        "cases": {
+                          "list": {
+                            "tagName": "details",
+                            "attributes": {
+                              "part": "changes"
+                            },
+                            "children": [
+                              {
+                                "tagName": "summary",
+                                "attributes": {
+                                  "part": "changes-summary"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "changes-text"
+                                    },
+                                    "textContent": "${$map.item.changesSummary}"
+                                  },
+                                  {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "restore-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/canRestore"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "jx-action-button",
+                                        "attributes": {
+                                          "part": "changes-restore"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "quiet": true,
+                                          "label": "Restore to here",
+                                          "hint": "Undo everything this turn changed"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "textContent": "Restore to here"
+                                          }
+                                        ],
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "preventDefault": true
+                                            },
+                                            {
+                                              "stopPropagation": true
+                                            },
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/restore"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "tagName": "ul",
+                                "attributes": {
+                                  "part": "changes-list"
+                                },
+                                "children": [
+                                  {
+                                    "$prototype": "Array",
+                                    "items": {
+                                      "$ref": "$map/item/changes"
+                                    },
+                                    "key": {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    "map": {
+                                      "tagName": "li",
+                                      "attributes": {
+                                        "part": "change",
+                                        "data-disk": "${$map.item.disk}",
+                                        "data-ok": "${$map.item.ok}"
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "code",
+                                          "attributes": {
+                                            "part": "change-path"
+                                          },
+                                          "textContent": "${$map.item.path}"
+                                        },
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "change-note"
+                                          },
+                                          "textContent": "${$map.item.note}"
+                                        },
+                                        {
+                                          "tagName": "div",
+                                          "attributes": {
+                                            "part": "caveat-slot",
+                                            "role": "none"
+                                          },
+                                          "style": {
+                                            "display": "contents"
+                                          },
+                                          "$switch": {
+                                            "$ref": "$map/item/disk"
+                                          },
+                                          "cases": {
+                                            "true": {
+                                              "tagName": "em",
+                                              "attributes": {
+                                                "part": "change-caveat"
+                                              },
+                                              "textContent": "written to disk — undo cannot reach it"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "error-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/errorState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "error",
+                        "role": "alert"
+                      },
+                      "children": [
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "error-message"
+                          },
+                          "textContent": "${state.error}"
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "advice-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasAdvice"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "error-advice"
+                              },
+                              "textContent": "${state.errorAdvice}"
+                            }
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "error-actions"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/retry"
+                              },
+                              "key": {
+                                "$ref": "$map/item/key"
+                              },
+                              "map": {
+                                "tagName": "jx-button",
+                                "attributes": {
+                                  "part": "error-retry",
+                                  "data-command": "${$map.item.id}",
+                                  "title": "${$map.item.hint}"
+                                },
+                                "$props": {
+                                  "size": "sm",
+                                  "variant": "secondary",
+                                  "disabled": {
+                                    "$ref": "$map/item/disabled"
+                                  }
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "textContent": "${$map.item.text}"
+                                  }
+                                ],
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/run"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/id"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "setup-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/setupState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "setup"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "setup-message"
+                      },
+                      "textContent": "No AI provider is connected yet."
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "attributes": {
+                        "part": "setup-action"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "variant": "secondary"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Open Preferences…"
+                        }
+                      ],
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/openSettings"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "composer",
+                "data-awaiting": "${state.awaiting ? 'true' : null}"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "composer-chips-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasComposerChips"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "composer-chips"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/composerChips"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "composer-chip",
+                              "title": "${$map.item.hint}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "composer-chip-label"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "jx-action-button",
+                                "attributes": {
+                                  "part": "composer-chip-remove"
+                                },
+                                "$props": {
+                                  "size": "sm",
+                                  "quiet": true,
+                                  "icon": "x",
+                                  "label": "Remove ${$map.item.label}",
+                                  "hint": "Remove ${$map.item.label}"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/dropChip"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/key"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "textarea",
+                  "attributes": {
+                    "part": "composer-input",
+                    "rows": "1",
+                    "aria-label": "${state.placeholder}",
+                    "placeholder": "${state.placeholder}"
+                  },
+                  "value": {
+                    "$ref": "#/state/draft"
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/edit"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "Enter": [
+                            {
+                              "if": {
+                                "operator": "&&",
+                                "target": {
+                                  "operator": "!",
+                                  "target": {
+                                    "$ref": "event#/shiftKey"
+                                  }
+                                },
+                                "value": {
+                                  "operator": "!",
+                                  "target": {
+                                    "$ref": "event#/isComposing"
+                                  }
+                                }
+                              },
+                              "then": [
+                                {
+                                  "preventDefault": true
+                                },
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/send"
+                                  },
+                                  "value": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "description": "Enter sends and Shift+Enter opens a line, unless an IME is mid-composition — the one key a chat composer owns."
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "composer-row"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "composer-attach"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "paperclip",
+                        "label": "Attach context",
+                        "hint": "Attach context",
+                        "haspopup": "menu"
+                      },
+                      "onclick": {
+                        "$ref": "#/state/attach"
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "composer-picker",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "spacer",
+                        "role": "none"
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "composer-settings"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "gear",
+                        "label": "API key & endpoint",
+                        "hint": "API key & endpoint"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/openSettings"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "send-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/sendState"
+                      },
+                      "cases": {
+                        "stop": {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "composer-stop"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": false,
+                            "icon": "stop",
+                            "label": "Stop",
+                            "hint": "Stop"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/stop"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        },
+                        "send": {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "composer-send"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": false,
+                            "icon": "paper-plane-tilt",
+                            "label": "${state.sendLabel}",
+                            "hint": "${state.sendLabel}",
+                            "disabled": {
+                              "$ref": "#/state/sendDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/send"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "note-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/noteState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "composer-note"
+                      },
+                      "textContent": "${state.note}"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "sessions": {
+          "tagName": "div",
+          "attributes": {
+            "part": "sessions"
+          },
+          "children": [
+            {
+              "tagName": "header",
+              "attributes": {
+                "part": "header"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title"
+                  },
+                  "textContent": "Chats"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "spacer",
+                    "role": "none"
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/sessionCommands"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "head-button",
+                      "data-command": "${$map.item.id}"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "icon": {
+                        "$ref": "$map/item/icon"
+                      },
+                      "label": {
+                        "$ref": "$map/item/label"
+                      },
+                      "hint": {
+                        "$ref": "$map/item/hint"
+                      },
+                      "disabled": {
+                        "$ref": "$map/item/disabled"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/run"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/id"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "${$map.item.text}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "session-list-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasSessions"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "ul",
+                  "attributes": {
+                    "part": "session-list"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/sessions"
+                      },
+                      "key": {
+                        "$ref": "$map/item/key"
+                      },
+                      "map": {
+                        "tagName": "li",
+                        "attributes": {
+                          "part": "session-row"
+                        },
+                        "children": [
+                          {
+                            "tagName": "button",
+                            "attributes": {
+                              "part": "session-open",
+                              "type": "button",
+                              "data-session": "${$map.item.key}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/openSession"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "session-title"
+                                },
+                                "textContent": "${$map.item.title}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "session-meta"
+                                },
+                                "textContent": "${$map.item.meta}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "session-delete"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "quiet": true,
+                              "icon": "trash",
+                              "label": "Delete ${$map.item.title}",
+                              "hint": "Delete chat"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/deleteSession"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "false": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "sessions-empty"
+                  },
+                  "textContent": "No previous chats"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

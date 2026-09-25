@@ -428,6 +428,48 @@ describe("the tag-name helpers", () => {
     expect(isTagExpression({ notAnExpression: 1 })).toBe(false);
   });
 
+  test("an expression that is not a TAG expression is refused, not half-read", () => {
+    /*
+     * The Inspector's Tag row offers a Formula rung, and the formula catalog will insert any
+     * operator into it. `{ $expression: { operator: "toUpperCase", … } }` then satisfied a guard
+     * that looked no further than "is `$expression` an object", and `tagNameCandidates` read
+     * `Object.values(expression.cases)` off a node with no `cases` — `Cannot convert undefined or
+     * null to object`, out of the Command Bar, the jump bar, the Inspector and the canvas at once.
+     */
+    const formula = { $expression: { operator: "toUpperCase", target: { $ref: "#/state/title" } } };
+    expect(isTagExpression(formula)).toBe(false);
+    expect(() => tagNameCandidates(formula)).not.toThrow();
+    expect(tagNameCandidates(formula)).toEqual([]);
+    expect(displayTagName(formula)).toBe("");
+
+    // A named formula's `call`, which is what picking the first "upper" row actually inserts.
+    const call = {
+      $expression: { operator: "call", target: { $ref: "#/state/capitalize" }, value: [] },
+    };
+    expect(isTagExpression(call)).toBe(false);
+    expect(tagNameCandidates(call)).toEqual([]);
+  });
+
+  test("a tag expression missing a branch is not one either", () => {
+    // Both forms require every branch to be a `TagName`: `?:` its `value` and `initial`, `switch` a
+    // Case map of them plus the `default` an element with no tag cannot do without. A half-built
+    // One answers "no candidates" rather than a candidate list with `undefined` in it.
+    expect(isTagExpression({ $expression: { operator: "?:", target: {}, value: "a" } })).toBe(
+      false,
+    );
+    expect(isTagExpression({ $expression: { cases: {}, operator: "switch", target: {} } })).toBe(
+      false,
+    );
+    expect(
+      isTagExpression({
+        $expression: { cases: { "1": 7 }, default: "p", operator: "switch", target: {} },
+      }),
+    ).toBe(false);
+    expect(tagNameCandidates({ $expression: { operator: "?:", target: {}, value: "a" } })).toEqual(
+      [],
+    );
+  });
+
   test("candidates enumerate every branch, deduplicated, with the fallback", () => {
     expect(tagNameCandidates(conditional)).toEqual(["a", "div"]);
     expect(tagNameCandidates(multiway)).toEqual(["h1", "h2", "p"]);

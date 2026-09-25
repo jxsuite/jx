@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
- * Parent-realm adapter between the canvas iframe's slash-menu bridge and the real lit/Spectrum
- * menu. The iframe engine detects "/", its {@link file://../canvas/iframe-slash.ts} controller posts
+ * Parent-realm adapter between the canvas iframe's slash-menu bridge and the real host-realm menu.
+ * The iframe engine detects "/", its {@link file://../canvas/iframe-slash.ts} controller posts
  * `slashShow`/`slashNav`/`slashDismiss`, the host converts coordinates and calls this handler;
  * select/dismiss flow back over the same channel as `slashSelect`/`slashDismissed`. Registered via
  * {@link setCanvasSlashHandler} in studio.ts (DI keeps the host module free of the menu's lit

@@ -102,15 +102,17 @@ Re-run it whenever you change the `extensions` list so editors and `jx validate`
 
 ## `jx validate`
 
-Validate the whole project tree (run `jx schema` first). No flags.
+Validate the whole project tree (run `jx schema` first). One flag.
 
 ```bash
-jx validate [root]
+jx validate [root] [--strict]
 ```
 
 Checks, in order: that both committed entry documents are self-contained (every `$ref` a root-relative JSON Pointer that resolves in the same file, and if one does not, it asks you to regenerate with `jx schema` and stops there, since the remaining checks compile those files); `project.json` against the generated `project.schema.json`; every document under `components/`, `pages/`, and `layouts/` against the bundled document schema; every project-local `*.class.json` against the class schema; and each enabled extension's schema fragments compile standalone.
 
 Prints `Project is valid (N files checked)` on success; otherwise lists each file's violations with their instance paths and exits `1`.
+
+After the schema checks, every well-formed document is also judged by the popover, dialog and [accessibility](/docs/framework/concepts/accessibility) rules. Their findings print beside the verdict, one per line as `file: severity: message [source/rule, WCAG n]`, and they are advisory: a well-formed project stays valid. Pass `--strict` to fail the run, and exit `1`, on a lint error. A warning never fails it.
 
 :::doc-note
 `jx validate` never writes. If an entry document is older than `project.json` it composes a current one in memory for the duration of the run and leaves the committed file exactly as it is. Run `jx schema` when you want the file itself updated. A checker that edits what it is checking can report green on bytes it just wrote.

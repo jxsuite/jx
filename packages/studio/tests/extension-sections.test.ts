@@ -25,15 +25,24 @@ import type { ExtensionContributionInfo, ExtensionsInfo } from "../src/types";
 
 let host: HTMLElement;
 
-/** Mount the settings document on a throwaway host and read its inner nav. */
+/**
+ * Mount the settings document on a throwaway host and read its inner nav.
+ *
+ * The chrome is a document now (`surfaces/settings-pane.json`) and its list is a real vertical
+ * `tablist`, so a row is addressed by `part` and names itself with `label` — and the mount is
+ * asynchronous, which is why three turns rather than one.
+ */
 async function navLabels(): Promise<(string | undefined)[]> {
   renderSettingsPane(surfaceOf(host));
-  await flush();
-  return [...host.querySelectorAll(".settings-nav-item")].map((b) => b.textContent?.trim());
+  await flush(3);
+  return [...host.querySelectorAll('[part="nav-item"]')].map(
+    (b) => b.getAttribute("label") ?? undefined,
+  );
 }
 
+/** The island a section renders into. */
 function body(): HTMLElement {
-  return host.querySelector(".settings-doc-content") as HTMLElement;
+  return host.querySelector('[part="body"]') as HTMLElement;
 }
 
 const guestbookContribution: ExtensionContributionInfo = {
@@ -112,7 +121,7 @@ describe("deriveSettingsSection", () => {
       studio: {
         settings: {
           entry: { newEntry: { source: "./content/${key}/" } },
-          icon: "sp-icon-view-grid",
+          icon: "grid-four",
           label: "Content Types",
           layout: "map",
           order: 50,
@@ -120,7 +129,7 @@ describe("deriveSettingsSection", () => {
       },
     })!;
     expect(derived.label).toBe("Content Types");
-    expect(derived.icon).toBe("sp-icon-view-grid");
+    expect(derived.icon).toBe("grid-four");
     expect(derived.order).toBe(50);
     expect(derived.contribution.entrySchema).toEqual({
       properties: { source: { type: "string" } },
@@ -255,7 +264,11 @@ describe("syncExtensionSettingsSections", () => {
     expect(settingsSectionKeys()).toContain("guestbook");
     setSettingsSection("guestbook");
     await navLabels();
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Guestbook");
-    expect(body().querySelector('[data-prop="moderation"] sp-checkbox')).not.toBeNull();
+    /* The section is a Jx document (`src/surfaces/settings-contributed.json`) mounted into the host
+       the pane hands it, and the schema form inside it is one of its own — so the assertion is on
+       `part` and `data-prop`, and the mount needs more turns than a lit render. */
+    await flush(8);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Guestbook");
+    expect(body().querySelector('[data-prop="moderation"] [part="checkbox"]')).not.toBeNull();
   });
 });

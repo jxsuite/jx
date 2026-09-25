@@ -27,7 +27,7 @@ With a document active, the assistant edits the page the way you would, one chan
 - add new elements, move them, and remove them,
 - add or update the page's state entries (the same ones the **[Data panel](/docs/studio/logic/data)** shows).
 
-These abilities follow the canvas. Project Settings and the grid editors are documents too, but they aren't element trees to restructure. With one of those in front of you the assistant can still read and answer, and the editing tools step back, exactly as **Delete** and **Duplicate** do for you in the Outline. It is one rule, not two: the assistant is held to the same condition you are.
+These abilities follow the canvas. Project Settings and the grid editors are documents too, but they aren't element trees to restructure. With one of those in front of you the assistant can still read and answer, and the editing tools step back, exactly as **Delete** and **Duplicate** do for you in the Outline. It is one rule, not two: the assistant is held to the same condition you are. Its **Delete** and **Duplicate** are, in fact, those same commands: removing several elements at once is one undo step, the copies it makes become the selection, and a refusal you would see in the Outline (the document root, a repeater's template, a switch case) is the refusal it reads.
 
 Every change lands on the canvas the moment it's made, so the page updates in front of you while the reply streams. To aim the assistant at one specific element, select it on the canvas and attach it with the composer's paperclip menu. See **[Attach context](/docs/studio/ai/chat#attach-context)**.
 
@@ -54,7 +54,9 @@ Where the assistant works depends only on what's on the canvas, so you steer it 
 
 - **Open the page first** when you care about watching and undoing. With the page on the canvas, requests like "tighten the hero spacing" become live, validated, undoable canvas edits to that page.
 - **Leave the canvas empty (or ignore it)** for project-wide work. Without a document scope the assistant creates and rewrites files directly. That is faster for "scaffold an about page and a contact page", but those writes go straight to disk and aren't undoable from Studio.
-- **Let it switch itself.** The assistant can open a page on the canvas as part of a request; from then on its document edits target that page. It does this when you ask to see a page, or when fine-grained editing suits the task better than rewriting the file.
+- **Let it switch itself.** The assistant can open a page on the canvas as part of a request; from then on its document edits target that page. It does this when you ask to see a page, or when fine-grained editing suits the task better than rewriting the file. A page sitting in Code view is not one it can edit this way, and it can switch the view back to the canvas itself rather than asking you to.
+
+Not every project-wide action is a file write. Asking for something the core does not do on its own, a blog or a search box or a feed, can make the assistant turn on an **[extension](/docs/studio/projects/settings)** for you. Turning one off is an ordinary configuration change you can undo; turning one on may also install a package, which undo cannot take back. It tells you which it turned on either way.
 
 A simple habit: if you'd want to press undo afterwards, open the page before you ask.
 

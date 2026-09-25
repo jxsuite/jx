@@ -21,7 +21,7 @@ The editor loads the first time you open a code surface, not when Studio starts,
 
 Both surfaces below follow the chrome theme you chose in **[Preferences → Appearance](/docs/studio/interface/preferences#appearance)**, and switching it repaints an open editor where it stands.
 
-There are two distinct code surfaces, for two different jobs.
+There are two distinct code surfaces for writing code, and a third for reading a change.
 
 ## The function editor
 
@@ -48,6 +48,7 @@ A function body normally lives inside the component's JSON. When one grows large
 The **Code** entry in the context bar's **Editor** control shows the open file itself as raw source (JSON for pages and components, Markdown for content), as introduced in **[Modes and views](/docs/studio/interface/modes)**. It's the same document the visual surfaces edit, from the other side:
 
 - Edits parse back into the document as you type, so switching back to **Edit** or **Design** shows your changes. While the source is momentarily unparseable mid-edit, Studio simply waits. It never replaces your document with a broken parse.
+- The text is the file's own bytes, laid out as [a save writes them](/docs/studio/interface/tabs#studio-saves-only-when-you-do), and the layout you type here is the layout the next save keeps: open an object across several lines and it stays open, close one up and it stays closed while it fits.
 - **Leaving Code view takes your typing with you.** Parsing back is batched the same way the function editor's write-back is, so switching to **Edit**, **Design** or another editor settles the last keystrokes first, and the unsaved dot appears if they changed anything. Text that could not be parsed stays in the editor and still counts as unsaved, so you are not asked to choose between a broken parse and losing the line you were writing.
 - JSON files are checked against your project's own schema as you type: mistyped keys, wrong value types and missing required properties are underlined, and :kbd[Ctrl+Space] completes property names. Studio uses the `project.schema.json` and `document.schema.json` that [`jx schema`](/docs/framework/build/cli) generates from your enabled extensions, so the editor enforces exactly what `jx validate` does, including extension-contributed sections. It reads them directly, with no network access, so an offline project still gets full validation.
 - **Export**, at the right of the context bar, saves a copy of the file elsewhere.
@@ -61,6 +62,10 @@ You never have to generate those files yourself: Studio refreshes them whenever 
 Your project's configuration is a document like any other, so it has a Code editor too. In **[Project settings](/docs/studio/projects/settings)**, the **Raw JSON** section shows the whole of `project.json` as it is saved, and **Edit as code** opens that same document in Code: one undo stack, one unsaved dot, so a hand edit in the source and a change made in a settings form can never disagree about what the file says. It is schema-checked as you type like any other JSON.
 
 `project.json` is also the one document co-editing leaves alone: it configures _your_ editor, so it is never shared with a collaborator. See **[Real-time collaboration](/docs/studio/publish/collaboration)**.
+
+## Reading a change as code
+
+The **Diff** editor's **Code** half is the same editor again, showing your working copy beside your last commit with changed lines highlighted. It is read-only on both sides: one of them is a committed version with nowhere on disk to be written back to. A file with no visual form, such as a stylesheet or a script, is only ever read this way. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 
 ## When to drop down
 

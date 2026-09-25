@@ -12,7 +12,7 @@ import { mountShellTree } from "../src/shell/tree";
 import { html } from "lit-html";
 import * as leftPanelModule from "../src/panels/left-panel";
 import * as rightPanelModule from "../src/panels/right-panel";
-import { mountStatusbar, renderStatusbar, unmountStatusbar } from "../src/panels/statusbar";
+import { mountStatusbar, renderStatusbar, unmountStatusbar } from "../src/surfaces/statusbar";
 import { initShellRefs, leftPanel, rightPanel } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { view } from "../src/view";
@@ -29,8 +29,8 @@ import "../src/panels/pane-grid";
    host, like every other hand-written copy. `src/shell/tree.ts` is the one definition and stamps its
    own ids, which is what most of this file is about. */
 
-beforeEach(() => {
-  mountShellTree();
+beforeEach(async () => {
+  await mountShellTree();
   initShellRefs();
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
@@ -67,15 +67,20 @@ describe("the frame's own regions, through mountShell", () => {
 
   test("the pane's ids come from its CELL, not from a `<div id>` in the table", async () => {
     const { mountShell, unmountShell } = await import("../src/shell");
+    const { paneGridReady } = await import("../src/panels/pane-grid");
     mountShell();
+    /* Awaited, exactly as `studio.ts` awaits it: the grid is a Jx document, so `mountShell()`
+       STARTING it is not the same event as the cells existing. */
+    await paneGridReady();
     try {
       /* No `.id` to assert against, and that is the change: `pane.primary` named `#canvas-wrap`
          and `pane.primary/tabs` named `#tab-strip`, two application-grid siblings that could only
          ever be one pane's. Both are derived from the pane id now, so the assertion is about the
-         SHAPE the grid built. */
+         SHAPE the grid built — asserted through `part`, because the grid is a document and emits
+         no class for either box. */
       const stage = resolveRegion("pane.primary");
-      expect(stage?.classList.contains("pane-stage")).toBe(true);
-      expect(resolveRegion("pane.primary/tabs")?.classList.contains("pane-strip")).toBe(true);
+      expect(stage?.getAttribute("part")).toBe("pane-stage");
+      expect(resolveRegion("pane.primary/tabs")?.getAttribute("part")).toBe("strip");
       // `pane` is the primary pane, so an id minted before the second pane still means what it did.
       expect(resolveRegion("pane")).toBe(stage);
       // And the cell is inside the grid host, not a sibling of it.
@@ -105,9 +110,9 @@ function leftCtx(overrides: Record<string, unknown> = {}) {
     renderGitPanel: mock(
       () => html`<div class="git-commit-area" data-jx-region="navigator/panel:git/commit"></div>`,
     ),
+    mountSignalsPanel: mock(() => {}),
     renderHeadTemplate: mock(() => html`<div id="head-rendered"></div>`),
     renderImportsTemplate: mock(() => html`<div id="imports-rendered"></div>`),
-    renderSignalsTemplate: mock(() => html`<div id="signals-rendered"></div>`),
     setCanvasMode: mock(() => {}),
     setGitDiffState: mock(() => {}),
     setupTreeKeyboard: mock(() => {}),
@@ -129,7 +134,9 @@ describe("navigator/panel:<id>", () => {
 
       const region = resolveRegion(`navigator/panel:${panel}`);
       expect(region).not.toBeNull();
-      expect(region!.classList.contains("panel-body")).toBe(true);
+      // The Navigator's box is a document (`surfaces/navigator-dock.json`), so it emits no class;
+      // The part is what the region is stamped on and what a rule can key.
+      expect(region!.getAttribute("part")).toBe("panel-body");
       expect(leftPanel.contains(region)).toBe(true);
     });
   }
@@ -152,10 +159,20 @@ describe("navigator/panel:<id>", () => {
   });
 
   test("a leaf inside a panel is hand-stamped and nests under the derived one", async () => {
+    /* The leaf is `surfaces/git-panel.json`'s own `data-jx-region`, so the panel has to draw its
+       repository body to have one — and a mounted document needs more turns than a lit render. */
     resetWorkspaceWithTab();
     shell.leftTab = "git";
+    shell.git.status = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: [],
+    } as never;
     leftPanelModule.mount(leftCtx() as never);
-    await flush(3);
+    await flush(6);
     const commit = resolveRegion("navigator/panel:git/commit");
     expect(commit).not.toBeNull();
     expect(resolveRegion("navigator/panel:git")!.contains(commit)).toBe(true);
@@ -174,6 +191,12 @@ describe("inspector/tab:<value>", () => {
     } as never);
   }
 
+  /** Whether an Inspector tab's body is the one on screen — its panel is not `hidden`. */
+  function showingTab(key: string): boolean {
+    const panel = resolveRegion(`inspector/tab:${key}`)?.closest('[role="tabpanel"]');
+    return panel !== null && panel !== undefined && !panel.hasAttribute("hidden");
+  }
+
   test("all four tab bodies are addressable, and only the active one is shown", async () => {
     const tab = resetWorkspaceWithTab();
     tab.session.ui.rightTab = "style";
@@ -185,8 +208,11 @@ describe("inspector/tab:<value>", () => {
       expect(body).not.toBeNull();
       expect(rightPanel.contains(body)).toBe(true);
     }
-    expect(resolveRegion("inspector/tab:style")!.style.display).toBe("");
-    expect(resolveRegion("inspector/tab:properties")!.style.display).toBe("none");
+    /* Showing is the `tabpanel`'s own `hidden`, not an inline `display` this dock writes onto a
+       container: the four bodies are real tab panels now, so the strip's `aria-selected` and the
+       panel's `hidden` are one fact rather than two that can disagree. */
+    expect(showingTab("style")).toBe(true);
+    expect(showingTab("properties")).toBe(false);
   });
 
   test("an unknown stored tab falls back to the first record, not to a dead region", async () => {
@@ -194,7 +220,7 @@ describe("inspector/tab:<value>", () => {
     tab.session.ui.rightTab = "content";
     mountInspector();
     await flush(3);
-    expect(resolveRegion("inspector/tab:properties")!.style.display).toBe("");
+    expect(showingTab("properties")).toBe(true);
     expect(resolveRegion("inspector/tab:content")).toBeNull();
   });
 });
@@ -202,10 +228,12 @@ describe("inspector/tab:<value>", () => {
 // ─── statusbar/selection ──────────────────────────────────────────────────────
 
 describe("statusbar/selection", () => {
-  test("the selection field is its own region, and absent when nothing is selected", () => {
+  test("the selection field is its own region, and absent when nothing is selected", async () => {
     const tab = resetWorkspaceWithTab();
     mountStatusbar();
     renderStatusbar();
+    await flush();
+    await flush();
     expect(resolveRegion("statusbar/selection")).toBeNull();
 
     // A BATCH: since region ⑥ took the ancestor trail, a single selection leaves this field empty
@@ -215,16 +243,19 @@ describe("statusbar/selection", () => {
       ["children", 1],
     ];
     renderStatusbar();
+    await flush();
     const field = resolveRegion("statusbar/selection");
     expect(field).not.toBeNull();
     expect(field!.textContent).toContain("2 selected");
     expect(resolveRegion("statusbar")!.contains(field)).toBe(true);
   });
 
-  test("the three fields are separate regions, and PROJECT is not inside SELECTION", () => {
+  test("the three fields are separate regions, and PROJECT is not inside SELECTION", async () => {
     resetWorkspaceWithTab();
     mountStatusbar();
     renderStatusbar();
+    await flush();
+    await flush();
     // Transient messages left the bar entirely for the toast host, so the only thing that can
     // Appear beside the selection is another FIELD — and each is addressable on its own. With no
     // Registry composed, every COMMAND item is absent and only the readouts survive, which is the
@@ -273,7 +304,7 @@ describe("Outline rows carry node identity", () => {
     const row = [...leftPanel.querySelectorAll<HTMLElement>("[data-jx-path]")].find(
       (el) => el.dataset.jxPath === JSON.stringify(["children", 0]),
     );
-    expect(outlineRowPath(row!.querySelector(".layer-label"))).toEqual(["children", 0]);
+    expect(outlineRowPath(row!.querySelector('[part="label"]'))).toEqual(["children", 0]);
     expect(outlineRowPath(null)).toBeNull();
     expect(outlineRowPath(document.body)).toBeNull();
   });
@@ -307,40 +338,65 @@ describe("overlay slots stamp themselves", () => {
     clearLayerSlot("popover", "block-actions");
   });
 
-  test("a modal is `overlay.dialog`, and a named one is addressable by name", async () => {
-    const { initLayers, openModal } = await import("../src/ui/layers");
+  test("a slot in the MODAL layer is `overlay.dialog` too, and a named one answers to its name", async () => {
+    /* `OVERLAY_INSTANCE` maps the modal layer onto the SAME instance as the dialog layer — a modal
+       IS a dialog — so the two `jx-dialog` surfaces that live in `#layer-modal`
+       (`surfaces/progress-modal.ts`, `surfaces/publish.ts`) are addressed by the ids a shot already
+       names, without a second vocabulary for the second host. */
+    const { clearLayerSlot, getLayerSlot, initLayers } = await import("../src/ui/layers");
     initLayers();
-    const anon = openModal(html`<p>body</p>`, { label: "Anonymous" });
-    expect(resolveRegion("overlay.dialog")).toBe(anon.host);
-    anon.close();
+    const settings = getLayerSlot("modal", "settings");
+    expect(settings.parentElement?.id).toBe("layer-modal");
+    expect(resolveRegion("overlay.dialog:settings")).toBe(settings);
 
-    const named = openModal(html`<p>body</p>`, { label: "Settings", region: "settings" });
-    expect(resolveRegion("overlay.dialog:settings")).toBe(named.host);
-    named.close();
+    clearLayerSlot("modal", "settings");
     expect(resolveRegion("overlay.dialog:settings")).toBeNull();
   });
 
-  test("a popover is `overlay.menu`, and the topmost one wins", async () => {
-    const { initLayers, renderPopover } = await import("../src/ui/layers");
+  test("two overlays of a kind stack under one id, and the topmost one wins", async () => {
+    /* The contract `resolveAllRegions` was written for: an id that addresses several elements is
+       answerable, and `resolve` takes the LAST — the one on top. It is asserted over DIALOGS now
+       rather than over popovers, because every popover Studio opens is a named slot
+       (`getLayerSlot("popover", id)` under `surfaces/menu.ts`) and the bare `overlay.menu` id has
+       had no producer since the lit `renderPopover` went.
+
+       It used to stack two `showDialog` bodies, which is also gone: the last bespoke-body dialog
+       converted and `ui/layers.ts` no longer has that entry point. Two confirms are the same shape
+       of question and a shape the app really produces — a confirm raised from inside a dialog is
+       exactly how two land in the layer at once. */
+    const { initLayers, showConfirmDialog } = await import("../src/ui/layers");
     initLayers();
-    const first = renderPopover(html`<p>one</p>`, { dismissOnOutsideClick: false });
-    const second = renderPopover(html`<p>two</p>`, { dismissOnOutsideClick: false });
-    expect(resolveRegion("overlay.menu")).toBe(second.host);
-    second.dismiss();
-    expect(resolveRegion("overlay.menu")).toBe(first.host);
-    first.dismiss();
+    const first = showConfirmDialog("First", "one");
+    await flush();
+    const second = showConfirmDialog("Second", "two");
+    await flush();
+    const answer = (headline: string) => {
+      const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
+      const match = dialogs.find((d) => d.getAttribute("headline") === headline)!;
+      match.dispatchEvent(new Event("cancel"));
+    };
+    expect(
+      resolveRegion("overlay.dialog")?.querySelector("jx-dialog")?.getAttribute("headline"),
+    ).toBe("Second");
+
+    answer("Second");
+    await second;
+    expect(
+      resolveRegion("overlay.dialog")?.querySelector("jx-dialog")?.getAttribute("headline"),
+    ).toBe("First");
+
+    answer("First");
+    await first;
+    expect(resolveRegion("overlay.dialog")).toBeNull();
   });
 
   test("a dialog slot stamps `overlay.dialog` while it is up", async () => {
-    const { initLayers, showDialog } = await import("../src/ui/layers");
+    const { initLayers, showConfirmDialog } = await import("../src/ui/layers");
     initLayers();
-    let done: ((v: string) => void) | null = null;
-    const pending = showDialog<string>((resolve) => {
-      done = resolve;
-      return html`<p>asking</p>`;
-    });
+    const pending = showConfirmDialog("Asking", "well?");
+    await flush();
     expect(resolveRegion("overlay.dialog")).not.toBeNull();
-    done!("ok");
+    document.querySelector("#layer-dialog jx-dialog")!.dispatchEvent(new Event("cancel"));
     await pending;
     expect(resolveRegion("overlay.dialog")).toBeNull();
   });
@@ -352,7 +408,10 @@ describe("focus regions resolve against the live shell", () => {
   test("every value shell.ts declares points at a real node once mounted", async () => {
     const { mountShell, unmountShell } = await import("../src/shell");
     const { REGION_FOR_FOCUS } = await import("../src/ui/regions");
+    const { paneGridReady } = await import("../src/panels/pane-grid");
     mountShell();
+    // `pane` resolves onto a cell the grid's document draws, so the mount has to have settled.
+    await paneGridReady();
     try {
       // `dock` is the Bottom dock, which does not exist yet — the id is minted, the node is not.
       for (const focus of ["rail", "navigator", "pane", "inspector", "status"] as const) {

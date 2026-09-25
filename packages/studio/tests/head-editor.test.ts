@@ -1,10 +1,20 @@
+/**
+ * Project Settings › Site head — the `settings-head` surface.
+ *
+ * The section is a Jx document over the kit now (`src/surfaces/settings-head.json`), mounted by
+ * `src/surfaces/settings-head.ts` and reached through the seam the registry holds
+ * (`src/settings/head-editor.ts`). So the assertions address `part` names rather than the classes
+ * the lit template used to emit, and each one goes through the mounted element the way a reader
+ * would: type into the control, dispatch what the browser dispatches, and read the `$head` array
+ * the project actually holds.
+ */
 import { flush, installMockPlatform, key, pointer, resetStudioState } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
-import { renderHeadEditor } from "../src/settings/head-editor";
-import { projectState } from "../src/store";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type { MockPlatformState } from "./harness";
 import type { JxHeadEntry } from "@jxsuite/schema/types";
+
+const { renderHeadEditor } = await import("../src/settings/head-editor");
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
 
@@ -27,32 +37,79 @@ function withImmediateTimers<T>(fn: () => T): T {
 
 let platformState: MockPlatformState;
 
-/** Seed project state with a $head array and render the editor into a fresh container. */
-function setup(head: JxHeadEntry[] = []): { container: HTMLElement; head: JxHeadEntry[] } {
+/** Seed project state with a $head array and mount the section into a fresh host. */
+async function setup(
+  head: JxHeadEntry[] = [],
+): Promise<{ host: HTMLElement; head: JxHeadEntry[] }> {
   ({ state: platformState } = installMockPlatform());
   resetStudioState({ projectConfig: { $head: head, name: "demo" } });
-  const container = document.createElement("div");
-  renderHeadEditor(container);
-  return { container, head };
+  const host = document.createElement("div");
+  document.body.append(host);
+  renderHeadEditor(host);
+  await flush();
+  await flush();
+  return { head, host };
 }
 
-/** The Head (non-fonts) settings section. */
-function headSection(container: HTMLElement): HTMLElement {
-  return container.querySelectorAll(".settings-section")[1] as HTMLElement;
+/** Let a structural edit reconcile into the document. */
+async function settle(): Promise<void> {
+  await flush();
 }
 
-function entries(container: HTMLElement): HTMLElement[] {
-  return [...headSection(container).querySelectorAll(".head-entry")] as HTMLElement[];
+function entries(host: HTMLElement): HTMLElement[] {
+  return [...host.querySelectorAll('[part="entry"]')] as HTMLElement[];
 }
 
-function addButton(container: HTMLElement, label: string): Element {
-  const button = [...container.querySelectorAll(".head-add-actions sp-action-button")].find((b) =>
-    b.textContent?.includes(label),
-  );
-  if (!button) {
-    throw new Error(`add button not found: ${label}`);
+function fontRows(host: HTMLElement): HTMLElement[] {
+  return [...host.querySelectorAll('[part="font-row"]')] as HTMLElement[];
+}
+
+function fontsSection(host: HTMLElement): HTMLElement {
+  return host.querySelector('[data-section="fonts"]') as HTMLElement;
+}
+
+function headSection(host: HTMLElement): HTMLElement {
+  return host.querySelector('[data-section="head"]') as HTMLElement;
+}
+
+/** The kit field carrying one attribute of an entry, by the `$head` key it writes. */
+function field(scope: HTMLElement, dataKey: string): HTMLElement {
+  const found = scope.querySelector(`[data-key="${dataKey}"]`);
+  if (!found) {
+    throw new Error(`no field for ${dataKey}`);
   }
-  return button;
+  return found as HTMLElement;
+}
+
+/** The native control inside a `jx-textfield` — what a reader types into, and what events come from. */
+function control(field_: Element): HTMLInputElement | HTMLTextAreaElement {
+  return field_.querySelector("input, textarea") as HTMLInputElement | HTMLTextAreaElement;
+}
+
+/** Type into a field and dispatch the event the browser would, past the debounce. */
+function type(field_: Element, value: string, eventName: "change" | "input" = "change"): void {
+  const el = control(field_);
+  el.value = value;
+  withImmediateTimers(() => {
+    el.dispatchEvent(new Event(eventName, { bubbles: true }));
+  });
+}
+
+/** Type into a field WITHOUT letting the debounce fire — an edit still in flight. */
+function typePending(field_: Element, value: string): void {
+  const el = control(field_);
+  el.value = value;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** What the field writing `key` on the entry at `index` is showing. */
+function shown(host: HTMLElement, index: number, dataKey: string): string {
+  const block = entries(host)[index]!;
+  return control(field(block, dataKey)).value;
+}
+
+function addButton(host: HTMLElement, tag: string): HTMLElement {
+  return host.querySelector(`[part="add-entry"][data-tag="${tag}"]`) as HTMLElement;
 }
 
 function fontEntryUrl(family: string): string {
@@ -70,11 +127,16 @@ beforeEach(() => {
   resetStudioState();
 });
 
+afterEach(async () => {
+  document.body.replaceChildren();
+  await flush();
+});
+
 // ─── Head entry rendering ─────────────────────────────────────────────────────
 
 describe("head entry rendering", () => {
-  test("renders one block per entry with tag headers and per-tag fields", () => {
-    const { container } = setup([
+  test("renders one block per entry with tag headers and per-tag fields", async () => {
+    const { host } = await setup([
       { attributes: { href: "/a.css", rel: "stylesheet" }, tagName: "link" },
       { attributes: { content: "ie=edge", name: "x-ua" }, tagName: "meta" },
       { attributes: { src: "/app.js" }, tagName: "script" },
@@ -82,9 +144,9 @@ describe("head entry rendering", () => {
       { tagName: "style", textContent: ".x{}" } as JxHeadEntry,
       { attributes: {}, tagName: "base" },
     ]);
-    const blocks = entries(container);
+    const blocks = entries(host);
     expect(blocks.length).toBe(6);
-    expect(blocks.map((b) => b.querySelector(".head-entry-tag")?.textContent)).toEqual([
+    expect(blocks.map((b) => b.querySelector('[part="entry-tag"]')?.textContent)).toEqual([
       "<link>",
       "<meta>",
       "<script>",
@@ -93,29 +155,68 @@ describe("head entry rendering", () => {
       "<base>",
     ]);
 
-    // Link: rel + href textfields with bound values
-    const linkFields = blocks[0]!.querySelectorAll("sp-textfield");
-    expect(linkFields.length).toBe(2);
-    expect((linkFields[0] as any).value).toBe("stylesheet");
-    expect((linkFields[1] as any).value).toBe("/a.css");
+    // Link: rel + href, each bound to what the entry holds.
+    expect(control(field(blocks[0]!, "rel")).value).toBe("stylesheet");
+    expect(control(field(blocks[0]!, "href")).value).toBe("/a.css");
 
-    // Meta: name + content
-    const metaFields = blocks[1]!.querySelectorAll("sp-textfield");
-    expect((metaFields[0] as any).value).toBe("x-ua");
-    expect((metaFields[1] as any).value).toBe("ie=edge");
+    // Meta: name + content.
+    expect(control(field(blocks[1]!, "name")).value).toBe("x-ua");
+    expect(control(field(blocks[1]!, "content")).value).toBe("ie=edge");
 
-    // Script with src: single field, no inline body
-    expect(blocks[2]!.querySelectorAll("sp-textfield").length).toBe(1);
+    // Script with src: the one field, and no inline body.
+    expect(control(field(blocks[2]!, "src")).value).toBe("/app.js");
     expect(blocks[2]!.querySelector("textarea")).toBeNull();
 
-    // Script without src: textarea body shown
+    // Script without src: the body box appears beside the src field.
     expect(blocks[3]!.querySelector("textarea")).toBeTruthy();
+    expect(field(blocks[3]!, "src")).toBeTruthy();
 
-    // Style: textarea with content
+    // Style: the body box, carrying the entry's text.
     expect((blocks[4]!.querySelector("textarea") as HTMLTextAreaElement).value).toBe(".x{}");
 
-    // Unknown tag: no fields
-    expect(blocks[5]!.querySelector(".head-entry-fields")?.children.length).toBe(0);
+    // Unknown tag: a header and nothing to fill in.
+    expect(blocks[5]!.querySelector('[part="entry-fields"]')?.children.length).toBe(0);
+  });
+
+  test("a body box is named by the row it sits in, not by a label beside it", async () => {
+    const { host } = await setup([{ tagName: "style", textContent: "" } as JxHeadEntry]);
+    const row = host.querySelector('[part="body-row"]') as HTMLElement;
+    expect(row.querySelector('[part="label"]')?.textContent).toBe("Style body");
+    const area = host.querySelector("textarea")!;
+    expect(area.getAttribute("aria-labelledby")).toBe(row.querySelector("label")!.id);
+    expect(area.getAttribute("aria-labelledby")).toBeTruthy();
+    // The code box is the kit's: mono, multiline, and as tall as the entry kind asks for.
+    const box = host.querySelector('[part="body-field"]') as HTMLElement;
+    expect(box.dataset["mono"]).toBe("");
+    expect(box.dataset["rows"]).toBe("8");
+  });
+
+  test("a remount that overtakes a pending one leaves one live document", async () => {
+    installMockPlatform();
+    resetStudioState({ projectConfig: { $head: [], name: "demo" } });
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+    renderHeadEditor(first);
+    renderHeadEditor(first); // Still mounting into this very container — not a second mount.
+    renderHeadEditor(second); // Overtakes a mount that has not resolved yet.
+    await flush();
+    await flush();
+    expect(second.querySelector('[part="head-settings"]')).toBeTruthy();
+    // The overtaken mount was disposed rather than left to reconcile into a host nobody reads.
+    pointer(addButton(second, "meta"), "click");
+    await settle();
+    expect(second.querySelectorAll('[part="entry"]').length).toBe(1);
+    expect(first.querySelectorAll('[part="entry"]').length).toBe(0);
+  });
+
+  test("a second render into the same container keeps the mounted document", async () => {
+    const { host } = await setup([{ attributes: {}, tagName: "meta" }]);
+    const before = host.firstElementChild;
+    renderHeadEditor(host);
+    await settle();
+    expect(host.firstElementChild).toBe(before);
+    expect(entries(host).length).toBe(1);
   });
 });
 
@@ -123,11 +224,11 @@ describe("head entry rendering", () => {
 
 describe("add and remove entries", () => {
   test("add buttons append tag-specific defaults and persist", async () => {
-    const { container, head } = setup([]);
-    pointer(addButton(container, "+ Link"), "click");
-    pointer(addButton(container, "+ Meta"), "click");
-    pointer(addButton(container, "+ Script"), "click");
-    pointer(addButton(container, "+ Style"), "click");
+    const { host, head } = await setup([]);
+    for (const tag of ["link", "meta", "script", "style"]) {
+      pointer(addButton(host, tag), "click");
+    }
+    await settle();
 
     expect(head).toEqual([
       { attributes: { href: "", rel: "stylesheet" }, tagName: "link" },
@@ -135,104 +236,132 @@ describe("add and remove entries", () => {
       { attributes: { src: "" }, tagName: "script" },
       { attributes: {}, tagName: "style", textContent: "" },
     ]);
-    // The editor re-rendered itself with the new entries
-    expect(entries(container).length).toBe(4);
+    // The section redrew itself with the new entries.
+    expect(entries(host).length).toBe(4);
     expect(await savedHead()).toEqual(head);
-    expect(projectState?.projectConfig?.$head).toBe(head as any);
+    const store = await import("../src/store");
+    expect(store.projectState?.projectConfig?.$head).toBe(head as any);
   });
 
   test("delete button removes the entry and persists", async () => {
-    const { container, head } = setup([
+    const { host, head } = await setup([
       { attributes: { content: "a", name: "first" }, tagName: "meta" },
       { attributes: { content: "b", name: "second" }, tagName: "meta" },
     ]);
-    const firstDelete = entries(container)[0]!.querySelector("sp-action-button")!;
-    pointer(firstDelete, "click");
+    pointer(entries(host)[0]!.querySelector('[part="remove-entry"]')!, "click");
+    await settle();
+
     expect(head.length).toBe(1);
     expect(head[0]!.attributes?.name).toBe("second");
-    expect(entries(container).length).toBe(1);
+    expect(entries(host).length).toBe(1);
+    expect(shown(host, 0, "name")).toBe("second");
     const persisted = await savedHead();
     expect(persisted.length).toBe(1);
+  });
+
+  test("a delete button whose entry is already gone changes nothing", async () => {
+    const { host, head } = await setup([
+      { attributes: { name: "first" }, tagName: "meta" },
+      { attributes: { name: "second" }, tagName: "meta" },
+    ]);
+    const button = entries(host)[0]!.querySelector('[part="remove-entry"]')!;
+    pointer(button, "click");
+    // The same node again, before the row it named has been drawn away.
+    pointer(button, "click");
+    await settle();
+    expect(head.length).toBe(1);
+    expect(head[0]!.attributes?.name).toBe("second");
+    expect(entries(host).length).toBe(1);
+  });
+
+  test("an edit still in flight is written before a structural change redraws it", async () => {
+    const { host, head } = await setup([
+      { attributes: { content: "", name: "" }, tagName: "meta" },
+    ]);
+    typePending(field(entries(host)[0]!, "name"), "viewport");
+    // Not written yet — the debounce is still counting.
+    expect(head[0]!.attributes?.name).toBe("");
+
+    pointer(addButton(host, "meta"), "click");
+    await settle();
+
+    expect(head[0]!.attributes?.name).toBe("viewport");
+    expect(shown(host, 0, "name")).toBe("viewport");
   });
 });
 
 // ─── Field updates ────────────────────────────────────────────────────────────
 
 describe("field updates", () => {
-  test("link field change debounces into attributes (creating them when absent)", () => {
-    const { container, head } = setup([{ tagName: "link" } as JxHeadEntry]);
-    const [relField, hrefField] = entries(container)[0]!.querySelectorAll("sp-textfield");
-    withImmediateTimers(() => {
-      (relField as any).value = "preload";
-      relField!.dispatchEvent(new Event("change", { bubbles: true }));
-      (hrefField as any).value = "/new.css";
-      hrefField!.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+  test("link field change debounces into attributes (creating them when absent)", async () => {
+    const { host, head } = await setup([{ tagName: "link" } as JxHeadEntry]);
+    const block = entries(host)[0]!;
+    type(field(block, "rel"), "preload");
+    type(field(block, "href"), "/new.css");
     expect(head[0]!.attributes).toEqual({ href: "/new.css", rel: "preload" });
   });
 
-  test("meta content change updates attributes.content (not textContent)", () => {
-    const { container, head } = setup([
+  test("meta content change updates attributes.content (not textContent)", async () => {
+    const { host, head } = await setup([
       { attributes: { content: "old", name: "desc" }, tagName: "meta" },
     ]);
-    const [, contentField] = entries(container)[0]!.querySelectorAll("sp-textfield");
-    withImmediateTimers(() => {
-      (contentField as any).value = "new";
-      contentField!.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    type(field(entries(host)[0]!, "content"), "new");
     expect(head[0]!.attributes?.content).toBe("new");
     expect(head[0]!.textContent).toBeUndefined();
   });
 
-  test("inline script and style bodies write textContent via the content key", () => {
-    const { container, head } = setup([
+  test("inline script and style bodies write textContent via the content key", async () => {
+    const { host, head } = await setup([
       { attributes: {}, tagName: "script" },
       { attributes: {}, tagName: "style", textContent: "" },
     ]);
-    const [scriptBlock, styleBlock] = entries(container);
-    withImmediateTimers(() => {
-      const scriptArea = scriptBlock!.querySelector("textarea") as HTMLTextAreaElement;
-      scriptArea.value = "console.log(1)";
-      scriptArea.dispatchEvent(new Event("input", { bubbles: true }));
-      const styleArea = styleBlock!.querySelector("textarea") as HTMLTextAreaElement;
-      styleArea.value = "body{margin:0}";
-      styleArea.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    const [scriptBlock, styleBlock] = entries(host);
+    type(field(scriptBlock!, "content"), "console.log(1)", "input");
+    type(field(styleBlock!, "content"), "body{margin:0}", "input");
     expect(head[0]!.textContent).toBe("console.log(1)");
     expect(head[1]!.textContent).toBe("body{margin:0}");
+    const persisted = await savedHead();
+    expect(persisted[1]!.textContent).toBe("body{margin:0}");
   });
 });
 
 // ─── Google Fonts section ─────────────────────────────────────────────────────
 
 describe("google fonts", () => {
-  function fontsSection(container: HTMLElement): HTMLElement {
-    return container.querySelectorAll(".settings-section")[0] as HTMLElement;
+  function fontInput(host: HTMLElement): HTMLElement {
+    return fontsSection(host).querySelector('[part="font-input"]') as HTMLElement;
   }
 
-  function fontInput(container: HTMLElement): HTMLElement & { value: string } {
-    return fontsSection(container).querySelector("sp-textfield") as any;
+  /** Type a family name the way a reader does: the control's value, then `input`. */
+  function typeFamily(host: HTMLElement, family: string): HTMLElement {
+    const el = fontInput(host);
+    control(el).value = family;
+    control(el).dispatchEvent(new Event("input", { bubbles: true }));
+    return el;
   }
 
-  test("shows an empty message without fonts and family names with them", () => {
-    const empty = setup([]);
-    expect(fontsSection(empty.container).textContent).toContain("No fonts imported.");
+  test("shows an empty message without fonts and family names with them", async () => {
+    const empty = await setup([]);
+    expect(fontsSection(empty.host).textContent).toContain("No fonts imported.");
+    expect(fontRows(empty.host).length).toBe(0);
 
-    const withFonts = setup([
+    const withFonts = await setup([
       { attributes: { href: fontEntryUrl("Open Sans"), rel: "stylesheet" }, tagName: "link" },
       { attributes: { href: fontEntryUrl("Inter"), rel: "stylesheet" }, tagName: "link" },
     ]);
-    const names = [...fontsSection(withFonts.container).querySelectorAll(".head-entry span")].map(
+    const names = [...withFonts.host.querySelectorAll('[part="font-name"]')].map(
       (s) => s.textContent,
     );
     expect(names).toEqual(["Open Sans", "Inter"]);
+    // Every entry is still listed under Head, fonts included.
+    expect(entries(withFonts.host).length).toBe(2);
   });
 
   test("Enter in the family field adds preconnects plus the stylesheet link", async () => {
-    const { container, head } = setup([]);
-    const input = fontInput(container);
-    input.value = "Open Sans";
-    key(input, "Enter");
+    const { host, head } = await setup([]);
+    const input = typeFamily(host, "Open Sans");
+    key(control(input), "Enter");
+    await settle();
 
     expect(head.length).toBe(3);
     expect(head[0]).toEqual({
@@ -244,58 +373,63 @@ describe("google fonts", () => {
       tagName: "link",
     });
     expect(head[2]!.attributes?.href).toBe(fontEntryUrl("Open Sans"));
-    expect(input.value).toBe(""); // Cleared after adding
-    expect(fontsSection(container).textContent).toContain("Open Sans"); // Re-rendered
+    expect(control(fontInput(host)).value).toBe(""); // Cleared after adding
+    expect(fontsSection(host).textContent).toContain("Open Sans"); // Redrawn
     const persisted = await savedHead();
     expect(persisted.length).toBe(3);
   });
 
-  test("Enter with an empty field and non-Enter keys are no-ops", () => {
-    const { container, head } = setup([]);
-    const input = fontInput(container);
-    input.value = "   ";
-    key(input, "Enter");
+  test("Enter with an empty field and non-Enter keys are no-ops", async () => {
+    const { host, head } = await setup([]);
+    typeFamily(host, "   ");
+    key(control(fontInput(host)), "Enter");
+    await settle();
     expect(head.length).toBe(0);
-    input.value = "Inter";
-    key(input, "a");
+
+    typeFamily(host, "Inter");
+    key(control(fontInput(host)), "a");
+    await settle();
     expect(head.length).toBe(0);
   });
 
-  test("+ Add button reads the sibling field; empty value is a no-op", () => {
-    const { container, head } = setup([]);
-    const button = [...fontsSection(container).querySelectorAll("sp-action-button")].find((b) =>
-      b.textContent?.includes("+ Add"),
-    )!;
-    pointer(button, "click"); // Empty input → nothing happens
+  test("+ Add reads the family field; an empty one is a no-op", async () => {
+    const { host, head } = await setup([]);
+    const button = fontsSection(host).querySelector('[part="add-font"]')!;
+    pointer(button, "click"); // Nothing typed → nothing happens
+    await settle();
     expect(head.length).toBe(0);
 
-    fontInput(container).value = "Roboto";
+    typeFamily(host, "Roboto");
     pointer(button, "click");
+    await settle();
     expect(head.length).toBe(3); // 2 preconnects + stylesheet
     expect(head[2]!.attributes?.href).toBe(fontEntryUrl("Roboto"));
-    expect(fontInput(container).value).toBe("");
+    expect(control(fontInput(host)).value).toBe("");
   });
 
-  test("removing the last font also strips preconnects; earlier fonts keep them", () => {
-    const { container, head } = setup([]);
-    const input = fontInput(container);
-    input.value = "Open Sans";
-    key(input, "Enter");
-    fontInput(container).value = "Inter";
-    key(fontInput(container), "Enter");
+  test("removing the last font also strips preconnects; earlier fonts keep them", async () => {
+    const { host, head } = await setup([]);
+    typeFamily(host, "Open Sans");
+    key(control(fontInput(host)), "Enter");
+    await settle();
+    typeFamily(host, "Inter");
+    key(control(fontInput(host)), "Enter");
+    await settle();
     expect(head.length).toBe(4); // 2 preconnects + 2 stylesheets (preconnects deduped)
 
-    // Remove "Open Sans" — preconnects must survive because Inter remains.
-    const deleteButtons = () => [
-      ...fontsSection(container).querySelectorAll(".head-entry sp-action-button"),
-    ];
-    pointer(deleteButtons()[0]!, "click");
+    // Remove "Open Sans" — the preconnects survive because Inter remains.
+    pointer(fontRows(host)[0]!.querySelector('[part="remove-font"]')!, "click");
+    await settle();
     expect(head.length).toBe(3);
     expect(head.filter((e) => e.attributes?.rel === "preconnect").length).toBe(2);
+    expect(fontRows(host).length).toBe(1);
 
-    // Remove the final font — preconnects are cleaned up in place.
-    pointer(deleteButtons()[0]!, "click");
+    // Remove the last font — the preconnects go with it, in place.
+    pointer(fontRows(host)[0]!.querySelector('[part="remove-font"]')!, "click");
+    await settle();
     expect(head.length).toBe(0);
-    expect(fontsSection(container).textContent).toContain("No fonts imported.");
+    expect(fontsSection(host).textContent).toContain("No fonts imported.");
+    expect(entries(host).length).toBe(0);
+    expect(headSection(host).textContent).toContain("Head");
   });
 });

@@ -1,0 +1,107 @@
+{
+  "scenario": "list-from-state--graders-fail",
+  "task": "list-from-state",
+  "what": "an unbound template and a schema-invalid style, never fixed: both graders fail",
+  "modelRequests": ["user", "user assistant tool", "user assistant tool assistant tool"],
+  "rounds": 3,
+  "toolCallCount": 2,
+  "toolCalls": [
+    {
+      "id": "bad-1",
+      "name": "add_child",
+      "args": {
+        "parentPath": [],
+        "index": 0,
+        "node": {
+          "tagName": "ul",
+          "children": [
+            {
+              "tagName": "li",
+              "textContent": "${fruit}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bad-2",
+      "name": "set_property",
+      "args": {
+        "path": [],
+        "key": "style",
+        "value": "red"
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": false,
+    "render": {
+      "pass": false,
+      "errors": [
+        "Render threw: fruit is not defined\n  → Fix: a template binding (${...}) references state that doesn't exist. Declare it in \"state\" or correct the expression."
+      ]
+    },
+    "schema": {
+      "pass": false,
+      "errors": ["/style: must be object"]
+    }
+  },
+  "finalDoc": {
+    "tagName": "fruit-list",
+    "state": {
+      "fruits": {
+        "type": "array",
+        "default": ["Apples", "Bananas", "Cherries"]
+      }
+    },
+    "children": [
+      {
+        "tagName": "ul",
+        "children": [
+          {
+            "tagName": "li",
+            "textContent": "${fruit}"
+          }
+        ]
+      }
+    ],
+    "style": "red"
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Render an unordered list of the three fruits in state as <li> items."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "bad-1",
+      "result": {
+        "success": true,
+        "summary": "Inserted node at [\"children\",0]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_property"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "bad-2",
+      "result": {
+        "success": false,
+        "error": "Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\n- /style: must be object\n  → Fix: The value must be an object/array (use {} or []), not a string or number."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Done."
+    }
+  ]
+}

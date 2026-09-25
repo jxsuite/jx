@@ -1,10 +1,15 @@
 /**
- * The shared empty-state pattern — every panel renders through it, so this file pins the shape the
- * panels inherit: the sentence, the optional detail, the action buttons, and the compact variant.
+ * The shared empty-state VOCABULARY — the words every region inherits rather than re-deciding.
+ *
+ * The rendering moved out: `tests/empty-state-surface.test.ts` pins what
+ * `src/surfaces/empty-state.json` draws from a spec, and each converted panel pins its own
+ * `[part="empty"]` block. `renderEmptyState` — the lit template these assertions used to paint — is
+ * gone with its last caller, so what is left to hold is the part that was never about drawing: the
+ * one verb, the stale-selection sentence, and the one action a region with no open document
+ * offers.
  */
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { html, render } from "lit-html";
 
 const openQuickSearch = mock(() => {});
 void mock.module("../src/panels/quick-search.js", () => ({
@@ -13,18 +18,8 @@ void mock.module("../src/panels/quick-search.js", () => ({
   openQuickSearch,
 }));
 
-const { CANVAS_VERB, clickAnythingTo, openPageAction, renderEmptyState, staleSelectionMessage } =
+const { CANVAS_VERB, clickAnythingTo, openPageAction, staleSelectionMessage } =
   await import("../src/panels/empty-state");
-
-function paint(spec: Parameters<typeof renderEmptyState>[0]): HTMLElement {
-  const container = document.createElement("div");
-  render(renderEmptyState(spec), container);
-  return container;
-}
-
-function root(container: HTMLElement): HTMLElement {
-  return container.querySelector(".empty-state") as HTMLElement;
-}
 
 beforeEach(() => {
   openQuickSearch.mockClear();
@@ -69,64 +64,5 @@ describe("openPageAction", () => {
 
   test("accepts a caller-supplied label", () => {
     expect(openPageAction("Open a layout…").label).toBe("Open a layout…");
-  });
-});
-
-describe("renderEmptyState", () => {
-  test("renders the sentence and no action row when nothing fills the region", () => {
-    const container = paint({ message: "Open a page to see the elements it is built from." });
-    expect(root(container).classList.contains("empty-state--teach")).toBe(true);
-    expect(root(container).classList.contains("empty-state--compact")).toBe(false);
-    expect(container.querySelector(".empty-state-message")?.textContent).toBe(
-      "Open a page to see the elements it is built from.",
-    );
-    expect(container.querySelector(".empty-state-detail")).toBeNull();
-    expect(container.querySelector(".empty-state-actions")).toBeNull();
-  });
-
-  test("renders the optional detail line", () => {
-    const container = paint({ detail: "It comes from project.json.", message: "Nothing yet." });
-    expect(container.querySelector(".empty-state-detail")?.textContent).toBe(
-      "It comes from project.json.",
-    );
-  });
-
-  test("renders an action button that runs its handler", () => {
-    let ran = 0;
-    const container = paint({
-      actions: [{ label: "Add a value", run: () => (ran += 1) }],
-      message: "Data lives here.",
-    });
-    const button = container.querySelector(".empty-state-action") as HTMLElement;
-    expect(button.textContent?.trim()).toBe("Add a value");
-    expect(button.hasAttribute("disabled")).toBe(false);
-    button.click();
-    expect(ran).toBe(1);
-  });
-
-  test("renders several actions, an icon slot, and the disabled state", () => {
-    const container = paint({
-      actions: [
-        {
-          disabled: true,
-          icon: html`<sp-icon-add slot="icon"></sp-icon-add>`,
-          label: "Initialize Repository",
-          run: () => {},
-        },
-        { label: "Create GitHub repository", run: () => {} },
-      ],
-      message: "This project is not tracked by git yet.",
-    });
-    const buttons = [...container.querySelectorAll(".empty-state-action")];
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]!.hasAttribute("disabled")).toBe(true);
-    expect(buttons[0]!.querySelector("sp-icon-add")).not.toBeNull();
-    expect(buttons[1]!.hasAttribute("disabled")).toBe(false);
-  });
-
-  test("compact marks the inline variant that sits above its own add form", () => {
-    const container = paint({ compact: true, message: "No commits yet." });
-    expect(root(container).classList.contains("empty-state--compact")).toBe(true);
-    expect(root(container).classList.contains("empty-state")).toBe(true);
   });
 });

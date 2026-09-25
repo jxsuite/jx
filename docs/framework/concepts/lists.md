@@ -4,6 +4,7 @@ description: "Repeating elements from data in Jx: the Array pseudo-element, its 
 spec:
   - spec.md#10
   - spec.md#10.2 # iteration context, including state.$map from a handler
+  - spec.md#10.4 # keys
 code:
   - packages/compiler/src/targets/compile-element.ts
 ---
@@ -158,6 +159,25 @@ Each `<option>` gets its row's `id` as its value, so a `change` handler reads th
 ```
 
 Filtering and sorting never mutate the source array; they shape what renders.
+
+## Keeping rows across changes
+
+Give the list a `key` when people interact with its rows. The key is a `$map/item` pointer that names what makes each row itself.
+
+```json
+{
+  "$prototype": "Array",
+  "items": { "$ref": "#/state/tasks" },
+  "key": { "$ref": "$map/item/id" },
+  "map": { "tagName": "li", "textContent": "${$map.item.title}" }
+}
+```
+
+A keyed row keeps its element when the list changes. Reordering moves the element, inserting creates only the new rows, and removing tears down only the removed ones. Focus, scroll position, an open `<details>` and a half-typed value all survive. The `$map.index` of a row that moved updates in place.
+
+Use `{ "$ref": "$map/item" }` to key by the item itself, which works for objects and for primitive values. A key that is missing on an item falls back to that item's position, and the runtime warns once. Two rows with the same key also warn once; the second and later rows are rebuilt on every change.
+
+Without a key, rows are matched by position. That is fine for a list that only grows at the end, and wrong for one that reorders or inserts in the middle, because the element at each position is reused for whatever item lands there.
 
 ## How it works
 

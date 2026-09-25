@@ -149,11 +149,23 @@ export interface JxDispatchStatement {
  * One statement of a structured function body: a bare expression node in statement position
  * (mutation or `call`), a branch, a multiway branch, or an event dispatch.
  */
+/** `{ stopPropagation: true }` — stop the handler's event at the current target (WHATWG DOM). */
+export interface JxStopPropagationStatement {
+  stopPropagation: true;
+}
+
+/** `{ preventDefault: true }` — cancel the handler's event's default action (WHATWG DOM). */
+export interface JxPreventDefaultStatement {
+  preventDefault: true;
+}
+
 export type JxStatement =
   | JxExpressionNode
   | JxIfStatement
   | JxSwitchStatement
-  | JxDispatchStatement;
+  | JxDispatchStatement
+  | JxStopPropagationStatement
+  | JxPreventDefaultStatement;
 
 /** A function declaration: inline `body` or external `$src`/`$export`. */
 export interface JxFunctionDef {
@@ -250,7 +262,14 @@ export interface CemEvent {
 export type RefObject = FromSchema<typeof refObjectSchema>;
 
 export interface JxStyle {
-  [property: string]: string | number | JxStyle | undefined;
+  /**
+   * A declaration's value, a nested block, or SEVERAL blocks under one key.
+   *
+   * The array is what `@font-face` needs: an object's keys are unique, so a key can name a rule
+   * once, and that at-rule's identity is not in its key — a family with three weights has no other
+   * spelling. It means what writing the key that many times would mean, in order (spec.md §9.4).
+   */
+  [property: string]: string | number | RefObject | JxStyle | JxStyle[] | undefined;
 }
 
 /**
@@ -313,6 +332,11 @@ export interface JxMappedArray {
   map?: JxElement;
   filter?: Bindable<string>;
   sort?: Bindable<string>;
+  /**
+   * A `$map/item` pointer naming each row's identity (spec §10.4). Keyed rows keep their DOM node
+   * and effects across reorders, insertions and removals; absent, rows are keyed by index.
+   */
+  key?: JxRef;
 }
 
 export interface JxDocument extends JxElement {

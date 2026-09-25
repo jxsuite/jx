@@ -55,12 +55,13 @@ interface WindowEntry {
 
 const windows = new Map<number, WindowEntry>();
 
-// The AI SSE server is a single shared HTTP server owned by index.ts; its URL is injected here so
-// Per-window RPC handlers can hand the webview a stream URL.
-let aiServerUrl = "";
+// The AI SSE server is a single shared HTTP server owned by index.ts; its chat URL (incl. the
+// Per-process token that gates it) is injected here so per-window RPC handlers can hand the webview
+// A stream URL.
+let aiChatUrl = "";
 
-export function setAiServerUrl(url: string) {
-  aiServerUrl = url;
+export function setAiChatUrl(url: string) {
+  aiChatUrl = url;
 }
 
 // The token-gated import-site endpoint on the same shared server (full URL incl. its token).
@@ -283,8 +284,8 @@ function buildWindowRpc(entry: WindowEntry, getWin: () => BrowserWindow) {
         removePackage: (params) => pkg.removePackage(params),
         setPackageVersions: (params) => pkg.setPackageVersions(params),
 
-        // AI (Stack B: hand the webview the absolute SSE proxy URL on the shared local server)
-        aiChatUrl: () => `${aiServerUrl}/__studio/ai/chat`,
+        // AI (Stack B: hand the webview the absolute, tokened SSE proxy URL on the shared server)
+        aiChatUrl: () => aiChatUrl,
 
         // Import (the token-gated NDJSON endpoint on the shared local server) + directory picker
         importSiteUrl: () => importServiceUrl,
@@ -313,6 +314,7 @@ function buildWindowRpc(entry: WindowEntry, getWin: () => BrowserWindow) {
         setPreviewOverlay: (params) => session.setPreviewOverlay(params),
         clearPreviewOverlay: (params) => session.clearPreviewOverlay(params),
         listDirectory: (params) => session.listDirectory(params),
+        listExtensionCatalog: () => session.listExtensionCatalog(),
         listExtensions: () => session.listExtensions(),
         listFormats: () => session.listFormats(),
         locateFile: (params) => session.locateFile(params),

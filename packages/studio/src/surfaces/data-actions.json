@@ -1,0 +1,157 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioDataActions",
+  "$description": "The actions row a data-domain settings section grows: test a connection, push the schema, open the rows as a grid. It is an ISLAND inside `surfaces/settings-contributed.json` — the generic contributed-section renderer stays extension-agnostic and draws an empty host, and `panels/data-grid.ts` mounts this into it — which is the seam that lets the data surface contribute verbs without the settings machinery learning what a connection is.",
+  "tagName": "div",
+  "attributes": {
+    "part": "data-actions"
+  },
+  "style": {
+    "display": "flex",
+    "flexWrap": "wrap",
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "& [part=\"result\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"result\"][data-ok=\"false\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"result\"][data-ok=\"true\"]": {
+      "color": "var(--success, var(--accent))"
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "test-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/testState"
+      },
+      "cases": {
+        "shown": {
+          "tagName": "jx-button",
+          "attributes": {
+            "part": "test"
+          },
+          "$props": {
+            "variant": "secondary",
+            "size": "sm",
+            "disabled": {
+              "$ref": "#/state/testDisabled"
+            }
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/test"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "${state.testLabel}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "jx-button",
+      "attributes": {
+        "part": "push"
+      },
+      "$props": {
+        "variant": "secondary",
+        "size": "sm"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/push"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Push Schema"
+        }
+      ]
+    },
+    {
+      "tagName": "jx-button",
+      "attributes": {
+        "part": "grid"
+      },
+      "$props": {
+        "variant": "secondary",
+        "size": "sm"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/openGrid"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Open Data Grid"
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "result-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/resultState"
+      },
+      "cases": {
+        "shown": {
+          "$description": "The last test's verdict, and a live region because it arrives after the press that asked for it.",
+          "tagName": "span",
+          "attributes": {
+            "part": "result",
+            "role": "status",
+            "data-ok": "${state.resultOk}",
+            "title": "${state.resultTitle}"
+          },
+          "textContent": "${state.resultText}"
+        }
+      }
+    }
+  ]
+}

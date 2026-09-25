@@ -1,17 +1,33 @@
 /// <reference lib="dom" />
 /**
- * Slash-menu.js — Shared slash command menu for element insertion
+ * The slash menu — the shared element-insertion list, and the flow behind it.
  *
- * A single implementation used by both inline-edit (Edit/Content modes) and component inline
- * editing (Design mode). Renders a Spectrum-styled popover with keyboard navigation. Uses a
- * document-level capturing keydown listener so it intercepts Enter/Arrow/Escape before any
- * element-level handlers.
+ * One implementation used by inline editing in both realms (Edit/Content and Design mode), by the
+ * block action bar's convert menu, and by the canvas `+`. `surfaces/slash-menu.json` is the panel —
+ * its markup, its ARIA and every value in its style — and this module is the decisions: what is on
+ * offer, what the filter matches, which row is active, and what a pick does.
+ *
+ * **Why this is not `surfaces/menu.json`.** Every other Studio menu is that surface, and §12.5 says
+ * a second list of actions is a defect — but a `jx-menu` owns DOM focus by contract: showing one
+ * moves the caret onto its first row. This panel exists to filter a caret that is somewhere else,
+ * inside the canvas's `contenteditable` and usually inside the canvas IFRAME, and every character
+ * typed after the `/` has to keep landing there. A panel that takes the keyboard ends the
+ * interaction it exists to serve. So the panel is a listbox that marks its active row and never
+ * takes focus, and the keys are taken where they actually land — a document-level capturing
+ * listener for this realm, and {@link handleSlashMenuKey} called straight across the bridge for the
+ * other one. That listener is not a focus trap and cannot become one: it forwards four keys to the
+ * same driver the bridge uses, and everything else keeps going to the caret.
+ *
+ * Light dismissal, the top layer and Escape-on-the-topmost-popover are the platform's, through the
+ * `jx-popover` the document is rooted in; the `mousedown` capture listener that used to hand-roll
+ * the first of those went with the Spectrum markup.
+ *
+ * @docs studio/editing/slash-commands
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
-import { getLayerSlot } from "../ui/layers";
+import { openSlashMenuSurface } from "../surfaces/slash-menu";
 import { rectOf } from "../utils/geometry";
+import type { SlashMenuRow, SlashMenuSurface, SlashMenuView } from "../surfaces/slash-menu";
 
 interface SlashCommand {
   label: string;
@@ -61,16 +77,12 @@ let activeIdx = 0;
 
 /** What the current open() asked for, so a repaint driven by the keyboard reproduces it. */
 let showFilter = false;
+/** What the panel's own filter field holds. Empty for an anchored menu, which has no field. */
+let filterText = "";
 let filteredItems: SlashCommand[] = [];
 let open = false;
 let _anchorRect: SlashMenuAnchorRect | null = null;
-let _filterEl: HTMLInputElement | null = null;
-let _popoverEl: HTMLElement | null = null;
-
-/** @returns {HTMLElement} */
-function getHost() {
-  return getLayerSlot("popover", "slash-menu");
-}
+let _surface: SlashMenuSurface | null = null;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -87,7 +99,7 @@ export function isSlashMenuOpen() {
  * @param {SlashMenuCallbacks} cbs
  */
 export function showSlashMenu(anchorEl: HTMLElement, filter: string, cbs: SlashMenuCallbacks) {
-  showAt(rectOf(anchorEl), filter, cbs);
+  showAt(rectOf(anchorEl), filter, cbs, anchorEl);
 }
 
 /**
@@ -107,17 +119,55 @@ export function showSlashMenuAtRect(
   showAt(rect, filter, cbs);
 }
 
+/** Everything on offer right now: what the caller named, or the standard set. */
+function source(): SlashCommand[] {
+  return callbacks?.commands || SLASH_COMMANDS;
+}
+
+/** The offers a filter leaves standing. An empty filter leaves all of them. */
+function matching(filter: string, from: SlashCommand[]): SlashCommand[] {
+  return filter
+    ? from.filter(
+        (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
+      )
+    : from;
+}
+
+/** What the panel should be showing, from the state above. */
+function view(): SlashMenuView {
+  const rect = _anchorRect;
+  return {
+    activeIndex: activeIdx,
+    filter: filterText,
+    rows: filteredItems.map((cmd): SlashMenuRow => ({
+      description: cmd.description,
+      key: cmd.tag,
+      label: cmd.label,
+    })),
+    showFilter,
+    // The gap between the anchor and the panel is the `--jx-popover-offset` token the element
+    // Already applies, so this is the anchor's own edge rather than an edge plus a guess.
+    x: rect ? rect.left : 0,
+    y: rect ? rect.bottom : 0,
+  };
+}
+
+/** Push the current state to the open panel. A no-op when there is none. */
+function paint(): void {
+  _surface?.update(view());
+}
+
 /** Shared body of the two show entry points. */
-function showAt(rect: SlashMenuAnchorRect, filter: string, cbs: SlashMenuCallbacks) {
+function showAt(
+  rect: SlashMenuAnchorRect,
+  filter: string,
+  cbs: SlashMenuCallbacks,
+  anchor?: Element | null,
+) {
   callbacks = cbs;
   _anchorRect = rect;
 
-  const source = cbs.commands || SLASH_COMMANDS;
-  filteredItems = filter
-    ? source.filter(
-        (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
-      )
-    : source;
+  filteredItems = matching(filter, cbs.commands || SLASH_COMMANDS);
 
   if (filteredItems.length === 0 && !cbs.showFilter) {
     dismissSlashMenu();
@@ -125,120 +175,86 @@ function showAt(rect: SlashMenuAnchorRect, filter: string, cbs: SlashMenuCallbac
   }
 
   activeIdx = 0;
-
   showFilter = cbs.showFilter || false;
-  render();
 
-  if (!open) {
-    open = true;
-    document.addEventListener("keydown", onKeydown, true); // Capture phase
-    requestAnimationFrame(() => {
-      document.addEventListener("mousedown", onOutsideClick, true);
-    });
+  if (_surface) {
+    paint();
+    return;
   }
 
-  if (cbs.showFilter) {
-    requestAnimationFrame(() => {
-      if (_filterEl) {
-        _filterEl.focus();
+  open = true;
+  filterText = "";
+  document.addEventListener("keydown", onKeydown, true); // Capture phase
+  _surface = openSlashMenuSurface(
+    view(),
+    {
+      activateRow: (index) => {
+        const cmd = filteredItems[index];
+        if (cmd) {
+          select(cmd);
+        }
+      },
+      dismissed: onPlatformDismiss,
+      hover: (index) => {
+        activeIdx = index;
+        paint();
+      },
+      input: onFilterInput,
+    },
+    anchor ?? null,
+  );
+  if (showFilter) {
+    const surface = _surface;
+    void surface.ready.then(() => {
+      if (_surface === surface) {
+        surface.focusFilter();
       }
     });
   }
+}
+
+/**
+ * Forget everything about the open menu and hand back whoever asked for it.
+ *
+ * Split out because there are two ways one closes — this module closing it, and the PLATFORM
+ * closing it (a click outside, Escape on the topmost popover) — and both have to leave exactly the
+ * same state behind.
+ */
+function teardown(): SlashMenuCallbacks | null {
+  const cbs = callbacks;
+  open = false;
+  callbacks = null;
+  _anchorRect = null;
+  filteredItems = [];
+  filterText = "";
+  activeIdx = 0;
+  document.removeEventListener("keydown", onKeydown, true);
+  return cbs;
 }
 
 export function dismissSlashMenu() {
   if (!open) {
     return;
   }
-  const cbs = callbacks;
-  open = false;
-  callbacks = null;
-  _anchorRect = null;
-  _filterEl = null;
-  _popoverEl = null;
-  filteredItems = [];
-  document.removeEventListener("keydown", onKeydown, true);
-  document.removeEventListener("mousedown", onOutsideClick, true);
-  litRender(nothing, getHost());
+  const surface = _surface;
+  _surface = null;
+  const cbs = teardown();
+  surface?.close();
   // After teardown so a re-entrant show from the callback sees a closed menu. select() relies on
   // This ordering too: dismiss (→ onDismiss) fires BEFORE onSelect.
   cbs?.onDismiss?.();
 }
 
-// ─── Internal ─────────────────────────────────────────────────────────────────
-
-/* No parameter: `showFilter` is module state now, so there is one answer to what this
-   menu is, and a keyboard repaint cannot disagree with the open() that created it. */
-function render() {
-  const rect = _anchorRect;
-  if (!rect) {
+/** The platform closed the panel — a click outside, or Escape reaching the topmost popover. */
+function onPlatformDismiss(): void {
+  if (!open) {
     return;
   }
-
-  litRender(
-    html`
-      <sp-popover
-        open
-        data-jx-region="overlay.menu:slash-menu"
-        ${ref((el) => {
-          _popoverEl = (el as HTMLElement | undefined) || null;
-        })}
-        style="position:fixed;left:${rect.left}px;top:${
-          rect.bottom + 4
-        }px;z-index:9999;max-height:320px;overflow-y:auto"
-      >
-        ${
-          showFilter
-            ? html`<input
-                class="slash-filter"
-                type="text"
-                placeholder="Filter…"
-                autocomplete="off"
-                style="display:block;width:100%;box-sizing:border-box;padding:6px 10px;border:none;border-bottom:1px solid var(--border, #444);outline:none;font-size:13px;background:transparent;color:inherit"
-                ${ref((el) => {
-                  _filterEl = (el as HTMLInputElement | undefined) || null;
-                })}
-                @input=${onFilterInput}
-              />`
-            : nothing
-        }
-        <sp-menu style="min-width:220px">
-          ${
-            filteredItems.length > 0
-              ? filteredItems.map(
-                  (cmd, i) => html`
-                    <sp-menu-item
-                      ?focused=${i === activeIdx}
-                      @click=${(e: Event) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        select(cmd);
-                      }}
-                    >
-                      ${cmd.label}
-                      ${
-                        cmd.description
-                          ? html`<span slot="description">${cmd.description}</span>`
-                          : nothing
-                      }
-                    </sp-menu-item>
-                  `,
-                )
-              : html`<sp-menu-item disabled>No matches</sp-menu-item>`
-          }
-        </sp-menu>
-      </sp-popover>
-    `,
-    getHost(),
-  );
+  _surface = null;
+  teardown()?.onDismiss?.();
 }
 
-/** @param {MouseEvent} e */
-function onOutsideClick(e: MouseEvent) {
-  if (_popoverEl && !_popoverEl.contains(e.target as Node)) {
-    dismissSlashMenu();
-  }
-}
+// ─── Internal ─────────────────────────────────────────────────────────────────
 
 /** @param {SlashCommand} cmd */
 function select(cmd: SlashCommand) {
@@ -247,41 +263,12 @@ function select(cmd: SlashCommand) {
   cbs?.onSelect(cmd);
 }
 
-/** @param {Event} e */
-function onFilterInput(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const filter = input.value.toLowerCase();
-
-  const source = callbacks?.commands || SLASH_COMMANDS;
-  filteredItems = filter
-    ? source.filter(
-        (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
-      )
-    : source;
-
+/** @param {string} value */
+function onFilterInput(value: string) {
+  filterText = value;
+  filteredItems = matching(value.toLowerCase(), source());
   activeIdx = 0;
-  render();
-
-  // Re-focus input after re-render
-  requestAnimationFrame(() => {
-    if (_filterEl && _filterEl !== document.activeElement) {
-      _filterEl.focus();
-      _filterEl.selectionStart = _filterEl.value.length;
-      _filterEl.selectionEnd = _filterEl.value.length;
-    }
-  });
-}
-
-/**
- * Scroll the active row into view after a repaint.
- *
- * The only imperative half of the keyboard model, and it stays imperative on purpose: where a row
- * sits in a scroller is a measurement, not something a template can express. Everything else —
- * WHICH row is active — is now a binding, because it has to be.
- */
-function revealActive(): void {
-  const rows = getHost().querySelectorAll("sp-menu-item:not([disabled])");
-  rows[activeIdx]?.scrollIntoView({ block: "nearest" });
+  paint();
 }
 
 /**
@@ -289,29 +276,35 @@ function revealActive(): void {
  * was pressed in the iframe realm — a synthetic keydown redispatch on this document would lose the
  * capture-first + stopPropagation semantics the menu relies on to shield other handlers).
  *
+ * The offers are read from the array behind the panel rather than from its rows: the rows are a
+ * rendering, and a key that arrives while the document is still reconciling would otherwise be
+ * counting a list that has not caught up.
+ *
+ * Nothing here scrolls the new row into view, and that is the kit's rather than an omission: the
+ * panel writes ONE id, the listbox's `active`, and `mountListbox` is what turns that into a row's
+ * `selected` and brings it back on screen. Measurement belongs to the element that can see the
+ * box.
+ *
  * @param {string} key — "ArrowDown" | "ArrowUp" | "Enter" | "Escape"
  */
 export function handleSlashMenuKey(key: string): void {
   if (!open) {
     return;
   }
-
-  const items = getHost().querySelectorAll("sp-menu-item:not([disabled])") as NodeListOf<Element>;
+  const count = filteredItems.length;
 
   if (key === "ArrowDown") {
-    if (items.length === 0) {
+    if (count === 0) {
       return;
     }
-    activeIdx = (activeIdx + 1) % items.length;
-    render();
-    revealActive();
+    activeIdx = (activeIdx + 1) % count;
+    paint();
   } else if (key === "ArrowUp") {
-    if (items.length === 0) {
+    if (count === 0) {
       return;
     }
-    activeIdx = (activeIdx - 1 + items.length) % items.length;
-    render();
-    revealActive();
+    activeIdx = (activeIdx - 1 + count) % count;
+    paint();
   } else if (key === "Enter") {
     const cmd = filteredItems[activeIdx];
     if (cmd) {

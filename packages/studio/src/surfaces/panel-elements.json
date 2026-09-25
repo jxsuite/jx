@@ -1,0 +1,367 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelElements",
+  "$description": "The Insert panel: the palette a page is built out of. One filter, then one accordion — the project's own components first, then the HTML elements by category — and a card per thing that can be inserted. The adapter (`surfaces/panel-elements.ts`) is handed sections whose cards are already filtered, already open or closed, and already carry the tag they insert, so nothing here asks what an element is, which npm components the document has enabled, or what the filter means. A card is inserted by CLICK from this document and by DRAG from `panels/dnd.ts`, which registers against the painted card — that seam is why three class names survive the conversion, and the style block says why.",
+  "tagName": "div",
+  "attributes": {
+    "part": "palette"
+  },
+  "style": {
+    "$description": "What this block does NOT contain is most of the conversion. `.elements-list` and `.elements-list sp-accordion-item` are gone rather than moved: the first removed a border Spectrum's accordion drew and the kit's does not, and the second drew the hairline between two sections and set an 11px header — `jx-accordion` draws that separator itself (`& > :not([hidden]) ~ *`) and `jx-accordion-item` owns its own summary, so transcribing either would be re-deciding something the kit has already decided. `.element-card`, `.element-card-preview` and `.element-card-label` are NOT this document's to take, and that is why they are still spelled as classes here: the same card is drawn by `panels/stylebook-doc.ts` for its specimens and re-declared inside the canvas iframe by `canvas/iframe-render.ts`, and `panels/dnd.ts` addresses `.components-section` and `.element-card-preview` BY SELECTOR to hang the drag on a row and to fill its preview with a live element. A card is a shared object with three readers; moving its look in here would fork it. An element card's preview is drawn EMPTY for the same reason: `dnd.ts` fills it with the element rendered live, and it fills only a preview it finds with no children in it. What is left below is what belongs to the palette alone.",
+    "display": "flex",
+    "flexDirection": "column",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"filter\"]": {
+      "$description": "The filter is inset from the panel's edges; `.panel-body` sets `padding: 0`, so the field sat flush against three of them. It stretches because the palette is a flex column, which is also what `sp-search` got for free from being a block.",
+      "margin": "var(--jx-space-2)"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The one empty-state pattern (`panels/empty-state.ts`), drawn here because a document cannot render a lit helper. `.empty-state` and `.empty-state--teach` keep their stylesheet — every panel still lit renders through that helper — so this is a copy rather than a move, and it goes when the last of them converts. Its 13px was the one value with no token behind it; the kit's `--jx-text-md` is the scale this chrome is on.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-6)",
+      "textAlign": "center",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"component-tag\"]": {
+      "$description": "What a component card shows until `panels/dnd.ts` replaces it with the component rendered live. It was an inline `style=` reading `--spectrum-font-size-50` with an 11px fallback — a name that resolves only inside `<sp-theme>`, and this document is mounted into the Navigator's panel body, where that element is not an ancestor — so the size is the kit's scale and the colour the studio layer's.",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontStyle": "italic"
+    }
+  },
+  "children": [
+    {
+      "tagName": "jx-textfield",
+      "attributes": {
+        "part": "filter"
+      },
+      "$props": {
+        "size": "sm",
+        "type": "search",
+        "clearable": true,
+        "label": "Filter elements",
+        "placeholder": "Filter elements…",
+        "value": {
+          "$ref": "#/state/filter"
+        }
+      },
+      "oninput": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/setFilter"
+            },
+            "value": [
+              {
+                "$ref": "event#/target/value"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "empty-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/emptyState"
+      },
+      "cases": {
+        "filtered": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Nothing here matches “${state.filter}”."
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-actions"
+              },
+              "children": [
+                {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "size": "sm"
+                  },
+                  "attributes": {
+                    "part": "clear-filter"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/clearFilter"
+                        }
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Clear the filter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "empty": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "Elements you can drop onto the page live here — text, images, layout containers and your own components."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "jx-accordion",
+      "attributes": {
+        "part": "list"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "components-slot",
+            "role": "none",
+            "hidden": "${state.hasComponents ? null : ''}"
+          },
+          "style": {
+            "$description": "The section stands or falls as a whole, so the slot is `display: contents` — the accordion item inside it has to be the accordion's own layout child. `hidden` is what keeps the separator honest: `jx-accordion` gives a top border to every child that FOLLOWS a visible one, so an empty slot left visible would draw a line above the first category with nothing above it.",
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasComponents"
+          },
+          "cases": {
+            "true": {
+              "tagName": "jx-accordion-item",
+              "$props": {
+                "label": "Components",
+                "open": {
+                  "$ref": "#/state/componentsOpen"
+                }
+              },
+              "attributes": {
+                "data-section": "components"
+              },
+              "ontoggle": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setComponentsOpen"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "class": "components-section"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/components"
+                      },
+                      "key": {
+                        "$ref": "$map/item/tagName"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "class": "element-card",
+                          "data-component-tag": "${$map.item.tagName}",
+                          "title": "${$map.item.title}"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/insertComponent"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/tagName"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "class": "element-card-preview"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "component-tag"
+                                },
+                                "textContent": "<${$map.item.tagName}>"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "class": "element-card-label"
+                            },
+                            "textContent": "${$map.item.tagName}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/categories"
+          },
+          "key": {
+            "$ref": "$map/item/name"
+          },
+          "map": {
+            "tagName": "jx-accordion-item",
+            "$props": {
+              "label": {
+                "$ref": "$map/item/name"
+              },
+              "open": {
+                "$ref": "$map/item/open"
+              }
+            },
+            "attributes": {
+              "data-section": "${$map.item.name}"
+            },
+            "ontoggle": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/setSectionOpen"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/name"
+                    },
+                    {
+                      "$ref": "event#/detail"
+                    }
+                  ]
+                }
+              ]
+            },
+            "children": [
+              {
+                "$prototype": "Array",
+                "items": {
+                  "$ref": "$map/item/elements"
+                },
+                "key": {
+                  "$ref": "$map/item/tag"
+                },
+                "map": {
+                  "tagName": "div",
+                  "attributes": {
+                    "class": "element-card",
+                    "data-block-tag": "${$map.item.tag}"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/insertElement"
+                        },
+                        "value": [
+                          {
+                            "$ref": "$map/item/tag"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "class": "element-card-preview"
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "class": "element-card-label"
+                      },
+                      "textContent": "<${$map.item.tag}>"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

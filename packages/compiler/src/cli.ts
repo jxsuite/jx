@@ -34,7 +34,8 @@ Options:
   --no-clean     Don't clean outDir before building
   --port <n>     dev/preview: port to listen on (default 3000 / 4173)
   --dry-run      db push: print the statements without executing them
-  --connection   db push: restrict to one connection name`);
+  --connection   db push: restrict to one connection name
+  --strict       validate: fail on an overlay or accessibility lint error, not only a schema error`);
     process.exit(0);
   }
 
@@ -161,14 +162,19 @@ Options:
     }
   } else if (command === "validate") {
     try {
-      const { formatProjectTreeIssues, validateProjectTree } =
+      const { formatProjectTreeIssues, formatProjectTreeLint, validateProjectTree } =
         await import("./site/validate-command.ts");
-      const result = await validateProjectTree(projectRoot);
+      const result = await validateProjectTree(projectRoot, { strict: flags.has("--strict") });
+      const lintLines = formatProjectTreeLint(result);
       if (result.valid) {
         console.log(`Project is valid (${result.checked} files checked in ${projectRoot})`);
+        // Advisory: the tree is well-formed, and these are judgements about it (spec §8.7, §8.8).
+        for (const line of lintLines) {
+          console.log(line);
+        }
       } else {
         console.error(`Project is INVALID (${projectRoot}):`);
-        for (const line of formatProjectTreeIssues(result)) {
+        for (const line of [...formatProjectTreeIssues(result), ...lintLines]) {
           console.error(line);
         }
         process.exit(1);

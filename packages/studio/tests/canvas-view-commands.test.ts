@@ -67,6 +67,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   postOpenSlash: () => {
     formatIntents.push({ command: "openSlash" });
   },
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => {},
   requestCanvasEval: () => Promise.resolve(null),
   /* The non-lazy way out of `liveHosts`: `panels/pane-grid.ts` calls it as a cell is
@@ -74,7 +75,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   releaseCanvasHosts: () => 0,
   setToolbarRefresh: () => {},
 }));
-void mock.module("../src/panels/welcome-screen.js", () => ({
+void mock.module("../src/surfaces/welcome.js", () => ({
   initWelcome: () => {},
   renderWelcome: () => {},
 }));
@@ -91,7 +92,7 @@ void mock.module("../src/panels/formula-workspace.js", () => ({
   /* The State panel's `formula.openWorkspace` reveals the dock tab instead of repainting. */
   revealLogicPanel: () => {},
 }));
-void mock.module("../src/panels/statusbar.js", () => ({
+void mock.module("../src/surfaces/statusbar.js", () => ({
   forgetSavedTimes: () => {},
   mountStatusbar: () => {},
   noteDocumentSaved: () => {},
@@ -132,6 +133,8 @@ const {
 } = await import("../src/canvas/canvas-utils");
 const { registerSelectionSetCommand, selectionCommands } =
   await import("../src/canvas/canvas-render");
+const { EDIT_WIDTH_MIN, editWidthOfPane, resetEditWidths } =
+  await import("../src/canvas/edit-width");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -150,10 +153,14 @@ const setCanvasMode = mock((tab: Tab | null, mode: string) => {
 const renderedPanes: string[] = [];
 /** Which pane each rendering-context verb opened or closed the resolving popover for. */
 const resolvingOpened: [string, boolean][] = [];
+const openedPopovers: [string, unknown][] = [];
+const openedDialogs: [string, unknown][] = [];
 const deps = {
   getCanvasMode: () => canvasMode,
   renderPane: (paneId: string) => renderedPanes.push(paneId),
   setCanvasMode,
+  setOpenPopover: (tab: Tab, path: unknown) => openedPopovers.push([tab.id, path]),
+  setOpenDialog: (tab: Tab, path: unknown) => openedDialogs.push([tab.id, path]),
   setResolvingOpen: (paneId: string, open: boolean) => resolvingOpened.push([paneId, open]),
 };
 
@@ -179,7 +186,10 @@ beforeEach(() => {
   canvasMode = "design";
   setCanvasMode.mockClear();
   resetFits();
+  resetEditWidths();
   renderedPanes.length = 0;
+  openedPopovers.length = 0;
+  openedDialogs.length = 0;
   surfaceForPane("primary").panzoomWrap = null;
   ctx = makeContext({ document: { open: true } });
   registry = createCommandRegistry({ getContext: () => ctx });
@@ -200,6 +210,11 @@ describe("the records themselves", () => {
       "canvas.setZoom",
       "canvas.setFit",
       "canvas.setEditZoom",
+      // The addressable form of the Edit column's resize handles. It is a SETTER over a width in
+      // Px, so it names the state it ends in the way its neighbours do; the drag itself bypasses
+      // The registry for the reason `requestEditZoom` bypasses `canvas.setEditZoom` — a repaint
+      // Per pointermove would rebuild the iframe and break the handle's own pointer capture.
+      "canvas.setEditWidth",
       // The rendering context's three axes (§4.2 control ③). The Context popover wrote
       // `session.ui` through `updateUi` directly, so none of the three was a command — not in the
       // Palette, not scriptable, not bindable. Setters, not cycles: a chord carries no argument, so
@@ -211,6 +226,13 @@ describe("the records themselves", () => {
       // Argument and the repaint — are local to this module. `insert.data` is the precedent.
       "i18n.switchLocale",
       "canvas.setLayoutVisible",
+      // The one element STATE the canvas simulates. A setter for the same reason as its neighbours,
+      // And with a sharper edge: `scripts/check-shot-contract.ts` rejects any `/\.toggle[A-Z]/` id
+      // Outright and `services/automation.ts` throws on one, so a `togglePopover` could never be
+      // Driven from a documentation screenshot — which is exactly the shot this record exists for.
+      "canvas.setPopoverOpen",
+      // The dialog twin, for the same reasons.
+      "canvas.setDialogOpen",
       // The route params and component test props live in a popover now, and a transient surface
       // Opens by command rather than by clicking (§13.2) — otherwise the shot that types a test
       // Value would need a CSS selector to reach it.
@@ -412,6 +434,70 @@ describe("canvas.setFit", () => {
   });
 });
 
+describe("canvas.setEditWidth", () => {
+  /** A desktop-first document, so the bands below read the way a starter's do. */
+  const withWidths = () => {
+    const tab = openWith(["edit", "design"]);
+    (tab.doc.document as Record<string, unknown>).$media = {
+      "--": "1200px",
+      "--md": "(max-width: 768px)",
+    };
+    return tab;
+  };
+
+  test("records the width, derives the breakpoint, and repaints the pane it wrote", () => {
+    canvasMode = "edit";
+    const tab = withWidths();
+    renderedPanes.length = 0;
+    void registry.run("canvas.setEditWidth", { width: 700 });
+    expect(editWidthOfPane(workspace.activePaneId, tab)).toBe(700);
+    expect(tab.session.ui.activeMedia).toBe("--md");
+    expect(renderedPanes).toEqual([workspace.activePaneId]);
+  });
+
+  test("null gives the column back to the chosen breakpoint", () => {
+    canvasMode = "edit";
+    const tab = withWidths();
+    void registry.run("canvas.setEditWidth", { width: 700 });
+    expect(editWidthOfPane(workspace.activePaneId, tab)).toBe(700);
+    void registry.run("canvas.setEditWidth", { width: null });
+    expect(editWidthOfPane(workspace.activePaneId, tab)).toBeNull();
+  });
+
+  test("addresses the pane it is given, not the focused one", () => {
+    canvasMode = "edit";
+    withWidths();
+    splitRight();
+    focusPane(PRIMARY_PANE);
+    renderedPanes.length = 0;
+    void registry.run("canvas.setEditWidth", { pane: SECONDARY_PANE, width: 700 });
+    expect(renderedPanes).toEqual([SECONDARY_PANE]);
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+  });
+
+  test("is disabled outside edit mode, with a reason", () => {
+    canvasMode = "design";
+    expect(registry.isEnabled("canvas.setEditWidth")).toBe(false);
+    expect(registry.disabledReason("canvas.setEditWidth")).toBe("a document in edit mode");
+  });
+
+  test("refuses a width below the floor", () => {
+    canvasMode = "edit";
+    withWidths();
+    expect(() => registry.run("canvas.setEditWidth", { width: EDIT_WIDTH_MIN - 1 })).toThrow(
+      "outside the supported range",
+    );
+  });
+
+  test("refuses when no tab is open", () => {
+    canvasMode = "edit";
+    closeAllTabs();
+    expect(() => registry.run("canvas.setEditWidth", { width: 700 })).toThrow(
+      "needs an open document",
+    );
+  });
+});
+
 describe("canvas.setEditZoom", () => {
   test("writes the content zoom when the pane is in edit mode", () => {
     canvasMode = "edit";
@@ -591,8 +677,10 @@ describe("selection.set", () => {
   });
 
   test("refuses a path that is not an array", () => {
+    // `path` is `oneOf: [path, null]`, and `registry.run` coerces against it before `run`: a string
+    // Fits neither branch, so the refusal lists both shapes rather than pathArg's alone.
     expect(() => registry.run("selection.set", { path: "children/0" })).toThrow(
-      "expected an array of path segments",
+      'command "selection.set" argument "path": expected a document path or null, got "children/0"',
     );
   });
 
@@ -759,5 +847,115 @@ describe("the pan-zoom family agrees with itself", () => {
     // The reader to open a document they already have open.
     expect(registry.disabledReason("canvas.setFit")).toBe("a document on the pan-zoom surface");
     expect(registry.disabledReason("canvas.setZoom")).toBe("a document on the pan-zoom surface");
+  });
+});
+
+describe("canvas.setPopoverOpen", () => {
+  /** Give the active tab a document with one popover and select something inside it. */
+  function withPopover(selection: (string | number)[][] = []) {
+    const tab = activeTab.value!;
+    (tab.doc as { document: unknown }).document = {
+      children: [
+        { tagName: "button" },
+        {
+          attributes: { id: "menu", popover: "auto" },
+          children: [{ tagName: "a" }],
+          tagName: "nav",
+        },
+      ],
+      tagName: "div",
+    };
+    tab.session.selection = selection as never;
+    return tab;
+  }
+
+  test("with no argument it opens the popover the selection is in", () => {
+    const tab = withPopover([["children", 1, "children", 0]]);
+    void registry.run("canvas.setPopoverOpen", {});
+    expect(openedPopovers).toEqual([[tab.id, ["children", 1]]]);
+  });
+
+  test("an explicit path opens that one", () => {
+    const tab = withPopover();
+    void registry.run("canvas.setPopoverOpen", { path: ["children", 1] });
+    expect(openedPopovers).toEqual([[tab.id, ["children", 1]]]);
+  });
+
+  test("open:false with no path closes whatever is open — one record covers both", () => {
+    const tab = withPopover();
+    void registry.run("canvas.setPopoverOpen", { open: false });
+    expect(openedPopovers).toEqual([[tab.id, null]]);
+  });
+
+  test("running it twice ends in the same state — the point of a setter over a toggle", () => {
+    const tab = withPopover();
+    void registry.run("canvas.setPopoverOpen", { path: ["children", 1] });
+    void registry.run("canvas.setPopoverOpen", { path: ["children", 1] });
+    expect(openedPopovers).toEqual([
+      [tab.id, ["children", 1]],
+      [tab.id, ["children", 1]],
+    ]);
+  });
+
+  test("it REFUSES a path that is not a popover rather than opening nothing", () => {
+    withPopover();
+    expect(() => registry.run("canvas.setPopoverOpen", { path: ["children", 0] })).toThrow(
+      RangeError,
+    );
+    expect(openedPopovers).toEqual([]);
+  });
+
+  test("and refuses when neither an argument nor the selection names one", () => {
+    withPopover([["children", 0]]);
+    expect(() => registry.run("canvas.setPopoverOpen", {})).toThrow(RangeError);
+  });
+});
+
+describe("canvas.setDialogOpen", () => {
+  /** Give the active tab a document with one dialog and select something inside it. */
+  function withDialog(selection: (string | number)[][] = []) {
+    const tab = activeTab.value!;
+    (tab.doc as { document: unknown }).document = {
+      children: [
+        { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
+        { attributes: { id: "d" }, children: [{ tagName: "p" }], tagName: "dialog" },
+      ],
+      tagName: "div",
+    };
+    tab.session.selection = selection as never;
+    return tab;
+  }
+
+  test("with no argument it opens the dialog the selection is in", () => {
+    const tab = withDialog([["children", 1, "children", 0]]);
+    void registry.run("canvas.setDialogOpen", {});
+    expect(openedDialogs).toEqual([[tab.id, ["children", 1]]]);
+  });
+
+  test("an explicit path opens that one, and open:false with no path closes whatever is open", () => {
+    const tab = withDialog();
+    void registry.run("canvas.setDialogOpen", { path: ["children", 1] });
+    void registry.run("canvas.setDialogOpen", { open: false });
+    expect(openedDialogs).toEqual([
+      [tab.id, ["children", 1]],
+      [tab.id, null],
+    ]);
+  });
+
+  test("it REFUSES a path that is not a dialog, and a selection outside every dialog", () => {
+    withDialog([["children", 0]]);
+    expect(() => registry.run("canvas.setDialogOpen", { path: ["children", 0] })).toThrow(
+      RangeError,
+    );
+    expect(() => registry.run("canvas.setDialogOpen", {})).toThrow(RangeError);
+    expect(openedDialogs).toEqual([]);
+  });
+
+  test("it is enabled only while the document holds a dialog", () => {
+    const tab = activeTab.value!;
+    (tab.doc as { document: unknown }).document = { children: [], tagName: "div" };
+    expect(registry.isEnabled("canvas.setDialogOpen")).toBe(false);
+    withDialog();
+    expect(registry.isEnabled("canvas.setDialogOpen")).toBe(true);
   });
 });

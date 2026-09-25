@@ -1,5 +1,67 @@
 # Changelog
 
+## [2.0.1](https://github.com/jxsuite/jx/compare/site-v2.0.0...site-v2.0.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0e2856c](https://github.com/jxsuite/jx/commit/0e2856c10e5623d1a4416007ca2043781f119899))
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([e456b80](https://github.com/jxsuite/jx/commit/e456b80b2e0ef5fc9af900077ae7ad8ab42a7746)), closes [#329](https://github.com/jxsuite/jx/issues/329)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.1
+
+## [2.0.0](https://github.com/jxsuite/jx/compare/site-v1.1.0...site-v2.0.0) (2026-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler,site,studio:** `@jxsuite/runtime` no longer writes authored declarations to `el.style`, so code reading them back off an element after `applyStyle` sees nothing. The `elementStyleTags` export is replaced by `releaseElementStyles` and `resetDocumentStyles`, which refcount a shared rule set rather than handing out an element to remove by hand; `documentStyleText` reads back what was written.
+
+### Features
+
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
+* **runtime,site:** [@keyframes](https://github.com/keyframes) is a third at-rule body shape ([6bd5245](https://github.com/jxsuite/jx/commit/6bd52455575c6a4db3eb87a1bedd4aeb2ad1f743))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+
+
+### Bug Fixes
+
+* **site:** the canvas site-style sheet is byte-for-byte what jx build writes, element rules included ([2b5c05f](https://github.com/jxsuite/jx/commit/2b5c05f873670aa6f859039c011160110f472c7d))
+* **site:** the canvas site-style sheet is byte-for-byte what jx build writes, element rules included ([cdedafc](https://github.com/jxsuite/jx/commit/cdedafc1d07f397797ee8562174276215500bbdc)), closes [#296](https://github.com/jxsuite/jx/issues/296)
+* **ui,site:** the theme is one reading of one block ([9d732a7](https://github.com/jxsuite/jx/commit/9d732a709fe84931d9c4affd0cdc1de81127d6f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+
+## [1.1.0](https://github.com/jxsuite/jx/compare/site-v1.0.0...site-v1.1.0) (2026-08-30)
+
+
+### Features
+
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([c4b7f27](https://github.com/jxsuite/jx/commit/c4b7f27c82a19bfa1f62eff8a75597c13a3f90be))
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([988abd8](https://github.com/jxsuite/jx/commit/988abd8d3614f0ba3ce6cd8b1c1db589fef0a511)), closes [#235](https://github.com/jxsuite/jx/issues/235)
+* **runtime:** @jxsuite/runtime/css, so composing a stylesheet costs no renderer ([d27683a](https://github.com/jxsuite/jx/commit/d27683ad3a985e319d09c0a1bfef6fbbd9cfa167))
+* **runtime:** @jxsuite/runtime/css, so composing a stylesheet costs no renderer ([61bb842](https://github.com/jxsuite/jx/commit/61bb8426cdaeec85634e4ad4244d73ff3bf3c52a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 3.1.0
+    * @jxsuite/schema bumped to 2.1.0
+
 ## [1.0.0](https://github.com/jxsuite/jx/compare/site-v0.1.0...site-v1.0.0) (2026-08-27)
 
 

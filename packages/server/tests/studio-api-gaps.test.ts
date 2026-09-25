@@ -744,6 +744,19 @@ describe("create-project", () => {
     expect(payload.error).toContain("Unknown template");
     expect(existsSync(join(ROOT, "bad-template"))).toBe(false);
   });
+
+  test("a generator failure is reported as an internal error, not a client one", async () => {
+    // The destination itself is valid input — it is `generateProject` refusing to scaffold into a
+    // Directory that already holds something that must fall to the catch-all 500, not a 400.
+    mkdirSync(join(ROOT, "occupied-dest"), { recursive: true });
+    writeFileSync(join(ROOT, "occupied-dest", "stray.txt"), "already here");
+    const { req, url } = createReq({ directory: "occupied-dest", name: "Occupied" });
+    const res = await callApi(req, url);
+    expect(res.status).toBe(500);
+    const payload = await res.json();
+    expect(payload.error).toContain("occupied-dest");
+    expect(payload.error).toContain("not empty");
+  });
 });
 
 describe("starters", () => {
@@ -1111,6 +1124,14 @@ describe("format endpoints — error paths", () => {
     const { req, url } = getReq(`/__studio/formats?dir=${encodeURIComponent("../outside")}`);
     const res = await callApi(req, url);
     expect(res.status).toBe(400);
+  });
+
+  test("catalog returns 400 for a dir outside root", async () => {
+    const { req, url } = getReq(`/__studio/catalog?dir=${encodeURIComponent("../outside")}`);
+    const res = await callApi(req, url);
+    expect(res.status).toBe(400);
+    const payload = await res.json();
+    expect(payload.error).toBeDefined();
   });
 });
 

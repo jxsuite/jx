@@ -1,0 +1,107 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSwatchGroup",
+  "tagName": "jx-swatch-group",
+  "observedAttributes": ["value", "label", "columns"],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What the chosen swatch stands for; the empty string when none is. The group is the one writer of its children's checked state and of the roving caret, so a host owns this and nothing else — writing a child's checked directly puts the two into a disagreement only a re-render can settle."
+    },
+    "label": {
+      "type": "string",
+      "default": "Colours",
+      "attribute": "label",
+      "description": "The accessible name of the group. A radiogroup is named by nothing else — it takes no name from its members — and no lint can say so, because a bound role switches the naming rules off. Name every group: \"Theme palette\" and \"Recent colours\" are two different questions and a reader hears only this."
+    },
+    "columns": {
+      "type": "number",
+      "default": 0,
+      "attribute": "columns",
+      "description": "How many swatches to a row, or 0 to let them wrap on their own. A fixed grid is what makes a palette's rows line up when the swatches carry labels of different lengths; zero means unset rather than a grid of no columns, because a numeric prop coerces a removed attribute through the current value's type."
+    },
+    "applySelection": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/swatch-group.ts",
+      "$export": "applySwatchSelection",
+      "parameters": ["scope"],
+      "description": "Writes the selection onto the swatches and returns it. Idempotent: it runs inside a render effect."
+    },
+    "sync": "${state.applySelection(state)}",
+    "onSelect": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/swatch-group.ts",
+      "$export": "onSwatchGroupSelect",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The selection moved; detail is what the newly chosen swatch stands for, and e.target.value is the same string."
+        }
+      ],
+      "description": "A swatch was activated: value is written first, then change is dispatched, so a listener reading e.target.value sees the new one. Re-choosing the swatch that is already chosen says nothing."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/swatch-group.ts",
+      "$export": "onSwatchGroupKeydown",
+      "description": "The radio group's keyboard contract: either arrow pair moves the caret between enabled swatches with wrap, Home and End go to the ends, and the swatch the caret lands on is chosen. Both pairs move, because a palette wraps into rows and Down on a grid means the next one."
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/swatch-group.ts",
+      "$export": "onSwatchGroupMount",
+      "description": "Gives the group its first sight of itself, syncs the swatches, and watches the set. Not optional: applyAttributes runs before distributeSlots, so no swatch exists when the root's bindings first evaluate."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "jx-ready",
+          "description": "The group has rendered and taken its slotted swatches, which is how onReady reaches the element itself."
+        }
+      ],
+      "description": "Announces that the group has rendered. Its own onReady listens for it, and a host may too."
+    }
+  },
+  "attributes": {
+    "role": "radiogroup",
+    "aria-label": "${state.label}",
+    "data-selection": "${state.sync}",
+    "data-columns": "${state.columns > 0 ? '' : null}"
+  },
+  "onselect": {
+    "$ref": "#/state/onSelect"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "style": {
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "flexWrap": "wrap",
+    "alignItems": "center",
+    "gap": "var(--jx-space-1)",
+    "&[data-columns]": {
+      "display": "grid",
+      "gridTemplateColumns": "repeat(${state.columns}, minmax(0, 1fr))"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

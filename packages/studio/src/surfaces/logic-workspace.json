@@ -1,0 +1,685 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioLogicWorkspace",
+  "$description": "⑪ · Logic — the Bottom dock tab where a formula and a function body are edited BESIDE the page they compute. One tab, two surfaces, one header: `panels/formula-workspace.ts` decides which of them is open (a `$expression` or a Monaco body), what it is called and what its verbs are, and this draws both. The chip pipeline is a projection of `ui/formula-chips.ts`'s model — the expression tree read left to right — and a chip click reports its key back; nothing here unrolls a tree, reads a document or evaluates anything. Three ISLANDS, each an empty host this document draws and the flow fills (studio-ui-guidelines.md §9.4): `[part=\"code-host\"]` takes Monaco, `[part=\"editor-host\"]` takes the expression editor, which is a lit surface of its own and another conversion's to move, and one `[part=\"tree-host\"]` per data-rail entry takes the value tree, which is a mounted document of its own (`surfaces/panel-data.json`). The rail's trees had been empty since that tree became a document, because the lit takeover rendered a host nothing ever filled; announcing them is what fills them.",
+  "tagName": "div",
+  "attributes": {
+    "part": "workspace"
+  },
+  "style": {
+    "$description": "What the seventeen `fw-*` rules of `styles/panels.css` said, keyed on `part`. THE CONSTRAINT IS THE HEIGHT, and it is why every rule here looks tight: a dock is not a stage, so the whole surface has to fit ~240px with the page still rendering above it — the header, the chip pipeline and the result are one line each, and only the editor and the data rail scroll. Four token families moved on the way. `--spectrum-font-size-50` and `--spectrum-font-size-75` resolve only inside `<sp-theme>`, and this document is mounted in the Bottom dock's body where that element is not an ancestor, so both would silently have taken their px fallback: they are the kit's own scale here (`--jx-text-sm`, `--jx-text-md`), which is the step each of them was. A CHIP's greys were `--spectrum-gray-100/300/800`, the same problem, and they are the studio layer's `--bg-input`, `--border` and `--fg` — the three roles they were chosen for. A live BADGE was `--spectrum-gray-200` on `--spectrum-seafoam-900`; a resolved value is the reading that says the formula works, so it is `--success` on `--bg`. And a chip's 10px radius is `--jx-radius-lg`, which is that value exactly. Two rules were DELETED rather than moved: `.fw-browse-catalog` and `.fw-close` styled nothing — they existed so a lit template could hold a handle on its own button — and `jx-action-button` is the button.",
+    "display": "flex",
+    "flexDirection": "column",
+    "minHeight": "0",
+    "height": "100%",
+    "background": "var(--bg-panel)",
+    "color": "var(--fg)",
+    "fontFamily": "var(--jx-font-sans)",
+    "& [part=\"frame\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "flex": "1",
+      "minHeight": "0"
+    },
+    "& [part=\"formula\"]": {
+      "$description": "The formula surface's own column inside the frame: chips, the two-column body, and the result line. It is a second flex column rather than the header's sibling because the header is shared with the code surface and this is not.",
+      "display": "flex",
+      "flexDirection": "column",
+      "flex": "1",
+      "minHeight": "0"
+    },
+    "& [part=\"frame\"][data-surface=\"code\"]": {
+      "$description": "The code surface has no chip strip, no rail and no result line, so Monaco takes the height the formula surface spends on all three.",
+      "overflow": "hidden"
+    },
+    "& [part=\"header\"]": {
+      "display": "flex",
+      "flexShrink": "0",
+      "gap": "8px",
+      "alignItems": "center",
+      "padding": "6px 10px",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"title\"]": {
+      "overflow": "hidden",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"kind\"]": {
+      "flexShrink": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"gap\"]": {
+      "$description": "The header is a row of two groups — what is open, and what you can do to it — and this is the space between them. A margin on the verbs would have to be spelled on whichever verb happens to come first, which changes when one of them is conditional.",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"chips\"]": {
+      "$description": "The pipeline reads left to right and wraps rather than scrolling sideways: a chip you have to find by scrolling is one you do not know is there. It never shrinks, because it is the surface's table of contents.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "4px",
+      "alignItems": "center",
+      "flexShrink": "0",
+      "padding": "4px 10px",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "4px",
+      "maxWidth": "180px",
+      "padding": "1px 7px",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-lg)",
+      "background": "var(--bg-input)",
+      "color": "var(--fg)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "18px",
+      "cursor": "pointer"
+    },
+    "& [part=\"chip\"]:hover": {
+      "$description": "The takeover's chips had no hover state at all, which made a row of pressable things look like a row of labels. Nothing else on this surface changes colour on hover, so the border is enough to say it.",
+      "borderColor": "var(--accent)"
+    },
+    "& [part=\"chip-label\"]": {
+      "maxWidth": "110px",
+      "overflow": "hidden",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "The live value (spec §19.9). A resolved formula is arbitrary text — an object, a URL, a paragraph — so it ellipsizes inside the chip it annotates and never sets the chip's width.",
+      "flex": "0 1 auto",
+      "minWidth": "0",
+      "maxWidth": "120px",
+      "overflow": "hidden",
+      "padding": "0 5px",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--bg)",
+      "color": "var(--success)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"body\"]": {
+      "$description": "The two columns, and the only thing in the tab that scrolls vertically.",
+      "display": "flex",
+      "flex": "1",
+      "minHeight": "0"
+    },
+    "& [part=\"editor\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "auto",
+      "padding": "8px 10px"
+    },
+    "& [part=\"selected\"]": {
+      "display": "flex",
+      "gap": "4px",
+      "paddingBottom": "6px",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"selected-node\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis",
+      "fontFamily": "var(--font-mono, monospace)"
+    },
+    "& [part=\"editor-host\"]": {
+      "$description": "The expression editor's island. It gets `min-width: 0` and nothing else: the editor inside it is a flex chain that must be allowed to shrink, and this is the rung of it this document owns.",
+      "minWidth": "0"
+    },
+    "& [part=\"rail\"]": {
+      "$description": "Narrower than the takeover's 280px slab: at dock height it is a reference column beside the editor, and the live values it used to be the only source of are on the canvas now.",
+      "flex": "0 0 200px",
+      "overflow": "auto",
+      "padding": "8px 10px",
+      "borderLeft": "1px solid var(--border)"
+    },
+    "& [part=\"rail-title\"]": {
+      "paddingBottom": "6px",
+      "fontSize": "var(--jx-text-sm)",
+      "letterSpacing": "0.5px",
+      "color": "var(--fg-dim)",
+      "textTransform": "uppercase"
+    },
+    "& [part=\"entry\"]": {
+      "marginBottom": "8px"
+    },
+    "& [part=\"entry-head\"]": {
+      "display": "flex",
+      "gap": "6px",
+      "alignItems": "baseline"
+    },
+    "& [part=\"entry-name\"]": {
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"entry-type\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"tree-host\"]": {
+      "$description": "What `.data-tree` said. One entry's value tree is a mounted document of its own, and a deep one is capped rather than allowed to push the entries under it off the rail.",
+      "padding": "2px 0",
+      "maxHeight": "300px",
+      "overflowY": "auto"
+    },
+    "& [part=\"code-host\"]": {
+      "$description": "Monaco's host. It must have a real height of its own — the editor measures its container, and a flex item with an `auto` minimum would report the editor's own content height back at itself.",
+      "flex": "1",
+      "minHeight": "0"
+    },
+    "& [part=\"result\"]": {
+      "flexShrink": "0",
+      "display": "flex",
+      "gap": "6px",
+      "overflow": "hidden",
+      "padding": "6px 10px",
+      "borderTop": "1px solid var(--border)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--success)",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"result-text\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"result\"][data-tone=\"error\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"result\"][data-tone=\"pending\"]": {
+      "$description": "Not a value: a sentence saying why there is none. It leaves the monospace face the two real answers wear, so \"nothing has evaluated this yet\" cannot be misread as a result.",
+      "fontFamily": "var(--jx-font-sans)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"result-note\"]": {
+      "flexShrink": "0",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The one empty-state pattern (`panels/empty-state.ts`), drawn here because a document cannot render a lit helper. `.empty-state` keeps its stylesheet while every panel still lit renders through that helper, so this is a copy rather than a move.",
+      "display": "flex",
+      "flex": "1",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-6)",
+      "textAlign": "center",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "state-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/state"
+      },
+      "cases": {
+        "empty": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty-message"
+              },
+              "textContent": "${state.emptyMessage}"
+            }
+          ]
+        },
+        "ready": {
+          "tagName": "div",
+          "attributes": {
+            "part": "frame",
+            "data-surface": "${state.surface}"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "header"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title",
+                    "title": "${state.titleHint}"
+                  },
+                  "textContent": "${state.glyph} ${state.name}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "kind"
+                  },
+                  "textContent": "${state.kind}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "gap",
+                    "aria-hidden": "true"
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "catalog-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasCatalog"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "catalog"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "brackets-curly",
+                        "haspopup": "menu",
+                        "label": "Browse catalog"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/browseCatalog"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/currentTarget"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Catalog"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "close"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "x",
+                    "label": "Close"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/close"
+                        }
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Close"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "surface-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/surface"
+              },
+              "cases": {
+                "code": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "code-host"
+                  }
+                },
+                "missing": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-message"
+                      },
+                      "textContent": "${state.missingMessage}"
+                    }
+                  ]
+                },
+                "formula": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "formula"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "chips",
+                        "role": "group",
+                        "aria-label": "Formula pipeline"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/chips"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "button",
+                            "attributes": {
+                              "part": "chip",
+                              "type": "button",
+                              "data-path": "${$map.item.key}",
+                              "title": "${$map.item.label}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/selectChip"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "chip-label"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "badge-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/hasBadge"
+                                },
+                                "cases": {
+                                  "true": {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "badge",
+                                      "title": "${$map.item.badge}"
+                                    },
+                                    "textContent": "${$map.item.badge}"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "body"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "editor"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "selected"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "selected-label"
+                                  },
+                                  "textContent": "Selected:"
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "selected-node"
+                                  },
+                                  "textContent": "${state.selectedSummary}"
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "editor-host"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "rail"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "rail-title"
+                              },
+                              "textContent": "Data"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "rail-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/hasScope"
+                              },
+                              "cases": {
+                                "false": {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "empty"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "p",
+                                      "attributes": {
+                                        "part": "empty-message"
+                                      },
+                                      "textContent": "${state.scopeEmptyMessage}"
+                                    }
+                                  ]
+                                },
+                                "true": {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "rail-list"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "#/state/scopeEntries"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "map": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "entry",
+                                          "data-entry": "${$map.item.key}"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "entry-head"
+                                            },
+                                            "children": [
+                                              {
+                                                "tagName": "span",
+                                                "attributes": {
+                                                  "part": "entry-name"
+                                                },
+                                                "textContent": "${$map.item.name}"
+                                              },
+                                              {
+                                                "tagName": "span",
+                                                "attributes": {
+                                                  "part": "entry-type"
+                                                },
+                                                "textContent": "${$map.item.type}"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "tree-host"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "result",
+                        "data-tone": "${state.resultTone}",
+                        "role": "status"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "result-text"
+                          },
+                          "textContent": "${state.resultText}"
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "note-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasResultNote"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "result-note"
+                              },
+                              "textContent": "${state.resultNote}"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

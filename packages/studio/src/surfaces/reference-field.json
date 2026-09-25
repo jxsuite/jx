@@ -1,0 +1,191 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioReferenceField",
+  "$description": "The `reference` form control — site-architecture.md §6.1's `{ \"$ref\": \"#/content/x\" }` and §7.4's entry picker. Registered once and dispatched to by `ui/schema-form.ts` for any property whose `$ref` names a collection, so the settings forms, the entry editor and an array-of-objects cell all draw the same control without any of them knowing it exists. `ui/form-controls.ts` decides which of the three states the field is in and what each gesture commits; nothing here reads a schema or lists a directory. The three states are drawn as three different controls on purpose: a picker while the entries are known, a TEXT field while they are not — a failed read leaves the value editable with the reason beside it, because swapping it for an empty dropdown would present \"no entries\" and \"could not find out\" as the same screen — and a disabled picker saying so while the read is in flight.",
+  "tagName": "div",
+  "attributes": {
+    "part": "reference",
+    "role": "none"
+  },
+  "style": {
+    "$description": "The five `.reference-*` rules from `styles/inspector.css`, keyed on `part` and re-pointed at the studio token layer. Two values could not come with them. The note read `var(--spectrum-font-size-50, 11px)`, which resolves only inside `<sp-theme>` — this document is mounted in a settings pane, an entry editor or a frontmatter card, all outside that element, so it would silently have taken its hard-coded fallback every time. And `.reference-missing` coloured ONE row of the dropdown red; the kit's select offers a row a face, a swatch and a border style but no tone, so the dangling entry says what it is in words (\"— not found\") and the colour is not replaced by a second channel. The 6px gap comes onto the kit's spacing scale.",
+    "display": "flex",
+    "flex": "1",
+    "minWidth": "0",
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "& [part=\"picker\"], & [part=\"text\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"note\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "1.4"
+    },
+    "& [part=\"note\"][data-tone=\"danger\"]": {
+      "$description": "A listing that failed is a FAULT rather than a fact about the project, and the two notes this control draws are otherwise the same sentence in the same place.",
+      "color": "var(--danger)"
+    },
+    "& [part=\"retry\"]": {
+      "flex": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "control-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/kind"
+      },
+      "cases": {
+        "picker": {
+          "$description": "The collection's entries. The empty row is `\"\"` rather than a sentinel, because the kit's select treats the empty string as a legal value a reader can arrow to; a dangling reference is kept in the list and marked, since blanking the field would delete the evidence and the value in one repaint. While the read is in flight the same control is disabled and offers one row saying so.",
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "picker"
+          },
+          "$props": {
+            "size": "sm",
+            "label": {
+              "$ref": "#/state/label"
+            },
+            "options": {
+              "$ref": "#/state/options"
+            },
+            "value": {
+              "$ref": "#/state/value"
+            },
+            "disabled": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/choose"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "text": {
+          "$description": "The id as the string it is: what a reader gets when the choices could not be listed, and when the control was named by a `ui.control` override on a property that references nothing. Refusing to draw anything would lose the value that is already there.",
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "text"
+          },
+          "$props": {
+            "size": "sm",
+            "label": {
+              "$ref": "#/state/label"
+            },
+            "value": {
+              "$ref": "#/state/value"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/edit"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "note-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasNote"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "note",
+            "data-tone": "${state.noteTone}",
+            "role": "status"
+          },
+          "textContent": "${state.note}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "retry-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/canRetry"
+      },
+      "cases": {
+        "true": {
+          "$description": "Offered only where there is something to try again — a listing that failed. It used to be offered only where the HOST passed a repaint hook, because a template control cannot draw a second frame of its own and a button that cannot do the thing it is named after is worse than its absence. A mounted control redraws itself, so the condition is now the failure rather than the host.",
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "retry"
+          },
+          "$props": {
+            "size": "sm",
+            "quiet": true,
+            "label": "Retry listing entries"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/retry"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Retry"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

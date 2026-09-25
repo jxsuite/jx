@@ -1,0 +1,188 @@
+# Mints the specs' release FRAGMENTS into the specs on the release pull request — the one branch
+# where a spec's version should advance, because that tree becomes the tag, and the one place two
+# releases of one spec can be given consecutive numbers without anyone resolving a conflict.
+#
+# WHY FRAGMENTS. A spec release is three edits to one file: the `**Version:**` line (and the
+# footer's copy), the `**Updated:**` line, and a new entry at the top of `## Changelog`. Written in
+# the pull request that made the change, those edits are where two pull requests releasing the
+# same spec collide — both rewrite the version line, both prepend at the top — and the second to
+# merge conflicts on lines that carry nothing of its own (#335: three `studio.md` releases and two
+# `ui.md` releases in one day, each pair resolved by hand). So a pull request may record the
+# release as a fragment instead (`bun run spec:change`): one small file under `specs/changes/`
+# naming the spec, the level and the changelog sentence. Two fragments never conflict. The gate
+# (`docs:spec-release`) accepts a fragment in place of an in-file release, and this workflow turns
+# the fragments into versions.
+#
+# WHY HERE. `spec:release` mints every fragment in the order it landed on `main` and deletes it,
+# so the version a change gets is decided by when it merged, not by when it was written — the
+# same rule release-please applies to package versions, and the same branch: spec versions ride the
+# package release. `release-bun-nix.yml` is the model: it commits a derived file to the release
+# pull request for the same reason, and its notes on `GITHUB_TOKEN` pushes apply here unchanged.
+#
+# TERMINATION is a fixed point, not a guard. The job pushes only when there was a fragment to mint;
+# the run its own push triggers finds `specs/changes/` empty and pushes nothing. A fragment merged
+# to `main` while the release pull request is open reaches it the next time release-please
+# refreshes the branch, which re-runs this workflow.
+#
+# The pushed commit's head is the bot's, and the repository's Actions policy holds every run on a
+# bot-authored head (issue #307), so the step after the push approves them through the same script
+# the screenshots and schemas lanes use; `actions: write` is for that one endpoint.
+name: Release specs
+
+on:
+  pull_request:
+    branches: [main]
+  # The escape hatch: re-run by hand against the release pull request's number, or run
+  # `bun run spec:release` locally and push the result from a human's account.
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to mint the spec fragments on."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+# NOT `cancel-in-progress`, and no bot/human suffix, unlike the screenshots and schemas lanes: the
+# release pull request is authored by release-please's `GITHUB_TOKEN` push, so the run doing the
+# approving has `github.actor == 'github-actions[bot]'` too, and the run it approves would land in
+# the same group and cancel it mid-approval — leaving `Test` held and the pull request BLOCKED, the
+# very thing the approval step exists to prevent. Two runs on one release pull request are rare
+# (a refreshed branch) and each is a fixed point, so letting them both finish is the safe choice.
+concurrency:
+  group: release-specs-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  mint:
+    # Only the release pull request. A prefix match, because release-please names the branch from
+    # its own config and the suffix is the target branch.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "branch=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+            echo "pr=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          else
+            branch="$(gh pr view "$INPUT_PR" --json headRefName --jq .headRefName)"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo "pr=$INPUT_PR" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.target.outputs.branch }}
+          persist-credentials: true
+          # `spec:release` orders fragments by the commit that added each, so the history has to
+          # be there; a shallow checkout would sort every fragment as "unlanded", by name.
+          fetch-depth: 0
+      # `spec:release` imports the docs' Markdown helpers (`scripts/lib/unwrap-prose.ts`, which
+      # loads remark at import), so the dependencies are needed here, unlike the bun.nix lane's
+      # bare generator.
+      - uses: ./.github/actions/setup-bun
+      - id: mint
+        run: |
+          set -euo pipefail
+          bun run spec:release
+          if git diff --quiet -- specs; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "no spec fragments to mint; nothing to push."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Commit the minted releases
+        if: steps.mint.outputs.changed == 'true'
+        id: push
+        env:
+          BRANCH: ${{ steps.target.outputs.branch }}
+          # The husky hooks would otherwise run inside this commit; the lane has already run the
+          # spec gates' subject (the specs themselves), and a local authoring aid must not abort
+          # a push whose contents the release is about to carry.
+          HUSKY: "0"
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- specs
+          # `chore(specs)`, deliberately: release-please bumps no package for a `chore`, and specs/
+          # belongs to no package path, so this commit cannot change what the release ships.
+          git commit -m "chore(specs): mint the spec release fragments" \
+            -m "Written by .github/workflows/release-specs.yml from specs/changes/, in merge order."
+          # `release-bun-nix.yml` pushes to this same branch on this same event, and whichever of
+          # the two is slower would be rejected non-fast-forward. The two commits touch disjoint
+          # paths (bun.nix; specs/), so a rebase onto whatever landed meanwhile is clean; two tries
+          # cover the one other writer.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${BRANCH}"; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::could not push after 3 attempts; another writer keeps moving ${BRANCH}"
+              exit 1
+            fi
+            git fetch origin "${BRANCH}"
+            git rebase "origin/${BRANCH}"
+          done
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      # The push above leaves every run on the new head held (issue #307); approve them so `ci`
+      # reports on the release pull request. Cannot fail the job: a refusal is printed as the
+      # one-line human crank per run and appended to the comment below.
+      - name: Approve the runs the push queued
+        id: approve
+        if: steps.push.outputs.sha != ''
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          NOTE_FILE: /tmp/release-specs-approval.md
+        run: bun scripts/ci/approve-held-runs.ts
+      - name: Say what happened, on the pull request
+        if: steps.mint.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.target.outputs.pr }}
+          NOTE_FILE: /tmp/release-specs-approval.md
+        run: |
+          set -euo pipefail
+          {
+            echo "<!-- release-specs -->"
+            echo "### Spec releases minted"
+            echo
+            echo "The spec release fragments recorded since the last release (\`specs/changes/\`) have"
+            echo "been minted into their specs in merge order and pushed to this branch:"
+            echo
+            echo '```'
+            git show --stat --format= HEAD -- specs | sed 's/^/  /'
+            echo '```'
+            echo
+            echo "_Written by \`.github/workflows/release-specs.yml\`. Nothing here changes what the"
+            echo "release ships; the spec changelog page renders the new entries at the next build._"
+            if [ -f "$NOTE_FILE" ]; then
+              cat "$NOTE_FILE"
+            fi
+          } > body.md
+          existing="$(gh api "repos/${GH_REPO}/issues/${PR}/comments" \
+            --jq '[.[] | select(.body | startswith("<!-- release-specs -->")) | .id] | first // empty')"
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${GH_REPO}/issues/comments/${existing}" \
+              --field body=@body.md > /dev/null
+          else
+            gh api --method POST "repos/${GH_REPO}/issues/${PR}/comments" \
+              --field body=@body.md > /dev/null
+          fi

@@ -40,10 +40,13 @@ export const elementPropertyValueSchema = {
 
 export const switchDefSchema = {
   additionalProperties: false,
-  description: "Reactive $ref that drives which case to render.",
-  // The discriminant is a reactive state path (e.g. "#/state/currentRoute") resolved by
-  // ResolveRef at render time — not a #/$defs/ type pointer.
-  properties: { $ref: { $ref: "#/$defs/StateRef" } },
+  description:
+    "Reactive $ref that drives which case to render: a state entry, or inside a mapped array's template the row's $map/item or $map/index (spec §14.1).",
+  // The discriminant is a reactive state path (e.g. "#/state/currentRoute") or a row pointer
+  // ("$map/item/dividerAbove") resolved by ResolveRef at render time — not a #/$defs/ type pointer.
+  properties: {
+    $ref: { oneOf: [{ $ref: "#/$defs/StateRef" }, { $ref: "#/$defs/MapRef" }], type: "string" },
+  },
   required: ["$ref"],
   type: "object",
 } as const;

@@ -1,0 +1,52 @@
+{
+  "chatCalls": [
+    "sendMessage(\"edit it\")",
+    "toMessagesArray()",
+    "appendDelta(\"Let me \")",
+    "appendToolCallStart(\"c1\", \"edit\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"half\")",
+    "setError(\"upstream 500\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "edit it"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": ["edit"]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "edit it"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "upstream 500",
+    "model": "test",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null
+}

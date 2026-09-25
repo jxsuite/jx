@@ -3,6 +3,7 @@ title: "Statements"
 description: "Write function bodies as visual steps: set state, call functions, branch with if and switch, and dispatch events, no JavaScript required."
 code:
   - packages/studio/src/panels/statement-editor.ts
+  - packages/studio/src/surfaces/statements.ts
 ---
 
 # Statements
@@ -26,7 +27,7 @@ The toggle switches representations; it does not translate between them. Picking
 
 ## Add steps
 
-Every list of steps ends in a **+ Add statement** picker with five kinds:
+Every list of steps ends in an **Add statement** button. It opens a menu with five kinds:
 
 - **Set state**: store a value in a state entry. This is the everyday step: the card is a one-step formula whose operator is an assignment (`=`, or `+=` and friends for read-modify-write), whose target is the entry, and whose value can be anything a **[formula](/docs/studio/logic/formulas)** can produce.
 - **Call function**: run another function from your state, with rows for the arguments to pass it.
@@ -41,8 +42,8 @@ Each card has a header naming its kind, a delete button, and a drag handle (⠿)
 An **If / Else** card holds:
 
 1. An **If** row holding the condition, written as an operand: a state value, or a nested comparison formula.
-2. A **Then** lane holding an indented list of steps with its own **+ Add statement** picker, run when the condition holds.
-3. Optionally an **Else** lane. Click **+ Add else** to add it, or the remove button on the lane to drop it.
+2. A **Then** lane holding an indented list of steps with its own **Add statement** button, run when the condition holds.
+3. Optionally an **Else** lane. Click **Add else** to add it, or the remove button on the lane to drop it.
 
 Lanes nest: a step inside **Then** can itself be an **If / Else** or a **Switch**.
 
@@ -51,7 +52,7 @@ Lanes nest: a step inside **Then** can itself be an **If / Else** or a **Switch*
 A **Switch** card matches one value against several cases:
 
 1. **Switch on**: the value to examine.
-2. One lane per case, each labeled with the value it matches (edit the label field to change it). **+ Add case** appends another.
+2. One lane per case, each labeled with the value it matches (edit the label field to change it). **Add case** appends another.
 3. A **Default** lane for when nothing matches.
 
 ## Dispatch an event

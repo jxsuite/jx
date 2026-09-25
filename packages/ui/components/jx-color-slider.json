@@ -1,0 +1,216 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxColorSlider",
+  "tagName": "jx-color-slider",
+  "observedAttributes": [
+    "label",
+    "labelledby",
+    "channel",
+    "value",
+    "min",
+    "max",
+    "step",
+    "color",
+    "disabled"
+  ],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the inner range as aria-label. Required unless labelledby names a visible one: a slider is in the accessibility lint's LABELLED_ROLES, so it may not take its name from anything it contains, and an unnamed hue track is announced as \"slider\" and a number."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner range as aria-labelledby, for a visible label the element does not own."
+    },
+    "channel": {
+      "type": "string",
+      "default": "hue",
+      "attribute": "channel",
+      "description": "What the track is made of: hue draws the full spectrum and runs 0-360, alpha draws the colour fading out over a checkerboard and runs 0-100. It chooses the drawing, the default top of the range and the units the value is announced in, so it is the one prop that has to be right; everything else has a sensible answer without it."
+    },
+    "value": {
+      "type": "number",
+      "default": 0,
+      "attribute": "value",
+      "description": "Where the thumb is, in the track's own units — degrees on a hue track, percent on an alpha one. It is bound to the inner range BOTH ways: as the value property, which is the live value once the reader's first drag has set the control's dirty flag, and as the value attribute, which is the control's default and therefore what a form reset returns to."
+    },
+    "min": {
+      "type": "number",
+      "default": 0,
+      "attribute": "min",
+      "description": "The bottom of the range. Zero for both shipped channels, and there so a consumer can cut a track down to a band."
+    },
+    "max": {
+      "type": "number",
+      "default": 0,
+      "attribute": "max",
+      "description": "The top of the range, or 0 to let the channel decide — 360 for hue, 100 for alpha. Zero means unset rather than a top of zero, because a numeric prop coerces a removed attribute through the current value's type and a non-zero default could then never be cleared; a track that genuinely ends at zero has nowhere to move and is not a control."
+    },
+    "step": {
+      "type": "number",
+      "default": 1,
+      "attribute": "step",
+      "description": "The grid the value moves on, for the platform's own arrow keys and for the kit's ten-step Shift+Arrow."
+    },
+    "color": {
+      "type": "string",
+      "default": "",
+      "attribute": "color",
+      "description": "The colour an alpha track fades from, as any CSS colour. Ignored by a hue track. Empty falls back to currentColor, so a track with nothing told to it still draws something honest rather than nothing at all."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be moved or focused. Forwarded to the inner range, so the refusal is the platform's rather than a style that only looks like one."
+    },
+    "maxValue": "${state.max > 0 ? state.max : (state.channel === 'alpha' ? 100 : 360)}",
+    "trackImage": "${state.channel === 'alpha' ? 'linear-gradient(to right, transparent, ' + (state.color || 'currentColor') + ')' : 'linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%))'}",
+    "valueText": "${state.channel === 'alpha' ? Math.round(state.value) + '%' : Math.round(state.value) + ' degrees'}",
+    "onInput": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-slider.ts",
+      "$export": "onSliderInput",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The value is moving under the reader's hand. It comes from the ELEMENT, so e.target.value is the number in the track's own units."
+        }
+      ],
+      "description": "Mirrors the inner range into value and re-says the platform's own input from the host, so one e.target answers for every colour element in the kit."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-slider.ts",
+      "$export": "onSliderChange",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The reader committed the value; e.target is the element."
+        }
+      ],
+      "description": "The same mirror and the same re-say, for the commit."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-slider.ts",
+      "$export": "onSliderKeydown",
+      "description": "Shift+Arrow moves ten steps, which no range has of its own. A plain arrow, Home, End and the Page keys are the platform's and are not touched."
+    }
+  },
+  "oninput": {
+    "$ref": "#/state/onInput"
+  },
+  "onchange": {
+    "$ref": "#/state/onChange"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "attributes": {
+    "data-channel": "${state.channel}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "inlineSize": "100%",
+    "minInlineSize": "120px",
+    "--jx-color-track-h": "16px",
+    "--jx-color-track-image": "${state.trackImage}",
+    "--jx-color-checkerboard": "repeating-conic-gradient(var(--jx-gray-300) 0% 25%, var(--jx-bg-input) 0% 50%) 50% / 8px 8px",
+    "&[data-disabled]": {
+      "opacity": "0.5"
+    },
+    "& > [part=\"track\"]": {
+      "position": "relative",
+      "display": "block",
+      "boxSizing": "border-box",
+      "inlineSize": "100%",
+      "blockSize": "var(--jx-color-track-h)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-color-track-image), var(--jx-color-checkerboard)",
+      "boxShadow": "inset 0 0 0 1px var(--jx-border-strong)"
+    },
+    "& [part=\"input\"]": {
+      "appearance": "none",
+      "position": "absolute",
+      "insetInline": "0",
+      "insetBlock": "0",
+      "inlineSize": "100%",
+      "blockSize": "100%",
+      "margin": "0",
+      "padding": "0",
+      "border": "0",
+      "background": "none",
+      "font": "inherit",
+      "cursor": "pointer",
+      "outline": "none",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px",
+        "borderRadius": "var(--jx-radius-sm)"
+      },
+      ":disabled": {
+        "cursor": "default"
+      }
+    },
+    "& [part=\"input\"]::-webkit-slider-thumb": {
+      "appearance": "none",
+      "inlineSize": "12px",
+      "blockSize": "var(--jx-color-track-h)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "border": "2px solid var(--jx-bg)",
+      "boxShadow": "0 0 0 1px var(--jx-fg)",
+      "background": "transparent",
+      "cursor": "inherit"
+    },
+    "& [part=\"input\"]::-moz-range-thumb": {
+      "appearance": "none",
+      "inlineSize": "12px",
+      "blockSize": "var(--jx-color-track-h)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "border": "2px solid var(--jx-bg)",
+      "boxShadow": "0 0 0 1px var(--jx-fg)",
+      "background": "transparent",
+      "cursor": "inherit"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "track"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "input",
+            "type": "range",
+            "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-valuetext": "${state.valueText}",
+            "min": "${state.min}",
+            "max": "${state.maxValue}",
+            "step": "${state.step}",
+            "value": "${state.value}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "$ref": "#/state/value"
+          }
+        }
+      ]
+    }
+  ]
+}

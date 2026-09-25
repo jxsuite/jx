@@ -9,11 +9,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   MAX_TURNS,
-  beginTurn,
-  endTurn,
-  recordWrite,
+  fileTurn,
+  openTurnLedger,
   resetAiWrites,
   summarizeWrites,
+  turnAnchor,
   writesForTurn,
 } from "../src/services/ai-writes";
 
@@ -26,48 +26,41 @@ beforeEach(() => {
 
 describe("recording", () => {
   test("a turn files its writes under the message id it ends on", () => {
-    beginTurn("t1");
-    recordWrite(doc("pages/index.json"));
-    recordWrite(disk("layouts/base.json"));
-    expect(endTurn("msg_7")).toHaveLength(2);
+    const ledger = openTurnLedger("t1");
+    ledger.record(doc("pages/index.json"));
+    ledger.record(disk("layouts/base.json"));
+    expect(fileTurn("msg_7", ledger.writes)).toHaveLength(2);
     expect(writesForTurn("msg_7").map((w) => w.path)).toEqual([
       "pages/index.json",
       "layouts/base.json",
     ]);
   });
 
-  test("a write outside a turn costs nothing and is reported nowhere", () => {
-    /* A tool invoked from a command or a test is not part of an assistant turn, and must not
-       silently attach itself to whichever one happened to run last. */
-    recordWrite(doc("pages/index.json"));
-    beginTurn("t1");
-    expect(endTurn("msg_1")).toEqual([]);
-    expect(writesForTurn("msg_1")).toEqual([]);
+  /* The slot this replaced was one ledger for the window: a tool run outside the loop recorded
+     into whichever turn happened to be open, and two turns could not each keep their own. */
+  test("each turn keeps its own ledger", () => {
+    const first = openTurnLedger("t1");
+    const second = openTurnLedger("t2");
+    first.record(doc("a.json"));
+    second.record(doc("b.json"));
+    expect(first.writes.map((w) => w.path)).toEqual(["a.json"]);
+    expect(second.writes.map((w) => w.path)).toEqual(["b.json"]);
   });
 
-  test("beginTurn is idempotent on the same id, so a re-entered loop is still one turn", () => {
-    beginTurn("t1");
-    recordWrite(doc("a.json"));
-    beginTurn("t1");
-    recordWrite(doc("b.json"));
-    expect(endTurn("msg_1").map((w) => w.path)).toEqual(["a.json", "b.json"]);
+  test("a ledger names the turn it records", () => {
+    expect(openTurnLedger("turn:2").turnId).toBe("turn:2");
   });
 
   test("a turn that changed nothing files nothing — the panel renders no summary at all", () => {
-    beginTurn("t1");
-    expect(endTurn("msg_1")).toEqual([]);
+    expect(fileTurn("msg_1", openTurnLedger("t1").writes)).toEqual([]);
     expect(writesForTurn("msg_1")).toEqual([]);
-  });
-
-  test("endTurn with no open turn is harmless", () => {
-    expect(endTurn("msg_1")).toEqual([]);
   });
 
   test("the ledger is bounded — old turns drop, the messages stay", () => {
     for (let i = 0; i <= MAX_TURNS; i++) {
-      beginTurn(`t${i}`);
-      recordWrite(doc(`p${i}.json`));
-      endTurn(`msg_${i}`);
+      const ledger = openTurnLedger(`t${i}`);
+      ledger.record(doc(`p${i}.json`));
+      fileTurn(`msg_${i}`, ledger.writes);
     }
     expect(writesForTurn("msg_0")).toEqual([]);
     expect(writesForTurn(`msg_${MAX_TURNS}`)).toHaveLength(1);
@@ -106,5 +99,35 @@ describe("summarizeWrites", () => {
 
   test('nothing recorded summarises to nothing, never to "Changed 0 files"', () => {
     expect(summarizeWrites([])).toBe("");
+  });
+});
+
+/* The panel draws a turn's summary under the message its writes are filed under, and it draws only
+   an assistant message carrying text or tool calls (panels/ai-chat/chat-view.ts). */
+describe("turnAnchor", () => {
+  test("stops at the message the turn answers", () => {
+    const m = (id: string, role: string, content = "", toolCalls?: unknown[]) =>
+      ({ content, id, role, timestamp: 0, ...(toolCalls ? { toolCalls } : {}) }) as never;
+    const earlier = [m("a0", "assistant", "An earlier turn's answer."), m("u1", "user", "hi")];
+    // The turn drew nothing: an empty placeholder and a tool reply are not drawn.
+    expect(turnAnchor([...earlier, m("p", "assistant"), m("t", "tool", "{}")], "u1")).toBeNull();
+    expect(
+      turnAnchor([...earlier, m("r", "assistant", "", [{}]), m("t", "tool", "{}")], "u1"),
+    ).toBe("r");
+    // With no user message to stop at, the whole transcript is the turn.
+    expect(turnAnchor([m("a0", "assistant", "text")])).toBe("a0");
+  });
+
+  /* Another chat opened from Chat History while the turn waited on a tool: the transcript was
+     replaced, and the stopped call's reply landed in it. Nothing drawn there is this turn's. */
+  test("a transcript that no longer holds the turn's user message has no anchor", () => {
+    const m = (id: string, role: string, content = "") =>
+      ({ content, id, role, timestamp: 0 }) as never;
+    const replaced = [
+      m("old_u", "user", "B"),
+      m("old_a", "assistant", "B's answer"),
+      m("t", "tool"),
+    ];
+    expect(turnAnchor(replaced, "u1")).toBeNull();
   });
 });

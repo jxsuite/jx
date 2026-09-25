@@ -9,7 +9,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { checkLinks, inboundAnchors, linksOf, navSlugs, readCorpus } from "./check-doc-links.ts";
+import { PAGES } from "./generators/pages.ts";
 import { headingsOf, renderedHeadingText } from "./lib/headings.ts";
 
 const PUBLISHED = new Set(["framework/site/i18n", "studio/interface"]);
@@ -125,7 +128,19 @@ describe("heading anchors", () => {
   });
 });
 
-describe("the committed tree", () => {
+describe("the docs tree", () => {
+  /* The derived pages are gitignored build outputs (`pages.ts`), and the nav names them, so a
+     checkout that has not run `docs:generate` yet has links into pages that are not there. The
+     corpus is the tree AS THE SITE BUILDS IT, so the missing pages are rendered first — in place,
+     since that is where every reader looks; a page already present is left alone. */
+  const root = resolve(import.meta.dir, "../..");
+  for (const [rel, generate] of Object.entries(PAGES)) {
+    const path = join(root, rel);
+    if (!existsSync(path)) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, generate(), "utf8");
+    }
+  }
   const corpus = readCorpus();
 
   test("every internal link resolves", () => {

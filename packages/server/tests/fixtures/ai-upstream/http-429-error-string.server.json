@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "code": "429",
+      "message": "Rate limit exceeded: 20 requests per minute. Retry after 3s.",
+      "problem": {
+        "status": 400,
+        "title": "The request was malformed or incomplete",
+        "type": "https://jxsuite.com/problems/invalid-request",
+        "detail": "Rate limit exceeded: 20 requests per minute. Retry after 3s.",
+        "error": "Rate limit exceeded: 20 requests per minute. Retry after 3s."
+      },
+      "type": "error"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

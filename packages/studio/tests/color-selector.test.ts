@@ -1,27 +1,22 @@
-import { renderInto, resetStudioState, resetWorkspaceWithTab, setValue } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as storeActual from "../src/store";
+/**
+ * `ui/color-selector.ts` — the project's colour tokens, as a projection.
+ *
+ * The module used to be a control: a swatch, a text field and an `sp-overlay` of Spectrum's colour
+ * area, slider and swatch group, rendered into an announced `[part="control-host"]` by the Style
+ * tab and the Content tab. Every test of that markup is gone with it — `ui.md` §5.6 landed, the row
+ * is a `jx-color-field` inside each tab's own document, and `tests/style-panel.test.ts` and
+ * `tests/properties-panel.test.ts` cover what a reader can now do to a colour.
+ *
+ * What is left is the one question no kit element can answer: which colours THIS project has given
+ * a name to. Three things are asserted about the answer, and each is a decision rather than a
+ * detail — the reference is what a swatch commits, the literal is only how it looks, and a name is
+ * neither.
+ */
+import { resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
-// Make debounced style commits synchronous so @input handlers fire without real 400ms timers.
-void mock.module("../src/store", () => ({
-  ...storeActual,
-  debouncedStyleCommit:
-    <A extends unknown[]>(_prop: string, _ms: number, fn: (...args: A) => void) =>
-    (...args: A) =>
-      fn(...args),
-}));
-
-const { JxColorPopover, isColorPopoverOpen, renderColorSelector } =
-  await import("../src/ui/color-selector");
-
-type ColorPopoverEl = InstanceType<typeof JxColorPopover>;
-
-// Register the element once (spectrum.ts normally does this; tests register directly to avoid
-// Importing the whole spectrum bundle).
-if (!customElements.get("jx-color-popover")) {
-  customElements.define("jx-color-popover", JxColorPopover);
-}
+const { colorTokens, resolvedColor } = await import("../src/ui/color-selector");
 
 const COLOR_DOC = {
   children: [{ tagName: "p" }],
@@ -35,254 +30,71 @@ const COLOR_DOC = {
   tagName: "div",
 } as unknown as JxMutableNode;
 
-const mounted: HTMLElement[] = [];
-
-async function mountPopover(props: Partial<ColorPopoverEl> = {}): Promise<ColorPopoverEl> {
-  const el = document.createElement("jx-color-popover") as ColorPopoverEl;
-  Object.assign(el, props);
-  document.body.append(el);
-  mounted.push(el);
-  await el.updateComplete;
-  return el;
-}
-
 beforeEach(() => {
   resetStudioState();
   resetWorkspaceWithTab(COLOR_DOC);
 });
 
-afterEach(() => {
-  while (mounted.length > 0) {
-    mounted.pop()!.remove();
-  }
-});
-
-// ─── renderColorSelector — text mode ─────────────────────────────────────────
-
-describe("renderColorSelector text mode", () => {
-  test("renders swatch + textfield for a custom color value", async () => {
-    const container = await renderInto(renderColorSelector("color", "red", () => {}));
-    const root = container.querySelector(".style-input-color");
-    expect(root?.id).toBe("color-trigger-color");
-    expect(container.querySelector("sp-swatch")?.getAttribute("color")).toBe("red");
-    expect(container.querySelector("sp-picker")).toBeNull();
-    expect((container.querySelector("sp-textfield") as HTMLInputElement).value).toBe("red");
+describe("colorTokens", () => {
+  test("a token is the reference, the literal and the name, and they are three things", () => {
+    expect(colorTokens()).toEqual([
+      { color: "#ff0000", label: "Accent", value: "var(--color-accent)" },
+      { color: "42", label: "Num", value: "var(--color-num)" },
+      { color: "#0000ff", label: "Primary Blue", value: "var(--color-primary-blue)" },
+    ]);
   });
 
-  test("undefined value renders a transparent swatch", async () => {
-    const container = await renderInto(renderColorSelector("color", undefined, () => {}));
-    expect(container.querySelector("sp-swatch")?.getAttribute("color")).toBe("transparent");
+  test("only `--color*` scalars are colours", () => {
+    const names = colorTokens().map((t) => t.value);
+    // A custom property that is not a colour is not a swatch…
+    expect(names).not.toContain("var(--font-body)");
+    // …and neither is a nested rule, which would draw a chip of nothing under a real name.
+    expect(names).not.toContain("var(--color-bad)");
   });
 
-  test("var() reference to an undefined variable stays in text mode and shows transparent", async () => {
-    const container = await renderInto(
-      renderColorSelector("color", "var(--color-missing)", () => {}),
-    );
-    expect(container.querySelector("sp-picker")).toBeNull();
-    expect(container.querySelector("sp-swatch")?.getAttribute("color")).toBe("transparent");
-  });
-
-  test("var() reference resolves through the effective style for the swatch", async () => {
+  test("a token named `--color` alone falls back to its own name rather than to silence", () => {
     resetWorkspaceWithTab({
-      style: { "--color-accent": "#ff0000", "--shade": "#222222" },
+      style: { "--color": "#123456" },
       tagName: "div",
     } as unknown as JxMutableNode);
-    // --shade is defined but not a --color* var, so text mode resolves it for display.
-    const container = await renderInto(renderColorSelector("color", "var(--shade)", () => {}));
-    expect(container.querySelector("sp-picker")).toBeNull();
-    expect(container.querySelector("sp-swatch")?.getAttribute("color")).toBe("#222222");
+    /* `jx-swatch` announces its label, so the empty string here would be a swatch that reads out
+       its hex one character at a time. */
+    expect(colorTokens()).toEqual([{ color: "#123456", label: "--color", value: "var(--color)" }]);
   });
 
-  test("textfield input commits the trimmed value", async () => {
-    const seen: string[] = [];
-    const container = await renderInto(renderColorSelector("color", "", (v) => seen.push(v)));
-    setValue(container.querySelector("sp-textfield") as HTMLInputElement, "  #00ff00  ");
-    expect(seen).toEqual(["#00ff00"]);
-  });
-
-  test("color-change from the embedded popover commits the detail", async () => {
-    const seen: string[] = [];
-    const container = await renderInto(renderColorSelector("color", "", (v) => seen.push(v)));
-    const popover = container.querySelector("jx-color-popover") as ColorPopoverEl;
-    expect(popover.colorVars.map((cv) => cv.name)).toEqual([
-      "--color-accent",
-      "--color-num",
-      "--color-primary-blue",
-    ]);
-    popover.dispatchEvent(new CustomEvent("color-change", { bubbles: true, detail: "#123456" }));
-    expect(seen).toEqual(["#123456"]);
-  });
-});
-
-// ─── renderColorSelector — picker mode ───────────────────────────────────────
-
-describe("renderColorSelector picker mode", () => {
-  test("matching var() switches to picker mode with title-cased labels", async () => {
-    const container = await renderInto(
-      renderColorSelector("color", "var(--color-primary-blue)", () => {}),
-    );
-    const picker = container.querySelector("sp-picker") as HTMLElement & { value: string };
-    expect(picker).not.toBeNull();
-    expect(picker.id).toBe("color-picker-color");
-    expect(picker.value).toBe("var(--color-primary-blue)");
-    expect(container.querySelector("sp-swatch")?.getAttribute("color")).toBe("#0000ff");
-    expect(container.querySelector("sp-textfield")).toBeNull();
-
-    const items = [...container.querySelectorAll("sp-picker sp-menu-item")];
-    expect(items.map((item) => item.getAttribute("value"))).toEqual([
-      "var(--color-accent)",
-      "var(--color-num)",
-      "var(--color-primary-blue)",
-    ]);
-    expect(items.map((item) => item.textContent?.trim())).toEqual([
-      "Accent",
-      "Num",
-      "Primary Blue",
-    ]);
-  });
-
-  test("numeric custom-property values are stringified; non-scalars excluded", async () => {
-    const container = await renderInto(renderColorSelector("color", "var(--color-num)", () => {}));
-    expect(container.querySelector("sp-swatch")?.getAttribute("color")).toBe("42");
-    const values = [...container.querySelectorAll("sp-picker sp-menu-item")].map((item) =>
-      item.getAttribute("value"),
-    );
-    expect(values).not.toContain("var(--color-bad)");
-  });
-
-  test("changing the picker commits the new var() reference", async () => {
-    const seen: string[] = [];
-    const container = await renderInto(
-      renderColorSelector("color", "var(--color-primary-blue)", (v) => seen.push(v)),
-    );
-    const picker = container.querySelector("sp-picker") as HTMLElement & { value: string };
-    picker.value = "var(--color-accent)";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(seen).toEqual(["var(--color-accent)"]);
-  });
-
-  test("color-change from the picker-mode popover commits the detail", async () => {
-    const seen: string[] = [];
-    const container = await renderInto(
-      renderColorSelector("color", "var(--color-accent)", (v) => seen.push(v)),
-    );
-    const popover = container.querySelector("jx-color-popover") as ColorPopoverEl;
-    popover.dispatchEvent(new CustomEvent("color-change", { bubbles: true, detail: "blue" }));
-    expect(seen).toEqual(["blue"]);
-  });
-
-  test("no document style means no color vars and text mode", async () => {
+  test("a document with no style of its own has no palette", () => {
     resetWorkspaceWithTab({ tagName: "div" } as unknown as JxMutableNode);
-    const container = await renderInto(
-      renderColorSelector("color", "var(--color-accent)", () => {}),
-    );
-    expect(container.querySelector("sp-picker")).toBeNull();
-    expect(container.querySelector("jx-color-popover")).not.toBeNull();
+    expect(colorTokens()).toEqual([]);
   });
 });
 
-// ─── JxColorPopover element ──────────────────────────────────────────────────
-
-describe("JxColorPopover", () => {
-  test("renders area, slider, textfield into light DOM (no shadow root)", async () => {
-    const el = await mountPopover({ color: "#336699" });
-    expect(el.shadowRoot).toBeNull();
-    expect(el.querySelector("sp-color-area")).not.toBeNull();
-    expect(el.querySelector("sp-color-slider")).not.toBeNull();
-    expect((el.querySelector("sp-textfield") as HTMLInputElement).value).toBe("#336699");
-    expect(el.querySelector("sp-swatch-group")).toBeNull();
+describe("resolvedColor", () => {
+  test("a literal draws itself, so there is nothing to resolve", () => {
+    expect(resolvedColor("#ff0000")).toBe("");
+    expect(resolvedColor("")).toBe("");
   });
 
-  test("displayColor derives from color across formats", async () => {
-    const el = await mountPopover({ color: "" });
-    expect(el.displayColor).toBe("#000000");
-
-    el.color = "#ff0000";
-    await el.updateComplete;
-    expect(el.displayColor).toBe("#ff0000");
-
-    el.color = "rgb(1, 2, 3)";
-    await el.updateComplete;
-    expect(el.displayColor).toBe("rgb(1, 2, 3)");
-
-    el.color = "hsl(120, 50%, 50%)";
-    await el.updateComplete;
-    expect(el.displayColor).toBe("hsl(120, 50%, 50%)");
-
-    el.color = "abc123";
-    await el.updateComplete;
-    expect(el.displayColor).toBe("#abc123");
+  test("a reference is followed through the effective style to the colour at its end", () => {
+    /* The site's block under the document's: a token the site declares and the document aliases
+       lands on the site's literal, which is the chip the canvas would draw. */
+    resetStudioState({ projectConfig: { style: { "--color-brand": "#0d9488" } } });
+    resetWorkspaceWithTab({
+      style: { "--color-accent": "var(--color-brand)", "--color-ink": "#0000ff" },
+      tagName: "div",
+    } as unknown as JxMutableNode);
+    expect(resolvedColor("var(--color-ink)")).toBe("#0000ff");
+    expect(resolvedColor("var(--color-accent)")).toBe("#0d9488");
+    expect(resolvedColor("var(--color-brand)")).toBe("#0d9488");
   });
 
-  test("var() color resolves via the active document; unresolved falls back to black", async () => {
-    const el = await mountPopover({ color: "var(--color-accent)" });
-    expect(el.displayColor).toBe("#ff0000");
-
-    el.color = "var(--color-nope)";
-    await el.updateComplete;
-    expect(el.displayColor).toBe("#000000");
-  });
-
-  test("area and slider input normalize hex and emit color-change", async () => {
-    const el = await mountPopover({ color: "" });
-    const seen: string[] = [];
-    el.addEventListener("color-change", (e) => seen.push((e as CustomEvent).detail));
-
-    el._handleArea({ target: { color: "ff0000" } } as unknown as Event);
-    expect(el.color).toBe("#ff0000");
-    expect(el.displayColor).toBe("#ff0000");
-
-    el._handleSlider({ target: { color: "rgb(9, 9, 9)" } } as unknown as Event);
-    expect(el.color).toBe("rgb(9, 9, 9)");
-
-    expect(seen).toEqual(["#ff0000", "rgb(9, 9, 9)"]);
-  });
-
-  test("text change emits the raw value; empty input is ignored", async () => {
-    const el = await mountPopover({ color: "#ffffff" });
-    const seen: string[] = [];
-    el.addEventListener("color-change", (e) => seen.push((e as CustomEvent).detail));
-    const field = el.querySelector("sp-textfield") as HTMLInputElement;
-
-    field.value = "   ";
-    field.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(seen).toEqual([]);
-
-    field.value = "tomato";
-    field.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(seen).toEqual(["tomato"]);
-    expect(el.color).toBe("tomato");
-  });
-
-  test("clicking a token swatch emits a var() reference", async () => {
-    const el = await mountPopover({
-      color: "",
-      colorVars: [{ name: "--color-accent", value: "#ff0000" }],
-    });
-    const seen: string[] = [];
-    el.addEventListener("color-change", (e) => seen.push((e as CustomEvent).detail));
-    const swatch = el.querySelector("sp-swatch-group sp-swatch") as HTMLElement;
-    expect(swatch.getAttribute("color")).toBe("#ff0000");
-    swatch.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(seen).toEqual(["var(--color-accent)"]);
-    expect(el.color).toBe("var(--color-accent)");
-  });
-});
-
-// ─── isColorPopoverOpen ──────────────────────────────────────────────────────
-
-describe("isColorPopoverOpen", () => {
-  test("reflects presence of an open overlay inside a color input", () => {
-    expect(isColorPopoverOpen()).toBe(false);
-    const wrap = document.createElement("div");
-    wrap.className = "style-input-color";
-    const overlay = document.createElement("sp-overlay");
-    wrap.append(overlay);
-    document.body.append(wrap);
-    expect(isColorPopoverOpen()).toBe(false);
-    overlay.setAttribute("open", "");
-    expect(isColorPopoverOpen()).toBe(true);
-    wrap.remove();
-    expect(isColorPopoverOpen()).toBe(false);
+  test("a reference the style cannot follow resolves to nothing rather than to a guess", () => {
+    resetWorkspaceWithTab({
+      style: { "--color-loop": "var(--color-loop)" },
+      tagName: "div",
+    } as unknown as JxMutableNode);
+    /* A token a stylesheet defines, and an alias that loops: the field's own fallback — drawing
+       the reference and letting the browser try — is the right answer for both. */
+    expect(resolvedColor("var(--color-elsewhere)")).toBe("");
+    expect(resolvedColor("var(--color-loop)")).toBe("");
   });
 });

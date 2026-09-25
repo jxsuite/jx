@@ -1,0 +1,112 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGithubAuth",
+  "$description": "The RFC 8628 device flow's waiting room: the code GitHub minted, the page to type it into, and a Cancel. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop — and it is the reason the dialog has no confirm button at all: the answer arrives from GitHub over a poll rather than from anything the reader can press here, so a primary button would be a control with nothing to do. Nothing in this document talks to GitHub: `github/github-auth.ts` keeps the client id, the poll loop, its failure budget and every report the three outcomes raise.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Sign in to GitHub",
+    "confirmLabel": "",
+    "cancelLabel": "Cancel",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "github-auth"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/cancel"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "Four `.github-auth-*` rules in `styles/overlays.css` become the parts below, and two things in them do not travel. `.github-auth-dialog`'s `padding: 16px 0` was the card's own body padding drawn by hand, and `jx-dialog` already pads its body; `.github-auth-dialog p { font-size: 13px }` was a body size this surface picked for itself, and what the paragraphs now inherit is the dialog's own `--jx-text-md`. The `8px 0` margins go with them — the column is a flex column with a gap, so a margin between two rows would be a second opinion about the same space. The code keeps its 24px, which is above the token scale on purpose: it is a string the reader has to copy onto another screen, and reading it out loud is the whole job of this dialog.",
+    "& [part=\"device\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "textAlign": "center"
+    },
+    "& [part=\"lede\"], & [part=\"waiting\"]": {
+      "margin": "0"
+    },
+    "& [part=\"code\"]": {
+      "$description": "`<code>`, not a styled `<div>`: this is a literal string to be transcribed, and the element that says so is also the one a reader's own stylesheet and a screen reader's character-by-character mode already know about.",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "24px",
+      "fontWeight": "700",
+      "letterSpacing": "2px",
+      "padding": "var(--jx-space-3) var(--jx-space-4)",
+      "background": "var(--hover-bg)",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"link\"]": {
+      "$description": "The blue this carried as a `var(--accent, …)` fallback is gone: `--accent` is declared on `:root` in `styles/tokens.css`, so the fallback could only ever have painted when the token was missing — which is a theme fault to fix rather than a colour to hard-code.",
+      "color": "var(--accent)",
+      "textDecoration": "underline"
+    },
+    "& [part=\"waiting\"]": {
+      "color": "var(--fg-dim)",
+      "fontStyle": "italic"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "device"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "lede"
+          },
+          "textContent": "Enter this code on GitHub to authorize Jx Studio:"
+        },
+        {
+          "tagName": "code",
+          "attributes": {
+            "part": "code"
+          },
+          "textContent": "${state.userCode}"
+        },
+        {
+          "tagName": "a",
+          "attributes": {
+            "part": "link",
+            "href": "${state.verificationUri}",
+            "target": "_blank",
+            "rel": "noreferrer"
+          },
+          "textContent": "Open ${state.verificationUri}"
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "waiting"
+          },
+          "textContent": "Waiting for authorization…"
+        }
+      ]
+    }
+  ]
+}

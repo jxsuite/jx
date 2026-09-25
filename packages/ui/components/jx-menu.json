@@ -1,0 +1,161 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxMenu",
+  "tagName": "jx-menu",
+  "observedAttributes": ["label", "placement", "x", "y", "floor"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "Menu",
+      "attribute": "label",
+      "description": "The accessible name of the menu."
+    },
+    "placement": {
+      "type": "string",
+      "default": "",
+      "attribute": "placement",
+      "description": "Where the menu sits relative to the element it was opened from, as a CSS position-area value, or empty. Empty is the default and means placement by x and y, because a menu's usual opening is at a POINTER — a context menu — where the source it was shown from is what gets the keyboard back and not where the panel hangs. A menu that hangs from a button sets it (block-end span-inline-end, below and leading-aligned; block-end span-inline-start for a trailing edge) and is then placed by the platform against that button, followed through scroll and resize, and flipped when it would overflow; a submenu is placed inline-end span-block-end of its row without being asked. The value is passed to the property as written. A stack with a floor is never anchored: a floor is a limit the platform's fallbacks cannot express, so it keeps the coordinate placement the clamp honours."
+    },
+    "x": {
+      "type": "number",
+      "default": 0,
+      "attribute": "x",
+      "description": "Where the panel's inline-start edge sits, in viewport pixels. A root menu is placed at the pointer or beside its opener; a submenu is placed beside its row by the menu behaviour."
+    },
+    "y": {
+      "type": "number",
+      "default": 0,
+      "attribute": "y",
+      "description": "Where the panel's block-start edge sits, in viewport pixels."
+    },
+    "floor": {
+      "type": "number",
+      "default": 0,
+      "attribute": "floor",
+      "description": "The lowest edge this panel and its submenus may reach, in viewport pixels; 0 means the viewport. A menu opened from a rail that abuts a status bar sets it to the rail's bottom, so a tall submenu never runs down over the bar."
+    },
+    "anchored": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this panel is placed by the platform against the element it was shown from: an opening with a source, an area to use (placement, or the submenu default), and no floor on the stack's root. Written by the behaviour on beforetoggle, before layout, so the first frame is already in place; cleared on close; mirrored as data-anchored for the anchored rule. Not an attribute, because it is the platform's fact."
+    },
+    "area": {
+      "type": "string",
+      "default": "",
+      "description": "The position-area the anchored rule reads: placement when it is set, else the submenu default for a menu inside a row, else empty. Derived by the behaviour on beforetoggle rather than by the document, because only the behaviour can see whether this menu is a submenu."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the panel is showing. Follows the platform's toggle event; write it through showPopover() and hidePopover(), not directly."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuKeydown",
+      "description": "The menu keyboard contract: Arrow keys, Home, End and typeahead move; Enter and Space activate; ArrowRight opens a submenu and ArrowLeft leaves it; Escape closes one level; Tab closes the whole stack."
+    },
+    "onBeforeToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuBeforeToggle",
+      "description": "Decides anchored and area before the panel is laid out (see the two)."
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuToggle",
+      "description": "Mirrors the platform's toggle event into open, clamps a freshly shown panel into the viewport, and moves focus to the first row."
+    },
+    "onPointerOver": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuPointerOver",
+      "description": "Opens the submenu of the row under the pointer and closes any sibling's."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it. A menu is always an auto popover: light dismiss and Escape are the platform's."
+    }
+  },
+  "attributes": {
+    "role": "menu",
+    "aria-label": "${state.label}",
+    "popover": "auto",
+    "tabindex": "-1",
+    "data-anchored": "${state.anchored ? '' : null}"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onbeforetoggle": {
+    "$ref": "#/state/onBeforeToggle"
+  },
+  "ontoggle": {
+    "$ref": "#/state/onToggle"
+  },
+  "onpointerover": {
+    "$ref": "#/state/onPointerOver"
+  },
+  "style": {
+    "display": "revert-layer",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "position": "fixed",
+    "insetInlineStart": "${state.x}px",
+    "insetBlockStart": "${state.y}px",
+    "insetInlineEnd": "auto",
+    "insetBlockEnd": "auto",
+    "margin": "0",
+    "padding": "var(--jx-space-2)",
+    "minWidth": "180px",
+    "maxWidth": "min(360px, calc(100vw - 8px))",
+    "maxHeight": "calc(100vh - 8px)",
+    "overflowY": "auto",
+    "boxSizing": "border-box",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "background": "var(--jx-bg-overlay)",
+    "color": "var(--jx-fg)",
+    "border": "1px solid var(--jx-border-strong)",
+    "borderRadius": "var(--jx-radius-md)",
+    "boxShadow": "var(--jx-shadow-popover)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "pointerEvents": "auto",
+    "outline": "none",
+    ":popover-open": {
+      "display": "flex"
+    },
+    "&[hidden]:popover-open": {
+      "display": "none"
+    },
+    "@supports (position-area: block-end)": {
+      "$description": "The anchored placement, for a menu that hangs from a button and for every submenu: the platform puts it against its IMPLICIT anchor — the element it was shown from — follows that element through scroll and resize, and flips it when the first placement would overflow, which for a submenu is the flip to its parent's inline-start the clamp used to compute by hand. No anchor-name is involved; a popover's invoker is its implicit anchor by the platform's own rule (ui.md 5.2, 6). The insets are released so x and y stop mattering. Outside this block, and for a menu at a pointer or on a stack with a floor, the coordinate placement above is the answer, unchanged.",
+      "&[data-anchored]": {
+        "insetInlineStart": "auto",
+        "insetBlockStart": "auto",
+        "positionArea": "${state.area}",
+        "positionTryFallbacks": "flip-block, flip-inline, flip-block flip-inline"
+      }
+    },
+    "& hr": {
+      "border": "0",
+      "borderTop": "1px solid var(--jx-border)",
+      "margin": "var(--jx-space-1) 0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

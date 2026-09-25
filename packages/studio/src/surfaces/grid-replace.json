@@ -1,0 +1,179 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGridReplace",
+  "$description": "Find and replace across the grid's text cells. Every replacement is buffered as ONE undo group and nothing is written until the grid is saved, which is what the confirmation says out loud.",
+  "tagName": "jx-popover",
+  "attributes": {
+    "part": "replace-panel"
+  },
+  "$props": {
+    "label": "Find and replace",
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "var(--jx-space-2)",
+        "padding": "var(--jx-space-3)",
+        "minWidth": "260px",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)",
+        "color": "var(--fg)",
+        "& [part=\"title\"]": {
+          "fontWeight": "600",
+          "fontSize": "var(--jx-text-sm)",
+          "margin": "0"
+        },
+        "& [part=\"actions\"]": {
+          "display": "flex",
+          "justifyContent": "flex-end",
+          "gap": "var(--jx-space-2)"
+        }
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "title"
+          },
+          "textContent": "Find & Replace"
+        },
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "find"
+          },
+          "$props": {
+            "size": "sm",
+            "label": "Find",
+            "placeholder": "Find…",
+            "value": {
+              "$ref": "#/state/find"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setFind"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "replace"
+          },
+          "$props": {
+            "size": "sm",
+            "label": "Replace with",
+            "placeholder": "Replace with…",
+            "value": {
+              "$ref": "#/state/replace"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setReplace"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "actions"
+          },
+          "children": [
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "cancel"
+              },
+              "$props": {
+                "variant": "secondary",
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/cancel"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Cancel"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "replace-all"
+              },
+              "$props": {
+                "variant": "accent",
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/replaceAll"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Replace All"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

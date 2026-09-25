@@ -101,8 +101,8 @@ const SHA256_RE = /^[\da-f]{64}$/;
  *
  * Recorded per image and not per file, because a partial re-capture legitimately leaves a lock
  * holding two triples — and a lock that hid that would be claiming a consistency it does not have.
- * Fontset is in here because the Spectrum UI stack resolves differently on NixOS and Ubuntu: a hash
- * lock without a fontset id is a lock over bytes nobody can reproduce.
+ * Fontset is in here because the chrome's sans stack resolves differently on NixOS and Ubuntu: a
+ * hash lock without a fontset id is a lock over bytes nobody can reproduce.
  */
 export interface CaptureRuntime {
   /** Chromium MAJOR only — a patch bump that moves no pixel should not read as drift. */
@@ -252,8 +252,8 @@ export function chromiumMajor(version: string): string {
  * A stable id for a set of font families.
  *
  * Not the font FILES: two distros ship the same families from different paths, and a path-sensitive
- * id would report drift on every base-image rebuild. Families are what the Spectrum stack resolves
- * against, so families are what the lock records.
+ * id would report drift on every base-image rebuild. Families are what that stack resolves against,
+ * so families are what the lock records.
  */
 export function fontsetId(families: readonly string[]): string {
   const unique = [...new Set(families.map((family) => family.trim()).filter(Boolean))].toSorted();

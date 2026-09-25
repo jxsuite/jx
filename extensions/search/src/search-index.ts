@@ -5,7 +5,8 @@
  * the site's search index from the loaded content collections and returns it for the host to write
  * into the build output. Documents come in two granularities: one per content entry (full text)
  * and, when `sections` is on, one per heading section carrying a `#anchor` deep link (heading ids
- * are assigned by the parser — parser.md §3.2).
+ * are assigned by the parser — parser.md §3.2). An entry whose frontmatter says `search: false`
+ * contributes neither.
  *
  * @docs extending/extensions/search
  */
@@ -58,6 +59,32 @@ export interface EmitContext {
 }
 
 /**
+ * Whether an entry's frontmatter keeps it out of the index (`search: false`).
+ *
+ * The opt-out is per ENTRY, so it removes the page document and every section document with it: a
+ * page that should not be found by its title should not be found by its headings either. It is also
+ * the only lever a page has — the index is otherwise a pure function of the collection, which is
+ * what lets a generated reference page (a spec changelog, a standards table) leave the index
+ * without leaving the site or losing a word of its prose.
+ *
+ * Only the boolean `false` opts out. A string `"false"`, a `0` or a `"no"` reads like an opt-out to
+ * the author who wrote it and like nothing at all to a strict reader, and silently honouring the
+ * looser reading would make the index depend on YAML's coercion rules. So a non-boolean value is
+ * INDEXED — the safe failure, because a page that is present can be found and a page that is absent
+ * cannot say why — and reported once per entry, not once per document it yields.
+ */
+function isOptedOut(collection: string, entryId: string, value: unknown): boolean {
+  if (value === undefined || typeof value === "boolean") {
+    return value === false;
+  }
+  console.warn(
+    `@jxsuite/search: "${collection}/${entryId}" sets search to ${JSON.stringify(value)}; ` +
+      `only the boolean false opts a page out of the index — it stays indexed`,
+  );
+  return false;
+}
+
+/**
  * The `SearchIndex` capability surface. The extension host dispatches capability methods on the
  * export named by the descriptor title (specs/extensions.md §6.1); a plain object serves the
  * static-dispatch contract exactly like a class with static methods.
@@ -100,6 +127,9 @@ export const SearchIndex = {
 
       for (const entry of entries) {
         const data = (entry.data ?? {}) as Record<string, unknown>;
+        if (isOptedOut(name, entry.id, data.search)) {
+          continue;
+        }
         /*
          * Only when the project declares locales. An entry cannot carry one otherwise — the loader
          * stamps it while expanding `{locale}`, which needs a list to expand over — and a stray tag

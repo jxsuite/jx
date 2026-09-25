@@ -1,0 +1,111 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSpinner",
+  "tagName": "main",
+  "$elements": [
+    { "$ref": "../components/jx-icon.json" },
+    { "$ref": "../components/jx-spinner.json" },
+    { "$ref": "../components/jx-button.json" },
+    { "$ref": "../components/jx-action-button.json" }
+  ],
+  "state": {
+    "steps": ["0", "25", "60", "100"]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "120px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-spinner" },
+    {
+      "tagName": "p",
+      "textContent": "A busy ring. Empty value is indeterminate and spins; a value fills the ring instead. Reduced motion slows the rotation rather than stopping it, because a frozen spinner reads as a hang. It paints in the text colour around it, so it stays visible on a filled button; --jx-spin-color and --jx-spin-track-color are the override."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Indeterminate sizes" },
+      "children": [
+        { "tagName": "span", "textContent": "indeterminate" },
+        { "tagName": "jx-spinner", "$props": { "size": "sm", "label": "Loading" } },
+        { "tagName": "jx-spinner", "$props": { "label": "Loading" } },
+        { "tagName": "jx-spinner", "$props": { "size": "lg", "label": "Loading" } }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Determinate values" },
+      "children": [
+        { "tagName": "span", "textContent": "determinate" },
+        {
+          "$prototype": "Array",
+          "items": { "$ref": "#/state/steps" },
+          "key": { "$ref": "$map/item" },
+          "map": {
+            "tagName": "jx-spinner",
+            "$props": {
+              "value": { "$ref": "$map/item" },
+              "label": "Importing"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Overridden colours" },
+      "children": [
+        { "tagName": "span", "textContent": "recoloured" },
+        {
+          "tagName": "jx-spinner",
+          "style": { "--jx-spin-color": "var(--jx-accent)" },
+          "$props": { "label": "Loading" }
+        },
+        {
+          "tagName": "jx-spinner",
+          "style": {
+            "--jx-spin-color": "var(--jx-danger)",
+            "--jx-spin-track-color": "var(--jx-border-strong)"
+          },
+          "$props": { "value": "70", "label": "Importing" }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Buttons that are working" },
+      "children": [
+        { "tagName": "span", "textContent": "in a button" },
+        {
+          "tagName": "jx-button",
+          "$props": { "loading": true, "variant": "accent" },
+          "children": [{ "tagName": "span", "textContent": "Saving" }]
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "icon": "arrows-clockwise", "label": "Refresh", "loading": true }
+        }
+      ]
+    }
+  ]
+}

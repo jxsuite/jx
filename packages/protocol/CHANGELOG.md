@@ -1,5 +1,48 @@
 # Changelog
 
+## [2.3.1](https://github.com/jxsuite/jx/compare/protocol-v2.3.0...protocol-v2.3.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+
+## [2.3.0](https://github.com/jxsuite/jx/compare/protocol-v2.2.0...protocol-v2.3.0) (2026-09-14)
+
+
+### Features
+
+* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.2.0
+
+## [2.2.0](https://github.com/jxsuite/jx/compare/protocol-v2.1.0...protocol-v2.2.0) (2026-08-30)
+
+
+### Features
+
+* **studio:** a hosted backend can import a site into a repository ([2bcbeee](https://github.com/jxsuite/jx/commit/2bcbeee9fdaa5aa5d6b8a879bc3d8f510d451752))
+
+
+### Bug Fixes
+
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([83102d2](https://github.com/jxsuite/jx/commit/83102d2eaf64752895efe8118afacc605eaa2aff))
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([4887415](https://github.com/jxsuite/jx/commit/4887415119c8640e269fc3a5cd878367d946706d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.1.0
+
 ## [2.1.0](https://github.com/jxsuite/jx/compare/protocol-v2.0.0...protocol-v2.1.0) (2026-08-27)
 
 

@@ -1,0 +1,157 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookToastHost",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-button.json"
+    },
+    {
+      "$ref": "../components/jx-toast.json"
+    },
+    {
+      "$ref": "../components/jx-toast-host.json"
+    }
+  ],
+  "state": {},
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& > ul": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "paddingInlineStart": "var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& > ul > li": {
+      "margin": "0 0 var(--jx-space-2)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-toast-host"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The stack. It owns the live region every toast in it is announced through, the corner it is pinned to, and the clock policy: pointer or focus anywhere in the stack suspends every toast in it, so an older message cannot vanish out from under a reader answering a newer one."
+    },
+    {
+      "tagName": "p",
+      "textContent": "Two hosts are live on this page. The default one is in the bottom-end corner and announces politely. The one in the top-start corner is set to live off, which is the arrangement an application uses when it already announces outcomes somewhere else, and it names a stack of its own."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Reaching a toast from the keyboard"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Press F8. Focus moves to the first control in the first stack, and every clock in it stops. Press Escape and focus goes back to where it was. Dismissing the toast you are standing in returns focus the same way, so a keyboard reader is never left on an element that has just been hidden."
+    },
+    {
+      "tagName": "ul",
+      "children": [
+        {
+          "tagName": "li",
+          "textContent": "The order is DOM order, in every corner: what a reader hears, what they tab through and what they see are one order."
+        },
+        {
+          "tagName": "li",
+          "textContent": "A press carrying Ctrl, Alt or Meta is left alone, so F8 here does not take Ctrl+F8 from anything else."
+        },
+        {
+          "tagName": "li",
+          "textContent": "hotkey set to the empty string turns the gesture off, for an application that owns a command of its own for this."
+        }
+      ]
+    },
+    {
+      "tagName": "jx-toast-host",
+      "children": [
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "positive"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Published 14 pages."
+            }
+          ]
+        },
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true,
+            "variant": "negative"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Could not reach the deploy service."
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "slot": "action"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Retry"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "jx-toast-host",
+      "$props": {
+        "label": "Background tasks",
+        "live": "off",
+        "placement": "top-start"
+      },
+      "children": [
+        {
+          "tagName": "jx-toast",
+          "$props": {
+            "open": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Announced elsewhere: this stack is silent by design."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

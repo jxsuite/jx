@@ -114,9 +114,24 @@ export function computeWindow(spec: WindowSpec): WindowRange {
   };
 }
 
-/** Two ranges are the same window — the guard that keeps scrolling from repainting every frame. */
+/**
+ * Two ranges are the same window — the guard that keeps scrolling from repainting every frame.
+ *
+ * The SPACERS count, not only the slice. Both are pure functions of the same four inputs, so while
+ * the row height holds still a range with the same slice has the same spacers and the guard is
+ * exactly as quiet as it was. It is when the row height MOVES that the two come apart: the same
+ * eleven rows at a new height reserve a different number of pixels either side, and a guard that
+ * looked at the slice alone called that "nothing changed" and left the tree's declared height
+ * disagreeing with its own rows.
+ */
 export function sameWindow(a: WindowRange, b: WindowRange): boolean {
-  return a.start === b.start && a.end === b.end && a.totalRows === b.totalRows;
+  return (
+    a.start === b.start &&
+    a.end === b.end &&
+    a.totalRows === b.totalRows &&
+    a.padTop === b.padTop &&
+    a.padBottom === b.padBottom
+  );
 }
 
 // ─── The observer ────────────────────────────────────────────────────────────
@@ -160,6 +175,22 @@ export interface VirtualWindowOptions {
  * rAF hop would paint the spacer before the content one frame in three. `ResizeObserver` covers the
  * pane being resized; where the environment has none (happy-dom), `measure()` is the whole contract
  * and the caller drives it — which is also how the perf test drives it.
+ *
+ * **The list is observed as well as the scroller, and that is the whole of how a row-height change
+ * reaches the window.** The window has two inputs nothing else reports: the scroller's box, which
+ * its own observer covers, and the height of one row, which the host measures live off a drawn row
+ * — but only when something asks for a measurement. A density switch asks for nothing: the rows
+ * change height in place, the scroller's box is exactly what it was, and no scroll arrives, so the
+ * spacers stood at the old height until the reader happened to scroll — sighted when compact still
+ * drew rows at 20px, as a tree declaring 1320px over a 62-row model whose rows now totalled 1240.
+ * Compact is 24px today and the switch that moves a row is comfortable, 24px to 28px (ui.md §4.3);
+ * the drift is the same in either direction. The list's height, though, is `padTop + drawn ×
+ * rowHeight + padBottom` with the two spacers fixed in pixels, so ANY change to the row height
+ * changes the list's box by `drawn × Δ`, and observing the list is what turns that into the ask. It
+ * is deliberately not an observer on `data-density`: Studio writes no such attribute (the kit
+ * declares the rule and a consumer sets it), and the same drift follows a late web font, a zoom, or
+ * a stylesheet that overrides `--jx-control-h` — none of which touch an attribute, all of which
+ * move the list's box.
  */
 export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindow {
   const { scroller, list, count, rowHeight, columns, onChange, overscanRows } = options;
@@ -187,10 +218,38 @@ export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindo
 
   scroller.addEventListener("scroll", measure, { passive: true });
 
+  /*
+   * A resize is measured ONE FRAME LATER, and the reason is the list observer above.
+   *
+   * Measuring inside the observer's own callback is how a scroll is answered, and for a scroll it
+   * is right. For a resize it is a loop: the measure repaints the spacers, the spacers are part of
+   * the list's box, the box the observer is watching changes during delivery, and the browser —
+   * which will not deliver a second observation in the same frame — reports "ResizeObserver loop
+   * completed with undelivered notifications" as a window `error` instead. One per density toggle,
+   * measured; zero before the list was observed. A frame hop is the documented remedy: the write
+   * lands in the next frame, the observer sees it as a fresh observation, and the second measure
+   * finds the window unchanged and writes nothing. Two observations in one frame collapse into
+   * one measure, which is also what a pane resize wants. Measured again with the hop in place:
+   * zero errors across seven density toggles over a 386-row windowed model, first visits included.
+   */
+  let pending = 0;
+  const measureNextFrame = (): void => {
+    if (pending !== 0) {
+      return;
+    }
+    pending = requestAnimationFrame(() => {
+      pending = 0;
+      measure();
+    });
+  };
+
   let resizeObserver: ResizeObserver | null = null;
   if (typeof ResizeObserver === "function") {
-    resizeObserver = new ResizeObserver(() => measure());
+    resizeObserver = new ResizeObserver(measureNextFrame);
     resizeObserver.observe(scroller);
+    if (list) {
+      resizeObserver.observe(list);
+    }
   }
 
   measure();
@@ -201,6 +260,10 @@ export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindo
       scroller.removeEventListener("scroll", measure);
       resizeObserver?.disconnect();
       resizeObserver = null;
+      if (pending !== 0) {
+        cancelAnimationFrame(pending);
+        pending = 0;
+      }
     },
     measure,
     range: () => current,
@@ -238,6 +301,44 @@ export function nearestScroller(el: HTMLElement | null): HTMLElement | null {
 }
 
 /**
+ * The scroller that resolved for `list` last time, memoized while the tree still holds it.
+ *
+ * Every render pass asks {@link nearestScroller} the same question about the same list, and each
+ * ask is a walk whose reads (scrollHeight, clientHeight, computed overflow) land on a tree that is
+ * mid-paint — they force the flush the DevTools timeline charges to whatever function happened to
+ * read first. Profiling the program boot put 400 ms of style recalculation behind a handful of
+ * these walks (`trackOf` and this one together), and the answer did not change between any two
+ * repaints.
+ *
+ * Only a POSITIVE resolution is cached, and negative answers are never: a list that has not grown
+ * its rows yet has nothing to scroll (the first paint of every session), and a null answer memoized
+ * at that instant would never be revisited. Once a scroller is found it is kept while
+ * `cached.contains(list)` and both are connected — containment and connectivity are plain node
+ * walks that never read layout, so the cache invalidates itself on reparenting or teardown without
+ * paying for it.
+ *
+ * **The one semantic residue is deliberate**: the original walk additionally required the scroller
+ * to HAVE something to scroll right then (the "declares overflow but never scrolls" guard above). A
+ * memoized scroller that has since stopped scrolling stays answered — which is harmless for the
+ * window: `computeWindow` then yields the whole list (a list that fits has no window to cut), and
+ * the watch's own ResizeObserver drives a measure when the box moves so the empty answer of the
+ * next moment arrives without a walk.
+ */
+export function scrollerFor(list: HTMLElement): HTMLElement | null {
+  const cached = scrollerCache.get(list);
+  if (cached && cached.isConnected && list.isConnected && cached.contains(list)) {
+    return cached;
+  }
+  const found = nearestScroller(list);
+  if (found) {
+    scrollerCache.set(list, found);
+  } else {
+    scrollerCache.delete(list);
+  }
+  return found;
+}
+
+/**
  * How far `list`'s first row has scrolled above the top of `scroller`'s viewport.
  *
  * Measured from the two rects rather than from `offsetTop`, because the chrome between them is not
@@ -264,7 +365,7 @@ export function listWindow(
   list: HTMLElement | null,
   spec: { count: number; rowHeight: number; columns?: number; overscanRows?: number },
 ): WindowRange {
-  const scroller = list?.isConnected === true ? nearestScroller(list) : null;
+  const scroller = list?.isConnected === true ? scrollerFor(list) : null;
   if (!scroller || !list) {
     const count = Math.max(0, Math.trunc(spec.count));
     return { end: count, padBottom: 0, padTop: 0, start: 0, totalRows: count };
@@ -314,7 +415,7 @@ export function scrollTopToReveal(spec: {
  * would paint twice for one keystroke.
  */
 export function revealListRow(list: HTMLElement | null, index: number, rowHeight: number): boolean {
-  const scroller = list?.isConnected === true ? nearestScroller(list) : null;
+  const scroller = list?.isConnected === true ? scrollerFor(list) : null;
   if (!scroller || !list || index < 0 || !(rowHeight > 0)) {
     return false;
   }
@@ -337,12 +438,24 @@ export function revealListRow(list: HTMLElement | null, index: number, rowHeight
  * The height one row actually has, measured, with the stylesheet's declared height as the answer
  * until a row exists to measure.
  *
- * Both are needed. The DECLARED height (`styles/panels.css` gives `.layer-row` and
- * `.file-tree-item` a `block-size`) is what lets the FIRST render window anything at all, before
- * any row has been laid out. The MEASUREMENT is what stops that constant becoming a lie the day
- * someone changes the row's padding, a user zooms, or a locale's font raises the line box: a window
- * computed from a stale height does not fail loudly, it drifts, and the list quietly ends a few
- * rows short of its own scrollbar.
+ * Both are needed. The DECLARED height is what lets the FIRST render window anything at all, before
+ * any row has been laid out. It used to be `styles/panels.css`'s `.layer-row` and `.file-tree-item`
+ * rules; both trees are `jx-tree-item` now and the declaration travelled with them — `blockSize:
+ * var(--jx-control-h)`, which is 24px and matches the constants the two hosts pass. At
+ * `[data-density=comfortable]` that token is 28px while the constants stay 24, and the constant is
+ * only the answer until a row exists, so a session that STARTS comfortable is right from its second
+ * paint. (Compact used to be the other direction, 20px; it is 24px now, because WCAG 2.2 SC 2.5.8
+ * asks 24 CSS px of a target and the kit holds every density to it — ui.md §4.3.) The MEASUREMENT
+ * is what stops that constant becoming a lie the day someone changes the row's padding, a user
+ * zooms, or a locale's font raises the line box: a window computed from a stale height does not
+ * fail loudly, it drifts, and the list quietly ends a few rows short of its own scrollbar.
+ *
+ * A measurement is only as fresh as the last time something ASKED for one, and this used to be
+ * where the density switch got through: the rows shrank in place, nothing scrolled, nothing resized
+ * the scroller, and the spacers stood at the old height until the next scroll — measured in a
+ * browser as a `padbottom` of 408 (17 × 24) over rows that had shrunk to 20px, when compact still
+ * drew them at that height. The ask is now the list's own resize ({@link createVirtualWindow}
+ * observes it), which is the one event every cause of a row-height change has in common.
  */
 export function measuredRowHeight(
   list: HTMLElement | null,
@@ -362,8 +475,23 @@ export interface ListWindowWatch {
   window: VirtualWindow;
 }
 
+const scrollerCache = new WeakMap<HTMLElement, HTMLElement>();
+
 /**
  * Bind — or keep — the scroll watch that repaints a windowed list.
+ *
+ * Runs synchronously, on purpose. Deferring the resolve-and-bind to the next animation frame was
+ * tried and measured (`scripts/perf/REPORT.md`, "deferring the first measure a frame"): it moved
+ * the boot trace's forced-flush cost rather than removing it, since the layout work still runs on
+ * the frame's own pass either way, and it cost eight test-semantics changes in this file's test
+ * suite for the same totals — so it was reverted. What actually removed the repeated flush is
+ * `scrollerFor`'s identity memoization (alongside `trackOf`'s, in `split.ts`): once a scroller is
+ * resolved for a list, later calls skip the ancestor walk entirely instead of re-reading
+ * `scrollHeight`/`clientHeight` on a dirty tree every render.
+ *
+ * A steady state where the SAME list and scroller are bound hands back `previous` unchanged — no
+ * work happens when nothing changed. Only a rebind (new list, changed scroller, first bind) creates
+ * a new watch.
  *
  * Called from the surface's `afterRender`, where the rows exist and the scroller can be resolved,
  * and handed back its own previous handle so re-binding is the exception rather than the rule: the
@@ -371,14 +499,18 @@ export interface ListWindowWatch {
  * scroller, nothing to do". A new element — the panel remounted, or moved dock — moves the
  * listener, and a list that no longer scrolls drops it.
  *
- * Returns the handle to keep, or null when nothing scrolls this list.
+ * The list goes to the window as well as the scroller, and not only for the scroll offset: it is
+ * the element whose box moves when the ROWS change height, so it is what the window observes to
+ * learn that `rowHeight()` now answers differently ({@link createVirtualWindow}).
+ *
+ * @returns The handle to keep, or null when nothing scrolls this list.
  */
 export function watchListWindow(
   previous: ListWindowWatch | null,
   list: HTMLElement,
   spec: { count: () => number; rowHeight: () => number; onChange: () => void },
 ): ListWindowWatch | null {
-  const scroller = nearestScroller(list);
+  const scroller = scrollerFor(list);
   if (previous && previous.list === list && previous.scroller === scroller) {
     return previous;
   }

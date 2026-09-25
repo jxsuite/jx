@@ -104,12 +104,18 @@ export interface ProjectTreeResultLike {
   valid: boolean;
   checked: number;
   issues: { file: string; errors: unknown[] }[];
+  lint?: { file: string; severity: string; message: string; source: string; rule: string }[];
 }
 
-let validateProjectTreeImpl: (root: string) => Promise<ProjectTreeResultLike> = () =>
+let validateProjectTreeImpl: (
+  root: string,
+  options?: { strict?: boolean },
+) => Promise<ProjectTreeResultLike> = () =>
   Promise.resolve({ checked: 1, issues: [], valid: true });
 
 export const validateProjectTreeCalls: string[] = [];
+/** The options each call carried, in call order. */
+export const validateProjectTreeOptions: ({ strict?: boolean } | undefined)[] = [];
 
 export function setValidateProjectTree(impl: typeof validateProjectTreeImpl) {
   validateProjectTreeImpl = impl;
@@ -121,9 +127,15 @@ void mock.module("../src/site/validate-command.ts", () => ({
       `${issue.file}:`,
       ...issue.errors.map((error) => `  - ${JSON.stringify(error)}`),
     ]),
-  validateProjectTree: (root: string) => {
+  formatProjectTreeLint: (result: ProjectTreeResultLike) =>
+    (result.lint ?? []).map(
+      (finding) =>
+        `${finding.file}: ${finding.severity}: ${finding.message} [${finding.source}/${finding.rule}]`,
+    ),
+  validateProjectTree: (root: string, options?: { strict?: boolean }) => {
     validateProjectTreeCalls.push(root);
-    return validateProjectTreeImpl(root);
+    validateProjectTreeOptions.push(options);
+    return validateProjectTreeImpl(root, options);
   },
 }));
 

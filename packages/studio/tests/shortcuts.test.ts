@@ -19,6 +19,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
   stubRect,
+  topDialog,
 } from "./harness";
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
@@ -183,12 +184,12 @@ let releaseStageGestures: (() => void) | null = null;
 /** The composed registry, so a test can ask what a verb's chord IS rather than only pressing it. */
 let registry: ReturnType<typeof createCommandRegistry>;
 
-beforeAll(() => {
+beforeAll(async () => {
   document.body.innerHTML = "";
   /* The real frame. This used to be eight hand-listed divs — no bottom dock, no pane grid, no toast
      host — plus stampShellRegions() to add the region ids the divs could not carry. The template
      stamps its own, so both halves are gone. */
-  mountShellTree();
+  await mountShellTree();
   initShellRefs();
   registerPrimaryStage();
   initLayers();
@@ -289,6 +290,23 @@ function focusTextField(tag = "input"): HTMLElement {
   return el;
 }
 
+/**
+ * A kit field as the DOM actually holds one: a host with the native control inside it.
+ *
+ * The Spectrum spelling was `focusTextField("sp-textfield")` — one element, because the `<input>`
+ * was in a shadow root and focus retargeted onto the host. No kit element declares `$shadow`
+ * (`ui.md` §3.2), so this is two nodes and the inner one is what takes focus; `TEXT_ENTRY` in
+ * `commands/live-context.ts` reads the control, not the wrapper.
+ */
+function focusKitField(): HTMLElement {
+  const field = document.createElement("jx-textfield");
+  const input = document.createElement("input");
+  field.append(input);
+  document.body.append(field);
+  input.focus();
+  return input;
+}
+
 function childCount(): number {
   return (activeTab.value!.doc.document.children as unknown[]).length;
 }
@@ -327,17 +345,17 @@ describe("wheel handler", () => {
     expect(setPan).toHaveBeenCalledWith(-30, 0);
   });
 
-  test("edit mode without a content-edit-canvas lets native scrolling happen", () => {
+  test("edit mode without an edit-canvas scroller lets native scrolling happen", () => {
     canvasMode = "edit";
     const e = wheel(wrapEl(), { deltaY: 20 });
     expect(e.defaultPrevented).toBe(false);
     expect(setPan).not.toHaveBeenCalled();
   });
 
-  test("edit mode scrolls the content-edit-canvas and prevents default", () => {
+  test("edit mode scrolls the stage's edit-canvas and prevents default", () => {
     canvasMode = "edit";
     const sc = document.createElement("div");
-    sc.className = "content-edit-canvas";
+    sc.setAttribute("part", "edit-canvas");
     sc.scrollTop = 0;
     sc.scrollLeft = 0;
     wrapEl().append(sc);
@@ -394,7 +412,10 @@ describe("wheel handler", () => {
   test("a wheel over a scroller inside the settings pane is left alone", () => {
     canvasMode = "settings";
     const doc = document.createElement("div");
-    doc.className = "settings-doc-content";
+    // The settings pane's scrolling column, as `surfaces/settings-pane.json` draws it. The
+    // Exemption is decided by the canvas MODE rather than by anything on this element; it is
+    // Spelled the way the pane spells it so a reader is not sent looking for a class that is gone.
+    doc.setAttribute("part", "content");
     const pre = document.createElement("pre");
     pre.className = "settings-raw-json";
     doc.append(pre);
@@ -507,9 +528,9 @@ test("window resize re-applies the edit zoom from the live column width", () => 
   canvasMode = "edit";
   activeTab.value!.session.ui.editZoom = 2;
   const sc = document.createElement("div");
-  sc.className = "content-edit-canvas";
+  sc.setAttribute("part", "edit-canvas");
   const column = document.createElement("div");
-  column.className = "content-edit-column";
+  column.setAttribute("part", "edit-column");
   const viewport = document.createElement("div");
   const canvas = document.createElement("div");
   const iframe = document.createElement("iframe");
@@ -580,7 +601,7 @@ describe("the old dispatch — twelve modifier chords", () => {
     tab.doc.dirty = true;
     pressDoc("w", { ctrlKey: true });
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+    const dialog = topDialog()!;
     expect(dialog?.getAttribute("headline")).toBe("Unsaved Changes");
     // ⌘W calls `requestClose` rather than re-implementing it, so it is the SAME dialog the × opens
     // — Save included. Copying the ×'s wording into this file is how the two drifted last time.
@@ -596,7 +617,7 @@ describe("the old dispatch — twelve modifier chords", () => {
     tab.doc.dirty = true;
     pressDoc("w", { ctrlKey: true });
     await flush();
-    document.querySelector("#layer-dialog sp-dialog-wrapper")!.dispatchEvent(new Event("cancel"));
+    topDialog()!.dispatchEvent(new Event("cancel"));
     await flush();
     expect(workspace.tabOrder).toEqual(["test-tab", "dirty-tab"]);
   });
@@ -812,9 +833,19 @@ describe("the old dispatch — seven bare keys", () => {
 
 describe("the old dispatch — the three blanket guards", () => {
   /* Guard 1: `if (isModalOpen()) return`. Now the `palette`-only scope stack. */
+  /**
+   * The fixture is the DOM a dialog surface actually leaves in the layer.
+   *
+   * It was `<sp-dialog-wrapper open>`, which `ui/layers.ts`'s `UNDERLAID` still named after the
+   * last Spectrum dialog went, on the argument that answering for a tag nobody renders costs
+   * nothing. With the registry unregistered that tag is an `HTMLUnknownElement`: it paints no
+   * scrim, so matching it would stand every chord down under a surface that blocks nothing. The
+   * shape here is `surfaces/dialog.json`'s — a `jx-dialog` mirroring `open` onto `data-open`, with
+   * the native `<dialog>` it opens modally inside it.
+   */
   test("every chord stands down while a modal surface is up", () => {
     const slot = document.createElement("div");
-    slot.innerHTML = "<sp-dialog-wrapper open></sp-dialog-wrapper>";
+    slot.innerHTML = "<jx-dialog data-open><dialog open></dialog></jx-dialog>";
     document.querySelector("#layer-dialog")!.append(slot);
     activeTab.value!.session.selection = [["children", 0]];
 
@@ -828,6 +859,29 @@ describe("the old dispatch — the three blanket guards", () => {
     expect(del.defaultPrevented).toBe(false);
 
     slot.remove();
+    pressDoc("p", { ctrlKey: true });
+    expect(openQuickSearch).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The other half of `UNDERLAID`, on its own — the native element is what actually blocks.
+   *
+   * `jx-dialog[data-open]` is the host this package mounts; `dialog[open]` is the substrate, and it
+   * is what makes the rule "whatever blocks the mouse blocks the keyboard" true rather than a
+   * convention about one wrapper. A surface that opens a bare `<dialog>` in a layer — no kit host
+   * around it — must stand the chords down too, and nothing else in this file would notice if it
+   * stopped.
+   */
+  test("a bare modal dialog in the layer stands them down as well", () => {
+    const bare = document.createElement("dialog");
+    bare.setAttribute("open", "");
+    document.querySelector("#layer-modal")!.append(bare);
+    activeTab.value!.session.selection = [["children", 0]];
+
+    pressDoc("p", { ctrlKey: true });
+    expect(openQuickSearch).not.toHaveBeenCalled();
+
+    bare.remove();
     pressDoc("p", { ctrlKey: true });
     expect(openQuickSearch).toHaveBeenCalledTimes(1);
   });
@@ -885,7 +939,7 @@ describe("the old dispatch — the three blanket guards", () => {
     test.each([
       ["a canvas caret", () => (caretActive = true)],
       ["a focused text field", () => focusTextField()],
-      ["a focused sp-textfield", () => focusTextField("sp-textfield")],
+      ["a focused jx-textfield", () => focusKitField()],
     ])("%s: ⌘S still saves", (_label, arrange) => {
       arrange();
       pressDoc("s", { ctrlKey: true });
@@ -1255,6 +1309,29 @@ describe("focusShellRegion", () => {
     }
   });
 
+  /**
+   * The region's focusable is the native control a kit element renders, not the kit element.
+   *
+   * `REGION_FOCUSABLE` used to name `sp-action-button`, `sp-tab`, `sp-textfield` and `sp-picker`
+   * beside the native tags, because a Spectrum control kept its `<button>` in a shadow root and
+   * `querySelector` could not reach it. The kit declares no shadow root (`ui.md` §3.2), so the
+   * button is right here — and adding the kit tags back "for symmetry" would MATCH THE WRAPPER,
+   * which comes first in document order, and focus a node that is not the control. That is what
+   * this pins: the host is skipped, the button is focused.
+   */
+  test("a kit control is entered at its native button, not at its host", () => {
+    const host = document.createElement("jx-action-button");
+    const button = document.createElement("button");
+    host.append(button);
+    document.querySelector("#left-panel")!.append(host);
+    try {
+      expect(focusShellRegion("navigator")).toBe(true);
+      expect(document.activeElement).toBe(button);
+    } finally {
+      host.remove();
+    }
+  });
+
   test("a bare host is made programmatically focusable rather than skipped", () => {
     const host = document.querySelector("#statusbar") as HTMLElement;
     expect(focusShellRegion("status")).toBe(true);
@@ -1271,8 +1348,15 @@ describe("focusShellRegion", () => {
 // ─── Project: Open… ───────────────────────────────────────────────────────────
 
 describe("openProjectFlow", () => {
+  /*
+   * The dialog is `surfaces/dialog.json` — the same `jx-dialog` Save-or-Discard opens — because
+   * this question was never bespoke: a headline, a sentence and confirm / secondary / cancel is
+   * that document, and the hand-written `sp-dialog-wrapper` this flow passed to `showDialog` was a
+   * second answer to it. The three answers are still dispatched by name, which is what makes the
+   * substitution visible here as a tag change and nothing else.
+   */
   function dialogWrapper(): HTMLElement | null {
-    return document.querySelector("sp-dialog-wrapper");
+    return document.querySelector("jx-dialog");
   }
 
   /** A platform that can BOTH open a window elsewhere and pick a project without binding to it. */
@@ -1299,7 +1383,10 @@ describe("openProjectFlow", () => {
     await flush();
     const wrapper = dialogWrapper()!;
     expect(wrapper.getAttribute("headline")).toBe("Open Project");
+    expect(wrapper.getAttribute("confirm-label")).toBe("New Window");
     expect(wrapper.getAttribute("secondary-label")).toBe("This Window");
+    // The sentence names the project being left behind, so "this window" is not a riddle.
+    expect(wrapper.textContent).toContain("is open in this window");
     wrapper.dispatchEvent(new Event("confirm", { bubbles: true }));
     await pending;
     expect(openProject).toHaveBeenCalledWith("newWindow");

@@ -1,0 +1,536 @@
+{
+  "chatCalls": [
+    "sendMessage(\"read then write, repeatedly\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r0\", \"peek\")",
+    "appendToolCallEnd(\"r0\")",
+    "appendToolCallStart(\"w0\", \"set_property\")",
+    "appendToolCallDelta(\"w0\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v0\\\"}\")",
+    "appendToolCallEnd(\"w0\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r0\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r0\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "appendToolResult(\"w0\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"w0\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r1\", \"peek\")",
+    "appendToolCallEnd(\"r1\")",
+    "appendToolCallStart(\"w1\", \"set_property\")",
+    "appendToolCallDelta(\"w1\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v1\\\"}\")",
+    "appendToolCallEnd(\"w1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r1\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "appendToolResult(\"w1\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"w1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r2\", \"peek\")",
+    "appendToolCallEnd(\"r2\")",
+    "appendToolCallStart(\"w2\", \"set_property\")",
+    "appendToolCallDelta(\"w2\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v2\\\"}\")",
+    "appendToolCallEnd(\"w2\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r2\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r2\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "appendToolResult(\"w2\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"w2\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r3\", \"peek\")",
+    "appendToolCallEnd(\"r3\")",
+    "appendToolCallStart(\"w3\", \"set_property\")",
+    "appendToolCallDelta(\"w3\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v3\\\"}\")",
+    "appendToolCallEnd(\"w3\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r3\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r3\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "appendToolResult(\"w3\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"w3\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r4\", \"peek\")",
+    "appendToolCallEnd(\"r4\")",
+    "appendToolCallStart(\"w4\", \"set_property\")",
+    "appendToolCallDelta(\"w4\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v4\\\"}\")",
+    "appendToolCallEnd(\"w4\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r4\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r4\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "appendToolResult(\"w4\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"w4\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "appendDelta(\"I ran out of tool-call rounds (5) before finishing.\\n\\nChanges applied so far:\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n\\nYou can continue by sending another message, or try a more specific request.\")",
+    "finishStream(\"length\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "read then write, repeatedly"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page",
+        "peek"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r0",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": ""
+                }
+              },
+              {
+                "id": "w0",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v0\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r0",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w0",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r1",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": ""
+                }
+              },
+              {
+                "id": "w1",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v1\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r1",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w1",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 4
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 4,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r2",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": ""
+                }
+              },
+              {
+                "id": "w2",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v2\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r2",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w2",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 5,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r3",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": ""
+                }
+              },
+              {
+                "id": "w3",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v3\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r3",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "w3",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 10
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "endTurn(\"msg#17\") filed 5"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "(untitled)",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              }
+            ]
+          }
+        ],
+        "turn": "msg#17"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "read then write, repeatedly"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "",
+          "id": "r0",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        },
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v0\"}",
+          "id": "w0",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r0"
+    },
+    {
+      "id": "msg#4",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "w0"
+    },
+    {
+      "id": "msg#5",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "",
+          "id": "r1",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        },
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v1\"}",
+          "id": "w1",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#6",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r1"
+    },
+    {
+      "id": "msg#7",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "w1"
+    },
+    {
+      "id": "msg#8",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "",
+          "id": "r2",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        },
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v2\"}",
+          "id": "w2",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#9",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r2"
+    },
+    {
+      "id": "msg#10",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "w2"
+    },
+    {
+      "id": "msg#11",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "",
+          "id": "r3",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        },
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v3\"}",
+          "id": "w3",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#12",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r3"
+    },
+    {
+      "id": "msg#13",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "w3"
+    },
+    {
+      "id": "msg#14",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "",
+          "id": "r4",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        },
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v4\"}",
+          "id": "w4",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#15",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r4"
+    },
+    {
+      "id": "msg#16",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "w4"
+    },
+    {
+      "id": "msg#17",
+      "role": "assistant",
+      "content": "I ran out of tool-call rounds (5) before finishing.\n\nChanges applied so far:\n- Set \"id\" at [].\n- Set \"id\" at [].\n- Set \"id\" at [].\n- Set \"id\" at [].\n- Set \"id\" at [].\n\nYou can continue by sending another message, or try a more specific request."
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div",
+    "id": "v4"
+  },
+  "historyIndex": 5
+}

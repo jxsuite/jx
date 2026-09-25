@@ -6,7 +6,9 @@ import type { Tab } from "../src/tabs/tab";
 import { beginBatch, endBatch, setTransactGate, undo } from "../src/tabs/transact";
 import { registerAiTools } from "../src/services/ai-tools";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import { beginTurn, endTurn, resetAiWrites } from "../src/services/ai-writes";
+import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
+import type { ToolContext } from "@jxsuite/ai/tools";
 
 type AiToolsOptions = Parameters<typeof registerAiTools>[1];
 
@@ -23,8 +25,9 @@ async function execErr(
   registry: ReturnType<typeof createToolRegistry>,
   name: string,
   args: Record<string, unknown>,
+  ctx?: ToolContext,
 ) {
-  const result = await registry.execute(name, args);
+  const result = await registry.execute(name, args, ctx);
   return result.error;
 }
 
@@ -99,6 +102,61 @@ describe("ai-tools — state tools (§14.1 regression)", () => {
     const res = await registry.execute("update_state", { key: "ghost", value: 1 });
 
     expect(res.success).toBe(false);
+    disposeTab(tab);
+  });
+
+  test("removing the last state key drops the empty state object, as the Inspector does", async () => {
+    const { tab, registry } = harness({ tagName: "x-comp", state: { count: 0 }, children: [] });
+
+    await registry.execute("update_state", { key: "count", value: null });
+
+    expect(tab.doc.document.state).toBeUndefined();
+    undo(tab);
+    expect(tab.doc.document.state).toEqual({ count: 0 });
+    disposeTab(tab);
+  });
+});
+
+/*
+ * These three wrote the tree directly and recorded no ops, so each edit reached the canvas as a full
+ * re-render, history as a whole-document snapshot, and collaborators as a diff. An entry with
+ * `forwardOps` is the proof the edit travelled as an edit.
+ */
+describe("ai-tools — edits are recorded as ops", () => {
+  const lastEntry = (tab: Tab) => tab.history.snapshots[tab.history.index]!;
+
+  test("set_text records set-key ops and undoes exactly", async () => {
+    const { tab, registry } = harness({
+      tagName: "div",
+      children: [{ tagName: "p", textContent: "old" }],
+    });
+
+    await registry.execute("set_text", { path: ["children", 0], value: "new" });
+
+    const node = (tab.doc.document.children as JxMutableNode[])[0]!;
+    expect(node.textContent).toBeUndefined();
+    expect(node.children).toEqual(["new"]);
+    expect(lastEntry(tab).forwardOps?.length).toBe(2);
+    undo(tab);
+    expect((tab.doc.document.children as JxMutableNode[])[0]).toEqual({
+      tagName: "p",
+      textContent: "old",
+    });
+    disposeTab(tab);
+  });
+
+  test("add_state and update_state record a state set-key op", async () => {
+    const { tab, registry } = harness({ tagName: "x-comp", children: [] });
+
+    await registry.execute("add_state", { key: "count", value: 0 });
+    expect(lastEntry(tab).forwardOps).toEqual([
+      { key: "state", op: "set-key", path: [], value: { count: 0 } },
+    ]);
+
+    await registry.execute("update_state", { key: "count", value: 3 });
+    expect(lastEntry(tab).forwardOps).toEqual([
+      { key: "state", op: "set-key", path: [], value: { count: 3 } },
+    ]);
     disposeTab(tab);
   });
 });
@@ -207,60 +265,16 @@ describe("ai-tools — style & structure", () => {
   });
 });
 
-describe("ai-tools — open_document", () => {
-  test("open_document switches the active document via openDocument callback", async () => {
-    let openedPath: string | null = null;
-    const secondDoc = { tagName: "section", children: [] };
-    const secondTab = createTab({ document: secondDoc, id: "second" });
-
-    const { tab, registry } = harness(
-      { tagName: "div", children: [] },
-      {
-        openDocument: async (path: string) => {
-          openedPath = path;
-        },
-      },
-    );
-
-    const res = await registry.execute("open_document", { path: "pages/about.json" });
-
-    expect(res.success).toBe(true);
-    expect(openedPath as string | null).toBe("pages/about.json");
-    expect(res.summary).toContain("pages/about.json");
-    disposeTab(tab);
-    disposeTab(secondTab);
-  });
-
-  test("open_document errors when openDocument is not available", async () => {
-    const { tab, registry } = harness({ tagName: "div", children: [] });
-
-    const res = await registry.execute("open_document", { path: "pages/about.json" });
-
-    expect(res.success).toBe(false);
-    expect(res.error).toContain("not available");
-    disposeTab(tab);
-  });
-
-  test("open_document surfaces file-not-found errors", async () => {
-    const { tab, registry } = harness(
-      { tagName: "div", children: [] },
-      {
-        openDocument: async () => {
-          throw new Error("File not found: pages/missing.json");
-        },
-      },
-    );
-
-    const res = await registry.execute("open_document", { path: "pages/missing.json" });
-
-    expect(res.success).toBe(false);
-    expect(res.error).toContain("File not found");
-    disposeTab(tab);
-  });
-
+/*
+ * There is no `open_document` block here any more: the tool is the projection of the
+ * `document.open` record (`tests/document-open-command.test.ts`). The batching test below stays,
+ * with the tab switch made the way the loop now sees it — `tool-executor.ts` re-anchors the batch
+ * after EVERY tool, so the switch is a plain change of the active tab.
+ */
+describe("ai-tools — batching across a tab switch", () => {
   test("cross-document edits stay undoable inside a batch (mid-loop tab switch)", async () => {
     // Reproduces the batching bug: the agent loop opens ONE batch on the tab active at start.
-    // Without the open_document flush, edits to a tab opened mid-loop get no history snapshot.
+    // Without the re-anchor, edits to a tab opened mid-loop get no history snapshot.
     const tabA = createTab({
       document: { tagName: "div", children: [{ tagName: "h1", textContent: "A" }] },
       id: "pages/index.json",
@@ -276,9 +290,6 @@ describe("ai-tools — open_document", () => {
     registerAiTools(registry, {
       getTab: () => active,
       validate: async () => [],
-      openDocument: async (path) => {
-        active = tabs[path]!;
-      },
     });
 
     // Simulate the agent loop: one batch opened on the tab active at loop start (tab A).
@@ -286,8 +297,11 @@ describe("ai-tools — open_document", () => {
 
     // Edit tab A.
     await registry.execute("set_text", { path: ["children", 0], value: "A edited" });
-    // Switch to tab B mid-loop — should flush A's batch and open one on B.
-    await registry.execute("open_document", { path: "pages/about.json" });
+    // Switch to tab B mid-loop, as the loop's `reanchorBatch` does after any tool moved the
+    // Active tab: flush A's batch and open one on B.
+    active = tabs["pages/about.json"]!;
+    endBatch();
+    beginBatch(active);
     // Edit tab B.
     await registry.execute("set_text", { path: ["children", 0], value: "B edited" });
 
@@ -344,13 +358,10 @@ describe("ai-tools — read & inspect", () => {
     expect(await execErr(registry, "set_text", { path: [], value: "x" })).toContain(
       "No document is open",
     );
-    expect(await execErr(registry, "remove_node", { path: ["children", 0] })).toContain(
-      "No document is open",
-    );
   });
 });
 
-describe("ai-tools — set_property / set_text / remove_node", () => {
+describe("ai-tools — set_property / set_text", () => {
   test("set_property sets and removes a property", async () => {
     const { tab, registry } = harness({ id: "old", tagName: "div", children: [] });
     const set = await registry.execute("set_property", { key: "id", path: [], value: "new" });
@@ -386,22 +397,15 @@ describe("ai-tools — set_property / set_text / remove_node", () => {
     disposeTab(tab);
   });
 
-  test("remove_node deletes a child, refuses the root, and rejects bad paths", async () => {
-    const { tab, registry } = harness({
-      children: [{ tagName: "p" }, { tagName: "span" }],
-      tagName: "div",
-    });
-    const res = await registry.execute("remove_node", { path: ["children", 0] });
-    expect(res.success).toBe(true);
-    expect((tab.doc.document.children as JxMutableNode[])[0]!.tagName).toBe("span");
-
-    expect(await execErr(registry, "remove_node", { path: [] })).toContain(
-      "Cannot remove the document root",
-    );
-    expect(await execErr(registry, "remove_node", { path: ["children", 9] })).toContain(
-      "No node exists",
-    );
-    disposeTab(tab);
+  test("there is no remove_node: deletion is delete_node, the projection of selection.delete", () => {
+    /* The hand tool guarded only the document root (`path.length < 2`), a weaker test than the
+       person's `structurallyEditable`, so a repeater template was removable by the agent and not
+       by the person — the divergence issue 273 is about. `delete_node(paths)` runs the record, under
+       the record's gate, through `services/ai-command-tools.ts`; this registry holds no deletion. */
+    const registry = createToolRegistry();
+    registerAiTools(registry, { getTab: () => null, validate: async () => [] });
+    expect(registry.getDefinition("remove_node")).toBeUndefined();
+    expect(registry.list().map((t) => t.name)).not.toContain("delete_node");
   });
 });
 
@@ -560,21 +564,6 @@ describe("ai-tools — file creation", () => {
     disposeTab(tab);
     disposeTab(t2);
   });
-
-  test("open_document reports when navigation leaves no active tab", async () => {
-    let active: Tab | null = createTab({ document: { tagName: "div", children: [] }, id: "z" });
-    const registry = createToolRegistry();
-    registerAiTools(registry, {
-      getTab: () => active,
-      openDocument: async () => {
-        active = null;
-      },
-      validate: async () => [],
-    });
-    const res = await registry.execute("open_document", { path: "p.json" });
-    expect(res.success).toBe(false);
-    expect(res.error).toContain("no active tab");
-  });
 });
 
 describe("ai-tools — write reconciliation with open tabs", () => {
@@ -651,21 +640,21 @@ describe("ai-tools — write reconciliation with open tabs", () => {
 describe("create_page's three refusals, and the write ledger", () => {
   test("schema errors refuse before anything is written, and record nothing", async () => {
     resetAiWrites();
-    beginTurn("t");
+    const tCall = recordingContext();
     const { tab, registry } = harness(
       { children: [], tagName: "div" },
       { saveFile: async () => {}, validate: async () => ["/tagName: must be string"] },
     );
-    expect(await execErr(registry, "create_page", { content: {}, path: "p.json" })).toContain(
-      "schema errors",
-    );
-    expect(endTurn("m1")).toEqual([]);
+    expect(
+      await execErr(registry, "create_page", { content: {}, path: "p.json" }, tCall),
+    ).toContain("schema errors");
+    expect(fileTurn("m1", tCall.ledger.writes)).toEqual([]);
     disposeTab(tab);
   });
 
   test("a page that will not render refuses, and records nothing", async () => {
     resetAiWrites();
-    beginTurn("t");
+    const tCall = recordingContext();
     const { tab, registry } = harness(
       { children: [], tagName: "div" },
       {
@@ -674,28 +663,30 @@ describe("create_page's three refusals, and the write ledger", () => {
         validate: async () => [],
       },
     );
-    expect(await execErr(registry, "create_page", { content: {}, path: "p.json" })).toContain(
-      "fails to render",
-    );
-    expect(endTurn("m1")).toEqual([]);
+    expect(
+      await execErr(registry, "create_page", { content: {}, path: "p.json" }, tCall),
+    ).toContain("fails to render");
+    expect(fileTurn("m1", tCall.ledger.writes)).toEqual([]);
     disposeTab(tab);
   });
 
   test("a write that lands is recorded as a disk write undo cannot reach", async () => {
     resetAiWrites();
-    beginTurn("t");
+    const tCall = recordingContext();
     const { tab, registry } = harness(
       { children: [], tagName: "div" },
       { saveFile: async () => {}, validate: async () => [] },
     );
-    await registry.execute("create_page", { content: { tagName: "div" }, path: "p.json" });
-    expect(endTurn("m1")).toEqual([{ disk: true, ok: true, path: "p.json", tool: "create_page" }]);
+    await registry.execute("create_page", { content: { tagName: "div" }, path: "p.json" }, tCall);
+    expect(fileTurn("m1", tCall.ledger.writes)).toEqual([
+      { disk: true, ok: true, path: "p.json", tool: "create_page" },
+    ]);
     disposeTab(tab);
   });
 
   test("a write that fails is recorded too — a listed attempt that changed nothing", async () => {
     resetAiWrites();
-    beginTurn("t");
+    const tCall = recordingContext();
     const { tab, registry } = harness(
       { children: [], tagName: "div" },
       {
@@ -705,10 +696,10 @@ describe("create_page's three refusals, and the write ledger", () => {
         validate: async () => [],
       },
     );
-    expect(await execErr(registry, "create_page", { content: {}, path: "p.json" })).toContain(
-      "EROFS",
-    );
-    expect(endTurn("m1")).toEqual([
+    expect(
+      await execErr(registry, "create_page", { content: {}, path: "p.json" }, tCall),
+    ).toContain("EROFS");
+    expect(fileTurn("m1", tCall.ledger.writes)).toEqual([
       { disk: true, error: "EROFS", ok: false, path: "p.json", tool: "create_page" },
     ]);
     disposeTab(tab);
@@ -716,7 +707,7 @@ describe("create_page's three refusals, and the write ledger", () => {
 
   test("a failed create_component is recorded under its own tool name", async () => {
     resetAiWrites();
-    beginTurn("t");
+    const tCall = recordingContext();
     const { tab, registry } = harness(
       { children: [], tagName: "div" },
       {
@@ -726,14 +717,18 @@ describe("create_page's three refusals, and the write ledger", () => {
         validate: async () => [],
       },
     );
-    await registry.execute("create_component", { content: { tagName: "x-y" }, path: "c.json" });
-    expect(endTurn("m1")[0]!.tool).toBe("create_component");
+    await registry.execute(
+      "create_component",
+      { content: { tagName: "x-y" }, path: "c.json" },
+      tCall,
+    );
+    expect(fileTurn("m1", tCall.ledger.writes)[0]!.tool).toBe("create_component");
     disposeTab(tab);
   });
 
   test("a document mutation is recorded as reachable by undo", async () => {
     resetAiWrites();
-    beginTurn("t");
+    const tCall = recordingContext();
     const tab = createTab({
       document: { children: [], tagName: "div" },
       documentPath: "pages/a.json",
@@ -741,8 +736,8 @@ describe("create_page's three refusals, and the write ledger", () => {
     });
     const registry = createToolRegistry();
     registerAiTools(registry, { getTab: () => tab, validate: async () => [] });
-    await registry.execute("set_property", { key: "id", path: [], value: "x" });
-    const [write] = endTurn("m1");
+    await registry.execute("set_property", { key: "id", path: [], value: "x" }, tCall);
+    const [write] = fileTurn("m1", tCall.ledger.writes);
     expect(write!.disk).toBe(false);
     expect(write!.path).toBe("pages/a.json");
     disposeTab(tab);

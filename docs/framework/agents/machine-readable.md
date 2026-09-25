@@ -32,8 +32,7 @@ A plain-text index in the [llms.txt convention](https://llmstxt.org): a one-para
 - [Your first project](https://jxsuite.com/docs/start/first-project/): …
 ```
 
-Each section's landing page comes first, then the rest of that section's own pages, then each of
-its groups in turn, exactly as the sidebar orders them.
+Each section's landing page comes first, then the rest of that section's own pages, then each of its groups in turn, exactly as the sidebar orders them.
 
 It carries no page bodies, roughly 27 KB against `full-docs.json`'s ~680 KB, which makes it the cheap first fetch: point an agent at it, let it read the titles and descriptions, and let it pull only the pages it needs.
 
@@ -59,6 +58,8 @@ This is the fetch for an agent that wants the whole thing at once: one request, 
 [`https://jxsuite.com/search-index.json`](https://jxsuite.com/search-index.json)
 
 The index that powers the site's own search box, emitted by the [search extension](/docs/framework/site/search) during the build. A `documents` array wrapped in an envelope of `version`, `engine` (`"minisearch"`), the indexed `fields`, and per-field `boost` weights. Each document is one page or one heading-level section within a page, carrying `id`, `collection`, `slug`, `url`, `title`, `description`, `heading`, and `text`. The two granularities **partition** the entry rather than overlapping: a page document (`heading: ""`) carries only the text before its first heading, and the section documents carry the rest. Reassemble a page by concatenating its page document with every document whose `id` starts with `<page-id>#`. A collection that keeps one directory per language adds `locale`, and then the `id` carries the tag too (`docs:fr-CA:start/install`), because two translations share an entry id.
+
+The index is not the whole corpus. A page whose frontmatter says `search: false` contributes no documents, and the three reference pages derived from the specs (the spec changelog, implementation status and the standards table) say it; the generated catalogues stay indexed. For those, and for anything you want verbatim, read `full-docs.json`, which carries every page in nav order regardless.
 
 Reach for it when you want lookup rather than reading: it is section-granular, so a query lands on a heading instead of a whole page.
 

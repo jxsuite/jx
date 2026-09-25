@@ -1,0 +1,163 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioMediaField",
+  "$description": "The media field: a thumbnail of what the value names, the value itself, and the two doors to a different one. It is a LEAF a caller interpolates \u2014 the Inspector's Content tab, the Signals panel and the grid's image-cell panel each draw an empty host and `ui/media-picker.ts` mounts this into it \u2014 so it has no chrome of its own and takes its width from whatever row it lands in. **Browse is addressed through its `part`, not through a class.** `ui/regions.ts` derives `inspector/field:<prop>/browse` by finding the Browse control inside the Inspector's own `[data-prop]` row; the handle used to be `.media-picker-browse`, and a document emits no class, so `[part=\"browse\"]` is the handle now. The four `.media-picker*` rules from `styles/overlays.css` are TRANSCRIBED here rather than shared, for the reason `doc-header.json` gives: a class a document does not emit cannot style it. `--radius` becomes `--jx-radius-sm` on the way, because a document mounted in a pane's stage is outside `<sp-theme>` and would otherwise take a fallback rather than follow the theme.",
+  "tagName": "div",
+  "attributes": {
+    "part": "media-field"
+  },
+  "style": {
+    "$description": "The row's own layout and the four transcribed `.media-picker*` rules. Upload and Browse never shrink, so the FIELD is what yields width when the row is narrow \u2014 the buttons would otherwise collapse into unreadable stubs before the text did.",
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "var(--jx-space-1)",
+    "flex": "1",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"value\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"upload\"]": {
+      "flexShrink": "0"
+    },
+    "& [part=\"browse\"]": {
+      "flexShrink": "0"
+    },
+    "& [part=\"thumb\"]": {
+      "width": "24px",
+      "height": "24px",
+      "objectFit": "cover",
+      "borderRadius": "var(--jx-radius-sm)",
+      "border": "1px solid var(--border)",
+      "flexShrink": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "thumb-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/thumbState"
+      },
+      "cases": {
+        "shown": {
+          "$description": "Decorative on purpose: the field beside it already states the path in text, so a caption here would be the same fact twice to a screen reader and nothing to anyone else.",
+          "tagName": "img",
+          "attributes": {
+            "part": "thumb",
+            "src": "${state.thumbSrc}",
+            "alt": ""
+          }
+        }
+      }
+    },
+    {
+      "tagName": "jx-textfield",
+      "attributes": {
+        "part": "value"
+      },
+      "$props": {
+        "size": "sm",
+        "label": "${state.label}",
+        "placeholder": "/image.jpg",
+        "value": {
+          "$ref": "#/state/value"
+        }
+      },
+      "oninput": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/edit"
+            },
+            "value": [
+              {
+                "$ref": "event#/target/value"
+              }
+            ]
+          }
+        ],
+        "description": "Every keystroke, because the host debounces it: the canvas follows the typing without a document write per character."
+      },
+      "onfocus": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/warm"
+            },
+            "value": []
+          }
+        ],
+        "description": "Entering the field is the earliest honest signal that a pick is coming, so the project's media are listed then rather than when Browse is pressed."
+      }
+    },
+    {
+      "tagName": "jx-action-button",
+      "attributes": {
+        "part": "upload"
+      },
+      "$props": {
+        "size": "sm",
+        "quiet": true,
+        "icon": "upload-simple",
+        "label": "Upload media",
+        "hint": "Upload media"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/upload"
+            },
+            "value": []
+          }
+        ]
+      }
+    },
+    {
+      "tagName": "jx-action-button",
+      "attributes": {
+        "part": "browse"
+      },
+      "$props": {
+        "size": "sm",
+        "quiet": true,
+        "icon": "image",
+        "label": "Browse media",
+        "hint": "Browse media"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/browse"
+            },
+            "value": [
+              {
+                "$ref": "event#/currentTarget"
+              }
+            ]
+          }
+        ],
+        "description": "The button hands over ITSELF: the browser is a popover and the platform wants its invoker, both so a second press on this control toggles rather than reopens and so focus comes back here when it closes."
+      }
+    }
+  ]
+}

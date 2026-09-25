@@ -1,0 +1,52 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxDivider",
+  "tagName": "jx-divider",
+  "observedAttributes": ["orientation"],
+  "state": {
+    "orientation": {
+      "type": "string",
+      "default": "horizontal",
+      "attribute": "orientation",
+      "description": "horizontal or vertical."
+    }
+  },
+  "attributes": {
+    "orientation": "${state.orientation}"
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "flex": "none",
+    "margin": "var(--jx-space-1) 0",
+    "& > [part=\"rule\"]": {
+      "margin": "0",
+      "border": "0",
+      "borderTop": "1px solid var(--jx-border)"
+    },
+    "&[orientation=\"vertical\"]": {
+      "display": "flex",
+      "alignSelf": "stretch",
+      "margin": "0 var(--jx-space-1)"
+    },
+    "&[orientation=\"vertical\"][hidden]": {
+      "display": "none"
+    },
+    "&[orientation=\"vertical\"] > [part=\"rule\"]": {
+      "borderTop": "0",
+      "borderLeft": "1px solid var(--jx-border)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "hr",
+      "attributes": {
+        "part": "rule",
+        "role": "separator",
+        "aria-orientation": "${state.orientation}"
+      }
+    }
+  ]
+}

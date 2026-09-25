@@ -1,0 +1,36 @@
+{
+  "frames": [
+    {
+      "type": "reasoning",
+      "content": "The user wants"
+    },
+    {
+      "type": "reasoning",
+      "content": " a greeting."
+    },
+    {
+      "type": "delta",
+      "content": "Hello"
+    },
+    {
+      "type": "delta",
+      "content": "!"
+    },
+    {
+      "type": "usage",
+      "inputTokens": 12,
+      "outputTokens": 20,
+      "reasoningTokens": 14
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

@@ -99,7 +99,8 @@ describe("a format-class collection", () => {
     // And `.json` is native. There is no state where a Markdown file gets a JSON body.
     expect(created[0]?.format).toEqual({ ext: ".json", kind: "fixed" });
     expect(serialized).toHaveLength(0);
-    expect(created[0]?.content).toBe("{}");
+    // The save serializer's output, trailing newline included — what the formatter writes.
+    expect(created[0]?.content).toBe("{}\n");
   });
 
   test("a serializer that throws is reported against the collection's directory", async () => {

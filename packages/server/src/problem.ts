@@ -44,9 +44,12 @@ export function problem(
  * The declared type for a status a caller already computed.
  *
  * Two files need this and no more should: `data-api.ts`, whose `ApiError` predates the registry and
- * carries only a status, and `ai-api.ts`, which forwards an upstream provider's status because
- * collapsing it to the type's own would discard information. Everywhere else the type is named at
- * the call site, which is what keeps the registry meaningful — a status is not a failure kind.
+ * carries only a status, and `ai-api.ts`, whose key and base-URL refusals are written as statuses.
+ * Everywhere else the type is named at the call site, which is what keeps the registry meaningful —
+ * a status is not a failure kind. The AI proxy's other use, forwarding an upstream provider's
+ * status because collapsing it would discard information, moved with the stream normalizer into
+ * `@jxsuite/ai/gateway`, which carries its own copy of this table; `tests/ai-api-gateway.test.ts`
+ * holds the two to agreement for every status.
  *
  * @param {number} status
  * @returns {ProblemTypeName}

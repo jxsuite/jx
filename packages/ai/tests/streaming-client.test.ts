@@ -13,6 +13,7 @@ import {
   createOpenAIStreamingClient,
   createAnthropicStreamingClient,
   createProxyStreamingClient,
+  usageEventFromOpenAI,
 } from "../src/streaming-client.js";
 import type { StreamErrorEvent, StreamEvent } from "../src/streaming-client.js";
 
@@ -136,6 +137,46 @@ describe("createOpenAIStreamingClient", () => {
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "done", stopReason: "stop" }]);
+  });
+
+  it("yields a reasoning event for a thinking model's reasoning_content", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({ choices: [{ delta: { reasoning_content: "Weighing it up" } }] }),
+          JSON.stringify({ choices: [{ delta: { content: "Hi", reasoning_content: "…done" } }] }),
+          JSON.stringify({ choices: [{ delta: { reasoning_content: "" } }] }),
+          "[DONE]",
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "reasoning", content: "Weighing it up" },
+      { type: "delta", content: "Hi" },
+      { type: "reasoning", content: "…done" },
+      { type: "done", stopReason: "stop" },
+    ]);
+  });
+
+  it("accepts `reasoning` as the field name too", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({ choices: [{ delta: { reasoning: "OpenRouter spells it this way" } }] }),
+          "[DONE]",
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "reasoning", content: "OpenRouter spells it this way" },
+      { type: "done", stopReason: "stop" },
+    ]);
   });
 
   it("emits pending tool_call_end before done on [DONE]", async () => {
@@ -432,6 +473,114 @@ describe("createOpenAIStreamingClient", () => {
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
   });
+
+  /* `include_usage` puts the count in a chunk of its own AFTER the finish chunk. Returning on the
+     finish dropped it on every request, so the client never saw a real token count. */
+  it("reads past the finish chunk and yields the usage count before done", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, id: "c1", function: { name: "f", arguments: "{}" } }],
+                },
+              },
+            ],
+          }),
+          JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),
+          JSON.stringify({
+            choices: [],
+            usage: {
+              prompt_tokens: 1200,
+              completion_tokens: 40,
+              prompt_tokens_details: { cached_tokens: 1024 },
+              completion_tokens_details: { reasoning_tokens: 12 },
+            },
+          }),
+          "[DONE]",
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "tool_call_start", id: "c1", name: "f" },
+      { type: "tool_call_delta", id: "c1", args: "{}" },
+      { type: "tool_call_end", id: "c1" },
+      {
+        type: "usage",
+        inputTokens: 1200,
+        outputTokens: 40,
+        cachedInputTokens: 1024,
+        reasoningTokens: 12,
+      },
+      { type: "done", stopReason: "tool_calls" },
+    ]);
+  });
+
+  it("takes a count carried beside the finish, and omits the details it was not given", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({
+            choices: [{ delta: { content: "hi" }, finish_reason: "length" }],
+            usage: { prompt_tokens: 9 },
+          }),
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "delta", content: "hi" },
+      { type: "usage", inputTokens: 9, outputTokens: 0 },
+      { type: "done", stopReason: "length" },
+    ]);
+  });
+
+  it("sends no usage frame when the provider reports none, and ignores unknown finishes", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        sseBody([
+          JSON.stringify({
+            choices: [{ delta: { content: "a" }, finish_reason: "content_filter" }],
+          }),
+          JSON.stringify({ choices: [{ finish_reason: "stop" }], usage: null }),
+          "[DONE]",
+        ]),
+        { status: 200 },
+      ),
+    );
+    const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "delta", content: "a" },
+      { type: "done", stopReason: "stop" },
+    ]);
+  });
+});
+
+describe("usageEventFromOpenAI", () => {
+  it("returns null when there is no prompt count to report", () => {
+    expect(usageEventFromOpenAI(null)).toBeNull();
+    expect(usageEventFromOpenAI()).toBeNull();
+    expect(usageEventFromOpenAI({ completion_tokens: 3 })).toBeNull();
+  });
+
+  it("keeps detail figures only when they are numbers", () => {
+    expect(
+      usageEventFromOpenAI({
+        prompt_tokens: 5,
+        completion_tokens: 2,
+        prompt_tokens_details: null,
+        completion_tokens_details: {},
+      }),
+    ).toEqual({ type: "usage", inputTokens: 5, outputTokens: 2 });
+  });
 });
 
 // ─── Anthropic client ───────────────────────────────────────────────────────
@@ -484,6 +633,69 @@ describe("createProxyStreamingClient", () => {
     const headers = call.init.headers as Record<string, string>;
     expect(headers["X-Api-Key"]).toBeUndefined();
     expect(headers["X-Api-Base-URL"]).toBeUndefined();
+  });
+
+  /* A platform may resolve the URL over IPC (desktop). A function is called inside the first
+     stream, after the caller has handed over its turn's signal, so a Stop during that wait ends the
+     stream before anything is sent. */
+  it("resolves a lazy chatUrl once, inside the first stream, and reuses it", async () => {
+    const { calls } = mockFetch(() =>
+      streamingResponse(sseBody([JSON.stringify({ type: "done", stopReason: "stop" })]), {
+        status: 200,
+      }),
+    );
+    let asked = 0;
+    const client = createProxyStreamingClient({
+      chatUrl: () => {
+        asked += 1;
+        return Promise.resolve("https://proxy/lazy");
+      },
+    });
+    expect(asked).toBe(0);
+    await collect(client.streamChat([], [], "", new AbortController().signal));
+    await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(asked).toBe(1);
+    expect(calls.map((call) => call.url)).toEqual(["https://proxy/lazy", "https://proxy/lazy"]);
+  });
+
+  it("a stream stopped while the URL resolves ends cancelled and sends nothing", async () => {
+    const { calls } = mockFetch(() => streamingResponse(sseBody([]), { status: 200 }));
+    const controller = new AbortController();
+    const client = createProxyStreamingClient({
+      chatUrl: () => {
+        controller.abort();
+        return "https://proxy/chat";
+      },
+    });
+    const events = await collect(client.streamChat([], [], "", controller.signal));
+    expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
+    expect(calls).toEqual([]);
+  });
+
+  it("a chatUrl that rejects after the stream was stopped ends it cancelled", async () => {
+    mockFetch(() => streamingResponse(sseBody([]), { status: 200 }));
+    const controller = new AbortController();
+    const client = createProxyStreamingClient({
+      chatUrl: () => {
+        controller.abort();
+        return Promise.reject(new Error("no platform"));
+      },
+    });
+    const events = await collect(client.streamChat([], [], "", controller.signal));
+    expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
+  });
+
+  it("a chatUrl that rejects rejects the stream", async () => {
+    mockFetch(() => streamingResponse(sseBody([]), { status: 200 }));
+    const client = createProxyStreamingClient({
+      chatUrl: () => Promise.reject(new Error("no platform")),
+    });
+    const stream = collect(client.streamChat([], [], "", new AbortController().signal));
+    const outcome = await stream.then(
+      () => "resolved",
+      (error: Error) => error.message,
+    );
+    expect(outcome).toBe("no platform");
   });
 
   it("forwards tool-call lifecycle events", async () => {
@@ -592,6 +804,51 @@ describe("createProxyStreamingClient", () => {
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "error", message: "bad request detail", code: "400" }]);
+  });
+
+  it("prefers a non-ok body's machine code over the HTTP status", async () => {
+    /* `code` was `String(response.status)` unconditionally, so a proxy answering 401
+       `{ code: "cf_reconnect_required" }` reached the client as `"401"` — indistinguishable from a
+       bad BYOK key, and the one reading that would have put a Reconnect button on screen was
+       thrown away at the only place it ever arrived. */
+    mockFetch(() =>
+      streamingResponse(
+        JSON.stringify({ error: "Reconnect Cloudflare.", code: "cf_reconnect_required" }),
+        { status: 401 },
+      ),
+    );
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "error", message: "Reconnect Cloudflare.", code: "cf_reconnect_required" },
+    ]);
+  });
+
+  it("extracts a message from an array-shaped { errors: [...] } body (Cloudflare's own shape)", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        JSON.stringify({
+          errors: [{ code: 7000, message: "No route for that URI" }],
+          messages: [],
+          result: null,
+          success: false,
+        }),
+        { status: 404 },
+      ),
+    );
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([{ type: "error", message: "No route for that URI", code: "404" }]);
+  });
+
+  it("falls back to the status when the body's code is absent or empty", async () => {
+    // An empty string is not a code — it must not shadow the status a reader can still act on.
+    mockFetch(() =>
+      streamingResponse(JSON.stringify({ error: "no reason given", code: "" }), { status: 403 }),
+    );
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([{ type: "error", message: "no reason given", code: "403" }]);
   });
 
   it("uses the raw body when a non-ok body is not JSON", async () => {

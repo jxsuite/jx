@@ -30,6 +30,14 @@ interface BuildSystemPromptOptions {
    */
   treeEditable?: boolean | undefined;
   /**
+   * The blurbs of the tools projected from command records this round —
+   * `services/ai-command-tools.ts`'s `commandToolBlurbs(activeRegistry())`. Rendered after the hand
+   * tools under every "Tools available right now" heading, one line each. Passed in rather than
+   * read here so this stays a pure function of its options: a caller that passes none sees the hand
+   * list it always did, and only `document-assistant.ts`, which holds the registry, adds them.
+   */
+  commandTools?: readonly string[] | undefined;
+  /**
    * Whether the platform can import a site. Defaults TRUE so this stays a pure function of what it
    * is given — a caller that knows nothing about the platform gets the full list, and only
    * `document-assistant.ts`, which does know, narrows it.
@@ -37,10 +45,31 @@ interface BuildSystemPromptOptions {
   canImport?: boolean | undefined;
   /** Project-relative file paths for the inventory section (project modes; capped). */
   fileInventory?: string[] | undefined;
+  /**
+   * What this backend can run, enabled or not.
+   *
+   * Passed in rather than read here, because it comes from the PLATFORM and this builder is a pure
+   * function of its options. Without it the model can only discover an extension by being told
+   * about one, which is how a request for a blog gets a hand-built Markdown pipeline instead of
+   * `@jxsuite/parser`.
+   */
+  extensionCatalog?: readonly ExtensionCatalogSummary[] | undefined;
+}
+
+/** One extension this backend can run — the prompt's view of a catalogue entry. */
+export interface ExtensionCatalogSummary {
+  name: string;
+  title?: string | undefined;
+  description?: string | undefined;
+  /** `project.json` keys that become legal once it is enabled. */
+  sections?: readonly string[] | undefined;
 }
 
 /** Max file paths embedded in the prompt's inventory section. */
 const FILE_INVENTORY_CAP = 100;
+
+/** Max catalogue entries listed in the prompt. */
+const EXTENSION_CATALOG_CAP = 20;
 
 // ─── Tool tiers (single source of truth for prompt AND gating) ──────────────
 
@@ -54,9 +83,14 @@ const FILE_INVENTORY_CAP = 100;
  * with Project Settings open, `project.json` drawn as a layer tree. The assistant's tier asked only
  * whether a tab existed, so in that exact state the agent was advertised `remove_node` and
  * `move_node` and executed them against the file that defines the project, while the human's
- * `delete_node` was refused. `remove_node` self-refuses only the document root (`path.length < 2`),
+ * `delete_node` was refused. `remove_node` self-refused only the document root (`path.length < 2`),
  * a weaker test than `structurallyEditable`, so a repeater template or `$switch` case was removable
- * by the agent and not by the person.
+ * by the agent and not by the person. A tier was the first fix; the second predicate went with
+ * `remove_node` itself, which is now `delete_node`, the projection of `selection.delete`
+ * (`services/ai-command-tools.ts`) — one record, one gate, and no tier row here at all.
+ *
+ * This union is the HAND table's vocabulary and nothing a record declares: a projected command's
+ * tier is derived from its `level` by the bridge.
  */
 export type AiToolTier = "always" | "no-project" | "project" | "document" | "document-tree";
 
@@ -76,9 +110,15 @@ export interface AiToolInfo {
 }
 
 /**
- * Every assistant tool with its availability tier and prompt blurb. document-assistant.ts derives
- * the gating predicates from the same rows, so the advertised tool list and the executable tool
- * list cannot drift (a test asserts the names match the registered tools).
+ * Every HAND-REGISTERED assistant tool with its availability tier and prompt blurb.
+ * document-assistant.ts derives the gating predicates from the same rows, so the advertised tool
+ * list and the executable tool list cannot drift (a test asserts the names match the registered
+ * tools, and that none is also a command record's projection).
+ *
+ * The other kind of tool is not here and must not be added here: a command record that declares
+ * `aiTool` is projected by `services/ai-command-tools.ts`, gated by the record's own `when` /
+ * `enablement`, and described by the record. `enable_extension`, `disable_extension`, `delete_node`
+ * (né `remove_node`) and `open_document` left this table for that one.
  */
 export const AI_TOOL_TIERS: AiToolInfo[] = [
   // Always — a question is not gated on what happens to be open
@@ -145,12 +185,8 @@ export const AI_TOOL_TIERS: AiToolInfo[] = [
     tier: "project",
     blurb: "create_page(path, content) — create a new .json page file on disk.",
   },
-  {
-    name: "open_document",
-    tier: "project",
-    blurb:
-      "open_document(path) — open a file on the canvas as the active document; the document tools then operate on it. Use when the user should SEE the page, or for iterative visual refinement.",
-  },
+  /* `open_document` is not a row: it is the projection of the `document.open` record
+     (`workspace/workspace.ts`), advertised by the record's own gate and described by the record. */
   // Document (an active document on the canvas)
   {
     name: "read_document",
@@ -180,11 +216,6 @@ export const AI_TOOL_TIERS: AiToolInfo[] = [
     tier: "document-tree",
     blurb:
       "add_child(parentPath, index, node) — insert a new node into the children of parentPath at index.",
-  },
-  {
-    name: "remove_node",
-    tier: "document-tree",
-    blurb: "remove_node(path) — remove the node at path.",
   },
   {
     name: "move_node",
@@ -644,17 +675,24 @@ export function buildSystemPrompt({
   hasProject = Boolean(projectRoot),
   treeEditable = true,
   canImport = true,
+  commandTools = [],
   fileInventory,
+  extensionCatalog,
 }: BuildSystemPromptOptions = {}) {
   const hasDocument = Boolean(document);
 
   // 1. Role, state-appropriate workflow, and the tool list for the current state.
   // The list the model is TOLD about and the list the gate will honour are the same filter, so a
-  // Refusal is never a surprise to it.
-  const toolList = AI_TOOL_TIERS.filter((t) =>
-    toolActive(t, { canImport, hasDocument, hasProject, treeEditable }),
-  )
-    .map((t) => `- ${t.blurb}`)
+  // Refusal is never a surprise to it. The command-projected tools arrive already filtered by
+  // Their records' own gates, for the same reason — one function answers both the prompt and the
+  // Executor (`advertisedCommandTools`).
+  const toolList = [
+    ...AI_TOOL_TIERS.filter((t) =>
+      toolActive(t, { canImport, hasDocument, hasProject, treeEditable }),
+    ).map((t) => t.blurb),
+    ...commandTools,
+  ]
+    .map((blurb) => `- ${blurb}`)
     .join("\n");
 
   const role = `You are an expert Jx builder assistant embedded in Jx Studio. You help users build websites, components, pages, and layouts using the Jx JSON schema. The live jxsuite.com marketing site is built entirely with Jx — you can produce production-quality Jx code.`;
@@ -722,7 +760,12 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
 
   // 6. Project context
   if (hasProject && (projectConfig || components || projectRoot)) {
-    const projectSummary = buildProjectSummary({ projectConfig, components, projectRoot });
+    const projectSummary = buildProjectSummary({
+      components,
+      extensionCatalog,
+      projectConfig,
+      projectRoot,
+    });
     if (projectSummary) {
       sections.push(`## Project Context\n\n${projectSummary}`);
     }
@@ -744,7 +787,7 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
 If a tool call fails (returns { success: false }):
 1. Read the error message carefully — it includes a "→ Fix:" hint telling you exactly how to correct the error.
 2. Each error points to a specific path in the document and a specific rule violation.
-3. Apply the suggested fix using set_property, remove_node, or add_child as appropriate.
+3. Apply the suggested fix using set_property, delete_node, or add_child as appropriate.
 4. Do NOT re-issue the exact same tool call with the same arguments — you must CHANGE something.
 5. If you see the SAME error after 2 attempts, try a completely different approach (e.g., remove and re-add the node instead of patching it).
 
@@ -762,7 +805,7 @@ If a tool call fails (returns { success: false }):
 
 ### If you keep getting errors:
 - Call read_document again — the document may have changed since you last read it.
-- Remove the problematic node entirely with remove_node, then re-create it correctly with add_child.
+- Remove the problematic node entirely with delete_node, then re-create it correctly with add_child.
 - If the error message points to a different path than you expected, the node might have moved due to previous edits.`);
 
   return sections.join("\n\n---\n\n");
@@ -841,6 +884,7 @@ function buildProjectSummary({
   projectConfig,
   components,
   projectRoot,
+  extensionCatalog,
 }: Omit<BuildSystemPromptOptions, "document">) {
   const lines: string[] = [];
 
@@ -850,6 +894,13 @@ function buildProjectSummary({
 
   if (projectRoot) {
     lines.push(`Root: ${projectRoot}`);
+  }
+
+  /* One line, closing a gap that was pure oversight: this function has always received the whole
+     `projectConfig`, `extensions` included, and dropped it on the floor. */
+  const enabled = projectConfig?.extensions ?? [];
+  if (enabled.length > 0) {
+    lines.push(`Extensions enabled: ${enabled.join(", ")}`);
   }
 
   // Available components — tag + purpose so the model can reuse them
@@ -895,6 +946,43 @@ function buildProjectSummary({
       if (groups.other.length > 0) {
         lines.push(fmt(groups.other));
       }
+    }
+  }
+
+  /*
+   * The catalogue, last, so the design-token block keeps its prominence. The guidance names
+   * CAPABILITIES rather than packages on purpose: the capability-to-package mapping is what each
+   * entry's own description is for, and hardcoding "@jxsuite/parser" here would be a second,
+   * staler copy of the backend's answer.
+   */
+  if (extensionCatalog && extensionCatalog.length > 0) {
+    const enabledSet = new Set(enabled);
+    lines.push(
+      `Extensions available. Turn one on with enable_extension BEFORE writing the project.json ` +
+        `section it owns: a section belonging to a disabled extension is a schema error, and an ` +
+        `"extensions" entry whose package is not installed fails the build. When a request needs ` +
+        `a capability the core does not have (a blog or any folder of Markdown, a search box, a ` +
+        `feed, sign-ins, a database table), look for it below rather than hand-building it.`,
+    );
+    for (const entry of extensionCatalog.slice(0, EXTENSION_CATALOG_CAP)) {
+      const parts = [`  ${entry.name}`];
+      if (entry.title) {
+        parts.push(` — ${entry.title}.`);
+      }
+      if (entry.description) {
+        parts.push(` ${entry.description}`);
+      }
+      if (entry.sections && entry.sections.length > 0) {
+        parts.push(` Contributes: ${entry.sections.join(", ")}.`);
+      }
+      if (enabledSet.has(entry.name)) {
+        parts.push(" [enabled]");
+      }
+      lines.push(parts.join(""));
+    }
+    if (extensionCatalog.length > EXTENSION_CATALOG_CAP) {
+      const more = extensionCatalog.length - EXTENSION_CATALOG_CAP;
+      lines.push(`  … and ${more} more (open_settings { section: "extensions" })`);
     }
   }
 

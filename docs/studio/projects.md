@@ -2,7 +2,7 @@
 title: "Projects"
 description: "What a Jx project is on disk (a folder of plain files) and the three ways to get one in Studio: create new, open a folder, or clone a repository."
 code:
-  - packages/studio/src/panels/welcome-screen.ts
+  - packages/studio/src/surfaces/welcome.ts
   - packages/studio/src/browse/library-model.ts
   - packages/studio/src/browse/library-pane.ts
 ---

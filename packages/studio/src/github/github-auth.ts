@@ -34,16 +34,25 @@
  * here — the browser withholds the reason on purpose — so the detail names both rather than
  * guessing between them.
  *
+ * **The waiting room is a document.** `surfaces/github-auth.json` draws the code, the link and the
+ * wait, over the kit's `jx-dialog`; this module keeps the client id, the poll loop, its failure
+ * budget and every report above. The dialog it replaced was an `<sp-dialog-wrapper>` whose one
+ * `@cancel`/`@close` handler both stopped the loop and resolved the promise, so "the reader
+ * dismissed this" and "GitHub answered" were the same code path — and the promise could be resolved
+ * a second time with `null` by the close that a successful sign-in itself provokes. Answering and
+ * closing are two steps now, in that order.
+ *
  * The token is returned to callers and never rendered. In a browser it is stored in `localStorage`;
  * on the desktop it is in the launcher's `0600` credential store and this module holds it only in
  * memory for the session. `settings/preferences-accounts.ts` lists it as _stored or not_ and is the
  * only place it can be revoked (`studio.md` §15 rule 1).
  */
 
-import { html } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
-import { showDialog } from "../ui/layers";
+import { layerHost } from "../ui/layers";
+import { openGithubAuthSurface } from "../surfaces/github-auth";
+import type { GithubAuthSurfaceHandle } from "../surfaces/github-auth";
 
 const CLIENT_ID = "Ov23liYVlMFpgjOEPXJH";
 const STORAGE_KEY = "jx_github_token";
@@ -247,17 +256,52 @@ export async function authenticateGithub() {
 
   const { device_code, user_code, verification_uri, interval = 5 } = codeData;
 
-  return showDialog<string | null>((done) => {
+  return new Promise<string | null>((resolve) => {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
     let failures = 0;
+    let answered = false;
 
-    const stop = () => {
+    /**
+     * Stop the loop and answer, once.
+     *
+     * Separate from {@link done} because both ends arrive and either may be first: a token that
+     * lands closes the dialog, which raises `onClosed` behind it, and a dialog the reader dismisses
+     * raises `onClosed` with no token at all. Answering here and closing there is what keeps the
+     * second of those from overwriting the first with `null`.
+     */
+    const settle = (token: string | null): void => {
+      if (answered) {
+        return;
+      }
+      answered = true;
       cancelled = true;
       if (pollTimer) {
         clearTimeout(pollTimer);
+        pollTimer = null;
       }
-      done(null);
+      resolve(token);
+    };
+
+    /**
+     * Take the dialog down, once.
+     *
+     * Guarded here rather than trusted to the handle, because closing is what RAISES `onClosed` —
+     * so a teardown that re-entered through it would call itself until the stack ran out.
+     */
+    let closing = false;
+    const takeDown = (): void => {
+      if (closing) {
+        return;
+      }
+      closing = true;
+      handle.close();
+    };
+
+    /** The poll's own exit: answer, then take the dialog down. */
+    const done = (token: string | null): void => {
+      settle(token);
+      takeDown();
     };
 
     const poll = async () => {
@@ -306,13 +350,11 @@ export async function authenticateGithub() {
               ? "The device code expired before it was entered."
               : `GitHub answered "${tokenData.error ?? "an unrecognised response"}".`,
         );
-        cancelled = true;
         done(null);
       } catch (error) {
         failures += 1;
         if (failures >= MAX_POLL_FAILURES) {
           reportUnreachable(error);
-          cancelled = true;
           done(null);
           return;
         }
@@ -320,27 +362,27 @@ export async function authenticateGithub() {
       }
     };
 
-    pollTimer = setTimeout(poll, interval * 1000);
+    /*
+     * The dialog first, then the timer. `done` reaches for `handle`, and a poll that fired before
+     * the surface existed would find a binding that is not initialised yet — which a zero-second
+     * device interval makes reachable rather than theoretical.
+     */
+    const handle: GithubAuthSurfaceHandle = openGithubAuthSurface({
+      layer: layerHost("dialog"),
+      onCancel: () => {
+        takeDown();
+      },
+      /* `done`, not `settle`: a `close` the flow did not ask for — Escape, or a dismissal the
+         platform allows — must ALSO take the document out of the dialog layer, or the surface
+         outlives the dialog it drew. `settle` is idempotent, so a close that follows a token
+         answers nothing and only cleans up. */
+      onClosed: () => {
+        done(null);
+      },
+      userCode: user_code,
+      verificationUri: verification_uri,
+    });
 
-    return html`
-      <sp-dialog-wrapper
-        open
-        headline="Sign in to GitHub"
-        cancel-label="Cancel"
-        @cancel=${stop}
-        @close=${stop}
-      >
-        <div class="github-auth-dialog">
-          <p>Enter this code on GitHub to authorize Jx Studio:</p>
-          <div class="github-auth-code">${user_code}</div>
-          <p>
-            <a href="${verification_uri}" target="_blank" rel="noopener"
-              >Open ${verification_uri}</a
-            >
-          </p>
-          <p class="github-auth-waiting">Waiting for authorization…</p>
-        </div>
-      </sp-dialog-wrapper>
-    `;
+    pollTimer = setTimeout(poll, interval * 1000);
   });
 }

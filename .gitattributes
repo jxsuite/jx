@@ -1,1 +1,5 @@
 * text=auto eol=lf
+# Recorded provider bodies are kept byte for byte: a CRLF line ending, a trailing space after
+# "data:" and a missing final newline are each a case under test, and eol normalization would
+# silently turn those fixtures into LF ones that still pass.
+packages/server/tests/fixtures/ai-upstream/*.sse -text

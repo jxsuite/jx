@@ -1,0 +1,1509 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioLibraryPane",
+  "$description": "The Library: the pane that BROWSES a project's files, as a Jx document over the kit. The adapter (`browse/library-pane.ts`) keeps every decision — which files the scan found, which the filter kept, which of them the window renders, where an upload lands and what a row's context menu offers — and hands this document one projection: a discriminant naming which of nine things to draw, the toolbar's chips already marked, and rows that are already strings. Nothing here asks what a file is, how big the viewport is, or whether the scan finished. The nine cases of `view` are the four honest empty states the Manage view collapsed into “No files found” — a scan still running, a scan that could not finish, a project with no files, and a filter that matched nothing — followed by the five layouts, so “what is on screen” has exactly one source. A card's live preview is an ISLAND: the document renders `doc-preview` and nothing inside it, and the adapter fills it through `onNodeCreated` when the card comes into view.",
+  "tagName": "div",
+  "attributes": {
+    "part": "library",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "What the fifty-two `.library*` rules in `styles/overlays.css` said, keyed on `part` and re-pointed at the studio token layer. Every one of them was this surface's alone, so the block goes with the conversion rather than being copied. Three sets of names could not come with the declarations. Ten `var(--spectrum-font-size-50 | -75, …)` reads are the kit's `--jx-text-sm` and `--jx-text-md`, which are the same 11px and 12px: a `--spectrum-*` name is declared by `<sp-theme>` and by nothing else in this package, and `styles/spectrum.css` is deleted whole with the last Spectrum component, so a document that reads one is a document whose colours change when a component it does not use is removed. `--spectrum-gray-100` and `--spectrum-gray-200` are the studio's own `--bg-input` and `--hover-bg`; `--spectrum-blue-600` — the card's hover border and the drop outline — is `--accent`, which is what a Spectrum blue was standing in for; and `--spectrum-orange-100`, the incomplete-scan banner's ground, is mixed from `--warning` so the banner follows the chrome theme instead of being a dark-only hex. Nine names that were handles rather than styling stop being names at all: `.library-grid-cards`, `.library-grid-media`, `.library-day-undated`, `.library-drop-active`, `.library-upload-input` and the four `data-field` widths are `data-` attributes on a part here, because a part is the handle now.",
+    "display": "flex",
+    "flexDirection": "column",
+    "width": "100%",
+    "height": "100%",
+    "overflow": "hidden",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
+      "$description": "A `$switch` renders its own container, and none of these six is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
+      "display": "contents"
+    },
+    "& [part=\"toolbar\"]": {
+      "$description": "It wraps rather than scrolls: the categories, the language facet, the filter, the two verbs and the layout switch are all equally reachable, and a toolbar that hid half of them behind an overflow would put the Library's own state somewhere the reader has to go looking for it.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-3) var(--jx-space-5)",
+      "background": "var(--bg-panel)",
+      "borderBottom": "1px solid var(--border)",
+      "flexShrink": "0",
+      "flexWrap": "wrap"
+    },
+    "& [part=\"search\"]": {
+      "width": "220px"
+    },
+    "& [part=\"locale\"]": {
+      "$description": "Narrow on purpose: it holds one language name, and the toolbar wraps before it grows.",
+      "width": "160px"
+    },
+    "& [part=\"upload\"]": {
+      "$description": "A LABEL around the file picker, not a button that clicks a hidden one. The picker is the control — it takes focus, Enter opens it, and a screen reader announces it as a file upload — so the button, the `.library-upload-input` class it looked for and the `querySelector` that found it all go together. Drawn as a plain element rather than a `jx-action-button` because a label is what forwards a click to the input it contains, and a custom element between the two would break the forwarding the whole arrangement rests on.",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "height": "24px",
+      "padding": "0 var(--jx-space-3)",
+      "borderRadius": "var(--radius)",
+      "color": "var(--fg)",
+      "font": "inherit",
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":has(:focus-visible)": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    },
+    "& [part=\"upload-input\"]": {
+      "$description": "Out of the way but still FOCUSABLE. `display: none` — what the class it replaces did — takes the control out of the tab order, which is why there had to be a button clicking it from the side; a one-pixel transparent box leaves the keyboard path intact and the label above draws the focus ring for it.",
+      "position": "absolute",
+      "width": "1px",
+      "height": "1px",
+      "opacity": "0",
+      "pointerEvents": "none"
+    },
+    "& [part=\"upload-glyph\"]": {
+      "--jx-icon-size": "16px"
+    },
+    "& [part=\"spacer\"]": {
+      "flex": "1"
+    },
+    "& [part=\"layouts\"]": {
+      "marginLeft": "auto"
+    },
+    "& [part=\"banner\"]": {
+      "$description": "The banner an INCOMPLETE listing carries. The Problem in the dock is the durable record; this is the same fact on the surface it is about, because a reader looking at a short list needs to know it is short for a reason without going anywhere to find out.",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-3) var(--jx-space-5)",
+      "background": "color-mix(in srgb, var(--warning) 18%, var(--bg-panel))",
+      "borderBottom": "1px solid var(--border)",
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"body\"]": {
+      "flex": "1",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "position": "relative"
+    },
+    "& [part=\"body\"][data-drop=\"true\"]": {
+      "$description": "The drop affordance is a STATE the adapter holds, not a class the handler adds and forgets to take off. It was the latter, and the two removals — dragleave and drop — were the only things standing between a cancelled drag and an outline that never went away.",
+      "outline": "2px dashed var(--accent)",
+      "outlineOffset": "-4px"
+    },
+    "& [part=\"empty\"]": {
+      "padding": "48px var(--jx-space-6)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"empty\"] p": {
+      "margin": "0"
+    },
+    "& [part=\"empty-detail\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"truncated\"]": {
+      "$description": "What a capped layout did not draw, stated. A grouped list cannot window — a window over one either breaks the groups or needs variable-height measurement — so Calendar and Board cap instead, and a layout that truncated in silence would be the same class of lie as “No files found”.",
+      "margin": "var(--jx-space-3) 0 0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"grid\"]": {
+      "$description": "Cards and Media, the two windowed grids. The item sizes here are the ones `library-layouts.ts`'s LAYOUT_METRICS counts rows in; change one and change both.",
+      "display": "grid",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-4) var(--jx-space-5)",
+      "alignItems": "start"
+    },
+    "& [part=\"grid\"][data-layout=\"cards\"]": {
+      "gridTemplateColumns": "repeat(auto-fill, minmax(188px, 1fr))"
+    },
+    "& [part=\"grid\"][data-layout=\"media\"]": {
+      "gridTemplateColumns": "repeat(auto-fill, minmax(120px, 1fr))"
+    },
+    "& [part=\"card\"], & [part=\"tile\"]": {
+      "cursor": "pointer",
+      "overflow": "hidden",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"card\"]:hover, & [part=\"tile\"]:hover": {
+      "borderColor": "var(--accent)"
+    },
+    "& [part=\"card-art\"], & [part=\"tile-art\"]": {
+      "aspectRatio": "4 / 3",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "overflow": "hidden",
+      "background": "var(--bg-input)",
+      "pointerEvents": "none"
+    },
+    "& [part=\"file-glyph\"]": {
+      "--jx-icon-size": "32px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"doc-preview\"]": {
+      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts a real runtime render of the file into it when the card comes into view, and the scale below is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size.",
+      "width": "100%",
+      "height": "100%",
+      "overflow": "hidden"
+    },
+    "& [part=\"doc-preview\"] > *": {
+      "transform": "scale(0.4)",
+      "transformOrigin": "top left",
+      "width": "250%",
+      "height": "250%"
+    },
+    "& [part=\"thumb\"]": {
+      "maxWidth": "100%",
+      "maxHeight": "100%",
+      "objectFit": "contain"
+    },
+    "& [part=\"card-label\"], & [part=\"tile-label\"]": {
+      "padding": "6px var(--jx-space-3) 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)",
+      "whiteSpace": "nowrap",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"card-meta\"]": {
+      "padding": "0 var(--jx-space-3) 6px",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"table\"]": {
+      "$description": "A windowed list rather than a table component: the rows have to be sliceable, and every table widget wants the whole set.",
+      "display": "flex",
+      "flexDirection": "column",
+      "padding": "0 var(--jx-space-5) var(--jx-space-5)"
+    },
+    "& [part=\"table-head\"], & [part=\"table-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "height": "32px",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"table-head\"]": {
+      "position": "sticky",
+      "top": "0",
+      "zIndex": "1",
+      "background": "var(--bg-panel)",
+      "fontWeight": "600",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"table-row\"]": {
+      "cursor": "pointer"
+    },
+    "& [part=\"table-row\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"cell\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"cell\"][data-field=\"name\"]": {
+      "flex": "3",
+      "fontWeight": "500"
+    },
+    "& [part=\"cell\"][data-field=\"path\"]": {
+      "flex": "3",
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"cell\"][data-field=\"size\"], & [part=\"cell\"][data-field=\"modified\"]": {
+      "flex": "0 0 96px"
+    },
+    "& [part=\"cell\"][data-field=\"locale\"]": {
+      "$description": "Fixed, like size and modified: a language name is short and never earns width from Name. Without this it inherits the `flex: 1` above and the Name column loses a quarter of itself in every multilingual project.",
+      "flex": "0 0 90px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"calendar\"]": {
+      "padding": "var(--jx-space-4) var(--jx-space-5)"
+    },
+    "& [part=\"day\"]": {
+      "marginBottom": "var(--jx-space-5)"
+    },
+    "& [part=\"day-date\"]": {
+      "margin": "0 0 var(--jx-space-2)",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"day\"][data-undated=\"true\"] [part=\"day-date\"]": {
+      "$description": "A file with no dated name and no modification time is set apart rather than parked on today. A calendar that invents dates is worse than one that says which files it could not place.",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"note\"]": {
+      "margin": "0 0 var(--jx-space-2)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"board\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-4) var(--jx-space-5)",
+      "alignItems": "flex-start",
+      "overflowX": "auto"
+    },
+    "& [part=\"column\"]": {
+      "flex": "0 0 220px",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "padding": "var(--jx-space-3)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"column-title\"]": {
+      "margin": "0 0 6px",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "display": "flex",
+      "justifyContent": "space-between"
+    },
+    "& [part=\"count\"]": {
+      "color": "var(--fg-dim)",
+      "fontWeight": "400"
+    },
+    "& [part=\"list\"]": {
+      "listStyle": "none",
+      "margin": "0",
+      "padding": "0"
+    },
+    "& [part=\"list-item\"]": {
+      "padding": "3px var(--jx-space-2)",
+      "borderRadius": "var(--radius)",
+      "cursor": "pointer",
+      "fontSize": "var(--jx-text-md)",
+      "whiteSpace": "nowrap",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"list-item\"]:hover": {
+      "background": "var(--hover-bg)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "toolbar"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "attributes": {
+            "part": "categories"
+          },
+          "$props": {
+            "selects": "single",
+            "compact": true,
+            "label": "Category"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/categories"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "category",
+                  "data-category": "${$map.item.key}"
+                },
+                "$props": {
+                  "size": "sm",
+                  "checked": {
+                    "$ref": "$map/item/checked"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/setCategory"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "locale-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/localeState"
+          },
+          "cases": {
+            "shown": {
+              "tagName": "jx-select",
+              "attributes": {
+                "part": "locale"
+              },
+              "$props": {
+                "label": "Language",
+                "size": "sm",
+                "options": {
+                  "$ref": "#/state/localeOptions"
+                },
+                "value": {
+                  "$ref": "#/state/localeValue"
+                }
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setLocale"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ],
+                "description": "The facet's options come from ALL scanned files, never from the filtered ones: a picker whose choices collapse to the choice just made cannot be used to make another."
+              }
+            }
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "search"
+          },
+          "$props": {
+            "label": "Filter files",
+            "placeholder": "Filter files…",
+            "size": "sm",
+            "value": {
+              "$ref": "#/state/query"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/search"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "new"
+          },
+          "$props": {
+            "size": "sm",
+            "icon": "plus",
+            "haspopup": "menu"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/openNewMenu"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/currentTarget"
+                  }
+                ]
+              }
+            ],
+            "description": "Creation is somebody else's flow: a page, layout or component is `files.ts`'s, a collection entry is `content/entry-commands.ts`'s. The menu only names which."
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "New"
+            }
+          ]
+        },
+        {
+          "tagName": "label",
+          "attributes": {
+            "part": "upload",
+            "title": "${state.uploadHint}"
+          },
+          "children": [
+            {
+              "tagName": "input",
+              "attributes": {
+                "part": "upload-input",
+                "type": "file",
+                "multiple": true,
+                "accept": "${state.uploadAccept}"
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/upload"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target"
+                      }
+                    ]
+                  }
+                ],
+                "description": "The picker itself, so the destination in the label's tooltip is visible BEFORE the files are chosen. The adapter takes the element rather than the file list because a file input that is not cleared refuses the same file twice."
+              }
+            },
+            {
+              "tagName": "jx-icon",
+              "attributes": {
+                "part": "upload-glyph"
+              },
+              "$props": {
+                "name": "upload-simple"
+              }
+            },
+            {
+              "tagName": "span",
+              "textContent": "Upload"
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "spacer"
+          }
+        },
+        {
+          "tagName": "jx-action-group",
+          "attributes": {
+            "part": "layouts"
+          },
+          "$props": {
+            "selects": "single",
+            "compact": true,
+            "label": "Layout"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/layouts"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "layout",
+                  "data-layout": "${$map.item.key}"
+                },
+                "$props": {
+                  "size": "sm",
+                  "hint": "${$map.item.label}",
+                  "checked": {
+                    "$ref": "$map/item/checked"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/setLayout"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "banner-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/bannerState"
+      },
+      "cases": {
+        "shown": {
+          "tagName": "div",
+          "attributes": {
+            "part": "banner",
+            "role": "status"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "${state.bannerText}"
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "retry"
+              },
+              "$props": {
+                "size": "sm",
+                "variant": "secondary"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/retry"
+                    }
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Retry"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body",
+        "data-jx-region": "${state.dropRegion}",
+        "data-drop": "${state.dropActive}"
+      },
+      "ondragover": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "preventDefault": true
+          },
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/dragOver"
+            }
+          }
+        ],
+        "description": "An upload has a NAMED destination, shown before the drop — the label's tooltip carries it — and asked for when the active category does not name one."
+      },
+      "ondragleave": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/dragOut"
+            }
+          }
+        ]
+      },
+      "ondrop": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "preventDefault": true
+          },
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/drop"
+            },
+            "value": [
+              {
+                "$ref": "event#/dataTransfer/files"
+              }
+            ]
+          }
+        ]
+      },
+      "onscroll": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/scrolled"
+            }
+          }
+        ],
+        "description": "The rendered item count is proportional to the VIEWPORT, not to the project: a scroll recomputes the window from the box the adapter measures here, and never re-reads the scan."
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "view-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/view"
+          },
+          "cases": {
+            "loading": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Scanning the project…"
+                }
+              ]
+            },
+            "incomplete": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Nothing to show, and the scan did not finish."
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-detail"
+                  },
+                  "textContent": "${state.emptyDetail}"
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "retry"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "primary"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/retry"
+                        }
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Retry"
+                    }
+                  ]
+                }
+              ]
+            },
+            "empty": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "This project has no files yet."
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-detail"
+                  },
+                  "textContent": "Use New to create a page, layout, component or entry."
+                }
+              ]
+            },
+            "nomatch": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.emptyMessage}"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "empty-detail"
+                      },
+                      "textContent": " ${state.emptyDetail}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "reset"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "secondary"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/reset"
+                        }
+                      }
+                    ],
+                    "description": "Both facets in one clause and one button, so a reader who filtered twice is told about both rather than sent to clear one and find the list still empty."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Clear filters"
+                    }
+                  ]
+                }
+              ]
+            },
+            "cards": {
+              "tagName": "div",
+              "attributes": {
+                "part": "grid",
+                "data-layout": "cards",
+                "style": "${state.pad}"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/path"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "card",
+                      "data-path": "${$map.item.path}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/openFile"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "oncontextmenu": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "stopPropagation": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/contextMenu"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            },
+                            {
+                              "$ref": "event#/clientX"
+                            },
+                            {
+                              "$ref": "event#/clientY"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "card-art"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "art-slot",
+                              "role": "none"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/art"
+                            },
+                            "cases": {
+                              "image": {
+                                "tagName": "img",
+                                "attributes": {
+                                  "part": "thumb",
+                                  "loading": "lazy",
+                                  "src": "${$map.item.src}",
+                                  "alt": ""
+                                }
+                              },
+                              "doc": {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "doc-preview",
+                                  "data-path": "${$map.item.path}"
+                                }
+                              },
+                              "glyph": {
+                                "tagName": "jx-icon",
+                                "attributes": {
+                                  "part": "file-glyph"
+                                },
+                                "$props": {
+                                  "name": "file-text"
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "card-label",
+                          "title": "${$map.item.path}"
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "card-meta"
+                        },
+                        "textContent": "${$map.item.meta}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "media": {
+              "tagName": "div",
+              "attributes": {
+                "part": "grid",
+                "data-layout": "media",
+                "style": "${state.pad}"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/path"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "tile",
+                      "data-path": "${$map.item.path}",
+                      "title": "${$map.item.path}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/openFile"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "oncontextmenu": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "stopPropagation": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/contextMenu"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            },
+                            {
+                              "$ref": "event#/clientX"
+                            },
+                            {
+                              "$ref": "event#/clientY"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "tile-art"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "art-slot",
+                              "role": "none"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/art"
+                            },
+                            "cases": {
+                              "image": {
+                                "tagName": "img",
+                                "attributes": {
+                                  "part": "thumb",
+                                  "loading": "lazy",
+                                  "src": "${$map.item.src}",
+                                  "alt": ""
+                                }
+                              },
+                              "glyph": {
+                                "tagName": "jx-icon",
+                                "attributes": {
+                                  "part": "file-glyph"
+                                },
+                                "$props": {
+                                  "name": "file-text"
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "tile-label"
+                        },
+                        "textContent": "${$map.item.name}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "table": {
+              "tagName": "div",
+              "attributes": {
+                "part": "table",
+                "role": "table"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "table-head",
+                    "role": "row"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/columns"
+                      },
+                      "key": {
+                        "$ref": "$map/item/field"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "cell",
+                          "role": "columnheader",
+                          "data-field": "${$map.item.field}"
+                        },
+                        "textContent": "${$map.item.title}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "pad",
+                    "style": "${state.padTop}"
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/path"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "table-row",
+                      "role": "row",
+                      "data-path": "${$map.item.path}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/openFile"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "oncontextmenu": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "stopPropagation": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/contextMenu"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/path"
+                            },
+                            {
+                              "$ref": "event#/clientX"
+                            },
+                            {
+                              "$ref": "event#/clientY"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/cells"
+                        },
+                        "key": {
+                          "$ref": "$map/item/field"
+                        },
+                        "map": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "cell",
+                            "role": "cell",
+                            "data-field": "${$map.item.field}"
+                          },
+                          "textContent": "${$map.item.text}"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "pad",
+                    "style": "${state.padBottom}"
+                  }
+                }
+              ]
+            },
+            "calendar": {
+              "tagName": "div",
+              "attributes": {
+                "part": "calendar"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/groups"
+                  },
+                  "key": {
+                    "$ref": "$map/item/id"
+                  },
+                  "map": {
+                    "tagName": "section",
+                    "attributes": {
+                      "part": "day",
+                      "data-undated": "${$map.item.undated}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "h3",
+                        "attributes": {
+                          "part": "day-date"
+                        },
+                        "textContent": "${$map.item.title}"
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "note-slot",
+                          "role": "none"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/noteState"
+                        },
+                        "cases": {
+                          "shown": {
+                            "tagName": "p",
+                            "attributes": {
+                              "part": "note"
+                            },
+                            "textContent": "${$map.item.note}"
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "ul",
+                        "attributes": {
+                          "part": "list"
+                        },
+                        "children": [
+                          {
+                            "$prototype": "Array",
+                            "items": {
+                              "$ref": "$map/item/files"
+                            },
+                            "key": {
+                              "$ref": "$map/item/path"
+                            },
+                            "map": {
+                              "tagName": "li",
+                              "attributes": {
+                                "part": "list-item",
+                                "data-path": "${$map.item.path}",
+                                "title": "${$map.item.path}"
+                              },
+                              "textContent": "${$map.item.name}",
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/openFile"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "oncontextmenu": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "stopPropagation": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/contextMenu"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      },
+                                      {
+                                        "$ref": "event#/clientX"
+                                      },
+                                      {
+                                        "$ref": "event#/clientY"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "truncated-slot",
+                    "role": "none"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/truncatedState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "truncated"
+                      },
+                      "textContent": "${state.truncated}"
+                    }
+                  }
+                }
+              ]
+            },
+            "board": {
+              "tagName": "div",
+              "attributes": {
+                "part": "board"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/groups"
+                  },
+                  "key": {
+                    "$ref": "$map/item/id"
+                  },
+                  "map": {
+                    "tagName": "section",
+                    "attributes": {
+                      "part": "column"
+                    },
+                    "children": [
+                      {
+                        "tagName": "h3",
+                        "attributes": {
+                          "part": "column-title"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "textContent": "${$map.item.title}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "count"
+                            },
+                            "textContent": "${$map.item.count}"
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "ul",
+                        "attributes": {
+                          "part": "list"
+                        },
+                        "children": [
+                          {
+                            "$prototype": "Array",
+                            "items": {
+                              "$ref": "$map/item/files"
+                            },
+                            "key": {
+                              "$ref": "$map/item/path"
+                            },
+                            "map": {
+                              "tagName": "li",
+                              "attributes": {
+                                "part": "list-item",
+                                "data-path": "${$map.item.path}",
+                                "title": "${$map.item.path}"
+                              },
+                              "textContent": "${$map.item.name}",
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/openFile"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "oncontextmenu": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "stopPropagation": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/contextMenu"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      },
+                                      {
+                                        "$ref": "event#/clientX"
+                                      },
+                                      {
+                                        "$ref": "event#/clientY"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "note-slot",
+                          "role": "none"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/noteState"
+                        },
+                        "cases": {
+                          "shown": {
+                            "tagName": "p",
+                            "attributes": {
+                              "part": "truncated"
+                            },
+                            "textContent": "${$map.item.note}"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -45,6 +45,48 @@ function keydown(el: Element, key: string) {
   el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key }));
 }
 
+/**
+ * The contract that keeps this surface lit, asserted rather than only written down.
+ *
+ * `Edit.edit()` appends what the factory returned and then, in the next two statements, calls the
+ * `onRendered` callback (which focuses the control) and walks `element.children` to add a
+ * click-stopper to each. Both read the editor's own subtree in the same turn as the append, so a
+ * factory that handed back an empty box and filled it a microtask later — which is what mounting a
+ * Jx document does — would focus nothing and stop no clicks. The file header carries the whole
+ * reasoning; this is the half a change can break.
+ */
+describe("the editor contract Tabulator reads synchronously", () => {
+  for (const kind of ["string", "number", "date", "boolean", "enum", "array"] as const) {
+    test(`a ${kind} editor's control exists in the element it returns`, () => {
+      const column = col(kind, kind === "enum" ? { enum: ["a"] } : undefined);
+      let rendered: () => void = () => {};
+      // Tabulator's own sequence: the factory registers a callback and returns an element; the
+      // Engine appends it and only THEN runs the callback.
+      const host = editorForColumn(column, makeHost)!(
+        cellWith(null),
+        (fn) => {
+          rendered = fn;
+        },
+        () => {},
+        () => {},
+      );
+      // Before the append, and before anything has had a chance to await: the control is there.
+      expect(host.querySelector("input, select")).not.toBeNull();
+      document.body.append(host);
+      rendered();
+      expect(host.contains(document.activeElement)).toBe(true);
+      host.remove();
+    });
+  }
+
+  test("a formatter's content exists in the element it returns", () => {
+    const host = formatterForColumn(col("string"), makeHost)(cellWith("hello"));
+    // Read before the element is ever parented: `Cell._generateContents()` appends what it is given
+    // And never looks again.
+    expect(host.textContent).toBe("hello");
+  });
+});
+
 describe("editorForColumn", () => {
   test("readonly and non-editable columns get no editor", () => {
     expect(editorForColumn(col("readonly"), makeHost)).toBeUndefined();

@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/desktop",
-  "version": "5.0.0",
+  "version": "5.1.3",
   "description": "Jx Studio — standalone desktop application built with Electrobun",
   "repository": {
     "type": "git",
@@ -35,12 +35,13 @@
     "dbus-ts": "^0.0.7",
     "env-paths": "^4.0.0",
     "lit-html": "^3.3.3",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.8",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/server": "workspace:^",
+    "@jxsuite/ui": "workspace:^",
     "electrobun": "2.0.1",
     "rcedit": "^5.0.2"
   }

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSpinner",
+  "tagName": "jx-spinner",
+  "observedAttributes": ["value", "label", "size"],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "How far along, 0 to 100. Empty is the indeterminate state: an ARIA progressbar with no aria-valuenow IS indeterminate, so an empty value writes none of the value attributes and the ring spins instead of filling. A string, never a number, because a numeric state entry turns a removed attribute into 0 and could never say empty. A host that writes a number through the property door anyway is read through #/state/progress, which is the ONE predicate the whole element renders from."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "What is being waited for, announced. Empty hides the spinner from assistive technology, which is right whenever the surrounding text already says the app is busy; a bare \"progressbar\" announcement is not."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. md matches the kit's icon size, so a spinner swapped in for an icon does not move the row."
+    },
+    "progress": "${state.value === '' || state.value === null || state.value === undefined ? '' : '' + state.value}",
+    "isDeterminate": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/progress"
+        },
+        "value": ""
+      }
+    },
+    "ring": "${state.progress === '' ? 'none' : 'conic-gradient(var(--jx-spin-color) ' + state.progress + '%, var(--jx-spin-track-color) 0)'}"
+  },
+  "attributes": {
+    "role": "progressbar",
+    "aria-label": "${state.label || null}",
+    "aria-hidden": "${state.label ? null : 'true'}",
+    "aria-valuenow": "${state.progress || null}",
+    "aria-valuemin": "${state.progress ? '0' : null}",
+    "aria-valuemax": "${state.progress ? '100' : null}",
+    "data-size": "${state.size}",
+    "data-determinate": "${state.progress ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "flex": "none",
+    "--jx-spin-size": "var(--jx-icon-size, 16px)",
+    "--jx-spin-track": "2px",
+    "--jx-spin-dur": "900ms",
+    "--jx-spin-color": "currentColor",
+    "--jx-spin-track-color": "var(--jx-border)",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "&[data-size=\"sm\"]": {
+      "--jx-spin-size": "12px"
+    },
+    "&[data-size=\"lg\"]": {
+      "--jx-spin-size": "20px"
+    },
+    "& [part=\"glyph\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "boxSizing": "border-box",
+      "width": "var(--jx-spin-size)",
+      "height": "var(--jx-spin-size)",
+      "borderRadius": "50%",
+      "color": "var(--jx-spin-color)",
+      "animation": "jx-spin var(--jx-spin-dur) linear infinite"
+    },
+    "& [part=\"glyph-icon\"]": {
+      "--jx-icon-size": "var(--jx-spin-size)"
+    },
+    "&[data-determinate] [part=\"glyph\"]": {
+      "animation": "none",
+      "mask": "radial-gradient(farthest-side, transparent calc(100% - var(--jx-spin-track)), black 0)"
+    },
+    "@(prefers-reduced-motion: reduce)": {
+      "--jx-spin-dur": "2400ms"
+    },
+    "@(forced-colors: active)": {
+      "--jx-spin-track": "3px"
+    },
+    "@keyframes jx-spin": {
+      "from": {
+        "rotate": "0deg"
+      },
+      "to": {
+        "rotate": "360deg"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "glyph"
+      },
+      "style": {
+        "background": "${state.ring}"
+      },
+      "children": [
+        {
+          "tagName": "jx-icon",
+          "attributes": {
+            "part": "glyph-icon"
+          },
+          "hidden": {
+            "$ref": "#/state/isDeterminate"
+          },
+          "$props": {
+            "name": "spinner",
+            "weight": "bold"
+          }
+        }
+      ]
+    }
+  ]
+}

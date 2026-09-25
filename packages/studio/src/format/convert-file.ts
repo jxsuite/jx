@@ -27,6 +27,8 @@ import {
   stringProperty,
 } from "../commands/command-args";
 import { convertTargetExtensions, convertTargets } from "./format-choices";
+import { parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /** What a conversion will do, resolved in full before the reader is asked to confirm it. */
@@ -97,7 +99,12 @@ async function writeDocument(
 ): Promise<string> {
   const merged = { ...frontmatter, ...document };
   if (targetExt === ".json") {
-    return `${JSON.stringify(merged, null, 2)}\n`;
+    /* The same serializer a save uses (`@jxsuite/schema/json-layout`), with NO layout: the source was
+       markdown or CSV, so there is no JSON text whose line breaks could be kept. Every object
+       expands and every short array stays on one line — which is exactly what the repository's
+       formatter would make of `JSON.stringify` output, so the converted file needs no reformat and
+       the tab it opens in reads its layout straight back. The newline is the serializer's own. */
+    return serializeJson(merged, null);
   }
   const { formatByExtension, formatSerialize } = await import("./format-host");
   const format = formatByExtension(targetExt, "serialize");
@@ -368,12 +375,16 @@ async function rebuildTab(from: string, to: string, text: string): Promise<void>
   const format = formatForPath(to);
   let document: Record<string, unknown>;
   let frontmatter: Record<string, unknown> | undefined;
+  // The layout of the JSON just written, as every other JSON reader records it (`files/files.ts`,
+  // `files/file-ops.ts`): the text is the serializer's own, so the record says what a layout-less
+  // Write would do anyway — but the tab reads its file rather than assuming it.
+  let layout: JsonLayout | null = null;
   try {
     if (format) {
       const { parseSourceForPath } = await import("../files/file-ops");
       ({ document, frontmatter } = await parseSourceForPath(to, text));
     } else {
-      document = JSON.parse(text) as Record<string, unknown>;
+      ({ document, layout } = parseJsonDocument(text));
     }
   } catch {
     // The bytes on disk are the ones just written and the conversion has already succeeded, so a
@@ -386,6 +397,7 @@ async function rebuildTab(from: string, to: string, text: string): Promise<void>
     documentPath: to,
     ...(frontmatter === undefined ? {} : { frontmatter }),
     id: to,
+    layout,
     sourceFormat: format?.name ?? null,
   });
 }
@@ -485,14 +497,8 @@ export function fileFormatCommands(): AnyCommand[] {
       // Nothing restores it: the file has moved and its references have been rewritten with it.
       // The confirmation carrying the count is what stands in for an undo.
       undo: "none",
-      aiTool: {
-        description:
-          "Convert a document between formats in place — Markdown to JSON and back. The file is " +
-          "renamed to the new extension and every reference to it is rewritten. Refused for " +
-          "layouts, for anything inside a content collection, and while the file is open with " +
-          "unsaved changes.",
-        name: "convert_file_format",
-      },
+      /* No `aiTool`, by §12.4's second deletion rule: `run` awaits a confirm dialog the person
+         answers. */
       run: async (_ctx, args: Record<string, unknown>) => {
         const target = typeof args.format === "string" ? args.format : undefined;
         await convertFile(
