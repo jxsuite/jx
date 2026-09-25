@@ -771,27 +771,21 @@ function isNumericValue(value: string): boolean {
 }
 
 /**
- * Kit glyph names for the values a button-group offers.
+ * The buttons a button-group row draws, and the overflow list it hands to the kit menu.
  *
- * Only names the kit ACTUALLY has (`@jxsuite/ui/icons`) are here, and every other value falls back
- * to `abbreviateValue`, which is the same fallback the group has always had for a value with no
- * icon. The alternative was to guess an approximation — `align-left` for `justify-content:
- * flex-start`, say, which is a text-alignment glyph — and a glyph that means something else is
- * worse than three letters that mean what they say. The seventeen names still missing are recorded
- * against the kit rather than approximated here.
+ * A value's glyph is its css-meta `$icons` entry VERBATIM: those values are kit manifest names
+ * (ui.md §8, one key space), so there is nothing to translate. A value with no entry — `nowrap`,
+ * `auto`, `normal` — draws `abbreviateValue` text instead, and its button is the only kind that
+ * carries any.
+ *
+ * There used to be a table here from css-meta's own semantic names (`display-flex`,
+ * `justify-start`) to the eight of them the kit happened to ship verbatim. It was a second spelling
+ * of glyph names beside the manifest, it had drifted from the translations the kit had already
+ * reasoned out, and every name it lacked resolved to `""` in silence, which is how the whole
+ * Display row shipped as abbreviations. So there is no runtime `hasIcon` guard either: a name the
+ * manifest lacks is a red `tests/metadata.test.ts`, which is where a miss is caught before it ships
+ * rather than degraded after.
  */
-const BUTTON_GLYPHS: Readonly<Record<string, string>> = {
-  "arrow-down": "arrow-down",
-  "arrow-left": "arrow-left",
-  "arrow-right": "arrow-right",
-  "arrow-up": "arrow-up",
-  "text-align-center": "text-align-center",
-  "text-align-justify": "text-align-justify",
-  "text-align-left": "text-align-left",
-  "text-align-right": "text-align-right",
-};
-
-/** The buttons a button-group row draws, and the overflow list it hands to the kit menu. */
 function buttonGroup(
   entry: CssPropertyEntry,
   rowKey: string,
@@ -806,7 +800,7 @@ function buttonGroup(
       ? enumValues.filter((v) => !buttonValues.includes(v))
       : [];
   const buttons = values.map((v) => {
-    const icon = BUTTON_GLYPHS[iconMap[v] ?? ""] ?? "";
+    const icon = iconMap[v] ?? "";
     return {
       icon,
       row: rowKey,

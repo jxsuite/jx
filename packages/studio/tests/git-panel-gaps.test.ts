@@ -253,14 +253,15 @@ function part(panel: HTMLElement, name: string): HTMLElement | null {
 }
 
 /**
- * The panel's own error banner.
- *
- * By its ROLE as well as its part: `part` is scoped to the element that declares it, and both
- * `jx-textfield` and `jx-select` carry an `error` part of their own — each earlier in the panel
- * than this one, so a bare `[part="error"]` finds the commit field's empty sentence.
+ * The panel's own error banner: `failure`, never `error`, because the commit field and the branch
+ * picker each draw a permanent `[part="error"]` of their own in the same light-DOM tree.
  */
 function errorBanner(panel: HTMLElement): HTMLElement | null {
-  return panel.querySelector<HTMLElement>('[part="error"][role="alert"]');
+  const banner = panel.querySelector<HTMLElement>('[part="failure"]');
+  if (banner) {
+    expect(banner.getAttribute("role")).toBe("alert");
+  }
+  return banner;
 }
 
 /** One changed file's row, and the verb on it. */

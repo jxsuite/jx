@@ -139,7 +139,8 @@
       }
     },
     "& [part=\"detail\"]": {
-      "$description": "The captured log the progress modal used to own. It scrolls inside the row rather than growing it, so one 400-line `bun install` failure does not become the whole panel.",
+      "$description": "The captured log the progress modal used to own. It scrolls inside the row rather than growing it, so one 400-line `bun install` failure does not become the whole panel. It is the one part of a problem row that is selectable against the root's `user-select: none`: the log is what a reader pastes into a bug report, and the row offers no copy action.",
+      "userSelect": "text",
       "maxHeight": "180px",
       "margin": "var(--jx-space-1) 0 0",
       "padding": "6px",

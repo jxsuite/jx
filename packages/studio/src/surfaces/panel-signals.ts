@@ -93,7 +93,11 @@ export interface SignalCellRowView {
 export interface SignalSegmentView {
   key: string;
   label: string;
-  selected: boolean;
+  /**
+   * `"true"` / `"false"`: the switch is a radiogroup, and a segment is a radio only while `checked`
+   * is non-empty. It also draws the segment selected, so there is no separate `selected`.
+   */
+  checked: "true" | "false";
   signal: string;
   field: string;
 }

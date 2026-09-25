@@ -196,7 +196,6 @@ export async function renderStylebookMode(
   const stage = await ctx.drawStage(
     surface,
     {
-      columnHeader: "hidden",
       frame: "boards",
       framePart: "panzoom",
       // The bar floats over the stage, so the catalogue starts below it.

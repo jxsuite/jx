@@ -1,4 +1,5 @@
 import "./with-dom.js";
+import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -109,6 +110,65 @@ describe("css-meta.json", () => {
         }
       }
     }
+  });
+
+  /* The `$icons` values are kit MANIFEST names (ui.md §8, one key space), drawn by the Style
+     panel's button rows verbatim: `panels/style-panel.ts` has no translation table and no runtime
+     guard, so these four tests are the whole of what keeps a row from shipping as abbreviations.
+     A table from css-meta's own semantic names did exactly that, silently, for every Display,
+     wrap, justify and align value.
+
+     The choices the tests hold, and why, since the JSON cannot carry a comment:
+     - display: `columns` and `grid-four` are Spectrum's view-column and view-grid; `eye-slash` is
+       visibility-off, and the Files panel's "hidden" glyph already. `block` is `rectangle`, one
+       full-width box, because the nearer `square` is the titlebar's Maximize; `inline` is `text-t`,
+       content that flows like text, because Spectrum's `remove` would be `minus`, which Studio
+       already draws for Minimize, Zoom out and unstage.
+     - wrap: `arrow-u-down-left`, the conventional wrap arrow (along, down, back). `flip-vertical`
+       was the Spectrum-era pick, and Phosphor draws it as two mirrored triangles.
+     - justify and align: the object-alignment family, which is what Phosphor's `align-*` are (a
+       rule and two bars, not text lines). space-between is arrows pushed OUT from a centre rule;
+       space-around is its mirror, the weaker of the pair, because Phosphor has no distribute
+       family; space-evenly is a plain double arrow, weaker still, chosen because it is distinct
+       from the other two in the same row. stretch is the vertical out-arrows, filling the cross
+       axis. baseline is a letter on a full-width rule, `text-a-underline`, because
+       `text-subscript` is the rich-text bar's Subscript. Every button carries its CSS value as
+       its accessible name and tooltip, so a weak glyph is never the only way to tell. */
+
+  test("every $icons glyph is one the kit ships", () => {
+    for (const [prop, entry] of defs) {
+      for (const [value, glyph] of Object.entries(entry.$icons ?? {})) {
+        expect(ICON_NAMES, `${prop}: ${value} → "${glyph}"`).toContain(glyph);
+      }
+    }
+  });
+
+  test("a button row never draws two values with one glyph", () => {
+    for (const [prop, entry] of defs) {
+      const glyphs = Object.values(entry.$icons ?? {});
+      expect(new Set(glyphs).size, prop).toBe(glyphs.length);
+    }
+  });
+
+  test("a glyph stands for one keyword across every row", () => {
+    /* `align-left` may be flex-start in justifyContent and in alignContent, because it is the same
+       keyword; it may not also be `left` somewhere else. Two meanings for one picture is the
+       failure the abbreviations already were. */
+    const meaning = new Map<string, string>();
+    for (const [prop, entry] of defs) {
+      for (const [value, glyph] of Object.entries(entry.$icons ?? {})) {
+        meaning.set(glyph, meaning.get(glyph) ?? value);
+        expect(meaning.get(glyph), `${prop}: "${glyph}"`).toBe(value);
+      }
+    }
+    expect(meaning.size).toBeGreaterThan(0);
+  });
+
+  test("every Display button is a glyph", () => {
+    /* The regression this section exists for: the topmost control of the Style panel drew
+       `flex grid block inl none` as text. */
+    const display = cssMeta.$defs.display as MetaEntry;
+    expect(Object.keys(display.$icons!).toSorted()).toEqual(display.$buttonValues!.toSorted());
   });
 
   test("no duplicate $order within a section", () => {

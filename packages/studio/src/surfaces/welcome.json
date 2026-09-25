@@ -47,8 +47,9 @@
       "letterSpacing": "0.3px"
     },
     "& [part=\"section-header\"]": {
+      "$description": "`center`, not `baseline`: `Clear all` is a small kit button, and a small kit control is layout-contained so its outset hit area adds nothing to a scrolling ancestor's overflow, which leaves it with no baseline to export. A baseline row synthesised one from the button's bottom edge, which stood the header 33px tall with the title 10px under the button's label; centred, the header is 26px and the two sit on one baseline. surface-baseline-rows.test.ts holds the rule for every surface.",
       "display": "flex",
-      "alignItems": "baseline",
+      "alignItems": "center",
       "justifyContent": "space-between",
       "gap": "var(--jx-space-4)"
     },

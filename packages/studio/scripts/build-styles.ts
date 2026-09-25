@@ -58,7 +58,11 @@ const TOKENS_HEADER = `/* GENERATED FILE — do not edit.
 
    The four --canvas-* steps are the exception and are meant to be: they colour surfaces that
    render as a light DOCUMENT in both chromes, so they are mixed from the black and white keywords
-   and do not follow the theme. See tokens.json for what else moved here out of styles/spectrum.css. */
+   and do not follow the theme. See tokens.json for what else moved here out of styles/spectrum.css.
+
+   user-select: none on :root is Studio's selection policy: the chrome is not text. Every surface
+   inherits it, a modal dialog restates it below, and a part whose text the reader must copy opts
+   back in from its own surface document, against the list tests/selection-policy.test.ts holds. */
 `;
 
 const FORCED_COLORS_HEADER = `/* GENERATED FILE — do not edit.

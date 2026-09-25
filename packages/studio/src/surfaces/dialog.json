@@ -80,10 +80,16 @@
   },
   "style": {
     "& [part=\"message\"]": {
-      "margin": "0 0 var(--jx-space-3)"
+      "$description": "The one part of a dialog that is text rather than interface, so it opts back in to selection. The root sets `user-select: none` and `styles/tokens.json` restates it on every `dialog`, so the headline, the labels and the buttons around this sentence stay unselectable; a message is often the thing a reader copies into a search or a bug report.",
+      "margin": "0 0 var(--jx-space-3)",
+      "userSelect": "text"
     },
     "& [part=\"message\"]:last-child": {
       "margin": "0"
+    },
+    "& [part=\"island\"]": {
+      "$description": "The island is the message's other form: a body richer than a sentence, rendered from a lit template or a mounted surface (studio-ui-guidelines.md §9.4). It is still the message, so it is selectable for the same reason `[part=\"message\"]` is.",
+      "userSelect": "text"
     },
     "& [part=\"island\"]:empty": {
       "display": "none"

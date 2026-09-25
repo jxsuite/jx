@@ -148,6 +148,10 @@ describe("left panel — project-level tabs", () => {
     expect(leftPanel.querySelector<HTMLElement>('[part="panel-body"]')?.dataset.jxRegion).toBe(
       "navigator/panel:git",
     );
+    // The header reads the record's title; "Source" is the rail button's label and only that.
+    expect(leftPanel.querySelector('[part="header-title"]')?.textContent?.trim()).toBe(
+      "Source Control",
+    );
   });
 
   test("git tab renders with no active tab — Source Control is project level", async () => {

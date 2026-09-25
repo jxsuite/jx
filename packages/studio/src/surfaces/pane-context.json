@@ -59,9 +59,13 @@
       "flexShrink": "0"
     },
     "& [part=\"preview-toggle\"]": {
-      "$description": "Not a third radio, and it must not read as one: it says the canvas is inert. The margin separates the two axes the eye is being asked to read as separate; the accent fill is the kit's `emphasized`, which is what deleted the four Spectrum custom properties this rule used to carry.",
+      "$description": "Not a third radio, and it must not read as one: it says the canvas is inert. The margin separates the two axes the eye is being asked to read as separate; the accent fill is the kit's `emphasized`, which is what deleted the four Spectrum custom properties this rule used to carry. The toggle is `quiet: false`, so it rests as a framed button of its own beside the framed View switch, as the Spectrum button did; quiet, it read as a fourth loose word once the switch beside it drew its frame.",
       "flexShrink": "0",
       "marginInlineStart": "6px"
+    },
+    "& jx-action-button[part=\"preview-toggle\"] > [part=\"control\"]": {
+      "$description": "The text padding the View switch's segments get from their group, which this toggle stands outside: the small size's 2px is for a glyph. (0,3,1) outranks the kit's small padding at (0,3,0).",
+      "paddingInline": "var(--jx-space-2)"
     },
     "& [part=\"context-trigger\"]": {
       "fontVariantNumeric": "tabular-nums"
@@ -88,10 +92,10 @@
       "fontSize": "var(--jx-text-md)"
     },
     "& [part=\"pod\"]": {
-      "$description": "Bottom-right of the pane, over the stage — a viewport control, which is not a document axis and so never belonged in a band beside one.",
+      "$description": "Bottom-right of the pane, over the stage — a viewport control, which is not a document axis and so never belonged in a band beside one. The right inset ADDS `--stage-scrollbar-w` because the chrome layer spans the whole cell, scrollbar gutter included: a fixed 12px put the pod 3px into Edit's 15px track, painting over it and swallowing its clicks. CSS cannot measure a scrollbar and this document cannot see the scroller, so `canvas/stage-scrollbar.ts` measures the stage's own and writes the width on the cell, where this reads it by cascade. It is 0 wherever the stage does not scroll or the scrollbar is an overlay. Physical right on purpose: Studio's chrome is never mirrored.",
       "alignSelf": "flex-end",
       "pointerEvents": "auto",
-      "margin": "0 var(--jx-space-4) var(--jx-space-4) 0",
+      "margin": "0 calc(var(--jx-space-4) + var(--stage-scrollbar-w, 0px)) var(--jx-space-4) 0",
       "padding": "var(--jx-space-1) var(--jx-space-2)",
       "border": "1px solid var(--border)",
       "borderRadius": "var(--jx-radius-md)",
@@ -99,8 +103,14 @@
       "boxShadow": "0 2px 8px rgb(0 0 0 / 25%)"
     },
     "& [part=\"zoom-label\"]": {
-      "minWidth": "48px",
-      "fontFamily": "var(--font-mono)"
+      "$description": "A floor under the percentage, so the pod does not shift as the value changes length. The width is the host's and the face is the control's, below: the control sets its own font and sits inside the host at its content width, so this rule used to carry a mono face nothing inherited and to open a 6px hole in the segmented frame before the `+` segment (measured: a 48px host round a 41.8px control, drawn in Inter).",
+      "minWidth": "48px"
+    },
+    "& [part=\"zoom-label\"] > [part=\"control\"]": {
+      "$description": "The control fills its 48px host, closing the frame, and draws the percentage in the mono face with tabular digits so a changing value does not jitter. (0,3,0) outranks the kit control's own face at (0,2,0).",
+      "flex": "1",
+      "fontFamily": "var(--font-mono)",
+      "fontVariantNumeric": "tabular-nums"
     },
     "& [part=\"fit\"]": {
       "maxWidth": "120px"
@@ -461,6 +471,7 @@
                                   },
                                   "$props": {
                                     "size": "sm",
+                                    "quiet": false,
                                     "toggles": true,
                                     "emphasized": true,
                                     "selected": {

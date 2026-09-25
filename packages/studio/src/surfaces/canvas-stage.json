@@ -7,7 +7,7 @@
     "part": "stage"
   },
   "style": {
-    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.doc-header-host`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`. Two selectors reach FOREIGN DOM and say so where they stand: `.doc-header` is the card's own root inside its host, and `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
+    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`, plus the Document Header card's host. One selector reaches FOREIGN DOM and says so where it stands: `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
     "display": "contents",
     "& [part=\"panzoom\"]": {
       "$description": "The transformed surface. `applyTransform` writes `transform` on it imperatively, so only the origin is declared here. `--boards-inset` is the Project Styles bar's clearance: that bar floats over the stage, so the boards start below it.",
@@ -97,23 +97,11 @@
       "left": "50%",
       "transform": "translateX(-50%)"
     },
-    "& [part=\"doc-header\"][data-placement=\"in-column\"]": {
-      "$description": "Edit: the card is a block of the artefact's own column and scrolls with it, so it is part of the document rather than a strip above it.",
-      "display": "block",
-      "paddingBottom": "16px"
-    },
-    "& [part=\"doc-header\"][data-placement=\"pinned\"]": {
-      "$description": "Design: the artboards are drawn under a pan/zoom transform, and a form drawn at 40% is a picture of a form — so the card sits above the surface at 1:1 and keeps its own scroll. This is the one placement that still needs a cap. `z-index` is not decoration: `doc-header` and `panzoom` are both flex items of the same column (each arrives through a `display: contents` slot, which is transparent to the flex context), so nothing before this ordered them for PAINT — only for layout. A flex item takes `z-index` without needing `position`, and on the auto-vs-auto tie this would otherwise be, the later sibling in DOM order (the boards) wins and is what was painting over the card whenever the two ever shared a pixel, exactly backwards from \"sits above the surface\".",
-      "position": "relative",
-      "zIndex": "1",
+    "& [part=\"doc-header\"]": {
+      "$description": "Edit only: the card is docked above the page's scroller as a band across the pane at 1:1, so its width is the pane's rather than the breakpoint's, and the page scrolls under it rather than taking it along. It used to be a block of Edit's column, which made it exactly as wide as the column's breakpoint or dragged width and scrolled it off with the first screen of the page. `canvas-render.ts` stacks the stage cell when it draws one; `flex-shrink: 0` keeps the band whole while the scroller below takes the squeeze, and the cap keeps a long schema from eating the page. No `z-index`: the one it had was for Design, where the band's sibling was a pan/zoom surface whose boards could paint over it. Edit's sibling is the scroller, which clips its own content, and Design draws no card at all. No `display` either, so `hidden` on the host still hides it.",
       "flexShrink": "0",
       "maxHeight": "40vh",
       "overflowY": "auto"
-    },
-    "& [part=\"doc-header\"][data-placement=\"pinned\"] .doc-header": {
-      "$description": "FOREIGN DOM: `.doc-header` is the frontmatter card's own root, mounted into this host by `panels/frontmatter-panel.ts`. Pinned, the card is a band across the stage rather than a card on it, so it loses its own rounding and keeps only the edge that separates it from the boards.",
-      "borderWidth": "0 0 1px",
-      "borderRadius": "0"
     },
     "& [part=\"edit-canvas\"]": {
       "$description": "The side gutter is LOAD-BEARING, not breathing room: the resize handles hang outside the column's own box — flex siblings with a negative margin, so they take no width from it — and this container clips horizontally, so without it the handles would be unreachable at exactly the width where dragging inward matters most. It must stay at least as wide as `EDIT_CANVAS_GUTTER` in `canvas/edit-width.ts`, which is what the drag's own ceiling subtracts. This box is also the TRACK the two `jx-split`s measure: the first ancestor of a handle that generates a box, which is why the handles are drawn here beside the column rather than inside it — inside, the column would have been the track, and the track cannot be the thing being resized.",
@@ -200,7 +188,7 @@
   },
   "children": [
     {
-      "$description": "What stands over the frame, and only ever one of the three: the Document Header card above a pan/zoom surface, the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
+      "$description": "What stands over the frame, and only ever one of the three: the Document Header card docked above Edit's scrolling column, the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
       "tagName": "div",
       "attributes": {
         "part": "lead-slot"
@@ -213,10 +201,10 @@
       },
       "cases": {
         "header": {
+          "$description": "The card has ONE place, so the host says nothing about where it is. It used to carry `data-placement`, one of two, and the card read it back as the host was announced — which is before the runtime writes a node's attributes, so the card read no attribute at all and drew `in-column` even where the host said `pinned`.",
           "tagName": "div",
           "attributes": {
-            "part": "doc-header",
-            "data-placement": "pinned"
+            "part": "doc-header"
           }
         },
         "toolbar": {
@@ -297,28 +285,6 @@
                 }
               },
               "children": [
-                {
-                  "$description": "Edit draws the Document Header card INSIDE the document's column, as its first block — the column's first child by contract. The width handles are not in the column at all (they stand beside it, see the frame), so nothing here can get in front of it.",
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "column-header-slot"
-                  },
-                  "style": {
-                    "display": "contents"
-                  },
-                  "$switch": {
-                    "$ref": "#/state/columnHeader"
-                  },
-                  "cases": {
-                    "shown": {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "doc-header",
-                        "data-placement": "in-column"
-                      }
-                    }
-                  }
-                },
                 {
                   "$prototype": "Array",
                   "items": { "$ref": "#/state/panels" },

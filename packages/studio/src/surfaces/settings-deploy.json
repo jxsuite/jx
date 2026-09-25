@@ -17,8 +17,8 @@
       "fontWeight": "600",
       "color": "var(--fg)"
     },
-    "& [part=\"error\"]": {
-      "$description": "A write that failed, said under the section title rather than pinned to the picker: settings save on change, so a silent rejection would read as \"my edit just vanished\", and what failed was the whole file rather than the value. Its size read `--spectrum-font-size-75` with a 12px fallback, which resolved only inside `<sp-theme>` — a document is mounted in the settings pane, where that name is not in scope and the fallback is all it would ever have taken — so the size is the kit's scale and the colour is the studio layer's.",
+    "& [part=\"section-error\"]": {
+      "$description": "A write that failed, said under the section title rather than pinned to the picker: settings save on change, so a silent rejection would read as \"my edit just vanished\", and what failed was the whole file rather than the value. Its size read `--spectrum-font-size-75` with a 12px fallback, which resolved only inside `<sp-theme>` — a document is mounted in the settings pane, where that name is not in scope and the fallback is all it would ever have taken — so the size is the kit's scale and the colour is the studio layer's. It is `section-error` rather than `error` because the adapter picker is a `jx-select`, which draws a permanent `[part=\"error\"]` of its own in this same light-DOM tree: a rule on that name would give the picker's own refusal sentence this 16px margin too.",
       "margin": "0 0 16px",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
@@ -39,7 +39,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "error-slot",
+        "part": "section-error-slot",
         "role": "none"
       },
       "style": {
@@ -52,7 +52,7 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "error",
+            "part": "section-error",
             "role": "alert"
           },
           "textContent": "${state.error}"

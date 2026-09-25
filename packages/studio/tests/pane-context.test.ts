@@ -44,6 +44,8 @@ const { collabState } = await import("../src/collab/collab-state");
 const { getEffectiveLocales } = await import("../src/site-context");
 const { tabOfPane } = await import("../src/canvas/canvas-surface");
 const { localeLabel } = await import("@jxsuite/schema/locale");
+const { shell } = await import("../src/shell");
+const { diffViewOf, resetDiffViews, setDiffView } = await import("../src/canvas/diff-view");
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -527,6 +529,17 @@ describe("canvas view", () => {
     // A toggle, not a third radio: it announces `aria-pressed` and carries no `aria-checked`.
     expect(control(toggle).getAttribute("aria-pressed")).toBe("false");
     expect(control(toggle).getAttribute("aria-checked")).toBeNull();
+  });
+
+  test("the switch is segmented and the preview toggle is a framed button of its own", async () => {
+    /* The View switch is a compact group, which draws its members' frame whatever their quiet
+       says, and the toggle stands outside it. A quiet toggle rested as a bare word beside a framed
+       switch, which is how every Spectrum-era action button beside a group did NOT look, so it
+       says `quiet: false` and rests framed. */
+    openTestTab();
+    await mountBar();
+    expect(part("views")!.dataset["compact"]).toBe("");
+    expect(part("preview-toggle")!.dataset["quiet"]).toBeUndefined();
   });
 
   test("previewing leaves the BASE marked — the state the radio could not express", async () => {
@@ -1257,6 +1270,72 @@ describe("zoom pod", () => {
     paneContext.unmount();
     await mountBar(ctxInMode("source"));
     expect(part("pod")).toBeNull();
+  });
+
+  /* A comparison has two halves and only one of them zooms. The Visual half is two artboards on the
+     panzoom surface; the Code half is one Monaco diff editor filling the stage, where + / − / Fit
+     drove nothing and the pod sat on Monaco's own scrollbar. */
+  describe("over a comparison", () => {
+    function compare(filePath: string): void {
+      shell.git.diffState = {
+        currentContent: "{}",
+        filePath,
+        fileStatus: "M",
+        originalContent: "{}",
+      };
+    }
+
+    afterEach(() => {
+      shell.git.diffState = null;
+      resetDiffViews();
+    });
+
+    test("the Visual half is on the panzoom surface: the pod and its fit are drawn", async () => {
+      openTestTab();
+      compare("/project/index.json");
+      await mountBar(ctxInMode("git-diff"));
+      expect(part("pod")).not.toBeNull();
+      expect(select("fit")).not.toBeNull();
+    });
+
+    test("the Code half has nothing to zoom, so no pod; the switch back redraws it", async () => {
+      openTestTab();
+      compare("/project/index.json");
+      setDiffView(PRIMARY_PANE, "code");
+      await mountBar(ctxInMode("git-diff"));
+      expect(part("pod")).toBeNull();
+
+      // The half is not reactive, so the switch repaints this chrome itself (`diff-toolbar.ts`).
+      setDiffView(PRIMARY_PANE, "visual");
+      paneContext.render();
+      await flush(6);
+      expect(part("pod")).not.toBeNull();
+    });
+
+    test("a file with no visual half is only ever Code: no pod, whatever the switch says", async () => {
+      openTestTab();
+      compare("styles/site.css");
+      await mountBar(ctxInMode("git-diff"));
+      expect(diffViewOf(PRIMARY_PANE)).toBe("visual");
+      expect(part("pod")).toBeNull();
+    });
+
+    test("before a comparison has landed there is nothing to zoom either", async () => {
+      openTestTab();
+      await mountBar(ctxInMode("git-diff"));
+      expect(part("pod")).toBeNull();
+    });
+
+    test("the comparison is a tracked input: retargeting it to a stylesheet takes the pod away", async () => {
+      openTestTab();
+      compare("/project/index.json");
+      await mountBar(ctxInMode("git-diff"));
+      expect(part("pod")).not.toBeNull();
+
+      compare("styles/site.css");
+      await flush(6);
+      expect(part("pod")).toBeNull();
+    });
   });
 });
 

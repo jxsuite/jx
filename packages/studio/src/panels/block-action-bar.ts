@@ -49,6 +49,7 @@ import {
 } from "../store";
 import { activeTab } from "../workspace/workspace";
 import { activeCanvasSurface, stageContaining } from "../canvas/canvas-surface";
+import { panelOfSurface } from "../canvas/canvas-helpers";
 import { primarySelection, structuralBatch } from "../tabs/selection";
 import {
   mutateDuplicateNodes,
@@ -224,11 +225,17 @@ function barPosition(anchor: {
      stage — and the pane is the FOCUSED one, because that is where the caret is. This asked
      "the stage showing the active tab", which was the same answer only while a tab could be on
      screen in one place; with a document displayed in two panes it picked whichever came first in
-     the grid, and clipped the bar against a stage the author is not typing in. */
-  const stage = activeCanvasSurface().wrap;
-  if (stage) {
-    const wrap = rectOf(stage);
-    if (anchor.top + anchor.height < wrap.top || anchor.top > wrap.bottom) {
+     the grid, and clipped the bar against a stage the author is not typing in.
+     …and against the box that SCROLLS, where the stage has one. Edit docks the Document Header
+     card above its scroller, inside the same stage cell, so a node scrolled up under the band is
+     still inside the stage while nobody can see it — and the bar would float over the card,
+     pointing at a node the card is covering. Everywhere else there is no scroller and the stage is
+     the viewport, as it always was. */
+  const surface = activeCanvasSurface();
+  const viewport = panelOfSurface(surface)?.scrollContainer ?? surface.wrap;
+  if (viewport) {
+    const box = rectOf(viewport);
+    if (anchor.top + anchor.height < box.top || anchor.top > box.bottom) {
       return null;
     }
   }

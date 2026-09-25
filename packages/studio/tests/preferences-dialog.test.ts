@@ -17,7 +17,14 @@
  * two islands are surfaces of their own mounted inside this one, which is why opening on that
  * section settles in six turns rather than three.
  */
-import { flush, installMockPlatform, key, pointer, seedSettings } from "./harness";
+import {
+  clearSeededSettings,
+  flush,
+  installMockPlatform,
+  key,
+  pointer,
+  seedSettings,
+} from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { CfConnection } from "../src/types";
 
@@ -341,6 +348,8 @@ describe("Assistant", () => {
     const field = d<HTMLInputElement>('[part="key"] [part="input"]')!;
     field.value = "sk-from-preferences";
     field.dispatchEvent(new Event("input", { bubbles: true }));
+    // The edit is what draws Save; give the kit button its turn to render before pressing it.
+    await flush(2);
     pointer(part("save")!, "click");
     await flush(3);
     expect(localStorage.getItem("jx.ai.openaiKey")).toBe("sk-from-preferences");
@@ -369,6 +378,53 @@ describe("Assistant", () => {
        that rebuilt it would take the caret out of a field the reader is typing in. */
     expect(d<HTMLInputElement>('[part="key"] [part="input"]')!.value).toBe("sk-half-typed");
   });
+
+  /**
+   * The reported defect. At rest the form used to show Save always, and Cancel whenever a key was
+   * stored — a Save that would re-store what was there and a Cancel that abandoned nothing, beside
+   * the sheet's own Close. Scoped to the form, because the sheet's Close is a `[part="cancel"]`
+   * too.
+   */
+  test("the Assistant form offers no Save or Cancel until something changes", async () => {
+    clearSeededSettings();
+    seedSettings({ "jx.ai.openaiKey": "sk-stored" });
+    void openPreferences("assistant");
+    await flush(6);
+    expect(d('[part="ai-creds-form"] [part="save"]')).toBeNull();
+    expect(d('[part="ai-creds-form"] [part="cancel"]')).toBeNull();
+
+    const field = d<HTMLInputElement>('[part="key"] [part="input"]')!;
+    field.value = "sk-replacement";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush(2);
+    expect(d('[part="ai-creds-form"] [part="save"]')).not.toBeNull();
+    expect(d('[part="ai-creds-form"] [part="cancel"]')).not.toBeNull();
+  });
+
+  /**
+   * The drafts are loaded once, when the sheet opens. A Disconnect in Accounts used to leave the
+   * Assistant form holding the key it had just revoked — as an unsaved "edit", now, and one its
+   * Save would have stored straight back. An untouched draft is a view of the store instead.
+   */
+  test("Disconnect in Accounts leaves the Assistant form clean, not holding the revoked key", async () => {
+    clearSeededSettings();
+    seedSettings({ "jx.ai.openaiKey": "sk-revoke-me" });
+    void openPreferences("assistant");
+    await flush(6);
+    expect(d<HTMLInputElement>('[part="key"] [part="input"]')!.value).toBe("sk-revoke-me");
+
+    pointer(navItem("accounts"), "click");
+    await flush(3);
+    pointer(d('[part="account"][data-account="ai"] [part="account-action"]')!, "click");
+    await flush(3);
+    expect(localStorage.getItem("jx.ai.openaiKey")).toBeNull();
+
+    pointer(navItem("assistant"), "click");
+    await flush(6);
+    expect(d<HTMLInputElement>('[part="key"] [part="input"]')!.value).toBe("");
+    expect(d('[part="ai-creds-form"] [part="save"]')).toBeNull();
+    expect(d('[part="ai-creds-form"] [part="cancel"]')).toBeNull();
+  });
 });
 
 describe("Accounts", () => {
@@ -394,6 +450,45 @@ describe("Accounts", () => {
     expect(localStorage.getItem("jx_github_token")).toBeNull();
     expect(d('[part="account"][data-account="github"] [part="account-action"]')).toBeNull();
     expect(d('[part="account"][data-account="github"]')!.textContent).toContain("Not signed in");
+  });
+
+  /**
+   * The reported defect: a Cloudflare AI Gateway endpoint has no break opportunity in its first 70
+   * characters, so the AI row's detail ran out of its column, under Disconnect, past the card and
+   * scrolled the section sideways. The fix is reflow, not truncation: the endpoint is what tells
+   * two gateways apart, so the whole URL stays in the row. happy-dom does not lay out, so this
+   * asserts the rules that produce the layout (studio-ui-guidelines.md §4.6); the pixels were
+   * measured in a real browser. The wrap sits on the detail itself because happy-dom does not
+   * compute inheritance, and because the detail is the only unbounded part of the row.
+   */
+  test("a long endpoint reflows inside its card instead of widening the sheet", async () => {
+    const endpoint =
+      "https://gateway.ai.cloudflare.com/v1/0123456789abcdef0123456789abcdef/my-very-long-gateway-name/openai-compatible/endpoint/v1";
+    clearSeededSettings();
+    seedSettings({ "jx.ai.baseUrl": endpoint, "jx.ai.openaiKey": "sk-x" });
+    try {
+      void openPreferences("accounts");
+      await flush(3);
+      const row = d('[part="account"][data-account="ai"]')!;
+      // Shown whole: nothing ellipsizes it.
+      expect(row.textContent).toContain(endpoint);
+      expect(row.querySelector('[part="account-action"]')).not.toBeNull();
+
+      const detail = row.querySelector<HTMLElement>('[part="account-detail"]')!;
+      expect(getComputedStyle(detail).overflowWrap).toBe("anywhere");
+
+      /* A wrapping row whose threshold is a basis, with the actions kept at its end once they
+         wrap onto a line of their own. */
+      expect(getComputedStyle(row).flexWrap).toBe("wrap");
+      const text = getComputedStyle(row.querySelector<HTMLElement>('[part="account-text"]')!);
+      expect(text.flexGrow).toBe("1");
+      expect(text.flexBasis).toBe("120px");
+      expect(text.minWidth).toBe("0");
+      const actions = row.querySelector<HTMLElement>('[part="account-actions"]')!;
+      expect(getComputedStyle(actions).marginInlineStart).toBe("auto");
+    } finally {
+      clearSeededSettings();
+    }
   });
 });
 

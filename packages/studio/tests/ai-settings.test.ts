@@ -1,13 +1,15 @@
 /**
  * Tests for src/services/ai-settings.ts — localStorage-backed AI provider settings.
  *
- * Covers the happy path (persist/read/clear for key, base URL, model) and the defensive catch
- * branches taken when localStorage is unavailable or throws.
+ * Covers the happy path (persist/read/clear for key, base URL, model), the "would Save change
+ * anything?" comparison a credentials form draws its buttons from, and the defensive catch branches
+ * taken when localStorage is unavailable or throws.
  */
 import "./with-dom.ts";
 import { clearSeededSettings, installMockPlatform } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  aiProviderDiffers,
   clearAiProvider,
   getBaseUrl,
   getOpenAiKey,
@@ -96,6 +98,37 @@ describe("ai-settings — happy path", () => {
     setModel("");
     // Blank is stored, but it is not a choice — a sender still gets the default.
     expect(preferredModel()).toBe("gpt-4o");
+  });
+});
+
+/**
+ * What a credentials form's Save and Cancel are drawn from. It answers "would Save change what is
+ * stored?", so it compares what the store WOULD hold — each draft through its definition's own
+ * `normalize` — never the raw text against the stored value.
+ */
+describe("ai-settings — aiProviderDiffers", () => {
+  test("blank drafts over an empty store are no change", () => {
+    expect(aiProviderDiffers({ apiKey: "", baseUrl: "", model: "" })).toBe(false);
+  });
+
+  test("a difference the store would normalise away is no change", () => {
+    saveAiProvider({ apiKey: "sk-a", baseUrl: "http://h/v1", model: "o3" });
+    expect(aiProviderDiffers({ apiKey: "sk-a", baseUrl: "http://h/v1", model: "o3" })).toBe(false);
+    expect(aiProviderDiffers({ apiKey: " sk-a\n", baseUrl: "http://h/v1//", model: " o3 " })).toBe(
+      false,
+    );
+  });
+
+  test("any one of the three differing is a change", () => {
+    saveAiProvider({ apiKey: "sk-a", baseUrl: "http://h/v1", model: "o3" });
+    expect(aiProviderDiffers({ apiKey: "sk-b", baseUrl: "http://h/v1", model: "o3" })).toBe(true);
+    expect(aiProviderDiffers({ apiKey: "sk-a", baseUrl: "http://h/v2", model: "o3" })).toBe(true);
+    expect(aiProviderDiffers({ apiKey: "sk-a", baseUrl: "http://h/v1", model: "o4" })).toBe(true);
+  });
+
+  test("a blank draft over a stored value is a change — Save would store the blank", () => {
+    saveAiProvider({ apiKey: "sk-a", baseUrl: "", model: "" });
+    expect(aiProviderDiffers({ apiKey: "", baseUrl: "", model: "" })).toBe(true);
   });
 });
 

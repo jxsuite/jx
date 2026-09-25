@@ -1,28 +1,21 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioDocHeader",
-  "$description": "The Document Header card (§3.2 ⑧) — the artefact's own header, drawn IN the stage, once per pane. A bar naming the collection and the page's route, a column of rows, the door to Search appearance and a disclosure listing the raw head tags. ONE row vocabulary: Title, the Layout picker and every schema-driven frontmatter field are the same `row`, discriminated by `kind`, because they differ in what they COMMIT rather than in what they look like — and what they commit is `panels/frontmatter-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a content collection is, which document it is drawing, or that a page has a route: the flow hands over rows whose every field is already a string and this draws them.",
+  "$description": "The Document Header card (§3.2 ⑧) — the artefact's own header, drawn IN the stage, docked above Edit's page, once per pane. A bar naming the collection and the page's route, a column of rows, the door to Search appearance and a disclosure listing the raw head tags. ONE row vocabulary: Title, the Layout picker and every schema-driven frontmatter field are the same `row`, discriminated by `kind`, because they differ in what they COMMIT rather than in what they look like — and what they commit is `panels/frontmatter-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a content collection is, which document it is drawing, or that a page has a route: the flow hands over rows whose every field is already a string and this draws them.",
   "tagName": "section",
   "attributes": {
     "part": "card",
     "aria-label": "Document header",
-    "data-jx-region": "${state.region}",
-    "data-placement": "${state.placement}"
+    "data-jx-region": "${state.region}"
   },
   "style": {
-    "$description": "The twelve `.doc-header*` rules from `styles/canvas.css` plus the row vocabulary the card used to borrow from `styles/inspector.css` (`.style-row`, `.style-row-label`, `.set-dot`) and `styles/overlays.css` (`.media-picker`, `.media-picker-thumb`). The borrowed ones are TRANSCRIBED rather than shared: the card is a document now and a class it does not emit cannot style it, and the three lit panels that still draw a `.style-row` go on owning those rules until they convert. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale — a document mounted in a pane's stage is outside `<sp-theme>`, so each of them would silently have taken its hard-coded fallback and stopped following the theme. And the PLACEMENT is an attribute rather than an ancestor class: `.doc-header-host.pinned .doc-header` reached in from the stage's own host, which a scoped style block cannot answer, so the stage's two placements arrive as `data-placement` and the card keys on itself.",
+    "$description": "The twelve `.doc-header*` rules from `styles/canvas.css` plus the row vocabulary the card used to borrow from `styles/inspector.css` (`.style-row`, `.style-row-label`, `.set-dot`) and `styles/overlays.css` (`.media-picker`, `.media-picker-thumb`). The borrowed ones are TRANSCRIBED rather than shared: the card is a document now and a class it does not emit cannot style it, and the three lit panels that still draw a `.style-row` go on owning those rules until they convert. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale — a document mounted in a pane's stage is outside `<sp-theme>`, so each of them would silently have taken its hard-coded fallback and stopped following the theme. And the card has ONE shape, because it has one place: Edit docks it above the page's scroller as a band across the pane, so it is a band rather than a box. It keeps only the bottom edge that separates it from the page, because a box's border and radius would draw a card edge across a full-width strip. It used to have two placements, arriving as a `data-placement` the card keyed on, and the band look was the Design one; the attribute was read before the runtime had written it, so the band never drew.",
     "display": "flex",
     "flexDirection": "column",
     "padding": "8px 12px 10px",
     "background": "var(--bg-panel)",
-    "border": "1px solid var(--border)",
-    "borderRadius": "var(--radius)",
+    "borderBottom": "1px solid var(--border)",
     "fontFamily": "var(--jx-font-sans)",
-    "&[data-placement=\"pinned\"]": {
-      "$description": "Design draws the artboards under a pan/zoom transform, so the card is pinned above the surface at 1:1 rather than sitting in the document's own column. Pinned it is a band, not a box: it spans the stage, so the box's border and radius would draw a card edge across a full-width strip.",
-      "borderWidth": "0 0 1px",
-      "borderRadius": "0"
-    },
     "& [part=\"bar\"]": {
       "display": "flex",
       "alignItems": "baseline",

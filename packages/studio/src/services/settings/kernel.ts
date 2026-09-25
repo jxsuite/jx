@@ -184,9 +184,20 @@ function apply(patch: SettingsPatch): string[] {
   return moved;
 }
 
+/**
+ * What a write of `value` would store: the definition's own `normalize`, or the value as given.
+ *
+ * The one home of that rule, and exported for a reason: a form that asks "would Save change
+ * anything?" has to compare what the store WOULD hold, not what was typed — or a pasted key's
+ * trailing newline, or an endpoint's trailing slash, reads as an edit the store would erase.
+ */
+export function normalizeSetting(definition: SettingDefinition, value: string): string {
+  return definition.normalize ? definition.normalize(value) : value;
+}
+
 /** Store a value. An empty string is a VALUE; {@link clearSetting} is the only deletion. */
 export function setSetting(definition: SettingDefinition, value: string): void {
-  const next = definition.normalize ? definition.normalize(value) : value;
+  const next = normalizeSetting(definition, value);
   const moved = apply({ [definition.key]: next });
   if (moved.length > 0) {
     queue.enqueue({ [definition.key]: next });
@@ -204,7 +215,7 @@ export function setSetting(definition: SettingDefinition, value: string): void {
 export function setSettings(entries: readonly [SettingDefinition, string][]): void {
   const patch: SettingsPatch = {};
   for (const [definition, value] of entries) {
-    patch[definition.key] = definition.normalize ? definition.normalize(value) : value;
+    patch[definition.key] = normalizeSetting(definition, value);
   }
   const moved = apply(patch);
   if (moved.length > 0) {

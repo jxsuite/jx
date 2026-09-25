@@ -1224,6 +1224,50 @@ describe("the button group", () => {
     expect(selectedNode().style?.display).toBeUndefined();
   });
 
+  test("each Display value draws its kit glyph and no abbreviation", async () => {
+    /* The regression: this row drew `flex grid block inl none` as text, because the glyph names
+       went through a table that had only the arrows and text-align in it. */
+    setupTab({ display: "flex" });
+    const c = await renderPanel();
+    const buttons = [
+      ...row(c, "display")!.querySelectorAll<HTMLElement & { icon: string; label: string }>(
+        '[part="button"]',
+      ),
+    ];
+    expect(buttons.map((b) => b.icon)).toEqual([
+      "columns",
+      "grid-four",
+      "rectangle",
+      "text-t",
+      "eye-slash",
+    ]);
+    for (const b of buttons) {
+      const text = b.querySelector<HTMLElement>('[part="label"] > span')!;
+      expect(text.hidden, b.dataset.value).toBe(true);
+      expect(text.textContent).toBe("");
+      // The glyph is the picture; the value is still the name and the tooltip.
+      expect(b.label).toBe(b.dataset.value!);
+      expect((b as unknown as { hint: string }).hint).toBe(b.dataset.value!);
+    }
+  });
+
+  test("a value with no glyph keeps its abbreviation, visible", async () => {
+    setupTab({ display: "flex" });
+    const c = await renderPanel();
+    const wrapRow = row(c, "flexWrap")!;
+    const button = (value: string) =>
+      wrapRow.querySelector<HTMLElement & { icon: string }>(
+        `[part="button"][data-value="${value}"]`,
+      )!;
+    const text = (value: string) =>
+      button(value).querySelector<HTMLElement>('[part="label"] > span')!;
+    expect(button("wrap").icon).toBe("arrow-u-down-left");
+    expect(text("wrap").hidden).toBe(true);
+    expect(button("nowrap").icon).toBe("");
+    expect(text("nowrap").hidden).toBe(false);
+    expect(text("nowrap").textContent).toBe("no-wr");
+  });
+
   test("values that do not fit are the overflow list, and it commits like any other", async () => {
     setupTab({ display: "flex" });
     const c = await renderPanel();

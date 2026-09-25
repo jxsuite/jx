@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioRail",
-  "$description": "The Navigator rail: a rendering of the panel registry. The adapter hands in `groups`, every rail-able panel grouped by level with its selected state and badge, and `settingsVisible`/`settingsOpen` for the foot's gear. Nothing here is a list of panels.",
+  "$description": "The Navigator rail: a rendering of the panel registry. The adapter hands in `groups`, every rail-able panel grouped by level with its selected state and badge, and `settingsVisible`/`settingsOpen` for the foot's gear. Nothing here is a list of panels. Each button prints its record's short `railLabel` under the glyph, falling back to `title`, and carries the full `title` as its accessible name and tooltip: the visible words lead the name a reader hears (WCAG 2.5.3), and the tooltip restores what a short label leaves out.",
   "tagName": "div",
   "attributes": {
     "part": "rail"
@@ -145,7 +145,7 @@
                       "children": [
                         {
                           "tagName": "span",
-                          "textContent": "${$map.item.title}"
+                          "textContent": "${$map.item.railLabel}"
                         }
                       ]
                     }

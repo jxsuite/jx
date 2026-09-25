@@ -22,8 +22,8 @@
       "maxWidth": "280px",
       "textAlign": "center"
     },
-    "& [part=\"error\"]": {
-      "$description": "Why the last attempt did not finish, said under the button that would try it again. Narrower than the lede: a refusal is a sentence to read once, not the thing the surface is about.",
+    "& [part=\"failure\"]": {
+      "$description": "Why the last attempt did not finish, said under the button that would try it again. Narrower than the lede: a refusal is a sentence to read once, not the thing the surface is about. It is `failure` rather than `error` because every kit field draws a permanent, empty `[part=\"error\"]` of its own, and the kit is light DOM: a rule on that name here would reach any field this surface ever holds.",
       "margin": "0",
       "color": "var(--danger)",
       "fontSize": "var(--jx-text-sm)",
@@ -78,7 +78,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "error-slot",
+        "part": "failure-slot",
         "role": "none"
       },
       "style": {
@@ -91,7 +91,7 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "error"
+            "part": "failure"
           },
           "textContent": "${state.error}"
         }
