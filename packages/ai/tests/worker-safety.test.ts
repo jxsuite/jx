@@ -1,9 +1,9 @@
 /**
  * The Worker-safety gate for @jxsuite/ai.
  *
- * `./streaming-client` and `./tools` are the subpaths a Worker backend (the `ai/chat` route on
- * Cloudflare, for one) imports. Nothing structural keeps them loadable there: one import of
- * `./chat-state`, `node:path` or `@jxsuite/schema` and a Worker bundle either fails or quietly
+ * `./streaming-client`, `./tools` and `./gateway` are the subpaths a Worker backend (the `ai/chat`
+ * route on Cloudflare, for one) imports. Nothing structural keeps them loadable there: one import
+ * of `./chat-state`, `node:path` or `@jxsuite/schema` and a Worker bundle either fails or quietly
  * ships Studio's reactivity engine. This file bundles each Worker-safe entry the way a Worker build
  * resolves it and fails on any module in the graph that the policy below forbids.
  *
@@ -38,6 +38,7 @@ const REPO_ROOT = resolve(PKG_DIR, "../..");
  * below hold it to that, and `tsconfig.worker.json`'s `include` must name the same files.
  */
 const WORKER_SAFE_ENTRIES: Readonly<Record<string, string>> = {
+  "./gateway": "./src/gateway/index.ts",
   "./streaming-client": "./src/streaming-client.ts",
   "./tools": "./src/tools.ts",
 };
@@ -65,10 +66,25 @@ const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; wh
  * the non-vacuity pin: a build that resolved nothing cannot match it, and a new module entering a
  * Worker graph is a diff someone reads. Note what is NOT here: streaming-client's only import is
  * `import type { ProblemDetails } from "@jxsuite/protocol"`, which is erased, so @jxsuite/protocol
- * contributes no module at runtime. When a change adds a module on purpose, confirm it passes
- * FORBIDDEN ("reaches no forbidden module" checks) and add it here.
+ * contributes no module at runtime. The gateway is the one entry that imports protocol at runtime,
+ * and only its two problem modules (for `problemDetails` and `PROBLEM_MEDIA_TYPE`), never the root
+ * barrel, which would bring the route table too. Its type-only imports (`gateway/types.ts`, and the
+ * frame types it borrows from streaming-client) are erased the same way. When a change adds a
+ * module on purpose, confirm it passes FORBIDDEN ("reaches no forbidden module" checks) and add it
+ * here.
  */
 const FROZEN_GRAPHS: Readonly<Record<string, readonly string[]>> = {
+  "./gateway": [
+    "packages/ai/src/gateway/chat.ts",
+    "packages/ai/src/gateway/index.ts",
+    "packages/ai/src/gateway/models.ts",
+    "packages/ai/src/gateway/normalize.ts",
+    "packages/ai/src/gateway/problem.ts",
+    "packages/ai/src/gateway/sse.ts",
+    "packages/ai/src/gateway/upstream-error.ts",
+    "packages/protocol/src/problem.ts",
+    "packages/protocol/src/problems.ts",
+  ],
   "./streaming-client": ["packages/ai/src/streaming-client.ts"],
   "./tools": ["packages/ai/src/tools.ts"],
 };

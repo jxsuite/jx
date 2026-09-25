@@ -13,7 +13,8 @@
  * The fixture format, the chunking check and the golden rules are those of
  * `packages/server/tests/ai-upstream-fixtures.test.ts`, which owns the fixtures. The loading and
  * comparison helpers are mirrored from it rather than shared: each suite runs from its own
- * workspace, and neither package depends on the other.
+ * workspace, and `packages/ai` cannot import `packages/server` (the dependency runs the other
+ * way).
  *
  * Re-record: first the server goldens (`JX_UPDATE_GOLDENS=1 bun test --isolate
  * tests/ai-upstream-fixtures.test.ts` from `packages/server`), then `JX_UPDATE_GOLDENS=1 bun test
