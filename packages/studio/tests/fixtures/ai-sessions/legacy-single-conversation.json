@@ -70,7 +70,7 @@
             "id": "call_1",
             "name": "add_child",
             "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\"}}",
-            "result": null
+            "result": { "success": true, "summary": "Added h1 as child 0 of the root." }
           }
         ]
       },

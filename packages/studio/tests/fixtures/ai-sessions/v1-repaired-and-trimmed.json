@@ -1,6 +1,6 @@
 {
   "name": "v1-repaired-and-trimmed",
-  "description": "What the current build persists after a send that trimmed and repaired: trimContext's summary note leads, and an unanswered ask_user already carries its sealed reply. Restored verbatim, and the repair has nothing left to do.",
+  "description": "What an older build persisted after a send that trimmed and repaired: trimContext's summary note leads, and an unanswered ask_user already carries its sealed reply. Restore leaves that question without a result, since a seal is not an answer, so its chip renders inert; the repair has nothing left to do.",
   "root": "/proj/demo",
   "storage": {
     "jx-ai-chat-sessions:/proj/demo": {

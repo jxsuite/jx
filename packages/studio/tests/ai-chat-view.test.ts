@@ -284,6 +284,32 @@ describe("projectRows", () => {
 // ─── §7.4: the three things the renderer would not say ───────────────────────
 
 describe("tool chips carry outcomes", () => {
+  /* An import's summary is written for the model; the person reads its first sentence, which says
+     what happened, and not the instructions after it. */
+  test("an import chip's outcome is the summary's first sentence, not the model's instructions", () => {
+    const imported = {
+      arguments: "{}",
+      id: "i1",
+      name: "import_site",
+      result: {
+        success: true,
+        summary:
+          "Imported https://example.com into /home/me/site and opened it. 3 pages, 12 files: /, /about, /pricing. " +
+          "The file and document tools are available now. Read the emitted pages before proposing changes.",
+      },
+    };
+    expect(toolOutcomeText(imported)).toBe(
+      "Imported https://example.com into /home/me/site and opened it.",
+    );
+    const oneSentence = { ...imported, result: { success: true, summary: "Imported the site" } };
+    expect(toolOutcomeText(oneSentence)).toBe("Imported the site");
+    const failedImport = {
+      ...imported,
+      result: { error: "The crawl failed. Try again.", success: false },
+    };
+    expect(toolOutcomeText(failedImport)).toBe("The crawl failed. Try again.");
+  });
+
   test("toolOutcome/toolOutcomeText read the result the loop has always populated", () => {
     expect(toolOutcome({ arguments: "{}", id: "1", name: "x" })).toBe("pending");
     expect(toolOutcomeText({ arguments: "{}", id: "1", name: "x" })).toBe("");

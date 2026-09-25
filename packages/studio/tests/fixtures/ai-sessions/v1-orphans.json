@@ -1,6 +1,6 @@
 {
   "name": "v1-orphans",
-  "description": "A payload broken in both directions: it opens on a tool reply whose request the 50-message cap sliced away, and ends on a round whose second call Stop left unanswered. Restored verbatim (the unpaired wire included); the send path's repair drops the reply and seals the call.",
+  "description": "A payload broken in both directions: it opens on a tool reply whose request the 50-message cap sliced away, and ends on a round whose second call Stop left unanswered. Restore backfills the answered call's result, and gives the unanswered one the never-completed outcome, since nothing is in flight after a restore; the send path's repair then drops the stray reply and seals the call.",
   "root": "/proj/demo",
   "storage": {
     "jx-ai-chat-sessions:/proj/demo": {
@@ -97,13 +97,16 @@
             "id": "call_x",
             "name": "add_child",
             "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"One\"}}",
-            "result": null
+            "result": { "success": true, "summary": "Added a as child 1 of the root." }
           },
           {
             "id": "call_y",
             "name": "add_child",
             "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"a\",\"textContent\":\"Two\"}}",
-            "result": null
+            "result": {
+              "success": false,
+              "error": "This tool call was never completed — the session was reloaded or the history was trimmed."
+            }
           }
         ]
       },

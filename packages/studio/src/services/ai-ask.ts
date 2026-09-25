@@ -163,7 +163,21 @@ export function resetAsk(): void {
  *
  * @param {Pick<ToolRegistry, "register">} registry
  */
-export function registerAskTool(registry: Pick<ToolRegistry, "register">): void {
+/** What the host that registers the question tool may hook. */
+export interface AskToolOptions {
+  /**
+   * Called once a question has been put to the author, before the turn waits on the answer. A host
+   * saves the conversation here: a turn suspended on a person may wait for as long as they like,
+   * and a reload in the meantime must still find the question to restore as open (specs/ai.md
+   * §3.4).
+   */
+  onPending?: () => void;
+}
+
+export function registerAskTool(
+  registry: Pick<ToolRegistry, "register">,
+  { onPending }: AskToolOptions = {},
+): void {
   registry.register(
     createToolDefinition({
       name: "ask_user",
@@ -219,7 +233,7 @@ export function registerAskTool(registry: Pick<ToolRegistry, "register">): void 
               .slice(0, MAX_OPTIONS)
           : [];
 
-        const { answer, skipped } = await askUser({
+        const answering = askUser({
           context: typeof context === "string" ? context.trim() : "",
           /* The tool-call id, so the chip the transcript draws and the question this registers are
              the same thing. Without it a restored, permanently unanswered question would render
@@ -228,6 +242,11 @@ export function registerAskTool(registry: Pick<ToolRegistry, "register">): void 
           options: choices,
           question: question.trim(),
         });
+        // The question is published by now (`askUser` sets it synchronously); the answer is not.
+        if (isAwaitingAnswer()) {
+          onPending?.();
+        }
+        const { answer, skipped } = await answering;
 
         if (skipped) {
           /* A success: the model asked, and "you decide" is an answer. Rendering it as a failure
