@@ -137,7 +137,7 @@ let projectionQueued = false;
  * **Coalesced on a microtask, for two reasons that are not about paint.** A turn writes several
  * reactive facts in one tick — the message, the status, the token count — and the transcript
  * projection is O(messages), so running it once per write would rebuild the whole list three times
- * for one event. And the write LEDGER (`services/ai-writes.ts`) is a plain array: `endTurn` files
+ * for one event. And the write LEDGER (`services/ai-writes.ts`) is a plain array: `fileTurn` files
  * it immediately after the assistant message lands, so a projection that ran synchronously inside
  * the effect would read the turn's changed-files summary one write too early, every time. (When it
  * lands later than that, after a Stop mid-stream, the send re-projects once the turn has settled.)

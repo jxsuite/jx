@@ -13,7 +13,7 @@
  * @license MIT
  */
 
-import type { ToolDefinition, ToolRegistry } from "@jxsuite/ai/tools";
+import type { ToolContext, ToolDefinition, ToolRegistry } from "@jxsuite/ai/tools";
 
 export interface ToolAvailability {
   /** Whether the tool is currently advertised/executable. */
@@ -58,7 +58,7 @@ export function createGatedToolRegistry(
     validate(toolName: string, args: object) {
       return inner.validate(toolName, args);
     },
-    async execute(toolName: string, args: object) {
+    async execute(toolName: string, args: object, ctx?: ToolContext) {
       if (inner.getDefinition(toolName) && !isAvailable(toolName)) {
         const gate = availability.get(toolName);
         return {
@@ -66,7 +66,8 @@ export function createGatedToolRegistry(
           error: `Tool "${toolName}" is not available right now — it requires ${gate?.requires ?? "a different studio state"}.`,
         };
       }
-      return inner.execute(toolName, args);
+      // The call's context reaches the tool unchanged: its signal, id, ledger and session.
+      return inner.execute(toolName, args, ctx);
     },
   };
 }

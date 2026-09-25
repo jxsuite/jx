@@ -37,9 +37,8 @@ let stubSummary = "";
 
 void mock.module("../src/services/ai-writes", () => ({
   MAX_TURNS: 50,
-  beginTurn: () => {},
-  endTurn: () => [],
-  recordWrite: () => {},
+  fileTurn: () => [],
+  openTurnLedger: (turnId: string) => ({ record: () => {}, turnId, writes: [] }),
   resetAiWrites: () => {},
   summarizeWrites: () => stubSummary,
   turnAnchor: () => null,
