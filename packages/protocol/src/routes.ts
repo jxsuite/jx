@@ -142,7 +142,7 @@ export const STUDIO_ROUTES = {
     "/__studio/file/bytes",
     "A project file's raw bytes, undecoded — the read side of `fileUpload`, for a caller that must " +
       "not go through UTF-8",
-    "Studio cannot decode a project image, so the image editor is not offered.",
+    "Studio can only read a project file as text, so any surface that must decode one stays hidden.",
   ),
   /**
    * A project file as its own BYTES, at its own URL.
