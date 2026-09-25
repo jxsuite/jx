@@ -38,7 +38,25 @@
     {
       "tagName": "main",
       "id": "main-content",
-      "style": { "flex": "1" },
+      "style": {
+        "flex": "1",
+        "& pre > code[class]": {
+          "display": "block",
+          "backgroundColor": "var(--color-bg-surface)",
+          "border": "1px solid var(--color-border)",
+          "borderRadius": "var(--radius)",
+          "padding": "1.25rem 1.5rem",
+          "overflowX": "auto",
+          "textAlign": "left",
+          "fontFamily": "var(--font-mono)",
+          "fontSize": "0.8125rem",
+          "lineHeight": "1.7"
+        },
+        "& pre > code[class] span": { "color": "var(--shiki-light)" },
+        "@--dark": {
+          "& pre > code[class] span": { "color": "var(--shiki-dark)" }
+        }
+      },
       "children": [{ "tagName": "slot" }]
     },
     { "tagName": "site-footer" }
