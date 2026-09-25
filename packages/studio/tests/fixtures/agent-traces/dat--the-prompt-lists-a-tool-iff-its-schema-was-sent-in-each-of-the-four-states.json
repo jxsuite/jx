@@ -7,7 +7,7 @@
     "[chat 1] setTokenCount(5077)",
     "[chat 1] setModel(\"gpt-4o\")",
     "[chat 1] toMessagesArray()",
-    "[chat 1] finishStream(\"stop\")",
+    "[chat 1] setError(\"The model sent back an empty reply.\")",
     "[chat 2] sendMessage(\"hi\")",
     "[chat 2] toMessagesArray()",
     "[chat 2] setTokenCount(5521)",
@@ -15,7 +15,7 @@
     "[chat 2] setTokenCount(5521)",
     "[chat 2] setModel(\"gpt-4o\")",
     "[chat 2] toMessagesArray()",
-    "[chat 2] finishStream(\"stop\")",
+    "[chat 2] setError(\"The model sent back an empty reply.\")",
     "[chat 3] sendMessage(\"hi\")",
     "[chat 3] toMessagesArray()",
     "[chat 3] setTokenCount(5283)",
@@ -23,7 +23,7 @@
     "[chat 3] setTokenCount(5283)",
     "[chat 3] setModel(\"gpt-4o\")",
     "[chat 3] toMessagesArray()",
-    "[chat 3] finishStream(\"stop\")",
+    "[chat 3] setError(\"The model sent back an empty reply.\")",
     "[chat 4] sendMessage(\"hi\")",
     "[chat 4] toMessagesArray()",
     "[chat 4] setTokenCount(5609)",
@@ -31,7 +31,7 @@
     "[chat 4] setTokenCount(5609)",
     "[chat 4] setModel(\"gpt-4o\")",
     "[chat 4] toMessagesArray()",
-    "[chat 4] finishStream(\"stop\")"
+    "[chat 4] setError(\"The model sent back an empty reply.\")"
   ],
   "clientCalls": [
     {
@@ -321,18 +321,13 @@
       "id": "msg#4",
       "role": "user",
       "content": "hi"
-    },
-    {
-      "id": "msg#5",
-      "role": "assistant",
-      "content": ""
     }
   ],
   "finalState": {
     "contextWarning": false,
-    "error": null,
+    "error": "The model sent back an empty reply.",
     "model": "gpt-4o",
-    "status": "idle",
+    "status": "error",
     "tokenCount": 5609,
     "usage": null
   },

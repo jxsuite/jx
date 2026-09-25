@@ -62,7 +62,9 @@ Under the chips, a reply that changed anything carries a one-line summary: "Chan
 
 Document edits land on the canvas as they happen, so for canvas work you can literally watch the page change. If something goes wrong mid-request (a lost connection, a provider error), the chat shows the error with advice on how to recover, and a **Retry** button that sends your last message again. The half-finished part of the reply is removed rather than kept, so a half-written action is never sent back to the provider. Anything the assistant finished before the error stays, each chip with its outcome.
 
-A long request that reaches the assistant's per-message limit on tool calls is not an error: it finishes with a note saying it ran out of rounds and listing what it did apply, and everything it changed stays changed. Send another message to continue.
+A long request that reaches the assistant's per-message limit on tool calls is not an error: it finishes with a note saying it ran out of rounds and listing what it did apply, and everything it changed stays changed. Send another message to continue. The note lists only actions that changed something without a problem, and creating or importing a project counts. If none of the assistant's actions did, because it spent its whole limit looking around (listing files, reading them, asking you questions) or every change it made came back with an error to fix, that is shown as an error instead. Any change that did land stays on the canvas.
+
+If the model sends back an empty reply, with no text and no action, the chat says so in an error row with a **Retry** button rather than leaving your message unanswered.
 
 ## When the assistant asks you something
 

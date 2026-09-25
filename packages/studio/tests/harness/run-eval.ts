@@ -21,7 +21,7 @@ import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 import { useNativeFetch } from "./native-fetch.js";
 import { loadFixture } from "./load-fixture.js";
 import { buildRealHarness, runPrompt } from "./real-llm.js";
-import { scoreRun } from "./score.js";
+import { scoreRun, unscorableError } from "./score.js";
 import { textOf, anyStyle, anyNode } from "./doc-query.js";
 import { validateDoc } from "../../src/services/jx-validate";
 
@@ -322,8 +322,9 @@ async function runOnce(test: EvalTest): Promise<RunResult> {
   harness.client = counter;
   try {
     await runPrompt(harness, test.prompt);
-    if (harness.chatState.status === "error") {
-      return { error: harness.chatState.error, rounds: counter.rounds() };
+    const error = unscorableError(harness.chatState);
+    if (error !== null) {
+      return { error, rounds: counter.rounds() };
     }
     const ctx = { writes: fx.writes, readWritten: fx.readWritten };
     return await scoreRun({

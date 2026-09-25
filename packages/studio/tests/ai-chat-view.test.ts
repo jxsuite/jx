@@ -153,6 +153,8 @@ describe("helpers", () => {
     expect(formatErrorAdvice("HTTP 401 unauthorized")).toContain("API key");
     expect(formatErrorAdvice("Network error while fetching")).toContain("dev server");
     expect(formatErrorAdvice("429 rate limit exceeded")).toContain("rate limit");
+    // The loop's own sentence for a turn that drew nothing (services/tool-executor.ts).
+    expect(formatErrorAdvice("The model sent back an empty reply.")).toContain("another model");
     expect(formatErrorAdvice("500 internal server error")).toContain("server error");
     expect(formatErrorAdvice("something exotic")).toBe("");
   });

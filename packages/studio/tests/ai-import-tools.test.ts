@@ -10,6 +10,7 @@ import { registerImportTools, resetImportGuard } from "../src/services/ai-import
 import { clearPendingImportBrief, setPendingImportBrief } from "../src/services/import-seed";
 import { importRun, resetImportRuns } from "../src/services/import-run";
 import { beginToolCall, beginTurnSignal, endTurnSignal } from "../src/services/ai-turn-signal";
+import { beginTurn, endTurn, resetAiWrites } from "../src/services/ai-writes";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 import type { ImportProgressEvent, ImportSiteOptions, ImportSiteSummary } from "../src/types";
 import type { ImportBrief } from "../src/services/import-seed";
@@ -518,6 +519,35 @@ describe("import_site — the run", () => {
   /* The run's stop is scoped to the run. A Stop later in the same turn (a question the model puts
      after the import, say) belongs to whatever the turn is doing then, and must not rewrite the
      finished run as stopped. */
+  /* The imported project is on disk once the run is done, and no undo reaches it: it is what the
+     turn changed. A run that failed records nothing. */
+  test("a finished run records the project as a disk write, and a failed one records nothing", async () => {
+    resetAiWrites();
+    const { registry } = harness({ adoptProject: landing() });
+    beginTurn("done");
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/x",
+      url: "https://example.com",
+    });
+    captured!.resolve({ config: {}, root: "/home/dev/Sites/x" });
+    await running;
+    expect(endTurn("m1")).toEqual([
+      { disk: true, ok: true, path: "/home/dev/Sites/x", tool: "import_site" },
+    ]);
+
+    resetImportGuard();
+    const failing = harness();
+    beginTurn("failed");
+    const failed = failing.registry.execute("import_site", {
+      directory: "/home/dev/Sites/y",
+      url: "https://example.com",
+    });
+    captured!.reject(new Error("Navigation timeout"));
+    await failed;
+    expect(endTurn("m2")).toEqual([]);
+    resetAiWrites();
+  });
+
   test("a Stop after the run finished leaves it done", async () => {
     const adoptProject = landing();
     const { registry } = harness({ adoptProject });

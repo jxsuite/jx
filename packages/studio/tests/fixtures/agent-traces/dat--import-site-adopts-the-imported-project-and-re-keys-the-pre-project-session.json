@@ -142,8 +142,28 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#4\") filed 0"],
-    "turns": []
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":true,\"ok\":true,\"path\":\"/abs/imported-site\",\"tool\":\"import_site\"})",
+      "endTurn(\"msg#4\") filed 1"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "/abs/imported-site",
+            "writes": [
+              {
+                "disk": true,
+                "ok": true,
+                "tool": "import_site"
+              }
+            ]
+          }
+        ],
+        "turn": "msg#4"
+      }
+    ]
   },
   "finalMessages": [
     {
