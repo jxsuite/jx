@@ -74,7 +74,7 @@ The bar at the top of the panel shows where you stand against the repository, wi
 - **Pull**: bring teammates' commits into your copy.
 - **Push**: send your local commits up.
 
-In a narrow Navigator the three buttons move below the status instead of squeezing it.
+The three buttons sit on their own line under the status whenever the panel cannot hold both on one, which at the Navigator's usual width is most of the time. The status keeps its line that way, instead of breaking a word at a time to make room.
 
 Studio also pulls automatically when you open a project that has a remote, so a session starts from the current state. If a pull can't merge cleanly, Studio reports the error and changes nothing. There is one exception: conflicts caused purely by Studio's own automated package updates are resolved for you (Studio discards its own machine-generated edits, pulls, and re-applies them; if _you_ edited those files it asks before discarding anything).
 
