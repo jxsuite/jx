@@ -16,6 +16,8 @@ import "./with-dom.ts";
 
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
+import { documentStyleText } from "@jxsuite/runtime";
+
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import {
@@ -28,6 +30,7 @@ import {
   rowFor,
 } from "../src/behaviors/combobox.ts";
 import type { ComboboxRow } from "../src/behaviors/combobox.ts";
+import { expectInertWhileEmpty } from "./error-region.ts";
 
 /** Let the runtime's queued render and the popover shim's toggle microtask settle. */
 const tick = () =>
@@ -45,6 +48,7 @@ type ComboboxEl = HTMLElement & {
   allowsCustomValue: boolean;
   disabled: boolean;
   readonly: boolean;
+  error: string;
 };
 
 const MODELS: ComboboxRow[] = [
@@ -89,6 +93,17 @@ function type(el: Element, text: string): void {
 function commit(el: Element): void {
   inputOf(el).dispatchEvent(new Event("change", { bubbles: true }));
 }
+
+/** Every emitted CSS rule scoped to this element's own document, in source order. */
+function rules(el: Element): string[] {
+  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+  return documentStyleText()
+    .split("\n")
+    .filter((line) => line.startsWith(scope) || line.includes(`{ ${scope}`));
+}
+/** The first emitted rule whose selector carries `selector`. */
+const ruleFor = (el: Element, selector: string) =>
+  rules(el).find((line) => line.slice(0, line.indexOf("{") + 1).includes(selector)) ?? "";
 
 /** Record every `input` and `change` that escapes the element, and who said it. */
 function listen(el: HTMLElement): string[] {
@@ -526,6 +541,27 @@ describe("jx-combobox", () => {
     const gutter = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
     list.dispatchEvent(gutter);
     expect(gutter.defaultPrevented).toBe(true);
+  });
+
+  test("the error region predates its text, and while empty draws nothing and takes no click", async () => {
+    /* A live region announces nothing unless it was in the tree before the text arrived, so the
+       region exists and is empty on a field that has never been refused, and every refusal and
+       every clearing writes into that same node. */
+    const el = await combobox();
+    const region = el.querySelector('[part="error"]')!;
+    expect(region.getAttribute("aria-live")).toBe("polite");
+    expect(region.getAttribute("role")).toBe("status");
+    expect(region.textContent).toBe("");
+    expect(region.childNodes.length).toBe(0);
+    for (const sentence of ["Pick a model this account offers.", "", "Pick another."]) {
+      el.error = sentence;
+      await tick();
+      expect(el.querySelector('[part="error"]')).toBe(region);
+      expect(region.textContent).toBe(sentence);
+    }
+    /* Permanent means it is there while empty, and the kit is light DOM: a consumer's banner rule
+       on `[part="error"]` reaches it, so the `:empty` rule resets it rather than trusting 0x0. */
+    expectInertWhileEmpty(ruleFor(el, '[part="error"]:empty'));
   });
 
   test("the definition mints every id from one stem and writes none of them twice", () => {

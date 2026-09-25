@@ -625,6 +625,15 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
           [declarations["position"], controlRule?.["position"]],
           `${tag}: ${key} carries a hit area on a control that is not position: relative`,
         ).toContain("relative");
+        /* An outset that reaches past the box is still a box, and an absolutely positioned one
+           counts toward the SCROLLABLE overflow of the nearest ancestor whose `overflow` is not
+           `visible` though nothing paints it: uncontained, every shrunk control touching a
+           scroller's edge draws a phantom scrollbar (jx-action-button's did, in Preferences ·
+           Keyboard). `contain: layout` keeps it local; `strict` and `content` both include it. */
+        expect(
+          String(declarations["contain"] ?? controlRule?.["contain"] ?? ""),
+          `${tag}: ${key} extends its hit area past the box without contain: layout, so a scrolling ancestor counts it as scrollable overflow`,
+        ).toMatch(/\b(layout|strict|content)\b/);
         /* The sm rule's own border if it declares one, else the base control rule's: the border
            the shrunk box actually draws, which the outset is measured from the inside of. */
         const border = borderWidthOf(

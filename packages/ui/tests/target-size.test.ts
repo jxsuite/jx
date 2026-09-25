@@ -94,6 +94,14 @@ describe("size=sm controls accept the pointer over the kit's control height (SC 
         text.includes("position: relative"),
       );
       expect(positioned, `${tag}: the sm control is not position: relative`).toBe(true);
+      /* And the control keeps that reach to itself: an absolutely positioned box counts toward the
+         SCROLLABLE overflow of the nearest ancestor whose `overflow` is not `visible`, painted or
+         not, so an uncontained outset on a button touching a scroller's edge draws a 2px phantom
+         scrollbar. jx-button shipped the containment and jx-action-button did not, which is how
+         Preferences · Keyboard grew one; pinned here for all three so the next gap fails by name. */
+      expect(control, `${tag}: the sm hit area is not layout-contained`).toContain(
+        "contain: layout",
+      );
     });
 
     test(`${tag}'s sm hit area is at least ${FLOOR}px at every density`, () => {
@@ -196,6 +204,11 @@ describe("the sub-control targets inside a field accept the pointer over the con
       expect(box).toContain(positioned);
       expect(borderWidth(box), `${tag} ${part}: the calc inset is exact only over no border`).toBe(
         0,
+      );
+      /* The outset reaches past the field's edge at `sm`, so the button contains its layout for
+         the reason the sm controls above do: a scrolling host would count the reach as overflow. */
+      expect(box, `${tag} ${part}: the hit area is not layout-contained`).toContain(
+        "contain: layout",
       );
       const hit = rule(tag, `S [part="${part}"]::before`);
       expect(hit).toContain('content: ""');

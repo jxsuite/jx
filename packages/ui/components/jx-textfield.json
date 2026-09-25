@@ -493,13 +493,19 @@
       "color": "var(--jx-danger)"
     },
     "& [part=\"error\"]:empty": {
-      "$description": "`top`/`left`/`width`/`height` are pinned rather than left to resolve, because \"resolve\" is exactly what they cannot be trusted to do: with every inset auto, an absolutely positioned flex-item child falls back to its STATIC position and a shrink-to-fit size, and both are the browser's own reconstruction of where an element with no content would have been — not a value this document ever asked for. A shrink-to-fit width over empty content is 0 in every engine this was checked against, but the mechanism is a hypothetical, not a number, and it is exactly the kind of hypothetical that has read differently across engines before (the `::before` hit areas beside this rule went through the same lesson). Pinned to a literal 0×0 at the field's own top-left corner, the region costs no layout AND no paint by construction, rather than by an inference nothing here controls.",
+      "$description": "The region is permanent and empty until it has something to say, and while it is empty it must draw nothing and take no click, whatever an ancestor's rule gives it. The kit is light DOM, so a consumer's descendant rule on `[part=\"error\"]` (a surface's own banner, a site's stylesheet) lands on this paragraph as well — and under `box-sizing: border-box` a `width`/`height` of 0 floors at padding plus border, which is how a Studio banner's `padding: 6px 8px` and 1px rule drew a 16×13 box at the field's top-left corner that also took the click meant for the control. Pinning the size was never enough on its own; the box model is therefore reset here, and `clip-path: inset(50%)` (the kit's visually-hidden idiom, as `jx-accordion-item.json`'s heading uses it) with `pointer-events: none` removes the paint and the hit area of anything a reset does not name, such as a shadow or an outline. Its `:empty` makes the selector one pseudo-class heavier than the `X [part=\"error\"]` a consumer writes, so it wins in whichever order the sheets land. It is never `display: none` or `visibility: hidden`: a live region absent from the accessibility tree does not announce its first text (ui.md §5.1). When text arrives `:empty` stops matching and the sentence draws in flow exactly as the two rules above say. `jx-select.json` and `jx-combobox.json` carry the same rule, for the same reason.",
       "position": "absolute",
       "top": "0",
       "left": "0",
       "width": "0",
       "height": "0",
-      "overflow": "hidden"
+      "overflow": "hidden",
+      "margin": "0",
+      "padding": "0",
+      "border": "0",
+      "background": "none",
+      "clipPath": "inset(50%)",
+      "pointerEvents": "none"
     },
     "& > [part=\"control-slot\"], & > [part=\"clear-slot\"], & > [part=\"help-slot\"]": {
       "display": "contents"
