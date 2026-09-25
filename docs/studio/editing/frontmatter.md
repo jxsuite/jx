@@ -60,7 +60,7 @@ The escape hatch for everything else that can live in a page's head: analytics, 
 
 ## The Document Header card
 
-Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card instead of pushing the page down. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the **Page** panel in the Navigator.
+Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card, under the wheel as well as by its scrollbar, instead of pushing the page down. The card never takes more than half the pane, so there's always a page to work on under it. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the **Page** panel in the Navigator.
 
 Its bar names what the document is: the collection it belongs to, or **Document** when it belongs to none. For a page it also prints the route it will be published at. Underneath sit the **Title** field, the layout picker for site pages, and the collection's own fields: the same set as the Page panel's Frontmatter section. There's no control to summon or dismiss the card; a document that has a header shows one in Edit view.
 
