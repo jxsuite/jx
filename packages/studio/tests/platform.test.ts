@@ -1,7 +1,14 @@
 /** Platform abstraction layer (C7): register/get/has lifecycle and call counting in src/platform.ts. */
 import "./with-dom.js";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { getPlatform, hasPlatform, platformInFlight, registerPlatform } from "../src/platform";
+import {
+  announceLauncher,
+  getPlatform,
+  hasPlatform,
+  launcherSignal,
+  platformInFlight,
+  registerPlatform,
+} from "../src/platform";
 import type { StudioPlatform } from "../src/types";
 
 const g = globalThis as unknown as { __jxPlatform?: StudioPlatform };
@@ -47,6 +54,22 @@ describe("platform registry", () => {
     expect((getPlatform() as unknown as { id: string }).id).toBe("first");
     registerPlatform(second);
     expect((getPlatform() as unknown as { id: string }).id).toBe("second");
+  });
+
+  test("the launcher signal is absent until something announces", () => {
+    delete (globalThis as { __jxLauncher?: unknown }).__jxLauncher;
+    expect(launcherSignal()).toBeUndefined();
+  });
+
+  test("announceLauncher publishes one signal and keeps what was recorded on it", () => {
+    delete (globalThis as { __jxLauncher?: unknown }).__jxLauncher;
+    const signal = announceLauncher();
+    expect(signal).toEqual({});
+    expect(launcherSignal()).toBe(signal);
+    signal.error = { message: "boom" };
+    expect(announceLauncher()).toBe(signal);
+    expect(announceLauncher().error).toEqual({ message: "boom" });
+    delete (globalThis as { __jxLauncher?: unknown }).__jxLauncher;
   });
 
   test("an adapter registered directly on the global is still counted", async () => {

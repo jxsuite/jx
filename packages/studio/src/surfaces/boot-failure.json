@@ -1,0 +1,227 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioBootFailure",
+  "$description": "What Studio draws INSTEAD of the application frame when a launcher was supposed to register a platform adapter and did not (`platforms/default-platform.ts`'s `bootRefusal`). It replaces a failure that drew everything: desktop 5.0.0 to 5.1.3 fell back to the dev-server adapter inside a `views://` window, so every panel rendered and the first click said \"Failed to fetch\". This says so up front instead: what failed, the error the launcher recorded, and the facts a support thread needs, with a Reload for a transient failure and a Copy for everything else. The adapter decides every sentence; the document only draws them. It is the whole page, so it carries a window drag strip of its own — the desktop window hides its title bar, and with no Command Bar mounted there is otherwise nothing to move the window by.",
+  "tagName": "div",
+  "attributes": {
+    "part": "screen",
+    "role": "alert"
+  },
+  "style": {
+    "$description": "Tokens throughout: the screen is mounted before anything but the kit's theme has run, so it can lean on nothing the frame's stylesheets declare. The top padding clears the macOS traffic lights, which sit over the page because the window's title bar is hidden.",
+    "position": "fixed",
+    "inset": "0",
+    "display": "flex",
+    "alignItems": "flex-start",
+    "justifyContent": "center",
+    "paddingTop": "max(10vh, calc(var(--jx-control-h) * 2))",
+    "overflowY": "auto",
+    "boxSizing": "border-box",
+    "background": "var(--jx-bg)",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--jx-fg)",
+    "& > [part=\"drag-strip\"]": {
+      "$description": "The window's handle. Electrobun's preload recognises the class and supplies the drag behaviour itself, so the rule here only sizes the strip: as tall as the hidden title bar would have been.",
+      "position": "absolute",
+      "top": "0",
+      "left": "0",
+      "right": "0",
+      "height": "calc(var(--jx-control-h) + var(--jx-space-3))"
+    },
+    "& > [part=\"content\"]": {
+      "position": "relative",
+      "maxWidth": "40rem",
+      "width": "100%",
+      "padding": "0 var(--jx-space-6) var(--jx-space-7)",
+      "boxSizing": "border-box",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"icon\"]": {
+      "--jx-icon-size": "2rem",
+      "color": "var(--jx-warning)"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0",
+      "fontSize": "1.5rem",
+      "fontWeight": "400",
+      "color": "var(--jx-fg)"
+    },
+    "& [part=\"lead\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "lineHeight": "1.5",
+      "color": "var(--jx-fg)"
+    },
+    "& [part=\"detail\"]": {
+      "$description": "The launcher's own error, verbatim. Selectable, because the point of printing it is that someone pastes it into an issue, and wrapped, because a stack line is wider than any window it is likely to be read in.",
+      "margin": "0",
+      "padding": "var(--jx-space-3) var(--jx-space-4)",
+      "maxHeight": "40vh",
+      "overflow": "auto",
+      "background": "var(--jx-bg-panel)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "whiteSpace": "pre-wrap",
+      "wordBreak": "break-word",
+      "userSelect": "text"
+    },
+    "& [part=\"facts\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--jx-fg-dim)",
+      "wordBreak": "break-all",
+      "userSelect": "text"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "drag-strip",
+        "class": "electrobun-webkit-app-region-drag",
+        "aria-hidden": "true"
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "content"
+      },
+      "children": [
+        {
+          "tagName": "jx-icon",
+          "attributes": {
+            "part": "icon"
+          },
+          "$props": {
+            "name": "warning",
+            "weight": "fill"
+          }
+        },
+        {
+          "tagName": "h1",
+          "attributes": {
+            "part": "title"
+          },
+          "textContent": "${state.title}"
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "lead"
+          },
+          "textContent": "${state.lead}"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "detail-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasDetail"
+          },
+          "cases": {
+            "true": {
+              "tagName": "pre",
+              "attributes": {
+                "part": "detail"
+              },
+              "textContent": "${state.detail}"
+            }
+          }
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "facts"
+          },
+          "textContent": "${state.facts}"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "actions"
+          },
+          "children": [
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "reload"
+              },
+              "$props": {
+                "variant": "accent"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/reload"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Reload"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "copy"
+              },
+              "$props": {
+                "quiet": true
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/copy"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "jx-icon",
+                  "attributes": {
+                    "slot": "icon"
+                  },
+                  "$props": {
+                    "name": "copy"
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "textContent": "${state.copied ? 'Copied' : 'Copy details'}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

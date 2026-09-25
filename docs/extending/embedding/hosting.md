@@ -9,6 +9,7 @@ code:
   - packages/studio/src/hosting/layout.ts
   - packages/studio/src/hosting/document.ts
   - packages/studio/src/hosting/stage.ts
+  - packages/studio/src/platforms/default-platform.ts
 ---
 
 # Hosting the Studio assets
@@ -105,6 +106,8 @@ Your boot module registers the platform, exactly as [Writing a platform adapter]
 import { registerPlatform } from "@jxsuite/studio/platform";
 registerPlatform(createMyPlatform()); // first, before anything async
 ```
+
+Declaring `boot` also switches off Studio's fallback. A page with no `boot` gets the dev-server adapter when nothing registers. A page with one gets a full-window boot-failure screen naming the error, and Studio calls no backend, because a host that declared a platform and lost it is not a dev-server session. Catch your adapter's construction error rather than letting it escape the module, and record it on the signal `announceLauncher()` returns so the screen can name it.
 
 ## Two things hosts get wrong
 
