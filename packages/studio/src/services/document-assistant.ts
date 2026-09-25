@@ -43,6 +43,7 @@ import { validateDoc } from "./jx-validate";
 import { reloadFileInTab } from "../files/files";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
 import * as sessionStore from "./ai-session-store";
+import { backfillToolResults, stripToolResults } from "./tool-outcomes";
 
 /**
  * Project root scoping the session store, so conversations don't bleed across projects (the history
@@ -89,7 +90,10 @@ export function createDocumentAssistant() {
 
   const innerRegistry = createToolRegistry();
   // Ungated: a question is not a function of what happens to be open.
-  registerAskTool(innerRegistry);
+  /* A question suspends the turn on the author, for as long as they like, and the conversation is
+     otherwise saved only when a turn starts and ends. Saving here is what lets a reload find the
+     question to restore as open rather than losing the whole unfinished turn. */
+  registerAskTool(innerRegistry, { onPending: () => persistChat() });
   registerAiTools(innerRegistry, {
     getTab: () => activeTab.value,
     saveFile: async (relPath: string, content: string) => {
@@ -396,12 +400,18 @@ export function createDocumentAssistant() {
     const msgs = chatState.messages.filter(
       (m) => m.role !== "assistant" || m.content || (m.toolCalls?.length ?? 0) > 0,
     );
-    sessionStore.saveSession(projectRoot(), sessionId, msgs);
+    /* Without each call's `result`: the tool message that answers it is the outcome's one copy,
+       and a restore reads it back from there (services/tool-outcomes.ts). */
+    sessionStore.saveSession(projectRoot(), sessionId, stripToolResults(msgs));
   }
 
-  /** Push persisted messages into chat state, synthesizing ids where missing. */
+  /**
+   * Push persisted messages into chat state, synthesizing ids where missing, with each tool call's
+   * outcome backfilled from the tool message that answered it — so a restored chip shows how its
+   * call ended, and an answered question shows its answer.
+   */
   function pushRestoredMessages(msgs: sessionStore.PersistedMessage[]) {
-    for (const m of msgs) {
+    for (const m of backfillToolResults(msgs)) {
       chatState.messages.push({
         ...m,
         id: m.id || `restored_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,

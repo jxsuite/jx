@@ -10,7 +10,8 @@ It was produced by mapping the current code with five independent readers, draft
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Phase 0 (hardening and drift)      | Merged: jxsuite/jx#370, jxsuite/platform#69                                                                        |
 | J1.1 Doc-op foundation             | Merged: jxsuite/jx#371 (`applyDocOpsAsUser` deferred to J1.16, its first caller, under Studio's reachability rule) |
-| J1.2 Freeze v1 and the Worker gate | This pull request                                                                                                  |
+| J1.2 Freeze v1 and the Worker gate | Merged: jxsuite/jx#372                                                                                             |
+| J1.3 Persisted tool outcomes       | This pull request                                                                                                  |
 
 Update this table as slices land, and delete the document when Phase 1 is finished, as the standards adoption plan was.
 

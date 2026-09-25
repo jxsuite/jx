@@ -139,6 +139,32 @@ describe("ai-ask — the tool", () => {
     expect(result.summary).toContain("Neither — do C instead");
   });
 
+  /* The host saves the conversation here: a turn suspended on a person may wait as long as they
+     like, and a reload meanwhile must still find the question (specs/ai.md §3.4). */
+  test("the host hears when a question is put, before the turn waits on it", async () => {
+    const reg = createToolRegistry();
+    const seen: (string | null)[] = [];
+    registerAskTool(reg, { onPending: () => seen.push(pendingAsk()?.id ?? null) });
+    beginToolCall("call_hook");
+    const running = reg.execute("ask_user", { question: "Which?" });
+    expect(seen).toEqual(["call_hook"]);
+    answerAsk("This one");
+    await running;
+    expect(seen).toHaveLength(1);
+  });
+
+  test("a question the turn's Stop settles at once is not reported as put", async () => {
+    const reg = createToolRegistry();
+    let calls = 0;
+    registerAskTool(reg, { onPending: () => (calls += 1) });
+    const controller = new AbortController();
+    controller.abort();
+    beginTurnSignal(controller.signal);
+    const result = await reg.execute("ask_user", { question: "Which?" });
+    expect(result.success).toBe(false);
+    expect(calls).toBe(0);
+  });
+
   test("a skip is a SUCCESS — 'you decide' is a real answer", async () => {
     /* Reporting it as an error would have the model apologise for having asked a fair question,
        and would end the turn on the error path, which deletes the streaming message. */
