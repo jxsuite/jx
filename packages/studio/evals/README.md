@@ -28,14 +28,14 @@ OPENAI_API_KEY=sk-… bun run eval
 OPENAI_API_KEY=sk-… bun run eval --tasks add-nav-to-header --k 1
 ```
 
-`OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional, mirroring the server proxy config in [packages/server/src/ai-api.ts](../../server/src/ai-api.ts). The CLI exits non-zero if any task regresses vs the previous run (CI gate). Each run writes `runs/<stamp>/report.md` plus one `transcripts/<task>-<trial>.md` per trial. **Read these**; you can't trust a grader you haven't watched (Anthropic, _Demystifying evals_).
+`OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional, mirroring the server proxy config in [packages/server/src/ai-api.ts](../../server/src/ai-api.ts). Cloudflare Workers AI works too (`OPENAI_BASE_URL=https://api.cloudflare.com/client/v4/accounts/<id>/ai/v1`, an API token as the key, a tool-calling `@cf/…` model): the harness restores Bun's `fetch` over happy-dom's, so a provider that answers no CORS preflight is reachable. The CLI exits non-zero if any task regresses vs the previous run (CI gate). Each run writes `runs/<stamp>/report.md` plus one `transcripts/<task>-<trial>.md` per trial. **Read these**; you can't trust a grader you haven't watched (Anthropic, _Demystifying evals_).
 
 ## Grading
 
 - **Render critic (primary):** mounts the produced document with the real runtime under happy-dom and fails on thrown errors or `console.error`/`warn` (unresolved `$ref`/`$prototype`, broken bindings). Error strings are written as actionable "Sensor" messages so they can later feed the live loop.
 - **Schema grader (baseline):** the same `validateDoc()` the loop already self-corrects against.
 
-A trial passes when the render critic passes. `intent[]` on each task documents the human success criteria. It is used today when reading transcripts, and is the hook for a future LLM-as-judge grader.
+A trial passes when the render critic passes and the model answered at least once: a loop that failed before any reply leaves the starting document, which renders, so it would otherwise pass. A run in which no trial reached the model exits `2` and is not written. `intent[]` on each task documents the human success criteria. It is used today when reading transcripts, and is the hook for a future LLM-as-judge grader.
 
 ## The improvement loop (`/eval-improve` proposes, a human approves)
 

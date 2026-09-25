@@ -17,11 +17,16 @@ import { resolve } from "node:path";
 
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 
+// Before `real-llm.js`, which loads happy-dom: this captures Bun's fetch, not the window's.
+import { useNativeFetch } from "./native-fetch.js";
 import { loadFixture } from "./load-fixture.js";
 import { buildRealHarness, runPrompt } from "./real-llm.js";
 import { scoreRun } from "./score.js";
 import { textOf, anyStyle, anyNode } from "./doc-query.js";
 import { validateDoc } from "../../src/services/jx-validate";
+
+// The provider is reached as a server reaches it: happy-dom's fetch would apply CORS to it.
+useNativeFetch();
 
 /** Context handed to a test's `check`: the model's file writes plus a reader for them. */
 interface EvalCtx {
