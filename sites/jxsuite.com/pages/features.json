@@ -6,7 +6,7 @@
       "tagName": "meta",
       "attributes": {
         "name": "description",
-        "content": "Everything Jx Suite offers: file-based CMS, reactive framework, visual composer, static site generator, accounts, databases, and server functions."
+        "content": "Write the pages, design them, add the parts that move, and publish. Studio saves every one of them as plain JSON and Markdown you keep."
       }
     }
   ],
@@ -54,7 +54,7 @@
                 "margin": "0 0 1.5rem",
                 "color": "var(--color-text-primary)"
               },
-              "textContent": "One studio. A framework underneath."
+              "textContent": "Everything a website needs, in one window."
             },
             {
               "tagName": "p",
@@ -65,7 +65,7 @@
                 "margin": "0 auto",
                 "maxWidth": "640px"
               },
-              "textContent": "Jx Studio is how you build. Underneath it runs a file-based CMS, a reactive framework, a static generator, and an optional server tier for accounts and data, all plain files, zero lock-in."
+              "textContent": "Studio is where you write the pages, design them, add the parts that move, and publish. Underneath, Jx turns all of it into plain HTML you can host anywhere, and every file stays yours."
             }
           ]
         }
@@ -86,7 +86,10 @@
             "display": "grid",
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(3rem, 6vw, 5rem)",
-            "alignItems": "center"
+            "alignItems": "center",
+            "@--md": {
+              "gridTemplateColumns": "1fr"
+            }
           },
           "children": [
             {
@@ -117,7 +120,7 @@
                     "lineHeight": "1.7",
                     "margin": "0 0 2rem"
                   },
-                  "textContent": "Jx Studio is a desktop visual IDE. Create a project, design on a canvas, edit content inline, wire up logic, and commit to git, and everything saves to the same JSON and Markdown your compiler reads. No proprietary format. No export step."
+                  "textContent": "Jx Studio is a free desktop app. Create a project, design on a canvas, edit text where it sits on the page, decide what happens on a click, and publish, and all of it saves as ordinary JSON and Markdown in a folder you own. No proprietary format, and no export step."
                 },
                 {
                   "tagName": "div",
@@ -130,31 +133,31 @@
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Visual canvas with live component rendering"
+                        "props.text": "A live canvas that renders the real page"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Property inspector with full CSS editing"
+                        "props.text": "Full control of spacing, type, color, and layout"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Inline content editing: click any text, type"
+                        "props.text": "Click any text on the page and type"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Responsive breakpoint preview"
+                        "props.text": "Check every layout at phone and tablet widths"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Script editor for event handlers and logic"
+                        "props.text": "Clicks, forms, and data wired up in structured panels"
                       }
                     }
                   ]
@@ -198,7 +201,10 @@
             "display": "grid",
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(3rem, 6vw, 5rem)",
-            "alignItems": "center"
+            "alignItems": "center",
+            "@--md": {
+              "gridTemplateColumns": "1fr"
+            }
           },
           "children": [
             {
@@ -207,7 +213,7 @@
                 {
                   "tagName": "section-label",
                   "attributes": {
-                    "props.text": "The engine · Content"
+                    "props.text": "Content"
                   }
                 },
                 {
@@ -219,7 +225,7 @@
                     "lineHeight": "1.2",
                     "margin": "0 0 1rem"
                   },
-                  "textContent": "File-based content management."
+                  "textContent": "Your writing is files, not rows in a database."
                 },
                 {
                   "tagName": "p",
@@ -229,7 +235,7 @@
                     "lineHeight": "1.7",
                     "margin": "0 0 2rem"
                   },
-                  "textContent": "Your content lives as JSON documents and Markdown files in a git repository. No content database to manage, no admin panel to secure. Branch, review, merge: the same workflow you use for code."
+                  "textContent": "Your pages and posts live as Markdown and JSON in a folder, so there is no content database to run and no admin panel to secure. Copy them, back them up, or hand them to someone else, the same way you would with any other document."
                 },
                 {
                   "tagName": "div",
@@ -242,31 +248,31 @@
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Markdown with remark directives for rich content"
+                        "props.text": "Markdown with rich blocks, not a locked editor"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Content collections with frontmatter schemas"
+                        "props.text": "Collections with a schema, so every post has what it needs"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Dynamic routes from file system structure"
+                        "props.text": "Page addresses follow the folders you put things in"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Git history is your audit trail and rollback"
+                        "props.text": "Every change is recorded, and any version can come back"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "AI-native: Markdown is the canonical LLM format"
+                        "props.text": "Plain Markdown, which people and models both read"
                       }
                     }
                   ]
@@ -307,23 +313,46 @@
             "display": "grid",
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(3rem, 6vw, 5rem)",
-            "alignItems": "center"
+            "alignItems": "center",
+            "@--md": {
+              "gridTemplateColumns": "1fr"
+            }
           },
           "children": [
             {
               "tagName": "div",
               "style": {
-                "backgroundColor": "var(--color-bg-secondary)",
-                "border": "1px solid var(--color-border)",
-                "borderRadius": "var(--radius-lg)",
+                "display": "flex",
+                "flexDirection": "column",
+                "gap": "0.75rem",
                 "padding": "2rem",
-                "fontFamily": "var(--font-mono)",
-                "fontSize": "0.75rem",
-                "lineHeight": "1.8",
-                "color": "var(--color-text-secondary)",
-                "whiteSpace": "pre-wrap"
+                "borderRadius": "var(--radius-lg)",
+                "border": "1px solid var(--color-border)",
+                "backgroundColor": "var(--color-bg-secondary)"
               },
-              "textContent": "{\n  \"tagName\": \"like-button\",\n  \"state\": {\n    \"count\": 0,\n    \"liked\": false,\n    \"toggle\": {\n      \"$prototype\": \"Function\",\n      \"body\": \"state.liked = !state.liked; state.count += state.liked ? 1 : -1\"\n    }\n  },\n  \"children\": [\n    {\n      \"tagName\": \"button\",\n      \"onclick\": { \"$ref\": \"#/state/toggle\" },\n      \"textContent\": \"${state.liked ? '♥' : '♡'} ${state.count}\"\n    }\n  ]\n}"
+              "children": [
+                {
+                  "tagName": "span",
+                  "style": {
+                    "fontFamily": "var(--font-mono)",
+                    "fontSize": "0.6875rem",
+                    "letterSpacing": "0.1em",
+                    "textTransform": "uppercase",
+                    "color": "var(--color-accent)"
+                  },
+                  "textContent": "For example"
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "fontSize": "0.9375rem",
+                    "lineHeight": "1.7",
+                    "color": "var(--color-text-secondary)",
+                    "margin": "0"
+                  },
+                  "textContent": "A price toggle that switches monthly and yearly. A gallery you can page through. A form that answers back without reloading the page. A list that fills itself from a table. Each one is sent to the browser where you put it, and the rest of the page stays plain HTML."
+                }
+              ]
             },
             {
               "tagName": "div",
@@ -331,7 +360,7 @@
                 {
                   "tagName": "section-label",
                   "attributes": {
-                    "props.text": "The engine · Reactivity"
+                    "props.text": "Interactivity"
                   }
                 },
                 {
@@ -343,7 +372,7 @@
                     "lineHeight": "1.2",
                     "margin": "0 0 1rem"
                   },
-                  "textContent": "Reactive without the runtime tax."
+                  "textContent": "Pages that do things, not just say things."
                 },
                 {
                   "tagName": "p",
@@ -353,7 +382,7 @@
                     "lineHeight": "1.7",
                     "margin": "0 0 2rem"
                   },
-                  "textContent": "Declare state, bind it to the DOM with template strings, and let the compiler figure out the rest. Static by default, with reactive islands hydrating only where you need interactivity."
+                  "textContent": "Add a toggle, a filter, a form, or a list that fills itself from real data. Jx sends the browser just the pieces that have to move, so the rest of the page arrives as finished HTML with nothing to run."
                 },
                 {
                   "tagName": "div",
@@ -366,31 +395,31 @@
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Fine-grained reactivity, powered by @vue/reactivity"
+                        "props.text": "Powered by @vue/reactivity, the published package"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Compiles to standard Web Components"
+                        "props.text": "Built on the browser's own custom elements"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Template literal bindings: no JSX, no DSL"
+                        "props.text": "No framework syntax to learn before you start"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Zero JavaScript ships unless you add interactivity"
+                        "props.text": "Static pages ship no JavaScript at all"
                       }
                     },
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Built-in prototypes: Request, LocalStorage, FormData"
+                        "props.text": "Fetch data, store choices, and handle forms with built-in pieces"
                       }
                     }
                   ]
@@ -416,7 +445,10 @@
             "display": "grid",
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(3rem, 6vw, 5rem)",
-            "alignItems": "center"
+            "alignItems": "center",
+            "@--md": {
+              "gridTemplateColumns": "1fr"
+            }
           },
           "children": [
             {
@@ -425,7 +457,7 @@
                 {
                   "tagName": "section-label",
                   "attributes": {
-                    "props.text": "The engine · Accounts & data"
+                    "props.text": "Accounts and data"
                   }
                 },
                 {
@@ -447,7 +479,7 @@
                     "lineHeight": "1.7",
                     "margin": "0 0 2rem"
                   },
-                  "textContent": "Some sites are more than pages. The auth extension serves sessions and sign-in at /_jx/auth; the connector extension serves your tables at /_jx/data, where the roles you declare in project.json become per-table permission rules. Declare both in project.json, pick a server adapter, and the build emits the worker that runs them. Pages stay prerendered either way: every visitor is served the same logged-out HTML, and the logged-in view renders in the browser once the session resolves."
+                  "textContent": "Some sites are more than pages. Turn on the accounts and database extensions and the build puts one small server program beside your site, so visitors can sign in and your pages can read and write real data. Your keys and queries stay on the server."
                 },
                 {
                   "tagName": "div",
@@ -460,7 +492,7 @@
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Email + password and social sign-in, via Better Auth"
+                        "props.text": "Email and password or social sign-in, via Better Auth"
                       }
                     },
                     {
@@ -494,17 +526,37 @@
             {
               "tagName": "div",
               "style": {
-                "backgroundColor": "var(--color-bg-secondary)",
-                "border": "1px solid var(--color-border)",
-                "borderRadius": "var(--radius-lg)",
+                "display": "flex",
+                "flexDirection": "column",
+                "gap": "0.75rem",
                 "padding": "2rem",
-                "fontFamily": "var(--font-mono)",
-                "fontSize": "0.75rem",
-                "lineHeight": "1.8",
-                "color": "var(--color-text-secondary)",
-                "whiteSpace": "pre-wrap"
+                "borderRadius": "var(--radius-lg)",
+                "border": "1px solid var(--color-border)",
+                "backgroundColor": "var(--color-bg-secondary)"
               },
-              "textContent": "// project.json\n{\n  \"extensions\": [\"@jxsuite/connector\", \"@jxsuite/auth\"],\n  \"connections\": {\n    \"main\": { \"provider\": \"d1\", \"binding\": \"DB\" }\n  },\n  \"auth\": {\n    \"connection\": \"main\",\n    \"providers\": { \"github\": {} },\n    \"roles\": [\"admin\"]\n  },\n  \"data\": {\n    \"comments\": {\n      \"connection\": \"main\",\n      \"ownerField\": \"author_id\",\n      \"permissions\": {\n        \"read\": \"public\",\n        \"insert\": \"authenticated\",\n        \"update\": \"owner\"\n      },\n      \"schema\": {\n        \"type\": \"object\",\n        \"properties\": { \"message\": { \"type\": \"string\" } }\n      }\n    }\n  },\n  \"build\": { \"adapter\": \"cloudflare-workers\" }\n}"
+              "children": [
+                {
+                  "tagName": "span",
+                  "style": {
+                    "fontFamily": "var(--font-mono)",
+                    "fontSize": "0.6875rem",
+                    "letterSpacing": "0.1em",
+                    "textTransform": "uppercase",
+                    "color": "var(--color-accent)"
+                  },
+                  "textContent": "For example"
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "fontSize": "0.9375rem",
+                    "lineHeight": "1.7",
+                    "color": "var(--color-text-secondary)",
+                    "margin": "0"
+                  },
+                  "textContent": "A members area behind a sign-in. A bookings table only staff can edit. A comment thread where people can change their own posts and nobody else's. You describe the tables and the rules once, and the build carries them into the server program it writes."
+                }
+              ]
             }
           ]
         }
@@ -525,23 +577,46 @@
             "display": "grid",
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(3rem, 6vw, 5rem)",
-            "alignItems": "center"
+            "alignItems": "center",
+            "@--md": {
+              "gridTemplateColumns": "1fr"
+            }
           },
           "children": [
             {
               "tagName": "div",
               "style": {
-                "backgroundColor": "var(--color-bg-secondary)",
-                "border": "1px solid var(--color-border)",
-                "borderRadius": "var(--radius-lg)",
+                "display": "flex",
+                "flexDirection": "column",
+                "gap": "0.75rem",
                 "padding": "2rem",
-                "fontFamily": "var(--font-mono)",
-                "fontSize": "0.75rem",
-                "lineHeight": "1.8",
-                "color": "var(--color-text-secondary)",
-                "whiteSpace": "pre-wrap"
+                "borderRadius": "var(--radius-lg)",
+                "border": "1px solid var(--color-border)",
+                "backgroundColor": "var(--color-bg-secondary)"
               },
-              "textContent": "$ jx build\n\n✓ Compiled pages\n✓ Optimized images (webp, avif)\n✓ Generated sitemap.xml\n✓ Output: ./dist\n\n# Static host? Ship ./dist.\n# Accounts or data? Set an\n# adapter and a worker ships\n# alongside it."
+              "children": [
+                {
+                  "tagName": "span",
+                  "style": {
+                    "fontFamily": "var(--font-mono)",
+                    "fontSize": "0.6875rem",
+                    "letterSpacing": "0.1em",
+                    "textTransform": "uppercase",
+                    "color": "var(--color-accent)"
+                  },
+                  "textContent": "What publishing does"
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "fontSize": "0.9375rem",
+                    "lineHeight": "1.7",
+                    "color": "var(--color-text-secondary)",
+                    "margin": "0"
+                  },
+                  "textContent": "One command turns the project into a folder: every page as finished HTML, images in modern formats at the sizes each screen needs, a sitemap, and the redirects you set. Upload that folder anywhere, or let your host make it for you every time you publish."
+                }
+              ]
             },
             {
               "tagName": "div",
@@ -549,7 +624,7 @@
                 {
                   "tagName": "section-label",
                   "attributes": {
-                    "props.text": "The engine · Output"
+                    "props.text": "Publishing"
                   }
                 },
                 {
@@ -561,7 +636,7 @@
                     "lineHeight": "1.2",
                     "margin": "0 0 1rem"
                   },
-                  "textContent": "Compiles to HTML. Deploys anywhere."
+                  "textContent": "One folder, ready to publish."
                 },
                 {
                   "tagName": "p",
@@ -571,7 +646,7 @@
                     "lineHeight": "1.7",
                     "margin": "0 0 2rem"
                   },
-                  "textContent": "Every page is prerendered at build time and served from a CDN, so static pages are HTML and CSS with no JavaScript at all. Fast everywhere. Costs pennies. Online forever. Add accounts or a database, pick a server adapter, and the same command also writes a self-contained Hono worker for Cloudflare, Node, or Bun."
+                  "textContent": "Every page is built ahead of time and served from a CDN, so static pages are HTML and CSS with nothing to run. Add accounts or a database, pick a server adapter, and the same command also writes a self-contained worker for Cloudflare, Node, or Bun."
                 },
                 {
                   "tagName": "div",
@@ -596,7 +671,7 @@
                     {
                       "tagName": "check-item",
                       "attributes": {
-                        "props.text": "Static HTML with zero JS by default"
+                        "props.text": "Static pages with no JavaScript by default"
                       }
                     },
                     {
@@ -817,7 +892,7 @@
                 "fontSize": "1.0625rem",
                 "lineHeight": "1.7"
               },
-              "textContent": "Start your first project in under a minute. No sign-up. No credit card. Just code."
+              "textContent": "Start your first project in under a minute. Nothing to sign up for, nothing to cancel, and no credit card."
             },
             {
               "tagName": "div",
@@ -840,7 +915,7 @@
                   "tagName": "cta-button",
                   "attributes": {
                     "props.href": "/compare",
-                    "props.label": "See the Comparison",
+                    "props.label": "See how it compares",
                     "props.variant": "secondary"
                   }
                 }
