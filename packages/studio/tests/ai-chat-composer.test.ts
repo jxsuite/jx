@@ -167,6 +167,20 @@ describe("the draft", () => {
     expect(plain.view().sendLabel).toBe("Send");
     expect(plain.view().placeholder).toContain("Ask the assistant");
   });
+
+  /* A question is put by a turn that is still running, so the composer sees a turn in flight AND a
+     question waiting. Answer outranks Stop: the field is the question's answer, and a send from it
+     goes to the host, which routes it to the question rather than opening a second turn. */
+  test("during a turn a waiting question keeps Answer, and the answer is sent", () => {
+    const c = makeComposer({ isAwaiting: () => true });
+    c.setStreaming(true);
+    expect(c.view().sendState).toBe("send");
+    expect(c.view().sendLabel).toBe("Answer");
+
+    c.composer.edit("Blog");
+    c.composer.send();
+    expect(c.onSend).toHaveBeenCalledWith("Blog");
+  });
 });
 
 describe("context attach", () => {

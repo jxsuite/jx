@@ -36,6 +36,8 @@ void mock.module("../src/services/document-assistant", () => ({
     activeSessionId: () => null,
     chatState: assistantChatState,
     deleteSession: () => {},
+    isTurnActive: () => assistantChatState.status === "streaming",
+    whenTurnEnds: () => Promise.resolve(),
     listSessions: () => [],
     newChat: () => {},
     openSession: () => {},

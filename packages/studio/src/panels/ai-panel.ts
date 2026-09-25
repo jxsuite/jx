@@ -197,6 +197,8 @@ function watchAssistant() {
       }
       void cs.status;
       void cs.error;
+      // The composer's Send/Stop follows the turn, which outlasts the stream's status.
+      void assistant.isTurnActive();
       // A usage frame moves the token count and nothing else this effect reads.
       void cs.tokenCount;
       // The registry is composed AFTER the bootstrap mounts this, and it is a reactive holder —
@@ -257,12 +259,18 @@ export function mountAiPanel() {
  * them is a 400. It travels as the tool result instead, and the question's own card renders it.
  */
 async function handleAssistantSend(text: string) {
-  if (!text.trim() || assistant.chatState.status === "streaming") {
+  if (!text.trim()) {
     return;
   }
+  /* Answering comes first: a question is put by a turn that is still running, so a send while one
+     waits is its answer, never a second turn. */
   if (answerAsk(text.trim())) {
     surface?.pin();
     renderAiPanel();
+    return;
+  }
+  // One turn per window: a send during a turn, tools included, starts nothing.
+  if (isAssistantStreaming()) {
     return;
   }
   // A send always lands in the chat view, pinned to the newest message.
@@ -347,8 +355,19 @@ export function handleRestore(messageId: string): void {
  * project brief). Delegates to the same send path as the composer. Safe to call right after the
  * Assistant tab renders — the reactive watcher projects chat-state into the panel whenever it
  * mounts.
+ *
+ * **A seed waits for the window's turn, and is never refused.** One window runs one turn, and a
+ * turn outlives the call that ended it: New Chat stops the running one, but its loop unwinds
+ * afterwards, and a project switch does not stop it at all. A seed sent in that window was refused
+ * and lost without a word, taking the New Project hand-off with it. Waiting also keeps a seed from
+ * being taken as the answer to a question the old turn still had open.
  */
 export async function seedAssistantPrompt(text: string): Promise<void> {
+  /* One wait is enough: the turn's end settles in its loop's `finally`, and this resumes on the next
+     microtask, before any event could start another turn. */
+  if (assistant.isTurnActive()) {
+    await assistant.whenTurnEnds();
+  }
   await handleAssistantSend(text);
 }
 
@@ -494,15 +513,20 @@ export function isAssistantWaiting(): boolean {
  * Whether a turn is in flight — the probe `commands/live-context.ts` declares as `aiStreaming` and
  * projects onto `ctx.ai.streaming`.
  *
+ * The whole turn, not the token stream. The chat's `status` reads idle while a round's tools run,
+ * while a question waits and through a minutes-long import, so reading it here left Stop refused
+ * and Send offered in the middle of a turn, and a second send could start a second turn beside the
+ * first. The assistant's own turn fact is true from an accepted send until its loop ends.
+ *
  * That source was declared optional with the note "there is nothing to read yet; the caller passes
  * a probe when one exists", and no caller ever did — so `ctx.ai.streaming` read `false` forever and
- * `assistant.stop` would have been permanently refused. Reading the reactive chat state here is
- * what makes the fact LIVE: `createLiveContext` builds a fresh record per predicate evaluation, so
- * a surface projecting from an effect tracks this status and re-projects when the stream starts or
- * ends.
+ * `assistant.stop` would have been permanently refused. Reading the assistant's reactive turn flag
+ * here is what makes the fact LIVE: `createLiveContext` builds a fresh record per predicate
+ * evaluation, so a surface projecting from an effect tracks the flag and re-projects when a turn
+ * starts or ends.
  */
 export function isAssistantStreaming(): boolean {
-  return assistant.chatState.status === "streaming";
+  return assistant.isTurnActive();
 }
 
 function stop() {
@@ -743,9 +767,11 @@ export function assistantCommands(): AnyCommand[] {
       menus: ["palette"],
       group: "2_turn",
       requires: "a turn in flight",
-      /* The union, not just `streaming`. A turn suspended on `ask_user` moves no tokens, so
-         `ctx.ai.streaming` reads false — and that is precisely the turn a reader who does not want
-         to answer needs to end. */
+      /* `streaming` covers the whole turn, a waiting question included: a turn suspended on
+         `ask_user` moves no tokens, and it is precisely the turn a reader who does not want to
+         answer needs to end. A question is only ever put inside a turn, so `waiting` adds nothing
+         here; it stays in the union so a question could still be stopped if one were ever raised
+         without a turn. */
       enablement: (ctx: CommandContext) => ctx.ai.streaming || ctx.ai.waiting,
       run: stop,
     },
