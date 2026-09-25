@@ -9,6 +9,7 @@
  * See docs/extending/contributing/ai-evals.md.
  */
 
+import { toRaw } from "../../src/reactivity";
 import { undo, redo } from "../../src/tabs/transact";
 import { validateDoc } from "../../src/services/jx-validate";
 import type { Tab } from "../../src/tabs/tab";
@@ -186,9 +187,14 @@ export async function scoreRun({
   };
 }
 
-/** Deep-clone the live doc out of the reactive proxy for validation/comparison. */
-function rawDoc(tab: Tab) {
-  return structuredClone(tab.doc.document);
+/**
+ * Deep-clone the live doc out of the reactive proxy for validation/comparison.
+ *
+ * Unwrapped first: `structuredClone` refuses a Proxy (`DataCloneError`), so cloning the reactive
+ * document itself threw on the first scored run, and the headless eval could not score anything.
+ */
+export function rawDoc(tab: Tab) {
+  return structuredClone(toRaw(tab.doc.document));
 }
 
 /**

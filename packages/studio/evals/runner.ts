@@ -103,14 +103,19 @@ export async function runTrial(
       0,
     );
     const rounds = transcript.filter((m) => m.role === "assistant").length;
+    const loopError = chatState.status === "error" ? chatState.error : null;
 
     return {
-      pass: render.pass, // Render critic is the PRIMARY signal (per scope decision).
+      /* Render critic is the PRIMARY signal (per scope decision), but only for a trial that reached
+         the model. One whose loop failed before the model answered at all (a bad key, an endpoint
+         that is down or refuses the request) grades the task's untouched starting document, which
+         renders: every task passed without a single call reaching the provider. */
+      pass: render.pass && !(rounds === 0 && loopError !== null),
       render,
       schema,
       rounds,
       toolCalls,
-      loopError: chatState.status === "error" ? chatState.error : null,
+      loopError,
       finalDoc,
       transcript,
     };
