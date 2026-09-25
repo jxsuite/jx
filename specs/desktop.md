@@ -135,25 +135,39 @@ export function hasPlatform() {
 
 Each deployment target either pre-registers its adapter before Studio initializes, or hands Studio a signal to build one itself. The desktop init bundle pre-registers the RPC-backed adapter on `__jxPlatform`.
 
-**Where the init bundle is loaded from is a declared slot, not a string replace.** `studioShellHtml({ boot })` (studio.md §11.2) emits the module tags ahead of the studio entry. Both hosts used to obtain this by an exact-string `replace()` on the shipped `index.html`'s script tag; only the cloud's checked that the replace had matched, so a whitespace change upstream would have produced a packaged desktop app with no platform registered at all — which then self-registers the dev-server adapter and fetches `/__studio/*` against a `views://` origin. The ordering constraint below is unchanged and is why `boot` is a list rather than a single hook. The cloud shell (the platform repo's `edit-init`) instead publishes a `window.__jxCloud` signal — the bound project, or `null` for the project-less hub — and lets the studio entry construct the adapter, so the cloud adapter (and the collab WebSocket client's `yjs` instance) lives **inside** the studio bundle rather than the shell; a second bundled `yjs` in the shell would break collab's cross-module `instanceof` checks. When nothing pre-registered, the studio entry resolves the default adapter — cloud when `__jxCloud` was signalled, else the dev server:
+**Where the init bundle is loaded from is a declared slot, not a string replace.** `studioShellHtml({ boot })` (studio.md §11.2) emits the module tags ahead of the studio entry. Both hosts used to obtain this by an exact-string `replace()` on the shipped `index.html`'s script tag; only the cloud's checked that the replace had matched, so a whitespace change upstream would have produced a packaged desktop app with no platform registered at all — which then self-registers the dev-server adapter and fetches `/__studio/*` against a `views://` origin. The ordering constraint below is unchanged and is why `boot` is a list rather than a single hook. The cloud shell (the platform repo's `edit-init`) instead publishes a `window.__jxCloud` signal — the bound project, or `null` for the project-less hub — and lets the studio entry construct the adapter, so the cloud adapter (and the collab WebSocket client's `yjs` instance) lives **inside** the studio bundle rather than the shell; a second bundled `yjs` in the shell would break collab's cross-module `instanceof` checks. When nothing pre-registered, the studio entry resolves the default adapter: cloud when `__jxCloud` was signalled, the dev server only when the document declared **no** boot module and no launcher announced itself, and otherwise **none** (below):
 
 ```javascript
-// Desktop (init bundle, loaded before studio.js) — pre-registers its adapter
-import { registerPlatform } from "@jxsuite/studio/platform";
-registerPlatform(createDesktopPlatform());
+// Desktop (init bundle, loaded before studio.js) — announces itself FIRST, then pre-registers
+import { bootLauncher } from "./boot"; // first import: publishes globalThis.__jxLauncher
+import { createDesktopPlatform } from "./platform";
+await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "electrobun" });
 
 // Cloud shell (edit-init, loaded before studio.js) — publishes a signal, not an adapter
 globalThis.__jxCloud = { project }; // project: CloudProject | null
 
 // Studio entry (studio.ts) — build the default adapter when none was pre-registered
 if (!hasPlatform()) {
-  registerPlatform(resolveDefaultPlatform()); // cloud when __jxCloud is set, else dev server
+  try {
+    registerPlatform(resolveDefaultPlatform()); // cloud, dev server, or PlatformUnavailableError
+  } catch (error) {
+    if (error instanceof PlatformUnavailableError) await mountBootFailureTree(error.refusal);
+    throw error; // §3.4: nothing below runs
+  }
 }
 ```
 
+**A launcher that declared itself never falls back to the dev server.** The boot slot closed one way to reach the dev-server adapter inside a launcher; a boot module that throws is the other, and it shipped. Desktop 5.0.0 through 5.1.3 built `init.js` with `bun build` through `packages/desktop/tsconfig.json`, whose `paths` send `electrobun/view` into the `vendor/electrobun` submodule, and no release lane checked that submodule out. Bun resolved `node_modules/electrobun` instead, whose every export is a module that throws on import, so `init.js` threw before its body ran, and `studio.js` (a separate module script) found nothing registered and built the dev-server adapter against `views://`. Every window was an editor whose backend calls all failed: the New Project gallery offered only Start from scratch (the starters fetch is non-fatal), **Create Project** reported "Failed to fetch" verbatim, and **Browse…** opened Chromium's picker (its button says "Select"; the native dialog says "Open") and swallowed the failed lookup, so the Location never changed. Three rules now hold:
+
+- **The build refuses the bundle.** `packages/desktop/scripts/pre-build.ts` runs `check-electrobun-vendor.ts --init` before it bundles, and it and `verify-bundle.ts` reject an `init.js` that resolved `node_modules/electrobun`, lacks the inlined `Electroview`, or lacks the launcher signal. Every bundle lane also runs `--init` explicitly.
+- **A launcher announces itself before anything can throw.** `packages/desktop/src/boot.ts` is the FIRST import of both launcher shims, and its only runtime dependency is `@jxsuite/studio/platform`, so its body evaluates ahead of every other module the bundler inlines. It publishes `globalThis.__jxLauncher` (a `LauncherSignal`), records the first page `error` event on it (an import-time throw raises one), and `bootLauncher()` records the adapter factory's own throw.
+- **The entry refuses rather than guesses.** `resolveDefaultPlatform()` throws `PlatformUnavailableError` when a launcher announced itself (this beats `__jxCloud`), when the document carries the `<meta name="jx-boot" content="launcher">` marker that `studioShellHtml` writes for a non-empty `boot` and no cloud signal arrived, or when the origin is `views:` or `file:`, which no dev server can serve. Studio then renders the §3.4 boot-failure state. A document with no boot module (the dev-server session, an embedder serving the HTTP protocol) keeps the fallback.
+
+Nothing yet boots a packaged window in CI (the `bundle-desktop-*.yml` lanes are release-only), so these rules are held by the build refusal, the resolver's unit tests, each shim's tests, and an end-to-end test that boots the studio entry under an announced launcher and asserts the failure state, no registered adapter, and no backend call.
+
 ### 3.4 Studio Startup Sequence
 
-1. Platform adapter calls `registerPlatform(impl)`
+1. Platform adapter calls `registerPlatform(impl)`. If nothing registered and §3.3 refuses the default, Studio stops here and shows the **boot-failure state** in place of the window: a full-window alert saying Studio couldn't connect to its backend, the error the launcher recorded, the Studio bundle version and the launcher's name, with **Reload** and **Copy details**. Nothing is probed, no welcome state renders, and no backend route is called, so no dialog is reachable that cannot do its job.
 2. Studio calls `loadProject()`:
    - If a project was previously open and the handle is still valid, reopen it
    - Otherwise, show the welcome state ("Open a project to get started")
@@ -353,6 +367,7 @@ User fills the Parameters step (name, destination, slug)
         │      ├── NixOS chromium desktop: native XDG desktop portal
         │      ├── Dev server: showDirectoryPicker(), path recovered via a marker file (§8.2.1)
         │      └── A browser without the File System Access API: omitted — the path is typed
+        │    null = the user cancelled → Location unchanged; a rejection → its message under Location
         │
         └─── createDestination: "repo"
              Owner picker over getAccountStatus().installations + listRepos() owners
@@ -371,6 +386,8 @@ Returns { root, config } and the modal opens it
 ```
 
 A live preview under the fields shows the resolved destination (`/home/you/Sites/my-site`, or `acme/my-site`) before anything is written.
+
+**Browse… is never a silent no-op.** `pickDirectory()` resolves `null` only when the user cancels; every other outcome that yields no path rejects with a sentence a person can act on, and the modal shows it in the destination fields' error slot, the same place a bad typed Location is reported, where typing a path clears it. The desktop adapter rejects when the RPC does (a timeout, a decode failure) or when the native dialog is unavailable in the build; the dev-server adapter rejects as §8.2.1 describes. `browseLocation` catches the rejection itself because the button is a fire-and-forget click: it used to have no `catch`, so a failure was an unhandled rejection with nothing on screen, and a picker that swallowed its failures into `null` looked exactly like a cancel.
 
 **Every created project is a git repository.** A scaffold that is not under version control has no undo for its first destructive action, and nothing in the app says so. On the create path — every source, including Import and Agent — Studio therefore binds the backend to the new root (`activate`), reads `gitStatus`, and runs `gitInit` when the tree is not already a repository. It is skipped entirely on `createDestination: "repo"` platforms, where the project _is_ a repository by construction, and a git failure is reported without failing the create: the project that was written stays written.
 
@@ -585,6 +602,8 @@ export function createDesktopPlatform() {
 }
 ```
 
+**Construction needs the preload, and the SDK has to be in the bundle.** `createDesktopPlatform()` constructs `Electroview`, which writes its handlers onto `window.__electrobun`, the global the Electrobun preload defines (on macOS CEF the native layer splices that preload in after the literal `<head>` of the main-frame document, so `studioShellHtml` keeps one). The SDK itself is compiled into `init.js` from the vendored submodule, not from `node_modules` (§3.3). Either failure is recorded on the launcher signal and ends in the §3.4 boot-failure state rather than a window running the wrong adapter. `pickDirectory` unwraps the RPC's `{ path: string | null }`: `null` is a cancel, and a rejected request propagates to the modal (§4.5).
+
 ### 7.3 Bun-Side Handlers
 
 The Bun process implements the actual operations:
@@ -665,7 +684,7 @@ jx-studio-app/
 │   └── views/
 │       └── studio/
 │           ├── index.html        # Studio HTML shell
-│           └── init.js           # registerPlatform(createDesktopPlatform())
+│           └── init.js           # bootLauncher(): announce, then registerPlatform(createDesktopPlatform()) or record why not (§3.3)
 ├── package.json
 ├── .hutch/devkit/               # Generated: the pinned release's SDK, where a BUILD resolves electrobun/*
 └── node_modules/
@@ -782,7 +801,7 @@ For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and 
 
 Choosing where a **new** project goes (§4.5) cannot use any of the three steps above: the folder is empty by definition, so there is no `project.json` to read and nothing for `/__studio/sites` to match. The handle still carries no path.
 
-**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — electrobun uses `Utils.openFileDialog`, and the NixOS chromium build uses the XDG desktop portal. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all.
+**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — electrobun uses `Utils.openFileDialog`, and the NixOS chromium build uses the XDG desktop portal. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all. A launcher window whose own adapter failed no longer falls back to this path (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
 
 There, the handle is made to identify itself. Using the `readwrite` grant the picker just issued, `pickDirectoryPath` (`@jxsuite/studio/directory-picker`) tags the folder with a hidden `LOCATION_ID_FILE` — `.jx-loc-id`, defined in `@jxsuite/protocol` because the writer and the reader must agree on it — whose **contents** are a freshly generated 128-bit id, and asks the backend which directory carries that id:
 
@@ -798,7 +817,7 @@ Browse… (user gesture)
 
 **Identity is in the contents, not the filename.** A candidate whose `.jx-loc-id` does not hold this exact id is skipped, so neither a second folder sharing the basename nor a tag left behind by a crashed session can redirect a create — a fixed filename plus a content match is exact where a path shape is only probable. `name` still narrows the scan the way `/__studio/find-project` does. The backend deletes the winning tag as soon as it has served its purpose, and the client removes it too, so nothing is left in the user's new project folder on any path.
 
-Every failure — no API, cancel, a read-only grant, a folder the backend cannot place — resolves `null`, which the modal treats identically to "no folder chosen" and leaves the Location field untouched. On a browser without the File System Access API the dev-server adapter omits `pickDirectory` entirely, so the button is hidden rather than dead, and the Location field is typed.
+A cancel (`AbortError`) resolves `null`, and the modal leaves the Location field untouched. **Every other failure rejects** with a displayable sentence, which the modal shows under Location (§4.5): no folder chooser, a chooser that would not open (a lost user gesture), a read-only grant or an unwritable folder (the tag write fails, and a tag that was created is removed), a lookup that fails, and a folder the backend cannot place (`locate` answers `null`), whose message suggests typing the full path. They all used to resolve `null`, which made each of them look like a cancel: the user picked a folder and nothing happened. On a browser without the File System Access API the dev-server adapter omits `pickDirectory` entirely, so the button is hidden rather than dead, and the Location field is typed.
 
 ---
 
@@ -1008,6 +1027,7 @@ Package Studio as an ElectroBun app:
 - [x] Wire `Utils.openFileDialog()` for `openProject()` with `project.json` filter
 - [ ] Port code services (format, lint, minify) to run in Bun process directly (currently stubbed)
 - [x] Verify full editing flow: open project, browse files, edit component, save
+- [ ] Boot a packaged window in CI on each OS and assert the desktop adapter registered (the `bundle-desktop-*.yml` lanes are release-only, and nothing observes `init.js` registering; §3.3)
 
 ### Phase 2b: NixOS Chromium App-Mode ✅
 
