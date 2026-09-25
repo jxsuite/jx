@@ -50,7 +50,7 @@ Studio creates the file in `content/posts/` with every schema field pre-filled w
 
 ## 4. Fill it in
 
-The post opens in **Edit** view with a **Document Header** card at the top of the page itself, holding the same fields your schema defined:
+The post opens in **Edit** view with a **Document Header** card docked at the top of the canvas, holding the same fields your schema defined:
 
 1. Type `Hello World` into **title**.
 2. Pick today in the **date** field.

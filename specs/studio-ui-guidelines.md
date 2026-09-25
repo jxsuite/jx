@@ -281,12 +281,13 @@ For `jx-select` and menu-based inputs, use `@change` directly — no debounce ne
 
 ### 4.6 A Row Wraps; It Never Overflows
 
-Every form in the Inspector renders at a width the author chooses, and in two docks of very different sizes. A field that leaves the panel is not a cosmetic problem: the control is unreachable, and the author's only recourse is to widen a dock they may not have room to widen.
+Every form in the Inspector, and every row in any dock, renders at a width the author chooses: the docks differ widely in size, and the Navigator can be dragged down to 160px. A field that leaves the panel is not a cosmetic problem: the control is unreachable, and the author's only recourse is to widen a dock they may not have room to widen.
 
 - **A row is a wrapping flex row**, and the wrap threshold is a `flex-basis`, never a fixed width. The same markup is then one line where there is room and a stack where there is not, without a second template or a media query.
 - **`min-width: 0` on every flex child in the chain.** A flex item refuses to shrink below its min-content by default, and a field with a `size` and a placeholder has a min-content width of its own before it starts negotiating — one operand row of a mode picker, a type picker and a field therefore demands ~360px in a 280px dock and simply overflows. This one declaration is the difference. It mattered most when a Spectrum field was 192px wide by token (`--spectrum-field-width`) whatever the dock; the kit's fields size to their container, so the rule is now a guard rather than a daily fight.
+- **A row's leading icon belongs to its text.** When a row opens with an icon or icon button that labels the text beside it (Source Control's Refresh beside the sync status, the branch icon beside the branch name), put the two in one group with `min-width: 0` and let the row wrap between that group and the control that answers it. Wrapping then moves a whole control to a line of its own; it never leaves the icon alone on a line above its text. When the trailing control should fill a line once it wraps, give the group a large grow ratio against it (`flex: 999 1 auto` on the group, `flex: 1 1 auto` on the control) instead of a fixed or percentage width.
 - **A `flex` shorthand belongs in a row.** `.style-row` (§4.1) is `flex-direction: column`, so `flex: 1` on one of its children is permission to grow TALL, not wide — which is how a text field came to render 128px high beside a picker in the Logic tab. Widen a child of a `.style-row` with `width: 100%`; spend a basis only inside a container that is genuinely a row.
-- **Long values ellipsize or wrap.** A `$ref` path, a formula and a component name are all author-supplied and unbounded; none of them may set the width of the form that contains them.
+- **Long values ellipsize or wrap.** A `$ref` path, a formula and a component name are all author-supplied and unbounded; none of them may set the width of the form that contains them. A labelled button's nowrap label is a floor too: a surface whose buttons can meet a narrow dock lets their labels wrap, and a tab strip that must not scroll gives its tabs `min-width: 0` so their labels ellipsize.
 
 The rule is checkable without a browser — assert the structure that produces the layout, not computed pixels, which happy-dom does not lay out — but the judgement is not. A change here is looked at in a real browser at the narrowest dock the app allows and at a wide one.
 
@@ -535,6 +536,18 @@ A persistent modal is therefore a surface document, and the contract it once got
 
 - Auto-hides when no selection
 
+### 8.8 Text Selection
+
+**Studio's chrome is not text.** `styles/tokens.json` sets `user-select: none` once, on the root (emitted on `:root` in the generated `styles/tokens.css`), and every surface inherits it, so a drag across the window highlights no label, button or heading. The policy is the app's rather than the kit's: the kit theme (`packages/ui/project.json`) is installed by every page that uses the kit, and a site's own text must stay selectable.
+
+**A modal dialog restates it.** Chromium's UA sheet gives a modal dialog (`:modal`) `user-select: text`, and Blink inherits that into every node inside it. Every Studio modal is a `jx-dialog` opened with `showModal()` (§8.7), so `styles/tokens.json` also carries `:root dialog { user-select: none }`; an author rule beats the UA one at any specificity.
+
+**A surface opts back in only on a named content part**, from its own surface document: `userSelect: "text"`, or `"all"` for a token that is only useful whole. The set is the dialog message `[part="message"]` and its island form `[part="island"]` (`surfaces/dialog.json`, §8.7), the GitHub device code (`surfaces/github-auth.json`, `all`), the Assistant's transcript bodies (`user-body`, `md`, `streaming` and `import-log` in `surfaces/ai-chat.json`), and the captured logs in Problems (`detail`) and Activity (`log`).
+
+**Editable controls, Monaco and the canvas need no rule.** Chromium keeps an input, a textarea (readonly included) and a `contenteditable` selectable under an inherited `none`; Monaco runs its own selection model; and the canvas is a separate document that never links `tokens.css`, so the author's text and inline editing keep their selection.
+
+`packages/studio/tests/selection-policy.test.ts` holds every `user-select` other than `none` in a surface or stylesheet source to that list exactly, so a new selectable region is a reviewed, one-line change there.
+
 ---
 
 ## 9. State Management
@@ -643,6 +656,7 @@ When building new UI in Studio, verify:
 - [ ] Colors reference CSS custom properties, not hex values
 - [ ] State mutations are immutable (produce new objects)
 - [ ] A new ELEMENT belongs in the kit (`ui.md` §5), not in Studio — `packages/studio/src` defines none, and there is no `LitElement` left to extend (§6.2). The kit's own elements render into light DOM (`ui.md` §3.2), which is what keeps `styles/*.css` able to reach them.
+- [ ] A surface's own refusal is `failure` (a dialog or panel banner), `section-error` (a settings section) or another name the kit does not use, never `error`: the kit's fields draw a permanent, empty `[part="error"]` in the same light-DOM tree, and a surface rule on that name restyles every field's error sentence inside it (`packages/studio/tests/surface-part-names.test.ts` enforces it, deriving the reserved names from the kit's `aria-live` nodes)
 - [ ] A control that moves its own state binds it as `.value=${live(v)}` / `.checked=` / `.open=` — never as a plain attribute (§9.4; an attribute binding is dirty-checked away on the render that needed it)
 - [ ] A node this module renders is held with `ref()`, not re-found with `querySelector` (§9.4)
 - [ ] A list whose children hold state or can reorder uses `repeat()` with a real key — a canvas iframe, a `details` the reader opened, or a field mid-edit is not index-addressable (§9.4)
@@ -652,11 +666,12 @@ When building new UI in Studio, verify:
 - [ ] A dialog's answers are named in the surface's projection — `confirmLabel`, `cancelLabel`, `secondaryLabel` (§8.7) — never drawn as buttons the flow places itself
 - [ ] Every class emitted from TypeScript has a rule in `styles/*.css` — no `style=` attribute doing a stylesheet's job (`scripts/check-styles.ts` fails on orphans, and on allow-list entries that have since been styled)
 - [ ] A control carries ONE accessible name. `title` and `aria-label` with the same string make screen readers announce it twice — pick the one the component actually uses
-- [ ] A control that cannot act renders **disabled with the reason in its tooltip**, never absent
+- [ ] A control that cannot act renders **disabled with the reason in its tooltip**, never absent — a form's Save/Cancel pair is not such a control: it is the pending edit's own affordance, drawn while the drafts differ from what is stored and absent at rest (`studio.md` §15 rule 3)
 - [ ] `outline: none` is scoped to `:focus:not(:focus-visible)` and paired with a `:focus-visible` ring — suppressing the ring on plain `:focus` makes the control untraversable by keyboard
 - [ ] An empty region says its piece through `EmptyStateSpec` (§11) — mounted by `surfaces/empty-state.ts`, or drawn by the surface's own `[part="empty"]` block — never a bare container, never a hand-written block, never a noun phrase like "No state defined"
 - [ ] A control that invokes an action renders it from its command record (§12): the record's title as the accessible name, its chord formatted by the one formatter, its `requires` as the disabled tooltip — never a hand-maintained `{ label, action }` list
 - [ ] A control that opens a MENU carries `aria-haspopup="menu"` and a live `aria-expanded`, prints no chord of its own, and draws its rows from a placement (§8.4, §12.1, §12.5)
+- [ ] Chrome text inherits `user-select: none` from the root (§8.8). A part whose text the reader must copy, and that offers no other way to copy it, opts back in with `userSelect: "text"` on that part alone and joins the list in `tests/selection-policy.test.ts`; a new surface does not restate `none`, which the handful of per-surface rules that predate the root policy do redundantly
 
 ---
 
