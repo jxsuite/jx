@@ -4,5 +4,12 @@ registry = "https://registry.npmjs.org"
 [test]
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
-coveragePathIgnorePatterns = ["**/tests/**"]
+coveragePathIgnorePatterns = [
+  "**/tests/**",
+  # `./gateway` is the first subpath to import @jxsuite/protocol at runtime (its problem modules),
+  # so they land in this package's coverage data with the functions it never calls, while being
+  # 100% under packages/protocol's own run (gated there at 0.99). A sibling's files belong to its
+  # own job, as in packages/server.
+  "../protocol/**",
+]
 coverageThreshold = { lines = 0.99, functions = 0.99 }

@@ -41,6 +41,7 @@
     "upgrade": "bun update --latest && bun install"
   },
   "dependencies": {
+    "@jxsuite/ai": "workspace:^",
     "@jxsuite/catalog": "workspace:^",
     "@jxsuite/collab": "workspace:^",
     "@jxsuite/compiler": "workspace:^",
