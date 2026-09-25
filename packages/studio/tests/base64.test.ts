@@ -4,7 +4,7 @@
  */
 import "./harness";
 import { describe, expect, test } from "bun:test";
-import { bytesToBase64, toBase64 } from "../src/utils/base64";
+import { base64ToBytes, bytesToBase64, toBase64 } from "../src/utils/base64";
 
 describe("bytesToBase64", () => {
   test("encodes bytes", () => {
@@ -46,5 +46,28 @@ describe("toBase64", () => {
 
   test("encodes a raw ArrayBuffer", async () => {
     expect(await toBase64(new Uint8Array([104, 105]).buffer)).toBe("aGk=");
+  });
+});
+
+describe("base64ToBytes", () => {
+  test("decodes to bytes", () => {
+    expect([...base64ToBytes("aGk=")]).toEqual([104, 105]);
+  });
+
+  test("decodes the empty string", () => {
+    expect(base64ToBytes("")).toHaveLength(0);
+  });
+
+  /* The whole reason this exists rather than a `TextEncoder` round trip: every byte above 0x7F is
+     a byte, not a character. Decoding through a string type would re-encode these as two UTF-8
+     bytes each and the image would be corrupt in a way nothing downstream could detect. */
+  test("round-trips high bytes that UTF-8 would mangle", () => {
+    const bytes = new Uint8Array([0, 127, 128, 255, 0xff, 0xd8, 0xff, 0xe0]);
+    expect([...base64ToBytes(bytesToBase64(bytes))]).toEqual([...bytes]);
+  });
+
+  test("round-trips a buffer larger than the encoder's chunk", () => {
+    const bytes = new Uint8Array(100_000).map((_, i) => i % 256);
+    expect([...base64ToBytes(bytesToBase64(bytes))]).toEqual([...bytes]);
   });
 });

@@ -652,6 +652,47 @@ describe("file — read", () => {
   });
 });
 
+/* The read side of `file/upload`, and a separate route from `file` because that one decodes UTF-8:
+   the bytes below are a JPEG's SOI/APP0 marker, which `readFile(abs, "utf8")` turns into U+FFFD. */
+describe("file — bytes", () => {
+  const JPEG_HEAD = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+  test("answers the raw bytes, undecoded", async () => {
+    writeFileSync(join(FIXTURES, "pic.jpg"), JPEG_HEAD);
+    const url = new URL(`http://localhost/__studio/file/bytes?path=${FIXTURES}/pic.jpg`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.status).toBe(200);
+    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([...JPEG_HEAD]);
+  });
+
+  /* An editor is about to overwrite this file. `file`'s own `max-age=5` would mean an edit applied
+     to bytes up to five seconds stale, which is a silently wrong file rather than a slow one. */
+  test("is never cached", async () => {
+    writeFileSync(join(FIXTURES, "pic2.jpg"), JPEG_HEAD);
+    const url = new URL(`http://localhost/__studio/file/bytes?path=${FIXTURES}/pic2.jpg`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("returns 404 for a nonexistent file", async () => {
+    const url = new URL(`http://localhost/__studio/file/bytes?path=${FIXTURES}/nope.jpg`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.status).toBe(404);
+  });
+
+  test("returns 400 when path param is missing", async () => {
+    const url = new URL("http://localhost/__studio/file/bytes");
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects a path outside the project root", async () => {
+    const url = new URL("http://localhost/__studio/file/bytes?path=/etc/passwd");
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("file — write", () => {
   test("writes a file within project root", async () => {
     const url = new URL(`http://localhost/__studio/file?path=write-test.txt`);

@@ -541,6 +541,32 @@ describe("file operations", () => {
     expect(p.readFile("missing.json")).rejects.toThrow("Failed to read file: missing.json");
   });
 
+  /* The read side of the image editor. It must NOT go through the JSON `/__studio/file` route:
+     that one decodes UTF-8, which turns a JPEG into replacement characters. */
+  test("readFileBytes returns the raw body from the bytes route", async () => {
+    route("/__studio/file/bytes", () => new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])));
+    const p = createDevServerPlatform();
+    const bytes = new Uint8Array(await p.readFileBytes!("public/hero.jpg"));
+    expect([...bytes]).toEqual([0xff, 0xd8, 0xff, 0xe0]);
+  });
+
+  test("readFileBytes prefixes the project root like every other path", async () => {
+    route("/__studio/activate", () => json({ ok: true }));
+    route("/__studio/file/bytes", () => new Response(new Uint8Array([1])));
+    const p = createDevServerPlatform();
+    p.projectRoot = "examples/site";
+    await p.readFileBytes!("public/hero.jpg");
+    expect(callsTo("/__studio/file/bytes")[0]!.search.get("path")).toBe(
+      "examples/site/public/hero.jpg",
+    );
+  });
+
+  test("readFileBytes throws on failure", async () => {
+    route("/__studio/file/bytes", () => json({ error: "missing" }, 404));
+    const p = createDevServerPlatform();
+    expect(p.readFileBytes!("nope.png")).rejects.toThrow("Failed to read file bytes: nope.png");
+  });
+
   test("writeFile PUTs raw content to the prefixed path", async () => {
     route("/__studio/activate", () => json({ ok: true }));
     route("/__studio/file", () => json({ ok: true }), "PUT");

@@ -81,7 +81,7 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 | Family                   | Representative members                                                                                                                                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Session / project**    | `id`, `projectRoot`, `activate`, `openProject`, `openProjectPicker?`, `probeRootProject`, `createDestination`, `createProject`, `pickDirectory?`, `listStarters?`, `importSite?`, `listProjects?`, recent-projects persistence |
-| **Filesystem**           | `listDirectory`, `readFile`, `writeFile`, `uploadFile`, `deleteFile`, `renameFile`, `findReferences?`, `createDirectory`, `locateFile`, `searchFiles`, `subscribeFileEvents?`                                                  |
+| **Filesystem**           | `listDirectory`, `readFile`, `readFileBytes?`, `writeFile`, `uploadFile`, `deleteFile`, `renameFile`, `findReferences?`, `createDirectory`, `locateFile`, `searchFiles`, `subscribeFileEvents?`                                 |
 | **Documents / formats**  | `discoverComponents`, `listFormats?`, `listExtensions?`, `listExtensionCatalog?`, `fetchProjectSchemas?`, `formatAction?`, `fetchPluginSchema`                                                                                 |
 | **Packages**             | `listPackages`, `addPackage`, `removePackage`, `installDependencies?`, `packageVersions?`, `setPackageVersions?`                                                                                                               |
 | **Git**                  | `gitStatus`, `gitCommit`, `gitPush`, `gitPull`, `gitDiff`, `gitCheckout`, `gitClone?`, `createPullRequest?`, …                                                                                                                 |
@@ -94,6 +94,20 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 | **Canvas**               | `canvasUrl?`, `canvasUrlDeferred?`, `documentBaseUrl?`, `assetSpace?`, `assetCapabilities?`                                                                                                                                    |
 
 **Every path across the PAL is project-relative, in both directions.** A caller passes `components/card.json`, and a member that reports paths reports them in that same space — including the refactor members, whose reports name files the sweep found. Where a backend speaks a different space, the adapter translates, and it translates in ONE direction only: an adapter that both prefixes a request and strips a prefix off the reply is asserting that the backend echoes its own input space, which is a property of a particular route rather than of the protocol. The dev server's own convention is stated in `server.md` §4.1.
+
+**`readFile` decodes; `readFileBytes` does not, and the difference is not a convenience.** `readFile`
+answers a `string`, which means UTF-8, which means every byte sequence that is not valid UTF-8 is
+replaced with U+FFFD on the way through. That is invisible and irreversible: a JPEG read this way is
+not a damaged JPEG, it is a run of replacement characters no decoder will turn back into an image. So
+a caller that must DECODE a project file reads `readFileBytes` instead, and gets an `ArrayBuffer`.
+
+**The `<img>` route is not an alternative on the desktop, which is the platform that needs it most.**
+A preview `src` resolves to the per-window loopback origin while the shell document sits on `views://`,
+so an image drawn from it TAINTS a canvas and `toBlob()` throws; and `server.md` §4.2 bans CORS
+outright, because the whole loopback containment rests on the browser refusing cross-origin reads.
+Bytes that arrive through the PAL become a same-origin `Blob`, so tainting stops being a hazard to work
+around and becomes one that cannot arise. The RPC launchers carry them base64-encoded, for the same
+reason `uploadFile` accepts base64: their params and results are JSON, and a JPEG is not a string.
 
 **User settings are written as PATCHES, never as the whole map.** `patchSettings({ set, remove })` must leave a key named by neither exactly as it found it, and answers with the store as it then stands. A whole-map write cannot express "change this one thing", so every writer implicitly claims the whole store: on the chromium launcher, where each window is its own process with its own browser profile and therefore its own `localStorage`, a welcome window holding no settings overwrote the credentials another window had just stored — and a `settings.json` was left holding one key of the three its owner had configured. The rule also preserves keys the writing build does not know: one written by a newer version, or by hand. A backend applies the patch under a lock that spans the read and the write, so two concurrent patches compose rather than one overwriting the other.
 
