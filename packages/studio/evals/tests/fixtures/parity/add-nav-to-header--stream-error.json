@@ -3,8 +3,8 @@
   "task": "add-nav-to-header",
   "what": "an applied edit, then a provider error mid tool call that ends the turn",
   "modelRequests": ["user", "user assistant tool"],
-  "rounds": 2,
-  "toolCallCount": 2,
+  "rounds": 1,
+  "toolCallCount": 1,
   "toolCalls": [
     {
       "id": "err-1",
@@ -16,13 +16,6 @@
           "tagName": "nav",
           "children": []
         }
-      }
-    },
-    {
-      "id": "err-2",
-      "name": "add_child",
-      "args": {
-        "$unparsed": "{\"parentPath\":[\"children\",1],"
       }
     }
   ],
@@ -68,11 +61,6 @@
         "success": true,
         "summary": "Inserted node at [\"children\",1]."
       }
-    },
-    {
-      "role": "assistant",
-      "content": "Now adding the links",
-      "toolCalls": ["add_child"]
     }
   ]
 }

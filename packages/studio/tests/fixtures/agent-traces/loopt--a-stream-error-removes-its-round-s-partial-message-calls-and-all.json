@@ -1,18 +1,21 @@
 {
   "chatCalls": [
-    "sendMessage(\"make the heading bigger\")",
+    "sendMessage(\"edit it\")",
     "toMessagesArray()",
-    "setError(\"Network error: offline\")"
+    "appendDelta(\"Let me \")",
+    "appendToolCallStart(\"c1\", \"edit\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"half\")",
+    "setError(\"upstream 500\")"
   ],
   "clientCalls": [
     {
       "round": 1,
-      "signal": "none",
+      "signal": "live",
       "messages": {
         "added": [
           {
             "role": "user",
-            "content": "make the heading bigger"
+            "content": "edit it"
           }
         ],
         "carried": 0
@@ -22,7 +25,7 @@
         "headings": [],
         "length": 0
       },
-      "tools": []
+      "tools": ["edit"]
     }
   ],
   "ledger": {
@@ -33,28 +36,17 @@
     {
       "id": "msg#1",
       "role": "user",
-      "content": "make the heading bigger"
+      "content": "edit it"
     }
   ],
   "finalState": {
     "contextWarning": false,
-    "error": "Network error: offline",
-    "model": "@cf/meta/llama-4",
+    "error": "upstream 500",
+    "model": "test",
     "status": "error",
     "tokenCount": 0,
     "usage": null
   },
   "finalDocument": null,
-  "historyIndex": null,
-  "extra": {
-    "after": {
-      "code": null,
-      "configured": true,
-      "fetchCalls": ["/__mock/ai/models"]
-    },
-    "before": {
-      "configured": true,
-      "fetchCalls": ["/__mock/ai/models"]
-    }
-  }
+  "historyIndex": null
 }

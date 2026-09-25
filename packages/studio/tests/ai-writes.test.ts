@@ -14,6 +14,7 @@ import {
   recordWrite,
   resetAiWrites,
   summarizeWrites,
+  turnAnchor,
   writesForTurn,
 } from "../src/services/ai-writes";
 
@@ -106,5 +107,35 @@ describe("summarizeWrites", () => {
 
   test('nothing recorded summarises to nothing, never to "Changed 0 files"', () => {
     expect(summarizeWrites([])).toBe("");
+  });
+});
+
+/* The panel draws a turn's summary under the message its writes are filed under, and it draws only
+   an assistant message carrying text or tool calls (panels/ai-chat/chat-view.ts). */
+describe("turnAnchor", () => {
+  test("stops at the message the turn answers", () => {
+    const m = (id: string, role: string, content = "", toolCalls?: unknown[]) =>
+      ({ content, id, role, timestamp: 0, ...(toolCalls ? { toolCalls } : {}) }) as never;
+    const earlier = [m("a0", "assistant", "An earlier turn's answer."), m("u1", "user", "hi")];
+    // The turn drew nothing: an empty placeholder and a tool reply are not drawn.
+    expect(turnAnchor([...earlier, m("p", "assistant"), m("t", "tool", "{}")], "u1")).toBeNull();
+    expect(
+      turnAnchor([...earlier, m("r", "assistant", "", [{}]), m("t", "tool", "{}")], "u1"),
+    ).toBe("r");
+    // With no user message to stop at, the whole transcript is the turn.
+    expect(turnAnchor([m("a0", "assistant", "text")])).toBe("a0");
+  });
+
+  /* Another chat opened from Chat History while the turn waited on a tool: the transcript was
+     replaced, and the stopped call's reply landed in it. Nothing drawn there is this turn's. */
+  test("a transcript that no longer holds the turn's user message has no anchor", () => {
+    const m = (id: string, role: string, content = "") =>
+      ({ content, id, role, timestamp: 0 }) as never;
+    const replaced = [
+      m("old_u", "user", "B"),
+      m("old_a", "assistant", "B's answer"),
+      m("t", "tool"),
+    ];
+    expect(turnAnchor(replaced, "u1")).toBeNull();
   });
 });

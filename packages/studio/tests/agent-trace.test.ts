@@ -139,7 +139,8 @@ const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { selectionCommands } = await import("../src/canvas/canvas-render");
 const { isSpliceablePath } = await import("../src/tabs/selection");
 const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
-const { writesForTurn } = await import("../src/services/ai-writes");
+const { recordWrite, writesForTurn } = await import("../src/services/ai-writes");
+const { projectChip } = await import("../src/panels/ai-chat/chat-view");
 const { refreshFormats } = await import("../src/format/format-host");
 const { ensureProxyProbe, isProxyConfigured, proxyStateCode, resetModelCache } =
   await import("../src/services/ai-models");
@@ -278,6 +279,39 @@ const ADD_SPAN = {
 
 function childrenOf(tab: Tab): (JxMutableNode | string)[] {
   return tab.doc.document.children as (JxMutableNode | string)[];
+}
+
+/**
+ * One `edit` tool that records a write the way a document tool does, and can stop the turn from
+ * inside its call. The setup of `ai-loop.test.ts`'s `editHarness`.
+ */
+function editHarness(rec: Recording, opts: { ok?: boolean; stopDuring?: boolean } = {}) {
+  const controller = new AbortController();
+  const chatState = recordChatState(createChatState({ model: "test" }), rec.chatLog);
+  const toolRegistry = createToolRegistry();
+  toolRegistry.register(
+    createToolDefinition({
+      description: "records one write",
+      async execute() {
+        const ok = opts.ok ?? true;
+        recordWrite({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
+        if (opts.stopDuring) {
+          controller.abort();
+        }
+        return ok ? { success: true, summary: "Edited." } : { error: "No.", success: false };
+      },
+      name: "edit",
+      parameters: { properties: {}, type: "object" },
+    }),
+  );
+  const run = (client: StreamingClient) =>
+    loop(rec, {
+      chatState,
+      client,
+      signal: controller.signal,
+      toolRegistry: toolRegistry as ToolRegistry,
+    });
+  return { chatState, run };
 }
 
 /** `ask_user` plus the hand tools, and an author who answers every question as it appears. */
@@ -711,6 +745,86 @@ const LOOPT = inSuite("loopt", [
       return { chat: chatState, extra: { pendingAfterStop, pendingBeforeStop } };
     },
   },
+  {
+    name: "a live chip shows the result the loop recorded, and an answered question its answer",
+    async run(rec) {
+      const chatState = recordChatState(createChatState({ model: "test" }), rec.chatLog);
+      const toolRegistry = createToolRegistry();
+      registerAskTool(toolRegistry);
+      const client = scripted([
+        toolCallRound("q1", "ask_user", { options: ["Home", "Blog"], question: "Which pages?" }),
+        [{ stopReason: "stop", type: "done" }],
+      ]);
+      chatState.sendMessage("ask me");
+      const running = loop(rec, {
+        chatState,
+        client,
+        toolRegistry: toolRegistry as ToolRegistry,
+      });
+      await new Promise((r) => {
+        setTimeout(r, 0);
+      });
+      answerAsk("Blog");
+      await running;
+      const record = chatState.messages.find((m) => m.toolCalls?.length)!.toolCalls![0]!;
+      const chip = projectChip(record, { pendingId: pendingAsk()?.id ?? null });
+      expect(chip.askState).toBe("answered");
+      expect(chip.answer).toBe("Blog");
+      resetAsk();
+      return { chat: chatState, extra: { answer: chip.answer, askState: chip.askState } };
+    },
+  },
+  {
+    name: "a Stop during the last call opens no further round",
+    async run(rec) {
+      const h = editHarness(rec, { stopDuring: true });
+      const client = scripted([
+        toolCallRound("c1", "edit", {}),
+        [{ stopReason: "stop", type: "done" }],
+      ]);
+      h.chatState.sendMessage("edit it");
+      await h.run(client);
+      expect(client.calls()).toBe(1);
+      expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+      return { chat: h.chatState };
+    },
+  },
+  {
+    name: "a stream error removes its round's partial message, calls and all",
+    async run(rec) {
+      const h = editHarness(rec);
+      const client = scripted([
+        [
+          { content: "Let me ", type: "delta" },
+          { id: "c1", name: "edit", type: "tool_call_start" },
+          { args: '{"half', id: "c1", type: "tool_call_delta" },
+          { message: "upstream 500", type: "error" },
+        ],
+      ]);
+      h.chatState.sendMessage("edit it");
+      await h.run(client);
+      expect(h.chatState.status).toBe("error");
+      expect(h.chatState.messages.map((m) => m.role)).toEqual(["user"]);
+      return { chat: h.chatState };
+    },
+  },
+  {
+    name: "a stream error after a round of work keeps that round and removes only its own partial",
+    async run(rec) {
+      const h = editHarness(rec);
+      const client = scripted([
+        toolCallRound("c1", "edit", {}),
+        [
+          { content: "Now the", type: "delta" },
+          { message: "upstream 500", type: "error" },
+        ],
+      ]);
+      h.chatState.sendMessage("edit it");
+      await h.run(client);
+      expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+      return { chat: h.chatState };
+    },
+  },
 ]);
 
 // ─── dat: document-assistant.test.ts, the send path ──────────────────────────
@@ -974,6 +1088,45 @@ const DAT = inSuite("dat", [
     },
   },
   {
+    name: "a chat opened while a turn waits gets none of that turn's reply or changes",
+    async run() {
+      const tab = resetWorkspaceWithTab({
+        children: [{ tagName: "p", textContent: "one" }],
+        tagName: "div",
+      });
+      nextRounds = [
+        [
+          { content: "first reply", type: "delta" },
+          { stopReason: "stop", type: "done" },
+        ],
+      ];
+      const a = createDocumentAssistant();
+      await a.sendMessage("first chat");
+      const firstId = a.activeSessionId()!;
+      a.newChat();
+      nextRounds = [
+        toolCallRound("c1", "add_child", { index: 1, node: { tagName: "span" }, parentPath: [] }),
+        toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+      ];
+      const running = a.sendMessage("second chat");
+      for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+        await flush(1);
+      }
+      expect(pendingAsk()).not.toBeNull();
+      /* Past the millisecond the question's own save landed in. The recorded session list is most
+         recently updated first, and two saves in one millisecond would tie on it. */
+      await new Promise((settle) => {
+        setTimeout(settle, 5);
+      });
+      a.openSession(firstId);
+      await running;
+      expect(a.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+      expect(a.chatState.messages.map((m) => writesForTurn(m.id))).toEqual([[], []]);
+      expect((tab.doc.document.children as unknown[]).length).toBe(2);
+      return datObserve(a);
+    },
+  },
+  {
     name: "sends with no document and no project, advertising only bootstrap tools",
     async run(rec) {
       closeAllTabs();
@@ -1083,7 +1236,9 @@ const DAT = inSuite("dat", [
       await a.sendMessage("clear the page");
       expect(tab.doc.document.children).toEqual([]);
       expect(tab.history.index).toBe(1);
-      const ledger = writesForTurn(a.chatState.messages.at(-1)!.id);
+      // Filed under the request, the turn's last drawn message (J1.4).
+      const request = a.chatState.messages.find((m) => m.toolCalls?.length);
+      const ledger = writesForTurn(request!.id);
       expect(ledger).toEqual([
         { disk: false, ok: true, path: "/project/index.json", tool: "Delete" },
       ]);
@@ -1102,7 +1257,8 @@ const DAT = inSuite("dat", [
       const a = createDocumentAssistant();
       await a.sendMessage("delete it");
       expect((tab.doc.document.children as unknown[]).length).toBe(1);
-      expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([]);
+      const request = a.chatState.messages.find((m) => m.toolCalls?.length);
+      expect(writesForTurn(request!.id)).toEqual([]);
       return datObserve(a, { dirty: tab.doc.dirty });
     },
   },
@@ -1503,6 +1659,10 @@ const LOOPT_MIRRORED = [
   "a round that asked AND worked spends the budget",
   "a model that only ever asks still terminates",
   "stopping the turn settles the question instead of hanging the loop",
+  "a live chip shows the result the loop recorded, and an answered question its answer",
+  "a Stop during the last call opens no further round",
+  "a stream error removes its round's partial message, calls and all",
+  "a stream error after a round of work keeps that round and removes only its own partial",
 ];
 
 /** Every `ai-loop-reconnect.test.ts` test this file mirrors. */

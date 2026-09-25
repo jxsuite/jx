@@ -151,6 +151,65 @@ describe("chat-state tool-call accumulation", () => {
     chat.appendToolResult("missing", toolSuccess(null, "nope"));
     expect(chat.pendingToolCalls[0]!.result).toBeNull();
   });
+
+  /* The agent loop runs its tools after the round's stream has finished, so the result is attached
+     when there is no streaming message and no pending call. */
+  it("finds the record on its request after the stream has finished", () => {
+    const chat = createChatState();
+    chat.sendMessage("Do two things");
+    chat.appendToolCallStart("tc_1", "first");
+    chat.appendToolCallStart("tc_2", "second");
+    chat.finishStream("tool_calls");
+    const request = chat.messages.at(-1)!;
+
+    chat.appendToolResult("tc_1", toolSuccess(null, "one"));
+    chat.pushToolResultMessage("tc_1", "{}");
+    // The second call's result lands after the first call's reply.
+    chat.appendToolResult("tc_2", toolSuccess(null, "two"));
+
+    expect(request.toolCalls!.map((tc) => tc.result?.summary)).toEqual(["one", "two"]);
+  });
+
+  it("an id a later round reuses answers only the later request", () => {
+    const chat = createChatState();
+    chat.sendMessage("Go");
+    chat.appendToolCallStart("call_0", "tool");
+    chat.finishStream("tool_calls");
+    chat.appendToolResult("call_0", toolSuccess(null, "first"));
+    chat.pushToolResultMessage("call_0", "{}");
+    chat.beginAssistantTurn();
+    chat.appendToolCallStart("call_0", "tool");
+    chat.finishStream("tool_calls");
+    chat.appendToolResult("call_0", toolSuccess(null, "second"));
+
+    const requests = chat.messages.filter((m) => m.role === "assistant");
+    expect(requests.map((m) => m.toolCalls![0]!.result?.summary)).toEqual(["first", "second"]);
+  });
+
+  it("attaches nothing when no request comes before the replies", () => {
+    const chat = createChatState();
+    // An empty transcript, and one that holds only a reply, carry no request to attach to.
+    expect(() => chat.appendToolResult("tc_1", toolSuccess(null, "orphan"))).not.toThrow();
+    chat.pushToolResultMessage("tc_1", "{}");
+    chat.appendToolResult("tc_1", toolSuccess(null, "orphan"));
+    expect(chat.messages.some((m) => m.toolCalls)).toBe(false);
+  });
+
+  it("never reaches past the turn's user message to an earlier request with the same id", () => {
+    const chat = createChatState();
+    chat.sendMessage("Go");
+    chat.appendToolCallStart("tc_1", "tool");
+    chat.finishStream("tool_calls");
+    chat.appendToolResult("tc_1", toolSuccess(null, "first"));
+    chat.pushToolResultMessage("tc_1", "{}");
+    chat.sendMessage("again");
+    chat.finishStream("stop");
+    chat.messages.pop();
+    // The message before the (absent) replies is the user's, which carries no calls.
+    chat.appendToolResult("tc_1", toolSuccess(null, "stray"));
+    expect(chat.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "user"]);
+    expect(chat.messages[1]!.toolCalls![0]!.result?.summary).toBe("first");
+  });
 });
 
 describe("chat-state pushToolResultMessage", () => {
@@ -196,6 +255,14 @@ describe("chat-state error and cancel", () => {
     expect(chat.error).toBe("boom");
     expect(chat.streamingContent).toBe("");
     expect(chat.messages.filter((m) => m.role === "assistant").length).toBe(0);
+  });
+
+  it("setError clears the calls the failed round had streamed", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.appendToolCallStart("tc_1", "tool");
+    chat.setError("boom");
+    expect(chat.pendingToolCalls).toEqual([]);
   });
 
   it("setError is safe when there is no active streaming message", () => {

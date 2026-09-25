@@ -81,7 +81,7 @@
     "events": [
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Inserted node at [\\\"children\\\",1].\"})",
-      "endTurn(\"msg#4\") filed 1"
+      "endTurn(\"msg#2\") filed 1"
     ],
     "turns": [
       {
@@ -97,7 +97,7 @@
             ]
           }
         ],
-        "turn": "msg#4"
+        "turn": "msg#2"
       }
     ]
   },
@@ -117,7 +117,10 @@
           "arguments": "{\"index\":1,\"node\":{\"tagName\":\"span\",\"textContent\":\"added\"},\"parentPath\":[]}",
           "id": "c1",
           "name": "add_child",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Inserted node at [\"children\",1]."
+          }
         }
       ]
     },

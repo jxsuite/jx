@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
+import type { Message } from "@jxsuite/ai/chat-state";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
@@ -10,6 +11,8 @@ import type { Tab } from "../src/tabs/tab";
 import { registerAiTools } from "../src/services/ai-tools";
 import { runAgentLoop } from "../src/services/tool-executor";
 import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
+import { recordWrite, resetAiWrites, writesForTurn } from "../src/services/ai-writes";
+import { projectChip } from "../src/panels/ai-chat/chat-view";
 
 /**
  * A scripted streaming client: each entry in `rounds` is the sequence of StreamEvents to yield on
@@ -595,5 +598,228 @@ describe("ai agent loop — the interactive round budget", () => {
     await running;
     expect(pendingAsk()).toBeNull();
     resetAsk();
+  });
+});
+
+// ─── J1.4: the turn is honest about how it ended ─────────────────────────────
+
+describe("ai agent loop — how a turn ended", () => {
+  /**
+   * A registry with one `edit` tool that records a write the way a document tool does, and can stop
+   * the turn from inside its call (standing in for the author pressing Stop while it runs).
+   */
+  function editHarness(opts: { ok?: boolean; stopDuring?: boolean } = {}) {
+    const controller = new AbortController();
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    toolRegistry.register(
+      createToolDefinition({
+        name: "edit",
+        description: "records one write",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          const ok = opts.ok ?? true;
+          recordWrite({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
+          if (opts.stopDuring) {
+            controller.abort();
+          }
+          return ok ? { success: true, summary: "Edited." } : { success: false, error: "No." };
+        },
+      }),
+    );
+    const run = (client: StreamingClient) =>
+      runAgentLoop({
+        chatState,
+        signal: controller.signal,
+        streamingClient: client,
+        systemPrompt: "",
+        toolRegistry: toolRegistry as ToolRegistry,
+      });
+    return { chatState, run };
+  }
+
+  const request = (messages: readonly Message[]) =>
+    messages.findLast((m) => (m.toolCalls?.length ?? 0) > 0);
+
+  test("a live chip shows the result the loop recorded, and an answered question its answer", async () => {
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    registerAskTool(toolRegistry);
+    const client = fakeClient([
+      toolCallRound("q1", "ask_user", { question: "Which pages?", options: ["Home", "Blog"] }),
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+    chatState.sendMessage("ask me");
+    const running = runAgentLoop({
+      chatState,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry: toolRegistry as ToolRegistry,
+    });
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    answerAsk("Blog");
+    await running;
+
+    const record = chatState.messages.find((m) => m.toolCalls?.length)!.toolCalls![0]!;
+    expect(record.result?.success).toBe(true);
+    // The loop's record and the chip it draws, joined: the card shows the answer, not an open question.
+    const chip = projectChip(record, { pendingId: pendingAsk()?.id ?? null });
+    expect(chip.askState).toBe("answered");
+    expect(chip.answer).toBe("Blog");
+    resetAsk();
+  });
+
+  test("a Stop during the last call opens no further round", async () => {
+    const h = editHarness({ stopDuring: true });
+    const client = fakeClient([
+      toolCallRound("c1", "edit", {}),
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+    h.chatState.sendMessage("edit it");
+    await h.run(client);
+
+    expect(client.calls()).toBe(1);
+    expect(h.chatState.status).toBe("idle");
+    // The call's reply is the last thing the turn wrote: no placeholder after it.
+    expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(h.chatState.messages[1]!.toolCalls![0]!.result).toEqual({
+      success: true,
+      summary: "Edited.",
+    });
+  });
+
+  test("a stream error removes its round's partial message, calls and all", async () => {
+    const h = editHarness();
+    const client = fakeClient([
+      [
+        { type: "delta", content: "Let me " },
+        { type: "tool_call_start", id: "c1", name: "edit" },
+        { type: "tool_call_delta", id: "c1", args: '{"half' },
+        { type: "error", message: "upstream 500" },
+      ],
+    ]);
+    h.chatState.sendMessage("edit it");
+    await h.run(client);
+
+    expect(h.chatState.status).toBe("error");
+    expect(h.chatState.error).toBe("upstream 500");
+    expect(h.chatState.messages.map((m) => m.role)).toEqual(["user"]);
+    expect(h.chatState.pendingToolCalls).toEqual([]);
+    // Nothing of the failed round reaches the next send.
+    expect(h.chatState.toMessagesArray()).toEqual([{ role: "user", content: "edit it" }]);
+  });
+
+  test("a stream error after a round of work keeps that round and removes only its own partial", async () => {
+    const h = editHarness();
+    const client = fakeClient([
+      toolCallRound("c1", "edit", {}),
+      [
+        { type: "delta", content: "Now the" },
+        { type: "error", message: "upstream 500" },
+      ],
+    ]);
+    h.chatState.sendMessage("edit it");
+    await h.run(client);
+
+    expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(h.chatState.messages[1]!.toolCalls![0]!.result?.success).toBe(true);
+  });
+
+  /* The changed-files summary and Restore render under the message the turn's writes are filed
+     under, and only a DRAWN assistant message renders them (chat-view's projectRows). */
+  test.each<[string, { ok?: boolean; stopDuring?: boolean }, StreamEvent[][], string]>([
+    [
+      "a reply that says something",
+      {},
+      [
+        toolCallRound("c1", "edit", {}),
+        [
+          { type: "delta", content: "Done." },
+          { type: "done", stopReason: "stop" },
+        ],
+      ],
+      "reply",
+    ],
+    [
+      "a final round that says nothing",
+      {},
+      [toolCallRound("c1", "edit", {}), [{ type: "done", stopReason: "stop" }]],
+      "request",
+    ],
+    [
+      "a Stop during the last call",
+      { stopDuring: true },
+      [toolCallRound("c1", "edit", {})],
+      "request",
+    ],
+    [
+      "a stream error in the next round",
+      {},
+      [
+        toolCallRound("c1", "edit", {}),
+        [
+          { type: "delta", content: "Now" },
+          { type: "error", message: "boom" },
+        ],
+      ],
+      "request",
+    ],
+    [
+      "the round cap after changes were applied",
+      {},
+      Array.from({ length: 6 }, (_, i) => toolCallRound(`c${i}`, "edit", {})),
+      "reply",
+    ],
+    [
+      "the round cap with nothing applied",
+      { ok: false },
+      Array.from({ length: 6 }, (_, i) => toolCallRound(`c${i}`, "edit", {})),
+      "request",
+    ],
+  ])("the changes are filed under a drawn message: %s", async (_label, opts, rounds, anchor) => {
+    resetAiWrites();
+    const h = editHarness(opts);
+    h.chatState.sendMessage("edit it");
+    await h.run(fakeClient(rounds));
+
+    const expected =
+      anchor === "reply" ? h.chatState.messages.at(-1)! : request(h.chatState.messages)!;
+    if (anchor === "reply") {
+      expect(expected.role).toBe("assistant");
+      expect(expected.content).not.toBe("");
+    }
+    expect(writesForTurn(expected.id).length).toBeGreaterThan(0);
+    resetAiWrites();
+  });
+
+  test.each<[string, string]>([
+    ["null", "null"],
+    ["[1]", "array"],
+    ["3", "number"],
+    ['"x"', "string"],
+    ["true", "boolean"],
+  ])("arguments that parse to %s are refused with their type", async (args, type) => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      [
+        { type: "tool_call_start", id: "c1", name: "set_property" },
+        { type: "tool_call_delta", id: "c1", args },
+        { type: "tool_call_end", id: "c1" },
+        { type: "done", stopReason: "tool_calls" },
+      ],
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+    chatState.sendMessage("break it");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    const reply = chatState.messages.find((m) => m.role === "tool")!;
+    expect(JSON.parse(reply.content)).toEqual({
+      error: `Failed to parse arguments: arguments must be a JSON object, got ${type}`,
+      success: false,
+    });
+    disposeTab(tab);
   });
 });

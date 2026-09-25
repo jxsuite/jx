@@ -45,7 +45,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#3\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -63,7 +63,9 @@
           "arguments": "",
           "id": "a",
           "name": "first",
-          "result": null
+          "result": {
+            "success": true
+          }
         },
         {
           "arguments": "",

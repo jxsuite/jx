@@ -19,6 +19,8 @@
  * nothing here imports the loop, so a tool can be honest without either.
  */
 
+import type { Message } from "@jxsuite/ai/chat-state";
+
 /** One change the assistant made, as recorded by the tool that made it. */
 export interface AiWrite {
   /** Project-relative path, or the document path for an in-editor mutation. */
@@ -151,4 +153,42 @@ export function summarizeWrites(writes: AiWrite[]): string {
 export function resetAiWrites(): void {
   turns.splice(0);
   open = null;
+}
+
+/**
+ * The message a turn's changes are filed under: its last DRAWN assistant message, which is the one
+ * the transcript renders the changed-files summary beneath (panels/ai-chat/chat-view.ts), and so
+ * the id {@link endTurn} is given.
+ *
+ * Not simply the last message. A turn can end on a `tool` reply (a Stop during the last call, or a
+ * cap reached with nothing applied), on a final round that said nothing, or after a stream error
+ * removed its round's partial; filed under any of those, the summary and Restore were drawn under
+ * nothing and the author never saw what the turn changed. The cap message counts: it is drawn.
+ *
+ * **An anchor is only ever this turn's.** The scan must MEET the message the turn answers, and only
+ * what it passed on the way counts. A transcript that no longer holds that message was replaced
+ * under the turn (another chat opened from Chat History while it waited on a tool), and every
+ * message in it belongs to some other conversation: filing there would draw "Changed 1 file", and
+ * Restore, under a reply that changed nothing.
+ *
+ * @param {readonly Message[]} messages
+ * @param {string} [userId] - The id of the user message this turn answers; without one, the whole
+ *   transcript is the turn
+ * @returns {string | null} Null when the turn drew nothing (so it ran no tool either), or when its
+ *   user message has left the transcript
+ */
+export function turnAnchor(messages: readonly Message[], userId?: string): string | null {
+  let anchor: string | null = null;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (message.id === userId) {
+      return anchor;
+    }
+    const drawn =
+      message.role === "assistant" && (message.content || (message.toolCalls?.length ?? 0) > 0);
+    if (anchor === null && drawn) {
+      anchor = message.id;
+    }
+  }
+  return userId === undefined ? anchor : null;
 }

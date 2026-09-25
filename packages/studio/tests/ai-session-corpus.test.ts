@@ -523,8 +523,8 @@ describe("a payload the current build saves", () => {
     /* What the live chat persisted is what a reload restores, with two differences allowed:
        persistChat's filter (it skips an assistant turn with neither text nor tool calls), and each
        tool call's outcome, which a restore backfills from the tool message that answered it
-       (services/tool-outcomes.ts). The live loop still leaves `result` null (harness J1.4 fixes
-       that), so the restored chat is the one whose chips show how each call ended. */
+       (services/tool-outcomes.ts). The live loop attached the same outcome as each call finished,
+       so a stored result the backfill replaces is the one it would have written. */
     const persisted = live.chatState.messages.filter(
       (m) => m.role !== "assistant" || m.content || (m.toolCalls?.length ?? 0) > 0,
     );

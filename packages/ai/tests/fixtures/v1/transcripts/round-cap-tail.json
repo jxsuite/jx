@@ -12,6 +12,7 @@
     ],
     ["appendToolCallEnd", "call_1"],
     ["finishStream", "tool_calls"],
+    ["appendToolResult", "call_1", { "success": true, "summary": "Set text of h1." }],
     ["pushToolResultMessage", "call_1", "{\"success\":true,\"summary\":\"Set text of h1.\"}"],
     ["beginAssistantTurn"],
     [
@@ -32,7 +33,7 @@
           "id": "call_1",
           "name": "set_property",
           "arguments": "{\"path\":[\"children\",0],\"name\":\"textContent\",\"value\":\"Home\"}",
-          "result": null
+          "result": { "success": true, "summary": "Set text of h1." }
         }
       ]
     },
@@ -41,13 +42,13 @@
       "role": "tool",
       "toolCallId": "call_1",
       "content": "{\"success\":true,\"summary\":\"Set text of h1.\"}",
-      "timestamp": 1767225606000
+      "timestamp": 1767225607000
     },
     {
       "id": "msg_T_4",
       "role": "assistant",
       "content": "I ran out of tool-call rounds (5) before finishing.\n\nChanges applied so far:\n- Set text of h1.\n\nYou can continue by sending another message, or try a more specific request.",
-      "timestamp": 1767225607000
+      "timestamp": 1767225608000
     }
   ],
   "wire": [

@@ -130,7 +130,7 @@
     "events": [
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":true,\"ok\":true,\"path\":\"pages/index.json\",\"tool\":\"write_file\"})",
-      "endTurn(\"msg#4\") filed 1"
+      "endTurn(\"msg#2\") filed 1"
     ],
     "turns": [
       {
@@ -146,7 +146,7 @@
             ]
           }
         ],
-        "turn": "msg#4"
+        "turn": "msg#2"
       }
     ]
   },
@@ -165,7 +165,10 @@
           "arguments": "{\"content\":\"{\\\"children\\\":[],\\\"tagName\\\":\\\"section\\\"}\",\"path\":\"pages/index.json\"}",
           "id": "c1",
           "name": "write_file",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Wrote \"pages/index.json\" and refreshed its open editor tab (saved to disk; not undoable with Cmd+Z)."
+          }
         }
       ]
     },
@@ -195,6 +198,7 @@
   },
   "historyIndex": 1,
   "extra": {
+    "dirty": false,
     "activeSession": "session#1",
     "clientOptions": {
       "chatUrl": "/__mock/ai/chat",
@@ -221,7 +225,6 @@
         "content": "{\"children\":[],\"tagName\":\"section\"}",
         "path": "pages/index.json"
       }
-    ],
-    "dirty": false
+    ]
   }
 }

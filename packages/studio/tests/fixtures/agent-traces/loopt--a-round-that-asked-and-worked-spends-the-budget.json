@@ -293,13 +293,31 @@
           "arguments": "{\"question\":\"Which?\"}",
           "id": "a0",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         },
         {
           "arguments": "{}",
           "id": "w0",
           "name": "read_document",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
         }
       ]
     },
@@ -324,13 +342,31 @@
           "arguments": "{\"question\":\"Which?\"}",
           "id": "a1",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         },
         {
           "arguments": "{}",
           "id": "w1",
           "name": "read_document",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
         }
       ]
     },
@@ -355,13 +391,31 @@
           "arguments": "{\"question\":\"Which?\"}",
           "id": "a2",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         },
         {
           "arguments": "{}",
           "id": "w2",
           "name": "read_document",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
         }
       ]
     },
@@ -386,13 +440,31 @@
           "arguments": "{\"question\":\"Which?\"}",
           "id": "a3",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         },
         {
           "arguments": "{}",
           "id": "w3",
           "name": "read_document",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
         }
       ]
     },
@@ -417,13 +489,31 @@
           "arguments": "{\"question\":\"Which?\"}",
           "id": "a4",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         },
         {
           "arguments": "{}",
           "id": "w4",
           "name": "read_document",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "children": [
+                {
+                  "tagName": "p",
+                  "textContent": "Hello"
+                }
+              ],
+              "tagName": "div"
+            }
+          }
         }
       ]
     },

@@ -50,13 +50,13 @@
           "id": "call_a",
           "name": "update_style",
           "arguments": "{\"path\":[\"children\",0],\"style\":{\"color\":\"red\"}}",
-          "result": null
+          "result": { "success": true, "summary": "Styled h1." }
         },
         {
           "id": "call_b",
           "name": "update_style",
           "arguments": "{\"path\":[\"children\",9],\"style\":{\"fontFamily\":\"serif\"}}",
-          "result": null
+          "result": { "success": false, "error": "No node at path [\"children\",9]." }
         }
       ]
     },
