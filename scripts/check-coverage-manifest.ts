@@ -70,6 +70,8 @@ export const ALLOWLIST = new Set([
   "src/rpc-schema.ts",
   // Collab provider contract: interfaces/type aliases only, no runtime exports.
   "src/provider.ts",
+  // The @jxsuite/ai gateway's host contract (Upstream, GatewayRefusal, ...): interfaces only.
+  "src/gateway/types.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

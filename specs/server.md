@@ -183,7 +183,7 @@ The canonical endpoint list is the `STUDIO_ROUTES` table in `@jxsuite/protocol` 
 - **Packages** — dependency list/add/remove/install, an install-staleness check, the newest published version of every dependency (`packages/versions`, reported whether or not the pin is behind — comparing them is the client's job), bulk version updates
 - **Git** — status, branches, log, stage/unstage, commit, push/pull/fetch, checkout, branch, diff/show, discard, init, remotes, clone, PR
 - **Data surface + secrets** — connector connections, connection test, additive schema push, row paging/CRUD, secret env-var names (never values)
-- **AI proxy** — SSE chat proxy and model catalogue
+- **AI proxy** — SSE chat proxy and model catalogue. The wire half (reading the body, the upstream request, the stream normalizer, SSE framing, problem responses) is the shared `@jxsuite/ai/gateway` (ai.md §2.4); `ai-api.ts` supplies this server's policy to it (key provenance, the environment-key fallback, the link-local base-URL guard of §4.2) and keeps the model catalogue.
 - **Cloudflare publish** — allowlisted API passthrough
 
 Handlers are dispatched inside the `/__studio/*` branch in this order: collab → activate → AI (`ai-api.ts`) → import-site (`import-api.ts`) → code services (`code-api.ts`) → the main studio handler (`studio-api.ts`).
@@ -309,18 +309,19 @@ Incremental rebuild triggered by the file watcher: only entries whose `match` (R
 
 ## 7. Dependencies
 
-| Package                                 | Purpose                                                       |
-| --------------------------------------- | ------------------------------------------------------------- |
-| `chokidar`                              | File watching for live reload                                 |
-| `kysely`                                | SQL building for the connector data surface                   |
-| `zod`                                   | Request validation                                            |
-| `@jxsuite/protocol`                     | The canonical `STUDIO_ROUTES` table and wire types            |
-| `@jxsuite/collab`                       | Realtime co-editing rooms and wire envelope                   |
-| `@jxsuite/compiler`                     | Site builds, extension/format registry host, project sections |
-| `@jxsuite/schema`                       | Class parsing, project schemas, extension registry            |
-| `@jxsuite/create` / `@jxsuite/starters` | Project scaffolding and starter templates                     |
-| `@jxsuite/import`                       | AI-guided site import pipeline                                |
-| `@jxsuite/runtime`                      | Shared runtime types                                          |
+| Package                                 | Purpose                                                          |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| `chokidar`                              | File watching for live reload                                    |
+| `kysely`                                | SQL building for the connector data surface                      |
+| `zod`                                   | Request validation                                               |
+| `@jxsuite/protocol`                     | The canonical `STUDIO_ROUTES` table and wire types               |
+| `@jxsuite/ai`                           | The AI proxy's gateway (`./gateway`), shared with other backends |
+| `@jxsuite/collab`                       | Realtime co-editing rooms and wire envelope                      |
+| `@jxsuite/compiler`                     | Site builds, extension/format registry host, project sections    |
+| `@jxsuite/schema`                       | Class parsing, project schemas, extension registry               |
+| `@jxsuite/create` / `@jxsuite/starters` | Project scaffolding and starter templates                        |
+| `@jxsuite/import`                       | AI-guided site import pipeline                                   |
+| `@jxsuite/runtime`                      | Shared runtime types                                             |
 
 `oxfmt` and `oxlint` are resolved from the workspace for the code services. Bun built-ins: `Bun.serve`, `Bun.build`, `Bun.Transpiler`, `Bun.file`, `Bun.Glob`.
 

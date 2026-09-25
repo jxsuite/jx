@@ -5,6 +5,10 @@ coveragePathIgnorePatterns = [
   "**/tests/**",
   "./result/**",
   "../../extensions/**",
+  # @jxsuite/server's AI routes now run @jxsuite/ai/gateway, so loading the server loads its files,
+  # which land here barely exercised and fail the per-file gate while being gated at 0.99 under
+  # packages/ai's own run. Same rule as `../protocol/**` below.
+  "../ai/**",
   "../collab/**",
   "../compiler/**",
   "../create/**",
