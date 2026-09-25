@@ -396,10 +396,16 @@ describe("collab, ai and capabilities", () => {
     expect(ctx.ai.streaming).toBe(true);
   });
 
-  test("ai.waiting is its own probe — a suspended turn moves no tokens", () => {
+  test("ai.waiting is read from its own probe, not derived from ai.streaming", () => {
     const ctx = createLiveContext(sources({ aiWaiting: () => true }))();
     expect(ctx.ai.waiting).toBe(true);
     expect(ctx.ai.streaming).toBe(false);
+  });
+
+  // The whole turn is in flight while it waits on the author, so the app's two probes both hold.
+  test("a turn waiting on a question is still a turn: both probes read true", () => {
+    const ctx = createLiveContext(sources({ aiStreaming: () => true, aiWaiting: () => true }))();
+    expect(ctx.ai).toMatchObject({ streaming: true, waiting: true });
   });
 
   test("with no platform every capability is off", () => {

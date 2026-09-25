@@ -380,6 +380,39 @@ describe("document-assistant", () => {
     expect(capturedTools).toHaveLength(streams + 1);
   });
 
+  /* New Chat stops the running turn, but its loop unwinds afterwards: until it has, the window still
+     holds that turn and a send is refused. A caller that means to start the next turn (the New
+     Project hand-off) waits for it with whenTurnEnds rather than being refused and lost. */
+  test("after New Chat stops a waiting turn, the next send is accepted once it has ended", async () => {
+    nextRounds = [
+      toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+    const a = createDocumentAssistant();
+    const first = a.sendMessage("first");
+    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      await flush(1);
+    }
+    a.newChat();
+    // Stopped, but not yet unwound: the window still holds the turn.
+    expect(a.isTurnActive()).toBe(true);
+    await a.whenTurnEnds();
+    expect(a.isTurnActive()).toBe(false);
+    nextRounds = [
+      [
+        { content: "Importing.", type: "delta" },
+        { stopReason: "stop", type: "done" },
+      ],
+    ];
+    const streams = capturedTools.length;
+    await a.sendMessage("import");
+    await first;
+    expect(capturedTools).toHaveLength(streams + 1);
+    expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "import",
+    ]);
+  });
+
   /* Chat History stays open to the author while a turn waits on them, and opening a chat stops the
      turn and replaces the transcript under it. Nothing more of that turn may land in the chat now
      on screen: not the stopped call's reply, and not its changes, which would otherwise be drawn

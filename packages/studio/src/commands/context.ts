@@ -246,9 +246,10 @@ export interface CommandContext {
     /**
      * A turn is suspended on an `ask_user` question.
      *
-     * Always inside a turn, so `streaming` holds too. Kept as its own fact because the composer
-     * reads it: while a question waits, a send is the question's answer rather than a new turn.
-     * Stop is enabled on the union, which is the same thing as `streaming`.
+     * Always inside a turn, so `streaming` holds too. Kept as its own fact for `when` predicates
+     * and the live-context probe: while a question waits, a send is its answer rather than a new
+     * turn (the composer reads the same fact straight from `panels/ai-panel.ts`). Stop's union with
+     * it is the same thing as `streaming`.
      */
     waiting: boolean;
   };

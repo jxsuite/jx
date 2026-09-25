@@ -355,8 +355,19 @@ export function handleRestore(messageId: string): void {
  * project brief). Delegates to the same send path as the composer. Safe to call right after the
  * Assistant tab renders — the reactive watcher projects chat-state into the panel whenever it
  * mounts.
+ *
+ * **A seed waits for the window's turn, and is never refused.** One window runs one turn, and a
+ * turn outlives the call that ended it: New Chat stops the running one, but its loop unwinds
+ * afterwards, and a project switch does not stop it at all. A seed sent in that window was refused
+ * and lost without a word, taking the New Project hand-off with it. Waiting also keeps a seed from
+ * being taken as the answer to a question the old turn still had open.
  */
 export async function seedAssistantPrompt(text: string): Promise<void> {
+  /* One wait is enough: the turn's end settles in its loop's `finally`, and this resumes on the next
+     microtask, before any event could start another turn. */
+  if (assistant.isTurnActive()) {
+    await assistant.whenTurnEnds();
+  }
   await handleAssistantSend(text);
 }
 
@@ -509,10 +520,10 @@ export function isAssistantWaiting(): boolean {
  *
  * That source was declared optional with the note "there is nothing to read yet; the caller passes
  * a probe when one exists", and no caller ever did — so `ctx.ai.streaming` read `false` forever and
- * `assistant.stop` would have been permanently refused. Reading the reactive chat state here is
- * what makes the fact LIVE: `createLiveContext` builds a fresh record per predicate evaluation, so
- * a surface projecting from an effect tracks this status and re-projects when the stream starts or
- * ends.
+ * `assistant.stop` would have been permanently refused. Reading the assistant's reactive turn flag
+ * here is what makes the fact LIVE: `createLiveContext` builds a fresh record per predicate
+ * evaluation, so a surface projecting from an effect tracks the flag and re-projects when a turn
+ * starts or ends.
  */
 export function isAssistantStreaming(): boolean {
   return assistant.isTurnActive();
@@ -756,9 +767,11 @@ export function assistantCommands(): AnyCommand[] {
       menus: ["palette"],
       group: "2_turn",
       requires: "a turn in flight",
-      /* The union, which is `streaming` itself now that it covers the whole turn: a turn suspended
-         on `ask_user` moves no tokens, and it is precisely the turn a reader who does not want to
-         answer needs to end. `waiting` stays in the union for a question put outside a turn. */
+      /* `streaming` covers the whole turn, a waiting question included: a turn suspended on
+         `ask_user` moves no tokens, and it is precisely the turn a reader who does not want to
+         answer needs to end. A question is only ever put inside a turn, so `waiting` adds nothing
+         here; it stays in the union so a question could still be stopped if one were ever raised
+         without a turn. */
       enablement: (ctx: CommandContext) => ctx.ai.streaming || ctx.ai.waiting,
       run: stop,
     },

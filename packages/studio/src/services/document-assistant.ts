@@ -237,6 +237,9 @@ export function createDocumentAssistant() {
    */
   const turnActive = shallowRef(false);
 
+  /** Settles when the turn in flight has ended, finally included; already settled when none is. */
+  let turnEnded: Promise<void> = Promise.resolve();
+
   function buildPrompt() {
     const tab = activeTab.value;
     const inventory = projectState
@@ -313,6 +316,10 @@ export function createDocumentAssistant() {
     controller = new AbortController();
     const { signal } = controller;
     turnActive.value = true;
+    let endTurn!: () => void;
+    turnEnded = new Promise<void>((settle) => {
+      endTurn = settle;
+    });
     try {
       const plat = getPlatform();
       // Re-read the persisted model each send: the session is constructed once at module load
@@ -348,12 +355,25 @@ export function createDocumentAssistant() {
       // Persist again once the stream settled so the completed reply (or the state
       // After an error/abort cleanup) survives a reload without another send.
       persistChat();
+      endTurn();
     }
   }
 
   /** Whether a turn is in flight, tools and questions included. Reactive: read it in an effect. */
   function isTurnActive(): boolean {
     return turnActive.value;
+  }
+
+  /**
+   * Resolves once the turn in flight, if any, has ended.
+   *
+   * Stop, New Chat and Open Session end a turn but cannot finish it: they abort its signal, and the
+   * loop unwinds afterwards, at least a microtask later and as late as the call it was running
+   * allows. Until then the window still holds that turn, so a send made in the meantime is refused.
+   * A caller that means to start the next turn waits here first.
+   */
+  function whenTurnEnds(): Promise<void> {
+    return turnEnded;
   }
 
   function stop() {
@@ -464,6 +484,7 @@ export function createDocumentAssistant() {
     chatState,
     isTurnActive,
     sendMessage,
+    whenTurnEnds,
     stop,
     newChat,
     listSessions,
