@@ -2,7 +2,6 @@
   "chatCalls": [
     "sendMessage(\"make the heading bigger\")",
     "toMessagesArray()",
-    "finishStream(\"stop\")",
     "setError(\"Reconnect Cloudflare to keep using the assistant.\")"
   ],
   "clientCalls": [
@@ -27,7 +26,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -35,11 +34,6 @@
       "id": "msg#1",
       "role": "user",
       "content": "make the heading bigger"
-    },
-    {
-      "id": "msg#2",
-      "role": "assistant",
-      "content": ""
     }
   ],
   "finalState": {

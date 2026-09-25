@@ -125,7 +125,7 @@
     "events": [
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"/project/index.json\",\"tool\":\"Delete\"})",
-      "endTurn(\"msg#4\") filed 1"
+      "endTurn(\"msg#2\") filed 1"
     ],
     "turns": [
       {
@@ -141,7 +141,7 @@
             ]
           }
         ],
-        "turn": "msg#4"
+        "turn": "msg#2"
       }
     ]
   },
@@ -160,7 +160,10 @@
           "arguments": "{\"paths\":[[\"children\",1],[\"children\",0]]}",
           "id": "d1",
           "name": "delete_node",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Deleted 2 element(s)."
+          }
         }
       ]
     },
@@ -190,6 +193,7 @@
   },
   "historyIndex": 1,
   "extra": {
+    "selection": [],
     "activeSession": "session#1",
     "clientOptions": {
       "chatUrl": "/__mock/ai/chat",
@@ -206,7 +210,6 @@
         }
       ]
     },
-    "writtenFiles": [],
-    "selection": []
+    "writtenFiles": []
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "ask-user-round",
   "description": "Two ask_user rounds, answered and skipped. The answer travels as the tool reply (never as a user message), in the exact JSON Studio's ask_user tool returns, and the turn carries on after it.",
-  "shapes": ["ask-user-round", "content-null-with-tool-calls", "tool-record-result-null"],
+  "shapes": ["ask-user-round", "content-null-with-tool-calls"],
   "script": [
     ["sendMessage", "Import my old site"],
     ["appendToolCallStart", "call_ask", "ask_user"],
@@ -66,7 +66,11 @@
           "id": "call_ask",
           "name": "ask_user",
           "arguments": "{\"question\":\"Which pages matter most?\",\"options\":[\"Home\",\"Blog\",\"Shop\"]}",
-          "result": null
+          "result": {
+            "success": true,
+            "data": { "answer": "Blog", "skipped": false },
+            "summary": "The user answered: \"Blog\""
+          }
         }
       ]
     },
@@ -87,7 +91,11 @@
           "id": "call_skip",
           "name": "ask_user",
           "arguments": "{\"question\":\"Keep the original fonts?\"}",
-          "result": null
+          "result": {
+            "success": true,
+            "data": { "answer": null, "skipped": true },
+            "summary": "The user declined to answer; proceed with your best judgment."
+          }
         }
       ]
     },

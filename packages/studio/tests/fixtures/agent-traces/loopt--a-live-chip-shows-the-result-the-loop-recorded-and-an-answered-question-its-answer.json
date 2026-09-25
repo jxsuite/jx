@@ -1,13 +1,13 @@
 {
   "chatCalls": [
-    "sendMessage(\"break it\")",
+    "sendMessage(\"ask me\")",
     "toMessagesArray()",
-    "appendToolCallStart(\"c1\", \"set_property\")",
-    "appendToolCallDelta(\"c1\", \"{not json\")",
-    "appendToolCallEnd(\"c1\")",
+    "appendToolCallStart(\"q1\", \"ask_user\")",
+    "appendToolCallDelta(\"q1\", \"{\\\"options\\\":[\\\"Home\\\",\\\"Blog\\\"],\\\"question\\\":\\\"Which pages?\\\"}\")",
+    "appendToolCallEnd(\"q1\")",
     "finishStream(\"tool_calls\")",
-    "appendToolResult(\"c1\", {\"success\":false,\"error\":\"Failed to parse arguments: JSON Parse error: Expected '}'\"})",
-    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":false,\\\"error\\\":\\\"Failed to parse arguments: JSON Parse error: Expected '}'\\\"}\")",
+    "appendToolResult(\"q1\", {\"success\":true,\"data\":{\"answer\":\"Blog\",\"skipped\":false},\"summary\":\"The user answered: \\\"Blog\\\"\"})",
+    "pushToolResultMessage(\"q1\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"Blog\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"Blog\\\\\\\"\\\"}\")",
     "beginAssistantTurn()",
     "toMessagesArray()",
     "finishStream(\"stop\")"
@@ -20,7 +20,7 @@
         "added": [
           {
             "role": "user",
-            "content": "break it"
+            "content": "ask me"
           }
         ],
         "carried": 0
@@ -30,18 +30,7 @@
         "headings": [],
         "length": 0
       },
-      "tools": [
-        "read_document",
-        "set_property",
-        "add_child",
-        "set_style",
-        "set_text",
-        "add_state",
-        "update_state",
-        "move_node",
-        "create_component",
-        "create_page"
-      ]
+      "tools": ["ask_user"]
     },
     {
       "round": 2,
@@ -53,19 +42,19 @@
             "content": null,
             "tool_calls": [
               {
-                "id": "c1",
+                "id": "q1",
                 "type": "function",
                 "function": {
-                  "name": "set_property",
-                  "arguments": "{not json"
+                  "name": "ask_user",
+                  "arguments": "{\"options\":[\"Home\",\"Blog\"],\"question\":\"Which pages?\"}"
                 }
               }
             ]
           },
           {
             "role": "tool",
-            "tool_call_id": "c1",
-            "content": "{\"success\":false,\"error\":\"Failed to parse arguments: JSON Parse error: Expected '}'\"}"
+            "tool_call_id": "q1",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"Blog\",\"skipped\":false},\"summary\":\"The user answered: \\\"Blog\\\"\"}"
           }
         ],
         "carried": 1
@@ -82,7 +71,7 @@
     {
       "id": "msg#1",
       "role": "user",
-      "content": "break it"
+      "content": "ask me"
     },
     {
       "id": "msg#2",
@@ -90,12 +79,16 @@
       "content": "",
       "toolCalls": [
         {
-          "arguments": "{not json",
-          "id": "c1",
-          "name": "set_property",
+          "arguments": "{\"options\":[\"Home\",\"Blog\"],\"question\":\"Which pages?\"}",
+          "id": "q1",
+          "name": "ask_user",
           "result": {
-            "success": false,
-            "error": "Failed to parse arguments: JSON Parse error: Expected '}'"
+            "success": true,
+            "data": {
+              "answer": "Blog",
+              "skipped": false
+            },
+            "summary": "The user answered: \"Blog\""
           }
         }
       ]
@@ -103,8 +96,8 @@
     {
       "id": "msg#3",
       "role": "tool",
-      "content": "{\"success\":false,\"error\":\"Failed to parse arguments: JSON Parse error: Expected '}'\"}",
-      "toolCallId": "c1"
+      "content": "{\"success\":true,\"data\":{\"answer\":\"Blog\",\"skipped\":false},\"summary\":\"The user answered: \\\"Blog\\\"\"}",
+      "toolCallId": "q1"
     },
     {
       "id": "msg#4",
@@ -120,14 +113,10 @@
     "tokenCount": 0,
     "usage": null
   },
-  "finalDocument": {
-    "children": [
-      {
-        "tagName": "p",
-        "textContent": "Hello"
-      }
-    ],
-    "tagName": "div"
-  },
-  "historyIndex": 0
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "answer": "Blog",
+    "askState": "answered"
+  }
 }

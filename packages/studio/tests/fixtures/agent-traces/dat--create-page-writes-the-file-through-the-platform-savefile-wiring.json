@@ -130,7 +130,7 @@
     "events": [
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":true,\"ok\":true,\"path\":\"pages/about.json\",\"tool\":\"create_page\"})",
-      "endTurn(\"msg#4\") filed 1"
+      "endTurn(\"msg#2\") filed 1"
     ],
     "turns": [
       {
@@ -146,7 +146,7 @@
             ]
           }
         ],
-        "turn": "msg#4"
+        "turn": "msg#2"
       }
     ]
   },
@@ -165,7 +165,10 @@
           "arguments": "{\"content\":{\"children\":[{\"tagName\":\"p\",\"textContent\":\"About us\"}],\"tagName\":\"div\"},\"path\":\"pages/about.json\"}",
           "id": "c1",
           "name": "create_page",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Created page at \"pages/about.json\". (Saved to disk; not undoable.)"
+          }
         }
       ]
     },

@@ -399,6 +399,49 @@ describe("ai-panel", () => {
     expect(q('[part="busy"]')).toBeNull();
   });
 
+  /* The loop attaches each result to its request's record after the tool runs. From the second call
+     of a round on, the tail is an earlier call's `tool` reply rather than the request, so an effect
+     that tracked only the tail left the chip pending until something else happened to repaint. */
+  test("a result that lands behind its round's replies repaints the chip it belongs to", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-test" });
+    chatState.messages.length = 0;
+    pushMessage("user", "do both");
+    pushMessage("assistant", "", {
+      toolCalls: [
+        { arguments: "{}", id: "c1", name: "first", result: null },
+        { arguments: "{}", id: "c2", name: "second", result: null },
+      ],
+    });
+    const request = chatState.messages.at(-1)!;
+    request.toolCalls![0]!.result = { success: true, summary: "First done." };
+    pushMessage("tool", JSON.stringify({ success: true, summary: "First done." }), {
+      toolCallId: "c1",
+    });
+    await flush(3);
+    const outcomes = () => nodes('[part="tool-chip"]').map((chip) => chip.dataset.outcome);
+    expect(outcomes()).toEqual(["ok", "pending"]);
+
+    // Nothing but the record moves: no message is pushed and the tail is unchanged.
+    request.toolCalls![1]!.result = { error: "No node.", success: false };
+    await flush(3);
+    expect(outcomes()).toEqual(["ok", "failed"]);
+  });
+
+  test("a usage count repaints the header's token figure on its own", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-test" });
+    chatState.messages.length = 0;
+    chatState.tokenCount = 0;
+    pushMessage("user", "hi");
+    await flush(3);
+    expect(q('[part="tokens"]')).toBeNull();
+
+    chatState.tokenCount = 1234;
+    await flush(3);
+    expect(q('[part="tokens"]')).not.toBeNull();
+    chatState.tokenCount = 0;
+    await flush(3);
+  });
+
   test("chat errors render with recovery advice", async () => {
     chatState.error = "429 rate limit";
     chatState.status = "error";
@@ -578,6 +621,37 @@ function ledger(id: string, writes: { disk: boolean; ok: boolean; path: string }
   }
   endTurn(id);
 }
+
+/* The loop files its ledger in its `finally`. After a Stop mid-stream the turn's last reactive write
+   (`cancelStream`) lands microtasks before that, so the coalesced projection has already drawn the
+   reply by the time its changes are filed. */
+describe("a turn's changes, filed as it settles", () => {
+  test("a summary filed after the panel last repainted still appears", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-test" });
+    resetAiWrites();
+    chatState.messages.length = 0;
+    chatState.error = null;
+    chatState.status = "idle";
+    sendMessage.mockImplementationOnce(async (text: string) => {
+      pushMessage("user", text);
+      pushMessage("assistant", "", {
+        toolCalls: [
+          { arguments: "{}", id: "c1", name: "edit", result: { success: true, summary: "Done." } },
+        ],
+      });
+      const request = chatState.messages.at(-1)!;
+      await flush(3);
+      // Nothing reactive moves from here on: only the ledger.
+      ledger(request.id, [{ disk: false, ok: true, path: "/pages/index.json" }]);
+    });
+    const ta = q<HTMLTextAreaElement>('[part="composer-input"]')!;
+    setValue(ta, "edit it");
+    key(ta, "Enter");
+    await flush(8);
+    expect(q('[part="changes-summary"]')?.textContent).toContain("Changed 1 file");
+    resetAiWrites();
+  });
+});
 
 function notices(): string[] {
   return [...toasts, ...problems].map((n) => n.message);

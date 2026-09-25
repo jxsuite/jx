@@ -108,7 +108,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#4\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -126,7 +126,10 @@
           "arguments": "{\"paths\":[[\"children\",0]]}",
           "id": "d1",
           "name": "delete_node",
-          "result": null
+          "result": {
+            "error": "Command \"selection.delete\" is not available right now — it requires an element selected on the canvas that has a sibling position.",
+            "success": false
+          }
         }
       ]
     },
@@ -160,6 +163,7 @@
   },
   "historyIndex": 1,
   "extra": {
+    "dirty": false,
     "activeSession": "session#1",
     "clientOptions": {
       "chatUrl": "/__mock/ai/chat",
@@ -176,7 +180,6 @@
         }
       ]
     },
-    "writtenFiles": [],
-    "dirty": false
+    "writtenFiles": []
   }
 }

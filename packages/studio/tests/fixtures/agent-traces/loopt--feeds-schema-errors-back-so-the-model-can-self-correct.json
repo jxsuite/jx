@@ -117,7 +117,7 @@
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"tagName\\\" at [].\"})",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"tagName\\\" at [].\"})",
-      "endTurn(\"msg#6\") filed 2"
+      "endTurn(\"msg#4\") filed 2"
     ],
     "turns": [
       {
@@ -138,7 +138,7 @@
             ]
           }
         ],
-        "turn": "msg#6"
+        "turn": "msg#4"
       }
     ]
   },
@@ -157,7 +157,10 @@
           "arguments": "{\"key\":\"tagName\",\"path\":[],\"value\":\"header\"}",
           "id": "c1",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\n- (root): invalid custom element tagName"
+          }
         }
       ]
     },
@@ -176,7 +179,10 @@
           "arguments": "{\"key\":\"tagName\",\"path\":[],\"value\":\"site-header\"}",
           "id": "c2",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"tagName\" at []."
+          }
         }
       ]
     },

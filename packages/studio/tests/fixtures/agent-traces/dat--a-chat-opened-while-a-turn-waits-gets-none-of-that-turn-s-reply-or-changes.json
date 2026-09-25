@@ -1,37 +1,54 @@
 {
   "chatCalls": [
-    "sendMessage(\"rename the project\")",
+    "sendMessage(\"first chat\")",
     "toMessagesArray()",
-    "setTokenCount(5617)",
+    "setTokenCount(5518)",
     "setContextWarning(false)",
-    "setTokenCount(5617)",
+    "setTokenCount(5518)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
-    "appendToolCallStart(\"c1\", \"write_file\")",
-    "appendToolCallDelta(\"c1\", \"{\\\"content\\\":\\\"{\\\\\\\"name\\\\\\\":\\\\\\\"New Name\\\\\\\"}\\\",\\\"path\\\":\\\"project.json\\\"}\")",
+    "appendDelta(\"first reply\")",
+    "finishStream(\"stop\")",
+    "cancelStream()",
+    "clearChat()",
+    "sendMessage(\"second chat\")",
+    "toMessagesArray()",
+    "setTokenCount(5518)",
+    "setContextWarning(false)",
+    "setTokenCount(5518)",
+    "setModel(\"gpt-4o\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"add_child\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"index\\\":1,\\\"node\\\":{\\\"tagName\\\":\\\"span\\\"},\\\"parentPath\\\":[]}\")",
     "appendToolCallEnd(\"c1\")",
     "finishStream(\"tool_calls\")",
-    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Wrote \\\"project.json\\\" (saved to disk; not undoable with Cmd+Z).\"})",
-    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Wrote \\\\\\\"project.json\\\\\\\" (saved to disk; not undoable with Cmd+Z).\\\"}\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Inserted node at [\\\\\\\"children\\\\\\\",1].\\\"}\")",
     "beginAssistantTurn()",
     "toMessagesArray()",
-    "finishStream(\"stop\")"
+    "appendToolCallStart(\"q1\", \"ask_user\")",
+    "appendToolCallDelta(\"q1\", \"{\\\"question\\\":\\\"Keep it?\\\"}\")",
+    "appendToolCallEnd(\"q1\")",
+    "finishStream(\"tool_calls\")",
+    "cancelStream()",
+    "clearChat()"
   ],
   "clientCalls": [
     {
       "round": 1,
+      "client": 1,
       "signal": "live",
       "messages": {
         "added": [
           {
             "role": "user",
-            "content": "rename the project"
+            "content": "first chat"
           }
         ],
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "c95e1688fdaa",
+        "hash": "168ec6a4495e",
         "headings": [
           "## Asking the user",
           "## Jx Document Format",
@@ -68,12 +85,11 @@
           "### Page metadata",
           "### Multi-page workflow",
           "## Current Document",
-          "## Project Context",
           "## Error Recovery",
           "### Common validation errors and their fixes:",
           "### If you keep getting errors:"
         ],
-        "length": 22432
+        "length": 22042
       },
       "tools": [
         "ask_user",
@@ -85,18 +101,31 @@
         "add_state",
         "update_state",
         "move_node",
-        "create_component",
-        "create_page",
-        "list_files",
-        "read_file",
-        "write_file",
-        "search_files",
+        "create_project",
+        "list_starters",
         "select_node",
         "delete_node"
       ]
     },
     {
       "round": 2,
+      "client": 2,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "second chat"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "client": 2,
       "signal": "live",
       "messages": {
         "added": [
@@ -108,8 +137,8 @@
                 "id": "c1",
                 "type": "function",
                 "function": {
-                  "name": "write_file",
-                  "arguments": "{\"content\":\"{\\\"name\\\":\\\"New Name\\\"}\",\"path\":\"project.json\"}"
+                  "name": "add_child",
+                  "arguments": "{\"index\":1,\"node\":{\"tagName\":\"span\"},\"parentPath\":[]}"
                 }
               }
             ]
@@ -117,7 +146,7 @@
           {
             "role": "tool",
             "tool_call_id": "c1",
-            "content": "{\"success\":true,\"summary\":\"Wrote \\\"project.json\\\" (saved to disk; not undoable with Cmd+Z).\"}"
+            "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"}"
           }
         ],
         "carried": 1
@@ -129,24 +158,26 @@
   "ledger": {
     "events": [
       "beginTurn(\"turn:2\")",
-      "recordWrite({\"disk\":true,\"ok\":true,\"path\":\"project.json\",\"tool\":\"write_file\"})",
-      "endTurn(\"msg#2\") filed 1"
+      "endTurn(\"msg#2\") filed 0",
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"/project/index.json\",\"tool\":\"Inserted node at [\\\"children\\\",1].\"})",
+      "endTurn(\"\") filed 1"
     ],
     "turns": [
       {
         "files": [
           {
-            "file": "project.json",
+            "file": "/project/index.json",
             "writes": [
               {
-                "disk": true,
+                "disk": false,
                 "ok": true,
-                "tool": "write_file"
+                "tool": "Inserted node at [\"children\",1]."
               }
             ]
           }
         ],
-        "turn": "msg#2"
+        "turn": ""
       }
     ]
   },
@@ -154,34 +185,12 @@
     {
       "id": "msg#1",
       "role": "user",
-      "content": "rename the project"
+      "content": "first chat"
     },
     {
       "id": "msg#2",
       "role": "assistant",
-      "content": "",
-      "toolCalls": [
-        {
-          "arguments": "{\"content\":\"{\\\"name\\\":\\\"New Name\\\"}\",\"path\":\"project.json\"}",
-          "id": "c1",
-          "name": "write_file",
-          "result": {
-            "success": true,
-            "summary": "Wrote \"project.json\" (saved to disk; not undoable with Cmd+Z)."
-          }
-        }
-      ]
-    },
-    {
-      "id": "msg#3",
-      "role": "tool",
-      "content": "{\"success\":true,\"summary\":\"Wrote \\\"project.json\\\" (saved to disk; not undoable with Cmd+Z).\"}",
-      "toolCallId": "c1"
-    },
-    {
-      "id": "msg#4",
-      "role": "assistant",
-      "content": ""
+      "content": "first reply"
     }
   ],
   "finalState": {
@@ -189,56 +198,44 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5617,
+    "tokenCount": 5518,
     "usage": null
   },
   "finalDocument": {
     "children": [
       {
         "tagName": "p",
-        "textContent": "Hello"
+        "textContent": "one"
+      },
+      {
+        "tagName": "span"
       }
     ],
     "tagName": "div"
   },
-  "historyIndex": 1,
+  "historyIndex": 2,
   "extra": {
-    "commit": {
-      "ok": true
-    },
-    "projectJson": "{ \"name\": \"New Name\", \"description\": \"from Settings\" }\n",
     "activeSession": "session#1",
     "clientOptions": {
       "chatUrl": "/__mock/ai/chat",
       "model": "gpt-4o"
     },
-    "platformCalls": [
-      "aiChatUrl()",
-      "writeFile(\"project.json\")",
-      "readFile(\"project.json\")",
-      "listExtensionCatalog()",
-      "writeFile(\"project.json\")"
-    ],
-    "projectRoot": "/proj",
+    "platformCalls": ["aiChatUrl()", "aiChatUrl()"],
+    "projectRoot": null,
     "sessions": {
-      "(unscoped)": [],
-      "/proj": [
+      "(unscoped)": [
         {
           "id": "session#1",
-          "persisted": ["msg#1 user", "msg#2 assistant", "msg#3 tool"],
-          "title": "rename the project"
+          "persisted": ["msg#1 user", "msg#2 assistant"],
+          "title": "first chat"
+        },
+        {
+          "id": "session#2",
+          "persisted": ["msg#3 user", "msg#4 assistant", "msg#5 tool", "msg#6 assistant"],
+          "title": "second chat"
         }
       ]
     },
-    "writtenFiles": [
-      {
-        "content": "{\"name\":\"New Name\"}",
-        "path": "project.json"
-      },
-      {
-        "content": "{ \"name\": \"New Name\", \"description\": \"from Settings\" }\n",
-        "path": "project.json"
-      }
-    ]
+    "writtenFiles": []
   }
 }

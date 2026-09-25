@@ -296,22 +296,28 @@ export function createChatState(opts: { model?: string } = {}) {
   }
 
   /**
-   * Attach a result to a pending tool call.
+   * Attach a result to the tool call it answers, on the assistant message that made the call.
+   *
+   * The record is looked for on that message rather than on the stream: a loop runs its tools after
+   * the round's stream has finished, when there is no streaming message and no pending call left,
+   * and looking only there attached every result to nothing, so a live chip never showed how its
+   * call ended. The request is the assistant message directly before the tool replies at the end of
+   * the transcript, the one position the wire allows a reply in; a provider may reuse call ids
+   * across rounds, so an earlier request carrying the same id is never the one being answered.
    *
    * @param {string} id
    * @param {ToolResult} result
    */
   function appendToolResult(id: string, result: ToolResult) {
-    const tc = store.pendingToolCalls.find((t) => t.id === id);
-    if (tc) {
-      tc.result = result;
+    let index = store.messages.length - 1;
+    while (index >= 0 && store.messages[index]!.role === "tool") {
+      index -= 1;
     }
-    // Also update in the message record
-    if (_streamingMessage?.toolCalls) {
-      const mtc = _streamingMessage.toolCalls.find((t) => t.id === id);
-      if (mtc) {
-        mtc.result = result;
-      }
+    const request = store.messages[index];
+    const record =
+      request?.role === "assistant" ? request.toolCalls?.find((t) => t.id === id) : null;
+    if (record) {
+      record.result = result;
     }
   }
 
@@ -336,6 +342,7 @@ export function createChatState(opts: { model?: string } = {}) {
     store.status = "error";
     store.error = message;
     store.streamingContent = "";
+    store.pendingToolCalls = [];
     // Remove the partial streaming message — it may contain incomplete tool_calls
     // That would poison the conversation history on the next send.
     if (_streamingMessage) {

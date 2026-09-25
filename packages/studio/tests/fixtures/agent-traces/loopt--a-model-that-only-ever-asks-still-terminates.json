@@ -976,7 +976,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a0",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -995,7 +1002,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a1",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1014,7 +1028,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a2",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1033,7 +1054,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a3",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1052,7 +1080,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a4",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1071,7 +1106,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a5",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1090,7 +1132,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a6",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1109,7 +1158,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a7",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1128,7 +1184,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a8",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1147,7 +1210,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a9",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1166,7 +1236,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a10",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1185,7 +1262,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a11",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1204,7 +1288,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a12",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1223,7 +1314,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a13",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1242,7 +1340,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a14",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1261,7 +1366,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a15",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1280,7 +1392,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a16",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1299,7 +1418,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a17",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1318,7 +1444,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a18",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1337,7 +1470,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a19",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1356,7 +1496,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a20",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1375,7 +1522,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a21",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1394,7 +1548,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a22",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1413,7 +1574,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a23",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
@@ -1432,7 +1600,14 @@
           "arguments": "{\"question\":\"?\"}",
           "id": "a24",
           "name": "ask_user",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
         }
       ]
     },
