@@ -598,6 +598,10 @@ export function registerProjectTools(
             error: `Failed to create project: ${error instanceof Error ? error.message : String(error)}`,
           };
         }
+        /* The project is on disk from here, whether or not this window goes on to open it, and no
+           undo reaches it. Recorded, it is what the turn changed: without it a turn that bootstrapped
+           a project and then only read reported that it had applied nothing. */
+        recordWrite({ disk: true, ok: true, path: result.root, tool: "create_project" });
 
         /*
          * Git init, then the full project-open flow, then a check that it landed — all three in

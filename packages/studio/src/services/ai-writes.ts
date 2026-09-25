@@ -83,6 +83,19 @@ export function recordWrite(write: AiWrite): void {
 }
 
 /**
+ * What the open turn has recorded so far, in order; empty when no turn is open.
+ *
+ * Read-only, and read by the loop around each call: a call that succeeded APPLIED something when
+ * the writes also grew by an `ok` one while it ran. That is the ledger's fact rather than the
+ * call's own account of itself, because a read returns a summary too.
+ *
+ * @returns {readonly AiWrite[]}
+ */
+export function turnWrites(): readonly AiWrite[] {
+  return open?.writes ?? [];
+}
+
+/**
  * Close the open turn and file it under `id`.
  *
  * The id arrives at the END because it is the assistant message's id, which does not exist when the

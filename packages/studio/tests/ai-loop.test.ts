@@ -9,7 +9,7 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
 import type { Tab } from "../src/tabs/tab";
 import { registerAiTools } from "../src/services/ai-tools";
-import { runAgentLoop } from "../src/services/tool-executor";
+import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
 import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
 import { recordWrite, resetAiWrites, writesForTurn } from "../src/services/ai-writes";
 import { projectChip } from "../src/panels/ai-chat/chat-view";
@@ -820,6 +820,175 @@ describe("ai agent loop — how a turn ended", () => {
       error: `Failed to parse arguments: arguments must be a JSON object, got ${type}`,
       success: false,
     });
+    disposeTab(tab);
+  });
+});
+
+// ─── J1.7: a turn's outcome is what it did ───────────────────────────────────
+
+describe("ai agent loop — what a turn applied, and a turn that drew nothing", () => {
+  /* A model that answers with neither text nor a tool call used to leave the author's message with
+     no reply at all: the turn ended "fine" on an empty message the transcript never draws. */
+  test("a turn whose model sends back nothing ends on an error row saying so", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([[{ type: "done", stopReason: "stop" }]]);
+
+    chatState.sendMessage("hello?");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("error");
+    expect(chatState.error).toBe(EMPTY_TURN_TEXT);
+    // The empty reply is gone, so nothing of it goes out on the next send.
+    expect(chatState.messages.map((m) => m.role)).toEqual(["user"]);
+    disposeTab(tab);
+  });
+
+  test("an empty final round after work is a complete turn, not an error", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      toolCallRound("c1", "add_child", {
+        parentPath: [],
+        index: 1,
+        node: { tagName: "span", textContent: "added" },
+      }),
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+
+    chatState.sendMessage("add a span");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    expect(chatState.error).toBeNull();
+    disposeTab(tab);
+  });
+
+  test("a stopped turn that drew nothing is not an error", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([[{ type: "done", stopReason: "cancelled" }]]);
+
+    chatState.sendMessage("never mind");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    expect(chatState.error).toBeNull();
+    disposeTab(tab);
+  });
+
+  /* Applied means it wrote. A read returns a summary too, so a turn that spent its whole budget
+     looking around used to end on an ordinary message listing the reads as "Changes applied". */
+  test("a turn that only read and ran out of rounds applied nothing, and says so as an error", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    /* A read that reports in a sentence, as list_files, search_files and ask_user do: it succeeds
+       with a summary and writes nothing. */
+    toolRegistry.register(
+      createToolDefinition({
+        name: "peek",
+        description: "reads, and says what it read",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          return { success: true, summary: "Looked at the page." };
+        },
+      }),
+    );
+    const client = fakeClient(
+      Array.from({ length: 6 }, (_, i) => toolCallRound(`r${i}`, "peek", {})),
+    );
+
+    chatState.sendMessage("look at everything");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(client.calls()).toBe(5);
+    expect(chatState.status).toBe("error");
+    expect(chatState.error).toContain("ran out of tool-call rounds");
+    expect(chatState.error).not.toContain("Changes applied so far");
+    disposeTab(tab);
+  });
+
+  test("the round cap lists the calls that wrote, not the ones that read", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    /* A read that reports in a sentence, as list_files, search_files and ask_user do: it succeeds
+       with a summary and writes nothing. */
+    toolRegistry.register(
+      createToolDefinition({
+        name: "peek",
+        description: "reads, and says what it read",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          return { success: true, summary: "Looked at the page." };
+        },
+      }),
+    );
+    const round = (i: number): StreamEvent[] => [
+      { type: "tool_call_start", id: `r${i}`, name: "peek" },
+      { type: "tool_call_end", id: `r${i}` },
+      { type: "tool_call_start", id: `w${i}`, name: "set_property" },
+      {
+        type: "tool_call_delta",
+        id: `w${i}`,
+        args: JSON.stringify({ path: [], key: "id", value: `v${i}` }),
+      },
+      { type: "tool_call_end", id: `w${i}` },
+      { type: "done", stopReason: "tool_calls" },
+    ];
+    const client = fakeClient(Array.from({ length: 6 }, (_, i) => round(i)));
+
+    chatState.sendMessage("read then write, repeatedly");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    const tail = chatState.messages.at(-1)!.content;
+    expect(tail).toContain("Changes applied so far");
+    const listed = tail.split("\n").filter((line) => line.startsWith("- "));
+    expect(listed).toHaveLength(5);
+    expect(listed.every((line) => !line.includes("Looked at the page"))).toBe(true);
+    disposeTab(tab);
+  });
+
+  /* Creating or importing a project writes a whole project to disk. A bootstrap turn that then only
+     read until the cap applied that project, and must say so rather than end on an error. */
+  test("a capped turn that created a project lists the project as applied", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    toolRegistry.register(
+      createToolDefinition({
+        name: "bootstrap",
+        description: "creates a project the way create_project does",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          recordWrite({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
+          return { success: true, summary: "Created project at /abs/site and opened it." };
+        },
+      }),
+    );
+    toolRegistry.register(
+      createToolDefinition({
+        name: "peek",
+        description: "reads, and says what it read",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          return { success: true, summary: "Looked at the page." };
+        },
+      }),
+    );
+    const client = fakeClient([
+      toolCallRound("b", "bootstrap", {}),
+      ...Array.from({ length: 5 }, (_, i) => toolCallRound(`r${i}`, "peek", {})),
+    ]);
+
+    chatState.sendMessage("make me a site");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    const listed = chatState.messages
+      .at(-1)!
+      .content.split("\n")
+      .filter((line) => line.startsWith("- "));
+    expect(listed).toEqual(["- Created project at /abs/site and opened it."]);
     disposeTab(tab);
   });
 });

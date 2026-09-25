@@ -7,7 +7,7 @@
     "setTokenCount(5609)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
-    "finishStream(\"stop\")"
+    "setError(\"The model sent back an empty reply.\")"
   ],
   "clientCalls": [
     {
@@ -97,18 +97,13 @@
       "id": "msg#1",
       "role": "user",
       "content": "hi"
-    },
-    {
-      "id": "msg#2",
-      "role": "assistant",
-      "content": ""
     }
   ],
   "finalState": {
     "contextWarning": false,
-    "error": null,
+    "error": "The model sent back an empty reply.",
     "model": "gpt-4o",
-    "status": "idle",
+    "status": "error",
     "tokenCount": 5609,
     "usage": null
   },
