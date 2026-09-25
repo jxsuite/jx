@@ -64,8 +64,8 @@
       "marginInlineStart": "6px"
     },
     "& jx-action-button[part=\"preview-toggle\"] > [part=\"control\"]": {
-      "$description": "The text padding the View switch's segments get from their group, which this toggle stands outside: the small size's 2px is for a glyph. (0,3,1) outranks the kit's small padding at (0,3,0).",
-      "paddingInline": "var(--jx-space-2)"
+      "$description": "The text padding the View switch's segments get from their group, which this toggle stands outside: the small size's 2px is for a glyph, and 6px is what the group gives a text segment. (0,3,1) outranks the kit's small padding at (0,3,0).",
+      "paddingInline": "6px"
     },
     "& [part=\"context-trigger\"]": {
       "fontVariantNumeric": "tabular-nums"
@@ -92,15 +92,23 @@
       "fontSize": "var(--jx-text-md)"
     },
     "& [part=\"pod\"]": {
-      "$description": "Bottom-right of the pane, over the stage — a viewport control, which is not a document axis and so never belonged in a band beside one. The right inset ADDS `--stage-scrollbar-w` because the chrome layer spans the whole cell, scrollbar gutter included: a fixed 12px put the pod 3px into Edit's 15px track, painting over it and swallowing its clicks. CSS cannot measure a scrollbar and this document cannot see the scroller, so `canvas/stage-scrollbar.ts` measures the stage's own and writes the width on the cell, where this reads it by cascade. It is 0 wherever the stage does not scroll or the scrollbar is an overlay. Physical right on purpose: Studio's chrome is never mirrored.",
+      "$description": "Bottom-right of the pane, over the stage — a viewport control, which is not a document axis and so never belonged in a band beside one. It is a ROW of two controls and draws no box of its own: a 1px border and a 6px radius round 2px/4px of padding framed the zoom group's own frame and the Fit select's own frame, a frame inside a frame and busier than any other group in the chrome. Each control draws itself and takes `--pod-lift` to stand off the document under it, which is what the pod's fill and border used to do for both at once, and the gap between them says they are two controls rather than one strip with a seam. The right inset ADDS `--stage-scrollbar-w` because the chrome layer spans the whole cell, scrollbar gutter included: a fixed 12px put the pod 3px into Edit's 15px track, painting over it and swallowing its clicks. CSS cannot measure a scrollbar and this document cannot see the scroller, so `canvas/stage-scrollbar.ts` measures the stage's own and writes the width on the cell, where this reads it by cascade. It is 0 wherever the stage does not scroll or the scrollbar is an overlay. Physical right on purpose: Studio's chrome is never mirrored.",
+      "--pod-lift": "0 2px 8px rgb(0 0 0 / 25%)",
       "alignSelf": "flex-end",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
       "pointerEvents": "auto",
-      "margin": "0 calc(var(--jx-space-4) + var(--stage-scrollbar-w, 0px)) var(--jx-space-4) 0",
-      "padding": "var(--jx-space-1) var(--jx-space-2)",
-      "border": "1px solid var(--border)",
-      "borderRadius": "var(--jx-radius-md)",
-      "background": "var(--bg)",
-      "boxShadow": "0 2px 8px rgb(0 0 0 / 25%)"
+      "margin": "0 calc(var(--jx-space-4) + var(--stage-scrollbar-w, 0px)) var(--jx-space-4) 0"
+    },
+    "& [part=\"zoom-group\"]": {
+      "$description": "The segmented frame floats on its own now that the pod draws no box around it. The radius is the one the first and last segments already draw, so the shadow follows the shape of the strip instead of a rectangle around it — the host's box IS that strip, since the group has no padding and each member's -1px pulls its own host in by a pixel.",
+      "borderRadius": "var(--jx-radius-sm)",
+      "boxShadow": "var(--pod-lift)"
+    },
+    "& [part=\"pod\"] > [part=\"zoom-group\"][data-compact] > jx-action-button > [part=\"control\"]": {
+      "$description": "One resting ink across the pod. A compact group rests its unselected members on `--jx-fg-dim` and brightens the chosen one, which is how a segmented control says which segment is on — and nothing in this pod is ever chosen: the three are a viewport verb, a readout and a verb. So the dim ink said nothing here and made `100%` read as disabled beside the Fit select's value, which is the same kind of readout at `--jx-fg`. (0,5,1) over the group's own resting rule at (0,4,1); the group's hover is (0,6,1) and still wins, which now leaves it only the wash.",
+      "color": "var(--fg)"
     },
     "& [part=\"zoom-label\"]": {
       "$description": "A floor under the percentage, so the pod does not shift as the value changes length. The width is the host's and the face is the control's, below: the control sets its own font and sits inside the host at its content width, so this rule used to carry a mono face nothing inherited and to open a 6px hole in the segmented frame before the `+` segment (measured: a 48px host round a 41.8px control, drawn in Inter).",
@@ -114,6 +122,10 @@
     },
     "& [part=\"fit\"]": {
       "maxWidth": "120px"
+    },
+    "& [part=\"fit\"] > [part=\"control\"]": {
+      "$description": "The pod's second control lifts off the document the way the first does, on the frame the kit's select already draws. On the control rather than the host, because the host is a column whose error region and help slot are the select's neighbours: the shadow has to follow the box that is painted.",
+      "boxShadow": "var(--pod-lift)"
     },
     "& [part=\"popover\"]": {
       "$description": "Both panels take the pointer that `.pane-chrome` withholds. A popover is in the top layer while it shows, which changes where it PAINTS and not where it is in the tree, so it inherits `pointer-events: none` from the chrome layer exactly as the band does.",
@@ -139,11 +151,15 @@
       "letterSpacing": "0.04em",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"sizes\"]": {
-      "flexWrap": "wrap"
+    "& [part=\"sizes\"], & [part=\"features\"]": {
+      "$description": "The two groups that WRAP, and the reason neither is a segmented control. A breakpoint or feature list is as long as the project makes it and this popover is a 240–340px column, so both fold onto a second line in any project with more than a few; a compact group cannot draw that — its seam is written in tree order, no selector can find the ends of a flex line, and it therefore refuses to wrap and would overflow the column instead (ui.md §5.4). Chips instead: each member draws its own rounded frame (`quiet: false`, since the group no longer frames it) and the chosen one takes the accent edge below. The gap is --jx-space-2 rather than the group's own 2px, which puts every small chip's hit area at the 24px floor on both axes instead of the 22px two overlapping extensions leave (§4.3).",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)"
     },
-    "& [part=\"features\"]": {
-      "flexWrap": "wrap"
+    "& [part=\"sizes-item\"][data-selected] > [part=\"control\"], & [part=\"features-item\"][data-selected] > [part=\"control\"]": {
+      "$description": "A chosen chip reads the way a chosen segment does: the accent tint with an accent EDGE. A member's own selected state is a 15% tint over its neutral border, which among framed neighbours reads as a faint wash rather than as the one that is on — the measurement that gave the compact group its selected rule, restated here at the one place the group does not draw it. (0,4,0) over the member's own (0,3,0).",
+      "borderColor": "var(--jx-accent)",
+      "background": "var(--jx-accent-20)"
     },
     "& [part=\"fields\"]": {
       "$description": "The fields, stacked. They were a row on the bar capped at 140px; in the popover each takes the full column so a route value or a JSON test prop is readable while you type it.",
@@ -810,55 +826,55 @@
                       }
                     ]
                   }
-                },
-                {
-                  "tagName": "div",
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "fit-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/fitState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-select",
                   "attributes": {
-                    "part": "fit-slot",
-                    "role": "none"
+                    "part": "fit"
                   },
-                  "style": {
-                    "display": "contents"
+                  "$props": {
+                    "label": "Fit",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/fitOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/fitValue"
+                    }
                   },
-                  "$switch": {
-                    "$ref": "#/state/fitState"
-                  },
-                  "cases": {
-                    "shown": {
-                      "tagName": "jx-select",
-                      "attributes": {
-                        "part": "fit"
-                      },
-                      "$props": {
-                        "label": "Fit",
-                        "size": "sm",
-                        "options": {
-                          "$ref": "#/state/fitOptions"
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/chooseFit"
                         },
-                        "value": {
-                          "$ref": "#/state/fitValue"
-                        }
-                      },
-                      "onchange": {
-                        "$prototype": "Function",
-                        "body": [
+                        "value": [
                           {
-                            "operator": "call",
-                            "target": {
-                              "$ref": "#/state/chooseFit"
-                            },
-                            "value": [
-                              {
-                                "$ref": "event#/target/value"
-                              }
-                            ]
+                            "$ref": "event#/target/value"
                           }
                         ]
                       }
-                    }
+                    ]
                   }
                 }
-              ]
+              }
             }
           ]
         }
@@ -909,7 +925,7 @@
                   },
                   "$props": {
                     "selects": "single",
-                    "compact": true,
+                    "compact": false,
                     "label": "Size"
                   },
                   "children": [
@@ -929,6 +945,7 @@
                         },
                         "$props": {
                           "size": "sm",
+                          "quiet": false,
                           "checked": {
                             "$ref": "$map/item/checked"
                           },
@@ -1181,7 +1198,7 @@
                       },
                       "$props": {
                         "selects": "multiple",
-                        "compact": true,
+                        "compact": false,
                         "label": "Features"
                       },
                       "children": [
@@ -1201,6 +1218,7 @@
                             },
                             "$props": {
                               "size": "sm",
+                              "quiet": false,
                               "toggles": true,
                               "selected": {
                                 "$ref": "$map/item/selected"

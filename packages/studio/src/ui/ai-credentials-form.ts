@@ -29,8 +29,10 @@ import {
   getBaseUrl,
   getOpenAiKey,
   saveAiProvider,
+  storedEquals,
   storedModel,
 } from "../services/ai-settings";
+import { SETTINGS } from "../services/settings/definitions";
 import type { AiProvider } from "../services/ai-settings";
 import { createAiCredentialsSurface } from "../surfaces/ai-credentials-form";
 import type {
@@ -131,12 +133,22 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * Disconnect in Preferences › Accounts left the Assistant form holding the key it had just
    * revoked, which its Save would have stored again. Run from {@link render}, the host's repaint,
    * and never from a setter, so a keystroke is never rebased onto the store under the reader.
+   *
+   * **"Untouched" is judged by the same rule as `dirty`**, through the store's own normalisation,
+   * because the two questions have to agree. Raw string equality made a draft that differed only by
+   * whitespace, or by an endpoint's trailing slash, TOUCHED here and not-dirty there: no Save and
+   * no Cancel were drawn, so nothing could reset it, and yet this function refused to move it — so
+   * a Disconnect in Accounts left the revoked key sitting in the field, and once the store was
+   * empty the form turned dirty and offered to store it back. A draft Save would not move is a view
+   * of the store, whatever it was typed as.
    */
   function followStore() {
     const now = stored();
-    keyDraft = keyDraft === basis.apiKey ? now.apiKey : keyDraft;
-    baseUrlDraft = baseUrlDraft === basis.baseUrl ? now.baseUrl : baseUrlDraft;
-    modelDraft = modelDraft === basis.model ? now.model : modelDraft;
+    keyDraft = storedEquals(SETTINGS.aiOpenAiKey, keyDraft, basis.apiKey) ? now.apiKey : keyDraft;
+    baseUrlDraft = storedEquals(SETTINGS.aiBaseUrl, baseUrlDraft, basis.baseUrl)
+      ? now.baseUrl
+      : baseUrlDraft;
+    modelDraft = storedEquals(SETTINGS.aiModel, modelDraft, basis.model) ? now.model : modelDraft;
     basis = now;
   }
 

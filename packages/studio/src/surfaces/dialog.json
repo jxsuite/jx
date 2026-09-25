@@ -87,8 +87,8 @@
     "& [part=\"message\"]:last-child": {
       "margin": "0"
     },
-    "& [part=\"island\"]": {
-      "$description": "The island is the message's other form: a body richer than a sentence, rendered from a lit template or a mounted surface (studio-ui-guidelines.md §9.4). It is still the message, so it is selectable for the same reason `[part=\"message\"]` is.",
+    "& [part=\"island\"] > p, & [part=\"island\"] > span, & [part=\"island\"] > strong, & [part=\"island\"] > em, & [part=\"island\"] > code": {
+      "$description": "The island's own prose is the message's other form — a body richer than a sentence, written straight into the island from a lit template (studio-ui-guidelines.md §9.4) — so it is selectable for the same reason `[part=\"message\"]` is. The opt-in stops at those children because the island is ALSO the mount point for a whole document: the Open Grid picker and Push Schema's plan put their surfaces here, and `user-select` inherits, so a rule on the island itself would hand selection to every heading, source row and button they draw, which is the interface the policy exists to keep unselectable. A mounted surface roots a `div`; a message writes paragraphs and text-level spans, so the two forms are told apart by the child that arrives.",
       "userSelect": "text"
     },
     "& [part=\"island\"]:empty": {

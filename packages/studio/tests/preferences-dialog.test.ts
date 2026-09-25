@@ -26,6 +26,8 @@ import {
   seedSettings,
 } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { CfConnection } from "../src/types";
 
 // Keep the credentials gate deterministic: no managed proxy, no probe fetch.
@@ -87,6 +89,25 @@ function part<T extends Element = HTMLElement>(name: string): T | null {
 
 function navItem(id: string): HTMLElement {
   return d(`[part="nav-item"][data-section="${id}"]`)!;
+}
+
+/** The section the focused nav item names, or `""` when the focus is not on one. */
+function focusedSection(): string {
+  const active = document.activeElement as HTMLElement | null;
+  return active?.getAttribute("part") === "nav-item" ? (active.dataset["section"] ?? "") : "";
+}
+
+/**
+ * One rule of the sheet's own style block, by the selector it is written under.
+ *
+ * For the handful of properties happy-dom resolves nothing for — padding among them — so a rule
+ * that can only be read from the document is still read from somewhere.
+ */
+function sheetRule(selector: string): Record<string, string> {
+  const doc = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../src/surfaces/preferences.json"), "utf8"),
+  ) as { style: Record<string, Record<string, string>> };
+  return doc.style[selector]!;
 }
 
 /**
@@ -294,6 +315,24 @@ describe("opening and closing", () => {
     expect(navItem("appearance").getAttribute("aria-current")).toBe("false");
   });
 
+  test("the keyboard opens on the section that is showing, not on the first one", async () => {
+    /* `showModal()` focuses the first focusable descendant, which is always Appearance, so opening
+       on a section left the focus ring on one row while the selected fill and `aria-current` were on
+       another: two rows looked active at once, and an arrow key moved from the wrong one. */
+    void openPreferences("keyboard");
+    await flush(6);
+    /* By the attribute and not by `toBe(element)`: a live element is what this assertion would have
+       to print on a failure, and printing one in this DOM is minutes of serialised tree. */
+    expect(focusedSection()).toBe("keyboard");
+    expect(navItem("keyboard").getAttribute("aria-current")).toBe("true");
+    closePreferences();
+    await flush(3);
+    // And the default section is still the default section's item, not a special case.
+    void openPreferences();
+    await flush(6);
+    expect(focusedSection()).toBe(DEFAULT_PREFERENCES_SECTION);
+  });
+
   test("the nav names every section, in sheet order", async () => {
     void openPreferences();
     await flush(3);
@@ -340,6 +379,45 @@ describe("Assistant", () => {
     expect(dAll('[part="ai-creds-form"] jx-textfield').length).toBeGreaterThan(0);
     // And the key is masked, which is the one thing about this form that must never regress.
     expect(d('[part="key"] [part="input"]')!.getAttribute("type")).toBe("password");
+  });
+
+  /**
+   * The form is a document mounted in this sheet's own light DOM, so every rule the sheet writes as
+   * a bare descendant reaches it. Two did: `[part="key"]` is the Keyboard sheet's binding ROW, and
+   * it laid a 16px flex row over the API-key field (drawing it 24px tall beside the 20px endpoint
+   * under it); `[part="title"]` is the section heading, and it set that size on the form's own
+   * title. Each rule now says which of the two it means, and this is where the guest's side of it
+   * is read — `tests/surface-part-names.test.ts` holds the sheet's side.
+   */
+  test("the sheet's own row and heading rules stop at the form it hosts", async () => {
+    void openPreferences("assistant");
+    await flush(6);
+    const field = d('[part="ai-creds-form"] [part="key"]')!;
+    expect(field.tagName.toLowerCase()).toBe("jx-textfield");
+    // The kit's own host layout, not the binding row's: `flex` and `center` were the row's.
+    expect(getComputedStyle(field).display).toBe("inline-flex");
+    expect(getComputedStyle(field).alignItems).not.toBe("center");
+    /* The heading rule is a CHILD of the sheet's section, and the form's title is a child of the
+       form, so the selector cannot reach it. (The matcher in surface-part-names.test.ts is what
+       proves the rule itself; this is the shape of the tree it relies on.) */
+    const title = d('[part="ai-creds-form"] [part="title"]')!;
+    expect((title.parentElement as HTMLElement).getAttribute("part")).toBe("ai-creds-form");
+    // And the form's own title is no longer centred over a column that starts at the inline edge.
+    expect(getComputedStyle(title).alignSelf).not.toBe("center");
+  });
+
+  test("a failed model listing wraps to a line of the form, not to an indented aside", async () => {
+    /* Beside the button the reason began 96px into a 320px column, so six lines of an upstream body
+       read as a paragraph indented past the control they answer for, and the button floated at that
+       block's middle. The row wraps now, and the reason's basis is the whole line, so it cannot
+       share one. What the reason itself carries is read in `ai-credentials-form.test.ts`, where a
+       listing can actually be made to fail. */
+    void openPreferences("assistant");
+    await flush(6);
+    const row = getComputedStyle(d('[part="ai-creds-form"] [part="models"]')!);
+    expect(row.flexWrap).toBe("wrap");
+    // A line that does hold two boxes lines up their first lines, not their middles.
+    expect(row.alignItems).toBe("flex-start");
   });
 
   test("saving a key lands in the store and repaints the Accounts row", async () => {
@@ -480,6 +558,9 @@ describe("Accounts", () => {
       /* A wrapping row whose threshold is a basis, with the actions kept at its end once they
          wrap onto a line of their own. */
       expect(getComputedStyle(row).flexWrap).toBe("wrap");
+      /* Started, not centred: the endpoint wraps to five lines, and centred that put Disconnect
+         level with the fourth line of a URL while the heading it acts on sat at the top. */
+      expect(getComputedStyle(row).alignItems).toBe("flex-start");
       const text = getComputedStyle(row.querySelector<HTMLElement>('[part="account-text"]')!);
       expect(text.flexGrow).toBe("1");
       expect(text.flexBasis).toBe("120px");
@@ -504,6 +585,27 @@ describe("Keyboard", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.textContent).toContain("Save Everything");
     expect(part("chord")!.textContent).toBeTruthy();
+  });
+
+  test("a row's title takes the free space, so the actions line up down the sheet", async () => {
+    /* The chord is a fixed 96px column because the answer to "what is bound to this" is read by
+       scanning one column. The action needed the same: with the title at its content width, Change
+       landed at fourteen different offsets in the first twenty rows. */
+    setActiveRegistry(registryWithChords());
+    void openPreferences("keyboard");
+    await flush(3);
+    const row = dAll('[part="key"]')[0]!;
+    expect(row.dataset["command"]).toBeTruthy();
+    expect(getComputedStyle(row.querySelector<HTMLElement>('[part="key-title"]')!).flexGrow).toBe(
+      "1",
+    );
+    /* And the column they line up in stops short of the scroller. The sheet always scrolls at 64
+       bindings, and a row whose title wraps puts its `Change` at the very end of the line, which
+       landed exactly on the section's content edge and read as touching the scrollbar track.
+       happy-dom resolves no padding at all through `getComputedStyle`, so the document is what
+       says the column has it. */
+    expect(d('[part="keys"]')).not.toBeNull();
+    expect(sheetRule('& [part="keys"]')["paddingInlineEnd"]).toBe("var(--jx-space-2)");
   });
 
   test("with no registry composed it says so rather than rendering an empty table", async () => {

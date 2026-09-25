@@ -296,6 +296,51 @@ describe("block action bar gaps", () => {
     }
   });
 
+  /* PARTLY under the band is the state you pass through on the way, and hiding a bar whose element
+     is still visible would be wrong. So the bar flips BELOW its element instead: the flip is decided
+     against the scroller's top edge rather than the flat 80px of window chrome it used to use, which
+     knew nothing about a band standing above the scroller and put the bar on the card. */
+  test("an anchor with no room above it INSIDE the scroller flips below instead of onto the band", async () => {
+    setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
+    const { panels } = surfaceForPane("primary");
+    const scroller = document.createElement("div");
+    panels.push({
+      canvas: document.createElement("div"),
+      mediaName: "base",
+      scrollContainer: scroller,
+    } as unknown as (typeof panels)[number]);
+    try {
+      // The same 800px stage: a 300px band, then the page's scroller.
+      stubRect(surfaceForPane("primary").wrap, { height: 800, left: 0, top: 0, width: 1600 });
+      stubRect(scroller, { height: 500, left: 0, top: 300, width: 1600 });
+
+      // Room above, inside the scroller: the bar stands there, as it always has.
+      host.anchor = { height: 200, left: 30, top: 400, width: 100 };
+      await render();
+      expect(isOffscreen()).toBe(false);
+      expect(barAt()[1]).toBe("362px"); // 400 − 38
+
+      /* Scrolled up until its top is under the band while its bottom is still on screen. 322 − 38 is
+         284, which is 16px into the card; below the element it is 322 + 200 + 4. */
+      host.anchor = { height: 200, left: 30, top: 322, width: 100 };
+      scrollDoc();
+      await raf();
+      await flush();
+      expect(isOffscreen()).toBe(false);
+      expect(barAt()[1]).toBe("526px");
+
+      /* An element TALLER than what is left of the scroller has its bottom edge off screen too, so
+         the flip is clamped into the viewport: 800 − 38 rather than 322 + 900 + 4. */
+      host.anchor = { height: 900, left: 30, top: 322, width: 100 };
+      scrollDoc();
+      await raf();
+      await flush();
+      expect(barAt()[1]).toBe("762px");
+    } finally {
+      panels.length = 0;
+    }
+  });
+
   test("a bar wider than the window is clamped back inside the right edge", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
     await render();

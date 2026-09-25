@@ -42,9 +42,15 @@ const PROPERTIES = new Set([
  * no other way to copy it.
  */
 const ALLOWED: readonly OptIn[] = [
-  // The literal request: the message itself in a message dialog, and its island form.
+  /* The literal request: the message itself in a message dialog, and its island form. The island
+     entry names the island's own PROSE, not the island: it is also where the Open Grid picker and
+     Push Schema mount whole documents, and `user-select` inherits into them. */
   ["src/surfaces/dialog.json", '& [part="message"]', "text"],
-  ["src/surfaces/dialog.json", '& [part="island"]', "text"],
+  [
+    "src/surfaces/dialog.json",
+    '& [part="island"] > p, & [part="island"] > span, & [part="island"] > strong, & [part="island"] > em, & [part="island"] > code',
+    "text",
+  ],
   // The device code the reader carries to GitHub; `all` selects it whole on one click.
   ["src/surfaces/github-auth.json", '& [part="code"]', "all"],
   // The Assistant's transcript bodies.
@@ -55,6 +61,10 @@ const ALLOWED: readonly OptIn[] = [
   // The captured logs a reader pastes into a bug report.
   ["src/surfaces/panel-activity.json", '& [part="log"]', "text"],
   ["src/surfaces/panel-problems.json", '& [part="detail"]', "text"],
+  /* About's values and package list: this dialog's body IS its message, and it is the one place a
+     bug report's version, commit and resolved `@jxsuite/*` numbers can be read from. */
+  ["src/surfaces/about.json", '& [part="meta-value"]', "text"],
+  ["src/surfaces/about.json", '& [part="package-row"]', "text"],
 ];
 
 const isObject = (value: unknown): value is Json =>
@@ -125,6 +135,28 @@ function optInsOf(file: string, doc: unknown): OptIn[] {
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
+
+/**
+ * A source file with its comments removed, so the guards below judge code and not prose.
+ *
+ * The policy's own rationale is the exact text they scan for: `tokens.json`, the generated
+ * `tokens.css` header and `STYLING.md` all explain that Chromium's UA sheet gives a modal dialog
+ * `user-select: text`. Written as a JSDoc in any Studio source, that sentence used to read as an
+ * inline opt-in and turn this file red. Line comments are cut only where `//` follows whitespace or
+ * opens the line, so a `https://` inside a string survives; a string that really does contain ` //
+ * ` loses its tail, which costs nothing here because the text is only ever matched against.
+ */
+const withoutComments = (text: string): string =>
+  text.replaceAll(/\/\*[\s\S]*?\*\//g, "").replaceAll(/(^|\s)\/\/[^\n]*/g, "$1");
+
+/** True when a source file's CODE sets `user-select` to anything but `none`. */
+const paintsSelectionInline = (source: string): boolean => {
+  const text = withoutComments(source);
+  return (
+    /user-select\s*:\s*(?:text|all|auto|contain)\b/.test(text) ||
+    /userSelect\s*(?:=|:)\s*["'`](?:text|all|auto|contain)["'`]/.test(text)
+  );
+};
 
 const jsonIn = (dir: string): string[] =>
   readdirSync(dir)
@@ -199,13 +231,33 @@ describe("the selection policy", () => {
     expect(island?.["tagName"]).toBe("div");
   });
 
+  test("a document MOUNTED in the island is not the message, and the opt-in cannot reach it", () => {
+    /* The island is the message's other form and also a general mount point: the Open Grid picker
+       and Push Schema's plan put whole surfaces in it, and those are interface — headings, source
+       rows, buttons. `user-select` inherits, so an opt-in on the island itself handed selection to
+       every one of them. It names text-level CHILDREN instead, and a mounted document roots a
+       `div`, which is what tells the two forms apart. */
+    const rule = ALLOWED.find(
+      ([file, selector]) =>
+        file === "src/surfaces/dialog.json" && selector.includes('[part="island"] >'),
+    )!;
+    for (const member of rule[1].split(",")) {
+      expect(member.trim(), "an island child selector must be text-level").toMatch(
+        /> (?:p|span|strong|em|code)$/,
+      );
+    }
+    for (const guest of ["grid-open.json", "push-plan.json"]) {
+      expect((readJson(join(SURFACES, guest)) as Json)["tagName"], guest).toBe("div");
+    }
+  });
+
   test("no hand-written chrome stylesheet reopens selection", () => {
     /* The linked sheets under `styles/`, generated ones included: a value other than `none` in any
        of them would outrank nothing in a surface but would reopen whole regions of the chrome. */
     const sheets = readdirSync(STYLES).filter((name) => name.endsWith(".css"));
     expect(sheets.length).toBeGreaterThan(0);
     for (const sheet of sheets) {
-      const text = readFileSync(join(STYLES, sheet), "utf8").replaceAll(/\/\*[\s\S]*?\*\//g, "");
+      const text = withoutComments(readFileSync(join(STYLES, sheet), "utf8"));
       for (const match of text.matchAll(/(?:^|[\s;{])(?:-webkit-)?user-select\s*:\s*([^;}\s]+)/g)) {
         expect(`${sheet}: ${match[1]}`).toBe(`${sheet}: none`);
       }
@@ -220,15 +272,29 @@ describe("the selection policy", () => {
     const offenders: string[] = [];
     const glob = new Bun.Glob("src/**/*.ts");
     for (const path of glob.scanSync({ cwd: ROOT })) {
-      const text = readFileSync(join(ROOT, path), "utf8");
-      if (
-        /user-select\s*:\s*(?:text|all|auto|contain)\b/.test(text) ||
-        /userSelect\s*(?:=|:)\s*["'`](?:text|all|auto|contain)["'`]/.test(text)
-      ) {
+      if (paintsSelectionInline(readFileSync(join(ROOT, path), "utf8"))) {
         offenders.push(path);
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  test("a rationale that only describes the policy is not an offender", () => {
+    /* The scan above is the one guard whose input is prose as well as code, and the sentence it
+       looks for is the sentence the policy is explained with. A source file that says why the
+       restatement exists must not read as an opt-in. */
+    const jsdoc = `/**\n * Chromium's UA sheet gives a modal dialog \`user-select: text\`, which\n * \`tokens.json\` restates.\n */\nexport const open = () => dialog.showModal();\n`;
+    expect(paintsSelectionInline(jsdoc)).toBe(false);
+    expect(paintsSelectionInline('// style.userSelect = "text" is what we must never do\n')).toBe(
+      false,
+    );
+    // And the code shapes it exists for are still caught, comments or not.
+    expect(paintsSelectionInline(`host.style.userSelect = "text";`)).toBe(true);
+    expect(paintsSelectionInline('render(html`<p style="user-select: all">x</p>`);')).toBe(true);
+    // A URL is not a line comment, so stripping must not eat the code after one.
+    expect(paintsSelectionInline('const doc = "https://x/y"; el.style.userSelect = "text";')).toBe(
+      true,
+    );
   });
 
   test("the kit reopens nothing inside Studio either", () => {

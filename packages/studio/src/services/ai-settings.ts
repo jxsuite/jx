@@ -20,6 +20,7 @@
  */
 
 import { SETTINGS } from "./settings/definitions";
+import type { SettingDefinition } from "./settings/definitions";
 import {
   clearSettings,
   hasSetting,
@@ -116,15 +117,39 @@ export function saveAiProvider(provider: AiProvider) {
  * because Save would store exactly what is already there. An absent setting reads as `""`, as every
  * getter here does, so a blank draft over nothing is no change either.
  *
+ * **BOTH sides are normalised, not just the draft.** Only the setters normalise on the way in;
+ * `hydrateSettings` and `adoptRemoteSettings` put a backend's or another window's values into the
+ * cache as they found them, and a hand-edited `settings.json` carries whatever was typed. So the
+ * store legitimately holds `http://localhost:11434/v1/` with the trailing slash the docs print, and
+ * comparing a normalised draft against that raw value reported an edit nobody had made: Save and
+ * Cancel appeared on a form at rest, and Cancel could not clear them, because reloading the drafts
+ * loaded the same unnormalised value again. Normalising the stored side is the comparison the
+ * sentence above always claimed to be making.
+ *
  * @param {AiProvider} provider The drafts.
  * @returns {boolean} `true` when at least one of the three would move.
  */
 export function aiProviderDiffers(provider: AiProvider): boolean {
   return (
-    normalizeSetting(SETTINGS.aiOpenAiKey, provider.apiKey) !== getOpenAiKey() ||
-    normalizeSetting(SETTINGS.aiBaseUrl, provider.baseUrl) !== getBaseUrl() ||
-    normalizeSetting(SETTINGS.aiModel, provider.model) !== storedModel()
+    !storedEquals(SETTINGS.aiOpenAiKey, provider.apiKey, getOpenAiKey()) ||
+    !storedEquals(SETTINGS.aiBaseUrl, provider.baseUrl, getBaseUrl()) ||
+    !storedEquals(SETTINGS.aiModel, provider.model, storedModel())
   );
+}
+
+/**
+ * Whether a draft and a stored value are the same setting, judged as the store would hold each.
+ *
+ * Exported because a form's "has the user touched this field?" has to ask the same question as
+ * {@link aiProviderDiffers}, or the two disagree about a whitespace-only draft — which is how a
+ * revoked key survived a Disconnect (`ui/ai-credentials-form.ts`).
+ */
+export function storedEquals(
+  definition: SettingDefinition,
+  draft: string,
+  stored: string,
+): boolean {
+  return normalizeSetting(definition, draft) === normalizeSetting(definition, stored);
 }
 
 /**

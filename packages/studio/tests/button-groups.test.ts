@@ -173,6 +173,58 @@ describe("Studio's button groups", () => {
     expect(row("git-panel.json", "sync-actions")?.$props?.["compact"]).toBe(false);
   });
 
+  test("a group that WRAPS is not compact, and its members frame themselves", () => {
+    /* A compact group refuses to wrap (ui.md §5.4): its seam is written in tree order, no selector
+       can find the ends of a flex line, and a wrapped one therefore overhung the group's own edge
+       by 1px, doubled the border between the two rows and squared both line ends. Studio's two
+       wrapping rows are the pane context's breakpoint and feature chips, and a chip frames itself,
+       so each member says `quiet: false` where a segment would have said nothing at all. */
+    const wrapping: string[] = [];
+    for (const { name, node } of groups) {
+      const part = partOf(node);
+      const { doc } = surfaces.find((surface) => surface.name === name)!;
+      const rules = Object.entries(doc.style ?? {});
+      const wraps = rules.some(([key, block]) => {
+        const declared = (block as Record<string, unknown> | undefined)?.["flexWrap"];
+        return key.includes(`[part="${part}"]`) && String(declared ?? "").startsWith("wrap");
+      });
+      if (!wraps) {
+        continue;
+      }
+      wrapping.push(`${name} ${part}`);
+      expect(node.$props?.["compact"], `${where(name, node)} wraps`).toBe(false);
+      for (const member of members(node)) {
+        expect(member.$props?.["quiet"], `${where(name, node)} > ${partOf(member)}`).toBe(false);
+      }
+    }
+    expect(wrapping).toEqual(["pane-context.json sizes", "pane-context.json features"]);
+  });
+
+  test("the zoom pod's Fit picker is a control beside the zoom group, not a fourth segment", () => {
+    /* It was the group's fourth child, inside a `display: contents` div, which made it a flex item
+       of a gap-0 segmented control that roves only jx-action-button: the `+` segment's rounded,
+       bordered end met the select's rounded, bordered start as a 2px rule notched at both corners.
+       A group frames the members it owns and nothing else, so the select is the pod's second
+       control, with the pod's gap between them — and the pod draws no box of its own around the
+       two frames it holds. */
+    const pane = surfaces.find(({ name }) => name === "pane-context.json")!.doc;
+    const all = elements(pane);
+    const pod = all.find((node) => partOf(node) === "pod")!;
+    const kids = (pod.children as Node[]).map((kid) => partOf(kid));
+    expect(kids).toEqual(["zoom-group", "fit-slot"]);
+    const zoom = all.find((node) => partOf(node) === "zoom-group")!;
+    expect(members(zoom).map((member) => partOf(member))).toEqual([
+      "zoom-out",
+      "zoom-label",
+      "zoom-in",
+    ]);
+    const rule = (pane.style?.['& [part="pod"]'] ?? {}) as Record<string, unknown>;
+    expect(rule["display"]).toBe("flex");
+    for (const own of ["border", "borderRadius", "background", "padding"]) {
+      expect(rule[own], `the pod draws its own ${own} around two framed controls`).toBeUndefined();
+    }
+  });
+
   test("the zoom label's width is its host's and its face is its control's, so the frame has no hole", () => {
     /* The rule used to set the mono face on the HOST, which the kit's control does not inherit
        (it sets its own), and the 48px floor on a host whose control sat inside it at its content

@@ -77,37 +77,6 @@ export function attrLabel(
 }
 
 /**
- * Abbreviate a CSS value for button-group display
- *
- * @param {string} val
- * @returns {string}
- */
-export function abbreviateValue(val: string) {
-  const map: Record<string, string> = {
-    baseline: "base",
-    column: "col",
-    "column-reverse": "col-r",
-    contents: "cnt",
-    "flex-end": "end",
-    "flex-start": "start",
-    "flow-root": "flow",
-    inline: "inl",
-    "inline-block": "i-blk",
-    "inline-flex": "i-flx",
-    "inline-grid": "i-grd",
-    normal: "norm",
-    nowrap: "no-wr",
-    "row-reverse": "row-r",
-    "space-around": "arnd",
-    "space-between": "betw",
-    "space-evenly": "even",
-    stretch: "str",
-    "wrap-reverse": "wr-rev",
-  };
-  return map[val] || val;
-}
-
-/**
  * True when a schema `format` names a MEDIA reference.
  *
  * Two spellings, and both are real. `"uri-reference"` is JSON Schema's own and the one the spec

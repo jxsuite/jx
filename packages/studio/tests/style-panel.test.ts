@@ -1251,7 +1251,9 @@ describe("the button group", () => {
     }
   });
 
-  test("a value with no glyph keeps its abbreviation, visible", async () => {
+  test("a value with no glyph shows its CSS keyword in full, not an abbreviation", async () => {
+    /* `no-wr` and `wr-rev` were undecodable beside a wrap arrow that read perfectly, which taught
+       a reader that the row's buttons could not be read at all. */
     setupTab({ display: "flex" });
     const c = await renderPanel();
     const wrapRow = row(c, "flexWrap")!;
@@ -1263,9 +1265,39 @@ describe("the button group", () => {
       button(value).querySelector<HTMLElement>('[part="label"] > span')!;
     expect(button("wrap").icon).toBe("arrow-u-down-left");
     expect(text("wrap").hidden).toBe(true);
-    expect(button("nowrap").icon).toBe("");
-    expect(text("nowrap").hidden).toBe(false);
-    expect(text("nowrap").textContent).toBe("no-wr");
+    for (const value of ["nowrap", "wrap-reverse"]) {
+      expect(button(value).icon, value).toBe("");
+      expect(text(value).hidden, value).toBe(false);
+      expect(text(value).textContent, value).toBe(value);
+    }
+  });
+
+  test("Align content draws the cross axis, the same one Align items draws", async () => {
+    /* Both act on the cross axis, so both take the object-alignment family for it. The horizontal
+       glyphs they used to carry made the two neighbouring rows describe opposite axes, and made
+       four of Align content's buttons pixel-identical to Justify content's two rows up. */
+    setupTab({ display: "flex" });
+    const c = await renderPanel();
+    const glyphs = (prop: string) =>
+      [...row(c, prop)!.querySelectorAll<HTMLElement & { icon: string }>('[part="button"]')].map(
+        (b) => [b.dataset.value, b.icon],
+      );
+    expect(glyphs("alignContent")).toEqual([
+      ["normal", ""],
+      ["flex-start", "align-top"],
+      ["flex-end", "align-bottom"],
+      ["center", "align-center-vertical"],
+      ["space-between", "arrows-vertical"],
+      ["stretch", "arrows-out-line-vertical"],
+    ]);
+    // The row above it, for the axis the two now share.
+    expect(glyphs("alignItems")).toEqual([
+      ["stretch", "arrows-out-line-vertical"],
+      ["flex-start", "align-top"],
+      ["flex-end", "align-bottom"],
+      ["center", "align-center-vertical"],
+      ["baseline", "text-a-underline"],
+    ]);
   });
 
   test("values that do not fit are the overflow list, and it commits like any other", async () => {

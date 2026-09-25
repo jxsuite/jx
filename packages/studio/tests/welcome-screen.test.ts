@@ -6,6 +6,8 @@
  */
 import { flush, installMockPlatform, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const {
   disposeWelcome,
@@ -285,6 +287,26 @@ describe("renderWelcome — recent projects", () => {
     expect(ctx.openRecentProject).not.toHaveBeenCalled();
     await redraw(host); // Reflect the mutation
     expect(texts(host, '[part="recent"] [part="name"]')).toEqual(["Beta"]);
+  });
+
+  test("the Recent header centres its title against Clear all, with the gap on the header", async () => {
+    /* `Clear all` is a small kit button, layout-contained, so it exports no baseline and the header
+       centres instead (surface-baseline-rows.test.ts). Centring aligns MARGIN boxes, though: while
+       the h2 kept its own 8px block-end margin its margin box filled the header exactly, so
+       `center` had nothing to move and left the title flush at the top with the button's label
+       3.6px below its baseline. The spacing under the header has to be the HEADER's. */
+    seedRecents([{ name: "Alpha", root: "/a", timestamp: 1 }]);
+    const host = await renderScreen(makeCtx());
+    const header = host.querySelector<HTMLElement>('[part="section-header"]')!;
+    const title = header.querySelector<HTMLElement>('[part="section-title"]')!;
+    expect(getComputedStyle(header).alignItems).toBe("center");
+    expect(getComputedStyle(title).marginBlockEnd).toBe("0");
+    /* The spacing the title gave up, now on the header. A token resolves to nothing in happy-dom,
+       so the document is what says where it went. */
+    const doc = JSON.parse(
+      readFileSync(resolve(import.meta.dir, "../src/surfaces/welcome.json"), "utf8"),
+    ) as { style: Record<string, Record<string, string>> };
+    expect(doc.style['& [part="section-header"]']!["marginBottom"]).toBe("var(--jx-space-3)");
   });
 
   test("Clear all empties the recent list", async () => {
