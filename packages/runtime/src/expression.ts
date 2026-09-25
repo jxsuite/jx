@@ -375,6 +375,33 @@ function resolveOperand(
 }
 
 /** Resolve a $ref string within expression context. */
+/**
+ * The receiver a `call` binds: the value the pointer's parent path names. `#/state/x` and
+ * `parent#/x` are owned by the scope itself; `$map/item/fn` by the item; a pointer with no parent
+ * segment (`$map/item`, `$args/x`) has no owner.
+ */
+function calleeOwner(ref: string, state: JxScope, event: Event | null, iterCtx?: IterCtx): unknown {
+  const parentRef = (prefix: string): unknown => {
+    const rest = ref.slice(prefix.length);
+    if (!rest.includes("/")) {
+      return state;
+    }
+    return resolveExprRef(ref.slice(0, ref.lastIndexOf("/")), state, event, iterCtx);
+  };
+  if (ref.startsWith("#/state/")) {
+    return parentRef("#/state/");
+  }
+  if (ref.startsWith("parent#/")) {
+    return parentRef("parent#/");
+  }
+  if (ref.startsWith("$map/") || ref.startsWith("$args/")) {
+    return ref.split("/").length > 2
+      ? resolveExprRef(ref.slice(0, ref.lastIndexOf("/")), state, event, iterCtx)
+      : undefined;
+  }
+  return undefined;
+}
+
 function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCtx?: IterCtx) {
   if (ref === "$reduce/acc") {
     return iterCtx?.acc;
@@ -558,9 +585,14 @@ function evaluateNode(
     }
 
     const callee = resolveExprRef(calleeRef, state, event, iterCtx);
-    // A scope callable (buildScope lowers parameterized formula entries to functions).
+    // A scope callable (buildScope lowers parameterized formula entries to functions). The receiver
+    // Is the object that owns the pointer's last segment — what the compiled lowering binds when it
+    // Emits `s.commands.run(...)` — so a host method handed in through the scope keeps its `this`.
     if (typeof callee === "function") {
-      return (callee as (...a: unknown[]) => unknown)(...argValues);
+      return (callee as (...a: unknown[]) => unknown).apply(
+        calleeOwner(calleeRef, state, event, iterCtx),
+        argValues,
+      );
     }
     // A raw named-formula def (standalone evaluation, e.g. editor preview).
     if (callee && typeof callee === "object" && "$expression" in callee) {

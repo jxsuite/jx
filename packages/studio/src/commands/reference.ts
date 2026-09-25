@@ -2,7 +2,7 @@
  * Reference.ts — the registry, projected into the two generated documentation pages.
  *
  * Plan §12 P3 lists `docs/studio/interface/shortcuts.md` and a new
- * `docs/studio/interface/commands.md` as **generated from the registry and CI-diffed**, which is
+ * `docs/studio/interface/commands.md` as **generated from the registry at build time**, which is
  * the last of §5.5's seven derivations: with the chrome, the keymap, the palette, the menus and the
  * automation surface all rendering the same records, a hand-maintained shortcut sheet is the only
  * place left for the app's keyboard and its documentation to disagree.
@@ -176,6 +176,15 @@ function chordCell(chords: readonly string[]): string {
 }
 
 /**
+ * The assistant tool a record projects, as one cell: `` `delete_node` ``, or the same empty-cell
+ * dash {@link chordCell} prints. `CommandRow.aiTool` was computed and printed nowhere; a
+ * declaration MAKES a tool now (`services/ai-command-tools.ts`), so the page says which.
+ */
+function toolCell(aiTool: string): string {
+  return aiTool === "" ? "—" : `\`${aiTool}\``;
+}
+
+/**
  * The body of `docs/studio/interface/shortcuts.md` — one `##` section per scope.
  *
  * Both platforms print, side by side, because the alternative is the page telling half its readers
@@ -212,13 +221,14 @@ export function commandsMarkdown(rows: readonly CommandRow[]): string {
     sections.push(
       `## ${category}\n`,
       table(
-        ["Command", "Id", "Shortcut", "Level", "Requires"],
+        ["Command", "Id", "Shortcut", "Level", "Requires", "Assistant"],
         inCategory.map((row) => [
           row.destructive ? `${row.title} (destructive)` : row.title,
           `\`${row.id}\``,
           chordCell(row.mac),
           row.level,
           row.requires || "—",
+          toolCell(row.aiTool),
         ]),
       ),
     );

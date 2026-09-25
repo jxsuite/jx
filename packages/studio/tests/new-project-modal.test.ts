@@ -1,100 +1,73 @@
 /**
- * New Project modal tests (E9). Drives the real two-step wizard through the layer system: the
- * source tab strip, the starter gallery and its single "Start from scratch" card, the Next/Back/
- * Cancel transitions, the Name + Location step with directory-slug derivation, the destination
- * block (Location + Browse…, on a `createDestination: "path"` platform), validation, platform
- * createProject success/failure, the git-init that follows a create, and the dismissal paths.
+ * New Project wizard tests — `src/new-project/new-project-modal.ts` (the flow) and
+ * `src/surfaces/new-project.json` (the dialog it draws into): the source tab strip, the starter
+ * gallery and its single "Start from scratch" card, the Next/Back/Cancel transitions, the Name +
+ * Location step with directory-slug derivation, the destination block (Location + Browse…, on a
+ * `createDestination: "path"` platform), validation, platform createProject success/failure, and
+ * the dismissal paths.
+ *
+ * Everything is addressed by `part`, because the wizard is a document: there is no
+ * `.new-project-modal` to find any more, and no `.new-project-template` either — the box, the
+ * backdrop, Escape, the headline and all three footer buttons belong to `jx-dialog`, which is why
+ * the wizard now lives in `#layer-dialog` rather than in the modal layer beside an `<sp-underlay>`
+ * it painted itself.
  */
 import {
   flush,
   installMockPlatform,
+  npCards,
+  npDialog,
+  npDismiss,
   npFillLocation,
+  npFooter,
+  npHeadline,
   npLocation,
   npName,
+  npPart,
+  npParts,
+  npPickTab,
+  npPress,
   npPreview,
   npSlug,
+  npTabValues,
   npType,
   mountOverlayLayers,
 } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
 
-const { closeNewProjectModal, openNewProjectModal } =
-  await import("../src/new-project/new-project-modal");
+const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { initLayers } = await import("../src/ui/layers");
 
 mountOverlayLayers(document.body);
 initLayers();
 
-function modal(): HTMLElement | null {
-  return document.querySelector("#layer-modal .new-project-modal");
+function click(el: Element | null | undefined): void {
+  el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
-function title(): string | undefined {
-  return document.querySelector("#layer-modal .new-project-modal-title")?.textContent?.trim();
-}
-
-function footerButtons(): any[] {
-  return [...document.querySelectorAll("#layer-modal .new-project-modal-footer sp-button")];
-}
-
-function footerLabels(): (string | undefined)[] {
-  return footerButtons().map((b) => b.textContent?.trim());
-}
-
-function clickFooter(label: string) {
-  const btn = footerButtons().find((b) => b.textContent?.includes(label));
-  btn!.dispatchEvent(new Event("click", { bubbles: true }));
-}
-
-function goNext() {
-  clickFooter("Next");
-}
-
-function clickCreate() {
-  clickFooter("Create Project");
-}
-
+/** The global backend-failure strip at the foot of the body. */
 function errorText(): string | null {
-  return document.querySelector("#layer-modal .new-project-error")?.textContent?.trim() ?? null;
+  return npPart("failure")?.textContent?.trim() ?? null;
 }
 
 /** The inline destination-validation message rendered under the Location/Directory fields. */
 function destinationError(): string | null {
-  return (
-    document
-      .querySelector("#layer-modal .new-project-modal-body .new-project-error")
-      ?.textContent?.trim() ?? null
-  );
+  return npPart("destination-failure")?.textContent?.trim() ?? null;
 }
 
 /** The Browse… button beside the Location field (absent without `platform.pickDirectory`). */
-function browseButton(): any {
-  return document.querySelector("#layer-modal .new-project-location-row sp-button");
+function browseButton(): HTMLButtonElement | null {
+  return npPart("browse")?.querySelector<HTMLButtonElement>('[part="control"]') ?? null;
 }
 
-/** The inline validation message slotted into the Project Name textfield. */
+/** The inline validation message under the Project Name field. */
 function nameError(): string | null {
-  return (
-    document
-      .querySelector('#layer-modal sp-textfield sp-help-text[slot="negative-help-text"]')
-      ?.textContent?.trim() ?? null
-  );
+  return npPart("name-failure")?.textContent?.trim() ?? null;
 }
 
-function switchTab(value: string) {
-  const tabs: any = document.querySelector("#layer-modal sp-tabs");
-  tabs.selected = value;
-  tabs.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function tabValues(): string[] {
-  return [...document.querySelectorAll("#layer-modal sp-tab")].map(
-    (t) => t.getAttribute("value") ?? "",
-  );
-}
-
-function cards(): any[] {
-  return [...document.querySelectorAll("#layer-modal .new-project-template")];
+/** The source context line on the second step. */
+function contextText(): string {
+  return npPart("context")?.textContent?.trim() ?? "";
 }
 
 const SAMPLE_STARTERS = [
@@ -119,143 +92,160 @@ const SAMPLE_STARTERS = [
   },
 ];
 
+/** Whether a gallery card is the chosen one. The document says so with an attribute, not a class. */
+function chosen(card: HTMLElement | undefined): boolean {
+  return card?.dataset.selected !== undefined;
+}
+
 afterEach(() => {
   localStorage.clear();
-  closeNewProjectModal();
+  npDismiss();
 });
 
 describe("openNewProjectModal — wizard lifecycle", () => {
-  test("step 1 names the step and offers the gallery; Next reveals Name + Location", () => {
+  test("step 1 names the step and offers the gallery; Next reveals Name + Location", async () => {
     installMockPlatform();
     const promise = openNewProjectModal();
-    expect(modal()).toBeTruthy();
-    expect(title()).toBe("Choose a starting point");
+    await flush(3);
+    expect(npDialog()).toBeTruthy();
+    expect(npHeadline()).toBe("Choose a starting point");
     // No importSite on the default mock platform → the Import tab is hidden.
-    expect(tabValues()).toEqual(["starter", "agent"]);
+    expect(npTabValues()).toEqual(["starter", "agent"]);
     // The source step carries no parameter fields — they live on step 2.
-    expect(document.querySelectorAll("#layer-modal sp-textfield")).toHaveLength(0);
-    expect(footerLabels()).toEqual(["Cancel", "Next"]);
+    expect(npParts("name")).toHaveLength(0);
+    expect(npFooter()).toEqual(["Cancel", "Next"]);
 
-    goNext();
-    expect(title()).toBe("Name your project");
-    expect(document.querySelector("#layer-modal .new-project-step-context")?.textContent).toContain(
-      "Start from scratch",
-    );
+    npPress("Confirm");
+    await flush(2);
+    expect(npHeadline()).toBe("Name your project");
+    expect(contextText()).toContain("Start from scratch");
     // Name + Location + Directory, and nothing else: no URL, no adapter, no design quickstart.
-    expect(document.querySelectorAll("#layer-modal sp-textfield")).toHaveLength(3);
+    expect(npParts("url")).toHaveLength(0);
     expect(npName()).toBeTruthy();
     expect(npLocation()).toBeTruthy();
     expect(npSlug()).toBeTruthy();
-    expect(document.querySelector("#layer-modal sp-picker")).toBeNull();
-    expect(document.querySelector("#layer-modal .new-project-modal-body")?.textContent).toContain(
-      "project settings",
-    );
+    expect(npPart("visibility")).toBeNull();
+    expect(npPart("footnote")?.textContent).toContain("project settings");
     // The tab strip is hidden on the Name step.
-    expect(document.querySelector("#layer-modal sp-tabs")).toBeNull();
-    expect(footerLabels()).toEqual(["Cancel", "Back", "Create Project"]);
+    expect(npPart("tabs")).toBeNull();
+    expect(npFooter()).toEqual(["Back", "Cancel", "Create Project"]);
 
     // Back returns to the source step with the tabs restored.
-    clickFooter("Back");
-    expect(document.querySelector("#layer-modal sp-tabs")).toBeTruthy();
+    npPress("Back");
+    await flush(2);
+    expect(npPart("tabs")).toBeTruthy();
 
-    closeNewProjectModal();
-    expect(modal()).toBeNull();
+    npDismiss();
+    await flush();
+    expect(npDialog()).toBeNull();
     return expect(promise).resolves.toBeNull();
   });
 
-  test("shows the Import tab when the platform supports importSite", () => {
+  test("the dialog is the kit's, headline and all — nothing here draws a box", async () => {
+    installMockPlatform();
+    const promise = openNewProjectModal();
+    await flush(3);
+    expect(npDialog()?.querySelector('dialog[part="dialog"]')).toBeTruthy();
+    expect(document.querySelector("#layer-modal sp-underlay")).toBeNull();
+    expect(document.querySelector("#layer-modal .new-project-modal")).toBeNull();
+    // The shot manifest addresses the wizard by this region, on the one node that has a box.
+    expect(npDialog()?.querySelector('[data-jx-region="overlay.dialog:new-project"]')).toBeTruthy();
+    /* The platform actually opened it. Worth asserting rather than assuming: `jx-ready` BUBBLES,
+       and the tab strip inside this dialog announces itself with it — so before `whenReady` learned
+       to ignore a descendant's, `showModal` ran one microtask early, found no `<dialog>` and did
+       nothing at all, leaving a fully drawn wizard that never showed. */
+    expect(npDialog()?.dataset.open).toBeDefined();
+    npDismiss();
+    expect(await promise).toBeNull();
+  });
+
+  test("shows the Import tab when the platform supports importSite", async () => {
     installMockPlatform({
       importSite: (async () => ({ config: {}, root: "/r" })) as never,
     });
     void openNewProjectModal();
-    expect(tabValues()).toEqual(["starter", "import", "agent"]);
+    await flush(3);
+    expect(npTabValues()).toEqual(["starter", "import", "agent"]);
   });
 
   test("a second open while one is active resolves null immediately", async () => {
     installMockPlatform();
     const first = openNewProjectModal();
+    await flush(3);
     expect(await openNewProjectModal()).toBeNull();
-    expect(modal()).toBeTruthy();
-    closeNewProjectModal();
+    expect(npDialog()).toBeTruthy();
+    npDismiss();
     expect(await first).toBeNull();
   });
 
-  test("closeNewProjectModal is a no-op when nothing is open", () => {
-    expect(modal()).toBeNull();
-    closeNewProjectModal();
-    expect(modal()).toBeNull();
+  test("dismissing when nothing is open is a no-op", () => {
+    /* No exported closer any more: every way out of the wizard is the platform's `cancel`, and
+       this is a no-op with nothing up. See the module docblock in
+       `src/new-project/new-project-modal.ts`. */
+    expect(npDialog()).toBeNull();
+    npDismiss();
+    expect(npDialog()).toBeNull();
   });
 
   test("Cancel works from the source step", async () => {
     installMockPlatform();
     const promise = openNewProjectModal();
-    clickFooter("Cancel");
+    await flush(3);
+    npPress("Cancel");
     expect(await promise).toBeNull();
-    expect(modal()).toBeNull();
+    await flush();
+    expect(npDialog()).toBeNull();
   });
 
   test("Cancel works from the Name step too", async () => {
     installMockPlatform();
     const promise = openNewProjectModal();
-    goNext();
-    expect(footerLabels()).toContain("Cancel");
-    clickFooter("Cancel");
-    expect(await promise).toBeNull();
-    expect(modal()).toBeNull();
-  });
-
-  test("Escape key inside the modal dismisses it", async () => {
-    installMockPlatform();
-    const promise = openNewProjectModal();
-    modal()!.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
-    );
-    expect(await promise).toBeNull();
-    expect(modal()).toBeNull();
-  });
-
-  test("underlay close event dismisses the modal", async () => {
-    installMockPlatform();
-    const promise = openNewProjectModal();
-    document
-      .querySelector("#layer-modal sp-underlay")!
-      .dispatchEvent(new Event("close", { bubbles: false }));
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    expect(npFooter()).toContain("Cancel");
+    npPress("Cancel");
     expect(await promise).toBeNull();
   });
 
-  test("the header close button dismisses it", async () => {
+  test("Escape — the platform's own cancel — dismisses it", async () => {
     installMockPlatform();
     const promise = openNewProjectModal();
-    document
-      .querySelector("#layer-modal .new-project-modal-header sp-action-button")!
-      .dispatchEvent(new Event("click", { bubbles: true }));
+    await flush(3);
+    npDismiss();
     expect(await promise).toBeNull();
+    await flush();
+    expect(npDialog()).toBeNull();
   });
 });
 
 describe("openNewProjectModal — the starter gallery", () => {
-  test("offers only the scratch card when the platform ships no starters", () => {
+  test("offers only the scratch card when the platform ships no starters", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    expect(cards()).toHaveLength(1);
-    expect(cards()[0].textContent).toContain("Start from scratch");
-    expect(cards()[0].classList.contains("selected")).toBe(true);
+    await flush(3);
+    expect(npCards()).toHaveLength(1);
+    expect(npCards()[0]!.textContent).toContain("Start from scratch");
+    expect(chosen(npCards()[0])).toBe(true);
     // The four breakpoint templates are gone.
-    expect(modal()?.textContent).not.toContain("Desktop First");
-    expect(modal()?.textContent).not.toContain("breakpoints");
+    expect(npDialog()?.textContent).not.toContain("Desktop First");
+    expect(npDialog()?.textContent).not.toContain("breakpoints");
   });
 
   test("starters lead, with the first selected and the scratch card last", async () => {
     installMockPlatform({ listStarters: (async () => SAMPLE_STARTERS) as never });
     void openNewProjectModal();
-    await flush();
-    const all = cards();
+    await flush(4);
+    const all = npCards();
     expect(all).toHaveLength(3);
-    expect(all[0].textContent).toContain("Bistro & Café");
-    expect(all[0].classList.contains("selected")).toBe(true);
-    expect(all[1].textContent).toContain("Corner Shop");
-    expect(all[2].textContent).toContain("Start from scratch");
-    expect(all[2].classList.contains("selected")).toBe(false);
+    expect(all[0]!.textContent).toContain("Bistro & Café");
+    expect(chosen(all[0])).toBe(true);
+    expect(all[1]!.textContent).toContain("Corner Shop");
+    expect(all[2]!.textContent).toContain("Start from scratch");
+    expect(chosen(all[2])).toBe(false);
+    // A starter card carries its picture; the scratch card carries the blank well instead.
+    expect(all[0]!.querySelector('[part="thumb"]')).toBeTruthy();
+    expect(all[2]!.querySelector('[part="blank"]')).toBeTruthy();
   });
 
   test("an arriving starter list does not override a card the user already picked", async () => {
@@ -267,14 +257,15 @@ describe("openNewProjectModal — the starter gallery", () => {
         })) as never,
     });
     void openNewProjectModal();
+    await flush(3);
     // Scratch is the only card until the list lands; pick it explicitly.
-    cards()[0].dispatchEvent(new Event("click", { bubbles: true }));
+    click(npCards()[0]);
     release(SAMPLE_STARTERS);
-    await flush();
-    const all = cards();
+    await flush(3);
+    const all = npCards();
     expect(all).toHaveLength(3);
-    expect(all[0].classList.contains("selected")).toBe(false);
-    expect(all[2].classList.contains("selected")).toBe(true);
+    expect(chosen(all[0])).toBe(false);
+    expect(chosen(all[2])).toBe(true);
   });
 
   test("selecting a starter threads its id into createProject", async () => {
@@ -282,17 +273,19 @@ describe("openNewProjectModal — the starter gallery", () => {
       listStarters: (async () => SAMPLE_STARTERS) as never,
     });
     void openNewProjectModal();
+    await flush(4);
+    click(npCards()[1]);
     await flush();
-    cards()[1].dispatchEvent(new Event("click", { bubbles: true }));
-    goNext();
-    expect(document.querySelector("#layer-modal .new-project-step-context")?.textContent).toContain(
-      "Corner Shop",
-    );
+    npPress("Confirm");
+    await flush(2);
+    expect(contextText()).toContain("Corner Shop");
 
     npType(npName(), "My Diner");
-    npFillLocation();
-    clickCreate();
     await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
     const call = state.calls.find((c) => c[0] === "createProject");
     expect(call?.[1]).toMatchObject({ name: "My Diner", starter: "shop" });
     expect((call![1] as { template?: string }).template).toBeUndefined();
@@ -303,13 +296,17 @@ describe("openNewProjectModal — the starter gallery", () => {
       listStarters: (async () => SAMPLE_STARTERS) as never,
     });
     void openNewProjectModal();
+    await flush(4);
+    click(npCards()[2]);
     await flush();
-    cards()[2].dispatchEvent(new Event("click", { bubbles: true }));
-    goNext();
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Empty Site");
-    npFillLocation();
-    clickCreate();
     await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
     const call = state.calls.find((c) => c[0] === "createProject");
     expect(call?.[1]).toMatchObject({ name: "Empty Site", template: "blank" });
     expect((call![1] as { starter?: string }).starter).toBeUndefined();
@@ -318,11 +315,9 @@ describe("openNewProjectModal — the starter gallery", () => {
   test("openNewProjectModal({ tab: 'starter' }) opens on the gallery", async () => {
     installMockPlatform({ listStarters: (async () => SAMPLE_STARTERS) as never });
     void openNewProjectModal({ tab: "starter" });
-    await flush();
-    expect(document.querySelector("#layer-modal sp-tabs")?.getAttribute("selected")).toBe(
-      "starter",
-    );
-    expect(cards()[0]?.textContent).toContain("Bistro & Café");
+    await flush(4);
+    expect(npPart("tabs")?.dataset.selection).toBe("starter");
+    expect(npCards()[0]?.textContent).toContain("Bistro & Café");
   });
 
   test("a failing listStarters leaves the gallery usable", async () => {
@@ -332,40 +327,50 @@ describe("openNewProjectModal — the starter gallery", () => {
       }) as never,
     });
     void openNewProjectModal();
-    await flush();
-    expect(modal()).toBeTruthy();
-    expect(cards()).toHaveLength(1);
-    expect(cards()[0].classList.contains("selected")).toBe(true);
+    await flush(4);
+    expect(npDialog()).toBeTruthy();
+    expect(npCards()).toHaveLength(1);
+    expect(chosen(npCards()[0])).toBe(true);
   });
 
   test("switching tabs and back keeps the gallery", async () => {
     installMockPlatform({ listStarters: (async () => SAMPLE_STARTERS) as never });
     void openNewProjectModal();
-    await flush();
-    switchTab("agent");
-    expect(cards()).toHaveLength(0);
-    switchTab("starter");
-    expect(cards()).toHaveLength(3);
+    await flush(4);
+    npPickTab("agent");
+    await flush(2);
+    expect(npCards()).toHaveLength(0);
+    npPickTab("starter");
+    await flush(2);
+    expect(npCards()).toHaveLength(3);
   });
 });
 
 describe("openNewProjectModal — directory derivation", () => {
-  test("derives a slug from the project name while directory is untouched", () => {
+  test("derives a slug from the project name while directory is untouched", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "My Cool Site!");
+    await flush();
     expect(npSlug().value).toBe("my-cool-site");
     npType(npName(), "Renamed Site");
+    await flush();
     expect(npSlug().value).toBe("renamed-site");
   });
 
-  test("manual directory entry stops further derivation", () => {
+  test("manual directory entry stops further derivation", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npSlug(), "custom-dir");
+    await flush();
     npType(npName(), "Some Project");
+    await flush();
     expect(npSlug().value).toBe("custom-dir");
   });
 });
@@ -374,124 +379,158 @@ describe("openNewProjectModal — destination", () => {
   test("blocks create with an inline error when the Location is empty", async () => {
     const { state } = installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Homeless Site");
-    clickCreate();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
 
-    // The destination message replaces the name error and the modal stays open for a fix.
+    // The destination message replaces the name error and the wizard stays open for a fix.
     expect(destinationError()).toBe("Choose a location for the project folder");
     expect(nameError()).toBeNull();
-    expect(modal()).toBeTruthy();
+    expect(npDialog()).toBeTruthy();
     expect(state.calls.filter((c) => c[0] === "createProject")).toHaveLength(0);
-    // The scroll-to-top + focus helper runs without throwing.
-    await flush();
   });
 
   test("rejects a relative Location as not an absolute path", async () => {
     const { state } = installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Relative Site");
+    await flush();
     npType(npLocation(), "sites/relative");
-    clickCreate();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
 
     expect(destinationError()).toBe("Location must be an absolute path");
-    expect(modal()).toBeTruthy();
+    expect(npDialog()).toBeTruthy();
     expect(state.calls.filter((c) => c[0] === "createProject")).toHaveLength(0);
-    await flush();
   });
 
   test("typing a Location clears the inline destination error", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Fixable Site");
-    clickCreate();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
     expect(destinationError()).toBe("Choose a location for the project folder");
     npFillLocation();
+    await flush(2);
     expect(destinationError()).toBeNull();
-    await flush();
   });
 
-  test("the preview tracks the location and the slug", () => {
+  test("the preview tracks the location and the slug", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     // Both halves are still unknown before anything is typed.
     expect(npPreview()).toBe("Creates: …/…");
 
     npType(npName(), "My Cool Site");
+    await flush();
     expect(npPreview()).toBe("Creates: …/my-cool-site");
 
     // A trailing separator on the typed location is not doubled up.
     npFillLocation("/home/dev/Sites/");
+    await flush();
     expect(npPreview()).toBe("Creates: /home/dev/Sites/my-cool-site");
 
     npType(npSlug(), "cool-dir");
+    await flush();
     expect(npPreview()).toBe("Creates: /home/dev/Sites/cool-dir");
   });
 
   test("createProject receives the typed Location as a path destination", async () => {
     const { state } = installMockPlatform();
     const promise = openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Placed Site");
+    await flush();
     npFillLocation("/home/dev/Sites/");
-    clickCreate();
+    await flush();
+    npPress("Confirm");
 
     const result = await promise;
-    const call = state.calls.find((c) => c[0] === "createProject") as any[];
-    expect(call[1].destination).toEqual({ kind: "path", parent: "/home/dev/Sites" });
-    expect(call[1].directory).toBe("placed-site");
+    const call = state.calls.find((c) => c[0] === "createProject") as unknown[];
+    expect((call[1] as { destination: unknown }).destination).toEqual({
+      kind: "path",
+      parent: "/home/dev/Sites",
+    });
+    expect((call[1] as { directory: string }).directory).toBe("placed-site");
     // The mock scaffolds under exactly the parent the user named.
     expect(result?.root).toBe("/home/dev/Sites/placed-site");
   });
 
-  test("no Browse… button when the platform cannot open a directory dialog", () => {
+  test("no Browse… button when the platform cannot open a directory dialog", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     expect(browseButton()).toBeNull();
     expect(npLocation().getAttribute("placeholder")).toBe("/absolute/path/to/your/projects");
   });
 
   test("Browse… fills the Location from pickDirectory", async () => {
     let picks = 0;
+    let release: (value: string | null) => void = () => {};
     installMockPlatform({
-      pickDirectory: (async () => {
+      pickDirectory: (() => {
         picks += 1;
-        return "/Users/dev/Projects";
+        return new Promise<string | null>((resolve) => {
+          release = resolve;
+        });
       }) as never,
     });
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     expect(npLocation().getAttribute("placeholder")).toBe(
       "Choose a folder to create the project in",
     );
     expect(browseButton()).toBeTruthy();
 
-    browseButton().dispatchEvent(new Event("click", { bubbles: true }));
-    // While the native dialog is open the button is busy and further clicks are ignored.
-    expect(browseButton().textContent).toContain("Choosing…");
-    expect(browseButton().hasAttribute("disabled")).toBe(true);
-    browseButton().dispatchEvent(new Event("click", { bubbles: true }));
+    click(browseButton());
     await flush();
+    // While the native dialog is open the button is busy and further clicks are ignored.
+    expect(npPart("browse")?.textContent).toContain("Choosing…");
+    expect(browseButton()?.hasAttribute("disabled")).toBe(true);
+    click(browseButton());
+    release("/Users/dev/Projects");
+    await flush(2);
 
     expect(picks).toBe(1);
     expect(npLocation().value).toBe("/Users/dev/Projects");
     expect(npPreview()).toBe("Creates: /Users/dev/Projects/…");
-    expect(browseButton().textContent).toContain("Browse…");
-    expect(browseButton().hasAttribute("disabled")).toBe(false);
+    expect(npPart("browse")?.textContent).toContain("Browse…");
+    expect(browseButton()?.hasAttribute("disabled")).toBe(false);
   });
 
   test("a cancelled Browse… leaves the typed Location untouched", async () => {
     installMockPlatform({ pickDirectory: (async () => null) as never });
     void openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npFillLocation("/home/dev/Sites");
-
-    browseButton().dispatchEvent(new Event("click", { bubbles: true }));
     await flush();
+
+    click(browseButton());
+    await flush(3);
 
     expect(npLocation().value).toBe("/home/dev/Sites");
     expect(npPreview()).toBe("Creates: /home/dev/Sites/…");
@@ -502,36 +541,41 @@ describe("openNewProjectModal — submit", () => {
   test("rejects an empty project name with an inline error at the field", async () => {
     const { state } = installMockPlatform();
     void openNewProjectModal();
-    goNext();
-    clickCreate();
-    // The message renders inside the name field, not in the global strip.
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npPress("Confirm");
+    await flush(2);
+    // The message renders under the name field, not in the global strip.
     expect(nameError()).toBe("Project name is required");
-    expect(npName().hasAttribute("invalid")).toBe(true);
+    expect(npName().getAttribute("aria-invalid")).toBe("true");
     // The name is checked before the destination, so no location complaint yet.
     expect(destinationError()).toBeNull();
     expect(errorText()).toBeNull();
-    expect(modal()).toBeTruthy();
+    expect(npDialog()).toBeTruthy();
     expect(state.calls.filter((c) => c[0] === "createProject")).toHaveLength(0);
-    // The scroll-to-top + focus helper runs without throwing.
-    await flush();
   });
 
-  test("typing into the name field clears the inline error", () => {
+  test("typing into the name field clears the inline error", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    goNext();
-    clickCreate();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npPress("Confirm");
+    await flush(2);
     expect(nameError()).toBe("Project name is required");
     npType(npName(), "My Site");
+    await flush(2);
     expect(nameError()).toBeNull();
-    expect(npName().hasAttribute("invalid")).toBe(false);
+    expect(npName().getAttribute("aria-invalid")).toBeNull();
   });
 
   test("creates the project, shows progress, initialises git, and resolves", async () => {
     let resolveCreate: (v: unknown) => void = () => {};
-    const created: any[] = [];
+    const created: unknown[] = [];
     const { state } = installMockPlatform({
-      createProject: ((opts: any) => {
+      createProject: ((opts: unknown) => {
         created.push(opts);
         return new Promise((resolve) => {
           resolveCreate = resolve;
@@ -540,15 +584,21 @@ describe("openNewProjectModal — submit", () => {
     });
 
     const promise = openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "My Site");
+    await flush();
     npFillLocation();
-    clickCreate();
+    await flush();
+    npPress("Confirm");
+    await flush();
 
-    // While createProject is pending the Create button is disabled and shows progress; Cancel
-    // Stays rendered beside it.
-    expect(footerLabels()).toEqual(["Cancel", "Back", "Creating…"]);
-    expect(footerButtons()[2].hasAttribute("disabled")).toBe(true);
+    // While createProject is pending the primary says so, and pressing it again starts nothing.
+    expect(npFooter()).toEqual(["Back", "Cancel", "Creating…"]);
+    npPress("Confirm");
+    await flush();
+    expect(created).toHaveLength(1);
 
     resolveCreate({ config: { name: "My Site" }, root: "/home/dev/Sites/my-site" });
     const result = await promise;
@@ -556,7 +606,8 @@ describe("openNewProjectModal — submit", () => {
       config: { name: "My Site" },
       root: "/home/dev/Sites/my-site",
     } as never);
-    expect(modal()).toBeNull();
+    await flush();
+    expect(npDialog()).toBeNull();
     // Name + Location only — no url, adapter, description or design in the payload.
     expect(created[0]).toEqual({
       destination: { kind: "path", parent: "/home/dev/Sites" },
@@ -571,17 +622,22 @@ describe("openNewProjectModal — submit", () => {
   test("re-derives the directory at submit time when it was cleared", async () => {
     const { state } = installMockPlatform();
     const promise = openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Site X");
+    await flush();
     npType(npSlug(), ""); // User clears the derived value
+    await flush();
     npFillLocation();
-    clickCreate();
+    await flush();
+    npPress("Confirm");
     await promise;
-    const call = state.calls.find((c) => c[0] === "createProject") as any[];
-    expect(call[1].directory).toBe("site-x");
+    const call = state.calls.find((c) => c[0] === "createProject") as unknown[];
+    expect((call[1] as { directory: string }).directory).toBe("site-x");
   });
 
-  test("createProject failure surfaces the error and keeps the modal open", async () => {
+  test("createProject failure surfaces the error and keeps the wizard open", async () => {
     installMockPlatform({
       createProject: (async () => {
         throw new Error("disk full");
@@ -592,24 +648,23 @@ describe("openNewProjectModal — submit", () => {
     void promise.then(() => {
       settled = true;
     });
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Doomed");
-    npFillLocation();
-    clickCreate();
     await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
 
-    expect(modal()).toBeTruthy();
+    expect(npDialog()).toBeTruthy();
     expect(errorText()).toContain("disk full");
-    // The backend error lives OUTSIDE the scroll body so it is visible at any scroll position.
-    expect(document.querySelector("#layer-modal .new-project-modal-body .new-project-error")) //
-      .toBeNull();
-    expect(document.querySelector("#layer-modal .new-project-error--global")).toBeTruthy();
     // Button returns to its idle state for a retry
-    expect(footerLabels()).toEqual(["Cancel", "Back", "Create Project"]);
-    expect(footerButtons()[2].hasAttribute("disabled")).toBe(false);
+    expect(npFooter()).toEqual(["Back", "Cancel", "Create Project"]);
     expect(settled).toBe(false);
 
-    closeNewProjectModal();
+    npDismiss();
     expect(await promise).toBeNull();
   });
 
@@ -624,18 +679,22 @@ describe("openNewProjectModal — submit", () => {
       }) as never,
     });
     const promise = openNewProjectModal();
-    goNext();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
     npType(npName(), "Blocked");
-    npFillLocation();
-    clickCreate();
     await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(2);
 
     expect(errorText()).toContain("blocked repository creation");
-    const link = document.querySelector<HTMLAnchorElement>("#layer-modal .new-project-error a");
+    const link = npPart<HTMLAnchorElement>("install");
     expect(link?.getAttribute("href")).toBe(installUrl);
     expect(link?.textContent).toContain("Install the Jx Suite GitHub App");
 
-    closeNewProjectModal();
+    npDismiss();
     expect(await promise).toBeNull();
   });
 });

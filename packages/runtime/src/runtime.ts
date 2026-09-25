@@ -17,15 +17,36 @@ import {
   computed,
   effect,
   effectScope,
+  isReactive,
   isRef,
   onEffectCleanup,
+  onScopeDispose,
+  pauseTracking,
   reactive,
   ref,
+  resetTracking,
+  shallowReactive,
   toRaw,
 } from "@vue/reactivity";
+import {
+  buildStyleRules,
+  cssPropertyName,
+  hashCss,
+  isNestedSelectorKey,
+  transposeCanvasOverlaySelector,
+} from "./css.ts";
 import { evaluateExpression, evaluateOperand, isMutating } from "./expression.ts";
 import { readPath } from "./pointer.ts";
-import type { DynamicClass, JxEventHandler, JxPath, JxRenderOptions, JxScope } from "./types.ts";
+import type {
+  DynamicClass,
+  JxContext,
+  JxEventHandler,
+  JxMount,
+  JxMountOptions,
+  JxPath,
+  JxRenderOptions,
+  JxScope,
+} from "./types.ts";
 import {
   bodyReturnsValue,
   hasStructuredBody,
@@ -58,7 +79,7 @@ import type {
   JxServerFnDef,
   JxStyle,
 } from "@jxsuite/schema/types";
-import type { Ref } from "@vue/reactivity";
+import type { EffectScope, Ref } from "@vue/reactivity";
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -109,11 +130,76 @@ export async function Jx(
       ? new URL(source, location.href).href
       : location.href;
   const doc = await resolve(source);
+
+  /* The module-level fallback is still written here, on purpose: a component defined LATER with
+     `@--name` blocks and no own `$media` reads it (setRootMedia). `mount()` never writes it — a
+     mount's `$media` travels in its context, which is the whole point of having one. */
+  if (doc.$media) {
+    _rootMedia = doc.$media;
+  }
+
+  const mounted = await mount(doc, target, {
+    base,
+    ...(options?.onNodeCreated ? { onNodeCreated: options.onNodeCreated } : {}),
+    ...(options?.signal ? { signal: options.signal } : {}),
+  });
+  return mounted.scope;
+}
+
+/** Host-scope keys the runtime owns: `$media`, `$map`, the `$`-locals and `#`-private entries. */
+const HOST_SCOPE_RESERVED = /^[$#]/;
+
+function assertHostScope(scope: Record<string, unknown>): void {
+  for (const key of Object.keys(scope)) {
+    if (HOST_SCOPE_RESERVED.test(key)) {
+      throw new TypeError(
+        `Jx mount: host scope key "${key}" is reserved — names beginning with "$" or "#" are ` +
+          `runtime vocabulary`,
+      );
+    }
+  }
+}
+
+/**
+ * Mount a document into a host-owned node and hand back the live scope with a disposer.
+ *
+ * This is the embedding contract (specs/embedding.md): the host supplies its own reactive records
+ * and functions as `options.scope`, a per-mount base, `$media` and document resolver, and gets a
+ * root it can remove and a `dispose()` that stops every effect the render created. Nothing here
+ * writes a module global, so a shell can hold many roots with different needs at once.
+ *
+ * @param {JxDocument} doc - The document to render (already an object; use {@link resolve} for a
+ *   URL)
+ * @param {ParentNode} target - Where the rendered root is appended
+ * @param {JxMountOptions} [options]
+ * @returns {Promise<JxMount>}
+ * @docs extending/embedding/runtime-host
+ */
+export async function mount(
+  doc: JxDocument,
+  target: ParentNode,
+  options: JxMountOptions = {},
+): Promise<JxMount> {
+  const hostScope = options.scope ?? {};
+  assertHostScope(hostScope);
+  const base = options.base ? new URL(options.base, location.href).href : location.href;
+  const ctx: JxContext = {
+    base,
+    media: options.media ?? doc.$media ?? null,
+    root: null,
+    ...(options.resolver ? { resolver: options.resolver } : {}),
+    ...(options.skipServerFunctions === undefined
+      ? {}
+      : { skipServerFunctions: options.skipServerFunctions }),
+    ...(options.skipAutoRequests === undefined
+      ? {}
+      : { skipAutoRequests: options.skipAutoRequests }),
+  };
   checkSchemaVersion(doc.$schema);
 
   // Register custom elements declared in $elements (depth-first)
   if (doc.$elements) {
-    await registerElements(doc.$elements, base);
+    await registerElements(doc.$elements, base, ctx);
   }
 
   // Inject <head> elements declared in $head (link, meta, script, etc.)
@@ -121,25 +207,85 @@ export async function Jx(
     injectHead(doc.$head, base);
   }
 
-  if (doc.$media) {
-    _rootMedia = doc.$media;
-  }
+  const scope = await buildScope(doc, hostScope, base, ctx);
 
-  const state = await buildScope(doc, {}, base);
-  target.append(renderNode(doc, state, options));
-  if (typeof state.onMount === "function") {
-    (state.onMount as (s: JxScope) => unknown)(state);
+  const elements = new Set<string>();
+  const renderOptions: JxRenderOptions = {
+    _ctx: ctx,
+    onNodeCreated: (el, path, def, state) => {
+      if (el instanceof Element && el.tagName.includes("-")) {
+        elements.add(el.tagName.toLowerCase());
+      }
+      options.onNodeCreated?.(el, path, def, state);
+    },
+    ...(options.onNodeMoved ? { onNodeMoved: options.onNodeMoved } : {}),
+  };
+  const { result: root, stop } = runScoped(() => renderNode(doc, scope, renderOptions));
+  ctx.root = root;
+
+  let mounted = false;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    options.signal?.removeEventListener("abort", dispose);
+    stop();
+    if (mounted && typeof scope.onUnmount === "function") {
+      (scope.onUnmount as (s: JxScope) => unknown)(scope);
+    }
+    root.remove();
+  };
+
+  if (options.signal?.aborted) {
+    // Aborted before it could be attached: tear the effects down and attach nothing.
+    dispose();
+  } else {
+    options.signal?.addEventListener("abort", dispose, { once: true });
+    target.append(root);
+    mounted = true;
+    if (typeof scope.onMount === "function") {
+      (scope.onMount as (s: JxScope) => unknown)(scope);
+    }
   }
-  return state;
+  return { scope, root, elements, dispose };
 }
 
 // ─── Step 1: Resolve ──────────────────────────────────────────────────────────
 
 const _resolveCache = new Map<string, Promise<JxDocument>>();
 
-export async function resolve(source: string | JxDocument): Promise<JxDocument> {
+/**
+ * Seed the resolve cache with a document a host already holds, under the URL its references use.
+ *
+ * A bundled document — one imported as JSON rather than fetched — still names its dependencies by
+ * URL: an `$elements` entry, a `$switch` case. Preloading those under the same URLs lets every such
+ * reference resolve with no network, and lets `defineElement("<url>")` dedupe on the source it
+ * would otherwise have fetched. The key is stored as given and, when it parses as a URL, in its
+ * absolute form too, because the two lookup paths spell it differently.
+ *
+ * @param {string} url - The URL the document is known by
+ * @param {JxDocument} doc
+ */
+export function preloadDocument(url: string, doc: JxDocument): void {
+  const settled = Promise.resolve(doc);
+  _resolveCache.set(url, settled);
+  try {
+    _resolveCache.set(new URL(url, location.href).href, settled);
+  } catch {
+    // Not a URL at all — the raw key still serves the lookup that uses it.
+  }
+}
+
+export async function resolve(source: string | JxDocument, ctx?: JxContext): Promise<JxDocument> {
   if (typeof source !== "string") {
     return source;
+  }
+  // A mount's resolver answers for THIS mount and its hit never enters the shared cache.
+  const served = ctx?.resolver?.(source);
+  if (served) {
+    return served;
   }
   if (_resolveCache.has(source)) {
     return _resolveCache.get(source)!;
@@ -328,10 +474,123 @@ export function setCanvasDelinkAnchors(on: boolean) {
   _canvasDelinkAnchors = on;
 }
 
+/**
+ * Studio-canvas popover de-linking — `setCanvasDelinkAnchors`'s rule applied to `popover`.
+ *
+ * An OPEN popover is in the top layer, and CSS Position 4 §3.1 gives a top-layer element the
+ * VIEWPORT as its containing block whatever its ancestors say. In the editor canvas that viewport
+ * is a fiction: the frame is sized to its own content height, so a drawer pinned with `inset: 0`
+ * lands halfway down a 6000px page, and a panel taller than a short component frame is clipped by
+ * the `overflow: hidden` the canvas document needs. Worse, a top-layer box contributes nothing to
+ * any ancestor's scrollable overflow, so the artboard can never grow to fit one.
+ *
+ * When this is on, the runtime stamps `popover` on `data-jx-popover` for nodes the studio can
+ * ADDRESS — those carrying a stamped `data-jx-path`. That drops every `[popover]` UA rule at once,
+ * and the one that matters most is `position: fixed`: with it gone the panel lays out in NORMAL
+ * FLOW at its document position, which is what makes it contribute to `#jx-canvas-root`'s
+ * scrollHeight so the host can grow the artboard to fit it. Leaving the top layer is necessary but
+ * not sufficient — a fixed box contributes nothing to an ancestor's overflow either.
+ *
+ * It is worth saying what does NOT rescue this, because it is the intuitive answer and it is wrong:
+ * `container-type: size` on the canvas's query container does NOT make it a containing block for
+ * fixed descendants. Measured in Chrome 151 — `getComputedStyle(container).contain` is `none`, and
+ * a `position: fixed` child inside it measures the WINDOW, not the container. So a panel that stays
+ * fixed stays laid out against the frame's own viewport, which in an editable mode is the
+ * document's full height. `iframe-render.ts` therefore FORCES `position` on the open panel rather
+ * than relying on any containment.
+ *
+ * The studio re-supplies the one UA rule that matters — `display: none` while closed — inside a
+ * cascade LAYER, so author declarations still beat it exactly as they beat the real UA rule on the
+ * shipped page. That is deliberate: a popover whose base rule sets `display` is broken in
+ * production, and the canvas has to show that rather than paper over it.
+ *
+ * The gate on `data-jx-path` is what keeps this out of documents the studio does not own: a popover
+ * rendered inside a component's own template is never stamped, so it keeps its native behaviour.
+ *
+ * It also drives {@link transposeCanvasPopoverSelector}. The two are one transform — an attribute
+ * renamed without its selectors transposed is a popover that can never be styled open.
+ *
+ * @docs framework/concepts/overlays
+ */
+let _canvasDelinkPopovers = false;
+export function setCanvasDelinkPopovers(on: boolean) {
+  _canvasDelinkPopovers = on;
+}
+
+/**
+ * Studio-canvas de-linking of invoker commands, `inert` and a dialog's `open` — the dialog half of
+ * {@link setCanvasDelinkPopovers}.
+ *
+ * A `<button command="show-modal" commandfor="…">` is the platform's own invoker: clicking it calls
+ * `showModal()` on its target, which puts the dialog in the top layer and makes the rest of the
+ * page INERT — the two things an editable canvas can least afford, since the first is the geometry
+ * the popover comment above describes and the second makes every other element unclickable. So on a
+ * stamped node `commandfor` is renamed to `data-jx-commandfor`: a button with `command` and no
+ * target does nothing, and the studio's frame reports the click instead, so the host's single
+ * writer of open state can answer it. `popovertarget` is left alone on purpose — its target has no
+ * `popover` attribute on the canvas, so the platform already does nothing with it.
+ *
+ * `inert` becomes `data-jx-inert` for the same reason: an author's inert region is a region the
+ * editor could not select into. And a `<dialog open>` becomes `<dialog data-jx-open>`, so the UA's
+ * `dialog:not([open]) { display: none }` keeps every dialog closed until the canvas opens ONE with
+ * `data-jx-dialog-open`, exactly as it opens one popover. `<details open>` is untouched: its `open`
+ * is content, not an overlay state.
+ *
+ * Gated on `data-jx-path` like the popover rewrite, and driving
+ * {@link transposeCanvasOverlaySelector} with it: an attribute renamed without its selectors
+ * transposed is a dialog that can never be styled open, or a region that can never be styled inert.
+ * Both renames travel with their selectors there — `[open]` on a dialog's own rules, `[inert]`
+ * wherever it appears.
+ *
+ * @docs framework/concepts/overlays
+ */
+let _canvasDelinkCommands = false;
+export function setCanvasDelinkCommands(on: boolean) {
+  _canvasDelinkCommands = on;
+}
+
+/**
+ * Raised while a defined element renders its own children, so the canvas de-link reaches them.
+ *
+ * The de-link rules gate on `data-jx-path`, which a document node carries and an element's INTERNAL
+ * node never can: the internals belong to the definition, not to the page being edited, so the
+ * studio's stamper never sees them. Without this a kit element that declares `popover` on a panel
+ * inside itself opens a genuine top-layer popover inside an editable canvas, while Studio's single
+ * writer of open state learns nothing about it.
+ *
+ * A module-scoped flag is sound here because `canvasAttrName` is called once per attribute OUTSIDE
+ * the effect that binds it, and a definition renders its children synchronously — so the flag is
+ * never read across a suspension point.
+ */
+let _canvasInsideStampedHost = false;
+
+/** Whether the node being rendered is inside a stamped host, and so part of the edited page. */
+function canvasStamped(el: HTMLElement): boolean {
+  return _canvasInsideStampedHost || el.dataset.jxPath !== undefined;
+}
+
 /** The attribute name to stamp `key` on `el` under — `href` → `data-jx-href` on de-linked anchors. */
 function canvasAttrName(el: HTMLElement, key: string): string {
   if (_canvasDelinkAnchors && key === "href" && (el.tagName === "A" || el.tagName === "AREA")) {
     return "data-jx-href";
+  }
+  /* `dataset.jxPath` is already stamped here: `onNodeCreated` fires before `applyAttributes` in
+     `renderNode`, and the studio's stamper writes the attribute synchronously inside it. That
+     ordering is an unwritten contract between two packages, so `runtime-canvas.test.ts` asserts it
+     directly rather than trusting it. */
+  if (_canvasDelinkPopovers && key === "popover" && canvasStamped(el)) {
+    return "data-jx-popover";
+  }
+  if (_canvasDelinkCommands && canvasStamped(el)) {
+    if (key === "commandfor") {
+      return "data-jx-commandfor";
+    }
+    if (key === "inert") {
+      return "data-jx-inert";
+    }
+    if (key === "open" && el.tagName === "DIALOG") {
+      return "data-jx-open";
+    }
   }
   return key;
 }
@@ -504,21 +763,40 @@ function boundPropKey(key: string, val: unknown, state: JxScope): string | null 
  * @param {JxDocument} doc
  * @param {JxScope} [parentScope] Default is `{}`
  * @param {string} [base] Base URL for resolving $src imports. Default is `location.href`
+ * @param {JxContext} [ctx] The mount context; absent on the legacy direct path
  * @returns {Promise<JxScope>} Reactive proxy (state)
  */
 export async function buildScope(
   doc: JxDocument,
   parentScope: JxScope = {},
   base: string = location.href,
+  ctx?: JxContext,
 ) {
+  // A body run without an event dispatches from the mount's root, read when it fires.
+  const dispatchRoot = (): EventTarget | null => ctx?.root ?? null;
   const raw: JxScope = {};
-
-  // Merge parent scope properties
-  for (const [key, val] of Object.entries(parentScope)) {
-    raw[key] = val;
-  }
-
   const defs = doc.state ?? {};
+
+  /* Merge parent scope properties. A REACTIVE parent stays live: its members are read through
+     accessors rather than copied, so a host that hands in a reactive record as the scope sees the
+     document follow every field of it, not a snapshot of the primitives it held at mount time. A
+     member the document declares itself is copied instead, so the document's own entry can still
+     overwrite it — the document wins (embedding.md §3). */
+  const linked = isReactive(parentScope);
+  for (const key of Object.keys(parentScope)) {
+    if (linked && !(key in defs)) {
+      Object.defineProperty(raw, key, {
+        configurable: true,
+        enumerable: true,
+        get: () => parentScope[key],
+        set: (value: unknown) => {
+          parentScope[key] = value;
+        },
+      });
+    } else {
+      raw[key] = parentScope[key];
+    }
+  }
 
   // Pass 0: resolve bare $prototype names via import map
   const imports = doc.imports ?? {};
@@ -641,11 +919,11 @@ export async function buildScope(
                 ? p.default
                 : argValues[i];
           }
-          return runStatements(body, state, null, { args });
+          return runStatements(body, state, null, { args, target: dispatchRoot });
         };
       } else {
         const handler: JxEventHandler = (s, event) => {
-          void runStatements(body, s, event ?? null);
+          void runStatements(body, s, event ?? null, { target: dispatchRoot });
         };
         state[key] = handler;
       }
@@ -657,12 +935,12 @@ export async function buildScope(
   // Fourth pass: other $prototype entries (Request, Set, Map, etc.)
   for (const [key, def] of Object.entries(defs)) {
     if (isPrototypeDef(def)) {
-      state[key] = await resolvePrototype(def, state, key, base);
+      state[key] = await resolvePrototype(def, state, key, base, ctx);
     }
   }
 
   // Fifth pass: timing: "server" entries (dev mode — execute client-side, boundary unenforced)
-  if (!_serverFnConfig.skip) {
+  if (!(ctx?.skipServerFunctions ?? _serverFnConfig.skip)) {
     for (const [key, def] of Object.entries(defs)) {
       if (isServerFnDef(def)) {
         state[key] = await resolveServerFunction(def, state, key, base);
@@ -670,10 +948,11 @@ export async function buildScope(
     }
   }
 
+  const rootMedia = ctx?.media ?? _rootMedia;
   if (doc.$media) {
     state["$media"] = doc.$media;
-  } else if (!state["$media"] && Object.keys(_rootMedia).length > 0) {
-    state["$media"] = _rootMedia;
+  } else if (!state["$media"] && Object.keys(rootMedia).length > 0) {
+    state["$media"] = rootMedia;
   }
 
   return state;
@@ -795,6 +1074,88 @@ interface ExternalClassInstance {
 /** Module cache for $src imports (shared with external class resolution). */
 const _moduleCache = new Map<string, ImportedModule>();
 
+/** A module the host will import on first use, keyed as the document spells its `$src`. */
+type ModuleLoader = () => Promise<Record<string, unknown>>;
+
+/**
+ * Lazy registrations: a loader until it runs, then the in-flight load, so two entries resolving the
+ * same sidecar in one tick share one import rather than racing two.
+ */
+const _moduleLoaders = new Map<string, ModuleLoader | Promise<ImportedModule>>();
+
+/**
+ * Seed the `$src` module cache with a module the host already imported, under the specifier the
+ * document spells. A bundled document cannot have its sidecar fetched by URL — the bundler saw
+ * neither the string nor the file — so the host imports the sidecar itself and registers it here,
+ * and `$src` then resolves exactly as it would have from the network.
+ *
+ * Given a FUNCTION instead of a namespace, the registration is lazy: nothing is imported until a
+ * document names the specifier, and the loader runs once. That is the shape for a host that can
+ * bundle a sidecar as its own chunk but should not pay for it until something renders — Studio's
+ * canvas frame registers every kit behaviour this way, so a page that uses no kit element loads
+ * none of them (embedding.md §6).
+ *
+ * @param {string} specifier - The `$src` value as written in the document
+ * @param {Record<string, unknown> | (() => Promise<Record<string, unknown>>)} mod - The imported
+ *   module namespace, or a loader that imports it on first use
+ */
+export function preloadModule(
+  specifier: string,
+  mod: Record<string, unknown> | ModuleLoader,
+): void {
+  if (typeof mod === "function") {
+    _moduleCache.delete(specifier);
+    _moduleLoaders.set(specifier, mod);
+    return;
+  }
+  _moduleLoaders.delete(specifier);
+  _moduleCache.set(specifier, mod as ImportedModule);
+}
+
+/**
+ * The module a specifier was seeded with — imported, or lazily registered — or undefined when the
+ * host said nothing about it and the network is the answer.
+ *
+ * SYNCHRONOUS for a namespace the host imported, and that is load-bearing rather than tidy: a cache
+ * hit used to be a `Map#has` on the way through `resolveFunction`, and an `await` there — even of a
+ * value that is not a promise — defers one microtask, which reorders every element's scope
+ * construction against its siblings'. The kit's field naming its slotted control is one thing that
+ * order decides. Only a loader is a promise, because only a loader has to be.
+ *
+ * @param {string} src
+ * @returns {ImportedModule | Promise<ImportedModule> | undefined}
+ */
+function seededModule(src: string): ImportedModule | Promise<ImportedModule> | undefined {
+  const cached = _moduleCache.get(src);
+  if (cached) {
+    return cached;
+  }
+  const pending = _moduleLoaders.get(src);
+  if (!pending) {
+    return undefined;
+  }
+  if (typeof pending !== "function") {
+    return pending;
+  }
+  /* `Promise.resolve` so a thenable from a host's loader is still a Promise the call sites can
+     tell from a namespace. */
+  const load = Promise.resolve(pending()).then(
+    (mod) => {
+      _moduleCache.set(src, mod as ImportedModule);
+      _moduleLoaders.delete(src);
+      return mod as ImportedModule;
+    },
+    (error: unknown) => {
+      /* A failed load — a chunk the network dropped — puts the loader back, so the next document to
+         name the specifier tries again rather than inheriting this rejection for good. */
+      _moduleLoaders.set(src, pending);
+      throw error;
+    },
+  );
+  _moduleLoaders.set(src, load);
+  return load;
+}
+
 /**
  * Resolve a $prototype: "Function" entry into a function or computed.
  *
@@ -838,8 +1199,11 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
     }
     const exportName = def.$export ?? key;
     let mod: ImportedModule;
-    if (_moduleCache.has(src)) {
-      mod = _moduleCache.get(src)!;
+    const seeded = seededModule(src);
+    if (seeded instanceof Promise) {
+      mod = await seeded;
+    } else if (seeded) {
+      mod = seeded;
     } else {
       if (base) {
         const resolvedSrc = new URL(src, base).href;
@@ -1071,6 +1435,12 @@ export function renderNode(
   }
 
   applyProperties(el, def, localState);
+  /* A custom element's own definition applies its style at connection, through the same interning
+     path — which releases whatever is already on the element. So the call site's style is
+     remembered here and merged there; see {@link callSiteStyles}. */
+  if (def.style && tagName.includes("-")) {
+    callSiteStyles.set(el, def.style);
+  }
   applyStyle(
     el,
     def.style ?? {},
@@ -1129,44 +1499,72 @@ function applyProperties(el: HTMLElement, def: JxElement, state: JxScope) {
       continue;
     } // Scope bindings — handled in renderNode
 
-    if (key.startsWith("on")) {
-      // Event handler: $ref to a function
-      if (isRefObj(val)) {
-        const handler = resolveRef(val.$ref, state);
-        if (typeof handler === "function") {
-          const scope = state;
-          const handlerFn = handler as (s: JxScope, e: Event) => unknown;
-          el.addEventListener(key.slice(2), (e) => handlerFn(scope, e));
-        }
-        continue;
-      }
-      // Event handler: inline $prototype: "Function" with a structured body (spec §20)
-      if (hasStructuredBody(val)) {
-        const { body } = val;
-        const scope = state;
-        el.addEventListener(key.slice(2), (e) => {
-          void runStatements(body, scope, e);
-        });
-        continue;
-      }
-      // Event handler: inline $prototype: "Function"
-      if (isFunctionDef(val) && typeof val.body === "string") {
-        const params = resolveParamNames(val);
-        const fn = new Function(...params, val.body) as (s: JxScope, e: Event) => unknown;
-        const scope = state;
-        el.addEventListener(key.slice(2), (e) => fn(scope, e));
-        continue;
-      }
-      // Event handler: inline $expression
-      if (isExpressionDef(val)) {
-        const node = val.$expression;
-        const scope = state;
-        el.addEventListener(key.slice(2), (e) => evaluateExpression(node, scope, e));
-        continue;
-      }
+    if (key.startsWith("on") && bindHandler(el, key, val, state)) {
+      continue;
     }
 
     bindProperty(el, key, val, state);
+  }
+}
+
+/**
+ * Attach an `on*` key as an event listener, in any of the four spellings a handler has: a `$ref` to
+ * a function, a structured body (spec §20), a string body, or an `$expression`. Returns false for a
+ * value that is none of those, which the caller then writes as a plain property.
+ *
+ * @param {HTMLElement} el
+ * @param {string} key The `on`-prefixed key
+ * @param {unknown} val
+ * @param {JxScope} state
+ * @returns {boolean} Whether a listener was attached
+ */
+function bindHandler(el: HTMLElement, key: string, val: unknown, state: JxScope): boolean {
+  const type = key.slice(2);
+  const scope = state;
+  if (isRefObj(val)) {
+    const handler = resolveRef(val.$ref, state);
+    if (typeof handler === "function") {
+      const handlerFn = handler as (s: JxScope, e: Event) => unknown;
+      el.addEventListener(type, (e) => handlerFn(scope, e));
+    }
+    return true;
+  }
+  if (hasStructuredBody(val)) {
+    const { body } = val;
+    el.addEventListener(type, (e) => {
+      void runStatements(body, scope, e);
+    });
+    return true;
+  }
+  if (isFunctionDef(val) && typeof val.body === "string") {
+    const params = resolveParamNames(val);
+    const fn = new Function(...params, val.body) as (s: JxScope, e: Event) => unknown;
+    el.addEventListener(type, (e) => fn(scope, e));
+    return true;
+  }
+  if (isExpressionDef(val)) {
+    const node = val.$expression;
+    el.addEventListener(type, (e) => evaluateExpression(node, scope, e));
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A definition's root-level `on*` keys listen on the HOST element, exactly as they would on an
+ * element in a document. Only handler keys are read here: the rest of a definition's root —
+ * `observedAttributes`, `emits`, `description` — describes the element rather than styling an
+ * instance, and is not written onto it.
+ *
+ * @param {HTMLElement} host
+ * @param {JxElement} def
+ * @param {JxScope} state
+ */
+function bindDefinitionHandlers(host: HTMLElement, def: JxElement, state: JxScope) {
+  for (const [key, val] of Object.entries(def)) {
+    if (key.startsWith("on") && !RESERVED_KEYS.has(key)) {
+      bindHandler(host, key, val, state);
+    }
   }
 }
 
@@ -1198,6 +1596,13 @@ function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope
       node.setAttribute("class", resolved == null ? "" : String(resolved));
       return;
     }
+    /* An equal write is skipped. A binding re-runs whenever anything it read changes, not only
+       when its own result does, and re-setting `value` on a focused control is not free: it can
+       move the caret and collapse the selection. A control that already holds the value has
+       nothing to learn from being told again. */
+    if (target[key] === resolved) {
+      return;
+    }
     target[key] = resolved;
   };
   if (isRefObj(val)) {
@@ -1223,15 +1628,524 @@ function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope
   write(asAsset(val));
 }
 
+/*
+ * ─── The Stylesheet Engine ───────────────────────────────────────────────────
+ *
+ * An authored `style` object becomes REAL CSS RULES, delivered through the document's
+ * `adoptedStyleSheets`. Everything below exists to make that true, and the reason it has to be
+ * true is a cascade inversion rather than a missing feature.
+ *
+ * `applyStyle` used to split one style object across two cascade ORIGINS: a top-level scalar went
+ * inline (`el.style.color = …`) while an object-valued key became a per-element `<style>` tag. An
+ * inline declaration beats any non-`!important` rule, so
+ *
+ *     { "backgroundColor": "#6e0303", ":hover": { "backgroundColor": "#15164a" } }
+ *
+ * emitted a perfectly correct `:hover` rule that could never win. Nesting was not missing; it was
+ * outranked. The one existing defence, `mediaOverriddenProps`, moved a base property out of inline
+ * when an `@`-block overrode it — one level deep, `@`-keys only, never `:hover` — which is the
+ * shape of the bug rather than a fix for it. Every style assertion in the suite read the `<style>`
+ * tag's text, so the inversion was invisible to all of them.
+ *
+ * With every declaration in a rule, `:hover` versus base is an ordinary equal-specificity pair and
+ * source order decides, exactly as it does on the compiled page.
+ *
+ * **Three sheet roles, because mutation cost scales with sheet size.** Measured in Chrome 152 over
+ * 500 styled elements: 500 `<style>` tags cost 86.0ms to build, one adopted sheet with hash dedup
+ * costs 1.7ms, and 500 separate adopted sheets cost 6.2ms to build but 84.1ms per style recalc
+ * because each one is walked. On the update path (300 value edits, the Style-panel hot path)
+ * mutating a rule inside one big shared sheet costs 295.7ms, because Chrome rebuilds the whole
+ * sheet's RuleSet on any mutation. So:
+ *
+ *   - the SHARED sheet holds every static, interned rule set and is grown but never rewritten;
+ *   - a reactive declaration is indirected through a custom property, so the rule is static text
+ *     and the update writes `el.style.setProperty("--jx-r0-0", v)` — 12.4ms, and independent of
+ *     sheet size (the same mechanism that makes `${…}` work inside a nested block at all);
+ *   - the SCRATCH sheet takes the elements under live Studio edit and is rewritten with
+ *     `replaceSync`, 7.5ms per 100 structural edits against 76.9ms for delete+insert in the big one.
+ *
+ * **The handle stays `data-jx`, and its value becomes a content hash.** Not a generated class:
+ * `applyAttributes` runs after `applyStyle`, so a static `attributes: { class: … }` would wipe a
+ * class handle. `data-jx` is already there, is specificity (0,1,0), and is not author-writable.
+ * Hashing the built rule text rather than calling `Math.random()` is what gives dedup and SSR
+ * stability, and it covers everything that varies per call site by construction — the authored
+ * object, the resolved `$media` map and the canvas transposer state are all inputs to that text.
+ *
+ * **Jx emits no cascade layer of its own.** Third-party CSS arrives through `$head` unlayered, and
+ * an unlayered rule beats a layered one at any specificity — so layering Jx's own rules would hand
+ * every page's `$head` a win it does not have today. It is also what keeps the canvas's
+ * `@layer jx-canvas-ua` UA emulation working now that base declarations are unlayered rules rather
+ * than inline styles: unlayered still beats layered, which is the same direction author origin
+ * beats UA origin on the shipped page.
+ */
+
+/** A rule set as it was written into a sheet: the texts, plus the live rules when there are any. */
+interface InsertedRules {
+  texts: readonly string[];
+  rules: CSSRule[];
+}
+
+/** A place rules can be written. Two implementations: the CSSOM, and `<style>` text. */
+interface StyleSink {
+  insert: (texts: readonly string[]) => InsertedRules;
+  remove: (inserted: InsertedRules) => void;
+  /** Rewrite the whole sink. Used only by the scratch sheet. */
+  replaceAll: (texts: readonly string[]) => void;
+  /** Everything written, in sheet order. See {@link documentStyleText}. */
+  text: () => string;
+  detach: () => void;
+}
+
 /**
- * Apply inline styles and emit a scoped <style> block for nested CSS selectors and @custom-media
- * breakpoint rules.
+ * A sink over a real `CSSStyleSheet` — constructable and adopted, or a `<style>` element's own.
+ *
+ * @param {CSSStyleSheet} sheet
+ * @param {() => void} detach
+ * @returns {StyleSink}
+ */
+function cssomSink(sheet: CSSStyleSheet, detach: () => void): StyleSink {
+  const entries: InsertedRules[] = [];
+  return {
+    detach,
+    insert(texts) {
+      const rules: CSSRule[] = [];
+      for (const text of texts) {
+        const index = sheet.cssRules.length;
+        try {
+          sheet.insertRule(text, index);
+        } catch {
+          /* One unparseable rule must not take the other twenty with it. A `<style>` element drops
+             exactly the offending rule and keeps going; `insertRule` throws, so this restores the
+             tolerance an author's stylesheet has always had. */
+          continue;
+        }
+        const rule = sheet.cssRules[index];
+        if (rule) {
+          rules.push(rule);
+        }
+      }
+      const inserted: InsertedRules = { rules, texts };
+      entries.push(inserted);
+      return inserted;
+    },
+    remove(inserted) {
+      const at = entries.indexOf(inserted);
+      if (at !== -1) {
+        entries.splice(at, 1);
+      }
+      if (inserted.rules.length === 0) {
+        return;
+      }
+      /* An index scan of a 302-rule sheet measures 0.04ms, so finding the rules costs nothing next
+         to the RuleSet rebuild the deletion itself forces. Descending, or each deletion shifts the
+         indices still to be removed. */
+      const list = [...sheet.cssRules];
+      const indices = inserted.rules
+        .map((rule) => list.indexOf(rule))
+        .filter((index) => index >= 0)
+        .toSorted((a, b) => b - a);
+      for (const index of indices) {
+        sheet.deleteRule(index);
+      }
+      inserted.rules.length = 0;
+    },
+    replaceAll(texts) {
+      entries.length = 0;
+      entries.push({ rules: [], texts });
+      sheet.replaceSync(texts.join("\n"));
+    },
+    text() {
+      return entries.flatMap((entry) => entry.texts.join("\n")).join("\n");
+    },
+  };
+}
+
+/**
+ * The last resort: a `<style>` element whose text is rewritten. No CSSOM required.
+ *
+ * @param {HTMLStyleElement} tag
+ * @returns {StyleSink}
+ */
+function textSink(tag: HTMLStyleElement): StyleSink {
+  const entries: InsertedRules[] = [];
+  const write = () => {
+    tag.textContent = entries.map((entry) => entry.texts.join("\n")).join("\n");
+  };
+  return {
+    detach() {
+      tag.remove();
+    },
+    insert(texts) {
+      const inserted: InsertedRules = { rules: [], texts };
+      entries.push(inserted);
+      write();
+      return inserted;
+    },
+    remove(inserted) {
+      const index = entries.indexOf(inserted);
+      if (index !== -1) {
+        entries.splice(index, 1);
+        write();
+      }
+    },
+    replaceAll(texts) {
+      entries.length = 0;
+      entries.push({ rules: [], texts });
+      write();
+    },
+    text() {
+      return tag.textContent ?? "";
+    },
+  };
+}
+
+/**
+ * Open a sheet on `doc`, preferring a constructable one.
+ *
+ * A constructable stylesheet cannot be adopted into another document, which is why the registry
+ * below is keyed on the document and never cached at module scope: the Studio iframe, the live
+ * preview tab and the parent page each open their own.
+ *
+ * @param {Document} doc
+ * @returns {StyleSink}
+ */
+function openSink(doc: Document): StyleSink {
+  const view = doc.defaultView as (Window & { CSSStyleSheet?: typeof CSSStyleSheet }) | null;
+  const SheetConstructor = view?.CSSStyleSheet;
+  if (typeof SheetConstructor === "function" && Array.isArray(doc.adoptedStyleSheets)) {
+    try {
+      const sheet = new SheetConstructor();
+      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+      return cssomSink(sheet, () => {
+        doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter((s) => s !== sheet);
+      });
+    } catch {
+      // No constructable stylesheets, or a frozen adoptedStyleSheets. Fall through to a tag.
+    }
+  }
+  const tag = doc.createElement("style");
+  tag.dataset.jxSheet = "";
+  (doc.head ?? doc.documentElement).append(tag);
+  return tag.sheet ? cssomSink(tag.sheet, () => tag.remove()) : textSink(tag);
+}
+
+/** One interned rule set: the rules as written, and how many elements point at them. */
+interface InternEntry {
+  inserted: InsertedRules;
+  refs: number;
+}
+
+/** Everything one document's rules are kept in. */
+interface SheetState {
+  shared: StyleSink;
+  /** Opened on the first live edit, and only then — most documents never have one. */
+  scratch: StyleSink | null;
+  /** Elements living on the scratch sheet, in the order their rules are written. */
+  scratchOwners: Map<HTMLElement, readonly string[]>;
+  /** Scope handle to the rule set it names. */
+  interned: Map<string, InternEntry>;
+  /** Declaration-body at-rule text to the one copy of it. */
+  hoisted: Map<string, InternEntry>;
+  /** Distinguishes `--jx-r<serial>-<n>` variables between elements. */
+  serial: number;
+}
+
+/**
+ * The per-document registry. A `WeakMap` rather than a module-level singleton because one process
+ * renders into several documents (canvas iframe, preview tab, parent) and a constructable sheet
+ * belongs to exactly one of them.
+ */
+const sheetStates = new WeakMap<Document, SheetState>();
+
+/**
+ * @param {Document} doc
+ * @returns {SheetState}
+ */
+function sheetStateFor(doc: Document): SheetState {
+  const existing = sheetStates.get(doc);
+  if (existing) {
+    return existing;
+  }
+  const created: SheetState = {
+    hoisted: new Map(),
+    interned: new Map(),
+    scratch: null,
+    scratchOwners: new Map(),
+    serial: 0,
+    shared: openSink(doc),
+  };
+  sheetStates.set(doc, created);
+  return created;
+}
+
+/** What one element holds, so that releasing it is exact rather than approximate. */
+interface ElementStyleEntry {
+  doc: Document;
+  /** The state this entry's handles belong to; a reset replaces it and orphans them. */
+  state: SheetState;
+  uid: string;
+  /** The interning key in the shared sheet, or null when the element is on the scratch sheet. */
+  interned: string | null;
+  /** Hoisted declaration at-rules this element holds a reference to. */
+  hoisted: readonly string[];
+  /** The `--jx-r…` custom properties its effects write inline. */
+  vars: readonly string[];
+  /** Stops those effects. */
+  stop: (() => void) | null;
+}
+
+/**
+ * Per-element style bookkeeping. The replacement for the old `elementStyleTags`, which exported a
+ * `<style>` element and let its importers remove it by hand; {@link releaseElementStyles} is the
+ * documented teardown in its place, because a rule set is now refcounted and dropping one by hand
+ * would either leak it or take it away from another element that shares it.
+ */
+const elementStyles = new WeakMap<HTMLElement, ElementStyleEntry>();
+
+/** The scope handle `buildStyleRules` writes, before the hash of its own output replaces it. */
+const SCOPE_TOKEN = "jx-scope";
+
+/**
+ * Rewrite the scratch sheet from its owners.
+ *
+ * `scratchOwners` is a STRONG map — it has to be, since the sheet's whole text is rebuilt from it —
+ * so an element only leaves it through {@link releaseElementStyles}. That is not a hole: every way
+ * an edited element can go away calls it. `applyStyle` registers it with the enclosing reactive
+ * scope, Studio's `disposeSubtree` calls it per element, and `resetDocumentStyles` drops the map
+ * wholesale. Sweeping on `isConnected` instead would be wrong rather than merely redundant: an
+ * element is routinely styled before it is inserted.
+ *
+ * Both call sites reach this only once an element is already IN `scratchOwners`, and the only place
+ * that happens (`scratchOwners.set`, below) always opens `scratch` first — so it is never still
+ * null here.
+ *
+ * @param {SheetState} state
+ */
+function rewriteScratch(state: SheetState) {
+  state.scratch!.replaceAll([...state.scratchOwners.values()].flat());
+}
+
+/**
+ * Drop one reference to an interned rule set, removing its rules when the last one goes.
+ *
+ * `key` always names an entry `retainInterned` already created: {@link releaseElementStyles}'s two
+ * call sites pass back exactly the `entry.interned`/`entry.hoisted` keys it was handed at
+ * `retainInterned` time, and a stale `state` (one `resetDocumentStyles` already replaced) is turned
+ * away before either call site is reached.
+ *
+ * @param {SheetState} state
+ * @param {Map<string, InternEntry>} table
+ * @param {string} key
+ */
+function releaseInterned(state: SheetState, table: Map<string, InternEntry>, key: string) {
+  const entry = table.get(key)!;
+  entry.refs -= 1;
+  if (entry.refs <= 0) {
+    table.delete(key);
+    state.shared.remove(entry.inserted);
+  }
+}
+
+/**
+ * Take one reference to a rule set, inserting it the first time it is asked for.
+ *
+ * @param {SheetState} state
+ * @param {Map<string, InternEntry>} table
+ * @param {string} key
+ * @param {readonly string[]} texts
+ */
+function retainInterned(
+  state: SheetState,
+  table: Map<string, InternEntry>,
+  key: string,
+  texts: readonly string[],
+) {
+  const existing = table.get(key);
+  if (existing) {
+    existing.refs += 1;
+    return;
+  }
+  table.set(key, { inserted: state.shared.insert(texts), refs: 1 });
+}
+
+/**
+ * Release everything {@link applyStyle} gave an element: its rules, its scope handle, and the inline
+ * custom properties and effects behind its reactive declarations.
+ *
+ * This is the teardown API `elementStyleTags` used to stand in for, and it is exported because
+ * removing a rule set by hand is no longer possible: sets are shared between elements that style
+ * alike, so the only safe removal is a refcounted one. Calling it on an element that has no styles
+ * is a no-op, which is what makes `applyStyle` safe to call twice.
+ *
+ * Callers rarely need it. `applyStyle` registers it with the enclosing reactive scope, so an
+ * element discarded by a re-rendering mapped array or a disposed Studio subtree releases itself.
+ *
+ * @param {HTMLElement} el
+ * @param {ElementStyleEntry} [only] - Release only if this is still the element's current entry
+ */
+export function releaseElementStyles(el: HTMLElement, only?: ElementStyleEntry): void {
+  const entry = elementStyles.get(el);
+  if (!entry || (only !== undefined && entry !== only)) {
+    return;
+  }
+  elementStyles.delete(el);
+  entry.stop?.();
+  for (const name of entry.vars) {
+    el.style.removeProperty(name);
+  }
+  delete el.dataset.jx;
+  /* A `resetDocumentStyles` between the two replaces the state, and its sheets are already gone —
+     so the element-local half above always runs and the sheet half is skipped as already done. */
+  if (sheetStates.get(entry.doc) !== entry.state) {
+    return;
+  }
+  const { state } = entry;
+  if (entry.interned === null) {
+    if (state.scratchOwners.delete(el)) {
+      rewriteScratch(state);
+    }
+  } else {
+    releaseInterned(state, state.interned, entry.interned);
+  }
+  for (const key of entry.hoisted) {
+    releaseInterned(state, state.hoisted, key);
+  }
+}
+
+/**
+ * Discard every sheet this runtime opened on a document, and orphan the element entries that point
+ * into them.
+ *
+ * A full re-render replaces the whole tree, so the alternative is a shared sheet that only ever
+ * grows. The element `WeakMap` cannot be enumerated to be cleared, so entries are invalidated
+ * instead: each one records the `SheetState` it was written into, and a release that finds a
+ * different state registered for the document does the element-local half only. That is what stops
+ * a surviving element from later handing `deleteRule` an index into a sheet nobody is reading.
+ *
+ * @param {Document} [doc] - Defaults to the ambient document
+ */
+export function resetDocumentStyles(doc: Document = document): void {
+  const state = sheetStates.get(doc);
+  if (!state) {
+    return;
+  }
+  sheetStates.delete(doc);
+  for (const el of state.scratchOwners.keys()) {
+    elementStyles.delete(el);
+    delete el.dataset.jx;
+  }
+  state.scratchOwners.clear();
+  state.interned.clear();
+  state.hoisted.clear();
+  state.shared.detach();
+  state.scratch?.detach();
+}
+
+/**
+ * The CSS this engine has written into a document, in sheet order.
+ *
+ * It reports what the engine ASKED the document to adopt, not what the document managed to parse,
+ * and the difference is the point: `insertRule` throws on a rule the host cannot parse, and the
+ * sink swallows that so one bad rule cannot take the rest of an element's set with it. The test DOM
+ * rejects `@position-try` outright, so reading it back off `cssRules` there would report a block
+ * that a browser adopts perfectly well as missing.
+ *
+ * It is also the honest answer to "what CSS did my style object become", which is a question the
+ * Studio style inspector asks and, before this, nothing could answer without scraping `<style>`
+ * tags out of the head.
+ *
+ * @param {Document} [doc] - Defaults to the ambient document
+ * @returns {string} One rule per line, shared sheet first
+ * @docs framework/concepts/styling
+ */
+export function documentStyleText(doc: Document = document): string {
+  const state = sheetStates.get(doc);
+  if (!state) {
+    return "";
+  }
+  return [state.shared.text(), state.scratch?.text() ?? ""].filter(Boolean).join("\n");
+}
+
+/**
+ * Whether a style object declares `display` anywhere in it.
+ *
+ * `defineElement` gives a custom element `display: block` because a custom element defaults to
+ * `inline` and Jx containers behave like `<div>`. It used to test `this.style.display`, which was a
+ * correct test only while the author's own `display` was written inline — the moment it became a
+ * rule the guard stopped seeing it and the default started overriding the author. The test is now
+ * on the source rather than on the element, and it is a deep one on purpose: an inline default
+ * would beat a `:hover` or `@media` `display` just as surely as a base one.
+ *
+ * A `@keyframes` block is the one thing the walk does NOT descend into. A `display` in a keyframe
+ * stop is a point on a timeline, not a declaration on this element — animating `display` is the
+ * ordinary shape of an `allow-discrete` reveal — so counting one as the author's own left the
+ * element with no `display` at all, and a custom element with no `display` is `inline`. The element
+ * laid out wrongly whenever it was still, which is most of the time.
+ *
+ * @param {JxStyle | undefined} style
+ * @returns {boolean}
+ */
+function declaresDisplay(style: JxStyle | undefined): boolean {
+  /* The BASE block only. A deep walk read a `display` that exists solely inside `&:hover` or an
+     `@media` block as "the author supplied one", so the element stayed `inline` at rest and
+     became a block on hover — a live trap rather than a subtlety. An author who wants the
+     platform's own default writes `display: revert` in the base block, which this sees. */
+  return Boolean(style) && typeof style === "object" && "display" in style;
+}
+
+/**
+ * The `style` object a USAGE SITE wrote on a custom element, kept until the element connects.
+ *
+ * Weak in the element, so an instance that is never connected is collected with its entry.
+ */
+const callSiteStyles = new WeakMap<HTMLElement, JxStyle>();
+
+/**
+ * Merge two style objects, `over` winning.
+ *
+ * Deep, because a nested selector block is a rule of its own: a call site that declares `&:hover`
+ * must not delete the definition's `&:hover`, only the declarations it repeats inside it. A scalar
+ * always replaces, which is what "the call site wins" means.
+ *
+ * @param base The definition's style.
+ * @param over The usage site's, if any.
+ * @returns {JxStyle} A new object; neither argument is mutated.
+ */
+function mergeStyle(base: JxStyle, over: JxStyle | undefined): JxStyle {
+  if (!over) {
+    return base;
+  }
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(over as Record<string, unknown>)) {
+    const prior = out[key];
+    out[key] =
+      prior !== null &&
+      typeof prior === "object" &&
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+        ? mergeStyle(prior as JxStyle, value as JxStyle)
+        : value;
+  }
+  return out as JxStyle;
+}
+
+/**
+ * Turn an element's `style` object into CSS rules and adopt them.
+ *
+ * Nothing is written inline except the `--jx-r…` custom properties that carry reactive values, so
+ * an authored `:hover`, `@media` or `@supports` block overrides its own base declaration by
+ * ordinary cascade rules — which is what the emitted CSS always said and the inline write always
+ * prevented. See the engine essay above for the sheet roles and the measurements behind them.
+ *
+ * Calling it twice on one element is safe: the first call's rules are released first.
  *
  * @param {HTMLElement} el
  * @param {JxStyle} styleDef
  * @param {Record<string, string>} [mediaQueries] Named breakpoints from root $media. Default is
  *   `{}`
  * @param {JxScope} [state] Component scope for template string evaluation. Default is `{}`
+ * @docs framework/concepts/styling
  */
 export function applyStyle(
   el: HTMLElement,
@@ -1239,177 +2153,21 @@ export function applyStyle(
   mediaQueries: Record<string, string> = {},
   state: JxScope = {},
 ) {
-  const nested: Record<string, JxStyle> = {};
-  const media: Record<string, JxStyle> = {};
-  const baseDecls: Record<string, string> = {};
-
-  // Collect properties overridden by media queries so we can avoid inline styles for them
-  const mediaOverriddenProps = new Set<string>();
-  for (const [prop, val] of Object.entries(styleDef)) {
-    if (prop.startsWith("@") && val && typeof val === "object") {
-      for (const k of Object.keys(val)) {
-        if (
-          !k.startsWith(":") &&
-          !k.startsWith(".") &&
-          !k.startsWith("&") &&
-          !k.startsWith("[") &&
-          !k.startsWith("@")
-        ) {
-          mediaOverriddenProps.add(k);
-        }
-      }
-    }
-  }
-
-  for (const [prop, val] of Object.entries(styleDef)) {
-    if (val !== null && typeof val === "object" && !Array.isArray(val)) {
-      if (prop.startsWith("@")) {
-        media[prop] = val;
-      } else {
-        nested[prop] = val;
-      }
-      continue;
-    }
-    if (prop.startsWith("@") || isNestedSelector(prop)) {
-      // Scalar under a selector/media key — invalid style shape, drop it.
-      continue;
-    }
-    if (val === undefined) {
-      continue;
-    }
-    const scalar = String(val);
-    if (prop.startsWith("--")) {
-      if (isTemplateString(val)) {
-        effect(() => {
-          el.style.setProperty(prop, canvasStyleValue(evaluateTemplate(val, state)));
-        });
-      } else {
-        el.style.setProperty(prop, canvasStyleValue(scalar));
-      }
-    } else if (isTemplateString(val)) {
-      effect(() => {
-        (el.style as unknown as Record<string, string>)[prop] = canvasStyleValue(
-          evaluateTemplate(val, state),
-        );
-      });
-    } else if (mediaOverriddenProps.has(prop)) {
-      // Goes through toCSSText (which resolves and transposes) — don't do either twice here.
-      baseDecls[prop] = scalar;
-    } else {
-      (el.style as unknown as Record<string, string>)[prop] = canvasStyleValue(scalar);
-    }
-  }
-
-  const hasNested = Object.keys(nested).length > 0;
-  const hasMedia = Object.keys(media).length > 0;
-  const hasBaseDecls = Object.keys(baseDecls).length > 0;
-  if (!hasNested && !hasMedia && !hasBaseDecls) {
-    return;
-  }
-
-  const uid = `jx-${Math.random().toString(36).slice(2, 7)}`;
-  el.dataset.jx = uid;
-
-  let css = "";
-  const baseCSS = toCSSText(baseDecls);
-  if (baseCSS) {
-    css += `[data-jx="${uid}"] { ${baseCSS} }\n`;
-  }
-
-  function emitNested(scope: string, rules: JxStyle) {
-    const props = toCSSText(rules);
-    if (props) {
-      css += `${scope} { ${props} }\n`;
-    }
-    for (const [sel, sub] of Object.entries(rules)) {
-      if (sub === null || typeof sub !== "object" || Array.isArray(sub)) {
-        continue;
-      }
-      if (sel.startsWith("@")) {
-        continue;
-      }
-      const resolved = sel.startsWith("&")
-        ? sel.replace("&", scope)
-        : sel.startsWith("[")
-          ? `${scope}${sel}`
-          : sel.startsWith(":") || sel.startsWith(".")
-            ? `${scope}${sel}`
-            : `${scope} ${sel}`;
-      emitNested(resolved, sub);
-    }
-  }
-
-  for (const [sel, rules] of Object.entries(nested)) {
-    const resolved = sel.startsWith("&")
-      ? sel.replace("&", `[data-jx="${uid}"]`)
-      : sel.startsWith("[")
-        ? `[data-jx="${uid}"]${sel}`
-        : sel.startsWith(":") || sel.startsWith(".")
-          ? `[data-jx="${uid}"]${sel}`
-          : `[data-jx="${uid}"] ${sel}`;
-    emitNested(resolved, rules);
-  }
-
-  function emitMediaNested(atRule: string, parentSel: string, obj: JxStyle) {
-    for (const [sel, sub] of Object.entries(obj)) {
-      if (sub === null || typeof sub !== "object" || Array.isArray(sub)) {
-        continue;
-      }
-      if (sel.startsWith("@")) {
-        continue;
-      }
-      const resolved = sel.startsWith("&")
-        ? sel.replace("&", parentSel)
-        : sel.startsWith("[")
-          ? `${parentSel}${sel}`
-          : sel.startsWith(":") || sel.startsWith(".")
-            ? `${parentSel}${sel}`
-            : `${parentSel} ${sel}`;
-      const props = toCSSText(sub);
-      if (props) {
-        css += `${atRule} { ${resolved} { ${props} } }\n`;
-      }
-      emitMediaNested(atRule, resolved, sub);
-    }
-  }
-
-  for (const [key, rules] of Object.entries(media)) {
-    if (key === "@--") {
-      continue;
-    } // Base canvas width, not a real media query
-    const query = resolveAtQuery(key, mediaQueries);
-    const atRule = query === null ? key : `@media ${query}`;
-    const scope = `[data-jx="${uid}"]`;
-    const scheme = query === null ? null : pureSchemeOf(query);
-    if (scheme) {
-      // Dual-emit scheme rules: a media-guarded copy for auto plus a forced-attribute copy.
-      // The forced root attribute wins over the OS preference.
-      const { auto, forced } = schemeSelectors(scope, scheme);
-      css += `${atRule} { ${auto} { ${toCSSText(rules)} } }\n`;
-      emitMediaNested(atRule, auto, rules);
-      emitNested(forced, rules);
-    } else {
-      css += `${atRule} { ${scope} { ${toCSSText(rules)} } }\n`;
-      emitMediaNested(atRule, scope, rules);
-    }
-  }
-
-  const tag = document.createElement("style");
-  tag.textContent = css;
-  tag.dataset.jxOwner = uid;
-  document.head.append(tag);
-  elementStyleTags.set(el, tag);
+  applyStyleInto(el, styleDef, mediaQueries, state, false);
 }
 
 /**
- * Scoped <style> tags emitted per element by applyStyle (latest wins). Lets callers replace an
- * element's emitted styles instead of accumulating orphaned tags.
- */
-export const elementStyleTags = new WeakMap<HTMLElement, HTMLStyleElement>();
-
-/**
- * Re-apply an element's style definition in place: removes the previously emitted scoped <style>
- * tag (if any), clears inline styles, and applies the new definition.
+ * Re-apply an element's style definition in place.
+ *
+ * The Studio Style panel calls this per keystroke, so its rules go to the SCRATCH sheet, which is
+ * rewritten whole with `replaceSync` rather than edited rule by rule inside the shared one: 7.5ms
+ * per 100 structural edits against 76.9ms. The previous rule set is released first — without that
+ * this would leak a set into the shared sheet on every keypress, which is the opposite of the
+ * `<style>`-tag leak it replaced.
+ *
+ * Inline styles are NOT cleared wholesale any more. `el.style.cssText = ""` also destroyed an
+ * author's own `attributes: { style: "…" }` and would now take the custom-element `display` default
+ * with it; only the `--jx-r…` properties this engine wrote are removed.
  *
  * @param {HTMLElement} el
  * @param {JxStyle | undefined} styleDef
@@ -1422,14 +2180,144 @@ export function reapplyStyle(
   mediaQueries: Record<string, string> = {},
   state: JxScope = {},
 ) {
-  const prev = elementStyleTags.get(el);
-  if (prev) {
-    prev.remove();
-    elementStyleTags.delete(el);
+  applyStyleInto(el, styleDef ?? {}, mediaQueries, state, true);
+}
+
+/**
+ * @param {HTMLElement} el
+ * @param {JxStyle} styleDef
+ * @param {Record<string, string>} mediaQueries
+ * @param {JxScope} state
+ * @param {boolean} live - Write to the scratch sheet (the Studio edit path) rather than intern
+ */
+function applyStyleInto(
+  el: HTMLElement,
+  styleDef: JxStyle,
+  mediaQueries: Record<string, string>,
+  state: JxScope,
+  live: boolean,
+) {
+  releaseElementStyles(el);
+  const doc = el.ownerDocument ?? document;
+  const sheetState = sheetStateFor(doc);
+
+  /* One gate for the whole call, so every recursion answers alike. Off in production and in
+     preview, where the selector is written exactly as authored.
+
+     The SAME predicate the attribute rename uses, and it has to be: an attribute renamed without
+     its selectors transposed is a panel that can never be styled open. They disagreed while the
+     rename learned to reach inside a defined element and this did not, so a kit popover rendered
+     within another definition's template would have been de-linked and then left with a
+     `:popover-open` rule that could no longer match. */
+  const transposeSelector =
+    (_canvasDelinkPopovers || _canvasDelinkCommands) && canvasStamped(el)
+      ? (selector: string) =>
+          transposeCanvasOverlaySelector(selector, {
+            dialog: el.tagName === "DIALOG",
+          })
+      : (selector: string) => selector;
+
+  /* Reactive declarations become `var()` reads of a custom property this element sets inline. The
+     variable inherits, which is correct, and the declaration stays in the rule where `:hover` can
+     override it. The serial keeps two elements' variables apart: a descendant rule reads `var()`
+     from the nearest ancestor that set it, and without it a styled child would shadow its parent's
+     `--jx-r0` with its own. It also makes the rule text — and so the scope handle hashed from it —
+     unique per element, which is exactly the sharing a reactive rule set must not have. */
+  let serial = -1;
+  let indirect = 0;
+  const sources: { name: string; value: string | JxRef }[] = [];
+  const rules = buildStyleRules(styleDef, {
+    mediaQueries,
+    resolveValue: (property, value, target) => {
+      /* A reactive value on a CUSTOM PROPERTY, in a rule targeting the element itself, is written
+         inline under the AUTHOR'S OWN NAME and contributes no declaration. That keeps the rule
+         text free of anything per-element, so every row of a repeater interns ONE rule instead of
+         one each: the serial below is in the rule text, the interning handle is a hash of that
+         text, and so no two reactive elements could ever share a rule set. Measured before this:
+         three font rows produced three handles and three rules.
+         The declaration that READS the variable — `font-family: var(--row-face, inherit)` — lives
+         in the owning element's own style, is identical across rows, and interns once.
+         Only a SELF-target rule qualifies. A descendant rule keeps the indirection, because its
+         variable must not be set on the element that carries the rule: a `var()` resolves from the
+         nearest ancestor that set it, and a shared descendant rule would read the wrong one. */
+      if (target === "self" && property.startsWith("--")) {
+        sources.push({ name: property, value });
+        return null;
+      }
+      if (serial < 0) {
+        ({ serial } = sheetState);
+        sheetState.serial += 1;
+      }
+      /* Counted separately from `sources`, so an inline custom property before it cannot shift the
+         name of an indirected one. The name is IN the rule text, and the interning handle is a
+         hash of that text — a number that moved with unrelated declarations would give two
+         otherwise identical styles two rules. */
+      const name = `--jx-r${serial}-${indirect}`;
+      indirect += 1;
+      sources.push({ name, value });
+      return `var(${name})`;
+    },
+    scope: SCOPE_TOKEN,
+    transposeSelector,
+    transposeValue: canvasStyleValue,
+  });
+  /* `sources.length` too, not `rules.length` alone: a style whose ONLY reactive declaration is a
+     custom property on the element itself emits no rule at all, and returning here would install
+     no effect, so the variable would be written once and never track its source again. */
+  if (rules.length === 0 && sources.length === 0) {
+    return;
   }
-  el.style.cssText = "";
-  delete el.dataset.jx;
-  applyStyle(el, styleDef ?? {}, mediaQueries, state);
+
+  /* Declaration-body at-rules declare a document-global NAME — `@position-try --flip`,
+     `@font-face` — so they are written once for the whole document and refcounted, rather than
+     once per element that mentions them. */
+  const scoped = rules.filter((rule) => rule.target !== "unscoped");
+  const unscoped = rules.filter((rule) => rule.target === "unscoped");
+  for (const rule of unscoped) {
+    retainInterned(sheetState, sheetState.hoisted, rule.text, [rule.text]);
+  }
+
+  const uid = `jx-${hashCss(scoped.map((rule) => rule.key).join("|"))}`;
+  const texts = scoped.map((rule) => rule.text.replaceAll(SCOPE_TOKEN, `[data-jx="${uid}"]`));
+  if (texts.length > 0) {
+    el.dataset.jx = uid;
+    if (live) {
+      sheetState.scratch ??= openSink(doc);
+      sheetState.scratchOwners.set(el, texts);
+      rewriteScratch(sheetState);
+    } else {
+      retainInterned(sheetState, sheetState.interned, uid, texts);
+    }
+  }
+
+  const entry: ElementStyleEntry = {
+    doc,
+    hoisted: unscoped.map((rule) => rule.text),
+    interned: texts.length > 0 && !live ? uid : null,
+    state: sheetState,
+    stop: null,
+    uid,
+    vars: sources.map((source) => source.name),
+  };
+  if (sources.length > 0) {
+    const scope = effectScope();
+    scope.run(() => {
+      for (const { name, value } of sources) {
+        effect(() => {
+          const resolved = isRefObj(value)
+            ? resolveRef(value.$ref, state)
+            : evaluateTemplate(value, state);
+          el.style.setProperty(name, canvasStyleValue(String(resolved ?? "")));
+        });
+      }
+    });
+    entry.stop = () => scope.stop();
+  }
+  elementStyles.set(el, entry);
+  /* Ties the rules to the render that made them: a mapped array's discarded generation, or a
+     Studio subtree being replaced, stops its scope and the rule set goes with it. Guarded on the
+     entry so a later `reapplyStyle` is not undone by an older scope disposing after it. */
+  onScopeDispose(() => releaseElementStyles(el, entry), true);
 }
 
 /*
@@ -1444,9 +2332,37 @@ export function reapplyStyle(
  * `contenteditable` means "inherit from the parent" rather than `false`. Every `aria-*` is in this
  * family — ARIA has no presence attributes at all — along with the three HTML attributes below.
  *
+ * **`popover` is enumerated and is deliberately NOT in this set**, which looks like an oversight
+ * and is not. Its keywords are `auto`, `manual` and `hint`; its MISSING-value default is `auto`, so
+ * a bare `popover` and `popover=""` are both auto popovers — which is what the presence branch
+ * below already produces for `true`, correctly. Its INVALID-value default is `manual`, so moving it
+ * here would emit `popover="true"`, which is not a keyword, and every popover written as a boolean
+ * would silently stop light-dismissing and stop answering Escape. The right answer to a boolean
+ * `popover` is not a different emission, it is not writing one: `@jxsuite/schema/overlays` reports
+ * it as `invalid-mode`, and the house spelling is `"auto"`.
+ *
+ * That also corrects the paragraph above for this one attribute: a presence attribute counts any
+ * value as true, but `popover="false"` is a *manual* popover rather than a true-ish one, because it
+ * is enumerated even though it is emitted through the presence branch.
+ *
  * @docs framework/concepts/elements
  */
 const ENUMERATED_ATTRS = new Set(["contenteditable", "draggable", "spellcheck"]);
+
+/**
+ * The enumerated-attribute names, for a code generator that cannot import this module.
+ *
+ * The compiler's element and client targets emit standalone ES modules that a built site loads
+ * without `@jxsuite/runtime`, so they inline the boolean decision instead of calling it. They
+ * serialize THIS array into that inlined helper, and `compile-element.test.ts` asserts the emitted
+ * literal still equals it — which is what keeps the four writers of the rule one decision rather
+ * than four, in the one place a shared function could not reach.
+ *
+ * @returns {string[]} The names, sorted, so the emitted output is stable.
+ */
+export function enumeratedAttrNames(): string[] {
+  return [...ENUMERATED_ATTRS].toSorted();
+}
 
 /**
  * The text an attribute's boolean value must be written with, or `null` when saying it means
@@ -1482,6 +2398,13 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
     /* Inside the effects, not before them. A `$ref` or `${…}` value is not a string until the
        effect runs — which is exactly why the document walk this replaced could never see it. */
     const write = (resolved: unknown) => {
+      if (resolved === null || resolved === undefined) {
+        /* Nothing is an attribute the element does not have. A binding that resolves to `null`
+           has to take the attribute WITH it, for the same reason a `false` does below — and an
+           `aria-checked=""` or `title=""` left behind is not absence, it is a wrong value. */
+        el.removeAttribute(attr);
+        return;
+      }
       if (typeof resolved === "boolean") {
         const text = booleanAttrValue(attr, resolved);
         /* `removeAttribute`, not `setAttribute(attr, "false")`. A binding that flips back has to
@@ -1495,7 +2418,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
         }
         return;
       }
-      el.setAttribute(attr, canvasAssetValue(el.tagName, k, String(resolved ?? "")));
+      el.setAttribute(attr, canvasAssetValue(el.tagName, k, String(resolved)));
     };
     if (isRefObj(v)) {
       effect(() => write(resolveRef(v.$ref, state)));
@@ -1512,12 +2435,24 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
 /**
  * Render a mapped array (repeater) wrapper-less: its item instances are inserted directly into
  * `parentEl`, in place, ahead of an anchor comment that marks the array's position among the
- * parent's other children. Re-renders reactively when `items` (or the filter/sort sources) change;
- * each generation's item renders live in their own detached effect scope so nested arrays and
- * template bindings are disposed — not leaked or double-fired — on the next change.
+ * parent's other children.
+ *
+ * Rows are RECONCILED, not rebuilt. Each row is keyed — by the `key` pointer the array declares,
+ * else by its index — and owns a detached effect scope and a reactive `$map` context. When `items`
+ * (or the filter/sort sources, or a key) change, a row whose key survives keeps its node and its
+ * effects: a reorder moves the node, an insertion creates only the new rows, a removal stops only
+ * the removed ones, and a moved row's `$map.index` is updated in place. That is what lets focus,
+ * scroll position and a half-typed value survive a change to the list.
+ *
+ * Reads made while a row is constructed are made with tracking PAUSED. `effectScope.run()` does not
+ * reset the active subscriber, so without this every top-level read a row performs — a `$props`
+ * write, a tag discriminant, a `$`-local — subscribed the LIST effect, and one row's data changing
+ * rebuilt the whole list. The bindings inside a row are effects of their own and re-enable tracking
+ * when they run, so a row still updates itself.
  *
  * `options._path` is the array node's own document path (`[…, "children", i]`, or `[…, "children"]`
- * for a legacy whole-children repeater); item instances render at `[…that…, "map", index]`.
+ * for a legacy whole-children repeater); item instances render at `[…that…, "map", index]`, and a
+ * row that moves reports its new path through `options.onNodeMoved`.
  *
  * @param {HTMLElement} parentEl
  * @param {import("@jxsuite/schema/types").JxMappedArray} arrayDef
@@ -1533,9 +2468,87 @@ function renderMappedArrayInto(
   const path = options?._path ?? [];
   const anchor = document.createComment("jx-array");
   parentEl.append(anchor);
-  const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef } = arrayDef;
+  const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef, key: keyRef } = arrayDef;
+  const keyPointer = isRefObj(keyRef) ? keyRef.$ref : null;
+  /* The instantiation chain the list belongs to (spec.md §16.9), for the same reason
+     {@link renderSwitch} keeps one: a row that arrives with new data is inserted from an effect
+     re-run, and the instance it holds must connect under the chain of the definition that drew
+     the list. */
+  const instancePath = _instancePath;
 
-  effect(() => {
+  let warned = false;
+  const warnOnce = (message: string): void => {
+    if (!warned) {
+      warned = true;
+      console.warn(`Jx $map: ${message}`);
+    }
+  };
+
+  /** The rows currently rendered, in DOM order. */
+  let rows: MappedRow[] = [];
+
+  const teardown = (row: MappedRow): void => {
+    row.scope.stop();
+    row.node.remove();
+  };
+
+  const createRow = (key: unknown, item: unknown, index: number): MappedRow => {
+    const map = shallowReactive({ index, item });
+    const child = Object.create(state) as JxScope;
+    child.$map = map;
+    // The flat aliases stay readable by legacy readers, and follow the reactive context.
+    Object.defineProperty(child, "$map/item", { enumerable: true, get: () => map.item });
+    Object.defineProperty(child, "$map/index", { enumerable: true, get: () => map.index });
+    const scope = effectScope(true);
+    const childOpts = options ? { ...options, _path: [...path, "map", index] } : undefined;
+    const node = scope.run(() => renderNode(mapDef!, child, childOpts))!;
+    return { key, map, node, scope };
+  };
+
+  const reconcile = (list: unknown[], keys: unknown[]): void => {
+    const previous = new Map<unknown, MappedRow>();
+    for (const row of rows) {
+      previous.set(row.key, row);
+    }
+    const next: MappedRow[] = [];
+    for (let index = 0; index < list.length; index++) {
+      const key = keys[index];
+      const item = list[index];
+      const existing = previous.get(key);
+      if (existing) {
+        previous.delete(key);
+        if (existing.map.item !== item) {
+          existing.map.item = item;
+        }
+        if (existing.map.index !== index) {
+          existing.map.index = index;
+          options?.onNodeMoved?.(existing.node, [...path, "map", index]);
+        }
+        next.push(existing);
+      } else {
+        next.push(createRow(key, item, index));
+      }
+    }
+    // Whatever was not claimed is gone.
+    for (const row of previous.values()) {
+      teardown(row);
+    }
+    /* Order in one forward pass. The cursor walks the kept nodes in their current order; a row
+       already under the cursor is in place, anything else is inserted before it — a new node, or
+       a kept node moved forward. Only rows that are out of place move, and a move is the one thing
+       that can cost a focused element its focus. */
+    let cursor: ChildNode = rows.find((row) => !previous.has(row.key))?.node ?? anchor;
+    for (const row of next) {
+      if (row.node === cursor) {
+        cursor = cursor.nextSibling ?? anchor;
+        continue;
+      }
+      cursor.before(row.node);
+    }
+    rows = next;
+  };
+
+  const update = (): void => {
     let items: unknown = isRefObj(itemsSrc) ? resolveRef(itemsSrc.$ref, state) : itemsSrc;
     if (Array.isArray(items) && isRefObj(filterRef)) {
       const fn = resolveRef(filterRef.$ref, state);
@@ -1549,33 +2562,98 @@ function renderMappedArrayInto(
         items = [...(items as unknown[])].toSorted(fn as (a: unknown, b: unknown) => number);
       }
     }
-    if (!Array.isArray(items) || !mapDef) {
-      return;
+    const list = Array.isArray(items) && mapDef ? (items as unknown[]) : [];
+
+    // Keys are read HERE, tracked, so a key that changes reconciles the list.
+    const keys = list.map((item, index) => mappedRowKey(keyPointer, item, index, warnOnce));
+    const seen = new Set<unknown>();
+    for (let i = 0; i < keys.length; i++) {
+      if (seen.has(keys[i])) {
+        warnOnce(
+          `duplicate key ${String(keys[i])} — every occurrence after the first is rebuilt on each change`,
+        );
+        keys[i] = { duplicate: i };
+      } else {
+        seen.add(keys[i]);
+      }
     }
 
-    // Render this generation's items inside a detached scope; the cleanup (run before the next
-    // Re-render and when the enclosing render scope stops) tears it down and removes its nodes.
-    const scope = effectScope(true);
-    const nodes: ChildNode[] = [];
-    scope.run(() => {
-      for (const [index, item] of (items as unknown[]).entries()) {
-        const child = Object.create(state) as JxScope;
-        child.$map = { index, item };
-        child["$map/item"] = item;
-        child["$map/index"] = index;
-        const childOpts = options ? { ...options, _path: [...path, "map", index] } : undefined;
-        const node = renderNode(mapDef, child, childOpts);
-        anchor.before(node);
-        nodes.push(node);
+    pauseTracking();
+    try {
+      underInstancePath(reexpand(instancePath), () => reconcile(list, keys));
+    } finally {
+      resetTracking();
+    }
+  };
+
+  /* The first render is synchronous; every re-render is coalesced into ONE microtask. A reactive
+     array mutated in place — `reverse()`, `sort()`, an index write — triggers once per element it
+     touches, and an effect run between two of those writes sees an array that is half of each
+     state: a row that is transiently absent would be torn down and then rebuilt, which is exactly
+     the identity loss keys exist to prevent. Deferring to a microtask is what a framework scheduler
+     does for the same reason; a row's own bindings stay synchronous. */
+  let queued = false;
+  let stopped = false;
+  const runner = effect(update, {
+    scheduler: () => {
+      if (queued) {
+        return;
       }
-    });
-    onEffectCleanup(() => {
-      scope.stop();
-      for (const n of nodes) {
-        n.remove();
-      }
-    });
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (!stopped) {
+          runner();
+        }
+      });
+    },
   });
+
+  onScopeDispose(() => {
+    stopped = true;
+    for (const row of rows) {
+      teardown(row);
+    }
+    rows = [];
+  }, true);
+}
+
+/** A rendered row of a mapped array. */
+interface MappedRow {
+  key: unknown;
+  /** The row's `$map` context; `item` and `index` are written in place when the row is reused. */
+  map: { index: number; item: unknown };
+  node: HTMLElement | Text;
+  scope: EffectScope;
+}
+
+/**
+ * The identity a `key` pointer names for one item: the item itself for `$map/item`, a value read
+ * off it for `$map/item/<path>`. Anything else is not a key — an index names a position, not a row
+ * — and a key that evaluates to nothing cannot tell rows apart, so both fall back to the index.
+ */
+function mappedRowKey(
+  pointer: string | null,
+  item: unknown,
+  index: number,
+  warnOnce: (message: string) => void,
+): unknown {
+  if (pointer === null) {
+    return index;
+  }
+  if (pointer === "$map/item") {
+    return item;
+  }
+  if (pointer.startsWith("$map/item/")) {
+    const key = readPath(item, pointer.slice("$map/item/".length));
+    if (key === undefined || key === null) {
+      warnOnce(`key "${pointer}" is empty for some items — those rows fall back to their index`);
+      return index;
+    }
+    return key;
+  }
+  warnOnce(`key "${pointer}" is not a $map/item pointer — rows fall back to their index`);
+  return index;
 }
 
 /**
@@ -1617,6 +2695,11 @@ export function resolveTagName(tagName: unknown, scope: JxScope): string {
 function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions) {
   const path = options?._path ?? [];
   const container = document.createElement(resolveTagName(def.tagName, state));
+  /* The instantiation chain this switch belongs to (spec.md §16.9), read now because the effect
+     below re-runs with nothing on the stack. A case that flips after the first paint puts it back
+     around the insertion, so an instance the new case creates connects under the chain of the
+     definition that drew the switch rather than under none. See {@link _instancePath}. */
+  const instancePath = _instancePath;
 
   if (options?.onNodeCreated) {
     options.onNodeCreated(container, path, def, state);
@@ -1625,40 +2708,67 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
   applyProperties(container, def, state);
   applyStyle(container, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
   applyAttributes(container, def.attributes ?? {}, state);
+  /* Every case renders in a detached scope of its own, stopped before the next case renders and
+     when the container's own scope stops. A generation counter names the case a pending external
+     load belongs to; it moves on EVERY change — an inline case included — so a load that resolves
+     after the discriminant moved on cannot paint over what replaced it. */
   let generation = 0;
+  let live: EffectScope | null = null;
+  /* The key the rendered case was chosen by. A discriminant that re-resolves to the SAME key keeps
+     its case: the subtree, its effects and its state — an open submenu, a half-typed value —
+     survive. Without this a mapped row whose item was replaced by an equal one (a host rebuilding
+     its projection) rebuilt every switch inside it, and the popover the case rendered closed. */
+  let renderedKey: string | null = null;
+  const retire = (): void => {
+    live?.stop();
+    live = null;
+  };
 
   effect(() => {
+    if (!isRefObj(def.$switch)) {
+      retire();
+      container.replaceChildren();
+      generation += 1;
+      return;
+    }
+    const key = String(resolveRef(def.$switch.$ref, state));
+    if (key === renderedKey) {
+      return;
+    }
+    renderedKey = key;
+    retire();
     /* `replaceChildren()` rather than `innerHTML = ""`: identical semantics, and it is not a
        Trusted Types injection sink — under `require-trusted-types-for 'script'` an innerHTML write
        needs a policy even when the string is empty. Four sinks that were never injecting anything
        is four fewer things a policy has to be permissive about. */
     container.replaceChildren();
-    if (!isRefObj(def.$switch)) {
-      return;
-    }
-    const key = resolveRef(def.$switch.$ref, state) as string;
+    generation += 1;
     const caseDef = def.cases?.[key];
     if (!caseDef) {
       return;
     }
+    const gen = generation;
+    const scope = effectScope(true);
+    live = scope;
+    const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
 
     if (isRefObj(caseDef)) {
-      // External $ref — fetch and render asynchronously
-      generation += 1;
-      const gen = generation;
-      const { href } = new URL(caseDef.$ref, location.href);
-      resolve(href)
+      // External $ref — fetch and render asynchronously, against the mount's base so a bundled
+      // Document need not live at the page URL.
+      const { href } = new URL(caseDef.$ref, options?._ctx?.base ?? location.href);
+      resolve(href, options?._ctx)
         .then(async (doc) => {
           if (gen !== generation) {
             return;
           }
-          const childScope = await buildScope(doc, {}, href);
+          const childScope = await buildScope(doc, {}, href, options?._ctx);
           if (gen !== generation) {
             return;
           }
           container.replaceChildren();
-          const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
-          container.append(renderNode(doc, childScope, childOpts));
+          underInstancePath(reexpand(instancePath), () =>
+            scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
+          );
         })
         .catch((error: unknown) =>
           console.error("Jx $switch: failed to load external case", caseDef.$ref, error),
@@ -1666,9 +2776,19 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
       return;
     }
 
-    const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
-    container.append(renderNode(caseDef, state, childOpts));
+    // Tracking is paused for the same reason it is for a mapped row: a top-level read the case
+    // Makes while it renders must not subscribe THIS effect, or the case re-renders on every
+    // Change to anything it read. The bindings inside it track for themselves.
+    pauseTracking();
+    try {
+      underInstancePath(reexpand(instancePath), () =>
+        scope.run(() => container.append(renderNode(caseDef, state, childOpts))),
+      );
+    } finally {
+      resetTracking();
+    }
   });
+  onScopeDispose(retire, true);
 
   return container;
 }
@@ -1692,6 +2812,7 @@ export async function resolvePrototype(
   state: JxScope,
   key: string,
   base?: string,
+  ctx?: JxContext,
 ) {
   // ── External class via $src ─────────────────────────────────────────────────
   if (def.$src) {
@@ -1704,7 +2825,7 @@ export async function resolvePrototype(
       const debounceMs = def.debounce ?? 0;
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-      if (!def.manual && !_autoRequestConfig.skip) {
+      if (!def.manual && !(ctx?.skipAutoRequests ?? _autoRequestConfig.skip)) {
         effect(() => {
           let url: string | undefined;
           if (isTemplateString(def.url)) {
@@ -1953,8 +3074,11 @@ async function resolveExternalPrototype(
  */
 async function importAndInstantiate(def: JxScope, src: string, exportName: string, base?: string) {
   let mod: ImportedModule;
-  if (_moduleCache.has(src)) {
-    mod = _moduleCache.get(src)!;
+  const seeded = seededModule(src);
+  if (seeded instanceof Promise) {
+    mod = await seeded;
+  } else if (seeded) {
+    mod = seeded;
   } else {
     try {
       mod = (await import(src)) as ImportedModule;
@@ -2010,6 +3134,9 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
  * Resolve a .class.json schema-defined class. Fetches the schema, follows $implementation if
  * hybrid, or constructs dynamically if self-contained.
  *
+ * Its one caller, {@link resolveExternalPrototype}, already rejects a missing `$src` before this
+ * runs, so `def.$src` is never empty here.
+ *
  * @param {JxPrototypeDef} def
  * @param {JxScope} state
  * @param {string} key
@@ -2017,10 +3144,7 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
  * @returns {Promise<unknown>}
  */
 async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string, base?: string) {
-  const src = def.$src;
-  if (!src) {
-    throw new Error(`Jx: class entry '${key}' has no $src`);
-  }
+  const src = def.$src!;
   let classDef: JxClassDef;
 
   // Bare specifiers (package references like @scope/pkg/file) can't be fetched directly —
@@ -2266,8 +3390,11 @@ async function resolveServerFunction(
   const exportName = def.$export;
 
   let mod: ImportedModule;
-  if (_moduleCache.has(src)) {
-    mod = _moduleCache.get(src)!;
+  const seeded = seededModule(src);
+  if (seeded instanceof Promise) {
+    mod = await seeded;
+  } else if (seeded) {
+    mod = seeded;
   } else {
     try {
       mod = (await import(src)) as ImportedModule;
@@ -2406,8 +3533,11 @@ export function resolveRef(refPath: string, state: JxScope) {
   if (typeof refPath !== "string") {
     return refPath;
   }
-  if (refPath.startsWith("$map/")) {
-    const parts = refPath.split("/");
+  if (refPath.startsWith("$map/") || refPath.startsWith("#/$map/")) {
+    /* Both spellings. `#/` is the documented JSON Pointer prefix everywhere else in the schema,
+       so a `#/$map/item/x` fell through to `readPath`, returned null, and a `$map` over it
+       rendered ZERO rows with no warning. */
+    const parts = (refPath.startsWith("#/") ? refPath.slice(2) : refPath).split("/");
     const [, key] = parts; // "item" or "index"
     const map = state.$map as Record<string, unknown> | undefined;
     const base = map?.[key!] ?? state[`$map/${key}`];
@@ -2455,14 +3585,6 @@ function isRefObj(v: unknown): v is JxRef {
 }
 
 /**
- * @param {string} k
- * @returns {boolean}
- */
-function isNestedSelector(k: string) {
-  return k.startsWith(":") || k.startsWith(".") || k.startsWith("&") || k.startsWith("[");
-}
-
-/**
  * Walk a path off a value. Delegates to the one tokenizer (`pointer.ts`) — this used to split on
  * `/[./]/`, which no other path in the codebase agreed with.
  *
@@ -2473,6 +3595,71 @@ function isNestedSelector(k: string) {
 function getPath(obj: unknown, path: string) {
   return readPath(obj, path);
 }
+
+/**
+ * Write an observed attribute into element state, coerced by the type the state entry already holds
+ * (spec §16.5): a number parses, a boolean is presence (`"false"` counts as absent), and anything
+ * else is the string. Shared by connection and `attributeChangedCallback` so the two cannot
+ * disagree.
+ *
+ * REMOVING an attribute restores the entry's DECLARED DEFAULT rather than writing the absence
+ * through. `attributeChangedCallback` reports a removal as `null`, and writing that through gave a
+ * `type: "string"` entry the value `null` and a `type: "number"` entry `Number(null)`, which is 0 —
+ * so a numeric prop could never express "unset" and a string prop stopped matching its own declared
+ * type. The default is the value the entry had before anyone set the attribute, which is what the
+ * removal is asking to go back to.
+ *
+ * @param defaults The declared defaults by state key; a key absent from it has none.
+ */
+function absorbAttribute(
+  state: JxScope,
+  name: string,
+  value: string | null,
+  defaults?: ReadonlyMap<string, unknown>,
+): void {
+  const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  const current = state[camelKey];
+  if (typeof current === "boolean") {
+    // Presence IS the value for a boolean, so a removal is already spelled by the same rule.
+    state[camelKey] = value !== null && value !== "false";
+    return;
+  }
+  if (value === null) {
+    const declared = defaults?.get(camelKey);
+    state[camelKey] = declared === undefined ? (typeof current === "number" ? 0 : "") : declared;
+    return;
+  }
+  state[camelKey] = typeof current === "number" ? Number(value) : value;
+}
+
+/**
+ * The declared default of every state entry that has one, by state key.
+ *
+ * @param def The element definition
+ * @returns {Map<string, unknown>} Key → default
+ */
+function declaredDefaults(def: JxElement): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  for (const [key, entry] of Object.entries(def.state ?? {})) {
+    if (entry !== null && typeof entry === "object") {
+      const obj = entry as Record<string, unknown>;
+      if ("default" in obj) {
+        out.set(key, obj["default"]);
+        continue;
+      }
+      // A computed entry has no default: its value is produced, and a removal leaves it alone.
+      if (COMPUTED_STATE_KEYS.some((marker) => marker in obj)) {
+        continue;
+      }
+    }
+    // The shorthand `{ "label": "none" }` IS the default, the same way `buildScope` reads it.
+    out.set(key, entry);
+  }
+  return out;
+}
+
+/** The markers that make a state entry produced rather than authored. */
+const COMPUTED_STATE_KEYS = ["$expression", "$prototype", "$ref", "$src"] as const;
 
 /** Keys already reported, so a component rendered in a loop warns once rather than per instance. */
 const _privatePropWarned = new Set<string>();
@@ -2559,124 +3746,105 @@ function mergeProps(def: JxElement, parentState: JxScope): JxScope {
   return child;
 }
 
-/**
- * Convert camelCase to kebab-case.
- *
- * @param {string} s
- * @returns {string}
+/*
+ * The CSS-authoring rules live in `./css.ts`, whose only import is a pair of type guards. They are
+ * re-exported
+ * here because they always were part of this module's surface and moving them must not break a
+ * consumer; a host that cannot afford the DOM runtime imports `@jxsuite/runtime/css` instead.
  */
-export function camelToKebab(s: string) {
-  return s.replaceAll(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
-}
+export {
+  buildStyleRules,
+  camelToKebab,
+  COLOR_SCHEME_ATTR,
+  COLOR_SCHEME_STORAGE_KEY,
+  cssPropertyName,
+  cssRuleText,
+  hashCss,
+  isDeclarationAtRule,
+  isKeyframesAtRule,
+  isNestedSelectorKey,
+  pureSchemeOf,
+  resolveAtQuery,
+  resolveNestedSelector,
+  schemeSelectors,
+  splitSelectorList,
+  transposeCanvasOverlaySelector,
+  transposeCanvasPopoverSelector,
+} from "./css.ts";
+export type { CssBuildOptions, CssKeyframeBlock, CssRule, CssRuleTarget } from "./css.ts";
 
 /**
  * Convert a style rules object to a CSS text string (skipping nested selectors).
+ *
+ * Kept for consumers; nothing in this repository composes a rule this way any more, because
+ * `buildStyleRules` answers the same question for a whole style object rather than one flat level
+ * of it. It shares that function's property spelling — `cssPropertyName`, not `camelToKebab` — so a
+ * custom property survives it: `--fooBar` and `--foo-bar` are two different properties, and
+ * kebab-casing one renames it out from under the `var()` that reads it.
  *
  * @param {Record<string, unknown> | object} rules
  * @returns {string}
  */
 export function toCSSText(rules: Record<string, unknown> | object) {
   return Object.entries(rules)
-    .filter(([k, v]) => !isNestedSelector(k) && (v === null || typeof v !== "object"))
-    .map(([p, v]) => `${camelToKebab(p)}: ${canvasStyleValue(String(v))}`)
+    .filter(([k, v]) => !isNestedSelectorKey(k) && (v === null || typeof v !== "object"))
+    .map(([p, v]) => `${cssPropertyName(p)}: ${canvasStyleValue(String(v))}`)
     .join("; ");
-}
-
-// ─── Style At-Rules ───────────────────────────────────────────────────────────
-
-/**
- * The four CSS media types. A media _type_ is bare — `@media print` — while a media _feature_ is
- * parenthesised, so `@media (print)` reads as a boolean feature named `print`, which does not exist
- * and evaluates false.
- */
-const MEDIA_TYPES = new Set(["all", "print", "screen", "speech"]);
-
-/**
- * The media query an `@`-prefixed style key names, or null when the key is some other at-rule
- * (`@supports`, `@starting-style`) that is emitted verbatim.
- *
- * `@--name` resolves through the project's `$media` map. `@(…)` carries its own parentheses, so
- * they are stripped only when what they wrap is a bare media type: `@(print)` must become `@media
- * print`, while `@(min-width: 40rem)` keeps them.
- *
- * @param {string} atKey
- * @param {Record<string, string>} mediaQueries
- * @returns {string | null}
- * @docs framework/concepts/styling
- */
-export function resolveAtQuery(atKey: string, mediaQueries: Record<string, string>): string | null {
-  if (atKey.startsWith("@--")) {
-    return mediaQueries[atKey.slice(1)] ?? atKey.slice(1);
-  }
-  if (atKey.startsWith("@(")) {
-    const inner = atKey.slice(2, -1).trim();
-    return MEDIA_TYPES.has(inner.toLowerCase()) ? inner : atKey.slice(1);
-  }
-  return null;
-}
-
-// ─── Color Schemes ────────────────────────────────────────────────────────────
-
-/**
- * Attribute on the root element (`<html>`) that forces a color scheme. Absent = auto (follow the OS
- * `prefers-color-scheme`). Values: "light" | "dark".
- *
- * @docs framework/concepts/color-schemes
- */
-export const COLOR_SCHEME_ATTR = "data-color-scheme";
-
-/**
- * The localStorage key a site switcher persists the visitor's forced scheme under; read by the
- * compiler-injected pre-paint script. Values: "light" | "dark" (absent = auto).
- *
- * @docs framework/concepts/color-schemes
- */
-export const COLOR_SCHEME_STORAGE_KEY = "jx-color-scheme";
-
-/**
- * The scheme a _pure_ `prefers-color-scheme` media query targets. Compound queries (any other
- * conditions attached) return null — they are not eligible for forced-scheme dual emission.
- *
- * @param {string} query
- * @returns {"light" | "dark" | null}
- * @docs framework/concepts/color-schemes
- */
-export function pureSchemeOf(query: string): "light" | "dark" | null {
-  const m = /^\(\s*prefers-color-scheme\s*:\s*(light|dark)\s*\)$/.exec(query.trim());
-  return (m?.[1] as "light" | "dark") ?? null;
-}
-
-/**
- * Selector pair for a scheme-conditional rule: `auto` applies inside the scheme's media query only
- * while no scheme is forced; `forced` applies unconditionally when the root attribute forces the
- * scheme. Guards are wrapped in `:where()` so specificity matches the unguarded selector and source
- * order decides the cascade.
- *
- * @param {string} selector
- * @param {"light" | "dark"} scheme
- * @returns {{ auto: string; forced: string }}
- * @docs framework/concepts/color-schemes
- */
-export function schemeSelectors(
-  selector: string,
-  scheme: "light" | "dark",
-): { auto: string; forced: string } {
-  if (selector === ":root" || selector === "html") {
-    return {
-      auto: `${selector}:where(:not([${COLOR_SCHEME_ATTR}]))`,
-      forced: `${selector}:where([${COLOR_SCHEME_ATTR}="${scheme}"])`,
-    };
-  }
-  return {
-    auto: `:where(:root:not([${COLOR_SCHEME_ATTR}])) ${selector}`,
-    forced: `:where(:root[${COLOR_SCHEME_ATTR}="${scheme}"]) ${selector}`,
-  };
 }
 
 // ─── Custom Element Registration ──────────────────────────────────────────────
 
 let _rootMedia: Record<string, string> = {};
-const _elementDefs = new Map();
+/**
+ * Every defined element's CURRENT definition, read at connection — which is what lets a definition
+ * be replaced.
+ */
+const _elementDefs = new Map<string, { base: string; doc: JxDocument }>();
+
+/**
+ * The definition an element tag renders from, as most recently defined or redefined.
+ *
+ * @param {string} tagName
+ * @returns {{ base: string; doc: JxDocument } | undefined}
+ */
+export function elementDefinition(tagName: string): { base: string; doc: JxDocument } | undefined {
+  return _elementDefs.get(tagName);
+}
+
+/**
+ * Replace an element's definition (embedding.md §7). `customElements.define` is one-shot, so the
+ * generated class reads its definition through the registry at connection time: an instance
+ * connected after this call renders the new document; one already on the page keeps the definition
+ * it rendered until it is re-mounted. `observedAttributes` is the one thing the platform freezes at
+ * first definition, so a changed list is reported and takes effect only in a fresh realm. A tag not
+ * yet defined is simply defined.
+ *
+ * @param {JxDocument} doc
+ * @param {string} [baseUrl]
+ * @returns {Promise<void>}
+ */
+export async function redefineElement(doc: JxDocument, baseUrl?: string): Promise<void> {
+  const base = baseUrl ?? location.href;
+  const { tagName } = doc;
+  if (!tagName || !tagName.includes("-")) {
+    throw new Error(`Jx redefineElement: tagName "${tagName}" must contain a hyphen`);
+  }
+  if (!customElements.get(tagName)) {
+    await defineElement(doc, base);
+    return;
+  }
+  if (doc.$elements) {
+    await registerElements(doc.$elements, base);
+  }
+  const before = _elementDefs.get(tagName)?.doc.observedAttributes ?? [];
+  const after = doc.observedAttributes ?? [];
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    console.warn(
+      `Jx redefineElement: <${tagName}> keeps observedAttributes [${before.join(", ")}] as first defined; [${after.join(", ")}] takes effect only in a fresh realm`,
+    );
+  }
+  _elementDefs.set(tagName, { base, doc });
+}
 
 /**
  * Seed the module-level root `$media` map used as the fallback for components that declare their
@@ -2700,7 +3868,11 @@ export function setRootMedia(map: Record<string, string>): void {
  * @param {string} base
  * @returns {Promise<void>}
  */
-async function registerElements(elements: NonNullable<JxDocument["$elements"]>, base: string) {
+async function registerElements(
+  elements: NonNullable<JxDocument["$elements"]>,
+  base: string,
+  ctx?: JxContext,
+) {
   for (const entry of elements) {
     // Bare string: npm package side-effect import (registers custom elements)
     if (typeof entry === "string") {
@@ -2719,7 +3891,7 @@ async function registerElements(elements: NonNullable<JxDocument["$elements"]>, 
       continue;
     }
     const { href } = new URL(entry.$ref, base);
-    const doc = await resolve(href);
+    const doc = await resolve(href, ctx);
     if (!doc.tagName || !doc.tagName.includes("-")) {
       continue;
     }
@@ -2729,7 +3901,7 @@ async function registerElements(elements: NonNullable<JxDocument["$elements"]>, 
 
     // Depth-first: register sub-dependencies first
     if (doc.$elements) {
-      await registerElements(doc.$elements, href);
+      await registerElements(doc.$elements, href, ctx);
     }
 
     await defineElement(doc, href);
@@ -2788,6 +3960,219 @@ function injectHead(entries: JxHeadEntry[], _base: string) {
   }
 }
 
+// ─── Instantiation chain (spec.md §16.9) ─────────────────────────────────────
+
+/**
+ * How deep component nesting may go before an instance refuses to render.
+ *
+ * The same number the compiler holds in `MAX_COMPONENT_NESTING` (`@jxsuite/compiler`, `shared.ts`),
+ * and for the same reason: the cycle check in {@link extendInstancePath} catches a definition that
+ * renders ITSELF — same tag, same props — which is the only shape that can never terminate, while a
+ * self-reference whose props change at every level is data-driven recursion that a `$switch` may or
+ * may not bottom out. The seen-set cannot tell those apart, so this cap is what turns a forgotten
+ * stop into a diagnostic instead of a page that never settles. It is written twice because the
+ * compiler depends on the runtime and not the other way round, and the runtime's browser bundle
+ * cannot reach into the build tool; spec.md §16.9 is the one statement both are held to, and the
+ * compiler's `nesting-cap-agreement.test.ts` asserts its copy against this export, so the two
+ * numbers cannot part without a red test in the workspace that owns the copy.
+ */
+export const MAX_COMPONENT_NESTING = 32;
+
+/** One instance on the chain: its tag, and the props it was given, as an identity. */
+interface InstanceFrame {
+  tag: string;
+  /** Every value the instance supplied that its definition's state read (§16.9). */
+  props: Record<string, unknown>;
+}
+
+/**
+ * The chain an instance is created under, and where on it the current expansion began.
+ *
+ * `frames` is every instance from the page-level one down, outermost first. `expansion` is the
+ * index of the first frame that belongs to the SAME synchronous pass as the instance being created:
+ * the cycle check (§16.9 rule 1) looks back no further than that, while the cap (rule 2) counts
+ * every frame. The distinction is what an effect re-run does to certainty. Along one pass a
+ * repeated frame is a render that repeats itself, deterministically, forever. Across a re-run it is
+ * not: the frames above the boundary rendered to completion once, and whether the page asks for one
+ * of them again is its data — an `onMount` that flips a `$switch` into the same tag every time, or
+ * a click that opens one more level of a node that starts closed — which the runtime cannot tell
+ * apart. So the cycle check is not asked across the boundary, and the loop that lives in re-runs is
+ * ended by the cap instead: thirty-three empty hosts and a diagnostic, not a page that never
+ * settles.
+ */
+interface InstancePath {
+  frames: readonly InstanceFrame[];
+  expansion: number;
+}
+
+/** The chain a page-level render runs under: nothing above it. */
+const ROOT_INSTANCE_PATH: InstancePath = { expansion: 0, frames: [] };
+
+/**
+ * The chain of instances whose definitions are being rendered RIGHT NOW.
+ *
+ * A module-level stack rather than a WeakMap from element to chain, and it is worth saying why that
+ * survives `connectedCallback` being async. The callback awaits `buildScope` before it touches the
+ * DOM, and by the time it resumes, whatever the enclosing instance pushed here has long been popped
+ * — so the stack alone would be empty for every instance and catch nothing. What saves it is WHEN
+ * an instance connects: `this.append(child)` in the enclosing render runs the child's
+ * `connectedCallback` synchronously, and every way a definition brings an instance into being —
+ * `renderCustomElementWithProps`, the bare-tag branch of `renderNode`, a nested element inside
+ * either, and a prerendered host drawing its children again as it upgrades — appends it inside that
+ * same synchronous stretch. So the callback reads the stack ONCE, before its first `await`, and
+ * carries the copy across the gap. A WeakMap would need a write at each of those creation sites to
+ * say the same thing.
+ *
+ * A subtree an effect renders LATER — a `$switch` case that flips after the first paint, a `$map`
+ * row that arrives with new data — connects with nothing on the stack, because no enclosing render
+ * is running when the effect re-runs; a write from `onMount` or a click is what triggered it. So
+ * the two renderers that create nodes from an effect each capture the stack when they are first
+ * rendered (which is inside the enclosing pass) and put it back, re-expanded, around every later
+ * insertion ({@link underInstancePath}). That is the one thing this stack needs beyond the
+ * synchronous stretch, and it is what makes the `onMount`-flip shape a diagnostic rather than a
+ * hang. Reading `@vue/reactivity`'s `getCurrentScope()` there instead would find nothing: an effect
+ * re-run restores no scope, and a case or a row renders in a DETACHED scope with no parent.
+ */
+let _instancePath: InstancePath = ROOT_INSTANCE_PATH;
+
+/**
+ * Run `fn` with `path` as the chain, so every instance that CONNECTS during it reads that chain.
+ *
+ * Restored rather than cleared afterwards: the enclosing render's chain is what was there, and a
+ * restore needs no argument about whether anything was.
+ *
+ * @param {InstancePath} path - The chain the instances `fn` connects are created under
+ * @param {() => T} fn - The render, or the insertion that connects what a render made
+ * @returns {T} What `fn` returned
+ */
+function underInstancePath<T>(path: InstancePath, fn: () => T): T {
+  const was = _instancePath;
+  _instancePath = path;
+  try {
+    return fn();
+  } finally {
+    _instancePath = was;
+  }
+}
+
+/**
+ * The chain a later insertion runs under: the same frames, with the expansion beginning now.
+ *
+ * Called on EVERY run of a `$switch` case or a `$map` reconcile, the first one included — harmless
+ * there, because a first run builds into a detached container and nothing connects until the
+ * enclosing pass appends it, under the enclosing pass's own chain.
+ *
+ * @param {InstancePath} path - The chain captured when the renderer was first rendered
+ * @returns {InstancePath}
+ */
+function reexpand(path: InstancePath): InstancePath {
+  return { expansion: path.frames.length, frames: path.frames };
+}
+
+/**
+ * Whether two prop values are the same input to a definition.
+ *
+ * Reference equality first — a `$ref` into the parent's state forwards the same primitive, the same
+ * reactive proxy or the same function to the next level — and structural equality for plain data
+ * rebuilt at each level (`data-jx-props` parsed twice is two objects with one meaning). Plain data
+ * is what JSON can describe: an array, or an object with no prototype but `Object`'s, reactive or
+ * raw. Anything else — a `Map`, a `Set`, a class instance, a circular object — is different from
+ * everything but itself, because its JSON form would not say what it holds and two different values
+ * that serialise alike would close a cycle that was never there. The cost of that policy is a loop
+ * the depth cap catches instead; the alternative is a false diagnostic on a page that would have
+ * ended. Inside plain data the comparison IS the JSON form, so a member JSON cannot see (a
+ * function, a `Map` two levels down) is not seen here either; §16.9 says so.
+ *
+ * @param {unknown} a
+ * @param {unknown} b
+ * @returns {boolean}
+ */
+function samePropValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (!isPlainData(a) || !isPlainData(b)) {
+    return false;
+  }
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a value is an array or a plain object — the shapes whose JSON form is the whole value.
+ *
+ * @param {unknown} value
+ * @returns {value is object}
+ */
+function isPlainData(value: unknown): value is object {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const raw: unknown = toRaw(value);
+  if (Array.isArray(raw)) {
+    return true;
+  }
+  const proto: unknown = Object.getPrototypeOf(raw);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Whether two frames are the same instance: one tag, one set of prop names, equal values.
+ *
+ * @param {InstanceFrame} a
+ * @param {InstanceFrame} b
+ * @returns {boolean}
+ */
+function sameFrame(a: InstanceFrame, b: InstanceFrame): boolean {
+  if (a.tag !== b.tag) {
+    return false;
+  }
+  const keys = Object.keys(a.props);
+  if (keys.length !== Object.keys(b.props).length) {
+    return false;
+  }
+  return keys.every(
+    (key) => Object.hasOwn(b.props, key) && samePropValue(a.props[key], b.props[key]),
+  );
+}
+
+/**
+ * The chain an instance's own render runs under: the enclosing chain plus itself — or the
+ * diagnostic that says why it must not render at all.
+ *
+ * The two messages are the compiler's, word for word (`renderComponentInstance` in
+ * `@jxsuite/compiler`), so a page that fails to build and a canvas that fails to paint say the same
+ * thing about the same definition. Meeting a frame already on the chain, within the current
+ * expansion, is the instance rendering itself with the same props, which never ends; a chain at the
+ * cap is a self-reference whose props change — or whose repeats live in re-runs, where the cycle
+ * check is not asked ({@link InstancePath}) — and whose stop case never came.
+ *
+ * @param {InstancePath} path - The chain the instance was created under
+ * @param {InstanceFrame} frame - The instance about to render
+ * @returns {InstancePath} The chain its children render under
+ * @throws {Error} The named diagnostic — never a stack overflow, never a hang
+ * @docs framework/concepts/components
+ */
+function extendInstancePath(path: InstancePath, frame: InstanceFrame): InstancePath {
+  const chain = [...path.frames.map((f) => f.tag), frame.tag].join(" → ");
+  if (path.frames.slice(path.expansion).some((f) => sameFrame(f, frame))) {
+    throw new Error(
+      `Component <${frame.tag}> renders itself: ${chain}. A component cannot appear inside its own ` +
+        `definition with the same props — the expansion would never end.`,
+    );
+  }
+  if (path.frames.length >= MAX_COMPONENT_NESTING) {
+    throw new Error(
+      `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${chain}. A component that ` +
+        `renders itself with changing props needs a case that stops.`,
+    );
+  }
+  return { expansion: path.expansion, frames: [...path.frames, frame] };
+}
+
 /**
  * Register a custom element from a Jx document.
  *
@@ -2827,8 +4212,11 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 
   _elementDefs.set(tagName, { base, doc: source_ });
 
-  const def = source_;
-  const observedAttrs = def.observedAttributes ?? [];
+  // The definition as first given. The class reads the CURRENT one at connection (see
+  // `redefineElement`); only `observedAttributes` is frozen here, because the platform freezes it.
+  const initialDef = source_;
+  const initialBase = base;
+  const observedAttrs = initialDef.observedAttributes ?? [];
 
   const ElementClass = class extends HTMLElement {
     _jxInitialized = false;
@@ -2851,10 +4239,40 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       }
       this._jxInitialized = true;
 
-      const state = await buildScope(def, {}, base);
+      /* The chain this instance was created under, read BEFORE the first `await`: the enclosing
+         render is still on the stack now and will not be when this callback resumes. See
+         {@link _instancePath} for why that ordering is the whole mechanism. */
+      const enclosingPath = _instancePath;
+      /* What this instance was given, recorded beside each write into state below. It is the
+         instance's identity on the chain (§16.9): two nested instances of one tag that were given
+         the same values render the same thing, forever. Only a value the definition's state READS
+         is recorded — a `$props` key no state entry declares changes nothing about the render, so
+         a definition that "varies" one at each level is still rendering itself. */
+      const supplied: Record<string, unknown> = {};
+
+      // The definition as it stands NOW — a redefinition since this class was made is honoured.
+      const live = _elementDefs.get(tagName) ?? { base: initialBase, doc: initialDef };
+      const def = live.doc;
+      const defBase = live.base;
+
+      // The element is its own dispatch root: a body run without an event emits from the host.
+      const state = await buildScope(def, {}, defBase, { base: defBase, media: null, root: this });
 
       // Read properties from the data-jx-props payload the site build writes on a
       // Non-static instance, so an upgrade re-renders with the authored props, not the defaults.
+      /* Observed attributes already on the element are read now. `attributeChangedCallback` fires
+         for an attribute set before connection too — but on an instance with no state yet, so it
+         had nothing to write into, and `<jx-icon name="plus">` rendered with the default. Before
+         the `$props` merges below, so a property a parent set still wins (spec §16.2). */
+      for (const attr of observedAttrs) {
+        if (this.hasAttribute(attr)) {
+          absorbAttribute(state, attr, this.getAttribute(attr));
+          // The raw string, not the coerced value: coercion is a function of it, so two equal
+          // Strings are one input.
+          supplied[attr] = this.getAttribute(attr);
+        }
+      }
+
       const propsAttr = this.dataset.jxProps;
       if (propsAttr) {
         try {
@@ -2865,6 +4283,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
             }
             if (key in (def.state ?? {})) {
               state[key] = val;
+              supplied[key] = val;
             }
           }
         } catch {}
@@ -2886,6 +4305,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         }
         if (key in (def.state ?? {})) {
           state[key] = this.getAttribute(name);
+          supplied[key] = this.getAttribute(name);
           this.removeAttribute(name);
         }
       }
@@ -2901,7 +4321,48 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
           instanceSupplies(this, key)
         ) {
           state[key] = (this as Record<string, unknown>)[key];
+          supplied[key] = (this as Record<string, unknown>)[key];
         }
+      }
+
+      /* Every input is known now, so this is where an instance that would never finish is
+         refused (§16.9): before it has a state, a style or a child, so a refused host is an empty
+         element the page renders around — emptied of what the definition wrote into it for its
+         slots too, since nothing will distribute that. The diagnostic is REPORTED rather than
+         thrown onward: a throw from an async `connectedCallback` is an unhandled rejection that
+         names no element and stops nothing. It goes two ways. The console is the runtime's
+         surface for a render that fails after the page has settled (`$switch` external cases and
+         the dev proxies report there too). The `jx-error` event is the surface a HOST can hold:
+         it bubbles from the refused element with the error on it, so a page, or the studio canvas
+         wrapping one, can collect it where a console line inside an iframe reaches nobody. The
+         rest of the page keeps rendering, which is the point.
+
+         Neither surface is used for a host that is no longer in the document. A refused instance
+         was connected when this callback began, and one that is not by the time the verdict is in
+         belongs to a subtree the page discarded during the `await` above: a prerendered host of the
+         same tag that was parsed INSIDE another and re-rendered from the definition by the outer
+         one's upgrade, which captures it as slot content and empties itself. Its replacement is
+         the instance that reports, on the chain the outer upgrade draws; reporting from the
+         discarded copy too said one defect twice. The refusal itself still stands, so a host
+         re-attached later is an empty element and not a hang. */
+      let ownPath: InstancePath;
+      try {
+        ownPath = extendInstancePath(enclosingPath, { props: supplied, tag: tagName });
+      } catch (error) {
+        this.replaceChildren();
+        if (!this.isConnected) {
+          return;
+        }
+        console.error(`Jx: <${tagName}> was not rendered:`, error);
+        this.dispatchEvent(
+          new ErrorEvent("jx-error", {
+            bubbles: true,
+            composed: true,
+            error,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return;
       }
       /*
        * Set up property getters/setters that forward into reactive state. Private entries get NO
@@ -2929,16 +4390,22 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       const slottedChildren = [...this.childNodes];
       this.replaceChildren();
 
-      // Custom elements default to display:inline — use block so they behave as
-      // Containers (matching <div> semantics).  The component's own style can
-      // Override this if needed.
-      if (!this.style.display) {
-        this.style.display = "block";
-      }
+      /* Custom elements default to `display: inline`; a Jx container behaves like a `<div>`, so
+         one is supplied. It goes in the element's OWN RULE rather than inline: an inline
+         declaration is beaten only by `!important`, so a consumer could not override the default
+         without one. At (0,1,0) a consumer's rule, a cascade layer or a parent's descendant rule
+         all win normally, and the definition's own `display` still wins because it is written into
+         the same rule after this. */
+      const defStyle = declaresDisplay(def.style) ? def.style : { display: "block", ...def.style };
+      /* Definition first, call site second, so the call site wins at equal specificity by source
+         order — the promise §9.2 already makes for base-before-nested. Merged into ONE call
+         because each `applyStyle` releases what the last one interned. */
+      const hostStyle = mergeStyle(defStyle as JxStyle, callSiteStyles.get(this));
 
       // Render template into light DOM (once, not in effect — inner effects handle reactivity)
-      applyStyle(this, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
+      applyStyle(this, hostStyle, (state["$media"] as Record<string, string>) ?? {}, state);
       applyAttributes(this, def.attributes ?? {}, state);
+      bindDefinitionHandlers(this, def, state);
 
       /*
        * Root-level `textContent` is a definition's content just as much as `children` is — it is
@@ -2949,17 +4416,34 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         bindProperty(this, "textContent", def.textContent, state);
       }
       const children = Array.isArray(def.children) ? def.children : [];
-      for (const childDef of children) {
-        this.append(renderNode(childDef, state));
+      /* An instance the studio stamped is part of the page being edited, so everything the
+         definition draws inside it is too — and the de-link rules cannot see that from the nodes
+         themselves. Restored rather than cleared, because one definition may render another. */
+      const wasInside = _canvasInsideStampedHost;
+      _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
+      /* And the chain, for the same span: an instance this definition draws connects inside
+         `this.append` below and reads it there ({@link underInstancePath}). */
+      try {
+        underInstancePath(ownPath, () => {
+          for (const childDef of children) {
+            this.append(renderNode(childDef, state));
+          }
+        });
+      } finally {
+        _canvasInsideStampedHost = wasInside;
       }
 
       // Slot distribution (light DOM)
       distributeSlots(this, slottedChildren);
 
-      // Lifecycle: onMount
+      /* Lifecycle: onMount, with the HOST as its second argument.
+         A sidecar that must reach the element it belongs to had no way to: the runtime handed it
+         the scope alone, so elements resorted to dispatching a `jx-ready` event at themselves and
+         catching it with a root handler purely to learn `currentTarget`. The host is what the
+         callback needed; the event round trip was the workaround. */
       const { onMount } = state;
       if (typeof onMount === "function") {
-        queueMicrotask(() => (onMount as (s: JxScope) => unknown)(state));
+        queueMicrotask(() => (onMount as (s: JxScope, host: HTMLElement) => unknown)(state, this));
       }
     }
 
@@ -2979,15 +4463,14 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       if (!this._state || oldVal === newVal) {
         return;
       }
-      const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
-      const current = this._state[camelKey];
-      if (typeof current === "number") {
-        this._state[camelKey] = Number(newVal);
-      } else if (typeof current === "boolean") {
-        this._state[camelKey] = newVal !== null && newVal !== "false";
-      } else {
-        this._state[camelKey] = newVal;
-      }
+      // The CURRENT definition's defaults, so a redefinition (embedding.md §7) that changes one
+      // Reaches an instance that is already connected.
+      absorbAttribute(
+        this._state,
+        name,
+        newVal,
+        declaredDefaults(_elementDefs.get(tagName)?.doc ?? initialDef),
+      );
     }
   };
 
@@ -3044,15 +4527,33 @@ function renderCustomElementWithProps(
     }
   }
 
-  // Apply host-level style and attributes from the usage site
+  /* Apply host-level style and attributes from the usage site.
+     Also REMEMBERED, because `connectedCallback` applies the definition's style through the same
+     interning path and `applyStyleInto` releases the element's existing rules first — so without
+     this the call site's declarations were written here and deleted a moment later, and a document
+     could not style an element instance at all. See {@link callSiteStyles}. */
+  if (def.style) {
+    callSiteStyles.set(el, def.style);
+  }
   applyStyle(el, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
   applyAttributes(el, def.attributes ?? {}, state);
+  /* And its ordinary properties and handlers — `id`, `hidden`, `className`, an `onselect` — exactly
+     as an ordinary element gets them. A custom element used in a document is still an element in
+     that document; only `$props` are the definition's to absorb. */
+  applyProperties(el, def, state);
 
-  // Append slotted children
+  // Append slotted children. A mapped array is not a node: its rows are rendered in place, ahead of
+  // Their anchor, exactly as they are under an ordinary element — so a `$map` of menu rows inside a
+  // `jx-menu` is a list of rows, not one `<div>` standing where the list should be.
   const children = Array.isArray(def.children) ? def.children : [];
   for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
     const childOpts = options && path ? { ...options, _path: [...path, "children", i] } : undefined;
-    el.append(renderNode(children[i]!, state, childOpts));
+    if (isMappedArray(child)) {
+      renderMappedArrayInto(el, child, state, childOpts);
+    } else {
+      el.append(renderNode(child, state, childOpts));
+    }
   }
 
   return el;
@@ -3065,10 +4566,11 @@ function renderCustomElementWithProps(
  * @param {ChildNode[]} slottedChildren
  */
 function distributeSlots(host: HTMLElement, slottedChildren: ChildNode[]) {
-  if (slottedChildren.length === 0) {
-    return;
-  }
-
+  /* No early return when nothing was slotted. A slot leaves no node WHETHER OR NOT it received
+     anything — an unmatched one unwraps to its own fallback children, and a host given nothing at
+     all is just every slot unmatched. Returning early here left the slot standing in exactly the
+     case an element most wants to detect: `[part="label"]:empty` answered false for a control with
+     no label, because the surviving slot was still a child. */
   const slots = host.querySelectorAll("slot");
   if (slots.length === 0) {
     return;
@@ -3089,14 +4591,16 @@ function distributeSlots(host: HTMLElement, slottedChildren: ChildNode[]) {
     }
   }
 
+  /* A `<slot>` UNWRAPS: its matches stand in its place and the slot itself leaves no node.
+     It used to survive, holding its matches as children. The box tree looked right, because a
+     slot is `display: contents` — but the SELECTOR tree did not, so every `& > x` rule in a
+     definition silently stopped matching a slotted child, which is now a grandchild. Measured on
+     the field row: 68.40px where the class form gives 88.40px, and its help text 80px wide
+     instead of 260px, with `[data-span]` dead. An unmatched slot unwraps to its own fallback
+     children, which is what the platform's slot does when nothing is assigned to it. */
   for (const slot of slots) {
     const name = slot.getAttribute("name");
     const matches = name ? (named.get(name) ?? []) : unnamed;
-    if (matches.length > 0) {
-      slot.replaceChildren();
-      for (const child of matches) {
-        slot.append(child);
-      }
-    }
+    slot.replaceWith(...(matches.length > 0 ? matches : [...slot.childNodes]));
   }
 }

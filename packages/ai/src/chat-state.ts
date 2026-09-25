@@ -11,6 +11,7 @@
 
 import { reactive } from "@vue/reactivity";
 
+import type { StreamUsageEvent } from "./streaming-client.ts";
 import type { ToolResult } from "./tools.ts";
 
 export type ChatState = "idle" | "streaming" | "error";
@@ -21,6 +22,13 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
+  /**
+   * The turn's chain-of-thought, when the provider streamed one (`reasoning_content` /
+   * `reasoning`). Kept because a thinking model's own history is not optional: DeepSeek's thinking
+   * mode REQUIRES every prior turn's `reasoning_content` back on any request that carries `tools`,
+   * which is every request the agent loop makes. See {@link toMessagesArray}.
+   */
+  reasoningContent?: string;
   toolCalls?: ToolCallRecord[];
   toolCallId?: string;
   timestamp: number;
@@ -33,6 +41,34 @@ export interface ToolCallRecord {
   result?: ToolResult | null;
 }
 
+/**
+ * The provider's own count for the last request, and where in the transcript it was taken.
+ *
+ * `messageCount` and `lastMessageId` are what make the figure reusable: every message up to and
+ * including `lastMessageId` was part of a request the provider counted, so a later budget needs to
+ * estimate only what was added since, rather than re-estimating the whole history at four
+ * characters per token. A transcript whose message at that position is no longer `lastMessageId`
+ * has been trimmed, rewound, repaired or replaced, and the figure no longer describes it — length
+ * alone cannot say so, because a retry re-grows the transcript to the same length.
+ */
+export interface ChatUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  messageCount: number;
+  /** The id of the last message the count covers (`messages[messageCount - 1]`). */
+  lastMessageId: string;
+  /**
+   * What the counted request leaves in the context for the NEXT request: input plus output, minus
+   * reasoning the provider generated but never streamed. That reasoning (OpenAI's o-series on chat
+   * completions) is billed as output yet is not replayed, so it occupies nothing on the next send.
+   */
+  contextTokens: number;
+  /** The estimate of the system prompt the counted request carried, when the caller supplied it. */
+  systemTokens?: number;
+}
+
 export interface ChatStore {
   messages: Message[];
   status: ChatState;
@@ -42,6 +78,8 @@ export interface ChatStore {
   model: string;
   tokenCount: number;
   contextWarning: boolean;
+  /** The last reported count, or null when none has been reported since the transcript changed. */
+  usage: ChatUsage | null;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -56,6 +94,11 @@ function uid() {
   return `msg_${Date.now()}_${_idCounter}`;
 }
 
+/** A token count a budget can use: a finite, non-negative number. */
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
 /**
@@ -67,6 +110,7 @@ function uid() {
  *   sendMessage: (text: string) => void;
  *   beginAssistantTurn: () => void;
  *   appendDelta: (content: string) => void;
+ *   appendReasoning: (content: string) => void;
  *   appendToolCallStart: (id: string, name: string) => void;
  *   appendToolCallDelta: (id: string, args: string) => void;
  *   appendToolCallEnd: (id: string) => void;
@@ -79,6 +123,8 @@ function uid() {
  *   retryLast: () => void;
  *   setModel: (model: string) => void;
  *   setTokenCount: (count: number) => void;
+ *   recordUsage: (usage: StreamUsageEvent, opts?: { systemTokens?: number }) => void;
+ *   clearUsage: () => void;
  *   setContextWarning: (warning: boolean) => void;
  *   toMessagesArray: () => object[];
  * }}
@@ -95,6 +141,7 @@ export function createChatState(opts: { model?: string } = {}) {
     model,
     tokenCount: 0,
     contextWarning: false,
+    usage: null,
   });
 
   let _streamingMessage: Message | null = null;
@@ -184,6 +231,21 @@ export function createChatState(opts: { model?: string } = {}) {
   }
 
   /**
+   * Append a reasoning delta to the streaming assistant message.
+   *
+   * Held on the message rather than in `streamingContent`: it is not part of the answer, but it IS
+   * part of the turn the provider will be shown again on the next round.
+   *
+   * @param {string} content
+   */
+  function appendReasoning(content: string) {
+    if (store.status !== "streaming" || !_streamingMessage) {
+      return;
+    }
+    _streamingMessage.reasoningContent = (_streamingMessage.reasoningContent ?? "") + content;
+  }
+
+  /**
    * Start tracking a tool call within the stream.
    *
    * @param {string} id
@@ -234,22 +296,28 @@ export function createChatState(opts: { model?: string } = {}) {
   }
 
   /**
-   * Attach a result to a pending tool call.
+   * Attach a result to the tool call it answers, on the assistant message that made the call.
+   *
+   * The record is looked for on that message rather than on the stream: a loop runs its tools after
+   * the round's stream has finished, when there is no streaming message and no pending call left,
+   * and looking only there attached every result to nothing, so a live chip never showed how its
+   * call ended. The request is the assistant message directly before the tool replies at the end of
+   * the transcript, the one position the wire allows a reply in; a provider may reuse call ids
+   * across rounds, so an earlier request carrying the same id is never the one being answered.
    *
    * @param {string} id
    * @param {ToolResult} result
    */
   function appendToolResult(id: string, result: ToolResult) {
-    const tc = store.pendingToolCalls.find((t) => t.id === id);
-    if (tc) {
-      tc.result = result;
+    let index = store.messages.length - 1;
+    while (index >= 0 && store.messages[index]!.role === "tool") {
+      index -= 1;
     }
-    // Also update in the message record
-    if (_streamingMessage?.toolCalls) {
-      const mtc = _streamingMessage.toolCalls.find((t) => t.id === id);
-      if (mtc) {
-        mtc.result = result;
-      }
+    const request = store.messages[index];
+    const record =
+      request?.role === "assistant" ? request.toolCalls?.find((t) => t.id === id) : null;
+    if (record) {
+      record.result = result;
     }
   }
 
@@ -274,6 +342,7 @@ export function createChatState(opts: { model?: string } = {}) {
     store.status = "error";
     store.error = message;
     store.streamingContent = "";
+    store.pendingToolCalls = [];
     // Remove the partial streaming message — it may contain incomplete tool_calls
     // That would poison the conversation history on the next send.
     if (_streamingMessage) {
@@ -310,6 +379,7 @@ export function createChatState(opts: { model?: string } = {}) {
     store.pendingToolCalls = [];
     store.error = null;
     store.contextWarning = false;
+    store.usage = null;
     _streamingMessage = null;
   }
 
@@ -346,6 +416,47 @@ export function createChatState(opts: { model?: string } = {}) {
   }
 
   /**
+   * Record the provider's count for the request that just finished. The count covers everything the
+   * request carried plus what it generated, which is the context's size at this point — less any
+   * reasoning the provider billed but never streamed, since the next request cannot replay what it
+   * never received. It replaces the estimate in `tokenCount` rather than adding to it.
+   *
+   * @param {StreamUsageEvent} usage
+   * @param {{ systemTokens?: number }} [extra] - The estimate of the system prompt this request
+   *   carried, so a later budget can add what the prompt has grown by since.
+   */
+  function recordUsage(usage: StreamUsageEvent, extra: { systemTokens?: number } = {}) {
+    /* A backend's frame, trusted no further than its shape: a count that is not a finite,
+       non-negative number would turn every later budget into NaN, and a NaN budget trims history
+       it has no reason to. Such a frame is ignored, and the estimate stands. */
+    if (!isCount(usage.inputTokens) || !isCount(usage.outputTokens)) {
+      return;
+    }
+    const { type: _type, ...counts } = usage;
+    const counted = _streamingMessage ?? store.messages.at(-1);
+    /* Replayed means SENT: `toMessagesArray` drops an assistant turn carrying neither text nor
+       tool calls, reasoning and all, so a turn that only thought is not replayed either. */
+    const replayed = Boolean(
+      counted?.reasoningContent && (counted.content || (counted.toolCalls?.length ?? 0) > 0),
+    );
+    const unreplayed = replayed || !isCount(usage.reasoningTokens) ? 0 : usage.reasoningTokens;
+    const contextTokens = Math.max(0, usage.inputTokens + usage.outputTokens - unreplayed);
+    store.usage = {
+      ...counts,
+      contextTokens,
+      lastMessageId: store.messages.at(-1)?.id ?? "",
+      messageCount: store.messages.length,
+      ...(extra.systemTokens === undefined ? {} : { systemTokens: extra.systemTokens }),
+    };
+    store.tokenCount = contextTokens;
+  }
+
+  /** Forget the last count — the transcript it described has changed underneath it. */
+  function clearUsage() {
+    store.usage = null;
+  }
+
+  /**
    * Set the context overflow warning flag.
    *
    * @param {boolean} warning
@@ -358,25 +469,56 @@ export function createChatState(opts: { model?: string } = {}) {
    * Convert the current chat state to an array suitable for sending to an LLM API. Includes the
    * system prompt as the first message and all conversation turns.
    *
+   * Two things it does NOT do verbatim, both because the array is a transcript for the UI and this
+   * is the wire:
+   *
+   * 1. **An assistant turn carrying neither text nor tool calls is dropped.** The one that always
+   *    exists is {@link beginAssistantTurn}'s placeholder — the message being generated by the very
+   *    request this builds, so it is a turn that has not happened yet. It reached providers as a
+   *    trailing `{"role":"assistant","content":""}`, which most read as an empty prefill and
+   *    ignore; DeepSeek's thinking mode instead answers 400 `The reasoning_content in the thinking
+   *    mode must be passed back to the API`, because a thinking-mode assistant turn owes it one.
+   *    `persistChat` in Studio already skipped the same message for the same reason — it just
+   *    skipped it on the way to storage, and nothing skipped it on the way to the provider.
+   * 2. **`reasoning_content` is replayed when the turn has one.** DeepSeek requires the reasoning of
+   *    all previous turns back on any request carrying `tools` — which is every request the agent
+   *    loop makes — and ignores it on requests that carry none, so echoing what the provider itself
+   *    streamed is safe for providers that never send it (they get no field at all).
+   *
    * @returns {object[]}
    */
   function toMessagesArray() {
     const out = [];
 
     for (const msg of store.messages) {
-      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
-        out.push({
+      if (msg.role === "assistant") {
+        const calls = msg.toolCalls ?? [];
+        if (!msg.content && calls.length === 0) {
+          continue;
+        }
+        const entry: {
+          role: string;
+          content: string | null;
+          reasoning_content?: string;
+          tool_calls?: object[];
+        } = {
           role: "assistant",
-          content: msg.content || null,
-          tool_calls: msg.toolCalls.map((tc) => ({
+          content: calls.length > 0 ? msg.content || null : msg.content,
+        };
+        if (msg.reasoningContent) {
+          entry.reasoning_content = msg.reasoningContent;
+        }
+        if (calls.length > 0) {
+          entry.tool_calls = calls.map((tc) => ({
             id: tc.id,
             type: "function",
             function: {
               name: tc.name,
               arguments: tc.arguments,
             },
-          })),
-        });
+          }));
+        }
+        out.push(entry);
       } else if (msg.role === "tool") {
         out.push({
           role: "tool",
@@ -398,6 +540,7 @@ export function createChatState(opts: { model?: string } = {}) {
     sendMessage,
     beginAssistantTurn,
     appendDelta,
+    appendReasoning,
     appendToolCallStart,
     appendToolCallDelta,
     appendToolCallEnd,
@@ -410,6 +553,8 @@ export function createChatState(opts: { model?: string } = {}) {
     retryLast,
     setModel,
     setTokenCount,
+    recordUsage,
+    clearUsage,
     setContextWarning,
     toMessagesArray,
   });

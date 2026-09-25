@@ -3,32 +3,40 @@
  *
  * Concrete `.jx` AST tools registered into a `@jxsuite/ai` ToolRegistry. Each tool wraps an
  * existing `transactDoc()` mutation helper so AI edits get the same undo/redo history as manual
- * edits (ADR docs/ai-assistant-decision.md §5 — optimistic apply + undo).
+ * edits (specs/ai.md §3.1 and §3.2 — optimistic apply, undo as the backstop).
  *
  * @license MIT
  */
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
-import type { ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
+import type { ToolRegistry, ToolResult, WriteLedger } from "@jxsuite/ai/tools";
 import type { JxMutableNode, JxPath, JxStateDefinition } from "@jxsuite/schema/types";
 import { getNodeAtPath } from "../state";
-import { toRaw } from "../reactivity";
 import type { Tab } from "../tabs/tab";
 import {
-  beginBatch,
-  endBatch,
-  isBatching,
+  mutateAddDef,
   mutateInsertNode,
   mutateMoveNode,
-  mutateRemoveNode,
+  mutateRemoveDef,
   mutateUpdateProperty,
   mutateUpdateStyle,
   transactDoc,
 } from "../tabs/transact";
 import type { JxNodeValue } from "../tabs/transact";
+import type { JsonValue } from "../types";
 import { validateDoc } from "./jx-validate";
-import { recordWrite } from "./ai-writes";
-import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
+import { serializeJson } from "@jxsuite/schema/json-layout";
+import {
+  reportDocumentWrite,
+  snapshotBeforeWrite,
+  translateValidationError,
+} from "./ai-write-report";
+import type { RenderVerdict } from "./ai-write-report";
+
+/* Re-exported from its new home so `ai-project-tools.ts` and the tests keep their import: the
+   translation moved with the verdict it belongs to (`ai-write-report.ts`), where every document
+   write — hand-registered or projected from a command record — now reads it. */
+export { translateValidationError } from "./ai-write-report";
 
 const PATH_DESCRIPTION =
   "Path to a node in the document, as a JSON array of keys/indices from the root " +
@@ -45,88 +53,32 @@ function noDocError(): ToolResult {
 }
 
 /**
- * Translate a raw JSON Schema validation error into a Jx-specific actionable message. The LLM needs
- * concrete guidance on HOW to fix errors, not just what rule was violated. Shared with the
- * project-level file tools (ai-project-tools.ts), which pre-validate Jx documents before writing.
+ * Apply a mutation, then hand the verdict to `ai-write-report.ts`: only the schema errors the edit
+ * NEWLY introduced are reported, the render check runs when a renderCheck was provided and
+ * rendering worked before, and a success carries the token hints. The change stays applied either
+ * way (optimistic apply + undo); reporting the errors lets the agent loop self-correct on the next
+ * round. Both rules are specs/ai.md §3.1.
  *
- * @param {string} rawError - Message from ajv (e.g. "/children/0/style: must NOT have additional
- *   property")
- * @returns {string}
- */
-export function translateValidationError(rawError: string): string {
-  const lower = rawError.toLowerCase();
-
-  // Additional property — extract the offending key from the message if present
-  if (
-    lower.includes("must not have additional property") ||
-    lower.includes("additional properties")
-  ) {
-    return `${rawError}\n  → Fix: Remove or move the unexpected property. Style properties must be camelCase (e.g. "backgroundColor", not "background-color"). Non-IDL HTML attributes (aria-*, data-*, role, ...) must go inside an "attributes" object: { "attributes": { "aria-label": "..." } }.`;
-  }
-
-  // Pattern — usually tagName hyphen rule
-  if (lower.includes("must match pattern")) {
-    return `${rawError}\n  → Fix: Custom element tag names must contain a hyphen (e.g. "newsletter-form", "feature-card"). Standard HTML elements use their exact name (e.g. "div", "input", "button").`;
-  }
-
-  // Type error
-  if (lower.includes("must be string")) {
-    return `${rawError}\n  → Fix: Wrap the value in quotes — all Jx property values should be strings. For example, use "10px" (string) not 10px (unquoted).`;
-  }
-
-  if (lower.includes("must be number") || lower.includes("must be integer")) {
-    return `${rawError}\n  → Fix: Remove quotes from the numeric value — it should be a plain number, not a string.`;
-  }
-
-  if (lower.includes("must be object") || lower.includes("must be array")) {
-    return `${rawError}\n  → Fix: The value must be an object/array (use {} or []), not a string or number.`;
-  }
-
-  if (lower.includes("must be boolean")) {
-    return `${rawError}\n  → Fix: Use true or false without quotes for boolean values.`;
-  }
-
-  // Required property
-  if (lower.includes("must have required property")) {
-    return `${rawError}\n  → Fix: Add the missing required property. Every Jx element must have at least a "tagName" field.`;
-  }
-
-  // Enum / allowed values
-  if (lower.includes("must be equal to one of the allowed values")) {
-    return `${rawError}\n  → Fix: Change the value to one of the allowed options listed in the error.`;
-  }
-
-  return rawError;
-}
-
-/**
- * Apply a mutation, then validate the document and report only the schema errors the edit newly
- * introduced (the eval signal — ADR §6b). The change stays applied either way (optimistic apply +
- * undo, ADR §5); reporting the errors lets the agent loop self-correct on the next round.
- *
- * When a renderCheck function is provided, a second gate runs after schema validation passes: the
- * mutated document is rendered in a detached DOM context and any render-time throws are surfaced as
- * tool errors (same contract as schema errors).
- *
+ * @param {WriteLedger} ledger - The call's ledger (`ctx.ledger`)
  * @param {import("../tabs/tab").Tab} tab
  * @param {(t: import("../tabs/tab").Tab) => void} mutationFn
  * @param {string} summary
  * @param {(doc: unknown) => Promise<string[]>} validate
- * @param {((doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>) | undefined} renderCheck
+ * @param {((doc: unknown) => Promise<RenderVerdict>) | undefined} renderCheck
  * @param {Record<string, string> | undefined} projectStyle
  * @returns {Promise<import("@jxsuite/ai/tools").ToolResult>}
  */
 async function applyAndValidate(
+  ledger: WriteLedger,
   tab: Tab,
   mutationFn: (t: Tab) => void,
   summary: string,
   validate: (doc: unknown) => Promise<string[]>,
-  renderCheck: ((doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>) | undefined,
+  renderCheck: ((doc: unknown) => Promise<RenderVerdict>) | undefined,
   projectStyle: Record<string, string> | undefined,
 ): Promise<ToolResult> {
-  const rawBefore = toRaw(tab.doc.document);
-  const before = new Set(await validate(rawBefore));
-  const renderOkBefore = renderCheck ? await renderCheck(rawBefore) : { ok: true };
+  const deps = { getProjectStyle: () => projectStyle, renderCheck, validate };
+  const before = await snapshotBeforeWrite(tab, deps);
 
   /* AND THE WRITE CAN BE REFUSED, in which case the model must be told rather than congratulated.
      The collab gate pauses structural editing while source is canonical, and this went on to
@@ -145,39 +97,9 @@ async function applyAndValidate(
   /* One ledger entry per mutation, so the panel's "Changed N files" counts documents the model
      touched rather than sentences it wrote (§7.4). `disk: false` is the load-bearing half: this
      went through transactDoc, so the tab's history — and "Restore to here" — can reach it. */
-  recordWrite({ disk: false, ok: true, path: tab.documentPath ?? "(untitled)", tool: summary });
+  ledger.record({ disk: false, ok: true, path: tab.documentPath ?? "(untitled)", tool: summary });
 
-  const rawAfter = toRaw(tab.doc.document);
-  const after = await validate(rawAfter);
-  const newErrors = after.filter((e) => !before.has(e));
-  if (newErrors.length > 0) {
-    const formatted = newErrors.map((e) => `- ${translateValidationError(e)}`).join("\n");
-    return {
-      success: false,
-      error: `Change applied, but it introduced schema errors. Fix these issues with follow-up edits:\n${formatted}`,
-    };
-  }
-
-  if (renderCheck && renderOkBefore.ok) {
-    const renderResult = await renderCheck(rawAfter);
-    if (!renderResult.ok) {
-      return {
-        success: false,
-        error: `Change applied and schema-valid, but it broke rendering. Fix with follow-up edits:\n- ${renderResult.error}`,
-      };
-    }
-  }
-
-  // Soft token-discipline hints (never fail the mutation)
-  if (projectStyle) {
-    const findings = flagHardcodedTokens(rawAfter, projectStyle);
-    const hints = formatTokenHints(findings);
-    if (hints) {
-      return { success: true, summary: `${summary}\n\n${hints}` };
-    }
-  }
-
-  return { success: true, summary };
+  return reportDocumentWrite(tab, before, summary, deps);
 }
 
 /**
@@ -189,7 +111,6 @@ async function applyAndValidate(
  *   validate?: (doc: unknown) => Promise<string[]>;
  *   saveFile?: (relPath: string, content: string) => Promise<void>;
  *   renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
- *   openDocument?: (path: string) => Promise<void>;
  *   projectStyle?: Record<string, string>;
  *   getProjectStyle?: () => Record<string, string> | undefined;
  *   findOpenTab?: (path: string) => import("../tabs/tab").Tab | null;
@@ -203,7 +124,6 @@ export function registerAiTools(
     validate = validateDoc,
     saveFile,
     renderCheck,
-    openDocument,
     projectStyle,
     getProjectStyle,
     findOpenTab,
@@ -213,7 +133,6 @@ export function registerAiTools(
     validate?: (doc: unknown) => Promise<string[]>;
     saveFile?: (relPath: string, content: string) => Promise<void>;
     renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
-    openDocument?: (path: string) => Promise<void>;
     projectStyle?: Record<string, string> | undefined;
     /**
      * Live variant of `projectStyle` — takes precedence; re-read per tool call so a project
@@ -258,7 +177,7 @@ export function registerAiTools(
       name: "read_document",
       description:
         "Read the current Jx document, or the subtree at a given path. Use this to discover " +
-        "node paths before calling set_property, add_child, or remove_node.",
+        "node paths before calling set_property, add_child, or delete_node.",
       parameters: {
         type: "object",
         properties: {
@@ -314,7 +233,7 @@ export function registerAiTools(
          */
         required: ["path", "key"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -325,6 +244,7 @@ export function registerAiTools(
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateUpdateProperty(t, path, key, value ?? undefined),
           `Set "${key}" at ${JSON.stringify(path)}.`,
@@ -360,7 +280,7 @@ export function registerAiTools(
         },
         required: ["parentPath", "index", "node"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -403,6 +323,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateInsertNode(t, parentPath, index, childNode),
           `Inserted node at ${JSON.stringify([...parentPath, "children", index])}.`,
@@ -446,7 +367,7 @@ export function registerAiTools(
          */
         required: ["path", "property"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -462,6 +383,7 @@ export function registerAiTools(
         const prop = property;
         const val = value == null ? undefined : String(value);
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateUpdateStyle(t, path, prop, val),
           `Set style "${prop}" at ${JSON.stringify(path)}.`,
@@ -492,7 +414,7 @@ export function registerAiTools(
         },
         required: ["path", "value"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -502,11 +424,14 @@ export function registerAiTools(
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
+          /* Through the recording mutators, as two `set-key` ops, rather than by writing the node
+             directly. An unrecorded write reaches the canvas only as a full re-render, history only
+             as a whole-document snapshot, and collaborators only as a diff. */
           (t) => {
-            const node = getNodeAtPath(t.doc.document, path);
-            delete node.textContent;
-            node.children = [value];
+            mutateUpdateProperty(t, path, "textContent");
+            mutateUpdateProperty(t, path, "children", [value]);
           },
           `Set text at ${JSON.stringify(path)}.`,
           validate,
@@ -538,7 +463,7 @@ export function registerAiTools(
         },
         required: ["key", "value"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -551,18 +476,12 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
-          (t) => {
-            // Ensure the state object exists before setting a key on it.
-            if (!t.doc.document.state) {
-              t.doc.document.state = {};
-            }
-            /*
-             * Directly mutate — bypass mutateUpdateProperty because its "" → delete behaviour
-             * (transact.ts:248) is wrong for state defaults (e.g. "title": "").
-             */
-            t.doc.document.state[key] = value;
-          },
+          /* `mutateAddDef` rather than `mutateUpdateProperty`: the latter deletes on "", which is
+             wrong for a state default (`"title": ""`). It also records the op, so the canvas, the
+             history and collaborators each get the edit as an edit. */
+          (t) => mutateAddDef(t, key, value as Record<string, JsonValue>),
           `Added state "${key}".`,
           validate,
           renderCheck,
@@ -594,7 +513,7 @@ export function registerAiTools(
          */
         required: ["key"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -607,20 +526,15 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
+          /* The recording def mutators, for the reason `add_state` gives. Removing the last key
+             drops the empty `state` object, as the Inspector's own removal does. */
           (t) => {
-            /*
-             * Directly mutate — bypass mutateUpdateProperty because its "" → delete behaviour
-             * (transact.ts:248) is wrong for state defaults (e.g. "title": "").
-             */
-            const { state } = t.doc.document;
-            if (!state) {
-              return;
-            }
             if (value == null) {
-              delete state[key];
+              mutateRemoveDef(t, key);
             } else {
-              state[key] = value;
+              mutateAddDef(t, key, value as Record<string, JsonValue>);
             }
           },
           value == null ? `Removed state "${key}".` : `Updated state "${key}".`,
@@ -660,7 +574,7 @@ export function registerAiTools(
         },
         required: ["fromPath", "toParentPath", "toIndex"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -686,6 +600,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateMoveNode(t, fromPath, toParentPath, toIndex),
           `Moved node from ${JSON.stringify(fromPath)} to ${JSON.stringify([...toParentPath, "children", toIndex])}.`,
@@ -721,7 +636,7 @@ export function registerAiTools(
         },
         required: ["path", "content"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         if (!saveFile) {
           return {
             success: false,
@@ -751,15 +666,17 @@ export function registerAiTools(
           }
         }
         try {
-          await saveFile(relPath, JSON.stringify(content, null, 2));
-          recordWrite({ disk: true, ok: true, path: relPath, tool: "create_component" });
+          // The save serializer, layout-less (`@jxsuite/schema/json-layout`): the assistant supplied a
+          // Value, not a text, so the formatter's layout for fresh output is the right one.
+          await saveFile(relPath, serializeJson(content, null));
+          ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "create_component" });
           return {
             success: true,
             summary: await reconcileAfterWrite(relPath, `Created component at "${relPath}".`),
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          recordWrite({
+          ctx.ledger.record({
             disk: true,
             error: message,
             ok: false,
@@ -798,7 +715,7 @@ export function registerAiTools(
         },
         required: ["path", "content"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         if (!saveFile) {
           return {
             success: false,
@@ -828,15 +745,16 @@ export function registerAiTools(
           }
         }
         try {
-          await saveFile(relPath, JSON.stringify(content, null, 2));
-          recordWrite({ disk: true, ok: true, path: relPath, tool: "create_page" });
+          // As `create_component`: a value the assistant supplied, written in the formatter's layout.
+          await saveFile(relPath, serializeJson(content, null));
+          ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "create_page" });
           return {
             success: true,
             summary: await reconcileAfterWrite(relPath, `Created page at "${relPath}".`),
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          recordWrite({
+          ctx.ledger.record({
             disk: true,
             error: message,
             ok: false,
@@ -852,106 +770,12 @@ export function registerAiTools(
     }),
   );
 
-  // ── open_document ─────────────────────────────────────────────────────
-
-  registry.register(
-    createToolDefinition({
-      name: "open_document",
-      description:
-        "Switch the active document to another file in the project. After opening, all " +
-        "tools (read_document, set_property, add_child, etc.) operate on the newly-active " +
-        "document. Use this to iteratively refine pages or components after creating them " +
-        "with create_page or create_component.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description:
-              'File path relative to the project root, e.g. "pages/about.json" or ' +
-              '"components/nav-bar.json". Must be an existing file.',
-          },
-        },
-        required: ["path"],
-      },
-      async execute(args) {
-        if (!openDocument) {
-          return {
-            success: false,
-            error: "File navigation is not available in this environment.",
-          };
-        }
-        const { path: relPath } = args as { path: string };
-        try {
-          await openDocument(relPath);
-          const tab = getTab();
-          if (!tab) {
-            return {
-              success: false,
-              error: `File "${relPath}" could not be opened — no active tab after navigation.`,
-            };
-          }
-          /*
-           * The agent loop opens a single undo batch on the tab that was active at loop start
-           * (tool-executor.js → beginBatch). Switching the active document mid-loop would strand
-           * the new tab's edits with no history snapshot — undo would have nothing to roll back.
-           * Flush the previous tab's batch and re-open one on the newly-active tab so edits in
-           * each document remain individually undoable.
-           */
-          if (isBatching()) {
-            endBatch();
-            beginBatch(tab);
-          }
-          return {
-            success: true,
-            summary: `Switched to "${relPath}". All tools now operate on this document.`,
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: `Failed to open "${relPath}": ${error instanceof Error ? error.message : String(error)}`,
-          };
-        }
-      },
-    }),
-  );
-
-  registry.register(
-    createToolDefinition({
-      name: "remove_node",
-      description: "Remove the node at the given path from its parent's children array.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "array",
-            description: `${PATH_DESCRIPTION} Cannot be the document root.`,
-            items: { type: ["string", "number"] },
-          },
-        },
-        required: ["path"],
-      },
-      async execute(args) {
-        const tab = getTab();
-        if (!tab) {
-          return noDocError();
-        }
-        const { path } = args as { path: JxPath };
-        if (path.length < 2) {
-          return { success: false, error: "Cannot remove the document root." };
-        }
-        if (getNodeAtPath(tab.doc.document, path) === undefined) {
-          return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
-        }
-        return applyAndValidate(
-          tab,
-          (t) => mutateRemoveNode(t, path),
-          `Removed node at ${JSON.stringify(path)}.`,
-          validate,
-          renderCheck,
-          styleOf(),
-        );
-      },
-    }),
-  );
+  /*
+   * `open_document` is NOT here any more. It is the projection of the `document.open` record
+   * (`workspace/workspace.ts`'s `tabCommands`), so the person's palette row and the model's tool
+   * are one `run` and one gate (§12.4). The hand tool read `getTab()` after the open and called
+   * whatever it found a success — a missing file left the previous document active and reported
+   * "Switched to" — and it re-anchored the undo batch itself, which `tool-executor.ts` has done
+   * after EVERY tool since project adoption started replacing tabs mid-loop.
+   */
 }

@@ -1,5 +1,109 @@
 # Changelog
 
+## [4.2.2](https://github.com/jxsuite/jx/compare/server-v4.2.1...server-v4.2.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.3.1
+
+## [4.2.1](https://github.com/jxsuite/jx/compare/server-v4.2.0...server-v4.2.1) (2026-09-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 4.0.1
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/import bumped to 0.40.3
+    * @jxsuite/runtime bumped to 4.0.1
+    * @jxsuite/site bumped to 2.0.1
+    * @jxsuite/starters bumped to 1.8.1
+  * devDependencies
+    * @jxsuite/parser bumped to 1.8.1
+
+## [4.2.0](https://github.com/jxsuite/jx/compare/server-v4.1.0...server-v4.2.0) (2026-09-14)
+
+
+### Features
+
+* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+* **studio:** highlight what changed in a diff, and open every changed file ([a54fa6d](https://github.com/jxsuite/jx/commit/a54fa6dc15fbe4ad7e8617d4e788c1670292ea2b))
+
+
+### Bug Fixes
+
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([9b0d735](https://github.com/jxsuite/jx/commit/9b0d7353897444825087cace1b4489bc6965e9fb))
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([d0b7fe1](https://github.com/jxsuite/jx/commit/d0b7fe19e0b40660f4ecb69e585df2682b05a129))
+* **desktop,server:** the coverage gates the new catalogue member missed ([18eccd9](https://github.com/jxsuite/jx/commit/18eccd9af978bb7ed3a627939c14cb7e72e2f759))
+* **server:** point catalog imports at extension-catalog.ts, not the renamed package ([8b171f4](https://github.com/jxsuite/jx/commit/8b171f400f9c8638c320341efeec8f1a06268a27))
+* **server:** point package.json's ./catalog export at extension-catalog.ts ([97cdbd6](https://github.com/jxsuite/jx/commit/97cdbd690cba274b260c18b7ea52a09591798a3a))
+* **studio,server:** the diff view drew line numbers and no text ([76d8d97](https://github.com/jxsuite/jx/commit/76d8d97f600622d2e381f3e1b2e37e88b0c40663))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/collab bumped to 0.9.0
+    * @jxsuite/compiler bumped to 4.0.0
+    * @jxsuite/create bumped to 1.3.10
+    * @jxsuite/import bumped to 0.40.2
+    * @jxsuite/protocol bumped to 2.3.0
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+    * @jxsuite/site bumped to 2.0.0
+    * @jxsuite/starters bumped to 1.8.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.6.0
+    * @jxsuite/connector bumped to 0.6.0
+    * @jxsuite/parser bumped to 1.8.0
+
+## [4.1.0](https://github.com/jxsuite/jx/compare/server-v4.0.0...server-v4.1.0) (2026-08-30)
+
+
+### Features
+
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([c4b7f27](https://github.com/jxsuite/jx/commit/c4b7f27c82a19bfa1f62eff8a75597c13a3f90be))
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([988abd8](https://github.com/jxsuite/jx/commit/988abd8d3614f0ba3ce6cd8b1c1db589fef0a511)), closes [#235](https://github.com/jxsuite/jx/issues/235)
+* **parser,schema,server:** a format may declare rewrite, repairing a reference a CSV row names ([bca762e](https://github.com/jxsuite/jx/commit/bca762eea4a3a1cd55de02892b7db322155fb1ec))
+* **parser,schema,server:** a format may declare rewrite, repairing a reference a CSV row names ([29a0f36](https://github.com/jxsuite/jx/commit/29a0f36a43319e294e2e69b14c694ff9796bdc5c)), closes [#246](https://github.com/jxsuite/jx/issues/246)
+
+
+### Bug Fixes
+
+* **server:** a copy map's keys and a directory content source are references the engine can see ([9974204](https://github.com/jxsuite/jx/commit/997420475d738bc134f21108b5e8d193ae065314))
+* **server:** a copy map's keys and a directory content source are references the engine can see ([5221a26](https://github.com/jxsuite/jx/commit/5221a26123622abdfcea5fc0e6e0fd37a57f7a93)), closes [#242](https://github.com/jxsuite/jx/issues/242) [#243](https://github.com/jxsuite/jx/issues/243)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/collab bumped to 0.8.5
+    * @jxsuite/compiler bumped to 3.1.0
+    * @jxsuite/create bumped to 1.3.9
+    * @jxsuite/import bumped to 0.40.1
+    * @jxsuite/protocol bumped to 2.2.0
+    * @jxsuite/runtime bumped to 3.1.0
+    * @jxsuite/schema bumped to 2.1.0
+    * @jxsuite/site bumped to 1.1.0
+    * @jxsuite/starters bumped to 1.7.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.5.7
+    * @jxsuite/connector bumped to 0.5.7
+    * @jxsuite/parser bumped to 1.7.0
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/server-v3.0.0...server-v4.0.0) (2026-08-27)
 
 

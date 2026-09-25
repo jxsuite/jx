@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/import",
-  "version": "0.40.0",
+  "version": "0.40.3",
   "description": "Clone a live website into a Jx project",
   "license": "MIT",
   "repository": {
@@ -20,6 +20,8 @@
     "./capture": "./src/capture.ts",
     "./to-jx": "./src/to-jx.ts",
     "./emit": "./src/emit.ts",
+    "./io": "./src/io.ts",
+    "./pipeline": "./src/pipeline.ts",
     "./run": "./src/run.ts",
     "./verify": "./src/verify.ts",
     "./breakpoint-plan": "./src/breakpoint-plan.ts"
@@ -37,7 +39,7 @@
     "@jxsuite/schema": "workspace:^",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
-    "puppeteer-core": "^24.9.0"
+    "puppeteer-core": "^25.11.0"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",

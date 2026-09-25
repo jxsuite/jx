@@ -1,5 +1,89 @@
 # Changelog
 
+## [4.0.1](https://github.com/jxsuite/jx/compare/compiler-v4.0.0...compiler-v4.0.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0e2856c](https://github.com/jxsuite/jx/commit/0e2856c10e5623d1a4416007ca2043781f119899))
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([e456b80](https://github.com/jxsuite/jx/commit/e456b80b2e0ef5fc9af900077ae7ad8ab42a7746)), closes [#329](https://github.com/jxsuite/jx/issues/329)
+* **compiler:** a shared component dependency is inlined and loaded once per page ([6f6d39e](https://github.com/jxsuite/jx/commit/6f6d39e12a7e70cd911d58f51f297d957d1a3f37))
+* **compiler:** a shared component dependency is inlined and loaded once per page ([d1f7dc9](https://github.com/jxsuite/jx/commit/d1f7dc9e15e0c57942bc5047fcdf2f628032d172)), closes [#330](https://github.com/jxsuite/jx/issues/330)
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([2988975](https://github.com/jxsuite/jx/commit/2988975365bb7986d718657ab525819c9a513648))
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([3a30921](https://github.com/jxsuite/jx/commit/3a30921644a048e93ddc5e572b85ec38399f4abb)), closes [#320](https://github.com/jxsuite/jx/issues/320)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.11
+    * @jxsuite/runtime bumped to 4.0.1
+    * @jxsuite/site bumped to 2.0.1
+  * devDependencies
+    * @jxsuite/parser bumped to 1.8.1
+
+## [4.0.0](https://github.com/jxsuite/jx/compare/compiler-v3.1.0...compiler-v4.0.0) (2026-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler,site,studio:** `@jxsuite/runtime` no longer writes authored declarations to `el.style`, so code reading them back off an element after `applyStyle` sees nothing. The `elementStyleTags` export is replaced by `releaseElementStyles` and `resetDocumentStyles`, which refcount a shared rule set rather than handing out an element to remove by hand; `documentStyleText` reads back what was written.
+
+### Features
+
+* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
+
+
+### Bug Fixes
+
+* **compiler:** a component nested inside another component's definition prerenders ([9d12229](https://github.com/jxsuite/jx/commit/9d122293f7a48148810d664ee6ea42d53229b377))
+* **compiler:** a component nested inside another component's definition prerenders ([5f753d4](https://github.com/jxsuite/jx/commit/5f753d41dd3f2a46a87c50a016306fca1162b8e9)), closes [#286](https://github.com/jxsuite/jx/issues/286)
+* **compiler:** a selector list in a component's own style loses every member but the first ([628e1ab](https://github.com/jxsuite/jx/commit/628e1ab8875b05c3ab5f40890add118bc7d4007d))
+* **compiler:** every boolean-attribute writer defers to booleanAttrValue ([596d2d6](https://github.com/jxsuite/jx/commit/596d2d6b8fc29283d312a95aacf02f0c09e3c5ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.10
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+    * @jxsuite/site bumped to 2.0.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.6.0
+    * @jxsuite/parser bumped to 1.8.0
+
+## [3.1.0](https://github.com/jxsuite/jx/compare/compiler-v3.0.0...compiler-v3.1.0) (2026-08-30)
+
+
+### Features
+
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([c4b7f27](https://github.com/jxsuite/jx/commit/c4b7f27c82a19bfa1f62eff8a75597c13a3f90be))
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([988abd8](https://github.com/jxsuite/jx/commit/988abd8d3614f0ba3ce6cd8b1c1db589fef0a511)), closes [#235](https://github.com/jxsuite/jx/issues/235)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.9
+    * @jxsuite/runtime bumped to 3.1.0
+    * @jxsuite/schema bumped to 2.1.0
+    * @jxsuite/site bumped to 1.1.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.5.7
+    * @jxsuite/parser bumped to 1.7.0
+
 ## [3.0.0](https://github.com/jxsuite/jx/compare/compiler-v2.0.8...compiler-v3.0.0) (2026-08-27)
 
 

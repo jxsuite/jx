@@ -1,6 +1,6 @@
 /** Site-build.test.js — Tests for the Phase 1 site build pipeline */
 
-import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
 import {
   copyFileSync,
   existsSync,
@@ -684,11 +684,16 @@ describe("buildSite — cloudflare-pages adapter", () => {
 describe("buildSite — cloudflare images service", () => {
   const CF_IMG_TMP = resolve(import.meta.dir, "__test-site-cf-images__");
 
-  // Cloudflare mode only reads image dimensions (no variant generation); mock sharp so the
-  // Test doesn't depend on the native binary being loadable.
+  // Sharp is unloadable on some dev hosts (NixOS), so it is mocked file-wide (mock.module
+  // Registers once per module id — the last call in source order wins for every test in this
+  // File). The resize chain is included, not just metadata, because the image-cache-logging
+  // Block below needs a real (mocked) variant write to touch a cache entry.
   void mock.module("sharp", () => ({
     default: () => ({
       metadata: async () => ({ format: "png", height: 720, width: 1280 }),
+      resize: () => ({
+        toFormat: () => ({ toFile: async () => {} }),
+      }),
     }),
   }));
 
@@ -1251,6 +1256,68 @@ This is a markdown page.
   });
 });
 
+// ── Export sidecars (formats with format.exportTarget: true, e.g. Markdown) ────
+
+describe("buildSite — export sidecars alongside HTML", () => {
+  const EXP_TMP = resolve(import.meta.dir, "__test-site-export-sidecar__");
+
+  function writeExportSite(page: Record<string, unknown>) {
+    rmSync(EXP_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(EXP_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(EXP_TMP, "project.json"),
+      JSON.stringify({
+        build: { outDir: "./dist" },
+        extensions: ["@jxsuite/parser"],
+        name: "Export Sidecar Test",
+      }),
+      "utf8",
+    );
+    writeFileSync(resolve(EXP_TMP, "pages/index.json"), JSON.stringify(page), "utf8");
+  }
+
+  afterAll(() => {
+    rmSync(EXP_TMP, { force: true, recursive: true });
+  });
+
+  it("writes a Markdown sidecar beside the compiled HTML for a plain (non-template) page", async () => {
+    // The export's evaluateTemplate callback is only invoked, for textContent, once a scope
+    // Exists (the serializer builds one from `doc.state`); with one, plain text is still not a
+    // Template string, so the callback declines, which is the ordinary case for most content.
+    writeExportSite({
+      children: [{ tagName: "h1", textContent: "Plain text, not a template" }],
+      state: { unused: 1 },
+      title: "Home",
+    });
+    const result = await buildSite(EXP_TMP);
+    expect(result.errors).toHaveLength(0);
+    const sidecar = readFileSync(resolve(EXP_TMP, "dist/index.md"), "utf8");
+    expect(sidecar).toContain("Plain text, not a template");
+  });
+
+  it("records an error and keeps building when a format's serialize() throws", async () => {
+    // Markdown cannot express a tag chosen at creation (a `$expression` tagName) — its serializer
+    // Refuses, which the export loop must catch without failing the whole page: the HTML for this
+    // Route already compiled successfully by the time the sidecar export runs.
+    writeExportSite({
+      children: [
+        {
+          children: ["hi"],
+          tagName: {
+            $expression: { initial: "div", operator: "?:", target: true, value: "a" },
+          },
+        },
+      ],
+      title: "Home",
+    });
+    const result = await buildSite(EXP_TMP);
+    expect(result.errors.some((e) => e.includes("Error exporting Markdown for /"))).toBe(true);
+    // The page's own HTML still built — only the sidecar export failed.
+    expect(existsSync(resolve(EXP_TMP, "dist/index.html"))).toBe(true);
+    expect(existsSync(resolve(EXP_TMP, "dist/index.md"))).toBe(false);
+  });
+});
+
 // ── Template strings in title and $head ──────────────────────────────────────
 
 describe("buildSite — template string resolution", () => {
@@ -1424,6 +1491,36 @@ describe("buildSite — npm $elements injection", () => {
     expect(html).not.toContain("/node_modules/");
     const src = /src="(\/assets\/[^"]+)"/.exec(html)?.[1] ?? "";
     expect(existsSync(resolve(EL_TMP, `dist${src}`))).toBe(true);
+  });
+
+  it("records an error and keeps building when an npm $elements specifier does not resolve", async () => {
+    const badDir = `${EL_TMP}-unresolvable`;
+    rmSync(badDir, { force: true, recursive: true });
+    try {
+      mkdirSync(resolve(badDir, "pages"), { recursive: true });
+      writeFileSync(
+        resolve(badDir, "project.json"),
+        JSON.stringify({ build: { outDir: "./dist" }, name: "Elem Fail Test" }),
+      );
+      writeFileSync(
+        resolve(badDir, "pages/index.json"),
+        JSON.stringify({
+          $elements: ["totally-bogus-package-xyz-12345/dist/thing.js"],
+          children: [{ children: ["Click"], tagName: "bogus-button" }],
+          title: "Home",
+        }),
+      );
+      const result = await buildSite(badDir);
+      expect(
+        result.errors.some(
+          (e) => e.includes("Error bundling npm $elements") && e.includes("bogus"),
+        ),
+      ).toBe(true);
+      // The rest of the build still completes.
+      expect(existsSync(resolve(badDir, "dist/index.html"))).toBe(true);
+    } finally {
+      rmSync(badDir, { force: true, recursive: true });
+    }
   });
 });
 
@@ -2245,9 +2342,20 @@ describe("buildSite — dynamic routes with content types", () => {
 describe("buildSite — image optimization cache logging", () => {
   const IMG_TMP = resolve(import.meta.dir, "__test-site-img-log__");
 
+  // A real image reference is optimized through Sharp (mocked file-wide above) so the cache
+  // Entry is genuinely touched during the build. A stale, never-touched entry pre-populated
+  // Into the manifest does not do this: prune (called before the "Optimized N image(s)" log
+  // Line) evicts anything not touched this build.
+
   beforeAll(() => {
+    // Force the project-local .cache/images fallback: without this, a dev/CI environment where
+    // `npm config get cache` resolves (as it does off-workspace, per the comment in
+    // GetImageCacheDir) reads the real npm-global cache dir instead of this project's own cache,
+    // And the assertions below would be reading the wrong directory.
+    _testSetNpmCacheBase(null);
     rmSync(IMG_TMP, { force: true, recursive: true });
-    mkdirSync(IMG_TMP, { recursive: true });
+    mkdirSync(resolve(IMG_TMP, "pages"), { recursive: true });
+    mkdirSync(resolve(IMG_TMP, "public/images"), { recursive: true });
     writeFileSync(
       resolve(IMG_TMP, "project.json"),
       JSON.stringify({
@@ -2257,36 +2365,30 @@ describe("buildSite — image optimization cache logging", () => {
       }),
       "utf8",
     );
-    mkdirSync(resolve(IMG_TMP, "pages"), { recursive: true });
     writeFileSync(
       resolve(IMG_TMP, "pages/index.json"),
       JSON.stringify({
-        children: [{ children: ["Hi"], tagName: "p" }],
+        children: [{ attributes: { alt: "Hero", src: "/images/hero.png" }, tagName: "img" }],
         title: "Home",
       }),
       "utf8",
     );
-    // Pre-populate cache with an entry so the "Optimized N image(s)" log triggers
-    mkdirSync(resolve(IMG_TMP, ".cache/images"), { recursive: true });
-    writeFileSync(
-      resolve(IMG_TMP, ".cache/images/manifest.json"),
-      JSON.stringify({
-        entries: { "test.jpg": { hash: "abc", outputs: ["test.webp"] } },
-        version: 1,
-      }),
-      "utf8",
-    );
+    writeFileSync(resolve(IMG_TMP, "public/images/hero.png"), "fake-png-data", "utf8");
   });
 
   afterAll(() => {
     rmSync(IMG_TMP, { force: true, recursive: true });
+    _testResetNpmCacheBase();
   });
 
   it("logs and saves image cache when optimize is enabled", async () => {
     const result = await buildSite(IMG_TMP, { verbose: true });
     expect(result.errors).toHaveLength(0);
-    // Verify cache was saved
-    expect(existsSync(resolve(IMG_TMP, ".cache/images/manifest.json"))).toBe(true);
+    // Verify cache was saved, with the image this build actually processed.
+    const manifest = JSON.parse(
+      readFileSync(resolve(IMG_TMP, ".cache/images/manifest.json"), "utf8"),
+    ) as { entries: Record<string, unknown> };
+    expect(Object.keys(manifest.entries).length).toBeGreaterThan(0);
   });
 });
 
@@ -2494,6 +2596,31 @@ describe("buildSite — $head textContent template resolution", () => {
     const result = await buildSite(HC_TMP);
     expect(result.errors).toHaveLength(0);
   });
+
+  it("tolerates a non-object $head entry without crashing", async () => {
+    const dir = `${HC_TMP}-null-entry`;
+    rmSync(dir, { force: true, recursive: true });
+    try {
+      mkdirSync(resolve(dir, "pages"), { recursive: true });
+      writeFileSync(
+        resolve(dir, "project.json"),
+        JSON.stringify({ build: { outDir: "./dist" }, name: "Head Null Entry Test" }),
+      );
+      writeFileSync(
+        resolve(dir, "pages/index.json"),
+        JSON.stringify({
+          $head: [null],
+          children: [{ children: ["Hi"], tagName: "p" }],
+          title: "Home",
+        }),
+      );
+      const result = await buildSite(dir);
+      expect(result.errors).toHaveLength(0);
+      expect(existsSync(resolve(dir, "dist/index.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
 });
 
 // ── Lang attribute with existing lang ────────────────────────────────────────
@@ -2646,6 +2773,23 @@ describe("buildSite — expandComponents handles arrays in tree", () => {
       }),
       "utf8",
     );
+    // A slot child position holding a literal array — not a shape any authoring path produces
+    // Today, but JSON.parse does not enforce the TS `children` type, and `renderStaticNode`
+    // Tolerates exactly this same shape (`Array.isArray(node)`) for the same reason: a document
+    // This malformed should not crash the build.
+    writeFileSync(
+      resolve(ARR_TMP, "pages/nested-array.json"),
+      JSON.stringify({
+        children: [
+          {
+            children: [[{ children: ["nested"], tagName: "span" }, "nested text"]],
+            tagName: "a-card",
+          },
+        ],
+        title: "Nested Array",
+      }),
+      "utf8",
+    );
   });
 
   afterAll(() => {
@@ -2670,6 +2814,13 @@ describe("buildSite — expandComponents handles arrays in tree", () => {
     const html = readFileSync(resolve(ARR_TMP, "dist/plain/index.html"), "utf8");
     expect(html).toContain("No components here");
     expect(html).not.toContain("a-card");
+  });
+
+  it("tolerates a literal array nested inside a children list without crashing", async () => {
+    const result = await buildSite(ARR_TMP);
+    expect(result.errors).toHaveLength(0);
+    const html = readFileSync(resolve(ARR_TMP, "dist/nested-array/index.html"), "utf8");
+    expect(html).toContain("Card Content");
   });
 });
 
@@ -2871,6 +3022,112 @@ describe("buildSite — rich map template expansion", () => {
   });
 });
 
+// ── Extension asset mounts: provider errors and unresolved references ─────────
+
+describe("buildSite — extension asset mount errors and missing refs", () => {
+  const AM_TMP = resolve(import.meta.dir, "__test-site-asset-mount-errors__");
+
+  afterEach(() => {
+    rmSync(AM_TMP, { force: true, recursive: true });
+  });
+
+  it("reports a mount provider that throws instead of failing the build", async () => {
+    rmSync(AM_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(AM_TMP, "ext"), { recursive: true });
+    mkdirSync(resolve(AM_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(AM_TMP, "ext/jx-extension.json"),
+      JSON.stringify({
+        classes: { AssetProvider: "./AssetProvider.class.json" },
+        name: "asset-ext",
+      }),
+    );
+    writeFileSync(
+      resolve(AM_TMP, "ext/AssetProvider.class.json"),
+      JSON.stringify({
+        $defs: { methods: { assets: { identifier: "assets", role: "assets", scope: "static" } } },
+        $implementation: "./assetprovider.js",
+        project: { key: "myassets" },
+        title: "AssetProvider",
+      }),
+    );
+    writeFileSync(
+      resolve(AM_TMP, "ext/assetprovider.js"),
+      `export class AssetProvider {\n  static assets() {\n    throw new Error("no source dir");\n  }\n}\n`,
+    );
+    writeFileSync(
+      resolve(AM_TMP, "project.json"),
+      JSON.stringify({
+        build: { outDir: "./dist" },
+        extensions: ["./ext"],
+        myassets: { enabled: true },
+        name: "Asset Mount Err Test",
+      }),
+    );
+    writeFileSync(
+      resolve(AM_TMP, "pages/index.json"),
+      JSON.stringify({ children: [{ children: ["hi"], tagName: "h1" }], title: "Home" }),
+    );
+    const result = await buildSite(AM_TMP);
+    expect(result.errors.some((e) => e.includes("AssetProvider.assets: no source dir"))).toBe(true);
+    // The rest of the build still completes.
+    expect(existsSync(resolve(AM_TMP, "dist/index.html"))).toBe(true);
+  });
+
+  it("warns when compiled output references a mounted asset that is not on disk", async () => {
+    rmSync(AM_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(AM_TMP, "ext"), { recursive: true });
+    mkdirSync(resolve(AM_TMP, "pages"), { recursive: true });
+    const mountedDir = resolve(AM_TMP, "mounted");
+    mkdirSync(mountedDir, { recursive: true });
+    writeFileSync(
+      resolve(AM_TMP, "ext/jx-extension.json"),
+      JSON.stringify({
+        classes: { AssetProvider: "./AssetProvider.class.json" },
+        name: "asset-ext",
+      }),
+    );
+    writeFileSync(
+      resolve(AM_TMP, "ext/AssetProvider.class.json"),
+      JSON.stringify({
+        $defs: { methods: { assets: { identifier: "assets", role: "assets", scope: "static" } } },
+        // A distinct filename from the previous test's implementation: two dynamic imports of the
+        // Same path would resolve from the module cache, not this test's freshly written content.
+        $implementation: "./assetprovider2.js",
+        project: { key: "myassets" },
+        title: "AssetProvider",
+      }),
+    );
+    writeFileSync(
+      resolve(AM_TMP, "ext/assetprovider2.js"),
+      `export class AssetProvider {\n  static assets() {\n` +
+        `    return [{ dir: ${JSON.stringify(mountedDir)}, urlPrefix: "/myassets" }];\n  }\n}\n`,
+    );
+    writeFileSync(
+      resolve(AM_TMP, "project.json"),
+      JSON.stringify({
+        build: { outDir: "./dist" },
+        extensions: ["./ext"],
+        myassets: { enabled: true },
+        name: "Asset Mount Test",
+      }),
+    );
+    writeFileSync(
+      resolve(AM_TMP, "pages/index.json"),
+      JSON.stringify({
+        children: [
+          { attributes: { href: "/myassets/missing.png" }, tagName: "a", textContent: "missing" },
+        ],
+        title: "Home",
+      }),
+    );
+    const result = await buildSite(AM_TMP);
+    // A missing referenced asset is a warning, not a build error.
+    expect(result.errors).toHaveLength(0);
+    expect(existsSync(resolve(AM_TMP, "dist/index.html"))).toBe(true);
+  });
+});
+
 // ── Sitemap options ──────────────────────────────────────────────────────────
 
 describe("buildSite — sitemap options", () => {
@@ -2923,6 +3180,52 @@ describe("buildSite — sitemap options", () => {
     expect(existsSync(resolve(SM_TMP, "dist/sitemap.xml"))).toBe(false);
     // Robots.txt is not created just to add a Sitemap line we can't build
     expect(existsSync(resolve(SM_TMP, "dist/robots.txt"))).toBe(false);
+  });
+
+  it("writes no sitemap.xml when a url is configured but every page opts out", async () => {
+    rmSync(SM_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(SM_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(SM_TMP, "project.json"),
+      JSON.stringify({ build: { outDir: "./dist" }, name: "SM", url: "https://sm.test" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(SM_TMP, "pages/index.json"),
+      JSON.stringify({
+        $sitemap: false,
+        children: [{ children: ["Home"], tagName: "h1" }],
+        title: "Home",
+      }),
+      "utf8",
+    );
+    const result = await buildSite(SM_TMP);
+    expect(result.errors).toHaveLength(0);
+    expect(existsSync(resolve(SM_TMP, "dist/sitemap.xml"))).toBe(false);
+  });
+
+  it("leaves an existing robots.txt untouched when it already names a Sitemap", async () => {
+    writeSite({ build: { outDir: "./dist" }, name: "SM", url: "https://sm.test" });
+    mkdirSync(resolve(SM_TMP, "public"), { recursive: true });
+    writeFileSync(
+      resolve(SM_TMP, "public/robots.txt"),
+      "User-agent: *\nAllow: /\nSitemap: https://elsewhere.example/sitemap.xml\n",
+      "utf8",
+    );
+    await buildSite(SM_TMP);
+    const robots = readFileSync(resolve(SM_TMP, "dist/robots.txt"), "utf8");
+    expect(robots).toBe(
+      "User-agent: *\nAllow: /\nSitemap: https://elsewhere.example/sitemap.xml\n",
+    );
+  });
+
+  it("adds a trailing newline before appending Sitemap: to a robots.txt that lacks one", async () => {
+    writeSite({ build: { outDir: "./dist" }, name: "SM", url: "https://sm.test" });
+    mkdirSync(resolve(SM_TMP, "public"), { recursive: true });
+    writeFileSync(resolve(SM_TMP, "public/robots.txt"), "User-agent: *\nAllow: /", "utf8");
+    await buildSite(SM_TMP);
+    const robots = readFileSync(resolve(SM_TMP, "dist/robots.txt"), "utf8");
+    expect(robots).toBe("User-agent: *\nAllow: /\n\nSitemap: https://sm.test/sitemap.xml\n");
   });
 });
 

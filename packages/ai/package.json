@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/ai",
-  "version": "0.36.5",
+  "version": "0.37.2",
   "description": "AI infrastructure for Jx Suite — streaming LLM client abstraction, tool registry, and reactive chat state",
   "license": "MIT",
   "repository": {
@@ -17,7 +17,8 @@
     ".": "./src/index.ts",
     "./streaming-client": "./src/streaming-client.ts",
     "./tools": "./src/tools.ts",
-    "./chat-state": "./src/chat-state.ts"
+    "./chat-state": "./src/chat-state.ts",
+    "./gateway": "./src/gateway/index.ts"
   },
   "publishConfig": {
     "provenance": true
@@ -29,9 +30,10 @@
   },
   "dependencies": {
     "@jxsuite/protocol": "workspace:^",
-    "@vue/reactivity": "3.5.41"
+    "@vue/reactivity": "3.5.43"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.8"
+    "@cloudflare/workers-types": "^5.20260922.1",
+    "@happy-dom/global-registrator": "^20.14.5"
   }
 }

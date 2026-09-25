@@ -3,9 +3,11 @@ title: "Components"
 description: "How Jx components work: self-describing JSON, state management, external sidecars, custom elements, and the shadow-DOM opt-in."
 spec:
   - spec.md#16.6
+  - spec.md#16.9
 code:
   - packages/compiler/src/shadow.ts
   - packages/compiler/src/targets/compile-element.ts
+  - packages/runtime/src/runtime.ts
 ---
 
 # Components
@@ -149,6 +151,26 @@ sty-card .inner {
 This cuts both ways. Your page CSS **can** reach into a component and restyle it, which is handy when you want it and the reason a stray global rule can change a component you didn't touch. There is no encapsulation boundary to stop either one.
 :::
 
+**Handlers written at the root listen on the element itself.** An `onclick`, `onkeydown` or `ontoggle` beside `tagName` attaches to the host, with the component's own `state` and the host as `event.currentTarget`. That is where a component's contract belongs: a row's activation or a panel's keyboard handling arrives at the element, not at a wrapper it had to render to hear it.
+
+```json
+{
+  "tagName": "menu-row",
+  "state": {
+    "value": "",
+    "activate": {
+      "$prototype": "Function",
+      "body": [
+        { "stopPropagation": true },
+        { "dispatchEvent": "select", "detail": { "$ref": "#/state/value" }, "bubbles": true }
+      ]
+    }
+  },
+  "onclick": { "$ref": "#/state/activate" },
+  "children": [{ "tagName": "slot" }]
+}
+```
+
 ## Opting into a shadow root
 
 If you want that boundary, ask for it per component:
@@ -217,3 +239,7 @@ Props are passed via `$props` on an instance node, which is the only mechanism f
 ```
 
 Signal scope is bounded at the component level. No implicit scope leaking.
+
+An instance can sit inside another component's own `children` as well as on a page or in a slot, and the build expands it at every level, props resolved against the enclosing component's state. See [Components inside components](/docs/framework/build#components-inside-components) for what the compiler writes and the one shape it refuses (a component that renders itself with the same props).
+
+The live runtime refuses that shape too, with the same words. A component that instantiates its own tag inside its own `children`, forwarding the same props, is stopped at the level where the props repeat: that instance stays an empty element, the console reports `Component <my-card> renders itself: my-card → my-card …`, and the rest of the page, its siblings and every other `<my-card>` included, renders as usual. The refused element also dispatches a bubbling `jx-error` event (an `ErrorEvent`, with the diagnostic as its `error` and `message`), so a page can listen for the refusal where a console line is out of reach. A component that renders itself with props that change at each level (a tree node) is allowed up to 32 levels deep in the runtime as in the build; past that it is reported the same way, with the chain it walked. Slot content does not count: `<my-card><my-card></my-card></my-card>` written on a page is two instances, not a component rendering itself. One shape only the runtime can meet, a component whose `onMount` or a later state change flips a `$switch` into its own tag again, is ended by the same 32-level cap rather than by the cycle check, because at that point the runtime cannot tell a component looping from a user opening one more level of a tree.

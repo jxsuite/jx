@@ -5,7 +5,7 @@
  * - The reposition fast path resurrecting a missing bar
  * - Anchor-out-of-canvas hiding via barPosition + canvasWrap bounds
  * - Window-edge clamping
- * - Bar mousedown skipping sp-textfield targets
+ * - Bar mousedown skipping the link panel
  * - IsLinkPopoverOpen()
  * - Stale Move up/down clicks after the selection is gone
  * - The drag handle's onGenerateDragPreview suppressor
@@ -89,7 +89,31 @@ function setup(docNode: JxMutableNode, selection: JxPath | null) {
 }
 
 function bar(): HTMLElement | null {
-  return (view.blockActionBarEl?.querySelector(".block-action-bar") as HTMLElement) ?? null;
+  return (view.blockActionBarEl?.querySelector('[part="bar"]') as HTMLElement) ?? null;
+}
+
+/** Render, then let the document reconcile: the bar is a mount, not a synchronous template. */
+async function render(): Promise<void> {
+  renderBlockActionBar();
+  await flush(3);
+}
+
+/** Whether the bar is hidden because its anchor left the stage. */
+function isOffscreen(): boolean {
+  return bar()!.dataset.offscreen !== undefined;
+}
+
+/**
+ * The bar's placed edges, RESOLVED.
+ *
+ * The document declares the position in its own style object, so the value is a custom property set
+ * on the mount's root and read here through the cascade; the clamp writes the same property on the
+ * bar itself. Computed style is the one question that holds for both.
+ */
+function barAt(): [string, string] {
+  const el = bar()!;
+  const computed = globalThis.getComputedStyle(el);
+  return [computed.left.trim(), computed.top.trim()];
 }
 
 const raf = () =>
@@ -113,7 +137,7 @@ describe("onCanvasScroll guards (pre-init)", () => {
 });
 
 describe("block action bar gaps", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     initBlockActionBar({
       getCanvasMode: () => canvasMode,
       navigateToComponent: () => {},
@@ -125,12 +149,13 @@ describe("block action bar gaps", () => {
     previewsDisabled = 0;
     dismissLinkPopover();
     dismissBlockActionBar();
+    await flush();
     // Reset canvas-wrap geometry to a tall area so barPosition's bounds check stays inert
     // Unless a test narrows it deliberately.
     stubRect(surfaceForPane("primary").wrap, { height: 2000, left: 0, top: 0, width: 1600 });
   });
 
-  test("scrolls without a selection are ignored", () => {
+  test("scrolls without a selection are ignored", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, null);
     expect(() => {
       scrollDoc();
@@ -141,16 +166,17 @@ describe("block action bar gaps", () => {
   test("scrolls while the link popover is open never reposition (typed URL survives)", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
     host.editing = true;
-    renderBlockActionBar();
-    await flush();
+    await render();
     expect(bar()).toBeTruthy();
     openLinkPopoverFromShortcut();
+    await flush(2);
     expect(isLinkPopoverOpen()).toBe(true);
-    const before = bar()!.style.top;
+    const before = barAt();
     host.anchor = { height: 20, left: 90, top: 900, width: 100 };
     scrollDoc();
     await raf();
-    expect(bar()!.style.top).toBe(before);
+    await flush();
+    expect(barAt()).toEqual(before);
     dismissLinkPopover();
     expect(isLinkPopoverOpen()).toBe(false);
   });
@@ -160,7 +186,7 @@ describe("block action bar gaps", () => {
     expect(bar()).toBeNull();
     scrollDoc();
     await raf();
-    await flush();
+    await flush(3);
     expect(bar()).toBeTruthy();
   });
 
@@ -201,11 +227,10 @@ describe("block action bar gaps", () => {
     stubRect(sideStage, { height: 800, left: 0, top: 100, width: 1600 });
     host.anchor = { height: 20, left: 30, top: 400, width: 100 };
 
-    renderBlockActionBar();
-    await flush();
+    await render();
 
     expect(bar()).toBeTruthy();
-    expect(bar()!.style.visibility).not.toBe("hidden");
+    expect(isOffscreen()).toBe(false);
     unregisterCanvasSurface(SECONDARY_PANE);
     sideStage.remove();
   });
@@ -213,47 +238,93 @@ describe("block action bar gaps", () => {
   test("an anchor scrolled out of the canvas area hides the bar", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
     stubRect(surfaceForPane("primary").wrap, { height: 400, left: 0, top: 100, width: 1600 });
-    renderBlockActionBar();
-    await flush();
+    await render();
     expect(bar()).toBeTruthy();
 
-    // Below the canvas area → reposition hides via visibility.
+    // Below the canvas area → reposition hides it without tearing the bar down.
     host.anchor = { height: 20, left: 30, top: 900, width: 100 };
     scrollDoc();
     await raf();
-    expect(bar()!.style.visibility).toBe("hidden");
+    await flush();
+    expect(isOffscreen()).toBe(true);
 
     // Above the canvas area → same.
     host.anchor = { height: 20, left: 30, top: 10, width: 100 };
     scrollDoc();
     await raf();
-    expect(bar()!.style.visibility).toBe("hidden");
+    await flush();
+    expect(isOffscreen()).toBe(true);
 
     // Back inside → visible again.
     host.anchor = { height: 20, left: 30, top: 250, width: 100 };
     scrollDoc();
     await raf();
-    expect(bar()!.style.visibility).toBe("");
+    await flush();
+    expect(isOffscreen()).toBe(false);
   });
 
   test("a bar wider than the window is clamped back inside the right edge", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
-    renderBlockActionBar();
-    await flush();
+    await render();
     const el = bar()!;
     stubRect(el, { height: 30, left: window.innerWidth - 10, top: 200, width: 300 });
     host.anchor = { height: 20, left: window.innerWidth - 10, top: 300, width: 100 };
     scrollDoc();
     await raf();
-    expect(el.style.left).toBe(`${Math.max(0, window.innerWidth - 300)}px`);
+    await flush();
+    await raf();
+    // The clamp writes the same custom property the document's `left` reads, on the bar itself —
+    // Where it beats the value inherited from the root the document set it on.
+    expect(el.style.getPropertyValue("--jx-bar-x").trim()).toBe(
+      `${Math.max(0, window.innerWidth - 300)}px`,
+    );
+    expect(globalThis.getComputedStyle(el).left.trim()).toBe(
+      `${Math.max(0, window.innerWidth - 300)}px`,
+    );
   });
 
-  test("mousedown on an embedded text field is not focus-guarded", async () => {
+  test("the clamp releases itself, so a bar that no longer overflows goes back where it is put", async () => {
+    /*
+     * The projected position is a custom property set on the document's ROOT and inherited by the
+     * bar; the clamp's correction is the same property set on the BAR. An element's own value beats
+     * one it inherits at every specificity, so a clamp that never let go would pin the bar at the
+     * right edge for the rest of the session and every later projection would be written into a
+     * variable nothing reads. The clamp therefore removes its previous write before it measures.
+     */
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
-    renderBlockActionBar();
+    await render();
+    const el = bar()!;
+
+    // Overflowing: the clamp fires and pulls the bar inside the right edge.
+    stubRect(el, { height: 30, left: window.innerWidth - 10, top: 200, width: 300 });
+    host.anchor = { height: 20, left: window.innerWidth - 10, top: 300, width: 100 };
+    scrollDoc();
+    await raf();
     await flush();
-    const field = document.createElement("sp-textfield");
-    bar()!.append(field);
+    await raf();
+    expect(barAt()[0]).toBe(`${Math.max(0, window.innerWidth - 300)}px`);
+
+    // Well inside: nothing to clamp, and the bar must land on the projected number.
+    stubRect(el, { height: 30, left: 40, top: 200, width: 300 });
+    host.anchor = { height: 20, left: 40, top: 300, width: 100 };
+    scrollDoc();
+    await raf();
+    await flush();
+    await raf();
+    expect(el.style.getPropertyValue("--jx-bar-x")).toBe("");
+    expect(barAt()[0]).toBe("40px");
+  });
+
+  test("mousedown inside the link panel is not focus-guarded", async () => {
+    /* The exemption the `sp-textfield` one stood for: a URL field a press cannot reach is a field
+       nobody can type in. It is addressed by PART now, because the panel is the bar's own
+       `jx-popover` rather than a foreign control someone appended to the bar. */
+    setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
+    host.editing = true;
+    await render();
+    openLinkPopoverFromShortcut();
+    await flush(2);
+    const field = bar()!.querySelector('[part="link-field"]')!;
     const e = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
     field.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(false);
@@ -262,6 +333,7 @@ describe("block action bar gaps", () => {
     const e2 = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
     bar()!.dispatchEvent(e2);
     expect(e2.defaultPrevented).toBe(true);
+    dismissLinkPopover();
   });
 
   test("stale Move up/down clicks after the selection clears are no-ops", async () => {
@@ -276,25 +348,21 @@ describe("block action bar gaps", () => {
       },
       ["children", 1],
     );
-    renderBlockActionBar();
-    await flush();
-    const up = bar()!.querySelector(
-      'sp-action-button[data-command="selection.moveUp"]',
-    ) as HTMLElement;
-    const down = bar()!.querySelector(
-      'sp-action-button[data-command="selection.moveDown"]',
-    ) as HTMLElement;
+    await render();
+    const press = (id: string) =>
+      bar()!
+        .querySelector(`[data-command-id="${id}"] [part="control"]`)!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const before = JSON.stringify(tab.doc.document);
     tab.session.selection = [];
-    up.click();
-    down.click();
+    press("selection.moveUp");
+    press("selection.moveDown");
     expect(JSON.stringify(tab.doc.document)).toBe(before);
   });
 
   test("the drag handle registers a draggable that suppresses the native preview", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
-    renderBlockActionBar();
-    await flush();
+    await render();
     expect(draggables.length).toBeGreaterThan(0);
     const handle = draggables.at(-1)!;
     expect(handle.getInitialData()).toEqual({ path: ["children", 0], type: "tree-node" });
@@ -302,15 +370,21 @@ describe("block action bar gaps", () => {
     expect(previewsDisabled).toBe(1);
   });
 
-  test("re-rendering replaces the drag-handle registration through the cleanup seam", async () => {
+  test("hiding and drawing again replaces the registration through the cleanup seam", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
-    renderBlockActionBar();
-    await flush();
+    await render();
     const first = draggables.length;
     expect(view.selDragCleanup).not.toBeNull();
-    renderBlockActionBar();
+
+    // A repaint keeps the node and the one registration on it; only a teardown replaces them.
+    await render();
+    expect(draggables.length).toBe(first);
+
+    dismissBlockActionBar();
     await flush();
-    expect(draggables.length).toBeGreaterThan(first);
+    expect(view.selDragCleanup).toBeNull();
+    await render();
+    expect(draggables.length).toBe(first + 1);
     expect(view.selDragCleanup).not.toBeNull();
     closeAllTabs();
   });

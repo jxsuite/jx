@@ -56,8 +56,9 @@ const RESERVED_KEYS = new Set([
  * to a .class.json path via doc.imports
  *
  * The resolver: - Reads the .class.json from disk - Follows $implementation to import the JS module
+ *
  * - Instantiates the class with the config - Calls .resolve() and replaces the state entry with the
- * result
+ *   result
  *
  * @param {JxMutableNode | JxDocument} doc - The page document (mutated in place)
  * @param {{ sourcePath?: string; _pathParams?: Record<string, string> }} route - Route info

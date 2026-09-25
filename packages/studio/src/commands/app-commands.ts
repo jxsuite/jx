@@ -36,16 +36,19 @@ import { createCommandRegistry } from "./registry";
 import { emptyContext } from "./context";
 import { DEFAULT_INSPECTOR_TAB, shellViewCommands } from "../shell";
 import { canvasViewCommands } from "../canvas/canvas-utils";
+import { diffCommands } from "../canvas/diff-toolbar";
 import { selectionCommands } from "../canvas/canvas-render";
 import { inspectorCommands } from "../panels/properties-panel";
 import { dataExplorerCommands } from "../panels/data-explorer";
 import { seoCommands } from "../panels/seo-modal";
 import { a11yCommands } from "../services/a11y-report";
+import { popoverCommands } from "../services/popover-report";
 import { liveElementCommands } from "../editor/context-menu";
 import { signalsCommands } from "../panels/signals-panel";
 import { formulaEditorCommands } from "../panels/formula-workspace";
 import { styleCommands } from "../panels/style-panel";
 import { gridCommands } from "../grid/grid-open";
+import { extensionCommands } from "../settings/extension-commands";
 import { settingsCommands } from "../settings/settings-document";
 import { collabCommands } from "../collab/collab-commands";
 import { assistantCommands } from "../panels/ai-panel";
@@ -119,12 +122,16 @@ export function appCommandSet(): AnyCommand[] {
       getCanvasMode: () => "design",
       renderPane: NO_OP,
       setCanvasMode: NO_OP,
+      setOpenPopover: NO_OP,
+      setOpenDialog: NO_OP,
       setResolvingOpen: NO_OP,
     }),
+    ...diffCommands(),
     ...selectionCommands(),
     ...inspectorCommands(),
     ...seoCommands(),
     ...a11yCommands(),
+    ...popoverCommands(),
     // The element menu's eight verbs. Every one declares `menus: ["context/element", "palette"]`
     // And none reached the palette, because they were registered ONLY into the private registry
     // `editor/context-menu.ts` builds for its popover — a registry whose own docstring said it
@@ -136,6 +143,9 @@ export function appCommandSet(): AnyCommand[] {
     ...formulaEditorCommands(),
     ...gridCommands(),
     ...settingsCommands(),
+    // The three verbs over project.json `extensions[]` — palette-only, and projected here so the
+    // Level check, the chrome budget and the generated keyboard sheet all see them.
+    ...extensionCommands(),
     ...collabCommands(),
     ...assistantCommands(),
     ...preferencesCommands(),

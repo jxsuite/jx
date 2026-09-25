@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+X-Fixture-Error: Error: connection reset by peer
+
+data: {"id":"chatcmpl-AbC123Reset","object":"chat.completion.chunk","created":1727000021,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"role":"assistant","content":"Halfway"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123Reset","object":"chat.completion.chunk","created":1727000021,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_R","type":"function","function":{"name":"set_text","arguments":"{\"path\""}}]},"logprobs":null,"finish_reason":null}]}
+

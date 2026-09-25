@@ -4,12 +4,7 @@
  * template creation, centering, transform application, zoom indicator, and fit-to-screen.
  */
 
-import { html, nothing } from "lit-html";
 import type { CanvasPanel, JsonValue } from "../types";
-import { ref } from "lit-html/directives/ref.js";
-import { classMap } from "lit-html/directives/class-map.js";
-import { styleMap } from "lit-html/directives/style-map.js";
-import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import { renderOnly } from "../store";
 import {
@@ -22,14 +17,13 @@ import {
 } from "./canvas-surface";
 import type { CanvasSurface } from "./canvas-surface";
 import { activeTab, workspace } from "../workspace/workspace";
-import {
-  findCanvasElement,
-  getActivePanel,
-  panelMediaToActiveMedia,
-  panelOfSurface,
-} from "./canvas-helpers";
+import { panelMediaToActiveMedia, panelOfSurface } from "./canvas-helpers";
 import { rectOf } from "../utils/geometry";
+import { EDIT_WIDTH_MIN, clearEditWidth, setEditWidth } from "./edit-width";
+import { activeDocumentHasPopover, popoverPathFor } from "./popover-path";
+import { activeDocumentHasDialog, dialogPathFor } from "./dialog-path";
 import { getEffectiveLocales, getEffectiveMedia } from "../site-context";
+import type { JxPath } from "../state";
 import { dynamicRouteParams } from "../page-params";
 import {
   argsSchema,
@@ -42,7 +36,7 @@ import {
   stringArg,
   stringProperty,
 } from "../commands/command-args";
-import type { TemplateResult } from "lit-html";
+import type { CanvasStageHandle, CanvasStagePanelItem } from "../surfaces/canvas-stage";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
 import type { Tab } from "../tabs/tab";
@@ -113,21 +107,38 @@ function setZoomOf(surface: CanvasSurface, zoom: number): void {
 }
 
 /**
- * Create the DOM structure for a single canvas panel.
+ * One artboard: the record the geometry reads, and the item the stage document draws.
+ *
+ * The two used to be one thing — a `TemplateResult` whose `ref()` directives filled the record
+ * synchronously, which is why every call site could read `panel.canvas` on the next line. A
+ * document's mapped array reconciles on a microtask (deliberately: see `surfaces/canvas-stage.ts`),
+ * so the record is filled by {@link bindCanvasPanels} once that has settled instead.
+ */
+export interface CanvasPanelEntry {
+  /** The panel record: the pan/zoom geometry's handle on this board, and the iframe's. */
+  panel: CanvasPanel;
+  /** The same board as the stage document reads it — already formatted, all strings. */
+  item: CanvasStagePanelItem;
+}
+
+/**
+ * Describe a single artboard.
+ *
+ * The DOM fields start null and are wired by {@link bindCanvasPanels} after the stage has drawn;
+ * nothing may read them before that.
  *
  * @param {string | null} mediaName
  * @param {string | null} label
  * @param {boolean} fullWidth
  * @param {number | null} width
+ * @returns {CanvasPanelEntry}
  */
-export function canvasPanelTemplate(
+export function canvasPanelEntry(
   mediaName: string | null,
   label: string | null,
   fullWidth: boolean,
   width: number | null = null,
-): { tpl: TemplateResult; panel: CanvasPanel } {
-  // The DOM fields start null and are wired by the template's ref() directives,
-  // Which lit runs synchronously during render — before any consumer reads them.
+): CanvasPanelEntry {
   const panel = {
     _width: width || null,
     canvas: null,
@@ -138,60 +149,69 @@ export function canvasPanelTemplate(
     scrollContainer: null,
     viewport: null,
   } as unknown as CanvasPanel;
-  const tpl = html`
-    <div
-      class=${classMap({ "canvas-panel": true, "full-width": fullWidth })}
-      data-media=${ifDefined(mediaName !== null ? mediaName : undefined)}
-      ${ref((el) => {
-        if (el) {
-          panel.element = el as HTMLElement;
-        }
-      })}
-    >
-      ${
-        label
-          ? html`
-              <div
-                class="canvas-panel-header"
-                @click=${() => {
-                  // The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the
-                  // Parent-side twin of the iframe's `hit` message, resolved the same way.
-                  // `updateUi` writes to `activeTab`, which is the FOCUSED pane's tab, so clicking
-                  // A header in an unfocused pane set another document's breakpoint and the Style
-                  // Panel then edited a compound block the person never opened.
-                  const tab = tabOfMountedPanel(panel);
-                  if (tab) {
-                    tab.session.ui.activeMedia = panelMediaToActiveMedia(mediaName);
-                  }
-                }}
-              >
-                ${label}
-              </div>
-            `
-          : nothing
-      }
-      <div
-        class="canvas-panel-viewport"
-        style=${styleMap({ width: width && !fullWidth ? `${width}px` : "" })}
-        ${ref((el) => {
-          if (el) {
-            panel.viewport = el as HTMLElement;
-          }
-        })}
-      >
-        <div
-          class="canvas-panel-canvas"
-          style=${styleMap({ width: width ? `${width}px` : "" })}
-          ${ref((el) => {
-            if (el) {
-              panel.canvas = el as HTMLElement;
-            }
-          })}
-        ></div>
-      </div>
-    </div>
-  `;
-  return { panel, tpl };
+  /* The viewport takes the declared width, the canvas takes it too — but a FULL-WIDTH board's
+     viewport does not, because "full width" means "as wide as the box you are in". Carried as two
+     custom properties rather than as `width:` so `applyEditZoom`'s inline write on the canvas still
+     wins by construction, which is the one thing the lit shell needed a comment to guarantee. */
+  const declarations = [];
+  if (width && !fullWidth) {
+    declarations.push(`--panel-viewport-w:${width}px`);
+  }
+  if (width) {
+    declarations.push(`--panel-canvas-w:${width}px`);
+  }
+  return {
+    item: {
+      fullWidth,
+      header: label ? "shown" : "hidden",
+      key: mediaName ?? "",
+      label: label ?? "",
+      mediaAttr: mediaName,
+      widthVars: declarations.join(";"),
+    },
+    panel,
+  };
+}
+
+/**
+ * Fill each entry's record from the nodes the stage drew.
+ *
+ * Every render builds fresh records — they are cheap, and the alternative is a cache keyed on
+ * something that changes with the document — while the NODES survive a repaint, because a keyed row
+ * that is reused is never re-announced. So this reads the stage's own map rather than a callback
+ * that fires once per node's lifetime.
+ *
+ * @param {CanvasPanelEntry[]} entries
+ * @param {CanvasStageHandle} stage
+ */
+export function bindCanvasPanels(entries: CanvasPanelEntry[], stage: CanvasStageHandle): void {
+  for (const { item, panel } of entries) {
+    panel.element = stage.panelNode(item.key, "panel") as HTMLElement;
+    panel.viewport = stage.panelNode(item.key, "panel-viewport") as HTMLElement;
+    panel.canvas = stage.panelNode(item.key, "panel-canvas") as HTMLElement;
+  }
+}
+
+/**
+ * A breakpoint header was clicked: make that artboard's breakpoint this pane's.
+ *
+ * The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the parent-side twin
+ * of the iframe's `hit` message, resolved the same way. `updateUi` writes to `activeTab`, which is
+ * the FOCUSED pane's tab, so clicking a header in an unfocused pane set another document's
+ * breakpoint and the Style panel then edited a compound block the person never opened.
+ *
+ * @param {CanvasPanelEntry[]} entries
+ * @param {string} key
+ */
+export function activateCanvasPanel(entries: CanvasPanelEntry[], key: string): void {
+  const entry = entries.find((candidate) => candidate.item.key === key);
+  if (!entry) {
+    return;
+  }
+  const tab = tabOfMountedPanel(entry.panel);
+  if (tab) {
+    tab.session.ui.activeMedia = panelMediaToActiveMedia(entry.item.mediaAttr);
+  }
 }
 
 /*
@@ -313,7 +333,7 @@ export function applyEditZoom(surface: CanvasSurface = activeCanvasSurface()) {
     }
     panel.viewport.style.height = "";
   } else {
-    const column = surface.wrap.querySelector<HTMLElement>(".content-edit-column");
+    const column = surface.wrap.querySelector<HTMLElement>('[part="edit-column"]');
     if (!column) {
       return;
     }
@@ -489,11 +509,18 @@ export const DEFAULT_FIT: FitMode = "page";
 export const FIT_WORDS: readonly string[] = ["width", "page", "none"];
 
 /**
- * Coerce a `canvas.setFit` argument, refusing anything that is neither a named fit nor a scale.
+ * Read a `canvas.setFit` argument as a {@link FitMode}, refusing anything that is neither a named
+ * fit nor a scale.
  *
  * Written here rather than in `commands/command-args.ts` because the value space is this module's:
  * {@link FitMode} is declared three lines up, and a second copy of "which words are fits" in the
  * shared helpers is exactly the drift the registry projection exists to prevent.
+ *
+ * Through `registry.run` the record's `oneOf` schema is the validator, and it refuses FIRST: a
+ * number out of range reads `boundedNumberArg`'s range sentence and a string that is not a fit word
+ * reads `enumArg`'s `declared:` list, so the sentence below is never what a palette, a shot or the
+ * assistant sees. It stays as the typed read the body needs (`args.fit` is `unknown`) and as the
+ * refusal for a caller that reaches the body directly.
  */
 function fitArg(commandId: string, args: Record<string, unknown>, key: string): FitMode {
   const value = args[key];
@@ -705,15 +732,6 @@ function revealBy(surface: CanvasSurface, offsetY: number, smooth: boolean): voi
 }
 
 /**
- * Smoothly pan/scroll the canvas vertically to center the given DOM element.
- *
- * @param {HTMLElement} el
- */
-function _panToEl(surface: CanvasSurface, el: HTMLElement) {
-  revealBy(surface, centeringOffset(surface, rectOf(el)), true);
-}
-
-/**
  * Centre a PARENT-VIEWPORT rect in the pane — for callers whose target lives inside an iframe (no
  * parent DOM element to measure; the host converts the measured iframe rect and passes it here).
  *
@@ -744,24 +762,6 @@ function animatePanBy(surface: CanvasSurface, offsetY: number) {
     }
   };
   requestAnimationFrame(step);
-}
-
-/**
- * Pan the canvas vertically so the element at `path` is centered in the viewport.
- *
- * @param {(string | number)[]} path
- */
-export function panToElement(path: (string | number)[]) {
-  const surface = activeCanvasSurface();
-  const panel = getActivePanel();
-  if (!panel?.canvas) {
-    return;
-  }
-  const el = findCanvasElement(path, panel.canvas);
-  if (!el) {
-    return;
-  }
-  _panToEl(surface, el);
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -897,6 +897,7 @@ export function setCanvasView<T extends ViewableTab>(
 }
 
 /** What the canvas view verbs need that this module does not own. */
+
 export interface CanvasCommandDeps {
   /** The effective mode, `ui.preview` already composed in — `studio.ts`'s `getCanvasMode`. */
   getCanvasMode: () => string;
@@ -913,6 +914,15 @@ export interface CanvasCommandDeps {
    * side pane's tab and repainted the primary, leaving the stage it changed showing the old width.
    */
   renderPane: (paneId: string) => void;
+  /**
+   * Write a tab's open popover and tell its frames — `canvas/popover-state.ts`'s `setOpenPopover`.
+   *
+   * Injected for the same reason `renderPane` is: that module imports `iframe-host`, which imports
+   * this one, so reaching for it directly would close a cycle.
+   */
+  setOpenPopover: (tab: Tab, path: JxPath | null) => void;
+  /** The dialog twin: `dialog-state.ts`'s single writer. */
+  setOpenDialog: (tab: Tab, path: JxPath | null) => void;
 }
 
 /** A document is open in a pane — every verb here writes that pane's own view state. */
@@ -993,8 +1003,13 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
    * resolutions disagree exactly when it matters.
    */
   function repaint(args: CommandArgValues): void {
+    deps.renderPane(paneOfArgs(args));
+  }
+
+  /** The pane a rendering-context verb addresses, named or focused. {@link repaint}'s own rule. */
+  function paneOfArgs(args: CommandArgValues): string {
     const { pane } = args as { pane?: unknown };
-    deps.renderPane(typeof pane === "string" ? pane : workspace.activePaneId);
+    return typeof pane === "string" ? pane : workspace.activePaneId;
   }
 
   return [
@@ -1009,11 +1024,34 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       group: "3_canvas",
       requires: "an open document",
       when: documentOpen,
+      /*
+       * Projected, and it was deleted once under §12.4's first rule (chrome). The rule is about a
+       * verb whose WHOLE effect is what the person is looking at, and this one's is not: the tree
+       * tools are gated on `editor.kind`, which is derived from the mode (`editorKindForMode`), so
+       * a document the person left in Code — or the model itself moved — refuses every tree write
+       * with "requires an open document whose element tree the canvas is editing", and without this
+       * verb the model had no way back to a state it can read. `run` acts on the active tab and
+       * the model reads the result: `after.editor.kind` is the same fact the gate reads.
+       */
       aiTool: {
         description:
-          "Switch the active pane's canvas to a mode: edit, design, preview, source, stylebook, " +
-          "grid or git-diff. Fails when the open document does not support that mode.",
+          "Switch the active document's editor mode. edit and design put its element tree on " +
+          "the canvas, where the document tools work; preview renders it as a visitor sees it; " +
+          "source shows the JSON; stylebook, grid and git-diff open other editors. Use it to " +
+          "return a document to edit or design when the tree tools are refused.",
         name: "set_canvas_mode",
+        /* `after.editor.kind` rather than the tab's own field: it is the gate's read (`treeEditable`
+           in `document-assistant.ts` is `editor.kind === "canvas"`), so the sentence and the gate
+           cannot disagree. The mode named is the one requested — `run` resolved, so it is the mode
+           the tab is in. */
+        report: ({ after, args }) => {
+          const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
+          const reach =
+            after.editor.kind === "canvas"
+              ? "the document tools address its element tree"
+              : "the tree-editing tools are unavailable until it returns to edit or design";
+          return `The active document is in ${mode} mode; ${reach}.`;
+        },
       },
       run: (_commandCtx, args) => {
         const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
@@ -1118,6 +1156,59 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       },
       title: "Set Edit Zoom",
     },
+    {
+      args: {
+        additionalProperties: false,
+        properties: {
+          ...paneArg,
+          width: {
+            description:
+              "How wide the Edit column should render, in CSS pixels, or null to go back to the " +
+              "chosen breakpoint's own width.",
+            type: ["number", "null"],
+          },
+        },
+        required: ["width"],
+        type: "object",
+      },
+      category: "View",
+      id: "canvas.setEditWidth",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "a document in edit mode",
+      when: documentOpen,
+      enablement: () => deps.getCanvasMode() === "edit",
+      /*
+       * The addressable form of the drag (`canvas/edit-width-drag.ts`).
+       *
+       * The gesture does NOT come through here — it writes the store directly, once per pointermove,
+       * because this verb ends in `repaint`, and a full canvas pass per move would rebuild the
+       * iframe and break the handle's own pointer capture along with it. That is the same division
+       * `canvas.setEditZoom` already has with `requestEditZoom`: the command is the name, the
+       * gesture is the hot path.
+       *
+       * A width WIDER than the pane is not refused. The column is `width: 100%` under a `max-width`,
+       * so it simply renders at the pane's width — which is the same clamp the drag applies, arrived
+       * at by CSS instead of by arithmetic. Refusing would make the verb depend on the window size.
+       */
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setEditWidth", args);
+        const { width } = args as { width?: unknown };
+        if (width === null) {
+          clearEditWidth(paneOfArgs(args));
+          repaint(args);
+          return;
+        }
+        setEditWidth(
+          paneOfArgs(args),
+          tab,
+          boundedNumberArg("canvas.setEditWidth", args, "width", EDIT_WIDTH_MIN, 10_000),
+        );
+        repaint(args);
+      },
+      title: "Set Edit Width",
+    },
     /*
      * ── The rendering context (§4.2's control ③) ──────────────────────────────────────────────
      *
@@ -1181,10 +1272,13 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Breakpoint",
     },
     {
-      args: argsSchema({
-        ...paneArg,
-        scheme: enumProperty(COLOR_SCHEMES, "Which color scheme the canvas renders in."),
-      }),
+      args: argsSchema(
+        {
+          ...paneArg,
+          scheme: enumProperty(COLOR_SCHEMES, "Which color scheme the canvas renders in."),
+        },
+        ["scheme"],
+      ),
       category: "View",
       id: "canvas.setColorScheme",
       level: "document",
@@ -1257,10 +1351,13 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Rendering Language",
     },
     {
-      args: argsSchema({
-        ...paneArg,
-        visible: booleanProperty("True to draw the page's layout elements, false to hide them."),
-      }),
+      args: argsSchema(
+        {
+          ...paneArg,
+          visible: booleanProperty("True to draw the page's layout elements, false to hide them."),
+        },
+        ["visible"],
+      ),
       category: "View",
       id: "canvas.setLayoutVisible",
       level: "document",
@@ -1274,6 +1371,125 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         repaint(args);
       },
       title: "Show Layout Elements",
+    },
+    {
+      /**
+       * Draw a popover open on the canvas so it can be selected, edited and styled.
+       *
+       * ONE record covers open, close and switch. `open` defaults to true, and `open: false` with
+       * no path closes whatever is open — because a `toggle` cannot say which state it ends in,
+       * which `scripts/check-shot-contract.ts` rejects outright (`/\.toggle[A-Z]/`) and
+       * `services/automation.ts` throws on. A documentation screenshot of an open popover is only
+       * possible through an idempotent setter.
+       *
+       * A VIEW state: `undo: "none"`, because it writes `session.ui` and never the document.
+       */
+      args: argsSchema(
+        {
+          ...paneArg,
+          open: booleanProperty("True to draw the popover open, false to close it."),
+          path: {
+            description:
+              "Document path of the popover. Defaults to the popover the selection is in or at.",
+            items: { type: ["string", "number"] },
+            type: "array",
+          },
+        },
+        /* Nothing is required. `argsSchema`'s default requires EVERY key, and this record used to
+           take it: `pane`, `open` and `path` all read as required while `run` defaults each — the
+           focused pane, `true`, the popover at the selection. `registry.run` now coerces against
+           the schema before `run`, so the declaration has to say what the implementation does. */
+        [],
+      ),
+      category: "View",
+      enablement: () => activeDocumentHasPopover(),
+      group: "3_canvas",
+      id: "canvas.setPopoverOpen",
+      level: "document",
+      menus: ["palette"],
+      requires: "a popover in the open document",
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setPopoverOpen", args);
+        const raw = (args ?? {}) as { open?: unknown; path?: JxPath };
+        const open =
+          raw.open === undefined ? true : booleanArg("canvas.setPopoverOpen", args, "open");
+        if (!open && raw.path === undefined) {
+          deps.setOpenPopover(tab, null);
+          return;
+        }
+        const path = popoverPathFor(tab, raw.path);
+        /* REFUSES a path that is not a popover rather than opening nothing — the rule
+           `canvas.setBreakpoint` applies to a breakpoint key. A <dialog> is refused with it: its UA
+           rules key off `open`, not `popover`, so de-popovering one falls back to a different rule
+           with a different name and the canvas would draw it wrong. */
+        if (path === null) {
+          throw new RangeError(
+            'command "canvas.setPopoverOpen" argument "path": names no popover in this document — ' +
+              "a popover is an element with a `popover` attribute, and <dialog> is not one",
+          );
+        }
+        deps.setOpenPopover(tab, open ? path : null);
+      },
+      title: "Show Popover",
+      when: documentOpen,
+    },
+    {
+      /**
+       * Draw a `<dialog>` open on the canvas so it can be selected, edited and styled — the dialog
+       * twin of `canvas.setDialogOpen`, with the same one-record, setter-only shape and for the
+       * same reasons.
+       *
+       * ONE record covers open, close and switch. `open` defaults to true, and `open: false` with
+       * no path closes whatever is open — because a `toggle` cannot say which state it ends in,
+       * which `scripts/check-shot-contract.ts` rejects outright (`/\.toggle[A-Z]/`) and
+       * `services/automation.ts` throws on. A documentation screenshot of an open popover is only
+       * possible through an idempotent setter.
+       *
+       * A VIEW state: `undo: "none"`, because it writes `session.ui` and never the document.
+       */
+      args: argsSchema(
+        {
+          ...paneArg,
+          open: booleanProperty("True to draw the dialog open, false to close it."),
+          path: {
+            description:
+              "Document path of the dialog. Defaults to the dialog the selection is in or at.",
+            items: { type: ["string", "number"] },
+            type: "array",
+          },
+        },
+        // Nothing is required, for the reason its popover twin gives.
+        [],
+      ),
+      category: "View",
+      enablement: () => activeDocumentHasDialog(),
+      group: "3_canvas",
+      id: "canvas.setDialogOpen",
+      level: "document",
+      menus: ["palette"],
+      requires: "a dialog in the open document",
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setDialogOpen", args);
+        const raw = (args ?? {}) as { open?: unknown; path?: JxPath };
+        const open =
+          raw.open === undefined ? true : booleanArg("canvas.setDialogOpen", args, "open");
+        if (!open && raw.path === undefined) {
+          deps.setOpenDialog(tab, null);
+          return;
+        }
+        const path = dialogPathFor(tab, raw.path);
+        /* REFUSES a path that is not a dialog, for the same reason its twin refuses a non-popover:
+           the canvas would draw it under the wrong rule and with the wrong name. */
+        if (path === null) {
+          throw new RangeError(
+            'command "canvas.setDialogOpen" argument "path": names no dialog in this document — ' +
+              "a dialog is a <dialog> element, and a popover is not one",
+          );
+        }
+        deps.setOpenDialog(tab, open ? path : null);
+      },
+      title: "Show Dialog",
+      when: documentOpen,
     },
     {
       args: {
@@ -1440,13 +1656,17 @@ export function registerCanvasViewCommands(
 export function updateActivePanelHeaders(surface: CanvasSurface = activeCanvasSurface()) {
   const activeMedia = activeMediaOfPane(surface.paneId);
   for (const p of surface.panels) {
-    const header = p.element?.querySelector(".canvas-panel-header");
+    const header = p.element?.querySelector('[part="panel-header"]');
     if (header) {
       const isActive =
         (activeMedia === null && p.mediaName === "base") ||
         (activeMedia === null && p.mediaName === null) ||
         activeMedia === p.mediaName;
-      header.classList.toggle("active", isActive);
+      /* An ATTRIBUTE the document does not bind, written from outside it. Which board is current is
+         a fact about the pane's session that changes without the stage being rebuilt — the same
+         reason the pan transform is written rather than bound — so a reconcile can never disagree
+         with this, because a reconcile has no opinion about it. */
+      header.toggleAttribute("data-active", isActive);
     }
   }
 }

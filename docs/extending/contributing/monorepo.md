@@ -3,6 +3,7 @@ title: "Working in the monorepo"
 description: "Repo layout, running Studio from source, tests, and the conventions the Jx monorepo enforces in CI."
 code:
   - scripts/ci/affected.ts
+  - scripts/ci/approve-held-runs.ts
   - scripts/check-schema-freshness.ts
   - scripts/check-electrobun-vendor.ts
 ---
@@ -50,6 +51,8 @@ Pushes to `main`, the nightly cron, and manual dispatch are never gated: they al
 
 `lint`, both typechecks and all the docs and schema gates run **unconditionally**, in one `checks` job. Each is a few seconds and a fresh CI job costs longer than that to start, so gating them would spend more time than it saves.
 
+**Interaction-performance gate**: `.github/workflows/studio-perf.yml` runs `bun run perf:studio` headless against the tracked `scripts/perf/baseline.json`: nightly on `main`, and on PRs touching Studio, the UI kit or the runtime. A metric that grows by more than 20 % and 25 ms against the baseline turns the job red, with the per-scenario delta table as the summary; the failure names the scenario. A baseline your own change legitimately beat is re-captured (`bun run perf:studio --reps 3 --write-baseline 1`) and lands in the same PR, where the windows underneath both baselines are part of the review.
+
 :::doc-note
 `ci` is the aggregate job. It passes when every other job either succeeded or was skipped, and fails if any failed or was cancelled. A job your diff never reached leaves the run green.
 :::
@@ -62,6 +65,10 @@ Both have a CI lane that **regenerates and pushes the result to your branch** ra
 
 - **Screenshots**: `.github/workflows/screenshots.yml` re-captures and comments with before/after thumbnails and the docs pages each changed image appears on.
 - **Schemas**: `.github/workflows/schemas.yml` runs the generators and comments with the JSON Pointers that moved, naming `+ /$defs/ClassMethodDef/properties/role/enum/mount` instead of leaving 500 KB of diff to read.
+
+:::doc-note
+A lane's commit is authored by `github-actions[bot]`, and the repository holds every workflow run on a bot-authored commit until it is approved, `ci` included. The screenshots, schemas and spec-release lanes approve the runs their own push queues (`scripts/ci/approve-held-runs.ts`), so the pull request keeps reporting. If it reads BLOCKED with nothing red after a re-capture, look at the lane's comment: when the approval was refused, the comment names the held runs and the one-line `gh api` command that releases each of them.
+:::
 
 Locally the same two commands do the same work:
 
@@ -77,6 +84,15 @@ Never hand-edit a committed schema or a committed screenshot. The next run of ei
 Three things make a schema go stale, and only one of them is forgetting to run the generator. The commonest is a **dependency bump**: the core schema injects web-standards data read at generation time from `@webref/css`, `@webref/elements` and `@webref/idl`, so bumping one rewrites the committed core by construction. That is why this lane, unlike the screenshot one, runs on Dependabot's branches too. The third is a **merge race**: two branches can each be green alone and stale together when one moves the core and the other regenerates a project root before it lands. Git merges that without a conflict and no per-branch check can see it, so the lane also watches `main` and opens a pull request when it finds drift there.
 
 `bun run schema:verify` still blocks in CI. The lane cannot push to a fork, and a required check is what keeps a stale schema off `main` when it cannot.
+
+A third committed build output follows the same shape: `packages/catalog/catalog.json`, the list of first-party extensions Studio offers, generated from every `extensions/*/jx-extension.json` and the class descriptors it names.
+
+```bash
+bun run catalog:verify  # is the catalogue what the extensions tree produces?
+bun run catalog:sync    # regenerate it
+```
+
+It is its own gate rather than part of `schema:verify`, which derives its file set from tracked `*schema.json` and would never see this artifact. It also refuses to build at all when a package's `exports` map omits `./jx-extension.json`, or when the first-party docs page does not document an extension: both are conditions that would ship a catalogue entry nobody could act on.
 
 ## The Electrobun SDK is a submodule, not a dependency
 
@@ -102,11 +118,12 @@ The checkout is sparse, keeping only the five directories the SDK's entry points
 
 Versions are release-please's job. Every publishable workspace is a component in `release-please-config.json` with a matching `.release-please-manifest.json` entry, and both lists are **derived-checked** by `scripts/release-config.test.ts`. A package that is publishable but unlisted is never versioned, tagged or published, and nothing else in the pipeline can notice. Two extensions sat in exactly that state before the check existed.
 
+A new package enters the manifest at `0.0.0`, which release-please reads as "no release yet", and names its first version with `initial-version` in its config entry (`0.1.0` for a pre-1.0 package; release-please's default is `1.0.0`). The integrity gate (`bun run release:integrity`) skips a `0.0.0` entry for the same reason: it claims nothing until the first release pull request lands. Seeding the manifest with a version that was never released is the other way round, and it is how `packages/catalog` came to claim a `0.1.0` no release ever shipped.
+
 Two branches:
 
 - **`main`** is the trunk. Every PR targets it, and it is the tip of development.
-- **`release`** holds only released code. CI fast-forwards it to each `desktop-v*` release commit,
-  but only after that release's installers are attached and `nix build` succeeds at the tag. It is what a NixOS user pins (`nix run github:jxsuite/jx/release`), so it must never point at a tree that does not build. Nothing pushes to it by hand.
+- **`release`** holds only released code. CI fast-forwards it to each `desktop-v*` release commit, but only after that release's installers are attached and `nix build` succeeds at the tag. It is what a NixOS user pins (`nix run github:jxsuite/jx/release`), so it must never point at a tree that does not build. Nothing pushes to it by hand.
 
   The release builds the flake on **two** architectures. Only the x86_64 leg gates the branch; the aarch64 leg is advisory, because it had never been built before and a failure there must not strand the users who do have a working architecture. Promoting it is a one-line change to `advance-release-branch`'s `needs`, and it should happen once arm has been green for a few releases.
 
@@ -118,10 +135,8 @@ Two branches:
 
 Two places ship `@jxsuite/*` version ranges to people outside this repo, and neither is a workspace, so `bun install` never resolves them:
 
-- `packages/starters/sites/*/package.json`: `@jxsuite/starters` publishes `sites/`, so these are the
-  ranges a scaffolded project installs, and the ones Studio installs when it iterates a starter.
-- `packages/create/template-versions.json`: the ranges `create` stamps into every project it
-  generates, including starter clones, whose `package.json` it rebuilds from scratch.
+- `packages/starters/sites/*/package.json`: `@jxsuite/starters` publishes `sites/`, so these are the ranges a scaffolded project installs, and the ones Studio installs when it iterates a starter.
+- `packages/create/template-versions.json`: the ranges `create` stamps into every project it generates, including starter clones, whose `package.json` it rebuilds from scratch.
 
 Both are **generated**. `bun run templates:check` blocks in CI; `bun run templates:sync` is the fixer. Never hand-edit `template-versions.json`.
 

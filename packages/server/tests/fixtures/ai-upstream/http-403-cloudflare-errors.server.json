@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "code": "403",
+      "message": "Authentication error",
+      "problem": {
+        "status": 403,
+        "title": "The request was refused",
+        "type": "https://jxsuite.com/problems/forbidden",
+        "detail": "Authentication error",
+        "error": "Authentication error"
+      },
+      "type": "error"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

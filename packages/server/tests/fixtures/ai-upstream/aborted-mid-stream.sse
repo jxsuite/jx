@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+X-Fixture-Error: AbortError: The operation was aborted.
+
+data: {"id":"chatcmpl-AbC123Abort","object":"chat.completion.chunk","created":1727000022,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"role":"assistant","content":"Interrupted"},"logprobs":null,"finish_reason":null}]}
+

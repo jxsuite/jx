@@ -1,0 +1,131 @@
+{
+  "scenario": "counter-button",
+  "task": "counter-button",
+  "what": "reasoning frame plus two parallel tool calls, then the button in a second round",
+  "modelRequests": ["user", "user assistant tool tool", "user assistant tool tool assistant tool"],
+  "rounds": 3,
+  "toolCallCount": 3,
+  "toolCalls": [
+    {
+      "id": "cnt-1",
+      "name": "add_state",
+      "args": {
+        "key": "increment",
+        "value": {
+          "$prototype": "Function",
+          "body": "state.count++"
+        }
+      }
+    },
+    {
+      "id": "cnt-2",
+      "name": "add_child",
+      "args": {
+        "parentPath": [],
+        "index": 0,
+        "node": {
+          "tagName": "p",
+          "textContent": "Count: ${state.count}"
+        }
+      }
+    },
+    {
+      "id": "cnt-3",
+      "name": "add_child",
+      "args": {
+        "parentPath": [],
+        "index": 1,
+        "node": {
+          "tagName": "button",
+          "textContent": "Increment",
+          "onclick": {
+            "$ref": "#/state/increment"
+          }
+        }
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "counter-widget",
+    "state": {
+      "count": {
+        "type": "integer",
+        "default": 0
+      },
+      "increment": {
+        "$prototype": "Function",
+        "body": "state.count++"
+      }
+    },
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Count: ${state.count}"
+      },
+      {
+        "tagName": "button",
+        "textContent": "Increment",
+        "onclick": {
+          "$ref": "#/state/increment"
+        }
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Add a button that increments a counter, and show the current count above it. Wire up the reactive state."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "reasoning": "Need a handler, a display, and a button.",
+      "toolCalls": ["add_state", "add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cnt-1",
+      "result": {
+        "success": true,
+        "summary": "Added state \"increment\"."
+      }
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cnt-2",
+      "result": {
+        "success": true,
+        "summary": "Inserted node at [\"children\",0]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "cnt-3",
+      "result": {
+        "success": true,
+        "summary": "Inserted node at [\"children\",1]."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "The button now increments state.count, shown above it."
+    }
+  ]
+}

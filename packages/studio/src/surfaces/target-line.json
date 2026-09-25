@@ -1,0 +1,419 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioTargetLine",
+  "$description": "The Style tab's edit target, as one sentence (plan §6.1): element · breakpoint · scheme variant · selector, then the chip that states how wide the blast radius is. Every word of the sentence is a control, because a sentence you cannot act on is a caption and the panel already had one of those. The breakpoint and scheme segments ROUTE to where those axes are defined rather than offering a third list to pick from — the Style tab owns the selector axis and nothing else — so the selector is the one segment with a menu, and that menu is the kit's. The project-scope warning band is not decoration: entering Stylebook converts every edit from `this element` to `every element of this tag`, and the band states that before the first keystroke.",
+  "tagName": "div",
+  "attributes": {
+    "part": "target"
+  },
+  "style": {
+    "$description": "The `.target-line` / `.tl-*` rules the line used to take from `styles/inspector.css`, brought here and re-valued onto the kit's own layer. Every segment is a button with the chrome taken off: the row must read as a sentence, not as a toolbar, which is exactly what the three widgets it replaced failed to do.",
+    "display": "block",
+    "fontSize": "var(--jx-text-xs)",
+    "& [part=\"line\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "5px var(--jx-space-3)",
+      "borderBottom": "1px solid var(--jx-border)",
+      "lineHeight": "1.4"
+    },
+    "& [part=\"glyph\"]": {
+      "flexShrink": "0",
+      "color": "var(--jx-accent)"
+    },
+    "& [part=\"segments\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "1px",
+      "minWidth": "0",
+      "flex": "1"
+    },
+    "& [part=\"separator\"]": {
+      "color": "var(--jx-fg-dim)",
+      "opacity": "0.6"
+    },
+    "& [part=\"segment\"]": {
+      "padding": "1px 3px",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "none",
+      "color": "var(--jx-fg)",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-mono)"
+    },
+    "& button[part=\"segment\"]": {
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-accent)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      }
+    },
+    "& [data-seg=\"element\"]": {
+      "color": "var(--jx-tag)"
+    },
+    "& [data-seg=\"media\"], & [data-seg=\"scheme\"]": {
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [data-seg=\"selector\"]": {
+      "color": "var(--jx-signal)"
+    },
+    "& [part=\"scope\"]": {
+      "$description": "Element scope is ambient and reads as ambient; the two tag-wide scopes are the ones a reader has to notice BEFORE typing, so they carry weight.",
+      "flexShrink": "0",
+      "padding": "1px var(--jx-space-3)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "999px",
+      "color": "var(--jx-fg-dim)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"scope\"][data-scope=\"document\"]": {
+      "borderColor": "var(--jx-accent-50)",
+      "color": "var(--jx-accent)"
+    },
+    "& [part=\"scope\"][data-scope=\"project\"]": {
+      "borderColor": "var(--jx-warning)",
+      "color": "var(--jx-warning)"
+    },
+    "& [part=\"warning\"]": {
+      "padding": "var(--jx-space-3)",
+      "borderBottom": "1px solid var(--jx-border)",
+      "borderLeft": "2px solid var(--jx-warning)",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [part=\"warning-text\"]": {
+      "margin": "0",
+      "color": "var(--jx-warning)"
+    },
+    "& [part=\"warning-action\"]": {
+      "marginTop": "var(--jx-space-2)",
+      "padding": "0",
+      "border": "none",
+      "background": "none",
+      "color": "var(--jx-accent)",
+      "font": "inherit",
+      "cursor": "pointer",
+      "textDecoration": "underline",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      }
+    },
+    "& [part=\"affected\"]": {
+      "margin": "var(--jx-space-2) 0 0",
+      "padding": "0",
+      "maxHeight": "140px",
+      "overflowY": "auto",
+      "listStyle": "none"
+    },
+    "& [part=\"affected-row\"]": {
+      "display": "flex",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-4)",
+      "padding": "1px 0",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"affected-path\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--jx-font-mono)"
+    },
+    "& [part=\"affected-count\"]": {
+      "flexShrink": "0",
+      "fontFamily": "var(--jx-font-mono)"
+    },
+    "& [part=\"affected-empty\"]": {
+      "margin": "var(--jx-space-2) 0 0",
+      "color": "var(--jx-fg-dim)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "line",
+        "data-jx-region": "${state.region}"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "glyph",
+            "aria-hidden": "true"
+          },
+          "textContent": "⌖"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "segments"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/segments"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "span",
+                "attributes": {
+                  "part": "segment-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "separator-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/leading"
+                    },
+                    "cases": {
+                      "false": {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "separator",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "·"
+                      }
+                    }
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "control-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/control"
+                    },
+                    "cases": {
+                      "button": {
+                        "tagName": "button",
+                        "attributes": {
+                          "part": "segment",
+                          "type": "button",
+                          "data-seg": "${$map.item.key}",
+                          "title": "${$map.item.title}"
+                        },
+                        "textContent": "${$map.item.label}",
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/activate"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "readout": {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "segment",
+                          "data-seg": "${$map.item.key}",
+                          "title": "${$map.item.title}"
+                        },
+                        "textContent": "${$map.item.label}"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "separator",
+                "aria-hidden": "true"
+              },
+              "textContent": "·"
+            },
+            {
+              "tagName": "button",
+              "attributes": {
+                "part": "segment",
+                "type": "button",
+                "data-seg": "selector",
+                "aria-haspopup": "menu",
+                "title": "The state or nested rule these edits land in — click to choose another"
+              },
+              "textContent": "${state.selectorLabel} ⌄",
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openSelector"
+                    },
+                    "value": []
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "scope",
+            "data-scope": "${state.scopeKind}",
+            "title": "${state.scopeTitle}"
+          },
+          "textContent": "${state.scopeLabel}"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "warning-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/warn"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "warning",
+            "role": "status"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "warning-text"
+              },
+              "textContent": "${state.warningText}"
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "warning-action-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasToggle"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "warning-action",
+                    "type": "button",
+                    "aria-expanded": "${state.showAffected ? 'true' : 'false'}"
+                  },
+                  "textContent": "${state.toggleLabel}",
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/toggleAffected"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "affected-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/affectedState"
+              },
+              "cases": {
+                "list": {
+                  "tagName": "ul",
+                  "attributes": {
+                    "part": "affected"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/affectedFiles"
+                      },
+                      "key": {
+                        "$ref": "$map/item/path"
+                      },
+                      "map": {
+                        "tagName": "li",
+                        "attributes": {
+                          "part": "affected-row"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "affected-path"
+                            },
+                            "textContent": "${$map.item.path}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "affected-count"
+                            },
+                            "textContent": "${$map.item.count}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "empty": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "affected-empty"
+                  },
+                  "textContent": "No file list — the project could not be searched."
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

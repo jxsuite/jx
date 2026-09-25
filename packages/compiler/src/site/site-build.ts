@@ -21,7 +21,15 @@ import {
 import { createHash } from "node:crypto";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { isMappedArray, isRef } from "@jxsuite/schema/guards";
-import { isNpmSpecifier, npmAssetPath, sidecarAssetPath } from "@jxsuite/schema/asset-paths";
+import {
+  isNpmSpecifier,
+  npmAssetPath,
+  sidecarAssetPath,
+  siteAbsoluteUrl,
+  siteBasePath,
+  withBase,
+} from "@jxsuite/schema/asset-paths";
+import { rewriteHtmlBase } from "./base-path.ts";
 import {
   CLIENT_EXTERNALS,
   bundleEntry,
@@ -40,6 +48,7 @@ import {
 import {
   buildHeaderRules,
   contentTypeRules,
+  rebaseHeaderRules,
   writeHeaders,
   writeNoJekyll,
 } from "./headers-emitter.ts";
@@ -59,6 +68,7 @@ import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server
 import {
   buildComponentCSS,
   buildInitialScope,
+  buildInstanceScope,
   collectServerEntries,
   collectStyles,
   colorSchemePrePaintScript,
@@ -67,12 +77,14 @@ import {
   isComponentFullyStatic,
   isSingleExpression,
   isTemplateString,
+  liftPropsAttributes,
   preRenderComponentHtml,
   pureSchemeOf,
   renderStaticNode,
+  resolveHostStyle,
   resolveRefValue,
-  resolveStaticValue,
 } from "../shared.ts";
+import type { ComponentPrerenderContext } from "../shared.ts";
 import { resolvePrototypes } from "./prototype-resolver.ts";
 import { transformImageNodes } from "./image-transform.ts";
 import { collectCspSources, emptyCspSources } from "./csp.ts";
@@ -444,11 +456,24 @@ export async function buildSite(
           // The full drive path on Windows, so resolve() then wrote the sidecar back into the
           // Source tree instead of dist.
           const outName = f.tagName ? `${f.tagName}.js` : basename(f.path);
-          writeFileSync(resolve(componentOutDir, outName), f.content, "utf8");
-          if (f.tagName) {
+          /*
+           * Written and recorded ONCE per tag, in first-seen order. `compileElement` returns a
+           * component's `$elements` dependencies as extra files, so a dependency two parents name
+           * arrives here once per parent and once more for its own compile — and
+           * `injectComponentScripts` inlines a tag's stylesheet and loads its module once per
+           * record: three copies of `lcb-icon { display: inline-block }` in one head on a
+           * card → button → icon page (#330). The FIRST position is the one kept, because
+           * equal-specificity component rules cascade by source order and a later duplicate must
+           * not move a sheet that already landed. The write is skipped with the record: every
+           * arrival is the same file compiled with the same options (a fresh `visited` set each
+           * call), so the bytes are identical and a second write only inflates `fileCount`, which
+           * reports files produced rather than writes attempted.
+           */
+          if (!compiledComponentTags.includes(f.tagName)) {
+            writeFileSync(resolve(componentOutDir, outName), f.content, "utf8");
             compiledComponentTags.push(f.tagName);
+            fileCount += 1;
           }
-          fileCount += 1;
         }
 
         // Pre-render component HTML scaffold and CSS sidecar
@@ -519,6 +544,12 @@ export async function buildSite(
   // Sitemap is generated from the route table when a production `url` is configured
   // (absolute <loc> URLs require it) and not explicitly disabled via build.sitemap: false.
   const siteUrl = projectConfig.url;
+  /*
+   * The path the site is deployed under, read back off `url` (RFC 3986 §5 — see `base-path.ts`).
+   * `""` for a site at an origin root, which is every deployment Jx documents, so every use below
+   * is a no-op there rather than a branch.
+   */
+  const basePath = siteBasePath(siteUrl);
   const sitemapEnabled = Boolean(siteUrl) && projectConfig.build.sitemap !== false;
   const sitemapEntries: SitemapEntry[] = [];
 
@@ -714,7 +745,9 @@ export async function buildSite(
       // Determine output path
       const outPath = routeToOutputPath(route.urlPattern, outDir, trailingSlash);
       mkdirSync(dirname(outPath), { recursive: true });
-      writeFileSync(outPath, result.html, "utf8");
+      /* Last, after the scans above: they ask what this page REFERENCES, and the answer is a
+         build-output path, not a deployed URL. Re-rooting first would make every one of them miss. */
+      writeFileSync(outPath, rewriteHtmlBase(result.html, basePath), "utf8");
       fileCount += 1;
 
       // Record a sitemap entry for this concrete page (skip unexpanded dynamic routes and
@@ -735,7 +768,7 @@ export async function buildSite(
             typeof route.sourceMtime === "string" && route.sourceMtime !== ""
               ? route.sourceMtime
               : toRfc3339(statSync(route.sourcePath).mtime),
-          loc: new URL(route.urlPattern, siteUrl).href,
+          loc: siteAbsoluteUrl(route.urlPattern, siteUrl),
           ...(routeAlternates.length > 0 && { alternates: routeAlternates }),
         });
       }
@@ -835,7 +868,13 @@ export async function buildSite(
     const skipWorker = adapter === "cloudflare-pages" && deduped.size === 0 && mounts.length === 0;
     const workerSource = skipWorker
       ? null
-      : compileSiteServer([...deduped.values()], { adapter, connectors, i18n, mounts });
+      : compileSiteServer([...deduped.values()], {
+          adapter,
+          base: basePath,
+          connectors,
+          i18n,
+          mounts,
+        });
 
     if (workerSource) {
       // Bundle the worker self-contained for the adapter's runtime (compiler.md §12): mount
@@ -1014,6 +1053,7 @@ export async function buildSite(
     log("Generating redirects...");
     const compiledUrls = new Set(routes.map((r) => r.urlPattern));
     const redirects = generateRedirects(projectConfig.redirects, outDir, {
+      basePath,
       compiledUrls,
       trailingSlash: projectConfig.build.trailingSlash,
     });
@@ -1091,7 +1131,8 @@ export async function buildSite(
   {
     const sw = normalizeServiceWorker(projectConfig.serviceWorker);
     if (sw !== null) {
-      const output = sw === false ? tombstoneServiceWorker() : buildServiceWorker(sw, outDir);
+      const output =
+        sw === false ? tombstoneServiceWorker() : buildServiceWorker(sw, outDir, basePath);
       for (const warning of output.warnings) {
         console.warn(warning);
       }
@@ -1115,7 +1156,7 @@ export async function buildSite(
     );
     errors.push(...headerErrors);
     // Runs here, after every emitter, so it can see which of these files the build actually wrote.
-    const rules = [...securityRules, ...contentTypeRules(outDir)];
+    const rules = rebaseHeaderRules([...securityRules, ...contentTypeRules(outDir)], basePath);
     if (rules.length > 0) {
       log("Writing response headers...");
       fileCount += writeHeaders(outDir, rules);
@@ -1215,6 +1256,10 @@ async function compilePage(
   /** Registers a page's npm `$elements` set as one bundle and returns its URL. */
   registerElementBundle: (specifiers: string[]) => string,
 ) {
+  /* Derived rather than passed as a seventeenth parameter: it is a pure function of
+     `projectConfig.url`, which is already here, so the two cannot disagree. */
+  const basePath = siteBasePath(projectConfig.url);
+
   // Load the raw page document (.json natively, other formats via the registry)
   const pageDoc = await readPageDocument(route.sourcePath as string, formatRegistry);
 
@@ -1364,7 +1409,7 @@ async function compilePage(
   const swHead: JxHeadEntry[] =
     swConfig === null || swConfig === false
       ? []
-      : [{ tagName: "script", textContent: registrationScript(swConfig.scope ?? "/") }];
+      : [{ tagName: "script", textContent: registrationScript(swConfig.scope ?? "/", basePath) }];
 
   const resolvedSiteHead = [
     // The manifest link and theme colour are first-party and unconditional once declared, so they
@@ -1528,6 +1573,7 @@ function buildMountSpecs(
   if (activeMounts.length === 0) {
     return { connectors: [], mounts: [] };
   }
+  const base = siteBasePath(projectConfig.url);
 
   const sections: Record<string, unknown> = {};
   for (const contribution of registry.projectContributions()) {
@@ -1546,11 +1592,15 @@ function buildMountSpecs(
           `to generate a deployable worker`,
       );
     }
+    /* Both are request paths in the deployed worker: the route it registers, and the prefix the
+       mount strips to find its own sub-path. They must carry the same base or the handler would
+       answer a URL and then mis-read it. */
+    const mountBase = withBase(base, server.basePath);
     return {
-      basePath: server.basePath,
+      basePath: mountBase,
       className: (entry.classDef.title as string | undefined) ?? entry.name,
       module,
-      options: { basePath: server.basePath, sections },
+      options: { basePath: mountBase, sections },
       order: server.order ?? 100,
     };
   });
@@ -2007,27 +2057,23 @@ function expandComponents(
 
   const def = componentDefs.get(node.tagName as string);
   if (def) {
-    // JSON-authored instances pass props as literal `props.*` attribute keys (markdown directives
-    // Are normalized to $props by the parser's expandDotPaths, but JSON is parsed verbatim).
-    // Lift them into $props so the pre-render sees them, and strip them from attributes so they
-    // Don't leak into the emitted HTML. Values stay raw strings — no coercion, matching the
-    // Markdown path and the runtime's $props semantics. Explicit $props wins on key conflicts.
+    // Literal `props.*` attribute keys become $props (`liftPropsAttributes` says why) and leave the
+    // Attributes, so they do not reach the emitted HTML. Explicit $props wins on key conflicts.
     if (node.attributes) {
-      let lifted: NonNullable<JxElement["$props"]> | null = null;
-      for (const [key, value] of Object.entries(node.attributes)) {
-        if (key.startsWith("props.") && key.length > "props.".length) {
-          lifted ??= {};
-          // JxAttributeValue is JSON-representable (primitives or a $ref object), so the
-          // Narrowing to JsonValue is sound.
-          lifted[key.slice("props.".length)] = value as JsonValue;
-          delete node.attributes[key];
-        }
-      }
+      const { lifted, rest } = liftPropsAttributes(node.attributes);
       if (lifted) {
+        node.attributes = rest;
         node.$props = { ...lifted, ...node.$props };
       }
     }
 
+    /*
+     * Slotted children are rendered with NO component registry: this walk is bottom-up, so any
+     * instance among them was expanded a moment ago and now carries its markup as `innerHTML` and
+     * no `$props`. Expanding it again would render the definition's defaults over the props it
+     * was given. Instances written inside `def` itself are another matter — those are reached
+     * below, through `preRenderComponentHtml`, with `node` as the first frame of the path.
+     */
     const slotContent =
       Array.isArray(node.children) && node.children.length > 0
         ? node.children
@@ -2047,7 +2093,15 @@ function expandComponents(
      * render them twice.
      */
     const shadow = resolveShadowMode(def, defaults);
-    const innerHTML = preRenderComponentHtml(def, node.$props || null, shadow ? null : slotContent);
+    const props = node.$props || null;
+    // This instance is the first frame of the path, so a definition that names itself is reported
+    // At the first nesting rather than after the stack overflows.
+    const context: ComponentPrerenderContext = {
+      componentDefs,
+      defaults,
+      path: [{ key: JSON.stringify(props ?? {}), tag: node.tagName as string }],
+    };
+    const innerHTML = preRenderComponentHtml(def, props, shadow ? null : slotContent, context);
     const isStatic = isComponentFullyStatic(def);
 
     /*
@@ -2063,26 +2117,20 @@ function expandComponents(
       : innerHTML;
     delete node.children;
 
-    // Resolve template-string host styles with props (per-instance values like background-image)
-    if (def.style && node.$props) {
-      const stateDefs: Record<string, JxStateDefinition> = { ...def.state };
-      for (const [key, value] of Object.entries(node.$props)) {
-        stateDefs[key] =
-          key in stateDefs ? (value as JxStateDefinition) : (value as JxStateDefinition);
-      }
-      const scope = buildInitialScope(stateDefs, null);
-      const resolvedStyle: Record<string, unknown> = {};
-      for (const [prop, value] of Object.entries(def.style)) {
-        if (typeof value === "string" && isTemplateString(value)) {
-          const resolved = resolveStaticValue(value, scope);
-          if (resolved != null) {
-            resolvedStyle[prop] = resolved;
-          }
-        }
-      }
-      if (Object.keys(resolvedStyle).length > 0) {
-        node.style = { ...node.style, ...resolvedStyle } as JxStyle;
-      }
+    /*
+     * Resolve template-string host styles against the instance (per-instance values like
+     * background-image). The page's style pass gives the result a class rule; a nested instance
+     * gets the same values inline, from the same resolver (`renderComponentInstance` in shared.ts).
+     *
+     * Resolved whether or not the instance passes props: a template declaration is a reactive one
+     * and `pushStyleRules` drops it from the component stylesheet, so the value resolved here is
+     * the ONLY place it reaches a static page. This used to be guarded on `$props`, which left an
+     * instance that took the definition's defaults with no host style at all — no size, no mask —
+     * while the same instance one level down had them.
+     */
+    const resolvedStyle = resolveHostStyle(def.style, buildInstanceScope(def, props));
+    if (Object.keys(resolvedStyle).length > 0) {
+      node.style = { ...node.style, ...resolvedStyle } as JxStyle;
     }
 
     /*
@@ -2369,7 +2417,7 @@ function generateRedirects(
     string | { destination: string; status?: number } | { destination: string; rewrite: true }
   >,
   outDir: string,
-  opts: { compiledUrls?: Set<string>; trailingSlash?: string } = {},
+  opts: { compiledUrls?: Set<string>; trailingSlash?: string; basePath?: string } = {},
 ) {
   let files = 0;
   const errors: string[] = [];
@@ -2396,7 +2444,11 @@ function generateRedirects(
       continue;
     }
 
-    redirectLines.push(`${source} ${dest} ${status}`);
+    /* Both halves are site URLs, and the host matches the source against a REQUEST path — which
+       arrives under the base. A rule left at the old root would never fire, and one that did would
+       send the visitor out of the deployment. */
+    const rebased = opts.basePath ?? "";
+    redirectLines.push(`${withBase(rebased, source)} ${withBase(rebased, dest)} ${status}`);
 
     // A pattern source cannot be a file on disk, so it lives only in `_redirects`.
     if (source.includes(":") || source.includes("*")) {
@@ -2563,7 +2615,7 @@ function ensureRobotsSitemap(outDir: string, siteUrl: string) {
   if (!content.endsWith("\n")) {
     content += "\n";
   }
-  content += `\nSitemap: ${new URL("/sitemap.xml", siteUrl).href}\n`;
+  content += `\nSitemap: ${siteAbsoluteUrl("/sitemap.xml", siteUrl)}\n`;
   writeFileSync(robotsPath, content, "utf8");
   return existed ? 0 : 1;
 }

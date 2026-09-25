@@ -12,6 +12,7 @@
  * registration) on first use by source mode, the function editor, or the formula workspace.
  */
 import { errorMessage } from "@jxsuite/schema/parse";
+import { installModulePreloadBatcher } from "./services/module-preloads";
 import { getPanel } from "./panels/panel-registry";
 
 import {
@@ -27,6 +28,7 @@ import {
 
 import {
   PRIMARY_PANE,
+  activePane,
   activeTab,
   closeAllTabs,
   openTab,
@@ -53,10 +55,12 @@ import {
 
 import { isEditing } from "./editor/inline-edit";
 import { applyTransform, registerCanvasViewCommands } from "./canvas/canvas-utils";
+import { diffCommands } from "./canvas/diff-toolbar";
 import type { CanvasSurface } from "./canvas/canvas-surface";
 import {
   initCanvasRender,
   registerSelectionSetCommand,
+  redefineElementOnCanvases,
   renderCanvas,
   renderOverlays,
   scheduleCanvasRender,
@@ -89,13 +93,22 @@ import {
 import { runInsertZoneAction } from "./editor/insert-zone-action";
 import { canvasSlashHandler } from "./editor/canvas-slash-bridge";
 import { makeCanvasContextMenuHandler } from "./editor/canvas-context-menu";
-import { mountStatusbar, renderStatusbar } from "./panels/statusbar";
+import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { mountJumpBar } from "./panels/jump-bar";
-import { cellForPane } from "./panels/pane-grid";
+import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
+import { createLiveSurfaceSaver } from "./services/live-surfaces";
 import { beginActivity } from "./panels/activity-panel";
-import { exportFile, parseSourceForPath, saveFile } from "./files/file-ops";
+import {
+  exportFile,
+  parseCollabSource,
+  parseSourceForPath,
+  saveFile,
+  setDocumentSavedListener,
+} from "./files/file-ops";
 import { serializeDocument } from "./files/serialize-document";
+import { parseJsonDocument } from "@jxsuite/schema/json-layout";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import {
   formatForPath,
   loadFormats,
@@ -105,7 +118,7 @@ import {
 import {
   loadProject as _loadProject,
   openProject as _openProject,
-  renderFilesTemplate as _renderFilesTemplate,
+  renderFilesTemplate,
   findHomePage,
   loadDirectory,
   openFileInPane,
@@ -146,15 +159,13 @@ import { mountResizeEdges } from "./resize-edges";
 import {
   defBadgeLabel,
   defCategory,
+  mountSignalsPanel,
   registerSignalsCommands,
-  renderSignalsTemplate,
 } from "./panels/signals-panel";
-import { loadComponentRegistry } from "./files/components";
+import { loadComponentRegistry, noteComponentSaved } from "./files/components";
 import { ensureDependenciesInstalled } from "./packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
 import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
-
-import { html, render as litRender } from "lit-html";
 
 import webdata from "../data/webdata.json";
 import { registerDataExplorerCommands } from "./panels/data-explorer";
@@ -164,12 +175,10 @@ import {
   loadDiffForLens,
   registerSourceControlCommands,
   renderGitPanel,
+  noteFileSaved,
 } from "./panels/git-panel";
 
-// ─── Spectrum Web Components ──────────────────────────────────────────────────
-// Explicit class imports + registration — bare side-effect imports are tree-shaken
-// By Bun's bundler despite sideEffects declarations in Spectrum's package.json.
-import { components as _swc } from "./ui/spectrum";
+import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
 // Built-in schema-form controls (schema-builder, secret) register on import
 import "./ui/form-controls.js";
@@ -181,8 +190,8 @@ import { chordsInScopes } from "./commands/keymap";
 import { FRAME_KEY_SCOPES } from "./canvas/iframe-keys";
 import { createLiveContext } from "./commands/live-context";
 import { hasAiCredentials } from "./services/ai-models";
-import { mount as mountActivityBar } from "./panels/activity-bar";
-import * as toolbarPanel from "./panels/toolbar";
+import { mount as mountActivityBar } from "./surfaces/rail";
+import * as toolbarPanel from "./surfaces/commandbar";
 import * as overlaysPanel from "./panels/overlays";
 import * as frontmatterPanelMod from "./panels/frontmatter-panel";
 import * as rightPanelMod from "./panels/right-panel";
@@ -220,19 +229,27 @@ import {
   settingsSettled,
   watchRemoteSettings,
 } from "./services/settings/kernel";
-import { initWelcome } from "./panels/welcome-screen";
+import { initWelcome } from "./surfaces/welcome";
 import {
   openAddRepoModal,
   openProjectPickerModal,
   platformUsesRepoPicker,
 } from "./new-project/add-repo-modal";
 import { openNewProjectModal, registerNewProjectCommands } from "./new-project/new-project-modal";
-import { invalidatePageRouteCache, registerInspectorCommands } from "./panels/properties-panel";
+import {
+  invalidatePageRouteCache,
+  registerInspectorCommands,
+  renderPropertiesPanel,
+} from "./panels/properties-panel";
 import { liveElementCommands, setContextMenuNavigate } from "./editor/context-menu";
 import { registerSeoCommands, renderSeoModal } from "./panels/seo-modal";
+import { ensurePopoverRevealWatch, setOpenPopover } from "./canvas/popover-state";
+import { setOpenDialog } from "./canvas/dialog-state";
 import { registerA11yCommands } from "./services/a11y-report";
+import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
 import { registerGridCommands } from "./grid/grid-open";
+import { registerExtensionCommands } from "./settings/extension-commands";
 import { registerSettingsCommands } from "./settings/settings-document";
 import { registerPreferencesCommands } from "./settings/preferences-dialog";
 import { registerAboutCommands } from "./about/about-modal";
@@ -247,9 +264,14 @@ import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
-import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type { JxDocument, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountShellTree } from "./shell/tree";
+
+// The bundler's `<link rel=modulepreload>` batching is installed on the module scope: before the
+// First lazy `import()` of any surface that runs, so the palette's first open does not pay a
+// Document recalculation per chunk (see the module's header for the trace that asked for this).
+installModulePreloadBatcher();
 
 /**
  * Anchor every shipped-asset URL to THIS module's directory.
@@ -266,8 +288,6 @@ import { mountShellTree } from "./shell/tree";
  * `MonacoEnvironment.getWorker`.
  */
 setBundleBase(import.meta.url);
-
-void _swc;
 
 /**
  * What the derivation's commands and follows need from the rest of Studio: an opener, and a reader
@@ -371,9 +391,11 @@ function setCanvasMode(tab: Tab | null, mode: string) {
  * 1. **To the side.** §8.2 has promised this since P3 and it never shipped — the chain ran
  *    `openFileInTab` → `openTab` → `activePane()`, so "open the layout that wraps this page" opened
  *    it ON TOP of the page it was teaching about.
- * 2. **Focus stays in the page.** An assistant pane that takes the keyboard means the author's next
- *    keystroke edits the definition instead of the document they are looking at — and a following
- *    pane would immediately have nothing to follow.
+ * 2. **The focus FOLLOWS.** The open is a gesture, not a read: the author asked to edit the component,
+ *    so the pane it lands in takes the keyboard. The failure it replaces is the opposite one — an
+ *    assistant pane that takes the keyboard means the author's next keystroke edits the definition
+ *    instead of the document they are looking at, which is why the READS (`pane.compareWith`, the
+ *    derivation follow, session restore) browse with `focus: false`.
  * 3. **A PREVIEW tab**, because drilling in is browsing: the second drill-in takes the same slot
  *    instead of littering the side strip, and an edit promotes it (`promoteDirtyPreviewTabs`).
  * 4. **An ordinary tab, not a derivation.** "Edit definition" is a commitment to edit one component; a
@@ -383,16 +405,17 @@ function setCanvasMode(tab: Tab | null, mode: string) {
  * `openedFrom` is unchanged — §14.2's relationship, which nothing pops and nothing restores from.
  *
  * @param {string} componentPath
+ * @docs studio/interface/tabs
  */
 async function navigateToComponent(componentPath: string) {
   const from = activeTab.value;
-  /* {@link receivingPane}, not `sidePane`: the pane beside this one may be a LENS, which owns no
+  /* {@link receivingPane}, not `paneBeside`: the pane beside this one may be a LENS, which owns no
      tab. The open then landed in a `tabOrder` `tabOfPane` hops straight past, so the read below got
      the SOURCE tab back, `opened.documentPath !== componentPath`, and the one relationship this
      function exists to record (§14.2) was skipped without a sound. */
-  const target = receivingPane();
+  const target = receivingPane(activePane().id);
   const alreadyOpen = [...workspace.tabs.values()].some((t) => t.documentPath === componentPath);
-  await openFileInTab(componentPath, { focus: false, paneId: target.id, preview: true });
+  await openFileInTab(componentPath, { paneId: target.id, preview: true });
   const opened = tabOfPane(target.id);
   if (!alreadyOpen && from && opened && opened.documentPath === componentPath) {
     opened.session.openedFrom = { documentPath: from.documentPath, tabId: from.id };
@@ -406,35 +429,21 @@ async function navigateToComponent(componentPath: string) {
 // A drilled-in component is a real tab now, and `panels/tab-strip.ts` owns the prompt for closing
 // One. That prompt is two-way where this was three-way — see `showSaveDiscardDialog`'s ledger entry.
 
-// ─── Webdata: datalists for autocomplete ──────────────────────────────────────
+// ─── Webdata ──────────────────────────────────────────────────────────────────
 
-const datalistHost = document.createElement("div");
-datalistHost.style.display = "contents";
-document.body.append(datalistHost);
-litRender(
-  html`
-    <datalist id="tag-names">
-      ${webdata.allTags.map((tag: string) => html`<option value=${tag}></option>`)}
-    </datalist>
-    <datalist id="css-props"></datalist>
-  `,
-  datalistHost,
-);
-
-requestIdleCallback(() => {
-  const dl = document.querySelector("#css-props");
-  if (!dl) {
-    return;
-  }
-  const frag = document.createDocumentFragment();
-  for (const [name] of webdata.cssProps) {
-    const opt = document.createElement("option");
-    opt.value = name!;
-    frag.append(opt);
-  }
-  dl.append(frag);
-});
-
+/*
+ * The two `<datalist>`s that used to be built here — `#tag-names` from `webdata.allTags`, and
+ * `#css-props` filled with ~600 options in a `requestIdleCallback` — are GONE, and they were dead
+ * rather than convertible. A datalist is reached only through a `list="<id>"` on a control, and
+ * nothing in this package has carried one since the Inspector's inputs became documents: `grep -rn
+ * "tag-names" packages sites` found this file and the test that asserted this file. So the boot was
+ * appending a hidden host to `<body>`, painting six hundred elements into it a frame later, and
+ * reaching back for them with `document.querySelector` — for nothing to read.
+ *
+ * Converting them would have written a surface whose consumer does not exist. What survives is the
+ * half that had one: `initCssData` fills the CSS initial-value map the Style tab reads to decide
+ * whether a property is set or merely defaulted, and it takes `webdata` directly.
+ */
 initCssData(webdata);
 
 // ─── Module-level UI state (must be before render() call) ─────────────────────
@@ -450,11 +459,20 @@ if (!hasPlatform()) {
 
 mountResizeEdges();
 
+// The UI kit: every jx-* element defined from bundled JSON, and its theme adopted, before any
+// Surface can mount. Registration touches no network, so nothing here waits on it.
+void registerKit();
+
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
 /* The application frame, before anything adopts a host out of it. index.html carries an empty body
-   and this is the only definition — see src/shell/tree.ts for what that fixed. */
-mountShellTree();
+   and this is the only definition — see src/shell/tree.ts for what that fixed.
+
+   AWAITED, and it has to be: the frame is a Jx document now, so it renders one microtask after
+   insertion and only once the kit's elements are defined. `initShellRefs()` on the next line reads
+   five of its cells with `querySelector`, and every module that holds one of those would otherwise
+   hold a null — silently, because a null host is only noticed by whatever renders into it later. */
+await mountShellTree();
 
 initShellRefs();
 // One effect projects the dock record onto the shell grid — collapse classes and column widths.
@@ -476,9 +494,12 @@ initLayers();
 initQuickSearch({ openRecentProject: (root: string) => openRecentProject(root) });
 
 /* The pane's four surfaces come from its CELL, not from `document.querySelector`.
-   `panels/pane-grid.ts` mounted through `mountShell()` above, so the primary's cell exists by now;
-   each of these three modules still holds one host, which is exactly right while the grid draws one
-   cell and is what `mountForPane` replaces when it draws two. */
+   AWAITED, for the reason `mountShellTree()` gives one line up: the grid is a Jx document now, and
+   the runtime waits for the kit to be defined before it renders — so `mountShell()` STARTING the
+   grid is not the same event as the grid existing, and the three mounts below read the primary
+   cell's boxes on the line after it. Each of those modules still holds one host, which is exactly
+   right while the grid draws one cell and is what `mountForPane` replaces when it draws two. */
+await paneGridReady();
 const primaryCell = cellForPane(PRIMARY_PANE);
 
 tabStrip.mount(primaryCell?.strip ?? document.createElement("div"));
@@ -517,7 +538,7 @@ setMediaChangedHandler(async (dir) => {
   await loadDirectory(dir);
   renderLeftPanel();
 });
-// The in-iframe "/" trigger drives the parent-realm Spectrum slash menu across the bridge.
+// The in-iframe "/" trigger drives the parent-realm slash menu across the bridge.
 setCanvasSlashHandler(canvasSlashHandler);
 // Canvas right-clicks show the parent-realm Jx element context menu across the bridge.
 setCanvasContextMenuHandler(makeCanvasContextMenuHandler());
@@ -852,7 +873,7 @@ leftPanelMod.mount({
   renderGitPanel,
   renderHeadTemplate,
   renderImportsTemplate,
-  renderSignalsTemplate,
+  mountSignalsPanel,
   setCanvasMode,
   setGitDiffState: (state: GitDiffState | null) => {
     shell.git.diffState = state;
@@ -893,13 +914,8 @@ function safeRenderRightPanel() {
 // Collab sessions serialize/parse through the format host when mirroring between the structure
 // Tree and the shared source text, and surface freezes via the status bar.
 configureCollabSerializer(serializeDocument);
-configureCollabParser(async (tab, text) => {
-  if (tab.documentPath && formatForPath(tab.documentPath)) {
-    const parsed = await parseSourceForPath(tab.documentPath, text);
-    return { document: parsed.document as JxMutableNode, frontmatter: parsed.frontmatter };
-  }
-  return { document: JSON.parse(text) as JxMutableNode };
-});
+// `parseCollabSource` also records a JSON text's layout on the tab — see its docstring.
+configureCollabParser(parseCollabSource);
 // The source-canonical freeze is a STATE the author is being held in, not an error: a toast that
 // Says so, keyed so a run of freezes is one message rather than a stack of identical ones.
 configureCollabNotifier((message) => {
@@ -1079,6 +1095,7 @@ if (_projectParam) {
           let frontmatter;
           let parsedDoc;
           let parsedMode;
+          let layout: JsonLayout | null = null;
           await loadFormats();
           const fileFormat = formatForPath(fileRelPath);
           if (fileFormat || !fileRelPath.endsWith(".json")) {
@@ -1089,7 +1106,8 @@ if (_projectParam) {
             ({ frontmatter } = result);
             parsedMode = result.mode;
           } else {
-            parsedDoc = JSON.parse(content) as JxMutableNode;
+            // With the file's layout, so a save writes it back as it was laid out (issue 308).
+            ({ document: parsedDoc, layout } = parseJsonDocument(content));
           }
 
           // Open in a tab
@@ -1098,6 +1116,7 @@ if (_projectParam) {
             documentPath: fileRelPath,
             document: parsedDoc as JxMutableNode,
             ...(frontmatter != null && { frontmatter }),
+            layout,
             sourceFormat: fileFormat?.name ?? null,
           });
 
@@ -1379,13 +1398,6 @@ async function openRecentProject(root: string) {
     activity.fail(`Could not open the project at ${root}.`, { path: root });
   }
 }
-function renderFilesTemplate() {
-  return _renderFilesTemplate({
-    openFileFromTree,
-    openProject,
-    renderLeftPanel,
-  });
-}
 function openFileFromTree(path: string) {
   return openFileInTab(path);
 }
@@ -1484,14 +1496,46 @@ registerCanvasViewCommands(commandRegistry, {
   getCanvasMode,
   renderPane: renderCanvas,
   setCanvasMode,
+  setOpenPopover,
+  setOpenDialog,
   setResolvingOpen: paneContext.setResolvingOpen,
 });
+/* A save moves the working tree under any comparison of that file, and nothing about a
+   comparison notices on its own — see `noteFileSaved`. Injected rather than imported: `file-ops`
+   must not pull the Source Control panel into its graph. */
+/* The second listener is the live chrome lane: a saved surface document or kit component re-mounts
+   the roots it draws in THIS shell (studio-ui-guidelines.md §9.3). Inert for every project but the
+   two the chrome comes from, by the saved path alone. */
+const liveChrome = createLiveSurfaceSaver({
+  notify,
+  redefineOnCanvases: redefineElementOnCanvases,
+  workspace,
+});
+/* The third is the component registry: a saved definition rewrites its own entry, so an instance's
+   Component Settings and the Library read the props the file has now rather than the ones the scan
+   saw when the project opened. The Content tab and the Library are told, because neither reads the
+   registry reactively. */
+setDocumentSavedListener((path, doc) => {
+  void noteFileSaved(path);
+  void liveChrome(path, doc as unknown as JxDocument);
+  if (noteComponentSaved(path, doc)) {
+    renderPropertiesPanel();
+    renderLeftPanel();
+  }
+});
+/* Walking a comparison. No deps: the stepper reads the pane-keyed diff store directly and the
+   toolbar redraws itself, so there is nothing for the bootstrap to inject. */
+commandRegistry.registerAll(diffCommands());
+/* The one rule that opens a popover when the selection lands in one, from whichever surface made
+   the selection. Started here because it is app-lifetime state, like the canvas's own watches. */
+ensurePopoverRevealWatch();
 registerSelectionSetCommand(commandRegistry);
 registerInspectorCommands(commandRegistry);
 /* Search appearance, behind one record with two buttons: the Document Header card's and the Page
    panel's. A surface that IS the capability is one the palette cannot reach. */
 registerSeoCommands(commandRegistry);
 registerA11yCommands(commandRegistry);
+registerPopoverCommands(commandRegistry);
 /* The element menu's eight verbs, in the APP registry rather than only in the popover's own. They
    have always declared `menus: ["context/element", "palette"]`; the palette has never listed one,
    because the only registry holding them was the one `editor/context-menu.ts` builds for itself.
@@ -1507,6 +1551,7 @@ registerSignalsCommands(commandRegistry);
 registerFormulaEditorCommands(commandRegistry);
 registerGridCommands(commandRegistry);
 registerSettingsCommands(commandRegistry);
+registerExtensionCommands(commandRegistry);
 registerPreferencesCommands(commandRegistry);
 registerLibraryCommands(commandRegistry);
 registerFileFormatCommands(commandRegistry);

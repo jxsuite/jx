@@ -1,0 +1,263 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxColorArea",
+  "tagName": "jx-color-area",
+  "observedAttributes": [
+    "label",
+    "x-label",
+    "y-label",
+    "hue",
+    "saturation",
+    "brightness",
+    "step",
+    "disabled"
+  ],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name of the square, which is a role=\"group\" holding two sliders. NOT optional: role=\"group\" is in neither the accessibility lint's content-named roles nor its labelled ones, so an unnamed one is invisible to every gate, and a reader entering it is told they have entered a group and nothing more. \"Colour\" or the name of the property being edited is the right answer; the two axes carry their own names."
+    },
+    "xLabel": {
+      "type": "string",
+      "default": "Saturation",
+      "attribute": "x-label",
+      "description": "The horizontal slider's accessible name. A prop rather than a constant because it is words on a screen reader's lips, and a shell in another language must be able to say them; the default is the English one so a consumer who does not care writes nothing."
+    },
+    "yLabel": {
+      "type": "string",
+      "default": "Brightness",
+      "attribute": "y-label",
+      "description": "The vertical slider's accessible name, on the same terms as xLabel."
+    },
+    "hue": {
+      "type": "number",
+      "default": 0,
+      "attribute": "hue",
+      "description": "The hue the square is drawn under, 0-360. The element READS it and never writes it: a saturation/brightness field has no hue of its own, and the control that owns the hue is a jx-color-slider beside it. Dragging into the grey corner therefore leaves the hue exactly where the reader put it, which is the whole reason the two are separate elements."
+    },
+    "saturation": {
+      "type": "number",
+      "default": 100,
+      "attribute": "saturation",
+      "description": "The horizontal axis, 0-100. It is the x coordinate of the thumb and the value of the horizontal range, and those are the same number rather than two that must be kept in step."
+    },
+    "brightness": {
+      "type": "number",
+      "default": 100,
+      "attribute": "brightness",
+      "description": "The vertical axis, 0-100, measured UPWARD from the bottom edge — 100 is the top. The thumb's CSS offset is the complement, computed in the document, because a reader's mental model of a colour square is bright at the top and a stylesheet's is zero at the top, and only one of those two should be in a prop."
+    },
+    "step": {
+      "type": "number",
+      "default": 1,
+      "attribute": "step",
+      "description": "The grid both axes move on, for the platform's own arrow keys, for the kit's cross-axis and ten-step keys, and for the snap a pointer drag is put through. One grid for the pointer and the keyboard is what stops the thumb and the announced value disagreeing during a drag."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be moved or focused. Forwarded to both ranges, so the refusal is the platform's; the pointer and key handlers check it too, because a pointer on the track never reaches a disabled control to be refused by it."
+    },
+    "xText": "${Math.round(state.saturation) + '%'}",
+    "yText": "${Math.round(state.brightness) + '%'}",
+    "onInput": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-area.ts",
+      "$export": "onAreaAxisInput",
+      "emits": [
+        {
+          "name": "input",
+          "description": "An axis is moving under the reader's hand. It comes from the ELEMENT, so e.target.saturation and e.target.brightness are the whole answer."
+        }
+      ],
+      "description": "Mirrors whichever range moved into its axis and re-says input from the host. The native event is stopped: two controls holding half a coordinate each cannot both be e.target for one colour."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-area.ts",
+      "$export": "onAreaAxisChange",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The reader committed a value; e.target is the element."
+        }
+      ],
+      "description": "The same mirror and the same re-say, for the commit."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-area.ts",
+      "$export": "onAreaKeydown",
+      "description": "The two keyboard jobs a range cannot do for itself: the arrow across the OTHER axis, and Shift+Arrow for ten steps. An along-axis arrow with no Shift is left entirely to the platform, which already clamps, snaps and announces it."
+    },
+    "onPointerDown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-area.ts",
+      "$export": "onAreaPointerDown",
+      "description": "Takes the colour under the pointer, captures the gesture on the track, and puts the caret on the horizontal range so the keyboard carries on from where the pointer stopped. A single press with no movement is a complete gesture, which is what keeps this clear of WCAG 2.5.7."
+    },
+    "onPointerMove": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-area.ts",
+      "$export": "onAreaPointerMove",
+      "description": "The drag. Nothing moves without a press first, so a hover across the square changes no colour."
+    },
+    "onPointerUp": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/color-area.ts",
+      "$export": "onAreaPointerUp",
+      "description": "Ends the gesture and commits once. Bound to pointercancel as well as pointerup: a gesture the system takes away is over, and a square left in the dragging state would follow the next pointer that crossed it with no button down."
+    }
+  },
+  "oninput": {
+    "$ref": "#/state/onInput"
+  },
+  "onchange": {
+    "$ref": "#/state/onChange"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onpointerdown": {
+    "$ref": "#/state/onPointerDown"
+  },
+  "onpointermove": {
+    "$ref": "#/state/onPointerMove"
+  },
+  "onpointerup": {
+    "$ref": "#/state/onPointerUp"
+  },
+  "onpointercancel": {
+    "$ref": "#/state/onPointerUp"
+  },
+  "attributes": {
+    "role": "group",
+    "aria-label": "${state.label || null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "inlineSize": "100%",
+    "--jx-color-area-size": "160px",
+    "--jx-color-area-hue": "hsl(${state.hue} 100% 50%)",
+    "--jx-color-area-x": "${state.saturation}%",
+    "--jx-color-area-y": "${100 - state.brightness}%",
+    "&[data-disabled]": {
+      "opacity": "0.5"
+    },
+    "& > [part=\"track\"]": {
+      "position": "relative",
+      "display": "block",
+      "boxSizing": "border-box",
+      "inlineSize": "100%",
+      "blockSize": "var(--jx-color-area-size)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "linear-gradient(to bottom, transparent, oklch(0 0 0)), linear-gradient(to right, oklch(1 0 0), var(--jx-color-area-hue))",
+      "boxShadow": "inset 0 0 0 1px var(--jx-border-strong)",
+      "touchAction": "none",
+      "cursor": "crosshair"
+    },
+    "&[data-disabled] > [part=\"track\"]": {
+      "cursor": "default"
+    },
+    "& [part=\"x\"], & [part=\"y\"]": {
+      "$description": "The two ranges are TRANSPARENT rather than hidden, and that is the whole accessibility of this element. display:none or visibility:hidden would take them out of the accessibility tree and out of the tab order, leaving a square only a pointer can operate — a WCAG 2.1.1 failure with a thumb drawn on it. opacity:0 keeps the role, the name, the announced value and the focus; pointer-events:none hands the gesture to the track, whose own handler owns the two-dimensional maths.",
+      "appearance": "none",
+      "position": "absolute",
+      "insetInline": "0",
+      "insetBlock": "0",
+      "inlineSize": "100%",
+      "blockSize": "100%",
+      "margin": "0",
+      "padding": "0",
+      "border": "0",
+      "background": "none",
+      "font": "inherit",
+      "opacity": "0",
+      "pointerEvents": "none"
+    },
+    "& [part=\"y\"]": {
+      "writingMode": "vertical-lr",
+      "direction": "rtl"
+    },
+    "& [part=\"thumb\"]": {
+      "position": "absolute",
+      "insetInlineStart": "var(--jx-color-area-x)",
+      "insetBlockStart": "var(--jx-color-area-y)",
+      "inlineSize": "14px",
+      "blockSize": "14px",
+      "translate": "-50% -50%",
+      "borderRadius": "50%",
+      "border": "2px solid var(--jx-bg)",
+      "boxShadow": "0 0 0 1px var(--jx-fg)",
+      "background": "transparent",
+      "pointerEvents": "none"
+    },
+    "&:has([part=\"x\"]:focus-visible) [part=\"thumb\"], &:has([part=\"y\"]:focus-visible) [part=\"thumb\"]": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "2px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "track"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "x",
+            "type": "range",
+            "aria-label": "${state.xLabel}",
+            "aria-valuetext": "${state.xText}",
+            "min": "0",
+            "max": "100",
+            "step": "${state.step}",
+            "value": "${state.saturation}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "$ref": "#/state/saturation"
+          }
+        },
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "y",
+            "type": "range",
+            "aria-label": "${state.yLabel}",
+            "aria-valuetext": "${state.yText}",
+            "min": "0",
+            "max": "100",
+            "step": "${state.step}",
+            "value": "${state.brightness}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "$ref": "#/state/brightness"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "thumb",
+            "aria-hidden": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -45,27 +45,25 @@ const usageResult: ReferencesResult = {
 };
 
 function menuIds(): string[] {
-  return [...document.querySelectorAll<HTMLElement>("sp-menu-item[data-command-id]")].map(
+  return [...document.querySelectorAll<HTMLElement>("jx-menu-item[data-command-id]")].map(
     (el) => el.dataset.commandId!,
   );
 }
 
 function titleOf(id: string): string {
-  const item = [...document.querySelectorAll<HTMLElement>("sp-menu-item[data-command-id]")].find(
+  const item = [...document.querySelectorAll<HTMLElement>("jx-menu-item[data-command-id]")].find(
     (el) => el.dataset.commandId === id,
   )!;
-  return [...item.childNodes]
-    .filter((node) => node.nodeType === Node.TEXT_NODE)
-    .map((node) => node.textContent)
-    .join("")
-    .trim();
+  return item.querySelector('[part="label"]')!.textContent!.trim();
 }
 
-function rightClick(path: (string | number)[]): void {
+/** Right-click a path and wait for the menu surface to mount. */
+async function rightClick(path: (string | number)[]): Promise<void> {
   showContextMenu(
     new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }),
     path as never,
   );
+  await flush();
 }
 
 beforeEach(() => {
@@ -88,20 +86,20 @@ afterEach(async () => {
 });
 
 describe("Find Usages in the element menu", () => {
-  test("appears on a component instance, under the shared record's title", () => {
-    rightClick(["children", 0]);
+  test("appears on a component instance, under the shared record's title", async () => {
+    await rightClick(["children", 0]);
     expect(menuIds()).toContain("selection.findUsages");
     expect(titleOf("selection.findUsages")).toBe("Find Usages");
   });
 
-  test("does not appear on a plain element", () => {
-    rightClick(["children", 1]);
+  test("does not appear on a plain element", async () => {
+    await rightClick(["children", 1]);
     expect(menuIds()).not.toContain("selection.findUsages");
   });
 
-  test("disappears entirely on a host that cannot count", () => {
+  test("disappears entirely on a host that cannot count", async () => {
     registerPlatform({} as never);
-    rightClick(["children", 0]);
+    await rightClick(["children", 0]);
     // Hidden, not disabled: a verb whose answer would be a fabricated zero is not offered at all.
     expect(menuIds()).not.toContain("selection.findUsages");
   });

@@ -1,0 +1,66 @@
+{
+  "scenario": "add-nav-to-header--stream-error",
+  "task": "add-nav-to-header",
+  "what": "an applied edit, then a provider error mid tool call that ends the turn",
+  "modelRequests": ["user", "user assistant tool"],
+  "rounds": 1,
+  "toolCallCount": 1,
+  "toolCalls": [
+    {
+      "id": "err-1",
+      "name": "add_child",
+      "args": {
+        "parentPath": [],
+        "index": 1,
+        "node": {
+          "tagName": "nav",
+          "children": []
+        }
+      }
+    }
+  ],
+  "loopError": "Upstream provider returned 503",
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "site-header",
+    "children": [
+      {
+        "tagName": "h1",
+        "textContent": "My Site"
+      },
+      {
+        "tagName": "nav",
+        "children": []
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Add a navigation bar to this header with two links: Home (href /) and About (href /about)."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["add_child"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "err-1",
+      "result": {
+        "success": true,
+        "summary": "Inserted node at [\"children\",1]."
+      }
+    }
+  ]
+}

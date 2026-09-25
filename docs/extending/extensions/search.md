@@ -59,6 +59,12 @@ Together the two **partition** the entry, which is the point. Emitting the full 
 This generalizes to any `emit` implementation: what an emitter writes is downloaded and parsed by a visitor, so emitting the same content twice costs them twice.
 :::
 
+### Opting a page out
+
+An entry whose frontmatter says `search: false` contributes nothing: no page document and no section documents, because a page that should not be found by its title should not be found by its headings either. The index is otherwise a pure function of the collection, and this is the one lever a single page has. jxsuite.com uses it for the three reference pages derived from its specs (the spec changelog alone was 6.4% of the index), which stay published, routed and in the sidebar; the key removes an entry from the index and from nothing else.
+
+Only the boolean `false` opts out. A non-boolean value (`"false"`, `0`, `no`) is indexed and reported once per entry in the build log, rather than silently honoured: an author who wrote it meant an opt-out, a strict reader sees nothing, and an index that depended on YAML's coercion rules would fail in the direction nobody can see. A page that is present can be found; a page that is absent cannot say why. `search: true` and an absent key are the same thing.
+
 The result is one JSON envelope at the configured `output` path:
 
 ```json

@@ -4,16 +4,19 @@ description: "The assistant's chat: open it, attach context, watch edits land, a
 code:
   - packages/studio/src/services/ai-ask.ts
   - packages/studio/src/services/import-run.ts
+  - packages/studio/src/panels/ai-panel.ts
   - packages/studio/src/panels/ai-chat/composer.ts
   - packages/studio/src/panels/ai-chat/chat-view.ts
   - packages/studio/src/panels/ai-chat/sessions-view.ts
+  - packages/studio/src/surfaces/ai-chat.ts
   - packages/studio/src/services/ai-session-store.ts
+  - packages/studio/src/services/tool-outcomes.ts
   - packages/studio/src/services/import-client.ts
 ---
 
 # The AI assistant
 
-The assistant lives in the Inspector, as its fourth tab beside Content, Style and Logic. It survives tab switches (your draft message, scroll position, and conversation are all still there when you come back), and it works in every state of Studio, from the welcome screen to a page mid-edit. Because it shares the Inspector's width, showing it costs the canvas nothing.
+The assistant lives in the Inspector, as its fourth tab beside Content, Style and Logic. It survives tab switches (your draft message, scroll position, and conversation are all still there when you come back), and it works in every state of Studio, from the welcome screen to a page mid-edit. Because it shares the Inspector's width, showing it costs the canvas nothing. The tab's body is built the first time it is shown: anything directed at the assistant before that, such as a pending prompt from the New Project hand-off, waits with the panel and shows when the tab is first picked.
 
 ![A conversation with the assistant: a user message with context chips, an assistant reply with a tool chip, and the composer below](../../images/ai-sidebar-chat.png)
 
@@ -21,7 +24,7 @@ The assistant lives in the Inspector, as its fourth tab beside Content, Style an
 
 Press :kbd[⌘⇧4] (macOS) / :kbd[Ctrl+Shift+4] (Windows/Linux), or click the **Assistant** tab at the top of the Inspector. :kbd[⌘⇧A] / :kbd[Ctrl+Shift+A] does the same and puts the cursor in the message box, ready to type. That works on the welcome screen too, before any project is open. Drag the Inspector's inner edge to resize it; the width and which tab you left selected are both remembered across sessions.
 
-If no AI provider is set up yet, the tab still opens on a chat, with one line under it (_No AI provider is connected yet_) and an **Assistant: Settings…** button that opens the setup dialog. See **[Connect a provider](/docs/studio/ai#connect-a-provider)**.
+If no AI provider is set up yet, the tab still opens on a chat, with one line under it (_No AI provider is connected yet_) and an **Open Preferences…** button that opens Preferences on its Assistant page. See **[Connect a provider](/docs/studio/ai#connect-a-provider)**.
 
 ## Send a message
 
@@ -30,9 +33,9 @@ Type in the message box at the bottom and press :kbd[Enter] to send. :kbd[Shift+
 The row under the message box holds the composer's controls:
 
 - **Attach context** (paperclip) pins the current page or the selected element to your message (below).
-- The **model picker** switches models mid-conversation. The list comes from the provider you have configured, and only from that one: change the key or the endpoint and the picker re-asks rather than showing you the previous provider's catalogue.
+- The **model picker** switches models mid-conversation. The list comes from the provider you have configured, and only from that one: change the key or the endpoint and the picker re-asks rather than showing you the previous provider's catalogue. Where the provider says which of its models can call tools, one that cannot is labelled, and picking it puts a line under the picker: that model will answer your questions but will not edit anything. It is a fine choice when you want to think out loud, just not the one to blame when nothing changes on the canvas.
 - **API key & endpoint** (gear) reopens the **Assistant settings** dialog.
-- **Send** becomes **Stop** while the assistant is replying; click it to halt the reply and any further actions.
+- **Send** becomes **Stop** for the whole of a reply, including while its actions run; click it to halt the reply and any further actions. A new message can't start until the reply has finished. When the assistant is waiting on a question, the button reads **Answer** instead, because what you send is the answer.
 
 ## How much the assistant is holding
 
@@ -53,13 +56,15 @@ Even without attachments the assistant already knows a lot: each message carries
 
 ## Watch it work
 
-The assistant's reply streams in live. When it acts on your project, each action appears as a small labeled chip in the reply (one per edit or file operation), and each chip says what **became** of that action: a tick and the change it made, or a cross and the reason it was refused. A chip with neither is still in flight.
+The assistant's reply streams in live. When it acts on your project, each action appears as a small labeled chip in the reply (one per edit or file operation), and each chip says what **became** of that action: a tick and the change it made, or a cross and the reason it was refused. A chip with neither is still in flight, and it gets its tick or cross the moment that action finishes, while the rest of the reply carries on.
 
-Under the chips, a reply that changed anything carries a one-line summary: "Changed 3 files", plus a count of any that were **written to disk, where undo cannot reach them**. Expand it for the list of paths. When every change in a reply went through the editor, the summary also offers **Restore to here**, which rolls that whole reply back in one step.
+Under the chips, a reply that changed anything carries a one-line summary: "Changed 3 files", plus a count of any that were **written to disk, where undo cannot reach them**. Expand it for the list of paths. When every change in a reply went through the editor, the summary also offers **Restore to here**, which rolls that whole reply back in one step. The summary sits under the last part of the reply you can see, so a reply you stopped, or one whose last step said nothing, still shows what it changed.
 
-Document edits land on the canvas as they happen, so for canvas work you can literally watch the page change. If something goes wrong mid-request (a lost connection, a provider error), the chat shows the error with advice on how to recover, and a **Retry** button that sends your last message again.
+Document edits land on the canvas as they happen, so for canvas work you can literally watch the page change. If something goes wrong mid-request (a lost connection, a provider error), the chat shows the error with advice on how to recover, and a **Retry** button that sends your last message again. The half-finished part of the reply is removed rather than kept, so a half-written action is never sent back to the provider. Anything the assistant finished before the error stays, each chip with its outcome.
 
-A long request that reaches the assistant's per-message limit on tool calls is not an error: it finishes with a note saying it ran out of rounds and listing what it did apply, and everything it changed stays changed. Send another message to continue.
+A long request that reaches the assistant's per-message limit on tool calls is not an error: it finishes with a note saying it ran out of rounds and listing what it did apply, and everything it changed stays changed. Send another message to continue. The note lists only actions that changed something without a problem, and creating or importing a project counts. If none of the assistant's actions did, because it spent its whole limit looking around (listing files, reading them, asking you questions) or every change it made came back with an error to fix, that is shown as an error instead. Any change that did land stays on the canvas.
+
+If the model sends back an empty reply, with no text and no action, the chat says so in an error row with a **Retry** button rather than leaving your message unanswered.
 
 ## When the assistant asks you something
 
@@ -71,7 +76,7 @@ Three things follow from that:
 
 - **You can decline.** Every question has a **You decide** button. The assistant takes its best guess and tells you what it chose.
 - **Waiting costs the assistant nothing.** A reply that stops to ask you three questions still has its full budget of work left. The limit is on how much it does on its own, and it does nothing at all while it waits for you. If you'd rather it stopped altogether, **Stop** ends the whole reply.
-- **A question does not survive a reload.** Reload Studio while one is open and the card stays in the transcript but goes quiet, with a line saying so. Just send a message to pick the thread back up.
+- **An open question does not survive a reload.** Reload Studio while one is open and the card stays in the transcript but goes quiet, with a line saying so. Just send a message to pick the thread back up. A question you had already answered keeps its answer when the chat is reopened.
 
 :::doc-tip
 The assistant is told to ask sparingly: only for things that are genuinely your judgement, only one at a time, and never for something it could have looked up itself. When it asks, the answer changes what it builds.
@@ -108,17 +113,17 @@ For disk-level changes, source control is the review tool: the **[Source Control
 The header names the current chat and holds two buttons: the history button (left) opens the **Chats** list, and **+** starts a new chat.
 
 - Chats are titled after your first message and listed newest-first with a timestamp and message count.
-- Click a chat to reopen it; the conversation continues where it left off.
+- Click a chat to reopen it; the conversation continues where it left off, and each action the assistant took still shows whether it succeeded. Opening a chat while a reply is still running stops that reply, and nothing more from it lands in the chat you opened.
 - Hover a row and click the trash button to delete a chat. Deleting the open one leaves you in a fresh empty chat.
 - When you reopen Studio, your last open chat is restored.
 
-History is stored on your machine and kept per project, so conversations never mix between projects. Each project keeps its 20 most recent chats, and each chat keeps its latest 50 messages.
+History is stored on your machine and kept per project, so conversations never mix between projects. Each project keeps its 20 most recent chats, and each chat keeps its latest 50 messages. What is stored is everything the provider needs to carry on, including a reasoning model's own thinking (which providers such as DeepSeek require back before they will answer again), so a reopened chat continues rather than starting over.
 
 ## By name, not only by button
 
 Everything the chat can do is also a command, so it is in the palette under **Assistant**, works from the keyboard, and can be rebound: **Focus Composer** (:kbd[⌘⇧A]), **New Chat**, **Chat History**, **Retry**, **Attach Selection** and **Stop**. The header's buttons run those same commands rather than a private copy of them, which is why a button's tooltip always prints the shortcut you actually have.
 
-Two of them state when they cannot act instead of going quiet: **Retry** needs a connected provider and a last message to re-send, and **Stop** is live only while a reply is streaming. Hover either one, or read the greyed row in the palette, and it says which.
+Two of them state when they cannot act instead of going quiet: **Retry** needs a connected provider, a last message to re-send and no reply still running, and **Stop** is live only while a reply is running, its actions and questions included. Hover either one, or read the greyed row in the palette, and it says which.
 
 ## Next
 

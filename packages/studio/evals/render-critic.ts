@@ -1,7 +1,7 @@
 /**
  * Render-critic.js — shadow-render grader for the AI-assistant eval harness.
  *
- * The unbuilt "6c shadow-render critic" from docs/ai-assistant-decision.md. Mounts a produced Jx
+ * The shadow-render critic (docs/extending/contributing/ai-evals.md). Mounts a produced Jx
  * document with the *real* @jxsuite/runtime under happy-dom (the same render path the Studio canvas
  * uses, see packages/studio/src/canvas/canvas-live-render.ts) and reports any error it surfaces:
  * thrown errors during scope-building or node rendering, and console.error/warn (unresolved $ref /

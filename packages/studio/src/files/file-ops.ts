@@ -11,26 +11,35 @@
  * both. Every surface that removes or moves a file routes its confirmation through them, so no
  * caller can ship a destructive dialog that grades only by reversibility again.
  *
+ * Both answer in SENTENCES rather than in markup. The dialog is `surfaces/dialog.json` now, and a
+ * `TemplateResult` reaches it only through the island seam — which is the right shape for a body
+ * that is genuinely rich, and the wrong shape for one paragraph of prose: it put a `<strong>` and a
+ * `<p class="dialog-consequence">` on this module's side of a boundary whose whole point is that
+ * the document owns the markup. What the copy loses is the visual set-apart of the consequence
+ * line; what it keeps is the consequence itself, in the same words, in the same dialog.
+ *
  * @docs studio/projects/pages-layouts-components
  */
 
-import { html, nothing } from "lit-html";
 import { loadUsages, usageWarning } from "../services/references";
 import { isMediaFile } from "./media-upload";
 import { loadMediaUsages } from "./media-usage";
 import { showConfirmDialog } from "../ui/layers";
 import { locateDocument } from "../services/code-services";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { noteDocumentSaved } from "../panels/statusbar";
+import { noteDocumentSaved } from "../surfaces/statusbar";
 import { notify } from "../services/notify";
 import { validateComponentSlots } from "../services/cem-export";
+import { reportPopoverProblems } from "../services/popover-report";
 import { getPlatform } from "../platform";
 import { getGridController } from "../grid/grid-controller";
 import { activeTab, openTab } from "../workspace/workspace";
 import { collabReadOnly, collabSave } from "../collab/collab-session";
+import type { CollabParser } from "../collab/collab-session";
 import { flushCanvasEdits } from "../canvas/iframe-host";
 import { flushPreviewOverlay } from "../preview/preview-overlay";
 import { serializeDocument } from "./serialize-document";
+import { parseJsonDocument } from "@jxsuite/schema/json-layout";
 import {
   defaultContentFormat,
   formatByName,
@@ -44,6 +53,7 @@ import {
 import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /**
  * Parse a format-class source string into document + frontmatter + mode per the format's
@@ -74,6 +84,32 @@ export async function parseSourceForPath(path: string, source: string) {
   const result = await parseFormatSource(format, source);
   return { ...result, format };
 }
+
+/**
+ * A peer's shared source text, back into the structure tree — the collab source reconciler's parser
+ * (`collab/collab-session.ts`'s `configureCollabParser`, injected at studio init).
+ *
+ * A format file goes through its format's parser, as {@link parseSourceForPath} does. A JSON file
+ * goes through `parseJsonDocument`, and the layout it read is written onto the tab: the text a peer
+ * typed is also the layout this client will save in — the record is keyed by pointer and the
+ * document is about to become that text's — so recording it here is what keeps the next
+ * structure-to-source mirror from rewriting lines the peer never touched (issue 308). A side effect
+ * rather than a return value, because the parser's contract is the document, and the reconciler may
+ * still discard the parse when the canonical lock flipped while it ran; a record taken from a
+ * discarded text describes the file the next parse will read, and that parse replaces it.
+ *
+ * @param {Tab} tab
+ * @param {string} text
+ */
+export const parseCollabSource: CollabParser = async (tab, text) => {
+  if (tab.documentPath && formatForPath(tab.documentPath)) {
+    const parsed = await parseSourceForPath(tab.documentPath, text);
+    return { document: parsed.document as JxMutableNode, frontmatter: parsed.frontmatter };
+  }
+  const parsed = parseJsonDocument(text);
+  tab.doc.layout = parsed.layout;
+  return { document: parsed.document as JxMutableNode };
+};
 
 /** Open a file via the File System Access API (or fallback input). */
 export async function openFile() {
@@ -114,8 +150,10 @@ export async function openFile() {
           sourceFormat: format.name,
         });
       } else if (name.endsWith(".json")) {
-        const document = JSON.parse(text) as Record<string, unknown>;
-        openTab({ document, documentPath, fileHandle: handle, id: name });
+        // The layout travels with the document so a save writes the file back the way it was laid
+        // Out (`json-layout.ts`), not the way `JSON.stringify` would lay it.
+        const { document, layout } = parseJsonDocument(text);
+        openTab({ document, documentPath, fileHandle: handle, id: name, layout });
       } else {
         throw noFormatError(name);
       }
@@ -167,9 +205,33 @@ export async function openFile() {
  * The warning half became a PROBLEM. A component whose slots do not line up is a thing to fix, and
  * it was previously shown for six seconds in the same grey as the word "Saved".
  */
+/**
+ * Who else wants to know that a document reached disk.
+ *
+ * **By injection**, the idiom `setSurfaceTeardown` and `setDiffRepaint` already use. The one
+ * listener today is source control: a comparison is two texts read once, so it does not notice a
+ * save on its own, and the file an author is most likely to save is the one they are reviewing. A
+ * direct import would put `panels/git-panel.ts` into this module's graph, which is a load error for
+ * every suite that mocks the canvas host out from under it.
+ *
+ * The listener is handed the document as well as the path, for the second listener: the live chrome
+ * lane (`services/live-surfaces.ts`) re-mounts a saved surface from the document the tab just wrote
+ * rather than reading the file back, which is what keeps the shipped app from ever reading its
+ * chrome from disk.
+ */
+let _onDocumentSaved: (path: string | null, doc: JxMutableNode) => void = () => {};
+
+/** Register the save listener. Called once, from the bootstrap. */
+export function setDocumentSavedListener(
+  listener: (path: string | null, doc: JxMutableNode) => void,
+): void {
+  _onDocumentSaved = listener;
+}
+
 function reportSaved(tab: Tab) {
   noteDocumentSaved(tab.documentPath);
   const doc = tab.doc.document;
+  _onDocumentSaved(tab.documentPath, doc);
   const warning =
     typeof doc.tagName === "string" && doc.tagName.includes("-")
       ? validateComponentSlots(doc)
@@ -182,6 +244,32 @@ function reportSaved(tab: Tab) {
       tier: "problem",
     });
   }
+  /* Popover correctness, beside the slot check and for the same reason it is here: a successful
+     save is the one chokepoint every edit passes through, whichever surface made it. A render-time
+     lint would be the alternative and is the wrong shape — there is no render-lint pipeline, and a
+     record re-filed every frame is exactly the noise `NotifyOptions.key` exists to prevent. */
+  reportPopoverProblems(doc, tab.documentPath ?? undefined);
+}
+
+/**
+ * Whether this tab holds a document {@link serializeDocument} can honestly produce bytes for.
+ *
+ * A media tab does not. `openMediaTab` gives it a STUB — `{ children: [], tagName: "div" }` —
+ * because the tab model wants A DOCUMENT and a PNG is not one, and the viewer never reads it.
+ * Nothing downstream knew that: `file.save` is gated on `documentOpen` alone
+ * (`commands/defaults.ts`), a media tab satisfies it, and `serializeDocument`'s tail is
+ * `JSON.stringify(tab.doc.document)`. So the whole of the ordinary save path ran and wrote
+ * `{"children":[],"tagName":"div"}` OVER the image, through `writeFile`, with no dirty flag, no
+ * confirmation and nothing to undo. The bytes were simply gone.
+ *
+ * **Keyed on the FILE, not on the mode**, because the mode is not the hazard. An `.svg` in its
+ * `source` alternate has the same stub behind it — `canvas-render.ts`'s `sourceContent` falls
+ * through to the same `JSON.stringify` when no format class claims the path — so a guard reading
+ * `canvasMode === "media"` would have left the one media type that offers a text editor still able
+ * to overwrite itself with a placeholder it never showed anyone.
+ */
+function hasSerializableDocument(tab: Tab): boolean {
+  return !isMediaFile(tab.documentPath ?? "");
 }
 
 /**
@@ -231,6 +319,21 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
         key: `save.readOnly:${tab.documentPath ?? tab.id}`,
         ...(tab.documentPath === null ? {} : { path: tab.documentPath }),
         source: "Collaboration",
+      },
+    );
+    return false;
+  }
+  /* A media file has no document behind it (see {@link hasSerializableDocument}), and the refusal is
+     said out loud rather than returned quietly: a ⌘S that does nothing at all is indistinguishable
+     from one that worked. `warn` rather than `error` — nothing is broken and there is nothing to fix;
+     the file is simply not the kind of thing Save writes. */
+  if (!hasSerializableDocument(tab)) {
+    notify.warn(
+      `${tab.documentPath ?? "This file"} is a media file, so there is no document for Save to write.`,
+      {
+        key: `save.notADocument:${tab.documentPath ?? tab.id}`,
+        ...(tab.documentPath === null ? {} : { path: tab.documentPath }),
+        source: "Save",
       },
     );
     return false;
@@ -360,7 +463,7 @@ export async function exportFile() {
 // ─── Destructive confirmations ───────────────────────────────────────────────
 
 /**
- * The reference sentence a destructive dialog carries, or `nothing` when the host cannot count.
+ * The reference sentence a destructive dialog carries, or `""` when there is nothing to say.
  *
  * The query is awaited BEFORE the dialog opens rather than rendered into it and filled in later: a
  * confirm button that becomes truthful two frames after the user has already pressed it is the same
@@ -379,10 +482,9 @@ export async function exportFile() {
  * @param path — the file about to be deleted or renamed.
  * @param verb — which way the references go. A rename repairs them; a delete breaks them.
  */
-async function usageLine(path: string, verb: "delete" | "rename" | "convert") {
+async function usageLine(path: string, verb: "delete" | "rename" | "convert"): Promise<string> {
   const state = isMediaFile(path) ? await loadMediaUsages(path) : await loadUsages({ path });
-  const sentence = usageWarning(state, verb);
-  return sentence === null ? nothing : html`<p class="dialog-consequence">${sentence}</p>`;
+  return usageWarning(state, verb) ?? "";
 }
 
 /**
@@ -393,12 +495,13 @@ async function usageLine(path: string, verb: "delete" | "rename" | "convert") {
  */
 export async function confirmFileDelete(file: { name: string; path: string }): Promise<boolean> {
   const consequence = await usageLine(file.path, "delete");
+  const question = `Delete ${file.name}? This cannot be undone.`;
   // `showDialog`'s generic widens to unknown through the confirm wrapper; the dialog only ever
   // Resolves true/false, and Boolean() is the narrowing that says so without a cast.
   return Boolean(
     await showConfirmDialog(
       "Delete File",
-      html`<span>Delete <strong>${file.name}</strong>? This cannot be undone.</span>${consequence}`,
+      consequence === "" ? question : `${question} ${consequence}`,
       { confirmLabel: "Delete", destructive: true },
     ),
   );
@@ -414,7 +517,10 @@ export async function confirmFileDelete(file: { name: string; path: string }): P
  * @param path — the file about to be renamed.
  * @param verb — `"rename"`, or `"convert"` when the bytes change with the name.
  */
-export async function renamePromptMessage(path: string, verb: "rename" | "convert" = "rename") {
+export async function renamePromptMessage(
+  path: string,
+  verb: "rename" | "convert" = "rename",
+): Promise<string | undefined> {
   const consequence = await usageLine(path, verb);
-  return consequence === nothing ? undefined : html`${consequence}`;
+  return consequence === "" ? undefined : consequence;
 }

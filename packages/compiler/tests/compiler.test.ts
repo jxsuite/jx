@@ -626,6 +626,32 @@ describe("compile — markdown file input", () => {
   });
 });
 
+// ─── compile — unrecognized file extension ───────────────────────────────────
+
+describe("compile — file-based input with no matching format class", () => {
+  test("throws naming the extension and the extensions-based fix", async () => {
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const fixDir = join(import.meta.dir, "_fixtures_unknown_format");
+    mkdirSync(fixDir, { recursive: true });
+    const filePath = join(fixDir, "page.csv");
+    writeFileSync(filePath, "a,b\n1,2\n");
+    try {
+      let caught: unknown;
+      try {
+        await compile(filePath);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain('No format class registered for ".csv"');
+      expect((caught as Error).message).toContain('project.json "extensions"');
+    } finally {
+      rmSync(fixDir, { force: true, recursive: true });
+    }
+  });
+});
+
 // ─── compile — CLI (runCli) ──────────────────────────────────────────────────
 
 describe("runCli", () => {

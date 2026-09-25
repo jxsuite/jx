@@ -6,10 +6,11 @@
 import { clearSeededSettings, flush, installMockPlatform, seedSettings } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createToolRegistry } from "@jxsuite/ai";
-import { registerImportTools, resetImportGuard } from "../src/services/ai-import-tools";
+import { registerImportTools } from "../src/services/ai-import-tools";
 import { clearPendingImportBrief, setPendingImportBrief } from "../src/services/import-seed";
 import { importRun, resetImportRuns } from "../src/services/import-run";
-import { beginToolCall, beginTurnSignal, endTurnSignal } from "../src/services/ai-turn-signal";
+import type { ToolContext } from "@jxsuite/ai/tools";
+import { recordingContext } from "./harness/recording-context";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 import type { ImportProgressEvent, ImportSiteOptions, ImportSiteSummary } from "../src/types";
 import type { ImportBrief } from "../src/services/import-seed";
@@ -44,6 +45,8 @@ function harness(
     adoptProject?: (root: string) => Promise<void>;
     onProjectAdopted?: (root: string) => void;
     noBackend?: boolean;
+    /** The call's signal, standing in for the turn's. */
+    signal?: AbortSignal;
   } = {},
 ) {
   const { state } = installMockPlatform(
@@ -61,13 +64,21 @@ function harness(
             })) as never,
         } as never),
   );
-  const registry = createToolRegistry();
-  registerImportTools(registry, {
+  const inner = createToolRegistry();
+  registerImportTools(inner, {
     getTab: () => null,
     ...(opts.adoptProject ? { adoptProject: opts.adoptProject } : {}),
     ...(opts.onProjectAdopted ? { onProjectAdopted: opts.onProjectAdopted } : {}),
   });
-  return { registry, state };
+  /* One conversation's call: every run shares this context (the call id `call_1`, one session),
+     as the loop's calls share their turn's, unless a test passes its own. */
+  const ctx = recordingContext(opts.signal ? { signal: opts.signal } : {});
+  const registry = {
+    ...inner,
+    execute: (name: string, args: object, own?: ToolContext) =>
+      inner.execute(name, args, own ?? ctx),
+  };
+  return { ctx, registry, state };
 }
 
 /** An adopter that lands, the way `openRecentProject` does on success. */
@@ -84,16 +95,11 @@ beforeEach(() => {
   clearSeededSettings();
   clearPendingImportBrief();
   resetImportRuns();
-  resetImportGuard();
-  endTurnSignal();
-  beginToolCall("call_1");
 });
 
 afterEach(() => {
   setWorkspaceProject(null);
   resetImportRuns();
-  resetImportGuard();
-  endTurnSignal();
 });
 
 describe("import_site — refusals", () => {
@@ -495,9 +501,8 @@ describe("import_site — the run", () => {
 
   test("a stopped run does not adopt", async () => {
     const adoptProject = landing();
-    const { registry } = harness({ adoptProject });
     const controller = new AbortController();
-    beginTurnSignal(controller.signal);
+    const { registry } = harness({ adoptProject, signal: controller.signal });
 
     const running = registry.execute("import_site", {
       directory: "/home/dev/Sites/x",
@@ -513,6 +518,67 @@ describe("import_site — the run", () => {
     expect(res.error).toContain("stopped");
     expect(adoptProject).not.toHaveBeenCalled();
     expect(importRun("call_1")!.status).toBe("stopped");
+  });
+
+  /* The imported project is on disk once the run is done, and no undo reaches it: it is what the
+     turn changed. A run that failed records nothing. */
+  test("a finished run records the project as a disk write, and a failed one records nothing", async () => {
+    const { ctx, registry } = harness({ adoptProject: landing() });
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/x",
+      url: "https://example.com",
+    });
+    captured!.resolve({ config: {}, root: "/home/dev/Sites/x" });
+    await running;
+    expect(ctx.ledger.writes).toEqual([
+      { disk: true, ok: true, path: "/home/dev/Sites/x", tool: "import_site" },
+    ]);
+
+    const failing = harness();
+    const failed = failing.registry.execute("import_site", {
+      directory: "/home/dev/Sites/y",
+      url: "https://example.com",
+    });
+    captured!.reject(new Error("Navigation timeout"));
+    await failed;
+    expect(failing.ctx.ledger.writes).toEqual([]);
+  });
+
+  /* The run's stop is scoped to the run. A Stop later in the same turn (a question the model puts
+     after the import, say) belongs to whatever the turn is doing then, and must not rewrite the
+     finished run as stopped. */
+  test("a Stop after the run finished leaves it done", async () => {
+    const adoptProject = landing();
+    const controller = new AbortController();
+    const { registry } = harness({ adoptProject, signal: controller.signal });
+
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/x",
+      url: "https://example.com",
+    });
+    captured!.resolve({ config: {}, root: "/home/dev/Sites/x" });
+    const res = await running;
+    expect(res.success).toBe(true);
+    expect(importRun("call_1")!.status).toBe("done");
+
+    controller.abort();
+    expect(importRun("call_1")!.status).toBe("done");
+  });
+
+  test("a failed run stays failed after a later Stop", async () => {
+    const controller = new AbortController();
+    const { registry } = harness({ signal: controller.signal });
+
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/x",
+      url: "https://example.com",
+    });
+    captured!.reject(new Error("Navigation timeout"));
+    const res = await running;
+    expect(res.success).toBe(false);
+
+    controller.abort();
+    expect(importRun("call_1")!.status).toBe("failed");
   });
 
   test("a project that was written but not opened here says so instead of claiming it opened", async () => {

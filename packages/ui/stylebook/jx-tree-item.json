@@ -1,0 +1,258 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTreeItem",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-action-button.json"
+    },
+    {
+      "$ref": "../components/jx-dot.json"
+    },
+    {
+      "$ref": "../components/jx-tree-item.json"
+    },
+    {
+      "$ref": "../components/jx-tree.json"
+    }
+  ],
+  "state": {
+    "names": ["folder", "file", "dots-three-vertical"]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "72ch"
+    },
+    "& jx-tree": {
+      "maxWidth": "280px",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)",
+      "padding": "var(--jx-space-1) 0"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "A consumer's mark, slotted into `icon`. It is the consumer's box and the consumer's declarations: the row generates none of its own for the three zones, so a badge, a chip and a pin all sit on the row's one flex line.",
+      "flex": "none",
+      "maxWidth": "12ch",
+      "overflow": "hidden",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--jx-tag)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "textOverflow": "ellipsis"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tree-item"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One row, and a row is all it is. Its level, its position among its siblings and how many siblings it has are PROPS, because a windowed tree holds a slice: a row that counted its own siblings would count the drawn ones and tell a reader a directory holds four files when it holds eight hundred."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Levels, twisty and leaf"
+    },
+    {
+      "tagName": "p",
+      "textContent": "An empty expanded means a LEAF: no aria-expanded, no chevron, and the box the chevron would occupy is kept so every name lines up. The indent is --jx-tree-indent times one less than the level."
+    },
+    {
+      "tagName": "jx-tree",
+      "attributes": {
+        "label": "Row states"
+      },
+      "children": [
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "open",
+            "label": "An open branch",
+            "level": "1",
+            "posinset": "1",
+            "setsize": "3",
+            "expanded": "true"
+          }
+        },
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "shut",
+            "label": "A closed branch",
+            "level": "2",
+            "posinset": "1",
+            "setsize": "2",
+            "expanded": "false"
+          }
+        },
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "leaf",
+            "label": "A leaf",
+            "level": "3",
+            "posinset": "1",
+            "setsize": "1"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Selected, disabled and cut"
+    },
+    {
+      "tagName": "p",
+      "textContent": "aria-selected is written only when the row IS selected: a false on every row is what tells assistive technology a tree supports multiple selection, and that answer belongs on the tree. A cut row is faded and says nothing to a reader, because the host announces the move through its own live region."
+    },
+    {
+      "tagName": "jx-tree",
+      "attributes": {
+        "label": "Selection states"
+      },
+      "children": [
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "picked",
+            "label": "Selected",
+            "level": "1",
+            "posinset": "1",
+            "setsize": "3",
+            "selected": ""
+          }
+        },
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "off",
+            "label": "Disabled",
+            "level": "1",
+            "posinset": "2",
+            "setsize": "3",
+            "disabled": ""
+          }
+        },
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "lifted",
+            "label": "Cut, waiting for a paste",
+            "level": "1",
+            "posinset": "3",
+            "setsize": "3",
+            "cut": ""
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "The three slots and the grip"
+    },
+    {
+      "tagName": "p",
+      "textContent": "icon draws before the name, status and actions after it. The division is the CLICK: status holds a mark about the row and clicking it selects the row, while actions holds a control and the click stops there. The grip is the pointer's grab affordance for the drag island and never a second way to move a row — the keyboard path is cut and paste."
+    },
+    {
+      "tagName": "jx-tree",
+      "attributes": {
+        "label": "Slotted rows"
+      },
+      "children": [
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "src",
+            "label": "src",
+            "level": "1",
+            "posinset": "1",
+            "setsize": "2",
+            "expanded": "true"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "attributes": {
+                "slot": "icon"
+              },
+              "$props": {
+                "name": "folder"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-tree-item",
+          "attributes": {
+            "value": "src/hero",
+            "label": "Hero",
+            "level": "2",
+            "posinset": "1",
+            "setsize": "1",
+            "grip": ""
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "badge",
+                "slot": "icon"
+              },
+              "textContent": "section"
+            },
+            {
+              "tagName": "jx-dot",
+              "attributes": {
+                "slot": "status",
+                "aria-hidden": "true"
+              },
+              "$props": {
+                "tone": "warning"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "slot": "actions"
+              },
+              "$props": {
+                "label": "More actions",
+                "hint": "More actions",
+                "icon": "dots-three-vertical",
+                "haspopup": "menu",
+                "size": "sm",
+                "quiet": true,
+                "tabindex": "-1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

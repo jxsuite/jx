@@ -1,0 +1,44 @@
+{
+  "name": "v1-index-missing-fields",
+  "description": "An index with a sessions array but no version or activeId. The missing fields default (activeId null), so nothing is restored while the session is still listed.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "sessions": [
+        {
+          "id": "s_only",
+          "title": "Only session",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_only": [
+      { "id": "only_1", "role": "user", "content": "Only session", "timestamp": 1767225601000 },
+      {
+        "id": "only_2",
+        "role": "assistant",
+        "content": "Listed, not restored.",
+        "timestamp": 1767225602000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": null,
+    "sessions": [
+      {
+        "id": "s_only",
+        "title": "Only session",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

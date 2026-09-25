@@ -1,0 +1,143 @@
+{
+  "name": "length-cutoff-tool-call",
+  "description": "A tool call cut off mid-arguments by the length limit (no tool_call_end). Studio's loop still runs it; the truncated arguments are sent verbatim and the reply is the parse failure, which the model corrects on the next round.",
+  "shapes": ["length-cutoff-tool-call", "single-tool-call", "content-null-with-tool-calls"],
+  "script": [
+    ["sendMessage", "Add a pricing section"],
+    ["appendToolCallStart", "call_1", "add_child"],
+    ["appendToolCallDelta", "call_1", "{\"parentPath\":[],\"node\":{\"tagName\":\"sec"],
+    ["finishStream", "length"],
+    [
+      "appendToolResult",
+      "call_1",
+      {
+        "success": false,
+        "error": "Failed to parse arguments: JSON Parse error: Unterminated string"
+      }
+    ],
+    [
+      "pushToolResultMessage",
+      "call_1",
+      "{\"success\":false,\"error\":\"Failed to parse arguments: JSON Parse error: Unterminated string\"}"
+    ],
+    ["beginAssistantTurn"],
+    ["appendToolCallStart", "call_2", "add_child"],
+    ["appendToolCallDelta", "call_2", "{\"parentPath\":[],\"node\":{\"tagName\":\"section\"}}"],
+    ["appendToolCallEnd", "call_2"],
+    ["finishStream", "tool_calls"],
+    [
+      "appendToolResult",
+      "call_2",
+      { "success": true, "summary": "Added section as child 1 of the root." }
+    ],
+    [
+      "pushToolResultMessage",
+      "call_2",
+      "{\"success\":true,\"summary\":\"Added section as child 1 of the root.\"}"
+    ],
+    ["beginAssistantTurn"],
+    ["appendDelta", "Added a pricing section."],
+    ["finishStream", "stop"]
+  ],
+  "messages": [
+    {
+      "id": "msg_T_1",
+      "role": "user",
+      "content": "Add a pricing section",
+      "timestamp": 1767225601000
+    },
+    {
+      "id": "msg_T_2",
+      "role": "assistant",
+      "content": "",
+      "timestamp": 1767225601000,
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "add_child",
+          "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"sec",
+          "result": {
+            "success": false,
+            "error": "Failed to parse arguments: JSON Parse error: Unterminated string"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg_T_3",
+      "role": "tool",
+      "toolCallId": "call_1",
+      "content": "{\"success\":false,\"error\":\"Failed to parse arguments: JSON Parse error: Unterminated string\"}",
+      "timestamp": 1767225606000
+    },
+    {
+      "id": "msg_T_4",
+      "role": "assistant",
+      "content": "",
+      "timestamp": 1767225607000,
+      "toolCalls": [
+        {
+          "id": "call_2",
+          "name": "add_child",
+          "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"section\"}}",
+          "result": { "success": true, "summary": "Added section as child 1 of the root." }
+        }
+      ]
+    },
+    {
+      "id": "msg_T_5",
+      "role": "tool",
+      "toolCallId": "call_2",
+      "content": "{\"success\":true,\"summary\":\"Added section as child 1 of the root.\"}",
+      "timestamp": 1767225613000
+    },
+    {
+      "id": "msg_T_6",
+      "role": "assistant",
+      "content": "Added a pricing section.",
+      "timestamp": 1767225614000
+    }
+  ],
+  "wire": [
+    { "role": "user", "content": "Add a pricing section" },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": {
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"sec"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "{\"success\":false,\"error\":\"Failed to parse arguments: JSON Parse error: Unterminated string\"}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_2",
+          "type": "function",
+          "function": {
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"section\"}}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_2",
+      "content": "{\"success\":true,\"summary\":\"Added section as child 1 of the root.\"}"
+    },
+    { "role": "assistant", "content": "Added a pricing section." }
+  ]
+}

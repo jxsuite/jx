@@ -1,0 +1,38 @@
+{
+  "name": "v1-active-payload-corrupt",
+  "description": "The active payload is truncated JSON (a write cut short). It reads as absent: nothing restored, nothing rewritten.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_cut",
+      "sessions": [
+        {
+          "id": "s_cut",
+          "title": "Cut short",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_cut": { "$raw": "[{\"id\":\"msg_T_1\",\"role\":" }
+  },
+  "expected": {
+    "assistantSessionId": null,
+    "storeActiveId": "s_cut",
+    "sessions": [
+      {
+        "id": "s_cut",
+        "title": "Cut short",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [],
+    "wire": [],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

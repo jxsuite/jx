@@ -24,9 +24,34 @@ nul
 .jx/
 packages/desktop/.jx/
 
+# Perf-trace captures and their dumps — regenerate with `bun run perf:studio`
+scripts/perf/out/
+
 # Compiler-generated component sidecars — built into dist/, never committed to source
 sites/*/components/*.js
 
 # Starter templates are not installed projects — a stray `bun install` (e.g. opening one in Studio)
 # drops a lockfile we don't track here. (node_modules/dist/.cache are already ignored above.)
 packages/starters/sites/*/bun.lock
+
+# Derived documentation pages — build outputs, never source. `bun run docs:generate` writes them
+# (postinstall, the docs gates and the site build all run it); nothing reads them from git. They
+# were committed once, and every spec release touched the same nine files, so any two open pull
+# requests that released a spec conflicted on implementation-status.md and spec-changelog.md by
+# construction. The generators are pure functions of the tree, so a checkout can always remake them.
+docs/extending/reference/implementation-status.md
+docs/extending/reference/spec-changelog.md
+docs/extending/reference/standards.md
+docs/extending/reference/studio-routes.md
+docs/framework/reference/formulas.md
+docs/framework/reference/operators.md
+docs/studio/interface/commands.md
+docs/studio/interface/shortcuts.md
+docs/studio/projects/starters.md
+
+# A test's own git repository. `git-new-endpoints.test.ts` creates it in `beforeAll` and removes it
+# in `afterAll`; a `git add -A` while a run was in flight once committed the leftover as a GITLINK
+# with no `.gitmodules` entry, so every CI job's checkout cleanup warned "No url found for
+# submodule path", and every local run of the server suite deleted a tracked path.
+packages/server/tests/_git_new_endpoints_fixture/
+packages/server/tests/_git_remote_fixture/

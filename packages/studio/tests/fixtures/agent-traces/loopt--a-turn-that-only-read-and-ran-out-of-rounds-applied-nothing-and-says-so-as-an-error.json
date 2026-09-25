@@ -1,0 +1,337 @@
+{
+  "chatCalls": [
+    "sendMessage(\"look at everything\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r0\", \"peek\")",
+    "appendToolCallDelta(\"r0\", \"{}\")",
+    "appendToolCallEnd(\"r0\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r0\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r0\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r1\", \"peek\")",
+    "appendToolCallDelta(\"r1\", \"{}\")",
+    "appendToolCallEnd(\"r1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r1\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r2\", \"peek\")",
+    "appendToolCallDelta(\"r2\", \"{}\")",
+    "appendToolCallEnd(\"r2\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r2\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r2\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r3\", \"peek\")",
+    "appendToolCallDelta(\"r3\", \"{}\")",
+    "appendToolCallEnd(\"r3\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r3\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r3\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"r4\", \"peek\")",
+    "appendToolCallDelta(\"r4\", \"{}\")",
+    "appendToolCallEnd(\"r4\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"r4\", {\"success\":true,\"summary\":\"Looked at the page.\"})",
+    "pushToolResultMessage(\"r4\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Looked at the page.\\\"}\")",
+    "setError(\"I ran out of tool-call rounds (5) before finishing.\\n\\nYou can continue by sending another message, or try a more specific request.\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "look at everything"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page",
+        "peek"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r0",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r0",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r1",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r1",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          }
+        ],
+        "carried": 3
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 4,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r2",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r2",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          }
+        ],
+        "carried": 5
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 5,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "r3",
+                "type": "function",
+                "function": {
+                  "name": "peek",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "r3",
+            "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}"
+          }
+        ],
+        "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#10\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "look at everything"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{}",
+          "id": "r0",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r0"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{}",
+          "id": "r1",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#5",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r1"
+    },
+    {
+      "id": "msg#6",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{}",
+          "id": "r2",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#7",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r2"
+    },
+    {
+      "id": "msg#8",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{}",
+          "id": "r3",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#9",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r3"
+    },
+    {
+      "id": "msg#10",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{}",
+          "id": "r4",
+          "name": "peek",
+          "result": {
+            "success": true,
+            "summary": "Looked at the page."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#11",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Looked at the page.\"}",
+      "toolCallId": "r4"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "I ran out of tool-call rounds (5) before finishing.\n\nYou can continue by sending another message, or try a more specific request.",
+    "model": "test",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0
+}

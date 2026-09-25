@@ -1,0 +1,820 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsCssVars",
+  "$description": "Project Settings › CSS Variables: the project's design tokens, grouped by what they name, each editable in place and each able to carry a different value in any rendering context the project declares. The adapter (`surfaces/settings-css-vars.ts`) hands in the groups already grouped, each token already resolved — its swatch colour, the chip it wears when its value follows another token, the override rows it has and the contexts it could still be given one in — and the document draws them. Nothing here reads `project.json` and nothing here decides what a token IS: `style/project-styles.ts` owns the vocabulary and `settings/css-vars-editor.ts` owns the writes. A context is DEFINED in Contexts and only overridden here, which is why the one thing the colour group says when no scheme exists is where to go and say it.",
+  "tagName": "section",
+  "attributes": {
+    "part": "cssvars"
+  },
+  "style": {
+    "$description": "This section's whole look, keyed on `part`. Six of the rules it used to borrow are gone rather than moved: `.settings-section` never had a rule anywhere (it was on the orphan ledger), and `.css-var-swatch input[type=\"color\"]` plus the two chip spans are drawn here now because the lit helper that emitted them is drawn here now. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale: a document is mounted in the pane rather than inside `<sp-theme>`, so each of those would have silently taken its hard-coded fallback.",
+    "display": "block",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"error\"]": {
+      "$description": "A write that failed, said under the section title rather than pinned to a control. This section saves on change and the predecessor dropped every rejection on the floor, so a read-only file made each edit look as though it had been taken and then quietly forgotten.",
+      "margin": "0 0 12px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"group\"]": {
+      "marginBottom": "24px"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0 0 8px",
+      "fontSize": "13px",
+      "fontWeight": "600",
+      "color": "var(--fg)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.5px"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "8px",
+      "padding": "4px 0"
+    },
+    "& [part=\"name\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)",
+      "minWidth": "100px"
+    },
+    "& [part=\"swatch-slot\"], & [part=\"chip-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"swatch\"]": {
+      "$description": "The colour well. Its background is the value the token RESOLVES to, so an alias token is a colour rather than a blank square, and the native input over it is transparent — the well is what the reader sees and the input is only what they operate.",
+      "position": "relative",
+      "width": "24px",
+      "height": "24px",
+      "flex": "none",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "overflow": "hidden",
+      "cursor": "pointer"
+    },
+    "& [part=\"swatch-input\"]": {
+      "position": "absolute",
+      "inset": "0",
+      "width": "100%",
+      "height": "100%",
+      "opacity": "0",
+      "cursor": "pointer"
+    },
+    "& [part=\"value\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [data-group=\"color\"] [part=\"value\"]": {
+      "maxWidth": "160px"
+    },
+    "& [data-group=\"size\"] [part=\"value\"]": {
+      "flex": "none",
+      "maxWidth": "120px"
+    },
+    "& [part=\"chip\"]": {
+      "$description": "A value that is exactly `var(--token)` is a reference, and raw text is the one rendering that hides both which token and what it currently is. The chip says both. It is a span, not a button: it states, it does not navigate. Same border, same size and same radius as the provenance chips in the Inspector, because \"this value comes from somewhere else\" is the same sentence in both places.",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "4px",
+      "flexShrink": "0",
+      "maxWidth": "14ch",
+      "overflow": "hidden",
+      "padding": "0 5px",
+      "border": "1px solid currentcolor",
+      "borderRadius": "var(--radius)",
+      "color": "var(--handler)",
+      "fontSize": "9px",
+      "lineHeight": "14px",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"chip-swatch\"]": {
+      "width": "8px",
+      "height": "8px",
+      "flexShrink": "0",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-xs)"
+    },
+    "& [part=\"chip-label\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"preview\"]": {
+      "$description": "A font token is the one kind whose value cannot be read: `'Georgia', serif` is a name for a shape, so the shape is drawn. Indented to the value column, because it belongs to the field above it rather than to the section.",
+      "padding": "4px 0 12px 108px",
+      "fontSize": "13px",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"overrides\"]": {
+      "paddingLeft": "108px",
+      "marginBottom": "8px"
+    },
+    "& [part=\"override\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "8px",
+      "padding": "2px 0"
+    },
+    "& [part=\"override-label\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "minWidth": "60px"
+    },
+    "& [part=\"override-value\"]": {
+      "flex": "none",
+      "maxWidth": "120px"
+    },
+    "& [data-group=\"color\"] [part=\"override-value\"]": {
+      "flex": "1",
+      "maxWidth": "160px"
+    },
+    "& [part=\"override-add\"]": {
+      "$description": "The add-an-override control aligns with the override rows rather than with the token name: it belongs to the override list, and a control that lined up with the base value would read as a second base value.",
+      "display": "flex",
+      "alignItems": "center",
+      "padding": "2px 0"
+    },
+    "& [part=\"add\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "8px",
+      "padding": "8px 0",
+      "marginTop": "8px",
+      "borderTop": "1px solid var(--border)"
+    },
+    "& [part=\"add-name\"], & [part=\"add-value\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"notice\"]": {
+      "$description": "What the colour group says when the project declares no scheme: this level overrides a context, it never defines one, so the only thing it can offer is the way to the level that does.",
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "6px",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "CSS Variables"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "error-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "error",
+            "role": "alert"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/groups"
+      },
+      "key": {
+        "$ref": "$map/item/id"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "group",
+          "data-group": "${$map.item.id}"
+        },
+        "children": [
+          {
+            "tagName": "h4",
+            "attributes": {
+              "part": "group-title"
+            },
+            "textContent": "${$map.item.title}"
+          },
+          {
+            "$prototype": "Array",
+            "items": {
+              "$ref": "$map/item/tokens"
+            },
+            "key": {
+              "$ref": "$map/item/name"
+            },
+            "map": {
+              "tagName": "div",
+              "attributes": {
+                "part": "token",
+                "data-token": "${$map.item.name}"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "row"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "swatch-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/swatchState"
+                      },
+                      "cases": {
+                        "swatch": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "swatch"
+                          },
+                          "style": {
+                            "background": {
+                              "$ref": "$map/item/swatchBg"
+                            }
+                          },
+                          "children": [
+                            {
+                              "tagName": "input",
+                              "attributes": {
+                                "part": "swatch-input",
+                                "type": "color",
+                                "aria-label": "${$map.item.swatchLabel}"
+                              },
+                              "value": {
+                                "$ref": "$map/item/swatchInput"
+                              },
+                              "oninput": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setToken"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/name"
+                                      },
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "name"
+                      },
+                      "textContent": "${$map.item.label}"
+                    },
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "value"
+                      },
+                      "$props": {
+                        "label": {
+                          "$ref": "$map/item/label"
+                        },
+                        "value": {
+                          "$ref": "$map/item/value"
+                        },
+                        "size": "sm"
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setToken"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/name"
+                              },
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "chip-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/chipState"
+                      },
+                      "cases": {
+                        "plain": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "chip",
+                            "title": "${$map.item.chipTitle}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "chip-label"
+                              },
+                              "textContent": "${$map.item.chipLabel}"
+                            }
+                          ]
+                        },
+                        "swatch": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "chip",
+                            "title": "${$map.item.chipTitle}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "chip-swatch"
+                              },
+                              "style": {
+                                "background": {
+                                  "$ref": "$map/item/chipSwatch"
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "chip-label"
+                              },
+                              "textContent": "${$map.item.chipLabel}"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "remove"
+                      },
+                      "$props": {
+                        "icon": "trash",
+                        "size": "sm",
+                        "label": {
+                          "$ref": "$map/item/removeLabel"
+                        },
+                        "hint": {
+                          "$ref": "$map/item/removeLabel"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/removeToken"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/name"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "preview-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "$map/item/previewState"
+                  },
+                  "cases": {
+                    "font": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "preview"
+                      },
+                      "style": {
+                        "fontFamily": {
+                          "$ref": "$map/item/previewFont"
+                        }
+                      },
+                      "textContent": "The quick brown fox jumps over the lazy dog"
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "overrides-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "$map/item/overrideState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "overrides"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "$map/item/overrides"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "override",
+                              "data-kind": "${$map.item.kind}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "override-label"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "swatch-slot",
+                                  "role": "none"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/swatchState"
+                                },
+                                "cases": {
+                                  "swatch": {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "swatch"
+                                    },
+                                    "style": {
+                                      "background": {
+                                        "$ref": "$map/item/swatchBg"
+                                      }
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "input",
+                                        "attributes": {
+                                          "part": "swatch-input",
+                                          "type": "color",
+                                          "aria-label": "${$map.item.swatchLabel}"
+                                        },
+                                        "value": {
+                                          "$ref": "$map/item/swatchInput"
+                                        },
+                                        "oninput": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setOverride"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/token"
+                                                },
+                                                {
+                                                  "$ref": "$map/item/ctx"
+                                                },
+                                                {
+                                                  "$ref": "event#/target/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "tagName": "jx-textfield",
+                                "attributes": {
+                                  "part": "override-value"
+                                },
+                                "$props": {
+                                  "label": {
+                                    "$ref": "$map/item/fieldLabel"
+                                  },
+                                  "value": {
+                                    "$ref": "$map/item/value"
+                                  },
+                                  "placeholder": "inherits",
+                                  "size": "sm"
+                                },
+                                "onchange": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/setOverride"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/token"
+                                        },
+                                        {
+                                          "$ref": "$map/item/ctx"
+                                        },
+                                        {
+                                          "$ref": "event#/target/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "override-add-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "$map/item/addState"
+                          },
+                          "cases": {
+                            "shown": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "override-add"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-select",
+                                  "attributes": {
+                                    "part": "add-picker"
+                                  },
+                                  "$props": {
+                                    "label": {
+                                      "$ref": "$map/item/addLabel"
+                                    },
+                                    "options": {
+                                      "$ref": "$map/item/addOptions"
+                                    },
+                                    "value": {
+                                      "$ref": "$map/item/addPick"
+                                    },
+                                    "size": "sm"
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/addOverride"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/name"
+                                          },
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "add"
+            },
+            "children": [
+              {
+                "tagName": "jx-textfield",
+                "attributes": {
+                  "part": "add-name"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/nameLabel"
+                  },
+                  "placeholder": {
+                    "$ref": "$map/item/nameHint"
+                  },
+                  "value": {
+                    "$ref": "$map/item/addName"
+                  },
+                  "size": "sm"
+                },
+                "oninput": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/setAddName"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        },
+                        {
+                          "$ref": "event#/target/value"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "tagName": "jx-textfield",
+                "attributes": {
+                  "part": "add-value"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/valueLabel"
+                  },
+                  "placeholder": {
+                    "$ref": "$map/item/valueHint"
+                  },
+                  "value": {
+                    "$ref": "$map/item/addValue"
+                  },
+                  "size": "sm"
+                },
+                "oninput": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/setAddValue"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        },
+                        {
+                          "$ref": "event#/target/value"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "tagName": "jx-button",
+                "attributes": {
+                  "part": "add-button"
+                },
+                "$props": {
+                  "size": "sm",
+                  "label": {
+                    "$ref": "$map/item/addLabel"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/addToken"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "Add"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "notice-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/noticeState"
+            },
+            "cases": {
+              "shown": {
+                "tagName": "p",
+                "attributes": {
+                  "part": "notice"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "No colour scheme is defined yet, so these tokens have one value each."
+                  },
+                  {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "manage"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "hint": "Define a colour scheme in Project Settings › Contexts"
+                    },
+                    "onclick": {
+                      "$ref": "#/state/manageContexts"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "Manage contexts…"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

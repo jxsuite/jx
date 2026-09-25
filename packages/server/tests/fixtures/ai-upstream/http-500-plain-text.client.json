@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "type": "error",
+      "message": "API error 500: Internal Server Error\n",
+      "code": "500"
+    }
+  ]
+}

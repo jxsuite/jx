@@ -14,12 +14,16 @@
  * @license MIT
  */
 
+import { useNativeFetch } from "../tests/harness/native-fetch.ts";
 import "../tests/with-dom.ts";
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
 import { runTask, resolveConfig } from "./runner.js";
 import type { Task } from "./runner.js";
 import { writeRun } from "./scoreboard.js";
+
+// The provider is reached as a server reaches it: happy-dom's fetch would apply CORS to it.
+useNativeFetch();
 
 const TASKS_DIR = join(import.meta.dir as string, "tasks");
 
@@ -91,6 +95,16 @@ async function main() {
     const r = await runTask(task, { k });
     console.log(`  ${r.passAtK ? "✅" : "❌"} ${r.id}  rate=${(r.passRate * 100).toFixed(0)}%`);
     results.push(r);
+  }
+
+  /* A run in which no trial reached the model measured the endpoint, not the scaffolding. Written
+     down, it would become the baseline the next run is diffed against, so it is refused instead. */
+  const trials = results.flatMap((r) => r.trials);
+  if (trials.every((t) => t.rounds === 0 && t.loopError !== null)) {
+    console.error(
+      `✗ No trial got a reply from the model: ${trials[0]?.loopError ?? "no trials ran"}`,
+    );
+    process.exit(2);
   }
 
   const { outDir, summary, regressed } = writeRun(results, { stamp: stampNow() });

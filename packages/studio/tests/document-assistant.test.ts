@@ -8,6 +8,7 @@
  */
 import {
   clearSeededSettings,
+  flush,
   installMockPlatform,
   resetStudioState,
   resetWorkspaceWithTab,
@@ -24,10 +25,29 @@ let lastClientOpts: Record<string, unknown> | null = null;
 let capturedTools: string[][] = [];
 let capturedSystemPrompts: string[] = [];
 
-function fakeClient(rounds: StreamEvent[][]): StreamingClient {
+function fakeClient(rounds: StreamEvent[][], chatUrl?: unknown): StreamingClient {
   let call = 0;
+  let url: Promise<unknown> | null = null;
   return {
-    async *streamChat(_messages: unknown, tools?: unknown, systemPrompt?: unknown) {
+    async *streamChat(
+      _messages: unknown,
+      tools?: unknown,
+      systemPrompt?: unknown,
+      signal?: AbortSignal,
+    ) {
+      /* The real proxy client's contract: a lazy URL is resolved once, inside the first stream,
+         and a stream stopped by then sends nothing. The resolved URL is what the options record. */
+      url ??= Promise.resolve(
+        typeof chatUrl === "function" ? (chatUrl as () => unknown)() : chatUrl,
+      );
+      const resolved = await url;
+      if (lastClientOpts) {
+        lastClientOpts = { ...lastClientOpts, chatUrl: resolved };
+      }
+      if (signal?.aborted) {
+        yield { stopReason: "cancelled", type: "done" } as StreamEvent;
+        return;
+      }
       capturedTools.push(
         ((tools as { function: { name: string } }[]) ?? []).map((t) => t.function.name),
       );
@@ -58,7 +78,7 @@ void mock.module("@jxsuite/ai", () => ({
     if (createErrorMessage) {
       throw new Error(createErrorMessage);
     }
-    return fakeClient(nextRounds);
+    return fakeClient(nextRounds, opts.chatUrl);
   },
   createToolRegistry,
 }));
@@ -68,10 +88,71 @@ const { createDocumentAssistant } = await import("../src/services/document-assis
 const { getActiveSessionId, listSessions, loadSession } =
   await import("../src/services/ai-session-store");
 const { setProjectAdopter } = await import("../src/services/project-adoption");
-const { closeAllTabs, setWorkspaceProject, workspace } = await import("../src/workspace/workspace");
+const { activeTab, closeAllTabs, setWorkspaceProject, workspace } =
+  await import("../src/workspace/workspace");
 const { commitProjectConfig, resetProjectConfigDocument } =
   await import("../src/tabs/project-config");
 const store = await import("../src/store");
+const { createCommandRegistry } = await import("../src/commands/registry");
+const { hasSelection, makeContext } = await import("../src/commands/context");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
+const { selectionCommands } = await import("../src/canvas/canvas-render");
+const { isSpliceablePath } = await import("../src/tabs/selection");
+const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
+const { writesForTurn } = await import("../src/services/ai-writes");
+const { answerAsk, pendingAsk } = await import("../src/services/ai-ask");
+
+/** Which editor the registry fixture reports the focused pane as showing. */
+let editorKind: "canvas" | "config" = "canvas";
+
+/**
+ * A registry over the LIVE workspace, so the assistant's bridge (`services/ai-command-tools.ts`)
+ * has records to project: the two selection verbs from `canvas-render.ts` and an inline
+ * `selection.delete` whose implementation is the app's own batch removal. The context reads the
+ * same state the tools do — the active tab, its selection, the project root — and `editorKind` is
+ * the one knob a test turns to put Project Settings in front of the assistant.
+ */
+function installRegistryFixture() {
+  const registry = createCommandRegistry({
+    getContext: () => {
+      const tab = activeTab.value;
+      const paths = tab?.session.selection ?? [];
+      return makeContext({
+        document: { open: Boolean(tab) },
+        editor: { kind: editorKind },
+        project: { open: Boolean(workspace.projectRoot) },
+        selection: {
+          count: paths.length,
+          isRoot: paths.some((path) => path.length === 0),
+          paths,
+        },
+      });
+    },
+  });
+  registry.registerAll(selectionCommands());
+  registry.register({
+    aiTool: {
+      description: "Delete elements from the document as one undoable step.",
+      name: "delete_node",
+      report: ({ before }) => `Deleted ${before.selection.paths.length} element(s).`,
+    },
+    category: "Selection",
+    destructive: true,
+    enablement: (ctx) =>
+      !ctx.selection.isRoot && ctx.selection.paths.every((path) => isSpliceablePath(path)),
+    id: "selection.delete",
+    level: "selection",
+    requires: "an element selected on the canvas that has a sibling position",
+    run: () => {
+      const tab = activeTab.value!;
+      transactDoc(tab, (t) => mutateRemoveNodes(t, tab.session.selection));
+    },
+    title: "Delete",
+    undo: "document",
+    when: hasSelection,
+  });
+  setActiveRegistry(registry);
+}
 
 /** The messages persisted for the assistant's active session (tests run with no project root). */
 function persistedMessages() {
@@ -92,11 +173,15 @@ beforeEach(() => {
   lastClientOpts = null;
   capturedTools = [];
   capturedSystemPrompts = [];
+  editorKind = "canvas";
+  installRegistryFixture();
 });
 
 afterEach(() => {
   localStorage.clear();
   clearSeededSettings();
+  // `active-registry.ts` documents this as the unmount contract.
+  setActiveRegistry(null);
 });
 
 describe("document-assistant", () => {
@@ -264,6 +349,110 @@ describe("document-assistant", () => {
     expect(a.activeSessionId()).toBe(secondId);
   });
 
+  /* One turn per window. The chat's status belongs to the token stream and reads idle while a
+     round's tools run (here, a question waiting on the author), so guarding on it let a second
+     send start a second turn beside the first (D2). */
+  test("a send while a turn's tools run is refused, and the turn reads active until it ends", async () => {
+    nextRounds = [
+      toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+    const a = createDocumentAssistant();
+    expect(a.isTurnActive()).toBe(false);
+    const first = a.sendMessage("first");
+    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      await flush(1);
+    }
+    expect(a.chatState.status).toBe("idle");
+    expect(a.isTurnActive()).toBe(true);
+
+    const streams = capturedTools.length;
+    await a.sendMessage("second");
+    expect(capturedTools).toHaveLength(streams);
+    expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "first",
+    ]);
+
+    // Answering is not a send: the turn carries on with the reply and then ends.
+    answerAsk("yes");
+    await first;
+    expect(a.isTurnActive()).toBe(false);
+    expect(capturedTools).toHaveLength(streams + 1);
+  });
+
+  /* New Chat stops the running turn, but its loop unwinds afterwards: until it has, the window still
+     holds that turn and a send is refused. A caller that means to start the next turn (the New
+     Project hand-off) waits for it with whenTurnEnds rather than being refused and lost. */
+  test("after New Chat stops a waiting turn, the next send is accepted once it has ended", async () => {
+    nextRounds = [
+      toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+    const a = createDocumentAssistant();
+    const first = a.sendMessage("first");
+    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      await flush(1);
+    }
+    a.newChat();
+    // Stopped, but not yet unwound: the window still holds the turn.
+    expect(a.isTurnActive()).toBe(true);
+    await a.whenTurnEnds();
+    expect(a.isTurnActive()).toBe(false);
+    nextRounds = [
+      [
+        { content: "Importing.", type: "delta" },
+        { stopReason: "stop", type: "done" },
+      ],
+    ];
+    const streams = capturedTools.length;
+    await a.sendMessage("import");
+    await first;
+    expect(capturedTools).toHaveLength(streams + 1);
+    expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "import",
+    ]);
+  });
+
+  /* Chat History stays open to the author while a turn waits on them, and opening a chat stops the
+     turn and replaces the transcript under it. Nothing more of that turn may land in the chat now
+     on screen: not the stopped call's reply, and not its changes, which would otherwise be drawn
+     as "Changed 1 file" under a reply that changed nothing. */
+  test("a chat opened while a turn waits gets none of that turn's reply or changes", async () => {
+    const tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p", textContent: "one" }],
+      tagName: "div",
+    });
+    nextRounds = [
+      [
+        { content: "first reply", type: "delta" },
+        { stopReason: "stop", type: "done" },
+      ],
+    ];
+    const a = createDocumentAssistant();
+    await a.sendMessage("first chat");
+    const firstId = a.activeSessionId()!;
+    a.newChat();
+    // An edit, then a question the author leaves open while they look through Chat History.
+    nextRounds = [
+      toolCallRound("c1", "add_child", { index: 1, node: { tagName: "span" }, parentPath: [] }),
+      toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+    ];
+    const running = a.sendMessage("second chat");
+    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      await flush(1);
+    }
+    expect(pendingAsk()).not.toBeNull();
+
+    a.openSession(firstId);
+    await running;
+
+    expect(a.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(a.chatState.messages.map((m) => writesForTurn(m.id))).toEqual([[], []]);
+    expect(loadSession("", firstId)!.map((m) => m.role)).toEqual(["user", "assistant"]);
+    // The edit itself landed, and stays in the document's history like any other.
+    expect((tab.doc.document.children as unknown[]).length).toBe(2);
+  });
+
   test("restores the last-active session on creation", () => {
     globalThis.localStorage.setItem(
       LEGACY_PERSIST_KEY,
@@ -322,6 +511,129 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     expect(capturedTools[0]).toContain("set_property");
     expect(capturedTools[0]).toContain("write_file");
     expect(capturedTools[0]).not.toContain("create_project");
+  });
+
+  /*
+   * The prompt advertises exactly what the gate will honour, for BOTH kinds of tool. The hand
+   * tree writers are gated on `treeEditable`, which `buildPrompt` never passed — so with Project
+   * Settings focused the prompt listed `set_property` while the gate refused it, and the model
+   * spent a round learning that. The command projections are one function for the prompt line and
+   * the schema (`advertisedCommandTools`), so `delete_node(paths)` is in the text iff its schema
+   * was sent.
+   */
+  test("the prompt lists a tool iff its schema was sent, in each of the four states", async () => {
+    const states: [string, () => void, { tree: boolean; deleteNode: boolean }][] = [
+      ["no document", () => closeAllTabs(), { deleteNode: false, tree: false }],
+      ["a canvas document", () => {}, { deleteNode: true, tree: true }],
+      [
+        "Project Settings focused",
+        () => {
+          editorKind = "config";
+        },
+        { deleteNode: false, tree: false },
+      ],
+      [
+        "a canvas document, project open",
+        () => setWorkspaceProject("/proj"),
+        { deleteNode: true, tree: true },
+      ],
+    ];
+    for (const [label, arrange, expected] of states) {
+      resetWorkspaceWithTab();
+      editorKind = "canvas";
+      setWorkspaceProject(null);
+      arrange();
+      capturedTools = [];
+      capturedSystemPrompts = [];
+      nextRounds = [[{ stopReason: "stop", type: "done" }]];
+      const a = createDocumentAssistant();
+      await a.sendMessage("hi");
+      const sent = capturedTools[0]!;
+      const prompt = capturedSystemPrompts[0]!;
+      expect([
+        label,
+        sent.includes("delete_node"),
+        prompt.includes("- delete_node(paths)"),
+      ]).toEqual([label, expected.deleteNode, expected.deleteNode]);
+      expect([label, sent.includes("set_property"), prompt.includes("- set_property(")]).toEqual([
+        label,
+        expected.tree,
+        expected.tree,
+      ]);
+      // A read is not affected by the tree gate: it follows the document alone.
+      expect([label, sent.includes("read_document")]).toEqual([label, label !== "no document"]);
+    }
+  });
+
+  test("a delete_node round runs selection.delete through the registry as one undo step", async () => {
+    /* Mirrors the `add_child` case above, for the other kind of tool: the call reaches
+       `registry.run("selection.setPaths")` then `registry.run("selection.delete")`, the batch
+       removal is one transaction inside the turn's one batch, the ledger records the document, and
+       the report — the record's own sentence — is what the model reads. */
+    const tab = resetWorkspaceWithTab({
+      children: [
+        { tagName: "p", textContent: "one" },
+        { tagName: "p", textContent: "two" },
+      ],
+      tagName: "div",
+    });
+    nextRounds = [
+      toolCallRound("d1", "delete_node", {
+        paths: [
+          ["children", 1],
+          ["children", 0],
+        ],
+      }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+
+    const a = createDocumentAssistant();
+    await a.sendMessage("clear the page");
+
+    expect(tab.doc.document.children).toEqual([]);
+    expect(tab.history.index).toBe(1); // One undoable transaction (batched)
+    expect(tab.session.selection).toEqual([]);
+    // What the model read back: the `role: "tool"` message carries the whole result.
+    const reply = a.chatState.messages.find((m) => m.role === "tool");
+    expect(JSON.parse(reply!.content)).toEqual({
+      success: true,
+      summary: "Deleted 2 element(s).",
+    });
+    /* Filed under the request, the turn's last drawn message: the final round said nothing, so the
+       message the turn ends on is an empty one the transcript never draws. */
+    const request = a.chatState.messages.find((m) => m.toolCalls?.length);
+    expect(a.chatState.messages.at(-1)!.content).toBe("");
+    expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([]);
+    expect(writesForTurn(request!.id)).toEqual([
+      { disk: false, ok: true, path: "/project/index.json", tool: "Delete" },
+    ]);
+  });
+
+  test("a delete_node aimed at Project Settings is refused by the person's own gate", async () => {
+    /* `selection.setPaths` runs — project.json is drawn as a tree and `document.open` holds — and
+       then `selection.delete`'s `when` (`hasSelection` requires the canvas) refuses with its
+       sentence. Nothing is written, and the model reads the refusal a palette would print. */
+    const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
+    editorKind = "config";
+    nextRounds = [
+      toolCallRound("d1", "delete_node", { paths: [["children", 0]] }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+
+    const a = createDocumentAssistant();
+    await a.sendMessage("delete it");
+
+    expect((tab.doc.document.children as unknown[]).length).toBe(1);
+    expect(tab.doc.dirty).toBe(false);
+    const reply = a.chatState.messages.find((m) => m.role === "tool");
+    expect(JSON.parse(reply!.content)).toEqual({
+      error:
+        'Command "selection.delete" is not available right now — it requires an element ' +
+        "selected on the canvas that has a sibling position.",
+      success: false,
+    });
+    const request = a.chatState.messages.find((m) => m.toolCalls?.length);
+    expect(writesForTurn(request!.id)).toEqual([]);
   });
 
   test("create_project adopts the scaffold and re-keys the pre-project session", async () => {
@@ -427,11 +739,20 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     /* `sendMessage` persists again in its `finally`, and New Chat clears the session id out from
        under it. Writing there would resurrect the conversation the reader just discarded — under
        whichever session id happened to be next. */
+    const tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p", textContent: "one" }],
+      tagName: "div",
+    });
     nextRounds = [
       [
         { content: "half a th", type: "delta" },
-        { stopReason: "stop", type: "done" },
+        ...toolCallRound("c1", "add_child", {
+          index: 1,
+          node: { tagName: "span" },
+          parentPath: [],
+        }),
       ],
+      [{ stopReason: "stop", type: "done" }],
     ];
 
     const a = createDocumentAssistant();
@@ -445,6 +766,48 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     // Nothing was written back under a session the reader had already dismissed.
     expect(listSessions("").every((s) => loadSession("", s.id)?.length !== 0)).toBe(true);
     expect(a.chatState.messages).toHaveLength(0);
+    /* And the discarded turn did nothing. New Chat stops the turn, and the stop is armed before the
+       send's first wait, so the call it would have streamed never ran into the chat that replaced
+       it, and nothing was requested at all. */
+    expect(tab.doc.document.children).toHaveLength(1);
+    expect(capturedTools).toEqual([]);
+  });
+
+  /* On desktop the chat URL is an IPC round trip, and the chat already reads as streaming while it
+     is answered, so Stop is on screen and clickable. A Stop in that window used to find no
+     controller: the turn went on to stream and run its tools, and its calls ran with no record in
+     the transcript, because the Stop had already cleared the reply they would have been drawn in. */
+  test("a Stop while the chat URL is resolved streams nothing and changes nothing", async () => {
+    let answer: (url: string) => void = () => {};
+    installMockPlatform({
+      aiChatUrl: () =>
+        new Promise<string>((settle) => {
+          answer = settle;
+        }),
+    });
+    const tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p", textContent: "one" }],
+      tagName: "div",
+    });
+    nextRounds = [
+      toolCallRound("c1", "set_text", { path: ["children", 0], value: "AFTER STOP" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+
+    const a = createDocumentAssistant();
+    const sending = a.sendMessage("change it");
+    await flush(1);
+    expect(a.chatState.status).toBe("streaming");
+    a.stop();
+    answer("/__mock/ai/chat");
+    await sending;
+
+    expect(tab.doc.document.children).toEqual([{ tagName: "p", textContent: "one" }]);
+    expect(capturedTools).toEqual([]);
+    // No orphan: the stopped reply is gone, and no call or reply was left behind.
+    expect(a.chatState.messages.map((m) => m.role)).toEqual(["user"]);
+    expect(a.chatState.status).toBe("idle");
+    expect(a.chatState.error).toBeNull();
   });
   test("create_project re-anchors the agent's undo batch onto the adopted tab", async () => {
     /* Adoption closes every tab and opens the new project's, so the batch `runAgentLoop` opened on
@@ -545,6 +908,43 @@ describe("document-assistant — cross-file wiring", () => {
       description: "from Settings",
       name: "New Name",
     });
+  });
+
+  /*
+   * The record the settings commit lays the file out with is the record of the file as the
+   * assistant left it — not the one the chokepoint read before the write (issue 331). The file
+   * starts on disk with every object expanded, the assistant rewrites it with `style` on one line
+   * and a blank line after the name, and the settings edit that follows must change one line of
+   * THAT file rather than re-expanding it.
+   */
+  test("a settings edit after the assistant's project.json write keeps the layout the assistant wrote", async () => {
+    const before = { name: "Old Name", style: { "--a": "1" } };
+    const { state } = installMockPlatform({}, { "project.json": JSON.stringify(before, null, 2) });
+    setWorkspaceProject("/proj", before);
+    resetStudioState({ dirs: new Map(), projectConfig: structuredClone(before) });
+    // A no-op commit first, so the chokepoint has read the file — and its expanded record — BEFORE
+    // The assistant rewrites it. Without this the seed would read the assistant's bytes anyway.
+    const seeded = await commitProjectConfig();
+    expect(seeded.ok).toBe(true);
+    expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+
+    const written = '{\n  "name": "New Name",\n\n  "style": { "--a": "1", "--b": "2" }\n}\n';
+    nextRounds = [
+      toolCallRound("c1", "write_file", { content: written, path: "project.json" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+    const a = createDocumentAssistant();
+    await a.sendMessage("rename the project and add a variable");
+    expect(state.files.get("project.json")).toBe(written);
+
+    (store.projectState!.projectConfig as { description?: string }).description = "from Settings";
+    const result = await commitProjectConfig();
+
+    expect(result.ok).toBe(true);
+    // One added line on the assistant's file; the inline object and the blank line survive.
+    expect(state.files.get("project.json")).toBe(
+      written.replace('"2" }', '"2" },\n  "description": "from Settings"'),
+    );
   });
 
   test("write_file over the open clean tab reloads the document from disk", async () => {

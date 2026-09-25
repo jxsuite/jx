@@ -1,6 +1,12 @@
-// Releases a spec: bumps the header + footer version, restamps **Updated:** to today, and prepends
-// A `## Changelog` entry. This is the low-friction path that makes the release gate
+// Releases a spec IN PLACE, NOW: bumps the header + footer version, restamps **Updated:** to today,
+// And prepends a `## Changelog` entry. This is the low-friction path that makes the release gate
 // (check-spec-release.ts) cheap to satisfy, so spec versions stay meaningful.
+//
+// It is also the path on which two pull requests releasing the same spec collide (both rewrite the
+// Version line and the top of the changelog). `bun run spec:change` records the same release as a
+// FRAGMENT under specs/changes/ instead, minted on the release branch in merge order by
+// `spec:release`; prefer it when someone else may be releasing the same spec. The gate accepts
+// Either. The three edits themselves live in lib/spec-release.ts, shared by both.
 //
 // The `-draft` suffix is derived from the header **Status:** — Implemented specs release without
 // It, everything else keeps it (check-spec-status.ts enforces the same rule). To graduate a spec,
@@ -25,15 +31,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { parseSpecSource, splitVersion, versionFloor } from "./lib/spec-status.ts";
+import { isLevel, releaseSpecSource } from "./lib/spec-release.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SPECS_DIR = join(ROOT, "specs");
-
-const BUMPS = new Set(["major", "minor", "patch", "stable"]);
-const CHANGELOG_HEADING = /^##\s+Changelog\s*$/;
-const FOOTER_VERSION_LINE = /Specification v[0-9][A-Za-z0-9.-]*/;
-const STATUS_LINE = /^\*\*Status:\*\*/;
 
 function die(message: string): never {
   console.error(`spec:bump: ${message}`);
@@ -77,7 +78,7 @@ const [rawSpec, bump] = positional;
 if (!rawSpec) {
   die("which spec? e.g. server.md");
 }
-if (!bump || !BUMPS.has(bump)) {
+if (!bump || !isLevel(bump)) {
   die(`bump must be one of major|minor|patch|stable (got "${bump ?? ""}")`);
 }
 
@@ -87,19 +88,9 @@ if (!existsSync(path)) {
   die(`no such spec: specs/${file}`);
 }
 
-// ─── Compute the next version ────────────────────────────────────────────────
+// ─── Release ─────────────────────────────────────────────────────────────────
 
 const source = readFileSync(path, "utf8");
-const parsed = parseSpecSource(source, file);
-if (!parsed.headerVersion) {
-  die(`specs/${file} has no **Version:** line`);
-}
-const current = splitVersion(parsed.headerVersion);
-if (!current) {
-  die(
-    `specs/${file} version "${parsed.headerVersion}" is not MAJOR.MINOR.PATCH (optionally -draft)`,
-  );
-}
 
 function gitSafe(gitArgs: string[]): string | null {
   try {
@@ -132,7 +123,7 @@ function gitSafe(gitArgs: string[]): string | null {
  * stale `origin/main` therefore under-reports rather than blocking — which is why the ref and the
  * version it found are printed whenever they move the answer.
  */
-function resolveBaseVersion(): { ref: string; version: typeof current } | null {
+function resolveBaseSource(): { ref: string; text: string } | null {
   const candidates = explicitBase ? [explicitBase] : ["origin/main", "main"];
   for (const ref of candidates) {
     if (!gitSafe(["rev-parse", "--verify", `${ref}^{commit}`])) {
@@ -146,111 +137,21 @@ function resolveBaseVersion(): { ref: string; version: typeof current } | null {
     // The ref exists but the spec does not: a spec added on this branch has no base version, which
     // Is not an error at any level. It simply has no floor.
     const text = gitSafe(["show", `${ref}:specs/${file}`]);
-    if (!text) {
-      return null;
-    }
-    const header = parseSpecSource(text, file).headerVersion;
-    const version = header ? splitVersion(header) : null;
-    return version ? { ref, version } : null;
+    return text ? { ref, text } : null;
   }
   return null;
 }
 
-const base = resolveBaseVersion();
-/** Bump from whichever is higher, so the result clears what the base has already published. */
-const { version: floor, raised } = versionFloor(current, base?.version ?? null);
-
-/**
- * Pre-1.0 specs (every spec today) follow release-please's bump-minor-pre-major policy, the same
- * One the reconstructed history was derived under: a structural break moves the minor, everything
- * Else moves the patch. `stable` is the deliberate graduation to 1.0.0.
- */
-function nextOf(v: typeof current, level: string): { major: number; minor: number; patch: number } {
-  const preMajor = v.major === 0;
-  if (level === "stable") {
-    if (!preMajor) {
-      die(`specs/${file} is already stable at ${v.raw}`);
-    }
-    return { major: 1, minor: 0, patch: 0 };
-  }
-  if (level === "major") {
-    return preMajor
-      ? { major: 0, minor: v.minor + 1, patch: 0 }
-      : { major: v.major + 1, minor: 0, patch: 0 };
-  }
-  if (level === "minor") {
-    return preMajor
-      ? { major: 0, minor: v.minor, patch: v.patch + 1 }
-      : { major: v.major, minor: v.minor + 1, patch: 0 };
-  }
-  return { major: v.major, minor: v.minor, patch: v.patch + 1 };
-}
-
-const next = nextOf(floor, bump);
-
-// The suffix follows the status, not the previous version.
-const draft = parsed.headerStatus !== "Implemented";
-const nextVersion = `${next.major}.${next.minor}.${next.patch}${draft ? "-draft" : ""}`;
+const base = resolveBaseSource();
 const today = new Date().toISOString().slice(0, 10);
-
-// ─── Rewrite the file ────────────────────────────────────────────────────────
-
-const lines = source.split("\n");
-
-// Header version, and the footer version line when the spec has one.
-const versionIdx = lines.findIndex((l) => l.startsWith("**Version:**"));
-lines[versionIdx] = `**Version:** ${nextVersion}`;
-const footerIdx = lines.findLastIndex((l) => FOOTER_VERSION_LINE.test(l));
-if (footerIdx !== -1) {
-  lines[footerIdx] = lines[footerIdx]!.replace(
-    FOOTER_VERSION_LINE,
-    `Specification v${nextVersion}`,
-  );
+let released: ReturnType<typeof releaseSpecSource>;
+try {
+  released = releaseSpecSource(source, file, bump, summary, base?.text ?? null, today);
+} catch (error) {
+  die(error instanceof Error ? error.message : String(error));
 }
-
-// **Updated:** — restamp, or insert after **Status:** when the spec predates the field.
-const updatedIdx = lines.findIndex((l) => l.startsWith("**Updated:**"));
-if (updatedIdx === -1) {
-  const statusIdx = lines.findIndex((l) => STATUS_LINE.test(l));
-  if (statusIdx === -1) {
-    die(`specs/${file} has no **Status:** line to anchor **Updated:** to`);
-  }
-  lines.splice(statusIdx + 1, 0, `**Updated:** ${today}`);
-} else {
-  lines[updatedIdx] = `**Updated:** ${today}`;
-}
-
-// Prepend the changelog entry, creating the section if the spec has none.
-const entry = `- **${nextVersion}** (${today}) — ${summary.endsWith(".") ? summary : `${summary}.`}`;
-const changelogIdx = lines.findIndex((l) => CHANGELOG_HEADING.test(l));
-if (changelogIdx === -1) {
-  const block = ["## Changelog", "", entry];
-  const tailIdx = lines.findLastIndex((l) => FOOTER_VERSION_LINE.test(l));
-  if (tailIdx === -1) {
-    while (lines.length > 0 && lines.at(-1)!.trim() === "") {
-      lines.pop();
-    }
-    lines.push("", ...block, "");
-  } else {
-    let insertAt = tailIdx;
-    let j = tailIdx - 1;
-    while (j >= 0 && lines[j]!.trim() === "") {
-      j -= 1;
-    }
-    if (j >= 0 && lines[j]!.trim() === "---") {
-      insertAt = j;
-    }
-    lines.splice(insertAt, 0, ...block, "");
-  }
-} else {
-  let insertAt = changelogIdx + 1;
-  while (insertAt < lines.length && lines[insertAt]!.trim() === "") {
-    insertAt += 1;
-  }
-  lines.splice(insertAt, 0, entry);
-}
-
-writeFileSync(path, lines.join("\n"), "utf8");
+const nextVersion = released.version;
+writeFileSync(path, released.source, "utf8");
 
 // Keep the committed form oxfmt-stable (specs are in nano-staged's *.md scope).
 const fmt = Bun.spawnSync(["bunx", "oxfmt", path], { cwd: ROOT });
@@ -259,12 +160,18 @@ if (fmt.exitCode !== 0) {
   process.exit(fmt.exitCode);
 }
 
-if (raised) {
+if (released.raised && base) {
   console.log(
-    `specs/${file}: ${base!.ref} already released ${floor.raw}, so this bumps from there rather ` +
-      `than from the local ${current.raw}.`,
+    `specs/${file}: ${base.ref} already released ${released.floor}, so this bumps from there rather ` +
+      `than from the local ${released.from}.`,
   );
 }
-console.log(`specs/${file}: ${parsed.headerVersion} → ${nextVersion} (${today})`);
-console.log(`  ${entry}`);
-console.log("\nNext: `bun run docs:generate` so the derived reference pages match.");
+console.log(`specs/${file}: ${released.from} → ${nextVersion} (${today})`);
+console.log(
+  `  - **${nextVersion}** (${today}) — ${summary.endsWith(".") ? summary : `${summary}.`}`,
+);
+console.log(
+  "\nThe derived reference pages (implementation status, spec changelog) are build outputs: " +
+    "`bun run docs:generate` previews them locally; nothing to commit. If someone else may be " +
+    "releasing this spec too, `bun run spec:change` records a fragment instead and avoids the merge.",
+);

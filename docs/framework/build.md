@@ -6,7 +6,7 @@ spec:
   - compiler.md#2.1 # static detection (isDynamic)
   - compiler.md#3 # output tiers
   - compiler.md#8.2 # CSS extraction
-  - compiler.md#8.1 # fully static output, runtime-only reads left unresolved
+  - compiler.md#8.1 # fully static output, runtime-only reads left unresolved, component instances expanded at every level
   - compiler.md#9.1 # pre-rendered HTML + reactive JS
   - compiler.md#4.1 # element module output structure
 code:
@@ -150,17 +150,24 @@ The trade is deliberate. Inlined CSS repeats on every page instead of caching ac
 
 Every page is prerendered: the compiler evaluates `${state.…}` against the build-time scope and writes the result into the HTML. That is what makes a page's content visible to crawlers and to readers with no JavaScript. But baking a template **replaces** it (the binding is gone, not stale), so the compiler bakes only what it can prove will never change:
 
-- **A constant bakes.** `{"tagline": {"type": "string", "default": "Ship JSON"}}` read as
-  `${state.tagline}` becomes text in the HTML, with no JavaScript behind it.
-- **An entry a handler writes to stays bound.** If any handler in the document assigns to
-  `state.saved` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), every template reading it keeps its binding, even though the entry has a perfectly ordinary build-time value.
-- **A computed over changing state stays bound.** A `$prototype: "Function"` whose body returns is
-  evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
-- **An array a computed still reads stays in client state.** Expanding an array into a list at build
-  time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships with the island. Mark it `timing: "compiler"` to say the data really is build-time only.
+- **A constant bakes.** `{"tagline": {"type": "string", "default": "Ship JSON"}}` read as `${state.tagline}` becomes text in the HTML, with no JavaScript behind it.
+- **An entry a handler writes to stays bound.** If any handler in the document assigns to `state.saved` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), every template reading it keeps its binding, even though the entry has a perfectly ordinary build-time value.
+- **A computed over changing state stays bound.** A `$prototype: "Function"` whose body returns is evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
+- **An array a computed still reads stays in client state.** Expanding an array into a list at build time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships with the island. Mark it `timing: "compiler"` to say the data really is build-time only.
 
 :::doc-note
 One case the compiler cannot see: a handler loaded through `$src` lives in a JavaScript file the build does not open, so a state entry written **only** from there is still treated as a constant and baked. Declare a writer for it in the document if a binding over it goes dead.
+:::
+
+### Components inside components
+
+A component instance is expanded wherever it is written: on a page, slotted into another component, or inside another component's own `children`. Each level is prerendered against its own props, so a card that renders a button that renders an icon comes out as three levels of real markup, with no JavaScript when all three are static. Two details follow from that:
+
+- **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`.
+- **Each component decides its own JavaScript.** A live component nested inside a static one is prerendered as a shell that loads its own module and upgrades in place; the static parent still ships none.
+
+:::doc-warning
+A component that renders itself with the same props can never finish expanding, so the build fails that route with a message naming the chain (`a-loop → b-loop → a-loop`) instead of overflowing. A component that renders itself with props that change at each level (a tree node) is allowed up to 32 levels deep, which is where a recursion that never bottoms out is reported the same way.
 :::
 
 ## Why is my page shipping JavaScript?

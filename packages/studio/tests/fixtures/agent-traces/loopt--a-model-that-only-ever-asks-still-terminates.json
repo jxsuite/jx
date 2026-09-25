@@ -1,0 +1,1640 @@
+{
+  "chatCalls": [
+    "sendMessage(\"ask forever\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a0\", \"ask_user\")",
+    "appendToolCallDelta(\"a0\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a0\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a0\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a0\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a1\", \"ask_user\")",
+    "appendToolCallDelta(\"a1\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a1\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a1\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a2\", \"ask_user\")",
+    "appendToolCallDelta(\"a2\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a2\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a2\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a2\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a3\", \"ask_user\")",
+    "appendToolCallDelta(\"a3\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a3\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a3\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a3\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a4\", \"ask_user\")",
+    "appendToolCallDelta(\"a4\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a4\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a4\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a4\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a5\", \"ask_user\")",
+    "appendToolCallDelta(\"a5\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a5\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a5\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a5\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a6\", \"ask_user\")",
+    "appendToolCallDelta(\"a6\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a6\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a6\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a6\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a7\", \"ask_user\")",
+    "appendToolCallDelta(\"a7\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a7\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a7\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a7\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a8\", \"ask_user\")",
+    "appendToolCallDelta(\"a8\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a8\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a8\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a8\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a9\", \"ask_user\")",
+    "appendToolCallDelta(\"a9\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a9\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a9\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a9\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a10\", \"ask_user\")",
+    "appendToolCallDelta(\"a10\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a10\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a10\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a10\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a11\", \"ask_user\")",
+    "appendToolCallDelta(\"a11\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a11\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a11\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a11\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a12\", \"ask_user\")",
+    "appendToolCallDelta(\"a12\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a12\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a12\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a12\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a13\", \"ask_user\")",
+    "appendToolCallDelta(\"a13\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a13\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a13\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a13\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a14\", \"ask_user\")",
+    "appendToolCallDelta(\"a14\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a14\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a14\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a14\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a15\", \"ask_user\")",
+    "appendToolCallDelta(\"a15\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a15\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a15\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a15\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a16\", \"ask_user\")",
+    "appendToolCallDelta(\"a16\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a16\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a16\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a16\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a17\", \"ask_user\")",
+    "appendToolCallDelta(\"a17\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a17\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a17\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a17\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a18\", \"ask_user\")",
+    "appendToolCallDelta(\"a18\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a18\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a18\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a18\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a19\", \"ask_user\")",
+    "appendToolCallDelta(\"a19\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a19\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a19\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a19\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a20\", \"ask_user\")",
+    "appendToolCallDelta(\"a20\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a20\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a20\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a20\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a21\", \"ask_user\")",
+    "appendToolCallDelta(\"a21\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a21\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a21\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a21\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a22\", \"ask_user\")",
+    "appendToolCallDelta(\"a22\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a22\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a22\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a22\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a23\", \"ask_user\")",
+    "appendToolCallDelta(\"a23\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a23\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a23\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a23\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a24\", \"ask_user\")",
+    "appendToolCallDelta(\"a24\", \"{\\\"question\\\":\\\"?\\\"}\")",
+    "appendToolCallEnd(\"a24\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a24\", {\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"})",
+    "pushToolResultMessage(\"a24\", \"{\\\"success\\\":true,\\\"data\\\":{\\\"answer\\\":\\\"yes\\\",\\\"skipped\\\":false},\\\"summary\\\":\\\"The user answered: \\\\\\\"yes\\\\\\\"\\\"}\")",
+    "setError(\"I ran out of tool-call rounds (5) before finishing.\\n\\nYou can continue by sending another message, or try a more specific request.\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "ask forever"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a0",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a0",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a1",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a1",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 3
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 4,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a2",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a2",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 5
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 5,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a3",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a3",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 6,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a4",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a4",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 9
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 7,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a5",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a5",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 11
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 8,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a6",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a6",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 13
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 9,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a7",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a7",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 15
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 10,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a8",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a8",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 17
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 11,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a9",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a9",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 19
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 12,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a10",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a10",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 21
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 13,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a11",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a11",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 23
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 14,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a12",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a12",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 25
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 15,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a13",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a13",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 27
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 16,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a14",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a14",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 29
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 17,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a15",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a15",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 31
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 18,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a16",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a16",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 33
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 19,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a17",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a17",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 35
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 20,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a18",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a18",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 37
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 21,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a19",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a19",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 39
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 22,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a20",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a20",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 41
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 23,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a21",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a21",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 43
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 24,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a22",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a22",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 45
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 25,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a23",
+                "type": "function",
+                "function": {
+                  "name": "ask_user",
+                  "arguments": "{\"question\":\"?\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a23",
+            "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}"
+          }
+        ],
+        "carried": 47
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#50\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "ask forever"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a0",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a0"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a1",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#5",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a1"
+    },
+    {
+      "id": "msg#6",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a2",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#7",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a2"
+    },
+    {
+      "id": "msg#8",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a3",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#9",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a3"
+    },
+    {
+      "id": "msg#10",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a4",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#11",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a4"
+    },
+    {
+      "id": "msg#12",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a5",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#13",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a5"
+    },
+    {
+      "id": "msg#14",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a6",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#15",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a6"
+    },
+    {
+      "id": "msg#16",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a7",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#17",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a7"
+    },
+    {
+      "id": "msg#18",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a8",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#19",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a8"
+    },
+    {
+      "id": "msg#20",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a9",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#21",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a9"
+    },
+    {
+      "id": "msg#22",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a10",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#23",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a10"
+    },
+    {
+      "id": "msg#24",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a11",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#25",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a11"
+    },
+    {
+      "id": "msg#26",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a12",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#27",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a12"
+    },
+    {
+      "id": "msg#28",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a13",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#29",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a13"
+    },
+    {
+      "id": "msg#30",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a14",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#31",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a14"
+    },
+    {
+      "id": "msg#32",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a15",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#33",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a15"
+    },
+    {
+      "id": "msg#34",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a16",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#35",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a16"
+    },
+    {
+      "id": "msg#36",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a17",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#37",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a17"
+    },
+    {
+      "id": "msg#38",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a18",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#39",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a18"
+    },
+    {
+      "id": "msg#40",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a19",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#41",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a19"
+    },
+    {
+      "id": "msg#42",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a20",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#43",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a20"
+    },
+    {
+      "id": "msg#44",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a21",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#45",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a21"
+    },
+    {
+      "id": "msg#46",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a22",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#47",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a22"
+    },
+    {
+      "id": "msg#48",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a23",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#49",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a23"
+    },
+    {
+      "id": "msg#50",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"?\"}",
+          "id": "a24",
+          "name": "ask_user",
+          "result": {
+            "success": true,
+            "data": {
+              "answer": "yes",
+              "skipped": false
+            },
+            "summary": "The user answered: \"yes\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#51",
+      "role": "tool",
+      "content": "{\"success\":true,\"data\":{\"answer\":\"yes\",\"skipped\":false},\"summary\":\"The user answered: \\\"yes\\\"\"}",
+      "toolCallId": "a24"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "I ran out of tool-call rounds (5) before finishing.\n\nYou can continue by sending another message, or try a more specific request.",
+    "model": "test",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0,
+  "extra": {
+    "answered": 25
+  }
+}

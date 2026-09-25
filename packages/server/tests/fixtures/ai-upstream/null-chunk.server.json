@@ -1,0 +1,25 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "a"
+    },
+    {
+      "message": "Stream error: null is not an object (evaluating 'parsed.usage')",
+      "problem": {
+        "status": 502,
+        "title": "An upstream service failed",
+        "type": "https://jxsuite.com/problems/upstream-failure",
+        "detail": "Stream error: null is not an object (evaluating 'parsed.usage')",
+        "error": "Stream error: null is not an object (evaluating 'parsed.usage')"
+      },
+      "type": "error"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

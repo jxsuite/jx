@@ -64,45 +64,32 @@ A site URL is resolved the way a **build** would resolve it. The editing servers
 
 Everything else on the interface is optional, and each optional member maps to an optional protocol route whose `degradation` field describes exactly what Studio does without it. Omit what your backend can't support:
 
-| Family             | Members                                                                                                                     | When absent                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Live sync          | `subscribeFileEvents`, `collab`                                                                                             | Sidebar is manual-refresh; editing is solo with file-level saves                                                                              |
-| Install pipeline   | `installDependencies`, `dependenciesNeedInstall`, `packageVersions`, `setPackageVersions`                                   | Install/update affordances hide; the Packages table's **Latest** column stays empty; manifest-only edits still work                           |
-| Catalogue/scaffold | `listProjects`, `listStarters`, `importSite`, `pickDirectory`, `gitClone`                                                   | Welcome-screen catalogue, starters, import, and clone flows hide; without `pickDirectory` the New Project **Location** field is typed by hand |
-| Formats/schemas    | `listFormats`, `listExtensions`, `fetchProjectSchemas`, `formatAction`, `resolveClass`                                      | Only `.json` documents open; editors fall back to bundled schemas                                                                             |
-| Data + secrets     | `dataConnections`, `dataConnectionTest`, `dataPush`, `dataRows`, row CRUD, `listSecrets`, `setSecrets`                      | The Data grid and connection/push/secret controls hide                                                                                        |
-| Publish            | `cfConnection`, `cfConnect`, `cfApi`, `createPullRequest`                                                                   | Publish panel explains git-push publishing; PRs go via user token                                                                             |
-| Site preview       | `previewSite`, `setPreviewOverlay`, `clearPreviewOverlay`                                                                   | **Open in Browser** falls back to `buildSite`; without the overlay pair a preview shows the last saved state                                  |
-| Site build         | `buildSite`                                                                                                                 | **Build Site** reports that this target cannot build                                                                                          |
-| Desktop shell      | `getAppInfo`, `openProjectInNewWindow`, `pickProject`, `newWindow`, `setWindowProject`, `getProjectRoot`, recents, settings | Single-window; recents and settings persist in `localStorage`                                                                                 |
-| Cloud identity     | `getUser`, `getAccountStatus`, `listRepos`, `importProject`                                                                 | No signed-in identity or repository picker                                                                                                    |
+| Family              | Members                                                                                                                     | When absent                                                                                                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live sync           | `subscribeFileEvents`, `collab`                                                                                             | Sidebar is manual-refresh; editing is solo with file-level saves                                                                                                              |
+| Install pipeline    | `installDependencies`, `dependenciesNeedInstall`, `packageVersions`, `setPackageVersions`                                   | Install/update affordances hide; the Packages table's **Latest** column stays empty; manifest-only edits still work                                                           |
+| Catalogue/scaffold  | `listProjects`, `listStarters`, `importSite`, `pickDirectory`, `gitClone`                                                   | Welcome-screen catalogue, starters, import, and clone flows hide; without `pickDirectory` the New Project **Location** field is typed by hand                                 |
+| Formats/schemas     | `listFormats`, `listExtensions`, `fetchProjectSchemas`, `formatAction`, `resolveClass`                                      | Only `.json` documents open; editors fall back to bundled schemas                                                                                                             |
+| Extension catalogue | `listExtensionCatalog`                                                                                                      | The Extensions section offers no catalogue, so an extension is added by typing its package name and installing it separately                                                  |
+| Data + secrets      | `dataConnections`, `dataConnectionTest`, `dataPush`, `dataRows`, row CRUD, `listSecrets`, `setSecrets`                      | The Data grid and connection/push/secret controls hide                                                                                                                        |
+| Publish             | `cfConnection`, `cfConnect`, `cfApi`, `cfAccounts`, `cfSelectAccount`, `cfDisconnect`, `createPullRequest`                  | Publish panel explains git-push publishing; PRs go via user token; without the account trio a brokered connection cannot be pointed at an account or revoked from Preferences |
+| Site preview        | `previewSite`, `setPreviewOverlay`, `clearPreviewOverlay`                                                                   | **Open in Browser** falls back to `buildSite`; without the overlay pair a preview shows the last saved state                                                                  |
+| Site build          | `buildSite`                                                                                                                 | **Build Site** reports that this target cannot build                                                                                                                          |
+| Desktop shell       | `getAppInfo`, `openProjectInNewWindow`, `pickProject`, `newWindow`, `setWindowProject`, `getProjectRoot`, recents, settings | Single-window; recents and settings persist in `localStorage`                                                                                                                 |
+| Cloud identity      | `getUser`, `getAccountStatus`, `listRepos`, `importProject`                                                                 | No signed-in identity or repository picker                                                                                                                                    |
 
 Studio always checks for presence before calling an optional member, so an omitted member is never an error. The [protocol route reference](/docs/extending/reference/studio-routes) is the complete degradation catalogue.
 
+`listExtensionCatalog` is worth a note, because it is the one member whose answer is about **your** backend rather than about the project. Not every host can run every extension: a Worker ships a fixed set of packages, and one it does not bundle is dropped from the registry before composition. So answer it yourself rather than serving a shipped list, and mark each entry with `bundled` when your host resolves the package without a project install and `installed` when the project resolves it. Offering an extension you cannot load gives the reader a switch that appears to work and does not.
+
 :::doc-tip
-**`previewSite` is what **Open in Browser** reaches first, and it does not build.** The contract is
-"serve the working tree as a site at real routes on an origin of your own, and name it in `url`".
-Compose each page from the project's files as it is asked for and let `@jxsuite/runtime` assemble it
-in the reader's browser. That is what makes it appear at once and show the author what they are
-looking at rather than what they last saved.
+**`previewSite` is what **Open in Browser** reaches first, and it does not build.** The contract is "serve the working tree as a site at real routes on an origin of your own, and name it in `url`". Compose each page from the project's files as it is asked for and let `@jxsuite/runtime` assemble it in the reader's browser. That is what makes it appear at once and show the author what they are looking at rather than what they last saved.
 
-**Honour `reused`.** Answer `true` when a client already holding this project's preview took the
-route you were given, and Studio opens nothing. A caller that opens a tab anyway leaves the author
-with two tabs on one project, which is the thing retargeting exists to prevent. Answer it only once
-a client has actually acknowledged: a frozen or back/forward-cached tab looks connected and will not
-act, and reporting `true` for one of those is a button that silently does nothing.
+**Honour `reused`.** Answer `true` when a client already holding this project's preview took the route you were given, and Studio opens nothing. A caller that opens a tab anyway leaves the author with two tabs on one project, which is the thing retargeting exists to prevent. Answer it only once a client has actually acknowledged: a frozen or back/forward-cached tab looks connected and will not act, and reporting `true` for one of those is a button that silently does nothing.
 
-**Take the overlay if you can hold it.** `setPreviewOverlay(path, contents)` carries the bytes a save
-would write for a document the author has not saved, and a preview that reads them before the file
-is the whole difference between showing the canvas and showing the disk. Hold them in memory, prefer
-them at every read, and drop them on `clearPreviewOverlay`. An adapter that omits the pair still
-previews; it previews the last save.
+**Take the overlay if you can hold it.** `setPreviewOverlay(path, contents)` carries the bytes a save would write for a document the author has not saved, and a preview that reads them before the file is the whole difference between showing the canvas and showing the disk. Hold them in memory, prefer them at every read, and drop them on `clearPreviewOverlay`. An adapter that omits the pair still previews; it previews the last save.
 
-`buildSite` is now a separate action, **Build Site**, and still means "run the compiler". An adapter
-that cannot build at all (a hosted backend runs no project JS and has no bundler, image pipeline or
-filesystem) may answer it by rendering instead, reporting `mode: "live"`; omit `mode`, or send
-`"built"`, for compiler output. A live answer carries none of what the compiler emits: no prerendered
-HTML, no optimized images, no islands, no `sitemap.xml` or `_headers`.
+`buildSite` is now a separate action, **Build Site**, and still means "run the compiler". An adapter that cannot build at all (a hosted backend runs no project JS and has no bundler, image pipeline or filesystem) may answer it by rendering instead, reporting `mode: "live"`; omit `mode`, or send `"built"`, for compiler output. A live answer carries none of what the compiler emits: no prerendered HTML, no optimized images, no islands, no `sitemap.xml` or `_headers`.
 :::
 
 :::doc-note

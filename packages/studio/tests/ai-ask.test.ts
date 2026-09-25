@@ -15,20 +15,22 @@ import {
   resetAsk,
   skipAsk,
 } from "../src/services/ai-ask";
-import { beginToolCall, beginTurnSignal, endTurnSignal } from "../src/services/ai-turn-signal";
+import { createToolContext } from "@jxsuite/ai/tools";
+import { recordingContext } from "./harness/recording-context";
 
-function ask(overrides: Partial<Parameters<typeof askUser>[0]> = {}) {
-  return askUser({ context: "", id: "call_1", options: [], question: "Which?", ...overrides });
+function ask(overrides: Partial<Parameters<typeof askUser>[0]> = {}, signal?: AbortSignal) {
+  return askUser(
+    { context: "", id: "call_1", options: [], question: "Which?", ...overrides },
+    signal,
+  );
 }
 
 beforeEach(() => {
   resetAsk();
-  endTurnSignal();
 });
 
 afterEach(() => {
   resetAsk();
-  endTurnSignal();
 });
 
 describe("ai-ask — the store", () => {
@@ -72,16 +74,14 @@ describe("ai-ask — the store", () => {
     // Registered into an already-dead turn would never be settled by anything.
     const controller = new AbortController();
     controller.abort();
-    beginTurnSignal(controller.signal);
 
-    expect(await ask()).toEqual({ answer: null, skipped: false });
+    expect(await ask({}, controller.signal)).toEqual({ answer: null, skipped: false });
     expect(isAwaitingAnswer()).toBe(false);
   });
 
   test("aborting the turn settles the outstanding question", async () => {
     const controller = new AbortController();
-    beginTurnSignal(controller.signal);
-    const pending = ask();
+    const pending = ask({}, controller.signal);
     expect(isAwaitingAnswer()).toBe(true);
 
     controller.abort();
@@ -91,13 +91,12 @@ describe("ai-ask — the store", () => {
 
   test("an answered question stops listening to its turn's signal", async () => {
     const controller = new AbortController();
-    beginTurnSignal(controller.signal);
-    const pending = ask();
+    const pending = ask({}, controller.signal);
     answerAsk("Merge");
     await pending;
 
     // A stale listener here would cancel whatever question came next.
-    const second = ask({ id: "call_2" });
+    const second = ask({ id: "call_2" }, controller.signal);
     controller.abort();
     expect(await second).toEqual({ answer: null, skipped: false });
   });
@@ -127,8 +126,11 @@ describe("ai-ask — the tool", () => {
 
   test("an answer comes back as a success carrying the user's words", async () => {
     const reg = registry();
-    beginToolCall("call_abc");
-    const running = reg.execute("ask_user", { options: ["A", "B"], question: "Which?" });
+    const running = reg.execute(
+      "ask_user",
+      { options: ["A", "B"], question: "Which?" },
+      recordingContext({ callId: "call_abc" }),
+    );
     // The tool call's own id, so the transcript's card and this question are the same thing.
     expect(pendingAsk()?.id).toBe("call_abc");
 
@@ -139,12 +141,47 @@ describe("ai-ask — the tool", () => {
     expect(result.summary).toContain("Neither — do C instead");
   });
 
+  /* The host saves the conversation here: a turn suspended on a person may wait as long as they
+     like, and a reload meanwhile must still find the question (specs/ai.md §3.4). */
+  test("the host hears when a question is put, before the turn waits on it", async () => {
+    const reg = createToolRegistry();
+    const seen: (string | null)[] = [];
+    registerAskTool(reg, { onPending: () => seen.push(pendingAsk()?.id ?? null) });
+    const running = reg.execute(
+      "ask_user",
+      { question: "Which?" },
+      recordingContext({ callId: "call_hook" }),
+    );
+    expect(seen).toEqual(["call_hook"]);
+    answerAsk("This one");
+    await running;
+    expect(seen).toHaveLength(1);
+  });
+
+  test("a question the turn's Stop settles at once is not reported as put", async () => {
+    const reg = createToolRegistry();
+    let calls = 0;
+    registerAskTool(reg, { onPending: () => (calls += 1) });
+    const controller = new AbortController();
+    controller.abort();
+    const result = await reg.execute(
+      "ask_user",
+      { question: "Which?" },
+      recordingContext({ signal: controller.signal }),
+    );
+    expect(result.success).toBe(false);
+    expect(calls).toBe(0);
+  });
+
   test("a skip is a SUCCESS — 'you decide' is a real answer", async () => {
     /* Reporting it as an error would have the model apologise for having asked a fair question,
        and would end the turn on the error path, which deletes the streaming message. */
     const reg = registry();
-    beginToolCall("call_skip");
-    const running = reg.execute("ask_user", { question: "Which?" });
+    const running = reg.execute(
+      "ask_user",
+      { question: "Which?" },
+      recordingContext({ callId: "call_skip" }),
+    );
     skipAsk();
 
     const result = await running;
@@ -155,8 +192,11 @@ describe("ai-ask — the tool", () => {
 
   test("a stopped turn is a failure", async () => {
     const reg = registry();
-    beginToolCall("call_stop");
-    const running = reg.execute("ask_user", { question: "Which?" });
+    const running = reg.execute(
+      "ask_user",
+      { question: "Which?" },
+      recordingContext({ callId: "call_stop" }),
+    );
     cancelAsk();
 
     const result = await running;
@@ -173,8 +213,11 @@ describe("ai-ask — the tool", () => {
 
   test("refuses a second question while one is outstanding", async () => {
     const reg = registry();
-    beginToolCall("call_first");
-    const first = reg.execute("ask_user", { question: "First?" });
+    const first = reg.execute(
+      "ask_user",
+      { question: "First?" },
+      recordingContext({ callId: "call_first" }),
+    );
 
     const second = await reg.execute("ask_user", { question: "Second?" });
     expect(second.success).toBe(false);
@@ -189,11 +232,11 @@ describe("ai-ask — the tool", () => {
   test("options are cleaned and capped at six", async () => {
     // The registry's validator only checks that it IS an array — what is inside is this tool's job.
     const reg = registry();
-    beginToolCall("call_opts");
-    const running = reg.execute("ask_user", {
-      options: ["a", "", "  ", "b", "c", "d", "e", "f", "g", 7],
-      question: "Which?",
-    });
+    const running = reg.execute(
+      "ask_user",
+      { options: ["a", "", "  ", "b", "c", "d", "e", "f", "g", 7], question: "Which?" },
+      recordingContext({ callId: "call_opts" }),
+    );
     expect(pendingAsk()?.options).toEqual(["a", "b", "c", "d", "e", "f"]);
     answerAsk("a");
     await running;
@@ -205,8 +248,10 @@ describe("ai-ask — the tool", () => {
        `strict: false` skips it entirely, and a caller may register this tool into a registry of
        their own — so the tool cannot assume its arguments were checked. */
     const def = registry().getDefinition("ask_user")!;
-    beginToolCall("call_loose");
-    const running = def.execute({ context: 42, options: "not an array", question: "Which?" });
+    const running = def.execute(
+      { context: 42, options: "not an array", question: "Which?" },
+      recordingContext({ callId: "call_loose" }),
+    );
     expect(pendingAsk()).toEqual({
       context: "",
       id: "call_loose",
@@ -219,8 +264,7 @@ describe("ai-ask — the tool", () => {
 
   test("a question with no id still registers, so a bare registry can use the tool", async () => {
     const def = registry().getDefinition("ask_user")!;
-    endTurnSignal();
-    const running = def.execute({ question: "Which?" });
+    const running = def.execute({ question: "Which?" }, createToolContext());
     expect(pendingAsk()?.id).toBe("");
     answerAsk("a");
     await running;

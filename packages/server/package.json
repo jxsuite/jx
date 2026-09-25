@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/server",
-  "version": "4.0.0",
+  "version": "4.2.2",
   "description": "Jx development server with live reload, server-side proxy, and studio integration",
   "license": "MIT",
   "repository": {
@@ -18,9 +18,11 @@
     "./ai-api": "./src/ai-api.ts",
     "./data": "./src/data-api.ts",
     "./import-api": "./src/import-api.ts",
+    "./catalog": "./src/extension-catalog.ts",
     "./packages": "./src/packages.ts",
     "./project-server": "./src/project-server.ts",
     "./oauth-loopback": "./src/oauth-loopback.ts",
+    "./net-guard": "./src/net-guard.ts",
     "./live-preview": "./src/live-preview.ts",
     "./site-preview": "./src/site-preview.ts",
     "./refactor": "./src/refactor/index.ts",
@@ -39,6 +41,8 @@
     "upgrade": "bun update --latest && bun install"
   },
   "dependencies": {
+    "@jxsuite/ai": "workspace:^",
+    "@jxsuite/catalog": "workspace:^",
     "@jxsuite/collab": "workspace:^",
     "@jxsuite/compiler": "workspace:^",
     "@jxsuite/create": "workspace:^",
@@ -49,8 +53,8 @@
     "@jxsuite/site": "workspace:^",
     "@jxsuite/starters": "workspace:^",
     "chokidar": "^5.0.0",
-    "kysely": "^0.29.5",
-    "zod": "^4.4.3"
+    "kysely": "^0.29.6",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@jxsuite/auth": "workspace:^",

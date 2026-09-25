@@ -16,7 +16,7 @@ import {
   shortcutReference,
   shortcutsMarkdown,
 } from "../../../packages/studio/src/commands/reference.ts";
-import { BANNER } from "./shared.ts";
+import { BANNER, GENERATED_FIELD } from "./shared.ts";
 
 /**
  * Frontmatter for a generated page, with the association fields the plain
@@ -35,7 +35,7 @@ function frontmatterWith(fields: {
   if (fields.code && fields.code.length > 0) {
     lines.push("code:", ...fields.code.map((entry) => `  - ${entry}`));
   }
-  lines.push("generated: true", "---");
+  lines.push(GENERATED_FIELD, "---");
   return lines.join("\n");
 }
 
@@ -97,6 +97,8 @@ export function generateCommands(): string {
     "Everything Studio can do is a command, and every command is reachable by name: press :kbd[⌘K] and type. The same records drive the toolbar, the menus, the keyboard and the assistant, so this page cannot describe a button that does not exist.",
     "",
     "**Level** says what a command acts on — the application, the project, the open document, or the current selection. **Requires** is the sentence a greyed-out row shows you: it is the reason the command is not available yet, not an error after the fact.",
+    "",
+    "**Assistant** names the tool the [AI assistant](/docs/studio/ai) calls when it runs the command for you. A tool is the command itself: it is offered exactly while the command is available, and a refusal reads the same sentence you would see.",
     "",
     commandsMarkdown(rows),
     "",

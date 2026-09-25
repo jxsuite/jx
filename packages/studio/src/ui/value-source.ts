@@ -40,6 +40,7 @@ import {
   stringOrRefSchema,
   styleObjectSchema,
   switchDefSchema,
+  tagExpressionSchema,
   tagNameSchema,
 } from "@jxsuite/schema/defs";
 import { isFunctionDef, isRef, isTemplateString } from "@jxsuite/schema/guards";
@@ -260,6 +261,19 @@ export function deriveSlotCaps(schema: unknown): SlotMode[] {
 const ELEMENT_TAG_SCHEMA = {
   anyOf: [tagNameSchema, ...elementTagNameSchema.anyOf.slice(1)],
 } as const;
+
+/**
+ * The operators a `TagExpression` admits, READ OFF THE DEF rather than restated beside it.
+ *
+ * The Formula rung at a tag position is not the whole operator table: `TagExpression` is two
+ * branches, `?:` and `switch`, and every other operator produces a document `jx validate` rejects
+ * and `tagNameCandidates` cannot enumerate. The rung is derived from the schema and so is the
+ * grammar inside it, for the same reason — a third branch upstream reaches the Inspector by itself,
+ * and a hand-kept pair would not have noticed.
+ */
+export const TAG_EXPRESSION_OPERATORS: readonly string[] = tagExpressionSchema.anyOf.map(
+  (branch) => branch.properties.operator.const,
+);
 
 /**
  * The document positions a bindable slot can occupy. A panel names the position it is editing; the

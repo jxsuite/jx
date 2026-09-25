@@ -23,6 +23,7 @@ import { projectState, setProjectState } from "../src/store";
 import { canUndo, undo } from "../src/tabs/transact";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
+import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 
 import type { MockPlatformState } from "./harness";
 import type { ProjectConfig } from "@jxsuite/schema/types";
@@ -112,16 +113,25 @@ afterEach(() => {
 // ─── One serialisation ───────────────────────────────────────────────────────
 
 describe("serializeProjectConfig", () => {
-  test("is two-space JSON — the form every project.json in this repo is on disk with", () => {
+  test("is two-space JSON ending in a newline — the form every project.json in this repo is on disk with", () => {
     const text = serializeProjectConfig({ $defs: { A: {} }, name: "site" } as ProjectConfig);
     expect(text).not.toContain("\t");
     expect(text).toContain('\n  "$defs"');
-    expect(text.endsWith("}")).toBe(true);
+    expect(text.endsWith("}\n")).toBe(true);
   });
 
-  test("is exactly what files/file-ops.ts writes for a native JSON document", () => {
+  test("is exactly what files/serialize-document.ts writes for a native JSON document", () => {
     const cfg = { name: "site", style: { "--a": "1" } } as unknown as ProjectConfig;
-    expect(serializeProjectConfig(cfg)).toBe(JSON.stringify(cfg, null, 2));
+    expect(serializeProjectConfig(cfg)).toBe(serializeJson(cfg, null));
+  });
+
+  test("honours the open project.json tab's layout, so a settings write keeps the file's shape", () => {
+    const onDisk =
+      '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
+    const { document, layout } = parseJsonDocument(onDisk);
+    openTab({ document, documentPath: PROJECT_CONFIG_PATH, id: PROJECT_CONFIG_PATH, layout });
+    const cfg = { ...document, name: "renamed" } as unknown as ProjectConfig;
+    expect(serializeProjectConfig(cfg)).toBe(onDisk.replace('"site"', '"renamed"'));
   });
 });
 
@@ -175,15 +185,26 @@ describe("a no-op settings edit produces an empty diff", () => {
     expect(COMMITTED_CONFIGS.length).toBeGreaterThan(5);
   });
 
+  test("a layout-less rendering differs from disk for at least one committed file", () => {
+    const differs = COMMITTED_CONFIGS.filter((path) => {
+      const onDisk = readFileSync(path, "utf8");
+      return serializeJson(JSON.parse(onDisk), null) !== onDisk;
+    });
+    expect(differs.length).toBeGreaterThan(0);
+  });
+
   test("no writer touches a committed project.json when nothing changed", async () => {
     for (const path of COMMITTED_CONFIGS) {
       const onDisk = readFileSync(path, "utf8");
       const parsed = JSON.parse(onDisk) as AnyConfig;
 
-      /* The premise, asserted rather than assumed: none of these files is byte-identical to its own
-         re-serialisation, because `oxfmt` keeps short arrays on one line and ends the file with a
-         newline. A writer that compared TEXT against the file would rewrite every one of them. */
-      expect(serializeProjectConfig(parsed as ProjectConfig), path).not.toBe(onDisk);
+      /* The premise, asserted rather than assumed: with the layout the file was written in, its
+         re-serialisation IS the file — `oxfmt` keeps short objects on one line and ends the file
+         with a newline, and `json-layout.ts` reproduces both — and without that layout it is not,
+         for at least one of them. A writer that compared TEXT against a layout-less rendering would
+         rewrite such a file on every edit; the chokepoint reads the layout once per binding and
+         compares like with like. */
+      expect(serializeJson(parsed, deriveJsonLayout(onDisk)), path).toBe(onDisk);
 
       // The patch door: re-commit values the file already holds.
       resetProjectConfigDocument();
@@ -201,14 +222,21 @@ describe("a no-op settings edit produces an empty diff", () => {
     }
   });
 
-  test("a real edit to one of those files still writes", async () => {
+  test("a real edit to one of those files still writes — and writes a one-line diff", async () => {
     const path = COMMITTED_CONFIGS[0]!;
     const onDisk = readFileSync(path, "utf8");
-    const state = setup(JSON.parse(onDisk) as AnyConfig, { onDisk });
+    const parsed = JSON.parse(onDisk) as AnyConfig;
+    const state = setup(parsed, { onDisk });
     await updateSiteConfig({ name: "Renamed" } as Partial<ProjectConfig>);
 
     expect(writes(state)).toHaveLength(1);
-    expect(JSON.parse(state.files.get(PROJECT_CONFIG_PATH)!).name).toBe("Renamed");
+    const written = state.files.get(PROJECT_CONFIG_PATH)!;
+    expect(JSON.parse(written).name).toBe("Renamed");
+    /* The file's own layout, read by the chokepoint when it seeded, is what the write honours: the
+       only line that differs is the name's. (`project-config.ts`'s header, "A real edit is a
+       one-line diff".) */
+    const changed = written.split("\n").filter((line, i) => line !== onDisk.split("\n")[i]);
+    expect(changed).toEqual([`  "name": "Renamed",`]);
   });
 
   test("an unparseable project.json is 'unknown', so every commit writes", async () => {
@@ -473,11 +501,19 @@ describe("the handover from a project.json tab opened beside the settings form",
 
 // ─── A configuration that reached disk another way ───────────────────────────
 
+/**
+ * Adopt `config` the way the assistant's `write_file` does: the bytes on the platform are the
+ * caller's own serialisation, and adopt is told what they were rather than reading them back.
+ */
+function adopt(written: AnyConfig, text = serializeJson(written, null)): Promise<void> {
+  return adoptProjectConfig(written as never, text);
+}
+
 describe("adoptProjectConfig", () => {
   test("puts the written config INTO the document, so the next edit builds on it", async () => {
     const cfg = { name: "Site" };
     const state = setup(structuredClone(cfg), { onDisk: serializeProjectConfig(cfg as never) });
-    await adoptProjectConfig({ description: "By the assistant", name: "Assistant Site" } as never);
+    await adopt({ description: "By the assistant", name: "Assistant Site" });
 
     const tab = projectConfigDocument();
     expect((toRaw(tab.doc.document) as unknown as AnyConfig).name).toBe("Assistant Site");
@@ -498,7 +534,7 @@ describe("adoptProjectConfig", () => {
   test("the next no-op commit knows the file already says it", async () => {
     const cfg = { name: "Site" };
     const state = setup(structuredClone(cfg), { onDisk: serializeProjectConfig(cfg as never) });
-    await adoptProjectConfig({ name: "Assistant Site" } as never);
+    await adopt({ name: "Assistant Site" });
 
     await commitProjectConfig();
     expect(writes(state)).toHaveLength(0);
@@ -509,7 +545,7 @@ describe("adoptProjectConfig", () => {
     setup({ name: "Site" }, { onDisk });
     const tab = openConfigTabWithOwnParse(onDisk);
 
-    await adoptProjectConfig({ name: "Assistant Site" } as never);
+    await adopt({ name: "Assistant Site" });
 
     expect((toRaw(tab.doc.document) as unknown as AnyConfig).name).toBe("Assistant Site");
     expect(config()).toBe(toRaw(tab.doc.document) as unknown as AnyConfig);
@@ -519,9 +555,84 @@ describe("adoptProjectConfig", () => {
     setup({ name: "Site" });
     setProjectState(null);
 
-    await adoptProjectConfig({ name: "Assistant Site" } as never);
+    await adopt({ name: "Assistant Site" });
 
     expect((workspace.projectConfig as AnyConfig).name).toBe("Assistant Site");
+  });
+
+  /* The record the next commit honours is the record of the file as it IS — the assistant's bytes
+     — not of the file the chokepoint read before the assistant rewrote it (issue 331). The seed
+     reads the OLD file's record first, through the no-op commit, which is what makes the stale
+     record available to keep; disk is then left holding the old text on purpose, so an adopt that
+     read the file back — the second parse the adoption exists to avoid — would find the wrong
+     record there and fail this test too. The only route to the assistant's record is the text
+     adopt is handed. */
+  test("the record of the written text replaces the seed's, so the next edit keeps the assistant's layout", async () => {
+    // The file as first read: every object expanded, which is `JSON.stringify`'s layout.
+    const before = { name: "Site", style: { "--a": "1" } };
+    const state = setup(structuredClone(before), { onDisk: serializeJson(before, null) });
+    expect(state.files.get(PROJECT_CONFIG_PATH)).toContain('"style": {\n');
+    // Seed from that file — a commit that changes nothing reads the record and writes nothing.
+    await commitProjectConfig();
+    expect(writes(state)).toHaveLength(0);
+
+    // The assistant rewrites the file with the style object on one line, and a blank line after
+    // The name — two facts only the record can carry.
+    const written = '{\n  "name": "Assistant Site",\n\n  "style": { "--a": "1", "--b": "2" }\n}\n';
+    await adopt(JSON.parse(written) as AnyConfig, written);
+
+    await updateSiteConfig({ name: "Renamed" } as Partial<ProjectConfig>);
+    expect(writes(state).at(-1)).toBe(written.replace('"Assistant Site"', '"Renamed"'));
+  });
+
+  /* The record is not the whole of the file's shape: the serializer writes keys in the DOCUMENT's
+     order, and a document that kept the previous file's order for the keys the assistant moved
+     would re-lay the file on the next commit even with the right record — and call a no-op commit
+     a change, because `_committed` is in the assistant's order and the document was not. */
+  test("a rewrite that moved a top-level key stays moved: the document takes the written order", async () => {
+    const before = { name: "Site", style: { "--a": "1" } };
+    const state = setup(structuredClone(before), { onDisk: serializeJson(before, null) });
+    await commitProjectConfig();
+    expect(writes(state)).toHaveLength(0);
+
+    // `style` first, `name` second — the assistant's order, not the file's.
+    const written = '{\n  "style": { "--a": "1" },\n  "name": "Assistant Site"\n}\n';
+    await adopt(JSON.parse(written) as AnyConfig, written);
+    const document = toRaw(projectConfigDocument().doc.document);
+    expect(Object.keys(document)).toEqual(["style", "name"]);
+
+    // A commit that changes nothing still writes nothing: the document and the file agree.
+    await commitProjectConfig();
+    expect(writes(state)).toHaveLength(0);
+
+    // And a one-field edit is a one-line diff on the file in the order the assistant wrote it.
+    await updateSiteConfig({ name: "Renamed" } as Partial<ProjectConfig>);
+    expect(writes(state)).toHaveLength(1);
+    expect(writes(state).at(-1)).toBe(written.replace('"Assistant Site"', '"Renamed"'));
+  });
+
+  test("an open project.json tab is handed the written text's record with the config", async () => {
+    const onDisk = serializeJson({ name: "Site", style: { "--a": "1" } }, null);
+    const state = setup({ name: "Site", style: { "--a": "1" } }, { onDisk });
+    // The tab read the file itself, so it holds the expanded record that the write is replacing.
+    const { document, layout } = parseJsonDocument(onDisk);
+    const tab = openTab({
+      document,
+      documentPath: PROJECT_CONFIG_PATH,
+      id: PROJECT_CONFIG_PATH,
+      layout,
+    });
+    expect(tab.doc.layout?.inline.get("/style")).toBe(false);
+
+    const written = '{\n  "name": "Assistant Site",\n  "style": { "--a": "1" }\n}\n';
+    await adopt(JSON.parse(written) as AnyConfig, written);
+
+    // The tab's own record now says what the file says, so ⌘S on it and a settings commit agree.
+    expect(tab.doc.layout?.inline.get("/style")).toBe(true);
+    expect(toRaw(tab.doc.layout as object)).toEqual(deriveJsonLayout(written));
+    // The contract is what reaches disk, so the write is what is asserted — not the serializer.
+    await updateSiteConfig({ name: "Renamed" } as Partial<ProjectConfig>);
+    expect(writes(state).at(-1)).toBe(written.replace('"Assistant Site"', '"Renamed"'));
   });
 });
 

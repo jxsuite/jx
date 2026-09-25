@@ -1,10 +1,11 @@
 ---
 title: "Styling"
-description: "Inline styles, nested CSS selectors, and named media breakpoints in Jx."
+description: "Style objects, nested CSS selectors, and named media breakpoints in Jx."
 spec:
   - spec.md#9
 code:
   - packages/runtime/src/runtime.ts
+  - packages/runtime/src/css.ts
   - packages/compiler/src/shared.ts
 ---
 
@@ -14,7 +15,7 @@ code:
 
 Styles are JSON objects. Property names are the CSS ones in camelCase, the same spelling the CSSOM uses, so `background-color` is written `backgroundColor`.
 
-## Inline styles
+## Style objects
 
 The `style` property accepts a JSON object:
 
@@ -48,19 +49,120 @@ Keys beginning with `:`, `.`, `&`, or `[` are treated as nested selectors:
 }
 ```
 
-Inline properties apply directly to the element. Nested rules are emitted as a scoped `<style>` block keyed on a **generated class**, `.<tagName>-<n>`, which the build also puts on the element:
+A key may be a selector list, and so may the scope it sits in. Each nested block then applies to every member: `"& .a, & .b"` holding a `":hover"` block styles both `.a` and `.b` on hover, the way native nesting's implicit `:is()` would.
+
+Every declaration becomes a CSS rule, the base ones and the nested ones alike. The build scopes them with a **generated class**, `.<tagName>-<n>`, which it also puts on the element:
 
 ```html
 <div class="sty-card-0">…</div>
 ```
 
 ```css
+.sty-card-0 {
+  background-color: blue;
+}
 .sty-card-0:hover {
-  padding: 8px;
+  background-color: darkblue;
+  cursor: pointer;
 }
 ```
 
+Base rules come first, so a state block overrides its own base property. That ordering is the whole reason nothing is written as an `style="…"` attribute: an inline declaration beats any ordinary rule, so a `backgroundColor` written on the element could never be overridden by the `:hover` block sitting next to it in the same object.
+
+When Studio renders the page live, the same rules are delivered through the document's adopted stylesheets and scoped with `data-jx` instead of a class. Different handle, same cascade, so what you see in the canvas is what the published page does.
+
 (You'll also see `data-jx-static` and `data-jx-prerendered` in compiled output. Those mark hydration state and are never used as CSS selectors.)
+
+Your own `style` **attribute**, written under `attributes`, is untouched by any of this. It stays a literal attribute at inline precedence, so it wins over the object.
+
+### Nesting goes as deep as you write it
+
+Selector blocks and `@` blocks nest inside each other, in either order and to any depth:
+
+```json
+{
+  "style": {
+    "& .nav-link": { "color": "gray", ":hover": { "color": "white" } },
+    "@--sm": {
+      "& li:nth-of-type(2n)": { ":hover": { "opacity": "0.8" } }
+    }
+  }
+}
+```
+
+One flattener resolves that tree for the compiler, the live preview and Studio's canvas, so all three agree about what it means. Note that `&` never reaches the browser: Jx resolves it itself, because `.child` **compounds** onto the element here (`.sty-card-0.child`) where native CSS nesting would read the same key as a descendant.
+
+### At-rules that hold declarations
+
+Most `@` keys wrap selectors: a [breakpoint](#named-media-breakpoints), `@supports`, `@starting-style`. Four hold plain declarations instead, and their block is emitted as written, with no selector inside and no scoping to the element that declares it: `@position-try`, `@property`, `@font-face` and `@counter-style`. The name such a rule declares is global to the document, so it is written where it is used, the way you would write it in a stylesheet:
+
+```json
+{
+  "style": {
+    "position-anchor": "--menu-button",
+    "position-try-fallbacks": "--flip-up",
+    "@position-try --flip-up": { "inset-block-start": "auto" }
+  }
+}
+```
+
+One of those four can be written more than once: give the key a **list** of blocks and each is emitted in turn. A font family with several weights is the case that needs it, since `@font-face` is the only one of the four whose name is not part of the key:
+
+```json
+{
+  "style": {
+    "@font-face": [
+      { "font-family": "Inter", "font-weight": "400", "src": "url(\"inter-400.woff2\")" },
+      { "font-family": "Inter", "font-weight": "700", "src": "url(\"inter-700.woff2\")" }
+    ]
+  }
+}
+```
+
+Only those four keys take a list. Anywhere else a list is refused, because one block already says the same thing.
+
+### Explaining a rule
+
+Any style block can carry a `$description`: why the rule is there, in your own words.
+
+```json
+{
+  "style": {
+    "$description": "The panel fills its column so a short list still shows the border under it.",
+    "height": "100%"
+  }
+}
+```
+
+It is prose, never a declaration, so it changes nothing about what the rule does. A build that writes a stylesheet puts it in a comment above the rule; everywhere else it is ignored. Every key starting with `$` works this way, and no CSS property starts with `$`, so nothing you write as styling can be mistaken for a note.
+
+`@keyframes` is not one of them. It is the third shape, and its own section.
+
+### Animations with `@keyframes`
+
+A `@keyframes` key holds **keyframe selectors**: `from`, `to`, a percentage, or a comma-separated list of those. They name points on a timeline rather than elements, so nothing is scoped to the element that declared the block, and the whole block is written once:
+
+```json
+{
+  "style": {
+    "animation": "toast-in 180ms ease-out",
+    "@keyframes toast-in": {
+      "from": { "opacity": "0", "translate": "0 1rem" },
+      "to": { "opacity": "1", "translate": "0 0" }
+    }
+  }
+}
+```
+
+That emits the animation declaration on the element and `@keyframes toast-in { from { … } to { … } }` into the document, exactly as you would write it in a stylesheet.
+
+Three things follow from an animation name being global to the document:
+
+- **One name, one definition.** Where two `@keyframes` rules share a name, the browser keeps the last and ignores every earlier one. Two elements declaring different bodies under one name will not both get what they asked for.
+- **The block is written once and shared.** Any number of elements may name the same animation; the rule is hoisted for the document and released when the last of them lets go.
+- **A stop cannot hold a reactive value.** A `${...}` template or a `{ "$ref": ... }` inside a stop is dropped rather than emitted. Reactive values are delivered through a custom property set on the one element that declared them, and a shared block has no such element to read from. Animate a custom property from the element instead, and let the stops reference it with `var()`.
+
+A `@keyframes` block may sit inside a breakpoint or a `@supports` block, and keeps that wrapper.
 
 ## Named media breakpoints
 
@@ -90,13 +192,47 @@ Use `@--name` keys in any style object:
 }
 ```
 
-`@--name` references named breakpoints. `@(condition)` is a literal inline media query, and the
-parentheses are the query's own: a feature query keeps them (`@(min-width: 1280px)`), while a
-bare media type does not, so `@(print)` emits `@media print`.
+`@--name` references named breakpoints. `@(condition)` is a literal inline media query, and the parentheses are the query's own: a feature query keeps them (`@(min-width: 1280px)`), while a bare media type does not, so `@(print)` emits `@media print`.
 
 ## Color-scheme variants
 
 A `$media` entry whose value is exactly a `prefers-color-scheme` query (like `--dark` above) is a _scheme query_: its `@--dark` blocks respond both to the OS preference and to a visitor-forced scheme, and the compiler wires up `color-scheme` and no-flash persistence automatically. See [Color schemes](/docs/framework/concepts/color-schemes) for the full contract and how to build a switcher.
+
+## Values that come from your data
+
+A declaration value can be a template or a binding, so a style follows state:
+
+```json
+{
+  "tagName": "li",
+  "style": { "--row-face": { "$ref": "$map/item/face" } },
+  "textContent": "${$map.item.name}"
+}
+```
+
+That is how a row renders in the thing it names: a font row set in its own face, a colour row showing its own colour. Put the binding on a custom property and read it from the rule that lays the rows out:
+
+```json
+{ "tagName": "ul", "style": { "& > li": { "fontFamily": "var(--row-face, inherit)" } } }
+```
+
+Written that way every row shares one rule and sets one variable of its own, so a list of two hundred costs one rule rather than two hundred. Bind a normal property directly if you prefer, and a single element will do the right thing either way.
+
+A built page is the exception. These values resolve against live state, which a built page has only where the runtime is present, so the compiler leaves them out and tells you which ones it left out. A project's own `style` block cannot use them at all, because it becomes the site stylesheet before there is any state to read.
+
+## Styling a component from outside it
+
+A component carries two style objects: the one in its definition, and the one you write where you use it. Both apply, and yours wins where the two set the same property.
+
+```json
+{ "tagName": "my-card", "style": { "color": "blue", "&:hover": { "color": "teal" } } }
+```
+
+The merge goes property by property, into nested blocks as well. Writing `&:hover` at the use site replaces only the declarations you repeat there, and the rest of the component's own `&:hover` block still applies.
+
+A component with no `display` in the top level of its style gets `display: block`, because a custom element is otherwise inline and a component usually behaves like a `<div>`. It is an ordinary rule, so any rule of yours overrides it without `!important`. Only the top level counts: a `display` you set under `&:hover` or inside a breakpoint is for that state, not a declaration that the component is laid out that way at rest.
+
+Write `"display": "revert-layer"` when the browser should decide instead. That is the right answer for anything the platform hides and shows on its own, such as a popover or a dialog, where a `display` of your own would keep it laid out while it is closed. Prefer it over plain `revert`, which looks identical on a published page and differs inside the Studio canvas: the editor supplies its own hiding rule in a cascade layer, and only `revert-layer` rolls back onto it.
 
 ## Static style extraction
 

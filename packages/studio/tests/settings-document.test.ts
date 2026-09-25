@@ -28,15 +28,17 @@ import {
   setSettingsSection,
   settingsDocumentSection,
   settingsSectionKeys,
+  sortedSettingsSections,
   unregisterSettingsSection,
 } from "../src/settings/section-registry";
+import { ICON_NAMES } from "@jxsuite/ui/icons";
 import {
   detachSettingsPane,
   renderSettingsPane,
   settingsPaneMounted,
 } from "../src/panels/settings-pane";
 import { resetExtensionSettingsSections } from "../src/settings/extension-sections";
-import { refreshFormats, setExtensions } from "../src/format/format-host";
+import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { closeAllTabs, activeTab, workspace } from "../src/workspace/workspace";
 import "../src/ui/form-controls";
 import type { AnyCommand } from "../src/commands/registry";
@@ -77,13 +79,22 @@ function runOpen(args: Record<string, unknown> = {}): Promise<void> {
   return Promise.resolve(run({} as unknown as CommandContext, args));
 }
 
+/**
+ * The section list, addressed by `part` rather than by a class.
+ *
+ * It is a real vertical `tablist` now (`surfaces/settings-pane.json`), so a row names itself with
+ * `label` — `jx-tab` writes the words it draws to `aria-label` too, so a tab naming itself from its
+ * content cannot swallow a slotted control's own name.
+ */
 function navLabels(): (string | undefined)[] {
-  return [...host.querySelectorAll(".settings-nav-item")].map((b) => b.textContent?.trim());
+  return [...host.querySelectorAll('[part="nav-item"]')].map(
+    (b) => b.getAttribute("label") ?? undefined,
+  );
 }
 
 function navButton(label: string): HTMLElement {
-  const button = [...host.querySelectorAll(".settings-nav-item")].find(
-    (b) => b.textContent?.trim() === label,
+  const button = [...host.querySelectorAll('[part="nav-item"]')].find(
+    (b) => b.getAttribute("label") === label,
   );
   if (!button) {
     throw new Error(`no nav item "${label}" — have ${navLabels().join(", ")}`);
@@ -91,13 +102,21 @@ function navButton(label: string): HTMLElement {
   return button as HTMLElement;
 }
 
+/** The island a section renders into. */
 function body(): HTMLElement {
-  return host.querySelector(".settings-doc-content") as HTMLElement;
+  return host.querySelector('[part="body"]') as HTMLElement;
 }
 
-/** Mount the editor and let its deferred section render land. */
+/**
+ * Mount the editor and let its deferred section render land.
+ *
+ * TWO turns, not one: a converted section mounts a Jx document, which waits for the kit's elements
+ * to be defined before it renders. One turn settles the pane and its nav; the section's own content
+ * arrives on the next.
+ */
 async function mount(): Promise<void> {
   renderSettingsPane(surfaceOf(host));
+  await flush();
   await flush();
 }
 
@@ -125,7 +144,7 @@ const parserExtensions: ExtensionsInfo[] = [
               newEntry: { schema: { properties: {}, required: [], type: "object" } },
               ui: { schema: { control: "schema-builder" } },
             },
-            icon: "sp-icon-view-grid",
+            icon: "grid-four",
             label: "Content Types",
             layout: "map",
             order: 50,
@@ -157,6 +176,7 @@ beforeEach(() => {
   resetExtensionSettingsSections();
   refreshFormats();
   setExtensions([]);
+  setExtensionCatalog([]);
   installMockPlatform();
   closeAllTabs();
   resetSettingsDocumentState();
@@ -182,13 +202,39 @@ afterEach(async () => {
 
 // ─── The inner nav ───────────────────────────────────────────────────────────
 
+describe("a section's icon", () => {
+  /**
+   * The key space, held to its resolver — because nothing draws it yet, and that is the point.
+   *
+   * `SettingsSection.icon` is documented as reserved: no surface reads it today. So every built-in
+   * carried an `sp-icon-*` name for a long time and nothing said so, because those name SPECTRUM
+   * ELEMENTS and this field is a KEY into the kit's glyph manifest (`studio.md` §13.5 — the two
+   * spaces are spelled alike and fail differently). `check-icons.ts` deliberately does not sweep
+   * these in: its rule 3 is scoped to rail panel records, whose miss is silent AT RUNTIME, and
+   * inflating it with fields nobody draws is the mistake its docstring records. A miss here is
+   * silent in the other direction — nothing draws it, so nothing can go wrong until the inner nav
+   * grows icons and every one of them is missing at once. This is the assertion that closes that.
+   */
+  test("every built-in names a glyph the kit ships", async () => {
+    await mount();
+    const sections = sortedSettingsSections().filter((section) => section.icon !== undefined);
+    expect(sections.length).toBeGreaterThan(0);
+    for (const section of sections) {
+      expect(ICON_NAMES, `${section.key}: icon "${section.icon!}"`).toContain(section.icon!);
+    }
+  });
+});
+
 describe("the settings document", () => {
   test("renders its sections as inner nav, Overview first and active", async () => {
     await mount();
     expect(navLabels()).toEqual(BUILTIN_LABELS);
-    expect(navButton("Overview").classList.contains("active")).toBe(true);
-    expect(navButton("Overview").getAttribute("aria-current")).toBe("page");
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Overview");
+    /* `aria-selected` on a real tab, where an `.active` class and an `aria-current="page"` used to
+       be. A settings section is not a page and choosing one moves no location, so `page` was the
+       wrong word for it; the list is a tablist and the row says which of them is showing. */
+    expect(navButton("Overview").getAttribute("aria-selected")).toBe("true");
+    expect(navButton("Contexts").getAttribute("aria-selected")).toBe("false");
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Overview");
   });
 
   test("the host says whether it is mounted, and stops saying so once detached", async () => {
@@ -201,7 +247,30 @@ describe("the settings document", () => {
     expect(settingsPaneMounted(surfaceOf(host))).toBe(false);
     // A change notification with nothing mounted must be a no-op rather than a null dereference.
     setSettingsSection("contexts");
-    expect(host.querySelector(".settings-doc")).not.toBeNull();
+    expect(host.querySelector('[part="doc"]')).toBeNull();
+  });
+
+  test("the Extensions section renders the backend's catalogue through the document", async () => {
+    // The section is reached the way a reader reaches it — through the settings document's inner
+    // Nav — rather than by calling its renderer, so the registration is covered too.
+    setExtensionCatalog([
+      {
+        description: "File-based content collections",
+        installed: false,
+        name: "@jxsuite/parser",
+        sections: [{ key: "content", title: "Content Types" }],
+        source: "first-party",
+        title: "Content & Markdown",
+      },
+    ]);
+    await mount();
+    setSettingsSection("extensions");
+    await flush(3);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Extensions");
+    /* A document now: the package name is `[part="package"]` and the install control is the kit's
+       `jx-switch`, not `sp-switch`. */
+    expect(body().querySelector('[part="package"]')?.textContent).toBe("@jxsuite/parser");
+    expect(body().querySelector("jx-switch")).not.toBeNull();
   });
 
   test("mounting twice on the same host does not rebuild the section body", async () => {
@@ -215,20 +284,23 @@ describe("the settings document", () => {
     await mount();
     pointer(navButton("Data Shapes"), "click");
     await flush();
-    expect(navButton("Data Shapes").classList.contains("active")).toBe(true);
-    expect(navButton("Overview").classList.contains("active")).toBe(false);
-    const labels = [...body().querySelectorAll(".settings-list-panel sp-action-button")].map((b) =>
+    expect(navButton("Data Shapes").getAttribute("aria-selected")).toBe("true");
+    expect(navButton("Overview").getAttribute("aria-selected")).toBe("false");
+    /* Data Shapes is a document now, so the shape list is `[part="shape"]` rather than a panel of
+       Spectrum buttons — the same reader-visible answer, addressed the way a document is. */
+    await flush();
+    const labels = [...body().querySelectorAll('[part="list"] [part="shape"]')].map((b) =>
       b.textContent?.trim(),
     );
-    expect(labels).toContain("Author");
+    expect(labels.some((l) => l?.includes("Author"))).toBe(true);
   });
 
   test("the CSS Variables section survives P6.2 and renders the project's vars", async () => {
     await mount();
     pointer(navButton("CSS Variables"), "click");
     await flush();
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("CSS Variables");
-    expect(body().querySelectorAll(".css-var-row").length).toBe(1);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("CSS Variables");
+    expect(body().querySelectorAll('[part="row"]').length).toBe(1);
   });
 
   test("a $studio.settings contribution lands at its declared order", async () => {
@@ -249,8 +321,11 @@ describe("the settings document", () => {
       "Raw JSON",
     ]);
     pointer(navButton("Content Types"), "click");
-    await flush();
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Content Types");
+    /* Content Types is a contributed section, and that renderer is a Jx document now
+       (`src/surfaces/settings-contributed.json`) — so it is addressed by `part`, and its mount
+       needs more turns than a lit render. */
+    await flush(8);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Content Types");
   });
 
   test("a custom section registering while mounted redraws the nav with no re-mount", async () => {
@@ -339,7 +414,7 @@ describe("deep links", () => {
     await flush();
 
     expect(settingsDocumentSection()).toBe("connections");
-    expect(navButton("Connections").classList.contains("active")).toBe(true);
+    expect(navButton("Connections").getAttribute("aria-selected")).toBe("true");
     unregisterSettingsSection("connections");
   });
 
@@ -475,6 +550,52 @@ describe("the configuration tab", () => {
     expect(showSettingsDocument()).toBeNull();
   });
 
+  /*
+   * THE TWO WRITERS AGREE, from this door too.
+   *
+   * The tab this door opens is built over the configuration OBJECT — parsed by the platform, with
+   * no text behind it — so it arrived with `doc.layout === null`, and a ⌘S on it went through
+   * `serializeDocument` layout-less while a settings commit on the same document went through the
+   * chokepoint with the file's layout. Seeded with a file the formatter keeps short objects inline
+   * in, a settings commit wrote a one-line diff and the ⌘S that follows it (the undo workflow the
+   * docs prescribe) blew `"style": { "--a": "1" }` open to three lines. The chokepoint lends the
+   * tab the record it read (`tabs/project-config.ts`, issue 308); this pins both writes to the
+   * same bytes.
+   */
+  test("a ⌘S on the tab writes the bytes a settings commit does, with the file's layout kept", async () => {
+    const { commitProjectConfig, resetProjectConfigDocument } =
+      await import("../src/tabs/project-config");
+    const { saveFile } = await import("../src/files/file-ops");
+    const { deriveJsonLayout } = await import("@jxsuite/schema/json-layout");
+    const { toRaw } = await import("../src/reactivity");
+    const onDisk =
+      '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
+    const { state } = installMockPlatform({}, { "project.json": onDisk });
+    resetStudioState({ projectConfig: JSON.parse(onDisk) as unknown });
+    resetProjectConfigDocument();
+    try {
+      const tab = showSettingsDocument()!;
+      await flush();
+      // The lend landed: the tab's record is the file's, keyed like a read of the file would be.
+      // Unwrapped, because `doc` is reactive and a proxied Map is not `toEqual` to a plain one.
+      expect(toRaw(tab.doc.layout)).toEqual(deriveJsonLayout(onDisk));
+
+      const committed = await commitProjectConfig({ name: "renamed" } as never);
+      expect(committed.ok).toBe(true);
+      expect(await saveFile(tab as never)).toBe(true);
+
+      const written = state.calls
+        .filter((call) => call[0] === "writeFile" && call[1] === "project.json")
+        .map((call) => call[2] as string);
+      expect(written).toHaveLength(2);
+      expect(written[1]).toBe(written[0]);
+      // A one-line diff of the seed: the renamed line moved and the inline object and array did not.
+      expect(written[0]).toBe(onDisk.replace('"name": "site"', '"name": "renamed"'));
+    } finally {
+      resetProjectConfigDocument();
+    }
+  });
+
   test("activeSettingsSection is null until the settings editor is the active one", () => {
     expect(activeSettingsSection()).toBeNull();
     showSettingsDocument();
@@ -586,7 +707,10 @@ describe("the ends of the document", () => {
     }
     await flush();
     expect(navLabels()).toEqual([]);
-    expect(body().textContent).toContain("No settings sections");
+    /* The sentence is the DOCUMENT's now, drawn beside the island rather than into it — a section
+       renderer is what fills the island, and with no section registered there is none to run. */
+    expect(body().textContent).toBe("");
+    expect(host.querySelector('[part="empty"]')?.textContent).toContain("No settings sections");
   });
 });
 

@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.8.1](https://github.com/jxsuite/jx/compare/starters-v1.8.0...starters-v1.8.1) (2026-09-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @jxsuite/parser bumped to 1.8.1
+    * @jxsuite/runtime bumped to 4.0.1
+
+## [1.8.0](https://github.com/jxsuite/jx/compare/starters-v1.7.0...starters-v1.8.0) (2026-09-14)
+
+
+### Features
+
+* **runtime,schema:** a declaration at-rule may be written more than once ([07aa856](https://github.com/jxsuite/jx/commit/07aa856cf149eb6098a890e4896670a08ebf5c0c))
+* **runtime,studio:** a style block may document itself, and forced-colors.css is generated from one ([8f714b8](https://github.com/jxsuite/jx/commit/8f714b89200d3d5f37e263501e61b06fc7d7f114))
+* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
+* **schema,runtime:** keyed $map with per-row scopes, and a $switch that owns its case ([99e7a6c](https://github.com/jxsuite/jx/commit/99e7a6cfd33087d1e2e18192de8e3c0bb9b5837d))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
+* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([173cf17](https://github.com/jxsuite/jx/commit/173cf175d455565a36d837097a40bbe2aa40fe4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @jxsuite/parser bumped to 1.8.0
+    * @jxsuite/runtime bumped to 4.0.0
+    * @jxsuite/schema bumped to 2.2.0
+
+## [1.7.0](https://github.com/jxsuite/jx/compare/starters-v1.6.5...starters-v1.7.0) (2026-08-30)
+
+
+### Features
+
+* **parser,schema,server:** a format may declare rewrite, repairing a reference a CSV row names ([bca762e](https://github.com/jxsuite/jx/commit/bca762eea4a3a1cd55de02892b7db322155fb1ec))
+* **parser,schema,server:** a format may declare rewrite, repairing a reference a CSV row names ([29a0f36](https://github.com/jxsuite/jx/commit/29a0f36a43319e294e2e69b14c694ff9796bdc5c)), closes [#246](https://github.com/jxsuite/jx/issues/246)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @jxsuite/parser bumped to 1.7.0
+    * @jxsuite/runtime bumped to 3.1.0
+    * @jxsuite/schema bumped to 2.1.0
+
 ## [1.6.5](https://github.com/jxsuite/jx/compare/starters-v1.6.4...starters-v1.6.5) (2026-08-27)
 
 

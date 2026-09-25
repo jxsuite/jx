@@ -15,16 +15,22 @@
  * that already existed failed the push with a message about pushing. `beginActivity` gives it the
  * ordered steps, the captured log, and `fail()`, which raises the Problem the failure needs and
  * carries the log as its detail (§7.3). The caller therefore never also notifies.
+ *
+ * **The dialog is a document.** `surfaces/github-publish.json` collects the name, the description
+ * and the visibility; this module keeps the token, the requests and the activity. What it used to
+ * be is worth recording, because it is the shape every converted surface starts from: three `ref()`
+ * callbacks holding three Spectrum controls, read for their `.value` at the moment confirm fired.
+ * Nothing owned the reader's answer until the answer was needed.
  */
 
-import { html } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { ref } from "lit-html/directives/ref.js";
-import { showDialog } from "../ui/layers";
+import { layerHost } from "../ui/layers";
+import { openGithubPublishSurface } from "../surfaces/github-publish";
 import { authenticateGithub } from "./github-auth";
 import { beginActivity } from "../panels/activity-panel";
 import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
+import type { GithubPublishSurfaceHandle, RepoOptions } from "../surfaces/github-publish";
 
 interface GithubErrorResponse {
   errors?: { message?: string }[];
@@ -36,15 +42,56 @@ interface GithubRepoResponse {
   html_url: string;
 }
 
-/** What the dialog collects. */
-export interface RepoOptions {
-  name: string;
-  description: string;
-  isPrivate: boolean;
-}
+/**
+ * What the dialog collects.
+ *
+ * Defined by the surface now and re-exported under the name this module has always exported, so the
+ * record and the document that fills it have one definition between them.
+ */
+export type { RepoOptions } from "../surfaces/github-publish";
 
 /** The ordered steps, named once so the activity and its tests cannot disagree. */
 export const REPO_STEPS = ["Create the repository", "Add the remote", "Push"] as const;
+
+/**
+ * Ask for the repository's name, description and visibility.
+ *
+ * The promise is this module's, not the surface's: the dialog reports three answers as callbacks
+ * and lets the flow decide what each one means, so `resolve` happens here and closing the dialog is
+ * a consequence of that rather than the thing that produces the value. `settle` is guarded because
+ * both ends arrive — confirming closes the dialog, which raises `onClosed` behind it, and a
+ * resolved promise must not be re-resolved with `null` a tick later.
+ *
+ * An empty name falls back to the project's, exactly as the template's `|| projectName` did. That
+ * belongs to the flow: the field is empty because the reader emptied it, and the surface would be
+ * lying about its own state if it reported a name nobody typed.
+ */
+function askForRepoOptions(projectName: string): Promise<RepoOptions | null> {
+  return new Promise((resolve) => {
+    let answered = false;
+    const settle = (value: RepoOptions | null): void => {
+      if (answered) {
+        return;
+      }
+      answered = true;
+      resolve(value);
+    };
+    const handle: GithubPublishSurfaceHandle = openGithubPublishSurface({
+      layer: layerHost("dialog"),
+      name: projectName,
+      onCancel: () => {
+        handle.close();
+      },
+      onClosed: () => {
+        settle(null);
+      },
+      onConfirm: (values) => {
+        settle({ ...values, name: values.name || projectName });
+        handle.close();
+      },
+    });
+  });
+}
 
 /**
  * Full "Create GitHub Repository" flow: 1. Authenticate (or reuse a stored token) 2. Prompt for
@@ -63,62 +110,7 @@ export async function createGithubRepository({ projectName }: { projectName: str
     return false;
   }
 
-  const repoOpts = await showDialog<RepoOptions | null>((done) => {
-    let _nameInput: HTMLInputElement | null = null;
-    let _descInput: HTMLInputElement | null = null;
-    let _privateToggle: HTMLInputElement | null = null;
-
-    return html`
-      <sp-dialog-wrapper
-        open
-        headline="Create GitHub Repository"
-        confirm-label="Create Repository"
-        cancel-label="Cancel"
-        @confirm=${() => {
-          done({
-            description: _descInput?.value || "",
-            isPrivate: _privateToggle?.checked ?? true,
-            name: _nameInput?.value || projectName,
-          });
-        }}
-        @cancel=${() => done(null)}
-        @close=${() => done(null)}
-      >
-        <div class="github-publish-dialog">
-          <sp-field-label for="repo-name">Repository name</sp-field-label>
-          <sp-textfield
-            id="repo-name"
-            name="repo-name"
-            value="${projectName}"
-            placeholder="my-project"
-            ${ref((el) => {
-              _nameInput = (el as HTMLInputElement | null) || null;
-            })}
-          ></sp-textfield>
-
-          <sp-field-label for="repo-desc">Description (optional)</sp-field-label>
-          <sp-textfield
-            id="repo-desc"
-            name="repo-desc"
-            placeholder="A brief description"
-            ${ref((el) => {
-              _descInput = (el as HTMLInputElement | null) || null;
-            })}
-          ></sp-textfield>
-
-          <sp-field-label>Visibility</sp-field-label>
-          <sp-switch
-            name="repo-private"
-            checked
-            ${ref((el) => {
-              _privateToggle = (el as HTMLInputElement | null) || null;
-            })}
-            >Private repository</sp-switch
-          >
-        </div>
-      </sp-dialog-wrapper>
-    `;
-  });
+  const repoOpts = await askForRepoOptions(projectName);
 
   if (!repoOpts) {
     return false;

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAttrs,
   buildComponentCSS,
+  takeDroppedReactiveStyles,
   buildInitialScope,
   buildInner,
   cloneValue,
@@ -645,9 +646,7 @@ describe("buildComponentCSS", () => {
       color: "red",
       fontSize: "16px",
     });
-    expect(css).toContain("my-comp {");
-    expect(css).toContain("color: red;");
-    expect(css).toContain("font-size: 16px;");
+    expect(css).toContain("my-comp { color: red; font-size: 16px }");
   });
 
   test("skips pseudo-selectors from host rules but emits them as CSS rules", () => {
@@ -656,9 +655,36 @@ describe("buildComponentCSS", () => {
       "@--md": { fontSize: "20px" },
       color: "red",
     });
-    expect(css).toContain("color: red;");
+    expect(css).toContain("my-comp { color: red }");
     expect(css).toContain(":hover");
     expect(css).toContain("@media");
+  });
+
+  test("a top-level selector LIST is scoped member by member, with no raw & left in it", () => {
+    /*
+     * The top level does not go through the shared builder — `:host` has to be translated before
+     * the scope is applied — so it had its own splice, and a splice of a whole list replaced only
+     * the first `&`. `"& .a, & .b"` was emitted as `my-comp .a, & .b`, and a raw `&` in a built
+     * stylesheet is not a nesting selector: the browser discards the list and the component loses
+     * those rules with no error anywhere.
+     */
+    const css = buildComponentCSS("my-comp", {
+      "& .a, & .b": { color: "red" },
+      "&.x, &.y": { margin: "0" },
+      "&:hover + &": { color: "green" },
+    });
+    expect(css).toContain("my-comp .a, my-comp .b { color: red }");
+    expect(css).toContain("my-comp.x, my-comp.y { margin: 0 }");
+    // Every `&` in a member, not just the first.
+    expect(css).toContain("my-comp:hover + my-comp { color: green }");
+    expect(css).not.toContain("&");
+  });
+
+  test("a :host list keeps its own translation, and a comma inside :host() is not a separator", () => {
+    const light = buildComponentCSS("my-comp", { ":host(.a), :host(.b)": { color: "red" } });
+    expect(light).toContain("my-comp.a, my-comp.b { color: red }");
+    const grouped = buildComponentCSS("my-comp", { ":host(:is(.a, .b))": { color: "blue" } });
+    expect(grouped).toContain("my-comp:is(.a, .b) { color: blue }");
   });
 
   test("skips template strings", () => {
@@ -699,6 +725,26 @@ describe("buildAttrs", () => {
 
   test("builds hidden attribute", () => {
     expect(buildAttrs({ hidden: true }, null)).toContain("hidden");
+  });
+
+  test("overlay attributes pass through verbatim: the canvas renames them, a built page never does", () => {
+    // `command`/`commandfor` are the platform's invoker; `closedby` is enumerated text; `inert` and
+    // `open` are boolean by presence. Every one reaches the page exactly as authored (spec §8.7).
+    expect(
+      buildAttrs(
+        { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
+        null,
+      ),
+    ).toBe(' command="show-modal" commandfor="d"');
+    expect(
+      buildAttrs(
+        { attributes: { closedby: "any", inert: true, open: true }, tagName: "dialog" },
+        null,
+      ),
+    ).toBe(' closedby="any" inert open');
+    expect(buildAttrs({ attributes: { inert: false, open: false }, tagName: "dialog" }, null)).toBe(
+      "",
+    );
   });
 
   test("builds tabIndex attribute", () => {
@@ -1090,7 +1136,7 @@ describe("compileStyles", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("font-size: 14px;");
+    expect(result).toContain("font-size: 14px");
     expect(result).toContain("@media (min-width: 768px)");
     expect(result).toContain("font-size: 18px");
   });
@@ -1312,6 +1358,33 @@ describe("compileStyles — non-media at-rules", () => {
     expect(result).not.toContain("@media (print)");
   });
 
+  test("a project-level @keyframes is ONE block, not one rule per stop", () => {
+    /* The project path split an `@` block into per-selector pushes with the stop as the scope. Each
+       half was valid CSS on its own, and the last definition of a `@keyframes` name replaces every
+       earlier one, so the compiled page animated only the final stop. */
+    const result = compileStyles({ children: [], id: "sheet", tagName: "div" }, {}, {
+      "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+    } as never);
+    expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
+    // One definition of the name, not one per stop.
+    expect(result.split("@keyframes toast-in").length - 1).toBe(1);
+  });
+
+  test("an element-level @keyframes is unscoped, and its animation lands beside it", () => {
+    const result = compileStyles({
+      children: [],
+      id: "toast",
+      style: {
+        animation: "toast-in 180ms ease-out",
+        "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+      },
+      tagName: "div",
+    } as never);
+    expect(result).toContain("#toast { animation: toast-in 180ms ease-out }");
+    expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
+    expect(result).not.toContain("#toast from");
+  });
+
   test("@(feature: value) keeps its parentheses", () => {
     const doc = {
       children: [],
@@ -1501,5 +1574,104 @@ describe("buildComponentCSS — $media propagation", () => {
       "@starting-style { #flyout:popover-open { transform: translateX(100%) } }",
     );
     expect(css).not.toContain("@media");
+  });
+});
+
+describe("compileStyles — declaration-body at-rules", () => {
+  test("@position-try emits its declarations with no selector wrapper", () => {
+    const result = compileStyles({
+      children: [],
+      id: "menu",
+      style: {
+        "@position-try --flip-up": { insetBlockEnd: "anchor(top)", insetBlockStart: "auto" },
+        positionAnchor: "--btn",
+      },
+      tagName: "nav",
+    });
+    expect(result).toContain("@position-try --flip-up {");
+    expect(result).toContain("inset-block-start: auto");
+    // The defect this fixes: a selector inside makes the whole block dead, silently.
+    expect(result).not.toContain("@position-try --flip-up { #menu");
+  });
+
+  test("@property does the same, and @media still wraps a selector", () => {
+    const result = compileStyles({
+      children: [],
+      id: "x",
+      style: {
+        "@--md": { color: "red" },
+        "@property --ratio": { inherits: "false", syntax: "'<number>'" },
+      },
+      tagName: "div",
+    });
+    expect(result).toContain("@property --ratio {");
+    expect(result).toContain("syntax: '<number>'");
+    expect(result).toContain("#x { color: red }");
+  });
+
+  test("@starting-style and @supports keep their selector level", () => {
+    const result = compileStyles({
+      children: [],
+      id: "p",
+      style: {
+        "@starting-style": { ":popover-open": { opacity: "0" } },
+        "@supports not (position-area: block-end)": { top: "5rem" },
+      },
+      tagName: "div",
+    });
+    expect(result).toContain("@starting-style { #p:popover-open { opacity: 0 } }");
+    expect(result).toContain("@supports not (position-area: block-end) { #p { top: 5rem } }");
+  });
+
+  test("an empty declaration block emits nothing", () => {
+    const result = compileStyles({
+      children: [],
+      id: "e",
+      style: { "@position-try --none": {} },
+      tagName: "div",
+    });
+    expect(result).not.toContain("@position-try");
+  });
+});
+
+describe("a static build says what it drops", () => {
+  /* A reactive style declaration resolves against a live scope, which a built page has only where
+     the runtime is present — so a static emitter has always dropped one. Silently, which is the
+     defect: the document is correct in Studio and simply unstyled in the built page. The recorder
+     returns `null` exactly as the absent hook did, so no emitted byte moves. */
+  test("names the property, its source and its selector, and changes no output", () => {
+    takeDroppedReactiveStyles();
+    const style = {
+      color: "${state.tint}",
+      fontFamily: { $ref: "#/state/face" },
+      padding: "4px",
+    };
+    const css = buildComponentCSS("x-card", style as never);
+    // The bytes: only the static declaration survives, exactly as before.
+    expect(css).toContain("padding: 4px");
+    expect(css).not.toContain("state.tint");
+    expect(css).not.toContain("var(--jx-r");
+
+    const dropped = takeDroppedReactiveStyles();
+    expect(dropped).toHaveLength(2);
+    expect(dropped[0]).toContain("color: ${state.tint}");
+    expect(dropped[1]).toContain("fontFamily: #/state/face");
+    for (const line of dropped) {
+      expect(line).toContain("x-card");
+      expect(line).toContain("the runtime is present");
+    }
+  });
+
+  test("draining clears, so one build does not inherit another's", () => {
+    takeDroppedReactiveStyles();
+    buildComponentCSS("x-a", { color: "${state.c}" } as never);
+    expect(takeDroppedReactiveStyles()).toHaveLength(1);
+    expect(takeDroppedReactiveStyles()).toEqual([]);
+  });
+
+  test("a wholly static style records nothing", () => {
+    takeDroppedReactiveStyles();
+    buildComponentCSS("x-b", { color: "red", ":hover": { color: "blue" } } as never);
+    expect(takeDroppedReactiveStyles()).toEqual([]);
   });
 });

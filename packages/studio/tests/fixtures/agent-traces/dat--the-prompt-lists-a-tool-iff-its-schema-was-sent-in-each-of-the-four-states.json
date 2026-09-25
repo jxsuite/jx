@@ -1,0 +1,404 @@
+{
+  "chatCalls": [
+    "[chat 1] sendMessage(\"hi\")",
+    "[chat 1] toMessagesArray()",
+    "[chat 1] setTokenCount(5077)",
+    "[chat 1] setContextWarning(false)",
+    "[chat 1] setTokenCount(5077)",
+    "[chat 1] setModel(\"gpt-4o\")",
+    "[chat 1] toMessagesArray()",
+    "[chat 1] setError(\"The model sent back an empty reply.\")",
+    "[chat 2] sendMessage(\"hi\")",
+    "[chat 2] toMessagesArray()",
+    "[chat 2] setTokenCount(5521)",
+    "[chat 2] setContextWarning(false)",
+    "[chat 2] setTokenCount(5521)",
+    "[chat 2] setModel(\"gpt-4o\")",
+    "[chat 2] toMessagesArray()",
+    "[chat 2] setError(\"The model sent back an empty reply.\")",
+    "[chat 3] sendMessage(\"hi\")",
+    "[chat 3] toMessagesArray()",
+    "[chat 3] setTokenCount(5283)",
+    "[chat 3] setContextWarning(false)",
+    "[chat 3] setTokenCount(5283)",
+    "[chat 3] setModel(\"gpt-4o\")",
+    "[chat 3] toMessagesArray()",
+    "[chat 3] setError(\"The model sent back an empty reply.\")",
+    "[chat 4] sendMessage(\"hi\")",
+    "[chat 4] toMessagesArray()",
+    "[chat 4] setTokenCount(5609)",
+    "[chat 4] setContextWarning(false)",
+    "[chat 4] setTokenCount(5609)",
+    "[chat 4] setModel(\"gpt-4o\")",
+    "[chat 4] toMessagesArray()",
+    "[chat 4] setError(\"The model sent back an empty reply.\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "client": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "hi"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "a3feaee4c6dd",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 20286
+      },
+      "tools": ["ask_user", "create_project", "list_starters"]
+    },
+    {
+      "round": 2,
+      "client": 2,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "hi"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": {
+        "hash": "168ec6a4495e",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Current Document",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 22042
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_project",
+        "list_starters",
+        "select_node",
+        "delete_node"
+      ]
+    },
+    {
+      "round": 3,
+      "client": 3,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "hi"
+          }
+        ],
+        "carried": 2
+      },
+      "systemPrompt": {
+        "hash": "7c40dd2708a9",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Current Document",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 21072
+      },
+      "tools": ["ask_user", "read_document", "create_project", "list_starters", "select_node"]
+    },
+    {
+      "round": 4,
+      "client": 4,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "hi"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "6edea94c15d3",
+        "headings": [
+          "## Asking the user",
+          "## Jx Document Format",
+          "### Element Properties",
+          "### Void Elements (cannot have children)",
+          "### Styling",
+          "### State Binding",
+          "### Component Rules",
+          "## State Shape Decision Tree",
+          "## Real-World Jx Patterns (from jxsuite.com production site)",
+          "### Simple component with props (components/cta-button.json):",
+          "### Premium: stat card with layered surface (components/stat-card.json):",
+          "### Premium: step card with centered layout (components/step-card.json):",
+          "### Layout with slots (layouts/base.json):",
+          "### Site config with design tokens (project.json):",
+          "### Responsive Styles (per-node @breakpoint overrides)",
+          "## Design Principles (premium component output)",
+          "### Tokens first",
+          "### Spacing rhythm",
+          "### Type scale",
+          "### Color & elevation",
+          "### Layout",
+          "### Restraint",
+          "## Control Flow & Reactivity (signals, lists, conditionals)",
+          "### Reactive counter — signal + event handlers (state Function + onclick $ref):",
+          "### List rendering — repeat children over an array ($prototype: \"Array\" + map):",
+          "### Todo list with per-item delete — full pattern (state array + $map + handlers):",
+          "### Conditional rendering — swap a subtree by a signal ($switch + cases):",
+          "### Tab switcher — full pattern (onclick handlers + $switch):",
+          "## Multi-Page Site Building",
+          "### File-based routing",
+          "### Layout inheritance",
+          "### Navigation between pages",
+          "### Page metadata",
+          "### Multi-page workflow",
+          "## Current Document",
+          "## Project Context",
+          "## Error Recovery",
+          "### Common validation errors and their fixes:",
+          "### If you keep getting errors:"
+        ],
+        "length": 22414
+      },
+      "tools": [
+        "ask_user",
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page",
+        "list_files",
+        "read_file",
+        "write_file",
+        "search_files",
+        "select_node",
+        "delete_node"
+      ]
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "endTurn(\"\") filed 0",
+      "beginTurn(\"turn:3\")",
+      "endTurn(\"\") filed 0",
+      "beginTurn(\"turn:4\")",
+      "endTurn(\"\") filed 0",
+      "beginTurn(\"turn:2\")",
+      "endTurn(\"\") filed 0"
+    ],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#4",
+      "role": "user",
+      "content": "hi"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "The model sent back an empty reply.",
+    "model": "gpt-4o",
+    "status": "error",
+    "tokenCount": 5609,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 1,
+  "extra": {
+    "states": [
+      {
+        "deleteNodePrompted": false,
+        "deleteNodeSent": false,
+        "label": "no document",
+        "readDocumentSent": false,
+        "setPropertyPrompted": false,
+        "setPropertySent": false
+      },
+      {
+        "deleteNodePrompted": true,
+        "deleteNodeSent": true,
+        "label": "a canvas document",
+        "readDocumentSent": true,
+        "setPropertyPrompted": true,
+        "setPropertySent": true
+      },
+      {
+        "deleteNodePrompted": false,
+        "deleteNodeSent": false,
+        "label": "Project Settings focused",
+        "readDocumentSent": true,
+        "setPropertyPrompted": false,
+        "setPropertySent": false
+      },
+      {
+        "deleteNodePrompted": true,
+        "deleteNodeSent": true,
+        "label": "a canvas document, project open",
+        "readDocumentSent": true,
+        "setPropertyPrompted": true,
+        "setPropertySent": true
+      }
+    ],
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": ["aiChatUrl()", "aiChatUrl()", "aiChatUrl()", "aiChatUrl()"],
+    "projectRoot": "/proj",
+    "sessions": {
+      "(unscoped)": [
+        {
+          "id": "session#2",
+          "persisted": ["msg#1 user", "msg#2 user", "msg#3 user"],
+          "title": "hi"
+        }
+      ],
+      "/proj": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#4 user"],
+          "title": "hi"
+        }
+      ]
+    },
+    "writtenFiles": []
+  }
+}

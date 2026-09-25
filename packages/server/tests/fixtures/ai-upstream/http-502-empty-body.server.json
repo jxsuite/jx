@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "code": "502",
+      "message": "Bad Gateway",
+      "problem": {
+        "status": 502,
+        "title": "An upstream service failed",
+        "type": "https://jxsuite.com/problems/upstream-failure",
+        "detail": "Bad Gateway",
+        "error": "Bad Gateway"
+      },
+      "type": "error"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

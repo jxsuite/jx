@@ -5,10 +5,20 @@ code:
   - packages/studio/src/new-project/new-project-modal.ts
   - packages/studio/src/new-project/location-fields.ts
   - packages/studio/src/new-project/import-tab.ts
+  - packages/studio/src/surfaces/new-project.ts
+  - packages/studio/src/surfaces/add-repo.ts
   - packages/studio/src/services/ai-import-tools.ts
   - packages/studio/src/services/import-seed.ts
   - packages/import/src/strip-classes.ts
   - packages/import/src/emit.ts
+  - packages/import/src/apply-accordions.ts
+  - packages/import/src/image-family.ts
+  - packages/import/src/style-capture.ts
+  - packages/import/src/componentize.ts
+  - packages/import/src/apply-popovers.ts
+  - packages/import/src/apply-disclosures.ts
+  - packages/import/src/derived-geometry.ts
+  - packages/import/src/apply-styles.ts
 ---
 
 # Create a project
@@ -23,7 +33,7 @@ The first screen (**Choose a starting point**) opens on the starter gallery, bec
 
 - **Starters**: complete, themed websites (restaurant, shop, portfolio, blog, and more) that Studio copies in as plain files you own. The first one is selected for you. Browse the full gallery in **[Starter templates](/docs/studio/projects/starters)**.
 - **Start from scratch**: the last card in the gallery, an empty site with one page, for when you already know what you want to build.
-- **Import**: recreate an existing website as a Jx project. Give Studio the site's URL, how many pages to crawl, which model to use, and, optionally, a sentence about what you want done with the site once it's cloned. The import is AI-assisted, so this tab asks you to connect AI before it unlocks. Not every Studio platform offers this tab.
+- **Import**: recreate an existing website as a Jx project. Give Studio the site's URL, how many pages to crawl, which model to use, and, optionally, a sentence about what you want done with the site once it's cloned. The import is AI-assisted, so this tab asks you to connect AI before it unlocks. Not every Studio platform offers this tab. Where it appears, the project lands wherever that platform makes projects, so the Location step asks for whichever of the two it needs: a folder you pick on the desktop app, or a repository it creates for you on a hosted one.
 - **Agent**: describe the site you want in a sentence or two and the AI assistant builds it in the editor while you watch. Like Import, it needs AI connected first.
 
 Both AI tabs unlock the moment AI is available, by whichever route your Studio offers. They are the same options the [AI assistant](/docs/studio/ai) sidebar gives you:
@@ -82,7 +92,7 @@ Beyond the site's URL, the Import tab has five options, and a sixth that appears
 2. **Max Pages**: the ceiling on how many pages to capture.
 3. **Breakpoints**: how many of the site's own breakpoints your project ends up with. See below.
 4. **AI component naming**: let the model name the repeated pieces it finds (a `Card`, a `PricingRow`) instead of numbering them. It costs one model call per component found, so it's worth turning off on a wide crawl.
-5. **Check fidelity against the original**: after the import, build the new project, screenshot every page, and compare it against the site it came from. It roughly doubles the run, and it's the only thing that tells you how well the clone actually came out instead of what got skipped. Off by default.
+5. **Check fidelity against the original**: after the import, build the new project, screenshot every page, and compare it against the site it came from. It roughly doubles the run, and it's the only thing that tells you how well the clone actually came out instead of what got skipped. Off by default, and absent entirely where projects are repositories rather than folders, because checking fidelity means building and running the project, which a hosted backend deliberately never does.
 
    The assistant reports the percentage per page, and alongside it the two things a percentage can't tell you: requests the rendered page made and didn't get, and any errors from building the project. A page that scores badly because fifteen images 404 is a different problem from one whose layout came out wrong, and only the first of those is quick to fix.
 
@@ -105,6 +115,18 @@ The first two also take a **rounding rule** (nearest, round down, or round up) d
 You can change all of this afterwards in **[Project settings › Contexts](/docs/studio/projects/settings)**.
 
 :::doc-note
+Interactive pieces are rebuilt as native HTML wherever the import can read them. An accordion whose rows a client framework opened and closed becomes a group of `<details>` elements sharing a `name`, so one row at a time stays open exactly as it did on the source site, with no JavaScript and nothing left to wire up. A **Read more** link, or anything else whose button already says which panel it opens, becomes a `<details>` too, so the copy behind it is readable again. A dropdown or a slide-out menu becomes a popover instead, with its button wired to it by the browser rather than by script: what a panel turns into depends on whether it sat in the page or floated above it. In both cases the framework's own attributes go, because the code that gave them meaning is not carried across, and the content those pieces were hiding becomes reachable again. Where the logic cannot be read with confidence the markup is left exactly as it was rather than guessed at.
+:::
+
+:::doc-note
+A responsive image arrives as one file. A CMS publishes the same photograph a dozen times over at every size it might need, and every one of those copies appears in the page's `srcset`: one real site offered 2,446 image files for 451 actual images. The import downloads the largest of each and drops the rest, then removes the `srcset` and `sizes` that described them, so your project's own build can generate the sizes it wants from a full-resolution source.
+:::
+
+:::doc-note
+Sizes the browser measured are not mistaken for sizes the site chose. A full-width section is full-width because it fills the page, not because it happens to be 1440 pixels across on the machine that captured it, so its measured width is left out and it keeps filling whatever it is put in. The rules that actually shaped it, a maximum width or a grid track, are kept. Images, absolutely positioned panels and elements that shrink to fit their content keep their measurements, because nothing else in the page would reproduce those.
+:::
+
+:::doc-note
 Class names from the source site are not carried into your project. The import rebuilds every style from what the browser actually computed, and never emits the original stylesheets, so a `class="hero grid-cols-3"` left on a page would name rules that don't exist. The styles are all there; the class attributes are not.
 :::
 
@@ -112,7 +134,7 @@ Under those, a **Model** picker and a box asking what the assistant should do wi
 
 ### While an import runs
 
-The dialog closes as soon as you click **Import Site**. The import doesn't run in the wizard. It runs in the [AI assistant](/docs/studio/ai), which opens in the Inspector and reports as it goes.
+The dialog closes as soon as you click **Import Site**. The import doesn't run in the wizard. It runs in the [AI assistant](/docs/studio/ai), which opens in the Inspector on a fresh chat and reports as it goes. If the assistant was in the middle of a reply, that reply is stopped first and the import begins as soon as it has.
 
 **The project opens straight away**, a few seconds in, long before the crawl finishes. That's deliberate: an import takes minutes, and watching a log against an empty welcome screen tells you very little. Instead the destination is created and opened immediately, and the Files panel fills up as the pipeline works: `public/assets/` gains the images and fonts it downloads, then `pages/`, `layouts/` and `components/` appear as it writes them. You can click into any of it while the run continues.
 
@@ -120,7 +142,7 @@ When it finishes, the assistant tells you how many pages it captured, what it ha
 
 That's also why it can stop and ask you something. An import guesses at a lot: which pages matter, whether three similar blocks are one component, what to do about a page robots.txt kept it out of. When one of those is genuinely your call, the assistant asks you there in the Inspector and waits for your answer (see **[When the assistant asks you something](/docs/studio/ai/chat)**).
 
-To stop a running import, use **Stop** in the assistant, or run **Assistant: Stop Responding** from the command palette.
+To stop a running import, use **Stop** in the assistant, or run **Assistant: Stop Responding** from the command palette. Stop only affects an import that is still running: once one has finished or failed, stopping the assistant's reply afterwards leaves that outcome as it was.
 
 A garbled line in the import's stream doesn't stop the run; the pages already crawled are kept. But it isn't ignored either: when the run finishes, Studio counts the lines it couldn't read and posts a warning saying so, because an import that quietly skipped a step looks exactly like one that didn't.
 

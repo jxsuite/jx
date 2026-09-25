@@ -25,7 +25,6 @@ import type { Tab } from "../tabs/tab";
 import { adoptCreatedProject } from "./project-adoption";
 import { translateValidationError } from "./ai-tools";
 import { validateDoc, validateProjectConfig } from "./jx-validate";
-import { recordWrite } from "./ai-writes";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 
 /** Directories the file tools never descend into or report. */
@@ -115,8 +114,14 @@ export interface ProjectToolsCtx {
    * tab happened to be re-read from disk afterwards ({@link ProjectToolsCtx.reloadTab}); that
    * re-read is gone, because a second parse of `project.json` is the very rival object the
    * configuration document exists to prevent.
+   *
+   * `text` is the bytes that reached the file, of which `config` is the parse. The document keeps a
+   * layout record for the file it holds (§9.4), and the assistant's write replaces the file — so
+   * the record has to travel with the write, or the next settings commit re-lays the file the model
+   * just formatted with the record of the file it had read before (issue 331). Handing the text
+   * over is what lets the document derive that record without reading the file back.
    */
-  onProjectConfigWritten?: (config: ProjectConfig) => void | Promise<void>;
+  onProjectConfigWritten?: (config: ProjectConfig, text: string) => void | Promise<void>;
 }
 
 /**
@@ -276,7 +281,7 @@ export function registerProjectTools(
         },
         required: ["path", "content"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const { path, content } = args as { path: string; content: string };
         const relPath = normalizeRelPath(path);
         if (relPath === null) {
@@ -384,10 +389,16 @@ export function registerProjectTools(
           /* Disk, not transaction: there is no undo behind this and there never was. Recorded as
              `disk: true` so the panel can say so to the person holding ⌘Z — the caveat used to be
              appended to the model-facing summary only (§7.4). */
-          recordWrite({ disk: true, ok: true, path: relPath, tool: "write_file" });
+          ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "write_file" });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          recordWrite({ disk: true, error: message, ok: false, path: relPath, tool: "write_file" });
+          ctx.ledger.record({
+            disk: true,
+            error: message,
+            ok: false,
+            path: relPath,
+            tool: "write_file",
+          });
           return {
             success: false,
             error: `Failed to write "${relPath}": ${message}`,
@@ -399,7 +410,7 @@ export function registerProjectTools(
            that tab, which is the split the adoption just closed. Every other path is a plain file
            and its tab has to be told from disk. */
         if (projectConfig) {
-          await onProjectConfigWritten?.(projectConfig);
+          await onProjectConfigWritten?.(projectConfig, content);
         } else if (openTab) {
           await reloadTab(relPath);
         }
@@ -505,7 +516,7 @@ export function registerProjectTools(
         },
         required: ["name"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const {
           name,
           description,
@@ -592,6 +603,10 @@ export function registerProjectTools(
             error: `Failed to create project: ${error instanceof Error ? error.message : String(error)}`,
           };
         }
+        /* The project is on disk from here, whether or not this window goes on to open it, and no
+           undo reaches it. Recorded, it is what the turn changed: without it a turn that bootstrapped
+           a project and then only read reported that it had applied nothing. */
+        ctx.ledger.record({ disk: true, ok: true, path: result.root, tool: "create_project" });
 
         /*
          * Git init, then the full project-open flow, then a check that it landed — all three in

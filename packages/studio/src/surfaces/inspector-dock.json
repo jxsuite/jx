@@ -1,0 +1,187 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioInspectorDock",
+  "$description": "⑨ The Inspector dock's own chrome, as a Jx document over the kit: a header naming what the dock is pointed at, a real `tablist` of four tabs, and four `tabpanel`s. It draws no tab BODY — all four are mounted documents of their own (`surfaces/properties-panel.json`, `surfaces/style-panel.json`, `surfaces/logic-panel.json`, and the assistant's) — so each panel carries one empty `[part=\"panel-body\"]` island the adapter announces through `onNodeCreated` (studio-ui-guidelines.md §9.4). The four panels are keyed on the tab id and the id list never changes, so a body host is created ONCE and lives as long as the dock: that is what the old module's hand-built permanent containers were for, and it is now a property of a keyed `$map` rather than a rule someone has to keep. `panels/right-panel.ts` keeps every decision — which tab is selected, per document or detached; what the target's name is; and which of the four seams a host is handed to.",
+  "tagName": "div",
+  "attributes": {
+    "part": "inspector-dock"
+  },
+  "style": {
+    "$description": "`styles/inspector.css`'s dock rules, carried in. Three of them were `#right-panel > .panel-*` — a direct-child selector that only held while this module rendered flat into the shell cell — and they are `[part]` rules on the document's own children now, which is the same statement without depending on how deep the dock is mounted. The header's typography is `panels.css`'s `.panel-header*`, at the same values: `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document mounts outside it, so it is `--jx-text-sm` (11px) here.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"header\"]": {
+      "display": "flex",
+      "flex": "0 0 auto",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "padding": "6px var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"header-title\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg)"
+    },
+    "& [part=\"header-target\"]": {
+      "overflow": "hidden",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "::before": {
+        "$description": "The separator between the tab's name and its target, drawn rather than written into the string — `panels/right-panel.ts` states what the dock is pointed at and nothing about punctuation.",
+        "content": "\"·\"",
+        "marginRight": "var(--jx-space-2)"
+      }
+    },
+    "& [part=\"tabs\"]": {
+      "$description": "Four words in a 280px dock, allowed to compress rather than to become anonymous — which is why the tabs are not icons (§3.2 ⑨). The kit tab's own 220px cap would let one tab push the last off the strip, so each takes an equal quarter.",
+      "flex": "0 0 auto",
+      "gap": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"tab\"]": {
+      "flex": "1 1 0",
+      "justifyContent": "center",
+      "minWidth": "0",
+      "maxWidth": "none",
+      "padding": "var(--jx-space-1) var(--jx-space-2)"
+    },
+    "& [part=\"panel\"]": {
+      "$description": "`#right-panel > .panel-body { flex: 1; min-height: 0; overflow-y: auto }`. The kit's tab panel pads itself for a dialog; a dock's tab is the whole column and each body pads its own content.",
+      "flex": "1",
+      "minHeight": "0",
+      "padding": "0",
+      "overflowY": "auto"
+    },
+    "& [part=\"panel\"][data-tab=\"assistant\"]": {
+      "$description": "The chat owns its own scrolling, so its panel is a nested flex column that does not scroll.",
+      "display": "flex",
+      "flexDirection": "column",
+      "overflow": "hidden"
+    },
+    "& [part=\"panel\"][hidden]": {
+      "display": "none"
+    },
+    "& [part=\"panel-body\"]": {
+      "display": "flex",
+      "flex": "1",
+      "flexDirection": "column",
+      "minHeight": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "header",
+      "attributes": {
+        "part": "header"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "header-title"
+          },
+          "textContent": "${state.title}"
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "header-target"
+          },
+          "textContent": "${state.target}"
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "part": "tabs",
+        "selected": "${state.tab}"
+      },
+      "$props": {
+        "label": "Inspector"
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/selectTab"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail"
+              }
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/tabs"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "jx-tab",
+            "attributes": {
+              "part": "tab",
+              "id": "${$map.item.tabId}",
+              "data-tab": "${$map.item.key}",
+              "value": "${$map.item.key}",
+              "label": "${$map.item.title}",
+              "panel": "${$map.item.panelId}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/tabs"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "jx-tab-panel",
+        "attributes": {
+          "part": "panel",
+          "id": "${$map.item.panelId}",
+          "data-tab": "${$map.item.key}"
+        },
+        "$props": {
+          "active": {
+            "$ref": "$map/item/active"
+          },
+          "labelledby": {
+            "$ref": "$map/item/tabId"
+          }
+        },
+        "children": [
+          {
+            "$description": "The island. Every one of the four tabs is a mounted document of its own, so this stays EMPTY for the life of the dock — `panels/right-panel.ts` is handed it through `onNodeCreated` and passes it to that tab's binder exactly once. It is a slotted child rather than the panel element itself because `jx-tab-panel` distributes its own slot, and a second owner of that child list would fight it.",
+            "tagName": "div",
+            "attributes": {
+              "part": "panel-body",
+              "data-jx-region": "${$map.item.region}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

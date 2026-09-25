@@ -1,0 +1,18 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "The list continues: one, two,"
+    },
+    {
+      "type": "done",
+      "stopReason": "length"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

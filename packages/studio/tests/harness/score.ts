@@ -6,9 +6,11 @@
  * Browser-only ceilings (rendered-DOM Correctness ≥4, seamless Undo/Redo) are returned as `N/A
  * (browser)` — the studio owns those.
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 3.
+ * See docs/extending/contributing/ai-evals.md.
  */
 
+import { toRaw } from "../../src/reactivity";
+import { EMPTY_TURN_TEXT } from "../../src/services/tool-executor";
 import { undo, redo } from "../../src/tabs/transact";
 import { validateDoc } from "../../src/services/jx-validate";
 import type { Tab } from "../../src/tabs/tab";
@@ -28,6 +30,25 @@ function parseToolResult(content: string): unknown {
   } catch {
     return { success: false, error: "(unparseable tool result)", _raw: content };
   }
+}
+
+/**
+ * Why a settled run cannot be scored, or null when it can.
+ *
+ * A failed request (a transport error, a provider refusal, a round cap with nothing applied) has no
+ * model behaviour to score, so the run is reported as errored. An empty reply is different: the
+ * model was reached and answered with nothing, which is behaviour, and the worst one. It is scored
+ * (no tool calls, so completeness and efficiency 1) rather than dropped, or worst-of-N would pick a
+ * better run over it.
+ */
+export function unscorableError(chatState: {
+  status: string;
+  error: string | null;
+}): string | null {
+  if (chatState.status !== "error" || chatState.error === EMPTY_TURN_TEXT) {
+    return null;
+  }
+  return chatState.error;
 }
 
 /** Extract the flat list of tool calls the model emitted, in order. */
@@ -99,12 +120,15 @@ export async function scoreRun({
   }
 
   // ── Read-first (§5.1 hard constraint): mutating before reading is a Correctness/Recovery risk. ──
+  // `delete_node` and `duplicate_node` are the command projections of `selection.delete` and
+  // `selection.duplicate` (issue 273); `remove_node`, the hand tool `delete_node` replaced, is gone.
   const MUTATORS = new Set([
     "set_property",
     "set_style",
     "set_text",
     "add_child",
-    "remove_node",
+    "delete_node",
+    "duplicate_node",
     "move_node",
     "add_state",
     "update_state",
@@ -183,9 +207,14 @@ export async function scoreRun({
   };
 }
 
-/** Deep-clone the live doc out of the reactive proxy for validation/comparison. */
-function rawDoc(tab: Tab) {
-  return structuredClone(tab.doc.document);
+/**
+ * Deep-clone the live doc out of the reactive proxy for validation/comparison.
+ *
+ * Unwrapped first: `structuredClone` refuses a Proxy (`DataCloneError`), so cloning the reactive
+ * document itself threw on the first scored run, and the headless eval could not score anything.
+ */
+export function rawDoc(tab: Tab) {
+  return structuredClone(toRaw(tab.doc.document));
 }
 
 /**

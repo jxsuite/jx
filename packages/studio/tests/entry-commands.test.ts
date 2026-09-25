@@ -287,10 +287,22 @@ describe("the records", () => {
     );
   });
 
-  test("newEntry refuses an argument naming no collection", async () => {
-    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(liveRegistry().run("content.newEntry", { collection: "nope" })).rejects.toThrow(
-      /collection/,
+  test("newEntry runs the ONE creation flow for a declared collection, through the registry", async () => {
+    // The whole path: the registry coerces `collection` against the derived enum, `run` re-reads
+    // The list (it is a getter over the project, not a snapshot) and `createEntry` reaches the
+    // Doubled `createFileIn`. The refusal case below never enters `run` any more, so without this
+    // The body would be a function no test reaches.
+    await liveRegistry().run("content.newEntry", { collection: "blog" });
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ dir: "content/blog", title: "New blog entry" });
+    expect(opened).toEqual(["content/blog/first-post.json"]);
+  });
+
+  test("newEntry refuses an argument naming no collection", () => {
+    // Synchronously, and with the derived enum's own sentence: `registry.run` coerces `collection`
+    // Against the live collection list before `run` is entered, so the refusal names what IS there.
+    expect(() => liveRegistry().run("content.newEntry", { collection: "nope" })).toThrow(
+      /command "content\.newEntry" argument "collection": "nope" is not declared — declared: blog/,
     );
   });
 

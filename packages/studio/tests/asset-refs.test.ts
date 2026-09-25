@@ -8,7 +8,7 @@
  * is gone — a walk sees only LITERAL values, and the canvas now resolves every reference at render
  * time, bound ones included. The rules mirror `rewriteEntryAssets` in
  * extensions/parser/src/content-loader.ts, and the cases are written against the CONTRACT (relative
- * + inside the collection → mounted; everything else untouched) so a divergence shows up here.
+ * and inside the collection → mounted; everything else untouched) so a divergence shows up here.
  *
  * The `"repo"` block is the new space — a host that serves PROJECT PATHS because nothing answers a
  * site URL on its origin.

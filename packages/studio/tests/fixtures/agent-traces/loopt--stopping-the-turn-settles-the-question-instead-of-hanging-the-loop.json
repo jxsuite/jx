@@ -1,0 +1,85 @@
+{
+  "chatCalls": [
+    "sendMessage(\"ask me\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a1\", \"ask_user\")",
+    "appendToolCallDelta(\"a1\", \"{\\\"question\\\":\\\"Which?\\\"}\")",
+    "appendToolCallEnd(\"a1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a1\", {\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"})",
+    "pushToolResultMessage(\"a1\", \"{\\\"success\\\":false,\\\"error\\\":\\\"The user did not answer — the turn was stopped.\\\"}\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "ask me"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": ["ask_user"]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "ask me"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"question\":\"Which?\"}",
+          "id": "a1",
+          "name": "ask_user",
+          "result": {
+            "success": false,
+            "error": "The user did not answer — the turn was stopped."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"}",
+      "toolCallId": "a1"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "pendingAfterStop": null,
+    "pendingBeforeStop": {
+      "context": "",
+      "id": "a1",
+      "options": [],
+      "question": "Which?"
+    }
+  }
+}

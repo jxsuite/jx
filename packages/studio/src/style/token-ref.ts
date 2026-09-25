@@ -13,11 +13,7 @@
  * hop would report `var(--color-brand)` as a colour.
  */
 
-import { html } from "lit-html";
-import { tokenLabel } from "./project-styles";
-
 import type { JxStyle } from "@jxsuite/schema/types";
-import type { TemplateResult } from "lit-html";
 
 /** A value that is EXACTLY one `var()` reference — not `calc(var(--a) * 2)`, which is a value. */
 const TOKEN_REF_RE = /^var\(\s*(--[\w-]+)\s*\)$/;
@@ -85,39 +81,4 @@ export function resolveTokenValue(
     current = next;
   }
   return undefined;
-}
-
-/**
- * Render a bound value as a chip: the referenced token's name, and — for a colour — the swatch it
- * resolves to. The `title` carries the full reference and its resolution, because the chip is
- * deliberately short and a reader who needs the literal must still be able to get it.
- *
- * The chip is not a control. Following it somewhere would be a second navigation contract on a
- * surface that already lists every token a scroll away, and a chip that looks clickable and is not
- * is the defect §6.2 removed from the collapsed-section dot.
- *
- * @param {string} name — the referenced token
- * @param {string | number | undefined} resolved — {@link resolveTokenValue} of the reference
- * @param {{ swatch?: boolean }} [opts] — `swatch` renders the resolved value as a colour chip
- * @returns {TemplateResult}
- */
-export function renderTokenChip(
-  name: string,
-  resolved: string | number | undefined,
-  opts: { swatch?: boolean } = {},
-): TemplateResult {
-  const shown = resolved === undefined ? "unresolved" : String(resolved);
-  return html`
-    <span class="style-token-chip" title="${toTokenRef(name)} → ${shown}">
-      ${
-        opts.swatch && resolved !== undefined
-          ? html`<span
-              class="style-token-chip-swatch"
-              style="background:${String(resolved)}"
-            ></span>`
-          : ""
-      }
-      <span class="style-token-chip-label">${tokenLabel(name)}</span>
-    </span>
-  `;
 }

@@ -1,0 +1,549 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsPackages",
+  "$description": "Project Settings › Packages: the project's npm dependencies, each with the version it is pinned at and the newest one the registry has, and the four verbs that reach `bun` — add, update, remove, reinstall. The adapter (`surfaces/settings-packages.ts`) hands in one row per dependency, already told whether it can be updated and to what; nothing here asks the registry, compares two versions or decides what an update means. A row's Latest is a STRING the adapter chose, `—` included, because \"the registry did not answer\" and \"the registry answered 0.0.0\" are the same absence to a document and only one of them is true.",
+  "tagName": "section",
+  "attributes": {
+    "part": "packages"
+  },
+  "style": {
+    "$description": "The section's own look. Three borrowings end here. `.settings-section` was an orphan class with no rule anywhere, so the section's rhythm was carried by the toolbar's inline `margin-bottom`; it is drawn below instead of implied. `.settings-section-title` and `.settings-field-desc` keep their stylesheet — nine settings sections are still lit and still name them — so this document carries its own copy of each, with `--spectrum-font-size-75` re-pointed at the kit's scale: a document is mounted outside `<sp-theme>`, where that name resolves to nothing and every one of these would silently have taken its 12px fallback. And the table is drawn here rather than by `sp-table`, which is the one thing on this surface the kit has no element for: four Spectrum tags went, and a `<table>` with three column headers replaced them, so the columns are announced as columns and a row is a row rather than a `role=\"row\"` a component asserts.",
+    "display": "block",
+    "fontFamily": "var(--jx-font-sans)",
+    "& [part=\"title\"]": {
+      "margin": "0 0 var(--jx-space-2)",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"intro\"]": {
+      "margin": "0 0 var(--jx-space-4)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"toolbar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "marginBottom": "var(--jx-space-4)"
+    },
+    "& [part=\"add-field\"]": {
+      "$description": "The one control on this surface a reader types into. It takes the space the row's buttons do not, and stops there: a package name is short, and a field that eats a 900px pane says the section is mostly about typing when it is mostly about reading a table.",
+      "flex": "1",
+      "minWidth": "0",
+      "maxWidth": "280px"
+    },
+    "& [part=\"spacer\"]": {
+      "$description": "What pushes Update all and Reinstall to the far end. The two groups act on different things — one package you are naming, every package you already have — and the gap between them is what says so.",
+      "flex": "1"
+    },
+    "& [part=\"status\"]": {
+      "$description": "\"Loading…\" and \"No dependencies.\", the two lines drawn where the table would be. They are one part rather than two because they are one sentence in two moods, and the difference between them is already in the words.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"table\"]": {
+      "width": "100%",
+      "borderCollapse": "collapse",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"column\"]": {
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "textAlign": "start",
+      "fontWeight": "500",
+      "color": "var(--fg-dim)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"name-cell\"], & [part=\"current\"], & [part=\"latest\"], & [part=\"row-actions\"]": {
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "verticalAlign": "middle",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"name-cell\"]": {
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"dev\"]": {
+      "$description": "Which of the two dependency blocks the row is in, said beside the name rather than in a column of its own: a column would be empty for most projects and this is a footnote on a name, not a fact worth four percent of the width.",
+      "marginInlineStart": "var(--jx-space-2)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"current\"], & [part=\"latest\"]": {
+      "$description": "Both version columns in the monospace face. A range and a release read as versions rather than as prose, and `^0.19.0` beside `0.22.0` only lines up digit under digit in a fixed pitch.",
+      "fontFamily": "var(--font-mono)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"actions\"]": {
+      "$description": "The row's two buttons, held at the right edge and never wrapped: they are the same pair on every row, so the eye finds them by position and a row that wrapped one under the other would break that.",
+      "display": "flex",
+      "justifyContent": "flex-end",
+      "gap": "var(--jx-space-1)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"hidden-label\"]": {
+      "$description": "The actions column's header, named for a screen reader and drawn for nobody: the column holds two icon buttons whose own names say which row they act on, and a visible \"Actions\" over them would be a word explaining a column that explains itself.",
+      "position": "absolute",
+      "width": "1px",
+      "height": "1px",
+      "margin": "-1px",
+      "overflow": "hidden",
+      "clipPath": "inset(50%)",
+      "whiteSpace": "nowrap"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "Packages"
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "intro"
+      },
+      "textContent": "This project's npm dependencies. Adding, updating, removing and reinstalling each run bun in the project root."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "toolbar"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "add-field"
+          },
+          "$props": {
+            "label": "Package name",
+            "placeholder": "package-name",
+            "size": "sm",
+            "value": {
+              "$ref": "#/state/addName"
+            },
+            "disabled": {
+              "$ref": "#/state/busy"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/edit"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          },
+          "onkeydown": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "$switch": {
+                  "$ref": "event#/key"
+                },
+                "cases": {
+                  "Enter": [
+                    {
+                      "preventDefault": true
+                    },
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/add"
+                      },
+                      "value": []
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "jx-button",
+          "attributes": {
+            "part": "add-button"
+          },
+          "$props": {
+            "size": "sm",
+            "disabled": {
+              "$ref": "#/state/busy"
+            }
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/add"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Add"
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "spacer",
+            "aria-hidden": "true"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "update-all-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasUpdates"
+          },
+          "cases": {
+            "true": {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "update-all"
+              },
+              "$props": {
+                "size": "sm",
+                "disabled": {
+                  "$ref": "#/state/busy"
+                }
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/updateAll"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Update all"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "jx-button",
+          "attributes": {
+            "part": "reinstall"
+          },
+          "$props": {
+            "size": "sm",
+            "quiet": true,
+            "disabled": {
+              "$ref": "#/state/busy"
+            }
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/reinstall"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Reinstall"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/listState"
+      },
+      "cases": {
+        "loading": {
+          "tagName": "p",
+          "attributes": {
+            "part": "status"
+          },
+          "textContent": "Loading…"
+        },
+        "empty": {
+          "tagName": "p",
+          "attributes": {
+            "part": "status"
+          },
+          "textContent": "No dependencies."
+        },
+        "listed": {
+          "tagName": "table",
+          "attributes": {
+            "part": "table"
+          },
+          "children": [
+            {
+              "tagName": "thead",
+              "children": [
+                {
+                  "tagName": "tr",
+                  "children": [
+                    {
+                      "tagName": "th",
+                      "attributes": {
+                        "part": "column",
+                        "scope": "col"
+                      },
+                      "textContent": "Package"
+                    },
+                    {
+                      "tagName": "th",
+                      "attributes": {
+                        "part": "column",
+                        "scope": "col"
+                      },
+                      "textContent": "Current"
+                    },
+                    {
+                      "tagName": "th",
+                      "attributes": {
+                        "part": "column",
+                        "scope": "col"
+                      },
+                      "textContent": "Latest"
+                    },
+                    {
+                      "tagName": "th",
+                      "attributes": {
+                        "part": "column",
+                        "scope": "col"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "hidden-label"
+                          },
+                          "textContent": "Actions"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "tbody",
+              "attributes": {
+                "part": "rows"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/name"
+                  },
+                  "map": {
+                    "tagName": "tr",
+                    "attributes": {
+                      "part": "row",
+                      "data-package": "${$map.item.name}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "td",
+                        "attributes": {
+                          "part": "name-cell"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "package-name"
+                            },
+                            "textContent": "${$map.item.name}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "dev-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/dev"
+                            },
+                            "cases": {
+                              "true": {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "dev"
+                                },
+                                "textContent": "· dev"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "td",
+                        "attributes": {
+                          "part": "current"
+                        },
+                        "textContent": "${$map.item.version}"
+                      },
+                      {
+                        "tagName": "td",
+                        "attributes": {
+                          "part": "latest"
+                        },
+                        "textContent": "${$map.item.latest}"
+                      },
+                      {
+                        "tagName": "td",
+                        "attributes": {
+                          "part": "row-actions"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "actions"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "update-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/canUpdate"
+                                },
+                                "cases": {
+                                  "true": {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "update"
+                                    },
+                                    "$props": {
+                                      "icon": "arrows-clockwise",
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "label": "Update ${$map.item.name} to ${$map.item.upgrade}",
+                                      "hint": "Update ${$map.item.name} to ${$map.item.upgrade}",
+                                      "disabled": {
+                                        "$ref": "#/state/busy"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/update"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/name"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "tagName": "jx-action-button",
+                                "attributes": {
+                                  "part": "remove"
+                                },
+                                "$props": {
+                                  "icon": "trash",
+                                  "size": "sm",
+                                  "quiet": true,
+                                  "label": "Remove ${$map.item.name}",
+                                  "hint": "Remove ${$map.item.name}",
+                                  "disabled": {
+                                    "$ref": "#/state/busy"
+                                  }
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/remove"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/name"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

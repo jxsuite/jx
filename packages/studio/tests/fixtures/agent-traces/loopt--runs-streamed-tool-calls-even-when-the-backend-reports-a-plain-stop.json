@@ -1,0 +1,157 @@
+{
+  "chatCalls": [
+    "sendMessage(\"add a span\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"add_child\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"index\\\":1,\\\"node\\\":{\\\"tagName\\\":\\\"span\\\",\\\"textContent\\\":\\\"added\\\"},\\\"parentPath\\\":[]}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"stop\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Inserted node at [\\\\\\\"children\\\\\\\",1].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "add a span"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "add_child",
+                  "arguments": "{\"index\":1,\"node\":{\"tagName\":\"span\",\"textContent\":\"added\"},\"parentPath\":[]}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Inserted node at [\\\"children\\\",1].\"})",
+      "endTurn(\"msg#2\") filed 1"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "(untitled)",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Inserted node at [\"children\",1]."
+              }
+            ]
+          }
+        ],
+        "turn": "msg#2"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "add a span"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"index\":1,\"node\":{\"tagName\":\"span\",\"textContent\":\"added\"},\"parentPath\":[]}",
+          "id": "c1",
+          "name": "add_child",
+          "result": {
+            "success": true,
+            "summary": "Inserted node at [\"children\",1]."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Inserted node at [\\\"children\\\",1].\"}",
+      "toolCallId": "c1"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      },
+      {
+        "tagName": "span",
+        "textContent": "added"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 1
+}

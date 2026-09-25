@@ -1,0 +1,102 @@
+{
+  "scenario": "style-card",
+  "task": "style-card",
+  "what": "three parallel set_style calls in one round, a usage frame, then a closing message",
+  "modelRequests": ["user", "user assistant tool tool tool"],
+  "rounds": 2,
+  "toolCallCount": 3,
+  "toolCalls": [
+    {
+      "id": "sty-1",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "property": "backgroundColor",
+        "value": "#ffffff"
+      }
+    },
+    {
+      "id": "sty-2",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "property": "padding",
+        "value": "16px"
+      }
+    },
+    {
+      "id": "sty-3",
+      "name": "set_style",
+      "args": {
+        "path": [],
+        "property": "borderRadius",
+        "value": "8px"
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "feature-card",
+    "children": [
+      {
+        "tagName": "h2",
+        "textContent": "Fast by default"
+      }
+    ],
+    "style": {
+      "backgroundColor": "#ffffff",
+      "padding": "16px",
+      "borderRadius": "8px"
+    }
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Give this card a white background, 16px of padding, and rounded 8px corners. Leave the heading text unchanged."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["set_style", "set_style", "set_style"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "sty-1",
+      "result": {
+        "success": true,
+        "summary": "Set style \"backgroundColor\" at []."
+      }
+    },
+    {
+      "role": "tool",
+      "toolCallId": "sty-2",
+      "result": {
+        "success": true,
+        "summary": "Set style \"padding\" at []."
+      }
+    },
+    {
+      "role": "tool",
+      "toolCallId": "sty-3",
+      "result": {
+        "success": true,
+        "summary": "Set style \"borderRadius\" at []."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Styled the card; the heading is unchanged."
+    }
+  ]
+}

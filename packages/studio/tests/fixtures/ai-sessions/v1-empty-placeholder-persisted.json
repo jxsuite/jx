@@ -1,0 +1,52 @@
+{
+  "name": "v1-empty-placeholder-persisted",
+  "description": "A payload holding an empty assistant turn, which the current build's persistChat filters out but an older write may contain. Restored verbatim; the wire drops it.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_blank",
+      "sessions": [
+        {
+          "id": "s_blank",
+          "title": "Hello",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225604000,
+          "messageCount": 4
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_blank": [
+      { "id": "msg_T_1", "role": "user", "content": "Hello", "timestamp": 1767225601000 },
+      { "id": "msg_T_2", "role": "assistant", "content": "", "timestamp": 1767225602000 },
+      { "id": "msg_T_3", "role": "user", "content": "Are you there?", "timestamp": 1767225603000 },
+      { "id": "msg_T_4", "role": "assistant", "content": "Yes.", "timestamp": 1767225604000 }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_blank",
+    "storeActiveId": "s_blank",
+    "sessions": [
+      {
+        "id": "s_blank",
+        "title": "Hello",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225604000,
+        "messageCount": 4
+      }
+    ],
+    "restored": [
+      { "id": "msg_T_1", "role": "user", "content": "Hello", "timestamp": 1767225601000 },
+      { "id": "msg_T_2", "role": "assistant", "content": "", "timestamp": 1767225602000 },
+      { "id": "msg_T_3", "role": "user", "content": "Are you there?", "timestamp": 1767225603000 },
+      { "id": "msg_T_4", "role": "assistant", "content": "Yes.", "timestamp": 1767225604000 }
+    ],
+    "wire": [
+      { "role": "user", "content": "Hello" },
+      { "role": "user", "content": "Are you there?" },
+      { "role": "assistant", "content": "Yes." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

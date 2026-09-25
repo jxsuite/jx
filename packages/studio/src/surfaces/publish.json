@@ -1,0 +1,945 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPublish",
+  "$description": "Publish: the one-click Cloudflare Pages flow, as a `jx-dialog` over the kit. Eight bodies, one at a time, because the reader is at exactly one point of a chain — a host that cannot reach Cloudflare at all, a question still in flight, a connection that lapsed, an invitation to connect, a stored token Cloudflare refused, a field to paste a replacement into, the create-and-connect form, and the connected status. `publish/publish-panel.ts` keeps every one of those decisions and the calls that settle them; this document knows only which of the eight it was told to draw. **The token is never painted.** The field below binds no `value` — it is written by the reader and read once, on its way to storage — so a stored secret cannot reach the attribute, the serialised HTML or the accessibility tree, which is `studio.md` §15 rule 1 written as a missing binding rather than as a rule somebody remembers.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Publish",
+    "confirmLabel": "",
+    "cancelLabel": "Close",
+    "size": "md"
+  },
+  "attributes": {
+    "part": "publish"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "What the five `.publish-*` names carried, keyed on `part`, and most of them do not survive the move. `.publish-modal` and its `.new-project-modal` base were a fixed card, a scroll body, a border, a shadow and a `z-index: 1000` — a modal `<dialog>` is every one of those, and the top layer is what the z-index was climbing towards. `.publish-field` was a label stacked over a control, which is `jx-field`'s whole shape. What is left is the column gap between bodies, the two button rows, the hint and the refusal. Nothing here uses `--spectrum-*`: those custom properties resolve only inside `<sp-theme>`, and a document mounted in a layer host is outside it, so each would silently have taken its hard-coded fallback.",
+    "& [part=\"body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"note\"], & [part=\"status-line\"], & [part=\"deployment\"]": {
+      "margin": "0",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"rows\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"actions\"]": {
+      "$description": "Wraps rather than overflows (§4.6): two buttons whose labels are whole phrases — \"Verify & Connect\", \"Preferences › Accounts\" — are wider than a narrow dialog at the sizes a reader may have set.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"submit\"]": {
+      "alignSelf": "flex-start"
+    },
+    "& [part=\"hint\"]": {
+      "$description": "Publishing rides every commit, so the connected body's only job is to say what is already happening. Dim, because it is a standing fact rather than something to act on.",
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"failure\"]": {
+      "$description": "`failure` and not `error`: `jx-textfield` and `jx-select` each draw a `[part=\"error\"]` of their own inside this same tree, and the kit is light DOM — a scoped rule on that name would restyle the token field's refusal line too.",
+      "margin": "0",
+      "color": "var(--danger)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"link\"], & [part=\"install-link\"]": {
+      "color": "var(--accent)",
+      "textDecoration": "underline"
+    },
+    "& code": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/body"
+          },
+          "cases": {
+            "unsupported": {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "children": [
+                "This platform cannot reach the Cloudflare API. Publish by committing and pushing — your host builds ",
+                {
+                  "tagName": "code",
+                  "textContent": "bunx jx build"
+                },
+                " and serves ",
+                {
+                  "tagName": "code",
+                  "textContent": "dist/"
+                },
+                "."
+              ]
+            },
+            "loading": {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "Checking Cloudflare connection…"
+            },
+            "lapsed": {
+              "tagName": "div",
+              "attributes": {
+                "part": "lapsed",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "Your Cloudflare connection has expired, so publishing cannot reach your account. Reconnect to restore it — this site's Pages project and its settings are untouched."
+                },
+                {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "variant": "accent",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "attributes": {
+                    "part": "reconnect"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/connect"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.connectLabel}"
+                    }
+                  ]
+                }
+              ]
+            },
+            "hosted": {
+              "tagName": "div",
+              "attributes": {
+                "part": "hosted",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "Connect your Cloudflare account to publish this site."
+                },
+                {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "attributes": {
+                    "part": "connect"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/connect"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Connect Cloudflare"
+                    }
+                  ]
+                }
+              ]
+            },
+            "stored": {
+              "tagName": "div",
+              "attributes": {
+                "part": "stored",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "A Cloudflare API token is stored on this machine, and Cloudflare did not accept it. It may have been revoked, or it may be missing the Account Settings Read and Pages Read/Write permissions."
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "attributes": {
+                        "part": "replace"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/replace"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Replace token"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "quiet": true
+                      },
+                      "attributes": {
+                        "part": "accounts"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/openAccounts"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Preferences › Accounts"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "token": {
+              "tagName": "div",
+              "attributes": {
+                "part": "token-form",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "Paste a Cloudflare API token (permissions: Account Settings Read, Pages Read/Write). It is stored on this machine and only sent to the same-origin proxy — Studio never renders it back."
+                },
+                {
+                  "tagName": "jx-field",
+                  "$props": {
+                    "span": true,
+                    "label": "API token"
+                  },
+                  "attributes": {
+                    "part": "token-row",
+                    "data-field": "token"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "$description": "No `value` binding, and its absence is the contract: a secret may pass through a field the reader typed it into and may never be painted into one they did not. The draft lives in the adapter's closure until Verify reads it, so nothing here — not the attribute, not the accessibility tree, not a DOM dump — has ever held it.",
+                      "$props": {
+                        "type": "password",
+                        "placeholder": "cf_..."
+                      },
+                      "attributes": {
+                        "part": "token"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setToken"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "variant": "accent",
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "attributes": {
+                        "part": "verify"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/verify"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Verify & Connect"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "quiet": true
+                      },
+                      "attributes": {
+                        "part": "accounts"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/openAccounts"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Preferences › Accounts"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "form": {
+              "tagName": "div",
+              "attributes": {
+                "part": "connect-form",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "children": [
+                    "Create a Cloudflare Pages project connected to this repository. Every commit then builds and publishes automatically (",
+                    {
+                      "tagName": "code",
+                      "textContent": "bunx jx build"
+                    },
+                    ")."
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "rows"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-field",
+                      "$props": {
+                        "span": true,
+                        "label": "Account"
+                      },
+                      "attributes": {
+                        "part": "row",
+                        "data-field": "account"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "$props": {
+                            "options": {
+                              "$ref": "#/state/accountOptions"
+                            },
+                            "value": {
+                              "$ref": "#/state/accountId"
+                            }
+                          },
+                          "attributes": {
+                            "part": "account"
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setAccount"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "$props": {
+                        "span": true,
+                        "label": "Pages project name"
+                      },
+                      "attributes": {
+                        "part": "row",
+                        "data-field": "projectName"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-textfield",
+                          "$props": {
+                            "value": {
+                              "$ref": "#/state/projectName"
+                            }
+                          },
+                          "attributes": {
+                            "part": "project-name"
+                          },
+                          "oninput": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setProjectName"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "$props": {
+                        "span": true,
+                        "label": "GitHub owner"
+                      },
+                      "attributes": {
+                        "part": "row",
+                        "data-field": "owner"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-textfield",
+                          "$props": {
+                            "value": {
+                              "$ref": "#/state/owner"
+                            }
+                          },
+                          "attributes": {
+                            "part": "owner"
+                          },
+                          "oninput": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setOwner"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "$props": {
+                        "span": true,
+                        "label": "GitHub repository"
+                      },
+                      "attributes": {
+                        "part": "row",
+                        "data-field": "repo"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-textfield",
+                          "$props": {
+                            "value": {
+                              "$ref": "#/state/repo"
+                            }
+                          },
+                          "attributes": {
+                            "part": "repo"
+                          },
+                          "oninput": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setRepo"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "$props": {
+                        "span": true,
+                        "label": "Production branch"
+                      },
+                      "attributes": {
+                        "part": "row",
+                        "data-field": "branch"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-textfield",
+                          "$props": {
+                            "value": {
+                              "$ref": "#/state/branch"
+                            }
+                          },
+                          "attributes": {
+                            "part": "branch"
+                          },
+                          "oninput": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setBranch"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-button",
+                  "$props": {
+                    "variant": "accent",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "attributes": {
+                    "part": "submit"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/submit"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.submitLabel}"
+                    }
+                  ]
+                }
+              ]
+            },
+            "status": {
+              "tagName": "div",
+              "attributes": {
+                "part": "status",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "status-line"
+                  },
+                  "children": [
+                    "Connected to Pages project ",
+                    {
+                      "tagName": "strong",
+                      "attributes": {
+                        "part": "project-name"
+                      },
+                      "textContent": "${state.deployProject}"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "site-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasProductionUrl"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "span",
+                          "children": [
+                            " — ",
+                            {
+                              "tagName": "a",
+                              "attributes": {
+                                "part": "link",
+                                "href": "${state.productionUrl}",
+                                "target": "_blank",
+                                "rel": "noreferrer"
+                              },
+                              "textContent": "${state.productionUrl}"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "deployment-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasDeployment"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "deployment"
+                      },
+                      "children": [
+                        "Latest deployment: ",
+                        {
+                          "tagName": "strong",
+                          "attributes": {
+                            "part": "deployment-state"
+                          },
+                          "textContent": "${state.deploymentState}"
+                        },
+                        " (${state.deploymentEnvironment}) — ",
+                        {
+                          "tagName": "a",
+                          "attributes": {
+                            "part": "link",
+                            "href": "${state.deploymentUrl}",
+                            "target": "_blank",
+                            "rel": "noreferrer"
+                          },
+                          "textContent": "preview"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "deployment"
+                      },
+                      "textContent": "No deployments yet — the first commit after connecting triggers one."
+                    }
+                  }
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "hint"
+                  },
+                  "textContent": "Publishing happens automatically on every commit."
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "attributes": {
+                        "part": "refresh"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/refresh"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Refresh"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "variant": "negative",
+                        "disabled": {
+                          "$ref": "#/state/busy"
+                        }
+                      },
+                      "attributes": {
+                        "part": "disconnect"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/disconnect"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Disconnect"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "failure-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasFailure"
+          },
+          "cases": {
+            "true": {
+              "tagName": "p",
+              "attributes": {
+                "part": "failure"
+              },
+              "children": [
+                "${state.failure}",
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "pages-app-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/needsPagesApp"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "span",
+                      "children": [
+                        " — if the Cloudflare Pages GitHub App is not installed on the repository, ",
+                        {
+                          "tagName": "a",
+                          "attributes": {
+                            "part": "install-link",
+                            "href": "${state.pagesAppUrl}",
+                            "target": "_blank",
+                            "rel": "noreferrer"
+                          },
+                          "textContent": "install it"
+                        },
+                        " and retry."
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

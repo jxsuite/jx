@@ -3,7 +3,7 @@
  * fixture content-collection Map (extensions.md §8.4).
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { SearchIndex } from "../src/search-index";
 import type { SearchIndexEnvelope } from "../src/search-index";
 import type { ContentLoaderEntry } from "@jxsuite/schema/types";
@@ -147,6 +147,71 @@ describe("SearchIndex.emit", () => {
     const files = SearchIndex.emit(SECTION, { projectConfig: {} });
     const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
     expect(envelope.documents).toEqual([]);
+  });
+});
+
+/*
+ * `search: false` in an entry's frontmatter keeps the whole entry out of the index — the page
+ * document and every section document. The key is the one per-page lever the index has, and it is
+ * the boolean and nothing else: a value that merely looks like an opt-out is indexed and said so,
+ * because a page that is present can be found and a page that is absent cannot explain itself.
+ */
+describe("SearchIndex.emit — the per-entry opt-out", () => {
+  // Installed per test: the "unknown collection" case above warns too, and a spy that outlived the
+  // Describe boundary would count that call against the first case here.
+  let warn: ReturnType<typeof spyOn<Console, "warn">>;
+  beforeEach(() => {
+    warn = spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  // `search` is spread rather than assigned so the absent-key case really is absent — a key set to
+  // Undefined would survive `entry.data` and be a third shape rather than the second.
+  const withSearch = (search?: unknown): ContentLoaderEntry[] =>
+    [
+      {
+        $children: [
+          { tagName: "p", textContent: "Every changelog entry of every spec." },
+          { id: "ui", tagName: "h2", textContent: "ui.md" },
+          { tagName: "p", textContent: "0.9.0 the kit has a colour family." },
+        ],
+        body: "",
+        data: { ...(search === undefined ? {} : { search }), title: "Spec changelog" },
+        id: "extending/reference/spec-changelog",
+      },
+      DOCS_ENTRIES[1]!,
+    ] as unknown as ContentLoaderEntry[];
+
+  const ids = (search?: unknown) => {
+    const content = new Map([["docs", withSearch(search)]]);
+    const files = SearchIndex.emit(SECTION, { projectConfig: {}, sections: { content } });
+    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    return envelope.documents.map((d) => d.id);
+  };
+
+  test("search: false removes the page document and its sections alike", () => {
+    expect(ids(false)).toEqual(["docs:start/install"]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test("search: true and an absent key both index the entry", () => {
+    const expected = [
+      "docs:extending/reference/spec-changelog",
+      "docs:extending/reference/spec-changelog#ui",
+      "docs:start/install",
+    ];
+    expect(ids(true)).toEqual(expected);
+    expect(ids()).toEqual(expected);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test("a non-boolean value is indexed and reported once per entry, not per document", () => {
+    expect(ids("false")).toHaveLength(3);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain('"docs/extending/reference/spec-changelog"');
+    expect(warn.mock.calls[0]![0]).toContain('search to "false"');
   });
 });
 

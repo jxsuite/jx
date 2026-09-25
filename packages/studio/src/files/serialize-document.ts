@@ -19,6 +19,7 @@ import {
   formatSerialize,
   loadFormats,
 } from "../format/format-host";
+import { serializeJson } from "@jxsuite/schema/json-layout";
 import type { Tab } from "../tabs/tab";
 
 /**
@@ -56,5 +57,11 @@ export async function serializeDocument(tab: Tab): Promise<string> {
       });
     }
   }
-  return JSON.stringify(tab.doc.document, null, 2);
+  /* Native JSON, in the layout the file was read in (`json-layout.ts`, issue 308).
+     `tab.doc.layout` is what the read recorded — which objects the author kept on one line, where
+     a blank line sits, which characters were escaped — and it is null for a document with no JSON
+     source, where every object expands and every array is laid by fit: the formatter's own answer
+     for stringified output. Either way the text ends with one newline, as every formatted file
+     does. */
+  return serializeJson(tab.doc.document, tab.doc.layout ?? null);
 }

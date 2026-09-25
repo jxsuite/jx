@@ -37,7 +37,7 @@ import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 import type { TransactOrigin } from "../tabs/transact";
 import type { TransactionRecord } from "../tabs/patch-ops";
 import type { Tab } from "../tabs/tab";
-import type { JxDocOp } from "@jxsuite/collab/ops";
+import type { JxDocOp } from "@jxsuite/schema/doc-ops";
 import type { CollabHandle } from "@jxsuite/collab/provider";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type * as CollabNS from "@jxsuite/collab";

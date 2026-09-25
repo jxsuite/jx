@@ -5,10 +5,18 @@ coveragePathIgnorePatterns = [
   "**/tests/**",
   "./result/**",
   "../../extensions/**",
+  # The AI routes run @jxsuite/ai/gateway, so its files land here with only the paths this server
+  # takes (it sets no limits and no admit hook), while being gated at 0.99 under packages/ai's own
+  # run. Same rule as `../protocol/**` below.
+  "../ai/**",
   "../collab/**",
   "../compiler/**",
   "../create/**",
   "../desktop/**",
+  # The catalogue this package now serves is a dependency, so its metadata module lands here at
+  # 50% functions and fails the per-file gate, while being 100% under packages/catalog's
+  # own run (gated there at 0.99). Same rule as `../protocol/**` below.
+  "../catalog/**",
   "../markup/**",
   "../parser/**",
   # Same omission as packages/desktop had: `../protocol/src/routes.ts` lands in this package's

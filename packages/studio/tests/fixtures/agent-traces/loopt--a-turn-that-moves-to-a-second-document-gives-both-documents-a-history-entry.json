@@ -1,0 +1,232 @@
+{
+  "chatCalls": [
+    "sendMessage(\"edit both\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a\", \"set_property\")",
+    "appendToolCallDelta(\"a\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"one\\\"}\")",
+    "appendToolCallEnd(\"a\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"a\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"b\", \"set_property\")",
+    "appendToolCallDelta(\"b\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"two\\\"}\")",
+    "appendToolCallEnd(\"b\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"b\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"b\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "finishStream(\"stop\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "edit both"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "a",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"one\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "a",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "b",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"two\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "b",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 3
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "endTurn(\"msg#4\") filed 2"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "(untitled)",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              }
+            ]
+          }
+        ],
+        "turn": "msg#4"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "edit both"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"one\"}",
+          "id": "a",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "a"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"two\"}",
+          "id": "b",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#5",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "b"
+    },
+    {
+      "id": "msg#6",
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "first": {
+      "children": [],
+      "tagName": "div",
+      "id": "one"
+    },
+    "second": {
+      "children": [],
+      "tagName": "section",
+      "id": "two"
+    }
+  },
+  "historyIndex": {
+    "first": 1,
+    "second": 1
+  },
+  "extra": {
+    "snapshots": {
+      "first": 2,
+      "second": 2,
+      "secondBefore": 1
+    }
+  }
+}

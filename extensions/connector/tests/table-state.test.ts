@@ -196,6 +196,8 @@ describe("node-side resolution", () => {
       const { dialect } = await resolveDialect("main", projectConfig, { JX_PROJECT_ROOT: root });
       const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect });
       await db.insertInto("comments").values({ approved: 1, id: "c1", message: "hello" }).execute();
+      await db.insertInto("comments").values({ approved: 1, id: "c2", message: "two" }).execute();
+      await db.insertInto("comments").values({ approved: 1, id: "c3", message: "three" }).execute();
       await db.destroy();
 
       const rows = (await queryTable({
@@ -203,8 +205,23 @@ describe("node-side resolution", () => {
         filter: { approved: true },
         table: "comments",
       })) as Record<string, unknown>[];
-      expect(rows).toHaveLength(1);
+      expect(rows).toHaveLength(3);
       expect(rows[0]!.approved).toBe(true);
+
+      const limited = (await queryTable({
+        _project,
+        limit: 1,
+        table: "comments",
+      })) as Record<string, unknown>[];
+      expect(limited).toHaveLength(1);
+
+      const paged = (await queryTable({
+        _project,
+        offset: 1,
+        sort: { field: "id", order: "asc" },
+        table: "comments",
+      })) as Record<string, unknown>[];
+      expect(paged.map((r) => r.id)).toEqual(["c2", "c3"]);
 
       const entry = await getEntry({ _project, table: "comments" }, "c1");
       expect(entry!.message).toBe("hello");
@@ -289,5 +306,41 @@ describe("browser resolution", () => {
     expect(calls[2]!.init.method).toBe("DELETE");
     expect(calls[2]!.init.body).toBeUndefined();
     expect(scope._v).toBe(3);
+  });
+
+  test("a real submit event is prevented, and a failed template value falls back to its raw text", async () => {
+    globalRef.fetch = (async () =>
+      Response.json({}, { status: 200 })) as unknown as typeof globalThis.fetch;
+    let prevented = false;
+    const event = {
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as Event;
+
+    const insert = new TableInsert({
+      table: "comments",
+      // `state.missing` is undefined; reading `.deep` off it throws inside the template function.
+      values: { message: "${state.missing.deep}" },
+    }).resolve();
+    expect(await insert({}, event)).toBe(true);
+    expect(prevented).toBe(true);
+  });
+
+  test("a POST from a real form resets it once the request succeeds", async () => {
+    let reset = false;
+    globalRef.fetch = (async () =>
+      Response.json({}, { status: 200 })) as unknown as typeof globalThis.fetch;
+    const form = {
+      reset: () => {
+        reset = true;
+      },
+      tagName: "FORM",
+    } as unknown as HTMLFormElement;
+    const event = { target: form } as unknown as Event;
+
+    const insert = new TableInsert({ table: "comments", values: {} }).resolve();
+    expect(await insert({}, event)).toBe(true);
+    expect(reset).toBe(true);
   });
 });

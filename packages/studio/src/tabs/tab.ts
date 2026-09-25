@@ -2,11 +2,13 @@
 import { effectScope, reactive } from "../reactivity";
 import { formatByName, formatForPath } from "../format/format-host";
 import { normalizeArrayChildren } from "../state";
+import type { JxPath } from "../state";
 import type { FormulaEditDef, FunctionEditDef, InlineEditDef, JsonValue } from "../types";
 import { editorKindForMode } from "../commands/context";
 import type { EditorKind } from "../commands/context";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
+import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 /**
  * The project's configuration file, project-relative.
@@ -39,6 +41,29 @@ export interface TabUi {
   editZoom: number;
   activeMedia: string | null;
   activeSelector: string | null;
+  /**
+   * The popover the canvas is drawing OPEN, by document path, or null for none.
+   *
+   * Per tab rather than per pane, beside `activeMedia` and `previewColorScheme`, because it is a
+   * fact about a DOCUMENT's elements: two panes showing the same tab show the same open panel,
+   * which is correct — it is the same element.
+   *
+   * Exactly one, never a set. Several de-popovered panels in flow at once would shove the page
+   * around and make the canvas unreadable; native `popover="auto"` already enforces a single stack,
+   * so a set would model something the platform does not have; and "exactly one" makes the
+   * open-on-selection rule total, with no ordering decision to make.
+   *
+   * A VIEW state — it writes nothing to the document, so it takes no undo entry, does not dirty the
+   * tab and is not replicated over collaboration. It is also deliberately not restored with a
+   * session (§14.8): reopening a project with a modal spread across the page is a worse first frame
+   * than reopening it closed.
+   */
+  openPopover: JxPath | null;
+  /**
+   * The `<dialog>` the canvas draws open in place, per tab and exactly one; view state like
+   * `openPopover`.
+   */
+  openDialog: JxPath | null;
   editingFunction: FunctionEditDef | null;
   /** Logic-tab formula target ($expression editing); editingFunction wins if both are set. */
   editingFormula: FormulaEditDef | null;
@@ -161,6 +186,18 @@ export interface Tab {
     sourceFormat: string | null;
     handlersSource: string | null;
     dirty: boolean;
+    /**
+     * The layout the document's JSON file was written in (`@jxsuite/schema/json-layout`), or null
+     * for a document with no JSON source — a format-class file, a new document, a stub.
+     *
+     * On the document record because it is a fact about the FILE the document came from, and it
+     * lives exactly as long as that fact does: every edit leaves it alone (the pointers it is keyed
+     * by survive a changed value, a new sibling, a removed one), a reload from disk or a
+     * source-view commit replaces it with the layout of the text just read, and opening a different
+     * file makes a new tab. The history ring never snapshots it — undo restores a document, not a
+     * file.
+     */
+    layout: JsonLayout | null;
   };
   session: {
     /**
@@ -216,6 +253,8 @@ function createDefaultUi(canvasMode: string, preview = false) {
   return {
     activeMedia: null,
     activeSelector: null,
+    openPopover: null,
+    openDialog: null,
     canvasMode,
     editZoom: 1,
     editingFormula: null,
@@ -239,7 +278,15 @@ function createDefaultUi(canvasMode: string, preview = false) {
   };
 }
 
-const ALL_MODES = ["edit", "design", "preview", "source", "stylebook"];
+/*
+ * `git-diff` is here because a comparison is a MODE of a document, and until now nothing said so.
+ * The Source Control panel reached it through the injected `setCanvasMode`, which performs no
+ * capability check — so the mode worked while `editorKindsOf` could never report `diff`, the Editor
+ * picker could never offer it, and `canvas.setMode { mode: "git-diff" }` threw for every document in
+ * the project. Declaring it makes the palette, the assistant and the screenshot runner able to open
+ * a comparison by name, and puts Diff on the Editor axis where §18.4 already says it belongs.
+ */
+const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff"];
 
 /**
  * Create a new tab with reactive doc/session/history trees, owned by an effectScope.
@@ -254,6 +301,7 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook"];
  *   capabilities?: { modes?: string[] };
  *   openedFrom?: TabOrigin | null;
  *   preview?: boolean;
+ *   layout?: JsonLayout | null;
  * }} opts
  * @returns {Tab}
  */
@@ -267,6 +315,7 @@ export function createTab({
   capabilities,
   openedFrom = null,
   preview: previewTab = false,
+  layout = null,
 }: {
   id: string;
   documentPath?: string | null;
@@ -277,6 +326,7 @@ export function createTab({
   capabilities?: { modes?: string[] };
   openedFrom?: TabOrigin | null;
   preview?: boolean;
+  layout?: JsonLayout | null;
 }) {
   const scope = effectScope();
 
@@ -299,6 +349,7 @@ export function createTab({
       dirty: false,
       document,
       handlersSource: null,
+      layout,
       mode: inferDocumentMode(documentPath, sourceFormat),
       sourceFormat,
     }),

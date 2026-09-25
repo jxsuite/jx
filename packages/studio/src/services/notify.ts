@@ -14,12 +14,13 @@
  * | `toast`   | the fourth overlay layer   | timed, dismissible | reversible, or needs no action |
  * | `problem` | the Bottom dock's Problems | until it is fixed  | it must be fixed               |
  *
- * §7.1 names a third tier — **inline**, the `error` slot on `ui/field-row.ts`'s `renderFieldRow`.
- * It is deliberately NOT a member of {@link NotificationTier}: an inline error is a value a control
- * renders next to the field the user is editing, not a record the app posts to a host, and it has
- * no store to live in. Declaring a tier here whose only possible outcome is being dropped on the
- * floor would be exactly the silence this module exists to end, so the union has two members and
- * the third tier arrives as `renderFieldRow`'s own parameter (P4.4).
+ * §7.1 names a third tier — **inline**, the refusal a field draws at the control (`jx-field`'s own
+ * `[part="error"]`, projected by whichever inspector document owns the row). It is deliberately NOT
+ * a member of {@link NotificationTier}: an inline error is a value a control renders next to the
+ * field the user is editing, not a record the app posts to a host, and it has no store to live in.
+ * Declaring a tier here whose only possible outcome is being dropped on the floor would be exactly
+ * the silence this module exists to end, so the union has two members and the third tier arrives as
+ * a field's own projected value (P4.4).
  *
  * **Recovery is a command id, not a per-call-site closure.** `notify.error("Save failed", { action:
  * "file.save" })` gives the toast and the Problems row a Retry button whose label, availability,
@@ -252,6 +253,62 @@ export function clearProblems(match?: (record: Notification) => boolean): number
   const removed = problems.length - kept.length;
   problems.splice(0, problems.length, ...kept);
   return removed;
+}
+
+/**
+ * One outstanding problem, as a REPORT hands it to a caller that cannot see the store: the
+ * assistant, whose `check_accessibility` / `check_popovers` / `validate_redirects` tools return the
+ * findings the person sees in the dock as `ToolResult.data`.
+ *
+ * The record's identity and clock are left out on purpose (`id` is a lit key, `at` is for "2m
+ * ago"); what remains is what a reader acts on — the sentence, the long form, the file, how bad it
+ * is, and the repair command a Fix button would run.
+ */
+export interface ProblemFinding {
+  message: string;
+  severity: Severity;
+  detail?: string;
+  path?: string;
+  key?: string;
+  action?: string;
+  actionArgs?: Record<string, unknown>;
+}
+
+/**
+ * The outstanding problems one reporter filed, in the order they were filed — the same read the
+ * Problems tab makes when it groups by `source`, projected to {@link ProblemFinding}.
+ *
+ * @param {string} source - The `source` the reporter files under.
+ * @returns {ProblemFinding[]}
+ */
+export function problemFindings(source: string): ProblemFinding[] {
+  const findings: ProblemFinding[] = [];
+  for (const record of problems) {
+    if (record.source !== source) {
+      continue;
+    }
+    const finding: ProblemFinding = { message: record.message, severity: record.severity };
+    /* Copied key by key rather than spread from the record: `exactOptionalPropertyTypes` refuses
+       an explicit `undefined`, and the model reads the JSON, where an absent key and an undefined
+       one serialise the same but a `undefined`-valued key is a lie about what the row holds. */
+    if (record.detail !== undefined) {
+      finding.detail = record.detail;
+    }
+    if (record.path !== undefined) {
+      finding.path = record.path;
+    }
+    if (record.key !== undefined) {
+      finding.key = record.key;
+    }
+    if (record.action !== undefined) {
+      finding.action = record.action;
+    }
+    if (record.actionArgs !== undefined) {
+      finding.actionArgs = record.actionArgs;
+    }
+    findings.push(finding);
+  }
+  return findings;
 }
 
 /** How many problems are outstanding, optionally of one severity — the badge and the status bar. */

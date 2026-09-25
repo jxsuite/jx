@@ -104,6 +104,19 @@ describe("doc-sync guards", () => {
     expect(controls(frames).at(-1)).toEqual({ epoch: 0, path: "a.json", type: "doc-reset" });
   });
 
+  test("resetDoc on a never-opened path still bumps the epoch", () => {
+    const host = makeHost(() => Promise.resolve("x"));
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, IDENTITY);
+    // No room exists yet for this path — resetDoc must still advance the epoch (a reset can
+    // Arrive ahead of the first open) rather than touching a room that isn't there.
+    host.resetDoc("never.json");
+    conn.handleMessage(
+      encodeFrame({ body: new Uint8Array([0]), epoch: 0, path: "never.json", type: "doc-sync" }),
+    );
+    expect(controls(frames).at(-1)).toEqual({ epoch: 1, path: "never.json", type: "doc-reset" });
+  });
+
   test("an unknown y-protocols message type inside doc-sync is dropped", async () => {
     const host = makeHost(() => Promise.resolve("x"));
     const { frames, socket } = recordingSocket();

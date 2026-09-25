@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/runtime",
-  "version": "3.0.0",
+  "version": "4.0.1",
   "description": "JSON-native reactive web component runtime",
   "license": "MIT",
   "repository": {
@@ -15,6 +15,7 @@
   "type": "module",
   "exports": {
     ".": "./src/runtime.ts",
+    "./css": "./src/css.ts",
     "./expression": "./src/expression.ts",
     "./pointer": "./src/pointer.ts",
     "./statements": "./src/statements.ts",
@@ -33,9 +34,9 @@
   },
   "dependencies": {
     "@jxsuite/schema": "workspace:^",
-    "@vue/reactivity": "3.5.41"
+    "@vue/reactivity": "3.5.43"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.8"
+    "@happy-dom/global-registrator": "^20.14.5"
   }
 }

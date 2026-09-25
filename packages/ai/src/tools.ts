@@ -5,16 +5,33 @@
  * can call. Tools have JSON Schema parameter definitions and execute functions.
  * The registry validates arguments before execution.
  *
+ * Every call carries a {@link ToolContext}: its own signal, its call id, who it acts for, the turn's
+ * write ledger and the session's facts (specs/ai.md §3.7). A caller that has none gets a detached
+ * one, so a tool run outside a turn (a test, a command) records into nothing and cannot be stopped.
+ *
+ * @docs extending/embedding/assistant-harness
  * @license MIT
  * @module @jxsuite/ai/tools
  */
 
-export interface ToolResult {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  summary?: string;
-}
+import type {
+  AiWrite,
+  JsonValue,
+  SessionFacts,
+  ToolContext,
+  ToolResult,
+  WriteLedger,
+} from "./core-types.ts";
+
+export type {
+  Actor,
+  AiWrite,
+  JsonValue,
+  SessionFacts,
+  ToolContext,
+  ToolResult,
+  WriteLedger,
+} from "./core-types.ts";
 
 /**
  * JSON Schema fragment describing a tool's parameters. Only the subset the registry's lightweight
@@ -33,7 +50,12 @@ export interface ToolDefinition {
   parameters: JSONSchema;
   strict: boolean;
   llmStrict: boolean;
-  execute: (args: object) => Promise<ToolResult> | ToolResult;
+  /**
+   * The call suspends the turn on a person rather than doing work (`ask_user`), so a round that
+   * made only such calls does not spend the turn's work budget.
+   */
+  interactive?: boolean;
+  execute: (args: object, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
 }
 
 export interface ToolRegistry {
@@ -41,7 +63,11 @@ export interface ToolRegistry {
   list: () => ToolDefinition[];
   listForLLM: () => object[];
   validate: (toolName: string, args: object) => { valid: boolean; errors?: string[] };
-  execute: (toolName: string, args: object) => Promise<ToolResult>;
+  /**
+   * Run a tool with the call's context; a registry that wraps another forwards `ctx` unchanged.
+   * Omitted, the call gets a detached context ({@link createToolContext}).
+   */
+  execute: (toolName: string, args: object, ctx?: ToolContext) => Promise<ToolResult>;
   getDefinition: (toolName: string) => ToolDefinition | undefined;
 }
 
@@ -82,8 +108,9 @@ export function toolError(error: string): ToolResult {
  * @param {boolean} [opts.llmStrict] - Whether to send OpenAI `strict: true` in the function schema
  *   (default false). Only enable if the parameter schema is OpenAI-strict-compliant
  *   (additionalProperties:false everywhere, all properties in `required`, every property typed).
- * @param {(args: object) => Promise<ToolResult> | ToolResult} opts.execute - The tool
- *   implementation
+ * @param {boolean} [opts.interactive] - The call suspends the turn on a person (`ask_user`)
+ * @param {(args: object, ctx: ToolContext) => Promise<ToolResult> | ToolResult} opts.execute - The
+ *   tool implementation, handed the call's context
  * @returns {ToolDefinition}
  */
 export function createToolDefinition({
@@ -92,6 +119,7 @@ export function createToolDefinition({
   parameters,
   strict = true,
   llmStrict = false,
+  interactive,
   execute,
 }: {
   name: string;
@@ -99,9 +127,119 @@ export function createToolDefinition({
   parameters: JSONSchema;
   strict?: boolean;
   llmStrict?: boolean;
-  execute: (args: object) => Promise<ToolResult> | ToolResult;
+  interactive?: boolean;
+  execute: (args: object, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
 }): ToolDefinition {
-  return { name, description, parameters, strict, llmStrict, execute };
+  return {
+    name,
+    description,
+    parameters,
+    strict,
+    llmStrict,
+    ...(interactive === undefined ? {} : { interactive }),
+    execute,
+  };
+}
+
+// ─── ToolContext ─────────────────────────────────────────────────────────────
+
+/**
+ * A write ledger: the writes one turn's tools record, in order.
+ *
+ * @param {(write: AiWrite) => void} [onRecord] - Told of each write as it is recorded
+ * @returns {WriteLedger}
+ */
+export function createLedger(onRecord?: (write: AiWrite) => void): WriteLedger {
+  const writes: AiWrite[] = [];
+  return {
+    record(write: AiWrite) {
+      writes.push(write);
+      onRecord?.(write);
+    },
+    writes,
+  };
+}
+
+/**
+ * Per-session facts: JSON a tool remembers across one conversation's turns.
+ *
+ * @param {string | null} [sessionId]
+ * @param {Readonly<Record<string, JsonValue>>} [initial] - Facts to start from (a restored session)
+ * @returns {SessionFacts & { toJSON: () => Record<string, JsonValue> }}
+ */
+export function createSessionFacts(
+  sessionId: string | null = null,
+  initial: Readonly<Record<string, JsonValue>> = {},
+): SessionFacts & { toJSON: () => Record<string, JsonValue> } {
+  const facts = new Map<string, JsonValue>(Object.entries(initial));
+  return {
+    sessionId,
+    get: (key: string) => facts.get(key),
+    set: (key: string, value: JsonValue) => {
+      facts.set(key, value);
+    },
+    toJSON: () => Object.fromEntries(facts),
+  };
+}
+
+/** A signal that never aborts: the one a detached call gets. */
+const NEVER = new AbortController().signal;
+
+/**
+ * A tool call's context. Every field not given is detached: a signal that never aborts, an empty
+ * call id, a fresh ledger nothing files, empty session facts and a progress sink that drops
+ * everything. That is what a call made outside any turn gets.
+ *
+ * @param {Partial<ToolContext>} [init]
+ * @returns {ToolContext}
+ */
+export function createToolContext(init: Partial<ToolContext> = {}): ToolContext {
+  const session = init.session ?? createSessionFacts();
+  return {
+    actor: init.actor ?? {
+      id: `assistant:${session.sessionId ?? "local"}:`,
+      kind: "assistant",
+      sessionId: session.sessionId,
+      turnId: "",
+    },
+    callId: init.callId ?? "",
+    ledger: init.ledger ?? createLedger(),
+    progress: init.progress ?? (() => {}),
+    session,
+    signal: init.signal ?? NEVER,
+  };
+}
+
+/**
+ * A call's own signal, linked to its turn's: it aborts when the turn does, with the turn's reason,
+ * and {@link release} unlinks it once the call settles, so a Stop later in the turn reaches no call
+ * that has already finished.
+ *
+ * Linked by hand, with one `{ once: true }` listener, rather than with `AbortSignal.any`, so page
+ * webviews and the Worker's ES2023 typing agree.
+ *
+ * @param {AbortSignal} turn
+ * @returns {{ readonly signal: AbortSignal; release(): void }}
+ */
+export function linkCallSignal(turn: AbortSignal): {
+  readonly signal: AbortSignal;
+  release: () => void;
+} {
+  const call = new AbortController();
+  if (turn.aborted) {
+    call.abort(turn.reason);
+    return { release: () => {}, signal: call.signal };
+  }
+  const onAbort = () => {
+    call.abort(turn.reason);
+  };
+  turn.addEventListener("abort", onAbort, { once: true });
+  return {
+    release: () => {
+      turn.removeEventListener("abort", onAbort);
+    },
+    signal: call.signal,
+  };
 }
 
 // ─── ToolRegistry ────────────────────────────────────────────────────────────
@@ -256,9 +394,10 @@ export function createToolRegistry() {
      *
      * @param {string} toolName
      * @param {object} args
+     * @param {ToolContext} [ctx] - The call's context; omitted, a detached one
      * @returns {Promise<ToolResult>}
      */
-    async execute(toolName: string, args: object) {
+    async execute(toolName: string, args: object, ctx: ToolContext = createToolContext()) {
       const tool = _tools.get(toolName);
       if (!tool) {
         return toolError(`Unknown tool: "${toolName}"`);
@@ -271,7 +410,7 @@ export function createToolRegistry() {
       }
 
       try {
-        return await tool.execute(args);
+        return await tool.execute(args, ctx);
       } catch (error) {
         return toolError(`Tool "${toolName}" execution error: ${(error as Error).message}`);
       }

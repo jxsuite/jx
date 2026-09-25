@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "type": "error",
+      "message": "API error 401: Incorrect API key provided: sk-fixt*****1234. You can find your API key at https://platform.openai.com/account/api-keys.",
+      "code": "401"
+    }
+  ]
+}

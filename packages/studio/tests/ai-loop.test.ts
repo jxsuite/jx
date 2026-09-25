@@ -1,14 +1,18 @@
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
+import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
+import type { Message } from "@jxsuite/ai/chat-state";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
 import type { Tab } from "../src/tabs/tab";
 import { registerAiTools } from "../src/services/ai-tools";
-import { runAgentLoop } from "../src/services/tool-executor";
+import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
 import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
+import { resetAiWrites, writesForTurn } from "../src/services/ai-writes";
+import { projectChip } from "../src/panels/ai-chat/chat-view";
 
 /**
  * A scripted streaming client: each entry in `rounds` is the sequence of StreamEvents to yield on
@@ -16,11 +20,16 @@ import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/service
  *
  * @param {object[][]} rounds
  */
-function fakeClient(rounds: StreamEvent[][]): StreamingClient & { calls: () => number } {
+function fakeClient(
+  rounds: StreamEvent[][],
+): StreamingClient & { calls: () => number; sent: () => object[][] } {
   let call = 0;
+  const sent: object[][] = [];
   return {
     calls: () => call,
-    async *streamChat() {
+    sent: () => sent,
+    async *streamChat(messages: object[]) {
+      sent.push(messages);
       const events = rounds[call] ?? [{ type: "done", stopReason: "stop" }];
       call += 1;
       for (const e of events) {
@@ -73,6 +82,206 @@ describe("ai agent loop — integration", () => {
     expect((children[1] as JxMutableNode).tagName).toBe("span");
     expect(tab.history.index).toBe(1); // One undoable transaction
     expect(chatState.status).toBe("idle");
+    disposeTab(tab);
+  });
+
+  /* Workers AI (and other OpenAI-compatible backends) can report `finish_reason: "stop"` on a turn
+     that streamed tool calls. The calls are what decide whether tools run. */
+  test("runs streamed tool calls even when the backend reports a plain stop", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const round = toolCallRound("c1", "add_child", {
+      parentPath: [],
+      index: 1,
+      node: { tagName: "span", textContent: "added" },
+    });
+    round[round.length - 1] = { type: "done", stopReason: "stop" };
+    const client = fakeClient([round, [{ type: "done", stopReason: "stop" }]]);
+
+    chatState.sendMessage("add a span");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    const children = tab.doc.document.children as (JxMutableNode | string)[];
+    expect(children).toHaveLength(2);
+    expect(client.calls()).toBe(2); // The result went back to the model
+    expect(chatState.status).toBe("idle");
+    disposeTab(tab);
+  });
+
+  /* Stop is the one control that must not be outrun. Letting streamed calls run whatever the stop
+     reason regressed this: a call whose arguments were complete when the author pressed Stop was
+     applied anyway, and the loop streamed another round on the aborted signal. */
+  test("a round the author stopped runs nothing it streamed", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const controller = new AbortController();
+    const round = toolCallRound("c1", "set_text", { path: ["children", 0], value: "AFTER STOP" });
+    const client = fakeClient([[...round.slice(0, -1), { type: "done", stopReason: "cancelled" }]]);
+    const inner = client.streamChat.bind(client);
+    client.streamChat = async function* streamChat(...args: Parameters<typeof inner>) {
+      for await (const event of inner(...args)) {
+        if (event.type === "done") {
+          controller.abort(); // The author pressed Stop as the calls finished streaming
+        }
+        yield event;
+      }
+    };
+
+    chatState.sendMessage("change the text");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry,
+      systemPrompt: "",
+      signal: controller.signal,
+    });
+
+    const children = tab.doc.document.children as JxMutableNode[];
+    expect(children[0]).toEqual({ tagName: "p", textContent: "Hello" });
+    expect(client.calls()).toBe(1);
+    expect(chatState.messages.some((m) => m.role === "tool")).toBe(false);
+    disposeTab(tab);
+  });
+
+  /* The finish reason alone, with a signal that is still live: `cancelled` is what every client
+     reports for a Stop, and it must suppress the calls without the abort check's help. */
+  test("a round that ends cancelled runs nothing, even before the signal reads aborted", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const round = toolCallRound("c1", "set_text", { path: ["children", 0], value: "CANCELLED" });
+    const client = fakeClient([[...round.slice(0, -1), { type: "done", stopReason: "cancelled" }]]);
+
+    chatState.sendMessage("change the text");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry,
+      systemPrompt: "",
+      signal: new AbortController().signal,
+    });
+
+    expect((tab.doc.document.children as JxMutableNode[])[0]).toEqual({
+      tagName: "p",
+      textContent: "Hello",
+    });
+    expect(client.calls()).toBe(1);
+    expect(chatState.messages.some((m) => m.role === "tool")).toBe(false);
+    disposeTab(tab);
+  });
+
+  test("a Stop that lands between two calls stops the second", async () => {
+    const tab = makeTab();
+    const controller = new AbortController();
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    registerAiTools(toolRegistry, { getTab: () => tab, validate: async () => [] });
+    const ran: string[] = [];
+    toolRegistry.register(
+      createToolDefinition({
+        name: "first",
+        description: "stops the turn while it runs",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          ran.push("first");
+          controller.abort();
+          return { success: true };
+        },
+      }),
+    );
+    toolRegistry.register(
+      createToolDefinition({
+        name: "second",
+        description: "must not run after the Stop",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          ran.push("second");
+          return { success: true };
+        },
+      }),
+    );
+    const client = fakeClient([
+      [
+        { type: "tool_call_start", id: "a", name: "first" },
+        { type: "tool_call_end", id: "a" },
+        { type: "tool_call_start", id: "b", name: "second" },
+        { type: "tool_call_end", id: "b" },
+        { type: "done", stopReason: "tool_calls" },
+      ],
+    ]);
+
+    chatState.sendMessage("do both");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry: toolRegistry as ToolRegistry,
+      systemPrompt: "",
+      signal: controller.signal,
+    });
+
+    expect(ran).toEqual(["first"]);
+    expect(client.calls()).toBe(1);
+    disposeTab(tab);
+  });
+
+  test("records the provider's usage count on the chat state", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      [
+        { type: "delta", content: "Done." },
+        { type: "usage", inputTokens: 640, outputTokens: 12 },
+        { type: "done", stopReason: "stop" },
+      ],
+    ]);
+
+    chatState.sendMessage("hello");
+    await runAgentLoop({
+      chatState,
+      streamingClient: client,
+      toolRegistry,
+      systemPrompt: "p".repeat(400),
+    });
+
+    expect(chatState.usage).toEqual({
+      contextTokens: 652,
+      inputTokens: 640,
+      lastMessageId: chatState.messages[1]!.id,
+      messageCount: 2,
+      outputTokens: 12,
+      systemTokens: 100, // The prompt it covered, recorded so the next send can measure drift
+    });
+    expect(chatState.tokenCount).toBe(652);
+    disposeTab(tab);
+  });
+
+  test("sends no empty assistant turn, and replays the reasoning it was given", async () => {
+    /* Both halves are one provider's contract: DeepSeek's thinking mode 400s on an assistant turn
+       with no reasoning_content, and the request used to carry two of them — the placeholder for
+       the answer being generated, then the tool-call turn stripped of its reasoning. */
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      [
+        { type: "reasoning", content: "They want a span. " },
+        { type: "reasoning", content: "add_child does it." },
+        ...toolCallRound("c1", "add_child", {
+          parentPath: [],
+          index: 1,
+          node: { tagName: "span", textContent: "added" },
+        }),
+      ],
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+
+    chatState.sendMessage("add a span");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    const firstRound = client.sent()[0] as { role: string }[];
+    expect(firstRound.map((m) => m.role)).toEqual(["user"]);
+
+    const secondRound = client.sent()[1] as { role: string; reasoning_content?: string }[];
+    expect(secondRound.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(secondRound[1]!.reasoning_content).toBe("They want a span. add_child does it.");
     disposeTab(tab);
   });
 
@@ -153,12 +362,18 @@ describe("ai agent loop — integration", () => {
     const tab = makeTab();
     const { chatState, toolRegistry } = harness(tab, async () => []);
     // Every round emits an unrecognized event (default switch case) followed by a tool call that
-    // Always fails (removing the document root), so errors accumulate until the round cap is hit.
+    // Always fails (a text write to a path no node holds), so errors accumulate until the round cap
+    // Is hit. `set_text` rather than the retired `remove_node`: deletion is `delete_node` now, a
+    // Command projection this hand-only registry does not carry.
     const client = fakeClient(
       Array.from({ length: 6 }, () => [
         { type: "noop" } as unknown as StreamEvent, // Unknown event → default case
-        { type: "tool_call_start", id: "c", name: "remove_node" },
-        { type: "tool_call_delta", id: "c", args: JSON.stringify({ path: [] }) },
+        { type: "tool_call_start", id: "c", name: "set_text" },
+        {
+          type: "tool_call_delta",
+          id: "c",
+          args: JSON.stringify({ path: ["children", 9], value: "x" }),
+        },
         { type: "tool_call_end", id: "c" },
         { type: "done", stopReason: "tool_calls" },
       ]),
@@ -170,7 +385,7 @@ describe("ai agent loop — integration", () => {
     expect(chatState.status).toBe("error");
     expect(chatState.error).toContain("ran out of tool-call rounds");
     expect(chatState.error).toContain("Errors encountered");
-    expect(chatState.error).toContain("Cannot remove the document root");
+    expect(chatState.error).toContain("No node exists at path");
     disposeTab(tab);
   });
 
@@ -383,5 +598,397 @@ describe("ai agent loop — the interactive round budget", () => {
     await running;
     expect(pendingAsk()).toBeNull();
     resetAsk();
+  });
+});
+
+// ─── J1.4: the turn is honest about how it ended ─────────────────────────────
+
+describe("ai agent loop — how a turn ended", () => {
+  /**
+   * A registry with one `edit` tool that records a write the way a document tool does, and can stop
+   * the turn from inside its call (standing in for the author pressing Stop while it runs).
+   */
+  function editHarness(opts: { ok?: boolean; stopDuring?: boolean } = {}) {
+    const controller = new AbortController();
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    toolRegistry.register(
+      createToolDefinition({
+        name: "edit",
+        description: "records one write",
+        parameters: { type: "object", properties: {} },
+        async execute(_args, ctx) {
+          const ok = opts.ok ?? true;
+          ctx.ledger.record({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
+          if (opts.stopDuring) {
+            controller.abort();
+          }
+          return ok ? { success: true, summary: "Edited." } : { success: false, error: "No." };
+        },
+      }),
+    );
+    const run = (client: StreamingClient) =>
+      runAgentLoop({
+        chatState,
+        signal: controller.signal,
+        streamingClient: client,
+        systemPrompt: "",
+        toolRegistry: toolRegistry as ToolRegistry,
+      });
+    return { chatState, run };
+  }
+
+  const request = (messages: readonly Message[]) =>
+    messages.findLast((m) => (m.toolCalls?.length ?? 0) > 0);
+
+  test("a live chip shows the result the loop recorded, and an answered question its answer", async () => {
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    registerAskTool(toolRegistry);
+    const client = fakeClient([
+      toolCallRound("q1", "ask_user", { question: "Which pages?", options: ["Home", "Blog"] }),
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+    chatState.sendMessage("ask me");
+    const running = runAgentLoop({
+      chatState,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry: toolRegistry as ToolRegistry,
+    });
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    answerAsk("Blog");
+    await running;
+
+    const record = chatState.messages.find((m) => m.toolCalls?.length)!.toolCalls![0]!;
+    expect(record.result?.success).toBe(true);
+    // The loop's record and the chip it draws, joined: the card shows the answer, not an open question.
+    const chip = projectChip(record, { pendingId: pendingAsk()?.id ?? null });
+    expect(chip.askState).toBe("answered");
+    expect(chip.answer).toBe("Blog");
+    resetAsk();
+  });
+
+  test("a Stop during the last call opens no further round", async () => {
+    const h = editHarness({ stopDuring: true });
+    const client = fakeClient([
+      toolCallRound("c1", "edit", {}),
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+    h.chatState.sendMessage("edit it");
+    await h.run(client);
+
+    expect(client.calls()).toBe(1);
+    expect(h.chatState.status).toBe("idle");
+    // The call's reply is the last thing the turn wrote: no placeholder after it.
+    expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(h.chatState.messages[1]!.toolCalls![0]!.result).toEqual({
+      success: true,
+      summary: "Edited.",
+    });
+  });
+
+  test("a stream error removes its round's partial message, calls and all", async () => {
+    const h = editHarness();
+    const client = fakeClient([
+      [
+        { type: "delta", content: "Let me " },
+        { type: "tool_call_start", id: "c1", name: "edit" },
+        { type: "tool_call_delta", id: "c1", args: '{"half' },
+        { type: "error", message: "upstream 500" },
+      ],
+    ]);
+    h.chatState.sendMessage("edit it");
+    await h.run(client);
+
+    expect(h.chatState.status).toBe("error");
+    expect(h.chatState.error).toBe("upstream 500");
+    expect(h.chatState.messages.map((m) => m.role)).toEqual(["user"]);
+    expect(h.chatState.pendingToolCalls).toEqual([]);
+    // Nothing of the failed round reaches the next send.
+    expect(h.chatState.toMessagesArray()).toEqual([{ role: "user", content: "edit it" }]);
+  });
+
+  test("a stream error after a round of work keeps that round and removes only its own partial", async () => {
+    const h = editHarness();
+    const client = fakeClient([
+      toolCallRound("c1", "edit", {}),
+      [
+        { type: "delta", content: "Now the" },
+        { type: "error", message: "upstream 500" },
+      ],
+    ]);
+    h.chatState.sendMessage("edit it");
+    await h.run(client);
+
+    expect(h.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(h.chatState.messages[1]!.toolCalls![0]!.result?.success).toBe(true);
+  });
+
+  /* The changed-files summary and Restore render under the message the turn's writes are filed
+     under, and only a DRAWN assistant message renders them (chat-view's projectRows). */
+  test.each<[string, { ok?: boolean; stopDuring?: boolean }, StreamEvent[][], string]>([
+    [
+      "a reply that says something",
+      {},
+      [
+        toolCallRound("c1", "edit", {}),
+        [
+          { type: "delta", content: "Done." },
+          { type: "done", stopReason: "stop" },
+        ],
+      ],
+      "reply",
+    ],
+    [
+      "a final round that says nothing",
+      {},
+      [toolCallRound("c1", "edit", {}), [{ type: "done", stopReason: "stop" }]],
+      "request",
+    ],
+    [
+      "a Stop during the last call",
+      { stopDuring: true },
+      [toolCallRound("c1", "edit", {})],
+      "request",
+    ],
+    [
+      "a stream error in the next round",
+      {},
+      [
+        toolCallRound("c1", "edit", {}),
+        [
+          { type: "delta", content: "Now" },
+          { type: "error", message: "boom" },
+        ],
+      ],
+      "request",
+    ],
+    [
+      "the round cap after changes were applied",
+      {},
+      Array.from({ length: 6 }, (_, i) => toolCallRound(`c${i}`, "edit", {})),
+      "reply",
+    ],
+    [
+      "the round cap with nothing applied",
+      { ok: false },
+      Array.from({ length: 6 }, (_, i) => toolCallRound(`c${i}`, "edit", {})),
+      "request",
+    ],
+  ])("the changes are filed under a drawn message: %s", async (_label, opts, rounds, anchor) => {
+    resetAiWrites();
+    const h = editHarness(opts);
+    h.chatState.sendMessage("edit it");
+    await h.run(fakeClient(rounds));
+
+    const expected =
+      anchor === "reply" ? h.chatState.messages.at(-1)! : request(h.chatState.messages)!;
+    if (anchor === "reply") {
+      expect(expected.role).toBe("assistant");
+      expect(expected.content).not.toBe("");
+    }
+    expect(writesForTurn(expected.id).length).toBeGreaterThan(0);
+    resetAiWrites();
+  });
+
+  test.each<[string, string]>([
+    ["null", "null"],
+    ["[1]", "array"],
+    ["3", "number"],
+    ['"x"', "string"],
+    ["true", "boolean"],
+  ])("arguments that parse to %s are refused with their type", async (args, type) => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      [
+        { type: "tool_call_start", id: "c1", name: "set_property" },
+        { type: "tool_call_delta", id: "c1", args },
+        { type: "tool_call_end", id: "c1" },
+        { type: "done", stopReason: "tool_calls" },
+      ],
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+    chatState.sendMessage("break it");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    const reply = chatState.messages.find((m) => m.role === "tool")!;
+    expect(JSON.parse(reply.content)).toEqual({
+      error: `Failed to parse arguments: arguments must be a JSON object, got ${type}`,
+      success: false,
+    });
+    disposeTab(tab);
+  });
+});
+
+// ─── J1.7: a turn's outcome is what it did ───────────────────────────────────
+
+describe("ai agent loop — what a turn applied, and a turn that drew nothing", () => {
+  /* A model that answers with neither text nor a tool call used to leave the author's message with
+     no reply at all: the turn ended "fine" on an empty message the transcript never draws. */
+  test("a turn whose model sends back nothing ends on an error row saying so", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([[{ type: "done", stopReason: "stop" }]]);
+
+    chatState.sendMessage("hello?");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("error");
+    expect(chatState.error).toBe(EMPTY_TURN_TEXT);
+    // The empty reply is gone, so nothing of it goes out on the next send.
+    expect(chatState.messages.map((m) => m.role)).toEqual(["user"]);
+    disposeTab(tab);
+  });
+
+  test("an empty final round after work is a complete turn, not an error", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([
+      toolCallRound("c1", "add_child", {
+        parentPath: [],
+        index: 1,
+        node: { tagName: "span", textContent: "added" },
+      }),
+      [{ type: "done", stopReason: "stop" }],
+    ]);
+
+    chatState.sendMessage("add a span");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    expect(chatState.error).toBeNull();
+    disposeTab(tab);
+  });
+
+  test("a stopped turn that drew nothing is not an error", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    const client = fakeClient([[{ type: "done", stopReason: "cancelled" }]]);
+
+    chatState.sendMessage("never mind");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    expect(chatState.error).toBeNull();
+    disposeTab(tab);
+  });
+
+  /* Applied means it wrote. A read returns a summary too, so a turn that spent its whole budget
+     looking around used to end on an ordinary message listing the reads as "Changes applied". */
+  test("a turn that only read and ran out of rounds applied nothing, and says so as an error", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    /* A read that reports in a sentence, as list_files, search_files and ask_user do: it succeeds
+       with a summary and writes nothing. */
+    toolRegistry.register(
+      createToolDefinition({
+        name: "peek",
+        description: "reads, and says what it read",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          return { success: true, summary: "Looked at the page." };
+        },
+      }),
+    );
+    const client = fakeClient(
+      Array.from({ length: 6 }, (_, i) => toolCallRound(`r${i}`, "peek", {})),
+    );
+
+    chatState.sendMessage("look at everything");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(client.calls()).toBe(5);
+    expect(chatState.status).toBe("error");
+    expect(chatState.error).toContain("ran out of tool-call rounds");
+    expect(chatState.error).not.toContain("Changes applied so far");
+    disposeTab(tab);
+  });
+
+  test("the round cap lists the calls that wrote, not the ones that read", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    /* A read that reports in a sentence, as list_files, search_files and ask_user do: it succeeds
+       with a summary and writes nothing. */
+    toolRegistry.register(
+      createToolDefinition({
+        name: "peek",
+        description: "reads, and says what it read",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          return { success: true, summary: "Looked at the page." };
+        },
+      }),
+    );
+    const round = (i: number): StreamEvent[] => [
+      { type: "tool_call_start", id: `r${i}`, name: "peek" },
+      { type: "tool_call_end", id: `r${i}` },
+      { type: "tool_call_start", id: `w${i}`, name: "set_property" },
+      {
+        type: "tool_call_delta",
+        id: `w${i}`,
+        args: JSON.stringify({ path: [], key: "id", value: `v${i}` }),
+      },
+      { type: "tool_call_end", id: `w${i}` },
+      { type: "done", stopReason: "tool_calls" },
+    ];
+    const client = fakeClient(Array.from({ length: 6 }, (_, i) => round(i)));
+
+    chatState.sendMessage("read then write, repeatedly");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    const tail = chatState.messages.at(-1)!.content;
+    expect(tail).toContain("Changes applied so far");
+    const listed = tail.split("\n").filter((line) => line.startsWith("- "));
+    expect(listed).toHaveLength(5);
+    expect(listed.every((line) => !line.includes("Looked at the page"))).toBe(true);
+    disposeTab(tab);
+  });
+
+  /* Creating or importing a project writes a whole project to disk. A bootstrap turn that then only
+     read until the cap applied that project, and must say so rather than end on an error. */
+  test("a capped turn that created a project lists the project as applied", async () => {
+    const tab = makeTab();
+    const { chatState, toolRegistry } = harness(tab, async () => []);
+    toolRegistry.register(
+      createToolDefinition({
+        name: "bootstrap",
+        description: "creates a project the way create_project does",
+        parameters: { type: "object", properties: {} },
+        async execute(_args, ctx) {
+          ctx.ledger.record({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
+          return { success: true, summary: "Created project at /abs/site and opened it." };
+        },
+      }),
+    );
+    toolRegistry.register(
+      createToolDefinition({
+        name: "peek",
+        description: "reads, and says what it read",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          return { success: true, summary: "Looked at the page." };
+        },
+      }),
+    );
+    const client = fakeClient([
+      toolCallRound("b", "bootstrap", {}),
+      ...Array.from({ length: 5 }, (_, i) => toolCallRound(`r${i}`, "peek", {})),
+    ]);
+
+    chatState.sendMessage("make me a site");
+    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+
+    expect(chatState.status).toBe("idle");
+    const listed = chatState.messages
+      .at(-1)!
+      .content.split("\n")
+      .filter((line) => line.startsWith("- "));
+    expect(listed).toEqual(["- Created project at /abs/site and opened it."]);
+    disposeTab(tab);
   });
 });

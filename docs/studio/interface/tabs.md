@@ -2,18 +2,26 @@
 title: "Documents and panes"
 description: "How open documents work in Jx Studio: the pane's strip, labels, preview and pinned documents, explicit saving, two panes, and the pane's own bars."
 spec:
+  - studio.md#9.4
   - studio.md#14
   - studio.md#14.7
   - studio.md#18
 code:
   - packages/studio/src/panels/tab-strip.ts
   - packages/studio/src/files/file-ops.ts
+  - packages/studio/src/files/serialize-document.ts
+  - packages/schema/src/json-layout.ts
   - packages/studio/src/commands/context.ts
   - packages/studio/src/tabs/tab.ts
   - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/workspace/workspace.ts
+  - packages/studio/src/files/files.ts
+  - packages/studio/src/studio.ts
+  - packages/studio/src/panels/tab-drop.ts
+  - packages/studio/src/panels/pane-grid.ts
 ---
 
 # Documents and panes
@@ -31,7 +39,8 @@ Media files open too. An image, a video, a font or a PDF gets a document of its 
 - Switch back and forth with :kbd[⌃Tab] / :kbd[⌃⇧Tab], which walk your documents in most-recently-used order.
 - Close one with its **×**, by middle-clicking it, or with :kbd[⌘W].
 - Reopen the last one you closed with :kbd[⌘⇧T].
-- Drag to reorder. When more are open than fit, scroll the mouse wheel over the strip, or use the **⌄** button at its right edge to pick from the ones currently out of view.
+- Drag along the strip to reorder, or onto the other pane's strip to move a document there. When more are open than fit, scroll the mouse wheel over the strip, or use the **⌄** button at its right edge to pick from the ones currently out of view.
+- Reach the strip from the keyboard with :kbd[Tab]. The whole strip is one stop, so the arrow keys then walk along it and switch as they land, :kbd[Home] and :kbd[End] jump to its ends, and :kbd[Delete] closes the document you are on, asking about unsaved changes exactly as the **×** does.
 
 ## Labels
 
@@ -62,6 +71,8 @@ Undo and redo are per document as well: each keeps its own history, so :kbd[⌘Z
 Saving writes the file in place, in your project folder, as plain Markdown, JSON, or CSV. Nothing is held in a database; what you save is what git sees. See [Publish](/docs/studio/publish).
 :::
 
+**A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelt as an escape stays an escape. Studio reads those facts when it opens the file and honours them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
+
 ## Each document remembers its view
 
 A document keeps its own view state while it's open. Switch from a Markdown page in **Edit** to a component in **Design** and back, and each returns exactly as you left it:
@@ -86,7 +97,7 @@ Naming a document in the URL still wins: `?file=` opens that file, and Studio le
 
 ## Drilling into a component
 
-Opening a component from the canvas, the Outline tree or the Inspector's **Edit component** action gives it **its own place in the strip**. The page you came from stays open, still on the element you had selected, so you can flip between the two with a click or :kbd[⌃Tab].
+Opening a component from the canvas, the Outline tree or the Inspector's **Edit component** action opens it **beside the page, in a second pane**, and puts you in it. The page you came from stays open in the first pane, still on the element you had selected, so you can flip between the two with a click or :kbd[⌃Tab].
 
 The new one carries a small **↳** marker, and hovering it names the document you drilled in from.
 
@@ -98,6 +109,8 @@ The new one carries a small **↳** marker, and hovering it names the document y
 
 - **Drag the divider** to change the split. Double-click it to go back to even; the ratio is remembered with the rest of your layout.
 - **Click into a pane to work in it.** The Inspector, the Outline, the block action bar and every keyboard shortcut follow the pane you last clicked in: its canvas, its bars, its editor, anywhere. :kbd[⌘⌥0] focuses the side pane without the mouse, and **Focus Primary Pane** in the palette goes back.
+- **Drag a document across**, onto the other pane's strip, or onto the right edge of the canvas to create the second pane. :kbd[⌘\] is the keyboard form of the same move.
+- **Open to the Side**, from a file's right-click menu, is the Files tree's own route to a second pane: it opens the file beside whatever you are already looking at, and puts you in it.
 - **Unsplit** collapses the split. Closing a pane never closes documents. They move back into the pane that remains, and a pane you empty collapses on its own instead of standing there empty.
 
 The two panes are independent in everything a document owns: each keeps its own view, breakpoint, colour scheme, zoom and selection, and editing in one leaves the other exactly as it was.
@@ -107,7 +120,7 @@ The two panes are independent in everything a document owns: each keeps its own 
 A second pane does not have to hold a document you picked. The **⟲** button on its context bar offers a short list of things it can be _about_ the other pane instead:
 
 - **Code of this document**: the JSON or Markdown, live, while you edit visually.
-- **Diff vs HEAD**: what you have changed, beside the page you changed it in.
+- **Diff vs HEAD**: what you have changed, beside the page you changed it in, with its own change stepper and its own choice of Visual or Code.
 - **Layout of this page**: the layout file the page uses, opened at the element you clicked if you came from **Open Layout →**.
 - **Component definition of the selection**: the source of whatever component you select, following you as you select others.
 - **Same page at ⟨breakpoint⟩**: one more size of the page you are already looking at.

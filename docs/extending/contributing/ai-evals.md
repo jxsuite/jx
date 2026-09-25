@@ -57,7 +57,9 @@ OPENAI_API_KEY=sk-… bun run eval
 OPENAI_API_KEY=sk-… bun run eval --tasks counter-button --k 1
 ```
 
-`OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional and mirror how the server proxy resolves its config. Without `OPENAI_API_KEY` the CLI exits `2` immediately, because the harness calls a real model by design.
+`OPENAI_BASE_URL` and `OPENAI_MODEL` (default `gpt-4o`) are optional and mirror how the server proxy resolves its config. Without `OPENAI_API_KEY` the CLI exits `2` immediately, because the harness calls a real model by design. Any OpenAI-compatible endpoint works, Cloudflare Workers AI included: point `OPENAI_BASE_URL` at `https://api.cloudflare.com/client/v4/accounts/<account id>/ai/v1`, pass an API token as the key, and name a model that calls tools, such as `@cf/meta/llama-4-scout-17b-16e-instruct`. The harness reaches the provider the way a server does, so an endpoint that answers no browser preflight is fine.
+
+If no trial gets a reply from the model at all (a bad key, an endpoint that is down or refuses the request, or a model that answers every trial empty), the CLI exits `2` and writes no run, because a run like that measures the endpoint rather than the assistant, and it would become the baseline the next run is compared against.
 
 Each run writes a timestamped directory under `evals/runs/`, which is gitignored:
 
@@ -73,7 +75,7 @@ Each run writes a timestamped directory under `evals/runs/`, which is gitignored
 
 **Schema grader: the baseline.** The same `validateDoc()` the agent loop already self-corrects against. It is free and deterministic, so it is reported alongside for context.
 
-A trial passes on the **render critic**, not the schema grader. A document can be perfectly schema-valid and still render nothing useful, which is precisely the gap the critic exists to close.
+A trial passes on the **render critic**, not the schema grader. A document can be perfectly schema-valid and still render nothing useful, which is precisely the gap the critic exists to close. A trial whose loop failed before the model answered at all does not pass either way: its document is the task's untouched starting point, which renders, so grading it would score a failed request as a success.
 
 ## pass@k and pass^k
 
@@ -102,7 +104,9 @@ Never tune the tasks to make a scaffolding change look good. If a task is genuin
 
 ## Out of scope
 
-The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, token accounting (the streaming client does not surface usage yet), or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
+The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, per-task token accounting (the stream carries a `usage` frame now, but the scoreboard does not aggregate it yet), or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
+
+It also cannot score a **project-level** tool call yet. Every golden task is document-shaped: an `initialDoc` plus the intent a grader reads off the resulting tree. A behavior like "asked for a blog, so it turned on the content extension" has no document to compare, and needs a task kind carrying a project fixture and a check over `project.json`. Until that exists, project-tier tools are covered by unit tests over the tool surface and the prompt, not by an eval.
 
 ## Related
 

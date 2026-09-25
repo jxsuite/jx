@@ -1,0 +1,66 @@
+{
+  "name": "legacy-shadowed-by-index",
+  "description": "Once an index exists the legacy store is never read, and never removed: the index's active session is restored and the legacy key survives beside it.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_current",
+      "sessions": [
+        {
+          "id": "s_current",
+          "title": "Current",
+          "createdAt": 1767225603000,
+          "updatedAt": 1767225604000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_current": [
+      { "id": "cur_1", "role": "user", "content": "Current", "timestamp": 1767225603000 },
+      {
+        "id": "cur_2",
+        "role": "assistant",
+        "content": "From the index.",
+        "timestamp": 1767225604000
+      }
+    ],
+    "jx-ai-chat-history:/proj/demo": [
+      { "id": "stale_1", "role": "user", "content": "Stale", "timestamp": 1767225601000 },
+      {
+        "id": "stale_2",
+        "role": "assistant",
+        "content": "From the legacy store.",
+        "timestamp": 1767225602000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_current",
+    "storeActiveId": "s_current",
+    "sessions": [
+      {
+        "id": "s_current",
+        "title": "Current",
+        "createdAt": 1767225603000,
+        "updatedAt": 1767225604000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      { "id": "cur_1", "role": "user", "content": "Current", "timestamp": 1767225603000 },
+      {
+        "id": "cur_2",
+        "role": "assistant",
+        "content": "From the index.",
+        "timestamp": 1767225604000
+      }
+    ],
+    "wire": [
+      { "role": "user", "content": "Current" },
+      { "role": "assistant", "content": "From the index." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

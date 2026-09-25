@@ -251,6 +251,73 @@ export interface ExtensionsInfo {
   }[];
 }
 
+// ─── Extension catalogue ─────────────────────────────────────────────────────
+/* The AVAILABLE half of the pair whose ENABLED half is ExtensionsInfo above. A backend answers it
+   for itself rather than serving a constant, because not every host can run every extension: a
+   Worker ships a fixed set of extension packages (specs/extensions.md §5.5), and one it does not
+   bundle is dropped from the registry before composition. Offering such an extension would promise
+   an action the host would refuse. */
+
+/** One `project.json` section an extension's classes claim (specs/extensions.md §9). */
+export interface ExtensionSectionInfo {
+  /** The `project.json` top-level property, e.g. "content". */
+  key: string;
+  /** The owning class's `project.title`, e.g. "Content Types". */
+  title?: string;
+}
+
+/** One extension a backend can offer a project, whether or not the project enables it. */
+export interface ExtensionCatalogEntry {
+  /** Package name: the identity, and the `bun add` argument. */
+  name: string;
+  /**
+   * The string that goes in `project.json` `extensions[]`. Usually `name`, but a linked or
+   * path-installed package enables under a different specifier — the same distinction
+   * {@link ExtensionsInfo} draws between `specifier` and `name`. Absent means they agree.
+   */
+  specifier?: string;
+  title?: string;
+  description?: string;
+  /**
+   * The sections enabling it makes legal.
+   *
+   * The one field a client cannot compute for itself: `listExtensions` describes only extensions
+   * already enabled, which is the state the reader is trying to leave. It is also what lets a
+   * surface warn before disabling something whose sections the project still uses.
+   */
+  sections: ExtensionSectionInfo[];
+  /** File extensions its format classes claim (".md", ".csv"), when it claims any. */
+  formats?: string[];
+  /** Other catalogue members it depends on — auth needs connector. */
+  requires?: string[];
+  /**
+   * THIS host resolves the package without a project install, so enabling it is a config write
+   * alone. Probed per host, never declared: what a desktop build stages and what a Worker bundles
+   * are different facts, and neither is knowable from the package list.
+   */
+  bundled?: boolean;
+  /**
+   * The PROJECT resolves it.
+   *
+   * Answered here rather than derived from `listPackages`, because that member does not mean one
+   * thing across backends: the dev server drops a declared dependency it cannot resolve, while the
+   * desktop reads the manifest and keeps it. A host with no module resolution at all degrades this
+   * to "declared in package.json" and says so in its own documentation.
+   */
+  installed?: boolean;
+  /** The shipped catalogue, or a package discovered in this project's own dependencies. */
+  source: "first-party" | "project";
+  /** Documentation deep link. */
+  docs?: string;
+  /**
+   * Why this entry cannot be enabled as it stands, as one sentence for a disabled control.
+   *
+   * Set rather than dropped: a package the reader installed on purpose vanishing with no
+   * explanation is worse than a row that says what is wrong with it.
+   */
+  problem?: string;
+}
+
 /**
  * Response of the project-schemas route: the project's generated entry documents
  * (project.schema.json / document.schema.json), PRE-BUNDLED into self-contained compound schemas so
@@ -576,7 +643,11 @@ export interface ImportSiteOptions {
   url: string;
   /** Display name for the new project. */
   name: string;
-  /** Destination directory (platform-interpreted: project-relative on the dev server). */
+  /**
+   * Where the project goes, interpreted by the platform that receives it: an absolute path on
+   * desktop, project-relative on the dev server, `owner/repo` on a host whose projects are
+   * repositories. Never a path the caller assumes a filesystem for.
+   */
   directory: string;
   /** Max crawl depth; 0 = single page. */
   depth: number;
@@ -688,22 +759,82 @@ export interface AiModelsResponse {
   /** Set when the upstream provider was unreachable and defaults were returned. */
   upstreamError?: number | string;
   /**
+   * The upstream's own error message, when {@link upstreamError} is set. Populated from whatever
+   * envelope the upstream used — OpenAI's `{error}`, or an array-shaped one like Cloudflare's
+   * `{errors: [{message}]}` — so a caller can show the real reason (e.g. "No route for that URI")
+   * instead of a bare status code.
+   */
+  upstreamMessage?: string;
+  /**
    * Why the backend holds no working credentials, when it holds none.
    *
    * `configured: false` alone cannot tell "this user has never connected" from "this user's grant
    * lapsed", and those are different sentences on screen — the second one explains a thing that
    * used to work. `cf_upstream_error` is the third case and deliberately arrives WITH `configured:
    * true`: Cloudflare being briefly unreachable is not a reason to send someone round an OAuth flow
-   * that fixes nothing.
+   * that fixes nothing. `cf_account_required` is a live grant with no account chosen (ai.md §2.1):
+   * re-authorizing lands back in the same state, so it calls for the account picker instead.
    */
-  code?: "cf_not_connected" | "cf_reconnect_required" | "cf_upstream_error";
+  code?: "cf_not_connected" | "cf_reconnect_required" | "cf_account_required" | "cf_upstream_error";
 }
 
 // ─── Cloudflare publish surface ──────────────────────────────────────────────
 
-/** Cloudflare connection state (see StudioPlatform.cfConnection). */
+/**
+ * Cloudflare connection state (see StudioPlatform.cfConnection).
+ *
+ * Three answers, not two, and a reader tells them apart by SHAPE:
+ *
+ * - `null` — no credential and no row exists at all; nothing was ever connected here.
+ * - `{connected: false}` — a credential exists but the provider rejected it. That is the dev server's
+ *   stored-token-invalid case, and the publish panel's "Replace token" branch keys on it.
+ * - `{connected: true, needsReconnect: true}` — a brokered row exists whose OAuth grant has lapsed.
+ *   Its access token is gone or unrenewable, so every Cloudflare call will fail until the user goes
+ *   back through the hosted flow.
+ *
+ * Each platform emits a strict subset: **cloud never emits `{connected: false}`** (a broker row it
+ * cannot use is a reconnect, not a bad token) and **the dev server never emits `needsReconnect`**
+ * (it holds a pasted token, not a grant, so there is nothing to lapse). Collapsing the lapsed case
+ * into a healthy one is precisely the defect that let the connect popup close over a dead row while
+ * the user was still typing their Cloudflare password.
+ */
 export interface CfConnection {
   connected: boolean;
   accountId?: string | undefined;
   accountName?: string | undefined;
+  /** A broker row exists but its grant has lapsed — reconnect before any Cloudflare call. */
+  needsReconnect?: boolean | undefined;
+  /** Connected and usable, but no account has been chosen yet (multi-account connect). */
+  needsAccount?: boolean | undefined;
+  code?: "cf_reconnect_required" | "cf_account_required" | undefined;
+  reason?: string | undefined;
+  /**
+   * Whether the broker holds a refresh token for this row. Diagnostic: without one the connection
+   * dies at the access token's expiry and cannot renew itself silently, which is a degraded state
+   * worth naming on screen rather than discovering an hour later.
+   */
+  hasRefreshToken?: boolean | undefined;
+  /** Unix seconds at which the current access token expires (after any silent refresh). */
+  expiresAt?: number | undefined;
 }
+
+/** One Cloudflare account the connected grant can reach (the account picker's row). */
+export interface CfAccountSummary {
+  id: string;
+  name: string;
+}
+
+/**
+ * How an interactive `cfConnect` ended.
+ *
+ * A connect flow has four endings and only one of them is a failure, so they are a union rather
+ * than a nullable connection: `redirect` means the page is already navigating away and the caller
+ * must render nothing, `timeout` means the deadline passed with no confirmation, and `canceled`
+ * means the user closed the popup. Returning `null` for all three made "the user changed their
+ * mind" indistinguishable from "this browser blocked the popup", and the UI apologised for both.
+ */
+export type CfConnectOutcome =
+  | { status: "connected"; connection: CfConnection }
+  | { status: "redirect" }
+  | { status: "timeout" }
+  | { status: "canceled" };

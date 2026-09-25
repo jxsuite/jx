@@ -31,6 +31,7 @@ import { optionalStringArg, stringProperty } from "../commands/command-args";
 import { notify } from "../services/notify";
 import { requireProjectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { lendProjectConfigLayout } from "../tabs/project-config";
 import { activeTab, focusPane, openTab, workspace } from "../workspace/workspace";
 import {
   notifySettingsDocument,
@@ -43,11 +44,8 @@ import { renderContextsSection } from "./contexts-section";
 import { renderCssVarsEditor } from "./css-vars-editor";
 import { renderDefsEditor } from "./defs-editor";
 import { renderDependenciesEditor } from "./dependencies-editor";
-import {
-  renderDeploySection,
-  renderExtensionsSection,
-  renderRawJsonSection,
-} from "./project-sections";
+import { renderExtensionsSection } from "./extensions-section";
+import { renderDeploySection, renderRawJsonSection } from "./project-sections";
 import { renderGeneralSettings } from "./general-settings";
 import { renderHeadEditor } from "./head-editor";
 import { renderLocalesSection } from "./locales-section";
@@ -73,10 +71,18 @@ const SETTINGS_TAB_MODES = [SETTINGS_MODE, "stylebook", "source"];
 /* Orders leave gaps so a contribution can land between two built-ins. Content Types is NOT here —
    the parser extension contributes it (order 50) through its Content class descriptor's
    `$studio.settings` block, registered via ./extension-sections, which is the same path any
-   extension's section takes. */
+   extension's section takes.
+
+   `icon` is a KEY into the kit's glyph manifest (`@jxsuite/ui/icons`), not a tag — `studio.md`
+   §13.5 is about exactly this distinction, and a key with no row draws nothing and says nothing.
+   These were `sp-icon-*` names, which is the OTHER key space: they named Spectrum elements, so
+   every one of them resolved to nothing the moment the nav was ready to draw one. The field is
+   still documented as reserved (`section-registry.ts`), so nothing here draws today; the names are
+   held to the kit's manifest by `settings-document.test.ts` so that a name is right when the inner
+   nav does draw it, rather than discovered wrong then. */
 
 registerSettingsSection({
-  icon: "sp-icon-properties",
+  icon: "sliders-horizontal",
   key: "overview",
   label: "Overview",
   order: 10,
@@ -90,14 +96,14 @@ registerSettingsSection({
  * registry and moves into the document's inner nav without its renderer being touched.
  */
 registerSettingsSection({
-  icon: "sp-icon-device-desktop",
+  icon: "browser",
   key: "contexts",
   label: "Contexts",
   order: 15,
   render: renderContextsSection,
 });
 registerSettingsSection({
-  icon: "sp-icon-file-single-web-page",
+  icon: "file-code",
   key: "head",
   label: "Site head",
   order: 20,
@@ -111,7 +117,7 @@ registerSettingsSection({
  * is the form over it.
  */
 registerSettingsSection({
-  icon: "sp-icon-globe",
+  icon: "globe",
   key: "locales",
   label: "Locales",
   order: 25,
@@ -124,42 +130,42 @@ registerSettingsSection({
  * key by name.
  */
 registerSettingsSection({
-  icon: "sp-icon-brush",
+  icon: "paint-brush",
   key: "cssVars",
   label: "CSS Variables",
   order: 30,
   render: renderCssVarsEditor,
 });
 registerSettingsSection({
-  icon: "sp-icon-data",
+  icon: "brackets-curly",
   key: "definitions",
   label: "Data Shapes",
   order: 40,
   render: renderDefsEditor,
 });
 registerSettingsSection({
-  icon: "sp-icon-box",
+  icon: "cube",
   key: "dependencies",
   label: "Packages",
   order: 60,
   render: renderDependenciesEditor,
 });
 registerSettingsSection({
-  icon: "sp-icon-plug",
+  icon: "share-network",
   key: "extensions",
   label: "Extensions",
   order: 70,
   render: renderExtensionsSection,
 });
 registerSettingsSection({
-  icon: "sp-icon-publish-check",
+  icon: "upload-simple",
   key: "deploy",
   label: "Deploy",
   order: 80,
   render: renderDeploySection,
 });
 registerSettingsSection({
-  icon: "sp-icon-code",
+  icon: "code",
   key: "rawJson",
   label: "Raw JSON",
   order: 900,
@@ -224,6 +230,12 @@ export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
      Editor control offers the modes in that order. */
   tab.session.ui.canvasMode = mode;
   tab.session.ui.preview = false;
+  /* The tab was opened over the configuration OBJECT — the platform parsed it, so there is no text
+     here to read a layout from, and `doc.layout` is null. A ⌘S on it would then write the
+     formatter's layout for fresh output while a settings commit on the same document wrote the
+     file's (`tabs/project-config.ts`, issue 308). The chokepoint reads the file once anyway; it
+     lends the tab that record, and the Code view re-renders when it lands (`doc` is reactive). */
+  void lendProjectConfigLayout(tab);
   return tab;
 }
 
@@ -350,13 +362,8 @@ export function settingsCommands(): AnyCommand[] {
          unchanged — `enabledWith` still refuses, so `registry.run` and the assistant's tool still
          throw `CommandUnavailableError` exactly as before. */
       enablement: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the project's Settings, optionally on a named section (overview, contexts, head, " +
-          "locales, cssVars, definitions, dependencies, extensions, deploy, rawJson, or a section " +
-          "an extension contributes) and optionally at a named entry within it.",
-        name: "open_settings",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the model
+         writes `project.json` through `write_file` and the extension verbs. */
       run: async (_commandCtx, args) => {
         const section = optionalStringArg("settings.open", args, "section");
         const entry = optionalStringArg("settings.open", args, "entry");
@@ -415,12 +422,7 @@ export function settingsCommands(): AnyCommand[] {
       requires: "an open project",
       // §12.4: two verbs over ONE document declare ONE availability rule, byte-identical.
       enablement: (ctx) => ctx.project.open,
-      aiTool: {
-        description:
-          "Open the project's configuration document in its Project Styles editor — the design " +
-          "tokens and the default element styles that apply across every page.",
-        name: "open_project_styles",
-      },
+      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
       run: () => {
         showSettingsDocument(PROJECT_STYLES_VIEW);
       },

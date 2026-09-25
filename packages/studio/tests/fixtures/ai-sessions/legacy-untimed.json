@@ -1,0 +1,65 @@
+{
+  "name": "legacy-untimed",
+  "description": "Legacy messages with neither ids nor timestamps: createdAt and updatedAt fall back to now, the title is the first non-empty line with whitespace collapsed and capped at 60 characters, and restore synthesizes the ids.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-history:/proj/demo": [
+      {
+        "role": "user",
+        "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line"
+      },
+      { "role": "assistant", "content": "Sure." }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_T_1",
+    "storeActiveId": "s_T_1",
+    "sessions": [
+      {
+        "id": "s_T_1",
+        "title": "Redesign the pricing page so every plan card lines up and t…",
+        "createdAt": 1767225600000,
+        "updatedAt": 1767225600000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      {
+        "role": "user",
+        "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line",
+        "id": "restored_T_1"
+      },
+      { "role": "assistant", "content": "Sure.", "id": "restored_T_2" }
+    ],
+    "wire": [
+      {
+        "role": "user",
+        "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line"
+      },
+      { "role": "assistant", "content": "Sure." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {
+      "jx-ai-chat-session:/proj/demo:s_T_1": [
+        {
+          "role": "user",
+          "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line"
+        },
+        { "role": "assistant", "content": "Sure." }
+      ],
+      "jx-ai-chat-sessions:/proj/demo": {
+        "version": 1,
+        "activeId": "s_T_1",
+        "sessions": [
+          {
+            "id": "s_T_1",
+            "title": "Redesign the pricing page so every plan card lines up and t…",
+            "createdAt": 1767225600000,
+            "updatedAt": 1767225600000,
+            "messageCount": 2
+          }
+        ]
+      }
+    }
+  }
+}

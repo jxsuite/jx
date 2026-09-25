@@ -1,0 +1,60 @@
+{
+  "chatCalls": [
+    "sendMessage(\"make the heading bigger\")",
+    "toMessagesArray()",
+    "setError(\"upstream 500\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "make the heading bigger"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": []
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "make the heading bigger"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "upstream 500",
+    "model": "@cf/meta/llama-4",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "after": {
+      "code": null,
+      "configured": true,
+      "fetchCalls": ["/__mock/ai/models"]
+    },
+    "before": {
+      "configured": true,
+      "fetchCalls": ["/__mock/ai/models"]
+    }
+  }
+}

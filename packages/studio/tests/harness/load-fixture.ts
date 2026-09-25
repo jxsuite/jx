@@ -7,7 +7,7 @@
  * fixture is never mutated, honoring the testing-plan §10.3 guardrail ("never edit the test-blank
  * fixtures").
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 2.
+ * See docs/extending/contributing/ai-evals.md.
  */
 
 import { cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";

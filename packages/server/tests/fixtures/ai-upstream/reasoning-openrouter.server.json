@@ -1,0 +1,32 @@
+{
+  "frames": [
+    {
+      "type": "reasoning",
+      "content": "Counting"
+    },
+    {
+      "type": "reasoning",
+      "content": " the r's."
+    },
+    {
+      "type": "delta",
+      "content": "Three."
+    },
+    {
+      "type": "usage",
+      "inputTokens": 9,
+      "outputTokens": 31,
+      "reasoningTokens": 27
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

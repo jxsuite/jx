@@ -64,16 +64,71 @@ interface DragMonitorDropArgs {
   location: { current: { dropTargets: { data: Record<string, unknown> }[] } };
 }
 
-/** Register DnD on layer rows — called from left-panel.js after render */
+/**
+ * How the drag island addresses the Outline, which is a Jx document and emits no classes.
+ *
+ * `surfaces/panel-outline.json` is the tree; `part` is the only style and query hook a document
+ * offers (`ui.md` §3.1), so these three selectors are the contract between it and this module.
+ *
+ * The two per-row STATES this file writes are `jx-tree-item`'s own, and that is the whole of what
+ * the kit changed here: the element STYLES `data-dragging` and `data-drop` and deliberately BINDS
+ * neither, because a prop mirroring either would be a second writer that a repaint clears mid-drag.
+ * `data-drop-target` is what this file used to write, and it was a name only this file and one
+ * stylesheet rule knew — so the row wore a state the element could not draw. The verb cluster is
+ * `[part="verbs"]` rather than `[part="actions"]` for the neighbouring reason: `actions` is the
+ * name of the ELEMENT's slot container, and a selector that matched both would be answering about
+ * whichever the query happened to reach first.
+ */
+const OUTLINE_ROOT = '[part="outline"]';
+const OUTLINE_ROWS = '[part="row"]';
+const OUTLINE_ACTIONS = '[part="verbs"]';
+
+/**
+ * The frame a queued Outline registration is waiting on, so a second call REPLACES it.
+ *
+ * Null whenever nothing is queued — including from inside the callback, which clears it before it
+ * registers anything, so a completed frame leaves nothing to cancel.
+ */
+let _layersFrame: number | null = null;
+
+/**
+ * Register DnD on the Outline's rows — called from the panel's mount, after every repaint.
+ *
+ * **This function owns `view.dndCleanups`, and that ownership is the fix for 369 warnings a
+ * session.** The caller used to release the list and then call this, which is correct only if the
+ * registrations are made by the time the next caller looks — and they are not: the `rAF` below
+ * defers them past the point the caller believes they happened. Two repaints inside one frame
+ * therefore both found an EMPTY list, released nothing, and queued two registration passes that ran
+ * back to back over the same surviving row elements. Pragmatic-dnd said so, twice per row, forever:
+ * "You have already registered a `draggable` on the same element".
+ *
+ * So the release happens HERE, where the list's contents are known, and it happens at CALL time
+ * rather than in the frame: `view.dndCleanups` then always holds exactly what is registered right
+ * now, and no observer can read a list that has been superseded. The pending frame is cancelled
+ * with it, because a registration nobody has made yet is not one worth making twice.
+ *
+ * The `rAF` itself stays. The Outline's rows arrive when the runtime's reactive scope commits,
+ * which is a microtask the mount cannot await — the surface handle's `ready` promise resolves once,
+ * at the FIRST mount, and every repaint after that settles before the rows it projected exist.
+ * Registering synchronously would walk the previous window's rows.
+ */
 export function registerLayersDnD() {
-  requestAnimationFrame(() => {
-    const container = leftPanel?.querySelector(".layers-container") as HTMLElement | null;
+  if (_layersFrame !== null) {
+    cancelAnimationFrame(_layersFrame);
+  }
+  for (const cleanup of view.dndCleanups) {
+    cleanup();
+  }
+  view.dndCleanups = [];
+  _layersFrame = requestAnimationFrame(() => {
+    _layersFrame = null;
+    const container = leftPanel?.querySelector(OUTLINE_ROOT) as HTMLElement | null;
     if (!container) {
       return;
     }
 
     for (const row of container.querySelectorAll("[data-dnd-row]") as NodeListOf<HTMLElement>) {
-      const rowPath = (row.dataset.path as string)
+      const rowPath = (row.dataset.value as string)
         .split("/")
         .map((s: string) => (/^\d+$/.test(s) ? Math.trunc(Number(s)) : s)) as JxPath;
       const rowDepth = Math.trunc(Number(row.dataset.dndDepth as string)) || 0;
@@ -84,7 +139,7 @@ export function registerLayersDnD() {
         draggable({
           canDrag({ element: _el, input }: DragCanDragArgs) {
             const target = elementAtPoint(input.clientX, input.clientY) as HTMLElement;
-            if (target?.closest(".layer-actions")) {
+            if (target?.closest(OUTLINE_ACTIONS)) {
               return false;
             }
             return true;
@@ -99,14 +154,14 @@ export function registerLayersDnD() {
             disableNativeDragPreview({ nativeSetDragImage });
           },
           onDragStart() {
-            row.classList.add("dragging");
+            row.dataset.dragging = "";
             view.layerDragSourceHeight = row.offsetHeight;
             if (isExpanded) {
               hideDescendantRows(row, container);
             }
           },
           onDrop() {
-            row.classList.remove("dragging");
+            delete row.dataset.dragging;
             if (isExpanded) {
               renderOnly("leftPanel");
             }
@@ -248,7 +303,7 @@ export function registerComponentsDnD() {
 /** Register DnD on element (HTML block) rows */
 export function registerElementsDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel?.querySelector(".panel-body") as HTMLElement | null;
+    const container = leftPanel?.querySelector('[part="content"]') as HTMLElement | null;
     if (!container) {
       return;
     }
@@ -282,10 +337,10 @@ export function registerElementsDnD() {
  * @param {HTMLElement} container
  */
 function hideDescendantRows(parentRow: HTMLElement, container: HTMLElement) {
-  const prefix = `${parentRow.dataset.path}/`;
-  const rows = container.querySelectorAll(".layers-tree .layer-row");
+  const prefix = `${parentRow.dataset.value}/`;
+  const rows = container.querySelectorAll(OUTLINE_ROWS);
   for (const r of rows) {
-    if ((r as HTMLElement).dataset.path?.startsWith(prefix)) {
+    if ((r as HTMLElement).dataset.value?.startsWith(prefix)) {
       (r as HTMLElement).style.display = "none";
     }
   }
@@ -303,9 +358,9 @@ export function showLayerDropGap(
 ) {
   const instruction = extractInstruction(data);
 
-  // Clear previous drop-target highlight
+  // Clear the previous drop-target mark
   if (view._currentDropTargetRow && view._currentDropTargetRow !== rowEl) {
-    view._currentDropTargetRow.classList.remove("drop-target");
+    delete view._currentDropTargetRow.dataset.drop;
   }
 
   if (!instruction || instruction.type === "instruction-blocked") {
@@ -315,21 +370,21 @@ export function showLayerDropGap(
 
   if (instruction.type === "make-child") {
     clearLayerDropGap(container);
-    rowEl.classList.add("drop-target");
+    rowEl.dataset.drop = "";
     view._currentDropTargetRow = rowEl;
     return;
   }
 
-  rowEl.classList.remove("drop-target");
+  delete rowEl.dataset.drop;
   view._currentDropTargetRow = rowEl;
 
   // Shift rows to create gap
-  const rows = [...container.querySelectorAll(".layers-tree .layer-row")];
+  const rows = [...container.querySelectorAll(OUTLINE_ROWS)];
   const targetIdx = rows.indexOf(rowEl);
   const gap = view.layerDragSourceHeight;
 
   for (let i = 0; i < rows.length; i++) {
-    if ((rows[i] as HTMLElement).classList.contains("dragging")) {
+    if ((rows[i] as HTMLElement).dataset.dragging !== undefined) {
       continue;
     }
     if (instruction.type === "reorder-above") {
@@ -343,13 +398,13 @@ export function showLayerDropGap(
 /** @param {HTMLElement} container */
 export function clearLayerDropGap(container: HTMLElement) {
   if (view._currentDropTargetRow) {
-    view._currentDropTargetRow.classList.remove("drop-target");
+    delete view._currentDropTargetRow.dataset.drop;
     view._currentDropTargetRow = null;
   }
-  const rows = container.querySelectorAll(".layers-tree .layer-row");
+  const rows = container.querySelectorAll(OUTLINE_ROWS);
   for (const r of rows) {
     (r as HTMLElement).style.transform = "";
-    // Also clear `display:none` left by hideDescendantRows. The `.layer-row` div has no `style`
+    // Also clear `display:none` left by hideDescendantRows. The row has no `style`
     // Lit binding, so an imperative style set during the drag survives the post-drop re-render on
     // Whichever row keeps that key — and a move is exactly the edit that hands a key to a different
     // Node. (The rows ARE keyed, by `pathKey`; the earlier form of this note said they were not,

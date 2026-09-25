@@ -86,4 +86,31 @@ describe("eval runner", () => {
     expect(result.passAtK).toBe(true);
     expect(result.passHatK).toBe(true);
   });
+
+  /* A loop that failed before the model answered at all leaves the task's starting document in
+     place, and that document renders. Graded on the render critic alone it passed, so a bad key or
+     a refused request scored every task at 100%. */
+  test("a trial whose loop failed before the model answered does not pass", async () => {
+    const client = fakeClient([[{ type: "error", message: "Network error: blocked" }]]);
+    const trial = await runTrial(TASK, { client });
+    expect(trial.render.pass).toBe(true);
+    expect(trial.rounds).toBe(0);
+    expect(trial.loopError).toBe("Network error: blocked");
+    expect(trial.pass).toBe(false);
+  });
+
+  test("an error after the model answered is graded on the document as before", async () => {
+    const client = fakeClient([
+      toolCallRound("c1", "add_child", {
+        parentPath: [],
+        index: 1,
+        node: { tagName: "span", textContent: "added" },
+      }),
+      [{ type: "error", message: "upstream 500" }],
+    ]);
+    const trial = await runTrial(TASK, { client });
+    expect(trial.rounds).toBe(1);
+    expect(trial.loopError).toBe("upstream 500");
+    expect(trial.pass).toBe(true);
+  });
 });

@@ -217,9 +217,9 @@ export interface RestoreDeps {
   /**
    * Make sure the grid HAS a second pane, without moving anything into it.
    *
-   * `receivingPane()`, not `splitRight()`: a split moves the focused pane's active tab, and at this
-   * point nothing is open — so `splitRight()` returns `null`, the pane is never created, and the
-   * second pane's documents all land in the first.
+   * `receivingPane(PRIMARY_PANE)`, not `splitRight()`: a split moves the focused pane's active tab,
+   * and at this point nothing is open — so `splitRight()` returns `null`, the pane is never
+   * created, and the second pane's documents all land in the first.
    */
   ensureSecondPane: () => void;
 }

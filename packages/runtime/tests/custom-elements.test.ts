@@ -4,13 +4,16 @@ import { reactive } from "@vue/reactivity";
 
 import {
   defineElement,
+  Jx,
   renderNode as _renderNode,
   buildScope,
   RESERVED_KEYS,
   applyStyle,
+  resetDocumentStyles,
   setRootMedia,
   setStampPropBindings,
 } from "../src/runtime";
+import { elementCSS } from "./style-text.ts";
 
 try {
   GlobalRegistrator.register();
@@ -102,6 +105,21 @@ describe("Custom Elements", () => {
     expect(rect.namespaceURI).toBe("http://www.w3.org/2000/svg");
     // `className` is a read-only SVGAnimatedString, so the property write would have thrown.
     expect(rect.getAttribute("class")).toBe("plate");
+  });
+
+  test("renders math children in the MathML namespace", () => {
+    const el = renderNode(
+      {
+        children: [{ children: [{ tagName: "mi", textContent: "x" }], tagName: "math" }],
+        tagName: "div",
+      },
+      reactive({}) as never,
+    );
+
+    const math = el.querySelector("math") as Element;
+    const mi = el.querySelector("mi") as Element;
+    expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
+    expect(mi.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
   });
 
   test("foreignObject returns its descendants to HTML", () => {
@@ -282,6 +300,68 @@ describe("Custom Elements", () => {
     el.remove();
   });
 
+  test("a $map among an instance's slotted children is a live list of rows, each on its own path", async () => {
+    // A mapped array is not a node: under an ordinary element its rows render in place, ahead of
+    // Their anchor, and a `jx-menu` given a `$map` of rows must get the same — a list of rows, not
+    // One `<div>` standing where the list should be. Rendered canvas-style, because the path each
+    // Row is reported on is what the studio stamps and later addresses: through the instance's
+    // `children` slot, then `map`.
+    const tag = uniqueTag();
+    await defineElement({
+      children: [{ tagName: "slot" }],
+      state: { label: "" },
+      tagName: tag,
+    });
+
+    const paths: string[] = [];
+    const scope = await buildScope({ state: { rows: ["a", "b"] } });
+    const el = renderNode(
+      {
+        $props: { label: "menu" },
+        children: [
+          { tagName: "b", textContent: "head" },
+          {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: { tagName: "i", textContent: "${$map.item}" },
+          },
+        ],
+        tagName: tag,
+      } as never,
+      scope,
+      {
+        _path: ["children", 0],
+        onNodeCreated: (n: HTMLElement | Text, path: unknown) => {
+          if (n instanceof HTMLElement) {
+            paths.push(`${n.tagName.toLowerCase()}@${JSON.stringify(path)}`);
+          }
+        },
+      } as never,
+    );
+    const shape = () => [...el.children].map((c) => `${c.tagName.toLowerCase()}:${c.textContent}`);
+    expect(shape()).toEqual(["b:head", "i:a", "i:b"]);
+    expect(paths).toEqual([
+      `${tag}@["children",0]`,
+      'b@["children",0,"children",0]',
+      'i@["children",0,"children",1,"map",0]',
+      'i@["children",0,"children",1,"map",1]',
+    ]);
+
+    // Live: a row added later renders into the same place and reports the next index.
+    document.body.append(el);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(shape()).toEqual(["b:head", "i:a", "i:b"]);
+    (scope.rows as string[]).push("c");
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(shape()).toEqual(["b:head", "i:a", "i:b", "i:c"]);
+    expect(paths.at(-1)).toBe('i@["children",0,"children",1,"map",2]');
+    el.remove();
+  });
+
   test("observed attributes sync to state", async () => {
     const tag = uniqueTag();
     await defineElement({
@@ -349,26 +429,22 @@ describe("Custom Elements", () => {
 // ─── Phase 5: component @media via the buildScope-direct (iframe) path ────────────
 
 describe("component @media (setRootMedia seeds the iframe path)", () => {
-  test("equal-specificity cascade: base prop → stylesheet rule (not inline) + a real @media rule", () => {
-    for (const s of document.head.querySelectorAll("style")) {
-      s.remove();
-    }
+  test("equal-specificity cascade: base prop is a rule (not inline) + a real @media rule", () => {
+    resetDocumentStyles();
     const el = document.createElement("div");
-    // A base prop that is ALSO overridden under @--md routes to a stylesheet baseDecls rule (NOT
-    // Inline), so the @media rule can win at equal specificity — the whole Phase-5 premise.
+    document.body.append(el);
+    // Both declarations are rules, so the @media one wins at equal specificity by source order.
     applyStyle(el, { "@--md": { color: "blue" }, color: "red" }, { "--md": "(min-width: 768px)" });
-    expect(el.style.color).toBe(""); // No inline color.
+    expect(el.style.cssText).toBe(""); // Nothing authored is left inline.
     const jxUid = el.dataset.jx;
-    const css = (document.head.querySelector(`style[data-jx-owner="${jxUid}"]`) as HTMLStyleElement)
-      .textContent;
-    expect(css).toContain(`[data-jx="${jxUid}"] { color: red }`);
-    expect(css).toContain(`@media (min-width: 768px) { [data-jx="${jxUid}"] { color: blue } }`);
+    expect(elementCSS(el).split("\n")).toEqual([
+      `[data-jx="${jxUid}"] { color: red }`,
+      `@media (min-width: 768px) { [data-jx="${jxUid}"] { color: blue } }`,
+    ]);
   });
 
   test("a component with its own @--md and no own $media resolves the real query after setRootMedia", async () => {
-    for (const s of document.head.querySelectorAll("style")) {
-      s.remove();
-    }
+    resetDocumentStyles();
     const tag = uniqueTag();
     // The component carries an @--md block but NO own $media — it must inherit the root map.
     await defineElement({
@@ -386,9 +462,7 @@ describe("component @media (setRootMedia seeds the iframe path)", () => {
       setTimeout(r, 100);
     });
 
-    const jxUid = el.dataset.jx;
-    const css = (document.head.querySelector(`style[data-jx-owner="${jxUid}"]`) as HTMLStyleElement)
-      .textContent;
+    const css = elementCSS(el);
     // The named breakpoint resolved to its real query — NOT the invalid `@media --md`.
     expect(css).toContain("@media (min-width: 768px)");
     expect(css).not.toContain("@media --md");
@@ -583,5 +657,103 @@ describe("a reflected property name does not clobber the declared default", () =
   test("a props.* attribute still wins", async () => {
     const r = await render({ attributes: { "props.title": "FROM PROPS-ATTR" } });
     expect(r.title).toBe("FROM PROPS-ATTR");
+  });
+});
+
+// ─── The display default, now that a component's own `display` is a rule ──────
+
+describe("the custom-element display default", () => {
+  /**
+   * A custom element is `display: inline` by default and a Jx container behaves like a `<div>`, so
+   * the runtime supplies `display: block`. It goes in the element's OWN RULE, not inline: an inline
+   * declaration is beaten only by `!important`, so a consumer could not override the default
+   * without one, and the default is meant to be the weakest thing in the cascade rather than the
+   * strongest.
+   */
+  async function mount(style: Record<string, unknown>): Promise<HTMLElement> {
+    const tag = uniqueTag();
+    await defineElement({ state: {}, style, tagName: tag } as never);
+    const el = document.createElement(tag);
+    document.body.append(el);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    return el;
+  }
+
+  test("the default is a rule the author can beat, never an inline write", async () => {
+    const el = await mount({ color: "red" });
+    expect(el.style.display).toBe("");
+    expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { display: block; color: red }`);
+  });
+
+  test("a base display is left to the author", async () => {
+    const el = await mount({ display: "flex" });
+    expect({ inline: el.style.display, rule: elementCSS(el) }).toEqual({
+      inline: "",
+      rule: `[data-jx="${el.dataset.jx}"] { display: flex }`,
+    });
+  });
+
+  test("a display declared ONLY under a state or a query no longer suppresses the default", async () => {
+    /*
+     * This inverts a previous contract, deliberately. The scan was a deep one, so a `display` that
+     * exists only inside `&:hover` or a breakpoint read as "the author supplied one" — and the
+     * element was left `inline` at rest and became a block on hover. It laid out wrongly whenever
+     * it was still, which is most of the time. The base block is now the whole test, so both of
+     * these get the default AND keep their conditional declaration.
+     */
+    const queried = await mount({ "@(min-width: 40rem)": { display: "grid" } });
+    expect(elementCSS(queried)).toContain(`[data-jx="${queried.dataset.jx}"] { display: block }`);
+    expect(elementCSS(queried)).toContain("display: grid");
+
+    const hovered = await mount({ ":hover": { display: "none" } });
+    expect(elementCSS(hovered)).toContain(`[data-jx="${hovered.dataset.jx}"] { display: block }`);
+    expect(elementCSS(hovered)).toContain("display: none");
+  });
+
+  test("a keyframe stop is a timeline value and never speaks for the author", async () => {
+    // Animating `display` is the ordinary shape of an `allow-discrete` reveal. It needs no
+    // Carve-out now: only the base block is read, and a `@keyframes` block is not one.
+    const el = await mount({
+      animation: "reveal 1s",
+      "@keyframes reveal": { from: { display: "none" }, to: { display: "block" } },
+    });
+    expect(elementCSS(el)).toContain("display: block");
+
+    // …and a real declaration beside the animation still speaks for the author.
+    const declared = await mount({
+      animation: "reveal 1s",
+      display: "flex",
+      "@keyframes reveal": { from: { display: "none" }, to: { display: "flex" } },
+    });
+    expect(elementCSS(declared)).toContain("animation: reveal 1s; display: flex");
+    expect(declared.style.display).toBe("");
+  });
+
+  test("a usage site's own style survives being connected, and wins", async () => {
+    /* R1: the call site's style was applied while the element was detached and then RELEASED by
+       the definition's own `applyStyle` a moment later, so a document could not style an element
+       instance at all. Definition first, call site second. */
+    const tag = uniqueTag();
+    await defineElement({
+      state: {},
+      style: { color: "red", padding: "4px" },
+      tagName: tag,
+    } as never);
+    const host = document.createElement("div");
+    document.body.append(host);
+    await Jx(
+      { children: [{ style: { color: "blue" }, tagName: tag }], tagName: "div" } as never,
+      host,
+    );
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    const el = host.querySelector(tag) as HTMLElement;
+    const css = elementCSS(el);
+    expect(css).toContain("padding: 4px");
+    expect(css).toContain("color: blue");
+    expect(css).not.toContain("color: red");
   });
 });

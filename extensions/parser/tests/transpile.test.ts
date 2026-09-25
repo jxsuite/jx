@@ -608,6 +608,17 @@ describe("mdastNodeToJx directives", () => {
     expect(el.$props).toEqual({ count: "3", title: "Hi" });
   });
 
+  // "props" is a JX_DOLLAR_KEYS entry, so expandDotPaths renames it to "$props" whether or not it
+  // Carries a dot-path — the bare form takes the exact same route as a dotted one.
+  test("custom element: a bare props attribute (no dot-path) still lands in $props", () => {
+    const el = mdastNodeToJx({
+      attributes: { props: "literal" },
+      name: "my-counter",
+      type: "leafDirective",
+    } as MdastNode) as JxElement;
+    expect(el.$props as unknown as string).toBe("literal");
+  });
+
   test("containerDirective converts block children", () => {
     const el = mdastNodeToJx({
       children: [
@@ -973,5 +984,39 @@ describe("slugifyHeading", () => {
     for (const heading of corpus) {
       expect(slugifyHeading(heading)).toBe(legacy(heading));
     }
+  });
+});
+
+describe("overlay style keys — the states a popover in a .md component needs", () => {
+  test("popover-open, open and modal become pseudo-classes", () => {
+    expect(applyStyleKeyMapping({ "popover-open": { display: "flex" } })).toEqual({
+      ":popover-open": { display: "flex" },
+    });
+    expect(applyStyleKeyMapping({ open: { color: "red" } })).toEqual({ ":open": { color: "red" } });
+    expect(applyStyleKeyMapping({ modal: { inset: "0" } })).toEqual({ ":modal": { inset: "0" } });
+  });
+
+  test("backdrop becomes a pseudo-ELEMENT, with two colons", () => {
+    expect(applyStyleKeyMapping({ backdrop: { opacity: "1" } })).toEqual({
+      "::backdrop": { opacity: "1" },
+    });
+  });
+
+  test("both round-trip through collapseStylePaths", () => {
+    const style = { "::backdrop": { opacity: "1" }, ":popover-open": { display: "flex" } };
+    expect(collapseStylePaths(style)).toEqual({
+      "backdrop.opacity": "1",
+      "popover-open.display": "flex",
+    });
+    const roundTripped = expandDotPaths(collapseStylePaths(style));
+    expect(applyStyleKeyMapping(roundTripped)).toEqual(style);
+  });
+
+  test("an unmapped key stays bare — which is why the mapping had to exist", () => {
+    // Before these names were known, `collectStyles` read the bare key as a descendant TYPE
+    // Selector and emitted `#panel popover-open { … }`: a rule matching nothing, silently.
+    expect(applyStyleKeyMapping({ "not-a-pseudo": { x: "1" } })).toEqual({
+      "not-a-pseudo": { x: "1" },
+    });
   });
 });

@@ -13,6 +13,8 @@ export { createToolDefinition, createToolRegistry } from "./tools.js";
 
 export { createChatState } from "./chat-state.js";
 
+export type { ChatUsage } from "./chat-state.js";
+
 export {
   STREAM_EVENT_TYPES,
   createOpenAIStreamingClient,
@@ -28,8 +30,10 @@ export type {
   StreamDoneEvent,
   StreamErrorEvent,
   StreamEvent,
+  StreamReasoningEvent,
   StreamingClient,
   StreamToolCallDeltaEvent,
   StreamToolCallEndEvent,
   StreamToolCallStartEvent,
+  StreamUsageEvent,
 } from "./streaming-client.js";

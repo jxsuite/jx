@@ -2,8 +2,10 @@
 title: "Project settings"
 description: "Project configuration in Jx Studio is a document you edit, undo and save: overview, contexts, head, variables, definitions, packages, extensions, deploy."
 spec:
+  - studio.md#9.4
   - studio.md#17
 code:
+  - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/settings/settings-document.ts
   - packages/studio/src/panels/settings-menu.ts
   - packages/studio/src/settings/section-registry.ts
@@ -16,7 +18,11 @@ code:
   - packages/studio/src/settings/defs-editor.ts
   - packages/studio/src/settings/dependencies-editor.ts
   - packages/studio/src/settings/extension-sections.ts
+  - packages/studio/src/settings/extensions-section.ts
+  - packages/studio/src/settings/extension-rows.ts
+  - packages/studio/src/settings/extension-commands.ts
   - packages/studio/src/panels/settings-pane.ts
+  - packages/studio/src/surfaces/settings-pane.ts
   - packages/studio/src/tabs/project-config.ts
 ---
 
@@ -24,7 +30,7 @@ code:
 
 Everything that applies to your whole site rather than one page (the name, the favicon, the fonts, the design tokens, the packages) lives in your project's configuration. In Studio that configuration is **a document**: it opens as a tab in the pane, with its sections listed down the left, and you edit, undo and save it exactly as you would a page.
 
-Open it from the **Settings** menu at the foot of the rail: **Open Project Settings**, whose submenu lists every section so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.) Click a section on the left to move between them; the section you were last on is where you land next time.
+Open it from the **Settings** menu at the foot of the rail: **Open Project Settings**, whose submenu lists every section so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.) Click a section on the left to move between them, or reach the list with :kbd[⇥] and walk it with :kbd[↑] and :kbd[↓]; the section you were last on is where you land next time.
 
 ![Project settings open on the Overview section, with the section list on the left](../../images/settings-document.png)
 
@@ -36,6 +42,7 @@ The tab you are editing is `project.json`, the file at the root of your project 
 - **A mistake is undoable.** Every change is recorded as a step, so :kbd[⌘Z] takes back the last one. Undoing leaves the document with unsaved changes, so press :kbd[⌘S] to write the value you went back to.
 - **A failed write is visible.** If the file cannot be written (a read-only project, a full disk, a backend that has gone away), the change is not quietly dropped. Studio raises a problem naming `project.json` in the [Problems list](/docs/studio/interface/problems-and-progress), and the document stays marked unsaved so :kbd[⌘S] is the retry.
 - **An edit that changes nothing writes nothing.** Re-committing a field's existing value leaves the file untouched, so your project's diff only ever shows what you actually changed.
+- **An edit that changes one field changes one line.** The file is written back in the layout it was read in, the same way [every document is saved](/docs/studio/interface/tabs#studio-saves-only-when-you-do), so a `project.json` your formatter keeps tidy stays tidy through a settings change, and through the :kbd[⌘S] that follows an undo: the form and the tab write the same bytes. When the [assistant](/docs/studio/ai/chat) rewrites `project.json`, the layout it wrote is the one the next settings change keeps.
 
 :::doc-tip
 Because it is one document, the same tab can be read three ways: this form, [Project Styles](/docs/studio/design/stylebook) for design tokens and element defaults, and the Code editor for the raw file. All three share one undo history and one unsaved-changes flag.
@@ -106,7 +113,19 @@ Adding packages and choosing which of their components your site uses is covered
 
 ## Extensions
 
-The packages this project loads as extensions. An extension can contribute formats, elements, data connectors, and settings sections of its own. Type a package name and press :kbd[Enter] or click **Add** to switch one on; the delete button beside a name removes it. The section list beside this one updates as soon as the change is saved, so a section an extension contributes appears without reloading Studio.
+Extensions add what Jx does not do on its own: content collections, site search, feeds, sign-ins and databases. Each one is a row with a switch, and the switch is the whole gesture.
+
+- **Available** lists what your setup can run. Turning one on installs its package first if you do not have it, then enables it. The row says so before you click.
+- **Installed** lists extensions already among your project's dependencies, including any third-party ones.
+- **Named in project.json** lists anything your configuration asks for that Studio could not describe. You can still turn those off, which is what you usually want.
+
+Each row names the settings sections the extension owns. Those sections appear beside this one as soon as the change is saved, so a section an extension contributes shows up without reloading Studio, and disappears again when you turn it off.
+
+**Turning an extension off leaves its package installed.** Turning it back on is then instant, and nothing about your pinned version changes. To remove the package itself, use the delete button on its row, which is offered only once the extension is off: deleting the package while your configuration still names it would break the next build.
+
+:::doc-note
+An extension has to be two things at once: a dependency your project has installed, and a name in your configuration. That is why the switch does both. If a row warns that an extension is named but not installed, turning it off and on again installs it.
+:::
 
 ## Deploy
 
@@ -132,3 +151,23 @@ Every section edits `project.json` at the root of your project, the same file th
 
 - **[Content types](/docs/studio/projects/content-types)**: model your content in the Content Types section
 - **[Dependencies and imports](/docs/studio/projects/dependencies)**: packages and component imports in depth
+  - packages/studio/src/surfaces/settings-overview.json
+  - packages/studio/src/surfaces/settings-overview.ts
+  - packages/studio/src/surfaces/settings-contexts.json
+  - packages/studio/src/surfaces/settings-contexts.ts
+  - packages/studio/src/surfaces/settings-head.json
+  - packages/studio/src/surfaces/settings-head.ts
+  - packages/studio/src/surfaces/settings-locales.json
+  - packages/studio/src/surfaces/settings-locales.ts
+  - packages/studio/src/surfaces/settings-deploy.json
+  - packages/studio/src/surfaces/settings-deploy.ts
+  - packages/studio/src/surfaces/settings-rawjson.json
+  - packages/studio/src/surfaces/settings-rawjson.ts
+  - packages/studio/src/surfaces/settings-css-vars.json
+  - packages/studio/src/surfaces/settings-css-vars.ts
+  - packages/studio/src/surfaces/settings-extensions.json
+  - packages/studio/src/surfaces/settings-extensions.ts
+  - packages/studio/src/surfaces/settings-packages.json
+  - packages/studio/src/surfaces/settings-packages.ts
+  - packages/studio/src/surfaces/settings-defs.json
+  - packages/studio/src/surfaces/settings-defs.ts

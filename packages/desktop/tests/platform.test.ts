@@ -3,6 +3,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { StudioPlatform } from "@jxsuite/studio/types";
+import { KIT_TAGS } from "@jxsuite/ui/documents";
 
 try {
   GlobalRegistrator.register();
@@ -188,6 +189,33 @@ describe("RPC setup", () => {
     expect(() => handler({ settings: { a: "1" } })).not.toThrow();
   });
 
+  /**
+   * The studio sidebar's live-sync subscriber. `fileChanged` (above) is a single-path notice for
+   * canvas asset resolution; `onFileEvents` is the batch of filesystem changes the sidebar redraws
+   * from, and it is a different wire message with its own subscriber seam.
+   */
+  test("onFileEvents reaches the sidebar's live-sync subscriber until it unsubscribes", () => {
+    const handler = capturedRpcConfig!.handlers.messages.onFileEvents as (p: {
+      events: { type: string; path: string; isDir: boolean }[];
+    }) => void;
+    const seen: { type: string; path: string; isDir: boolean }[][] = [];
+    const unsubscribe = platform.subscribeFileEvents!((events) => seen.push(events));
+
+    handler({ events: [{ isDir: false, path: "pages/index.json", type: "change" }] });
+    expect(seen).toEqual([[{ isDir: false, path: "pages/index.json", type: "change" }]]);
+
+    unsubscribe();
+    handler({ events: [{ isDir: false, path: "pages/other.json", type: "change" }] });
+    expect(seen).toHaveLength(1);
+  });
+
+  test("an onFileEvents message with no subscriber is not an error", () => {
+    const handler = capturedRpcConfig!.handlers.messages.onFileEvents as (p: {
+      events: { type: string; path: string; isDir: boolean }[];
+    }) => void;
+    expect(() => handler({ events: [] })).not.toThrow();
+  });
+
   test("fileChanged message handler runs without error", () => {
     const handler = capturedRpcConfig!.handlers.messages.fileChanged as (p: {
       path: string;
@@ -195,22 +223,98 @@ describe("RPC setup", () => {
     expect(() => handler({ path: "some/file.json" })).not.toThrow();
   });
 
-  test("updateReady message shows toast and restart button triggers applyUpdate", () => {
+  /**
+   * Raise one update notice and hand back the wrapper it appended.
+   *
+   * The newest, not the first: a test that leaves its own notice up would otherwise hand the next
+   * one somebody else's DOM, and every assertion below would still pass while measuring the wrong
+   * toast.
+   */
+  function raiseUpdateToast(version: string): HTMLElement {
     const handler = capturedRpcConfig!.handlers.messages.updateReady as (p: {
       version: string;
     }) => void;
-    handler({ version: "9.9.9" });
+    handler({ version });
+    const raised = [...document.body.querySelectorAll(".update-toast-container")].at(-1);
+    expect(raised).toBeDefined();
+    return raised as HTMLElement;
+  }
 
-    const container = document.body.querySelector(".update-toast-container");
-    expect(container).not.toBeNull();
-    expect(container!.textContent).toContain("9.9.9");
+  test("updateReady raises a kit toast whose recovery control triggers applyUpdate", () => {
+    const container = raiseUpdateToast("9.9.9");
+    expect(container.textContent).toContain("9.9.9");
 
+    const host = container.querySelector("jx-toast-host");
+    expect(host).not.toBeNull();
+    const toast = host!.querySelector("jx-toast");
+    expect(toast).not.toBeNull();
+    expect(toast!.hasAttribute("open")).toBe(true);
+    expect(toast!.getAttribute("variant")).toBe("info");
+
+    /* The recovery control is reachable by the slot the toast projects it through, which is the
+       whole of what a consumer promises the element: `jx-toast` draws its own dismiss button and
+       hosts exactly one control in `action`. This assertion stood as `querySelector("sp-button")`
+       and is re-authored rather than dropped — it is the same contract, addressed the kit's way. */
     const before = callsFor("updaterApplyUpdate").length;
-    const button = container!.querySelector("sp-button");
-    expect(button).not.toBeNull();
-    button!.dispatchEvent(new Event("click", { bubbles: true }));
+    const action = toast!.querySelector('[slot="action"]');
+    expect(action).not.toBeNull();
+    expect(action!.textContent).toContain("Restart to update");
+    action!.dispatchEvent(new Event("click", { bubbles: true }));
     expect(callsFor("updaterApplyUpdate").length).toBe(before + 1);
-    container!.remove();
+    container.remove();
+  });
+
+  /**
+   * An update nobody has answered is not an outcome that may retire itself, and `F8` belongs to
+   * Studio's own stack — two hosts in one document would each answer the press with their own first
+   * control and the reader would land wherever the last listener ran.
+   */
+  test("the notice is sticky and leaves the stack's hotkey to Studio", () => {
+    const container = raiseUpdateToast("1.2.3");
+    const host = container.querySelector("jx-toast-host")!;
+    expect(host.getAttribute("hotkey")).toBe("");
+    expect(host.getAttribute("live")).toBe("polite");
+    expect(container.querySelector("jx-toast")!.getAttribute("timeout")).toBe("0");
+    container.remove();
+  });
+
+  /**
+   * `close` is dispatched only when the element itself decided (ui.md §5.2), so the wrapper can
+   * follow it without ever answering a removal this code performed. Without this the body collects
+   * one dead wrapper per update message for the rest of the session.
+   */
+  test("the wrapper leaves with the toast it held", () => {
+    const container = raiseUpdateToast("4.5.6");
+    expect(container.isConnected).toBe(true);
+    container
+      .querySelector("jx-toast")!
+      .dispatchEvent(new CustomEvent("close", { bubbles: true, detail: { reason: "dismissed" } }));
+    expect(container.isConnected).toBe(false);
+  });
+
+  /**
+   * The tag names, held to the kit that defines them.
+   *
+   * This webview never registers an element of its own: `<sp-toast>` worked because the studio
+   * bundle happened to register Spectrum, and nothing in this package declared that or would have
+   * gone red when it stopped being true — which is how this call site became the last Spectrum
+   * consumer in the repository. The `@jxsuite/ui` devDependency exists so this assertion can read
+   * the kit's own list rather than a copy of it. It buys no CI routing that was missing: a kit
+   * change already reached this suite through `@jxsuite/studio`, which depends on the kit — the run
+   * was there all along and simply had nothing to say about the tag names.
+   */
+  test("every custom element the notice writes is one the kit defines", () => {
+    const container = raiseUpdateToast("7.8.9");
+    const tags = new Set(
+      [...container.querySelectorAll("*")]
+        .map((element) => element.tagName.toLowerCase())
+        .filter((tag) => tag.includes("-")),
+    );
+    expect(tags.size).toBeGreaterThan(0);
+    for (const tag of tags) {
+      expect(KIT_TAGS).toContain(tag);
+    }
+    container.remove();
   });
 });
 
@@ -462,6 +566,7 @@ describe("platform methods", () => {
     ],
     ["listFormats", [], "listFormats", undefined],
     ["listExtensions", [], "listExtensions", undefined],
+    ["listExtensionCatalog", [], "listExtensionCatalog", undefined],
     ["fetchProjectSchemas", [], "fetchProjectSchemas", undefined],
     [
       "formatAction",
@@ -585,6 +690,19 @@ describe("platform methods", () => {
       expect(result).toEqual({ method: rpcMethod, ok: true });
     });
   }
+
+  /* The full PAL union accepts a `repo` destination too (the cloud backends), but this build
+     scaffolds onto disk — `createDestination: "path"` above is what actually stops Studio sending
+     one; this is the backend's own refusal if that ever got past it. */
+  test("createProject refuses a repo destination — this app scaffolds to disk only", async () => {
+    await expect(
+      platform.createProject({
+        destination: { kind: "repo", owner: "acme", private: false, repo: "site" },
+        directory: "p",
+        name: "p",
+      }),
+    ).rejects.toThrow("The desktop app creates projects on disk; repo destinations are cloud-only");
+  });
 
   // The RPC transport JSON-serializes params, so a File/Blob would arrive as `{}`. The platform
   // Base64-encodes binary before the call; a string (already base64) passes through untouched.
@@ -841,17 +959,41 @@ describe("activate() initial asset sweep", () => {
     preImg.remove();
   });
 
-  test("does not throw and leaves relative imgs untouched when canvasUrl is null", async () => {
+  test("does not throw and leaves relative imgs and background-images untouched when canvasUrl is null", async () => {
     platform.canvasUrl = undefined;
     const preImg = document.createElement("img");
     preImg.setAttribute("src", "/images/none.png");
     document.body.append(preImg);
+    // A styled element mounted before activate() resolves: resolveBackgroundImage runs during the
+    // Same synchronous sweep, and with no origin yet it must leave the url() alone too.
+    const preBg = document.createElement("div");
+    preBg.style.backgroundImage = "url(/images/none-bg.png)";
+    document.body.append(preBg);
 
     impls.set("getCanvasUrl", () => ({ canvasUrl: null }));
     const result = await platform.activate();
     expect(result).toBeUndefined();
     // LoopbackOrigin() is null => the sweep is skipped and the relative src stays put.
     expect(preImg.getAttribute("src")).toBe("/images/none.png");
+    expect(preBg.style.backgroundImage).toContain("none-bg.png");
+    expect(preBg.style.backgroundImage).not.toContain(LOOPBACK);
+    preImg.remove();
+    preBg.remove();
+  });
+
+  /* A malformed canvasUrl (a corrupt RPC reply, not merely an absent one) makes `new URL()` throw
+     inside loopbackOrigin's own try/catch — a distinct path from the "not resolved yet" null case
+     above, which never calls `new URL()` at all. */
+  test("a malformed canvasUrl also leaves relative imgs untouched, rather than throwing", async () => {
+    platform.canvasUrl = undefined;
+    const preImg = document.createElement("img");
+    preImg.setAttribute("src", "/images/malformed.png");
+    document.body.append(preImg);
+
+    impls.set("getCanvasUrl", () => ({ canvasUrl: "http://[not-a-valid-host" }));
+    const result = await platform.activate();
+    expect(result).toBeUndefined();
+    expect(preImg.getAttribute("src")).toBe("/images/malformed.png");
     preImg.remove();
   });
 

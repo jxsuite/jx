@@ -1,0 +1,35 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Halfway"
+    },
+    {
+      "type": "tool_call_start",
+      "id": "call_R",
+      "name": "set_text"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_R",
+      "args": "{\"path\""
+    },
+    {
+      "message": "Stream error: connection reset by peer",
+      "problem": {
+        "status": 502,
+        "title": "An upstream service failed",
+        "type": "https://jxsuite.com/problems/upstream-failure",
+        "detail": "Stream error: connection reset by peer",
+        "error": "Stream error: connection reset by peer"
+      },
+      "type": "error"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

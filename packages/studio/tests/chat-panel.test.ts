@@ -19,14 +19,16 @@ import { initShellRefs } from "../src/store";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 import { setPendingAgentPrompt } from "../src/services/agent-seed";
 import { shell } from "../src/shell";
-import { inspectorTab } from "../src/panels/right-panel";
+import { inspectorTab, setInspectorTab } from "../src/panels/right-panel";
 
 // Chat-panel hosts ai-panel, which instantiates a document assistant at module load. Mock it
 // (before the dynamic import below) so no send ever touches the network.
 const assistantChatState = reactive({
+  contextWarning: false,
   error: null as string | null,
   messages: [] as { role: string; content: string }[],
   status: "idle" as "idle" | "streaming" | "error",
+  tokenCount: 0,
 });
 const assistantSend = mock(async (_text: string) => {});
 void mock.module("../src/services/document-assistant", () => ({
@@ -34,6 +36,8 @@ void mock.module("../src/services/document-assistant", () => ({
     activeSessionId: () => null,
     chatState: assistantChatState,
     deleteSession: () => {},
+    isTurnActive: () => assistantChatState.status === "streaming",
+    whenTurnEnds: () => Promise.resolve(),
     listSessions: () => [],
     newChat: () => {},
     openSession: () => {},
@@ -55,14 +59,17 @@ void mock.module("../src/services/ai-models", () => ({
   resetModelCache: () => {},
   isManagedProxy: () => false,
   isProxyConfigured: () => false,
+  modelContextWindow: () => {},
+  modelToolSupport: () => {},
   // Every named export ai-managed-connect.ts imports must be here: a partial mock.module() of a
   // Module someone else imports is a SyntaxError at link time, not a missing stub at call time.
   proxyStateCode: () => {},
+  proxyModelsErrorMessage: () => "",
 }));
 
 const { mount, render, unmount } = await import("../src/panels/chat-panel");
 
-// The ai-panel render loop and the pending-prompt seed defer via requestAnimationFrame.
+// The pending-prompt seed and `assistant.focus` both defer via requestAnimationFrame.
 const origRaf = globalThis.requestAnimationFrame;
 (globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
   cb: FrameRequestCallback,
@@ -105,31 +112,35 @@ afterEach(() => {
 });
 
 describe("chat panel", () => {
+  /* The surface document binds on the FIRST SHOW of the Assistant tab, so these render tests
+     select the tab the way the strip does (`setInspectorTab`) before asking for its body. */
   test("renders the chat with no tab and no project, offering the settings action", async () => {
     mount(chatHost());
+    setInspectorTab("assistant");
     await flush(4);
     const container = chatHost().querySelector(".ai-panel-host") as HTMLElement;
     expect(container).toBeTruthy();
     // No key stored and no configured proxy → still a chat, with the setup action beneath it.
     // The credentials form itself lives in Preferences › Assistant, not in this tab.
-    expect(container.querySelector(".ai-creds-form")).toBeNull();
-    expect(container.querySelector(".ai-chat-header")).toBeTruthy();
-    expect(container.querySelector(".ai-setup-notice")).toBeTruthy();
+    expect(container.querySelector('[part="ai-creds-form"]')).toBeNull();
+    expect(container.querySelector('[part="header"]')).toBeTruthy();
+    expect(container.querySelector('[part="setup"]')).toBeTruthy();
   });
 
   test("renders the chat view once a key exists, with or without an open tab", async () => {
     seedSettings({ "jx.ai.openaiKey": "sk-test" });
     mount(chatHost());
+    setInspectorTab("assistant");
     render();
     await flush(4);
     const container = chatHost().querySelector(".ai-panel-host") as HTMLElement;
-    expect(container.querySelector(".ai-chat-header")).toBeTruthy();
+    expect(container.querySelector('[part="header"]')).toBeTruthy();
 
     // Opening a document changes nothing about the panel's availability.
     resetWorkspaceWithTab();
     render();
     await flush(4);
-    expect(container.querySelector(".ai-chat-header")).toBeTruthy();
+    expect(container.querySelector('[part="header"]')).toBeTruthy();
   });
 
   test("consumes a pending agent prompt when the workspace adopts its project root", async () => {
@@ -163,7 +174,7 @@ describe("chat panel", () => {
     mount(host);
     await flush(2);
     const container = host.querySelector(".ai-panel-host");
-    mount(host); // Same host → keeps the existing container (single lit part cache).
+    mount(host); // Same host → keeps the existing container, and the document standing in it.
     expect(host.querySelector(".ai-panel-host")).toBe(container);
 
     unmount();
@@ -184,5 +195,17 @@ describe("chat panel", () => {
 
   test("a mount with no host is inert", () => {
     expect(() => mount(null)).not.toThrow();
+  });
+
+  test("an unmount that races the mount leaves nothing standing", async () => {
+    /* `mountSurface` settles a turn later, so a tab torn down in the same tick it was built hands
+       the runtime a document nobody wants. It is disposed on arrival rather than left running
+       against a container that has gone. */
+    const host = chatHost();
+    mount(host);
+    unmount();
+    await flush(4);
+    expect(host.querySelector(".ai-panel-host")).toBeNull();
+    expect(host.textContent).toBe("");
   });
 });

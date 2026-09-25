@@ -1,0 +1,218 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGridCell",
+  "$description": "The value picker for a grid cell that cannot be edited in place. An image and a relationship both pick from a list that is bigger than a cell, and their pickers render OUTSIDE it \u2014 which Tabulator's range module reads as an outside interaction and blur-cancels. So these two kinds skip the in-cell editor session entirely: a double click opens this panel, anchored on the cell, and every pick writes straight through the edit buffer. The media picker is an ISLAND (\u00a79.4): `[part=\"picker-host\"]` is drawn empty and `ui/media-picker.ts` mounts `media-field.json` into it. It stays an island now that it is a document too, because what goes in the box is the caller's decision rather than this panel's.",
+  "tagName": "jx-popover",
+  "attributes": {
+    "part": "cell-panel"
+  },
+  "$props": {
+    "label": "${state.title}",
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "var(--jx-space-2)",
+        "padding": "var(--jx-space-3)",
+        "minWidth": "260px",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)",
+        "color": "var(--fg)",
+        "& [part=\"title\"]": {
+          "fontWeight": "600",
+          "fontSize": "var(--jx-text-sm)",
+          "margin": "0"
+        },
+        "& [part=\"hint\"]": {
+          "margin": "0",
+          "color": "var(--fg-dim)",
+          "fontSize": "var(--jx-text-xs)"
+        },
+        "& [part=\"actions\"]": {
+          "display": "flex",
+          "justifyContent": "flex-end"
+        },
+        "& [part=\"picker-host\"]": {
+          "display": "block",
+          "minWidth": "0"
+        }
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "title"
+          },
+          "textContent": "${state.title}"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "kind-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/kind"
+          },
+          "cases": {
+            "reference": {
+              "tagName": "div",
+              "attributes": {
+                "part": "reference"
+              },
+              "style": {
+                "display": "flex",
+                "flexDirection": "column",
+                "gap": "var(--jx-space-2)"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "hint-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hintState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "hint"
+                      },
+                      "textContent": "${state.hint}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "entry"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "${state.title}",
+                    "options": {
+                      "$ref": "#/state/options"
+                    },
+                    "value": {
+                      "$ref": "#/state/value"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/pick"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "$description": "An id the target collection does not hold is still a legal reference \u2014 a draft entry, or one another repository owns \u2014 so the list is a shortcut rather than the whole of what may be written.",
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "custom"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Custom id",
+                    "placeholder": "Custom id\u2026",
+                    "value": {
+                      "$ref": "#/state/custom"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/pick"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "image": {
+              "tagName": "div",
+              "attributes": {
+                "part": "picker-host"
+              }
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "actions"
+          },
+          "children": [
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "done"
+              },
+              "$props": {
+                "variant": "secondary",
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/done"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Done"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

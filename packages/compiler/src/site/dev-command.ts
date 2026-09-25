@@ -2,8 +2,10 @@
  * Dev command — `jx dev` resolves the project's @jxsuite/server dev entry and spawns it under Bun.
  *
  * The compiler cannot depend on @jxsuite/server (the server already depends on the compiler), and
- * the dev server is Bun-native while the jx bin runs under Node — so the command is pure resolution
- * + spawn: the entry module is resolved from the PROJECT's node_modules and executed with Bun.
+ * the dev server is Bun-native while the jx bin runs under Node — so the command is pure
+ * resolution
+ *
+ * - Spawn: the entry module is resolved from the PROJECT's node_modules and executed with Bun.
  *
  * @module dev-command
  */

@@ -481,6 +481,11 @@ describe("export mode — uncovered branches", () => {
     expect(content.trim()).toBe("");
   });
 
+  test("innerHTML table with no rows yields nothing", () => {
+    const content = exportMd({ children: [{ innerHTML: "<table></table>", tagName: "div" }] });
+    expect(content.trim()).toBe("");
+  });
+
   test("innerHTML link with empty text uses decoded inner", () => {
     const content = exportMd({
       children: [{ innerHTML: '<p><a href="https://x.com"></a></p>', tagName: "div" }],

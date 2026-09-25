@@ -132,7 +132,11 @@ describe("ai-system-prompt — state-aware modes", () => {
     expect(prompt).toContain("no document is on the canvas");
     expect(prompt).toContain("- list_files(");
     expect(prompt).toContain("- write_file(");
-    expect(prompt).toContain("- open_document(");
+    /* `open_document` is no longer a hand row: it is the projection of `document.open`, so it
+       reaches the prompt through `commandTools` (the next block) and not through the tier table.
+       The workflow prose still names it, so the model is steered to a tool the record advertises. */
+    expect(prompt).not.toContain("- open_document(");
+    expect(prompt).toContain("Use open_document only when");
     expect(prompt).not.toContain("- create_project(");
     expect(prompt).not.toContain("- set_property(");
   });
@@ -162,19 +166,121 @@ describe("ai-system-prompt — state-aware modes", () => {
 });
 
 describe("ai-system-prompt — tool-table/gating consistency", () => {
-  test("AI_TOOL_TIERS names exactly match the registered tools", async () => {
+  test("the prompt names the extensions the project has enabled", () => {
+    // BuildProjectSummary has always received `extensions` and dropped it, so a model working in a
+    // Parser project was never told parser was on.
+    const prompt = buildSystemPrompt({
+      projectConfig: { extensions: ["@jxsuite/parser"], name: "Site" },
+      projectRoot: "/site",
+    });
+    expect(prompt).toContain("Extensions enabled: @jxsuite/parser");
+  });
+
+  test("the catalogue lists each entry with what it contributes, marking the enabled ones", () => {
+    const prompt = buildSystemPrompt({
+      extensionCatalog: [
+        {
+          description: "File-based content collections",
+          name: "@jxsuite/parser",
+          sections: ["content"],
+          title: "Content & Markdown",
+        },
+        { name: "@jxsuite/feed", sections: ["feed"], title: "Feeds" },
+      ],
+      projectConfig: { extensions: ["@jxsuite/parser"], name: "Site" },
+      projectRoot: "/site",
+    });
+    expect(prompt).toContain("@jxsuite/parser — Content & Markdown.");
+    expect(prompt).toContain("Contributes: content.");
+    expect(prompt).toContain("[enabled]");
+    // The one that is NOT enabled must not be marked.
+    expect(prompt).toContain("@jxsuite/feed — Feeds. Contributes: feed.");
+    expect(prompt.split("@jxsuite/feed")[1]?.split("\n")[0]).not.toContain("[enabled]");
+  });
+
+  test("the guidance names capabilities, and only when there is a catalogue", () => {
+    const withCatalog = buildSystemPrompt({
+      extensionCatalog: [{ name: "@jxsuite/parser", sections: ["content"] }],
+      projectConfig: { name: "Site" },
+      projectRoot: "/site",
+    });
+    expect(withCatalog).toContain("schema error");
+    expect(withCatalog).toContain("fails the build");
+    // Capabilities, never packages: the mapping is the entry's own description.
+    expect(withCatalog).toContain("a blog or any folder of Markdown");
+
+    const without = buildSystemPrompt({ projectConfig: { name: "Site" }, projectRoot: "/site" });
+    expect(without).not.toContain("Extensions available.");
+  });
+
+  test("a long catalogue is capped and says how much it dropped", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      name: `@acme/ext-${i}`,
+      sections: [`s${i}`],
+    }));
+    const prompt = buildSystemPrompt({
+      extensionCatalog: many,
+      projectConfig: { name: "Site" },
+      projectRoot: "/site",
+    });
+    expect(prompt).toContain("@acme/ext-19");
+    expect(prompt).not.toContain("@acme/ext-20");
+    expect(prompt).toContain("and 10 more");
+  });
+
+  test("neither block appears without a project", () => {
+    const prompt = buildSystemPrompt({
+      extensionCatalog: [{ name: "@jxsuite/parser", sections: ["content"] }],
+      hasProject: false,
+      projectConfig: { extensions: ["@jxsuite/parser"], name: "Site" },
+    });
+    expect(prompt).not.toContain("Extensions available.");
+    expect(prompt).not.toContain("Extensions enabled:");
+  });
+
+  /*
+   * Parity, in BOTH directions, with counts. The assistant's tools are two kinds: the hand-registered
+   * ones (`AI_TOOL_TIERS` is their table) and the projections of every command record that declares
+   * `aiTool` (`services/ai-command-tools.ts` is their view). The hand names must be exactly the
+   * tier table; the projected names must be exactly the declarations; the two sets must be
+   * disjoint; and the composite must hold their sum — the count matters because
+   * `ToolRegistry.register` only `console.warn`s on a duplicate name, so a hand tool that shadowed
+   * a projection would otherwise vanish quietly.
+   */
+  test("hand tools are the tier table, projected tools are the declarations, and the two are disjoint", async () => {
     const { AI_TOOL_TIERS } = await import("../src/services/ai-system-prompt");
     const { createToolRegistry } = await import("@jxsuite/ai");
     const { registerAiTools } = await import("../src/services/ai-tools");
     const { registerProjectTools } = await import("../src/services/ai-project-tools");
     const { registerAskTool } = await import("../src/services/ai-ask");
     const { registerImportTools } = await import("../src/services/ai-import-tools");
+    const { composeToolRegistries, createCommandToolRegistry } =
+      await import("../src/services/ai-command-tools");
+    const { appCommandSet } = await import("../src/commands/app-commands");
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { makeContext } = await import("../src/commands/context");
+    const { setActiveRegistry } = await import("../src/commands/active-registry");
+    const { setExtensionCatalog } = await import("../src/format/format-host");
+    const { setProjectState } = await import("../src/store");
 
-    const registry = createToolRegistry();
-    registerAskTool(registry);
-    registerImportTools(registry, { getTab: () => null });
-    registerAiTools(registry, { getTab: () => null, validate: async () => [] });
-    registerProjectTools(registry, {
+    /* A project with an enabled extension and a catalogue behind it, so the two derived enums
+       (`enable_extension`'s catalogue, `disable_extension`'s enabled set) are non-empty: a record
+       whose required enum is empty is withheld from the round, and this test is about the full
+       set the declarations project, not about that rule. */
+    setExtensionCatalog([
+      { name: "@jxsuite/parser", sections: [{ key: "content" }], source: "first-party" },
+    ]);
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      projectConfig: { extensions: ["@jxsuite/parser"] },
+    } as never);
+
+    const hand = createToolRegistry();
+    registerAskTool(hand);
+    registerImportTools(hand, { getTab: () => null });
+    registerAiTools(hand, { getTab: () => null, validate: async () => [] });
+    registerProjectTools(hand, {
       adoptProject: async () => {},
       findOpenTab: () => null,
       getTab: () => null,
@@ -182,9 +288,58 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
       validate: async () => [],
     });
 
-    const registered = new Set(registry.list().map((t) => t.name));
-    const tiered = new Set(AI_TOOL_TIERS.map((t) => t.name));
-    expect([...registered].toSorted()).toEqual([...tiered].toSorted());
+    /* A permissive context — everything open, a spliceable selection on the canvas — so every
+       projected record's gate holds and the view lists them all. */
+    const registry = createCommandRegistry({
+      getContext: () =>
+        makeContext({
+          document: { open: true },
+          editor: { kind: "canvas" },
+          project: { isMultilingual: true, isRepo: true, isSite: true, open: true },
+          selection: { count: 1, paths: [["children", 0]] },
+        }),
+    });
+    registry.registerAll(appCommandSet());
+    setActiveRegistry(registry);
+    try {
+      const commands = createCommandToolRegistry({ getTab: () => null, validate: async () => [] });
+      const composite = composeToolRegistries(hand, commands);
+
+      const handNames = new Set(hand.list().map((t) => t.name));
+      const tiered = new Set(AI_TOOL_TIERS.map((t) => t.name));
+      expect([...handNames].toSorted()).toEqual([...tiered].toSorted());
+
+      const projectedNames = new Set(commands.list().map((t) => t.name));
+      const declared = new Set(appCommandSet().flatMap((c) => (c.aiTool ? [c.aiTool.name] : [])));
+      expect([...projectedNames].toSorted()).toEqual([...declared].toSorted());
+
+      expect([...handNames].filter((name) => projectedNames.has(name))).toEqual([]);
+      expect(composite.list()).toHaveLength(handNames.size + projectedNames.size);
+      // The counts the design was measured against: 19 hand rows, 9 projected records; then
+      // `open_document` crossed from hand to record and `set_canvas_mode` was projected (#334).
+      expect(handNames.size).toBe(18);
+      expect(projectedNames.size).toBe(11);
+    } finally {
+      setActiveRegistry(null);
+      setProjectState(null);
+      setExtensionCatalog([]);
+    }
+  });
+
+  test("the command-projected blurbs render under every workflow heading, and only when passed", () => {
+    const line = "delete_node(paths) — Delete elements from the document as one undoable step.";
+    const document = { children: [], tagName: "x-a" } as unknown as JxMutableNode;
+    const states = [
+      buildSystemPrompt({ commandTools: [line], hasProject: false }),
+      buildSystemPrompt({ commandTools: [line], hasProject: true }),
+      buildSystemPrompt({ commandTools: [line], document, hasProject: true }),
+    ];
+    for (const prompt of states) {
+      expect(prompt).toContain(`- ${line}`);
+      // After the hand tools, under the same heading — one list, not a second one.
+      expect(prompt.indexOf("- ask_user(")).toBeLessThan(prompt.indexOf(`- ${line}`));
+    }
+    expect(buildSystemPrompt({ document, hasProject: true })).not.toContain("delete_node(");
   });
 });
 
@@ -198,14 +353,15 @@ describe("the agent's gate is the human's gate", () => {
    * agent was advertised `remove_node` and `move_node` and executed them against the file that
    * defines the project, while the person's `delete_node` was refused.
    *
-   * `remove_node` self-refuses only the document ROOT (`path.length < 2`), which is a weaker test
+   * `remove_node` self-refused only the document ROOT (`path.length < 2`), which is a weaker test
    * than `structurallyEditable`, so a repeater template or a `$switch` case was removable by the
-   * agent and not by the person.
+   * agent and not by the person. It is gone: deletion is `delete_node`, the projection of
+   * `selection.delete` itself, so there is no second predicate left to drift. The seven hand
+   * writers below remain, because each addresses a node by PATH with no command twin.
    */
   const TREE_WRITERS = [
     "add_child",
     "move_node",
-    "remove_node",
     "set_property",
     "set_style",
     "set_text",
@@ -221,6 +377,20 @@ describe("the agent's gate is the human's gate", () => {
     }
     // Reading a document you cannot restructure is still perfectly sensible.
     expect(tierOf.get("read_document")).toBe("document");
+    // And the structural pair is not in this table at all: they are selection-level RECORDS.
+    expect(tierOf.has("remove_node")).toBe(false);
+    expect(tierOf.has("delete_node")).toBe(false);
+  });
+
+  test("delete_node and duplicate_node are projections of selection-level records", async () => {
+    const { appCommandSet } = await import("../src/commands/app-commands");
+    const byTool = new Map(
+      appCommandSet().flatMap((c) => (c.aiTool ? [[c.aiTool.name, c] as const] : [])),
+    );
+    expect(byTool.get("delete_node")?.id).toBe("selection.delete");
+    expect(byTool.get("delete_node")?.level).toBe("selection");
+    expect(byTool.get("duplicate_node")?.id).toBe("selection.duplicate");
+    expect(byTool.get("duplicate_node")?.level).toBe("selection");
   });
 
   test("with a document open but no tree to edit, the writers are inactive and the read is not", async () => {

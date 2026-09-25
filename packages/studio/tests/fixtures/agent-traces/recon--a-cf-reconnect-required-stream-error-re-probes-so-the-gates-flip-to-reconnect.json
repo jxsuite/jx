@@ -1,0 +1,60 @@
+{
+  "chatCalls": [
+    "sendMessage(\"make the heading bigger\")",
+    "toMessagesArray()",
+    "setError(\"Reconnect Cloudflare to keep using the assistant.\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "make the heading bigger"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": []
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "make the heading bigger"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "Reconnect Cloudflare to keep using the assistant.",
+    "model": "@cf/meta/llama-4",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null,
+  "extra": {
+    "after": {
+      "code": "cf_reconnect_required",
+      "configured": false,
+      "fetchCalls": ["/__mock/ai/models", "/__mock/ai/models"]
+    },
+    "before": {
+      "configured": true,
+      "fetchCalls": ["/__mock/ai/models"]
+    }
+  }
+}

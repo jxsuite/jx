@@ -23,11 +23,16 @@ import type { JxExpressionNode, JxMutableNode } from "@jxsuite/schema/types";
  */
 export type WireDocOp = JxDocOp;
 
-export const CANVAS_MODES = ["preview", "design", "edit", "stylebook"] as const;
+export const CANVAS_MODES = ["preview", "design", "edit", "stylebook", "git-diff"] as const;
 
 /**
- * How the iframe renders the document: live `preview`, instrumented `design`/`edit`, or the
- * `stylebook` specimen catalog (hit/hover/measure only — no inline editing, DnD, or insert zones).
+ * How the iframe renders the document: live `preview`, instrumented `design`/`edit`, the
+ * `stylebook` specimen catalog (hit/hover/measure only — no inline editing, DnD, or insert zones),
+ * or a `git-diff` comparison artboard (a read-only render carrying {@link WireDiffMarks}).
+ *
+ * `git-diff` was reaching the frame long before it was listed here: `preparePassRender` casts the
+ * resolved mode with `as CanvasMode`, so the one mode this union did not admit crossed the wire
+ * anyway and `isCanvasMode` answered false for a mode the frame was actively rendering.
  */
 export type CanvasMode = (typeof CANVAS_MODES)[number];
 
@@ -62,6 +67,24 @@ export interface SyncedChord {
   chord: string;
   scope: "caret" | "canvas" | "global";
 }
+
+/** One node the comparison says changed, addressed in THIS artboard's document. */
+export interface WireDiffMark {
+  path: (string | number)[];
+  /**
+   * How to draw it.
+   *
+   * A modification is ONE change with two faces, and the artboard it is drawn on decides which:
+   * `modified-before` on the committed side, `modified-after` on the working copy. The parent
+   * splits them when it hands each artboard its own marks, because the frame does not know which
+   * side it is. Marked identically on both, a modification read as "added" on the left — the green
+   * of the added colour over the text that is being replaced.
+   */
+  kind: "added" | "removed" | "modified-before" | "modified-after";
+}
+
+/** An artboard's whole mark set. Each side receives only its own; `[]` clears. */
+export type WireDiffMarks = readonly WireDiffMark[];
 
 /** Messages the editor (parent) sends into the canvas iframe. */
 export type ParentToIframe =
@@ -102,11 +125,56 @@ export type ParentToIframe =
       // Forced color-scheme preview (spec §9.5): "light"/"dark" sets data-color-scheme on the
       // Iframe root, null clears it (auto — follow the OS).
       colorScheme: "light" | "dark" | null;
+      /**
+       * Which nodes to tint on a `git-diff` artboard, in this side's own coordinates.
+       *
+       * A FIELD ON THE RENDER, not a message of its own, and the reason is ordering. A render ends
+       * in `container.replaceChildren(el)`, which destroys the DOM any earlier mark was stamped on
+       * — so a separate message would need its own generation, a queue for arriving early, and a
+       * re-apply hook after every render, three mechanisms to reproduce what carrying the data
+       * already guarantees. The transport settles it too: a host holds ONE `pending` message while
+       * its iframe boots, so a marks message posted beside a queued render would replace it.
+       */
+      diffMarks?: WireDiffMarks | null;
+      /**
+       * Which popover the artboard draws OPEN, by document path — absent or null for none.
+       *
+       * Carried on `render` as well as by the setter below for the same reason `colorScheme` is: a
+       * render replaces the DOM, and the open state is one attribute on one element, so without it
+       * every re-render would close the panel the author is editing.
+       */
+      popoverOpen?: (string | number)[] | null;
+      /** The dialog to draw open after this render, for the same reason. */
+      dialogOpen?: (string | number)[] | null;
       gen: number;
     }
   // Flip the forced color-scheme preview on the iframe root without re-rendering — a document-level
   // Idempotent attribute write, deliberately gen-less (like endEdit).
   | { kind: "setColorScheme"; scheme: "light" | "dark" | null }
+  /**
+   * Draw the popover at `path` open, and every other one closed. `null` closes them all.
+   *
+   * Render-free and gen-less, exactly like `setColorScheme` above, because it changes no content:
+   * the runtime has already renamed every addressable `popover` to `data-jx-popover` for this
+   * render (`setCanvasDelinkPopovers`), so open-ness is ONE attribute on ONE element and the whole
+   * document's layout follows from flipping it. Opening a popover must not cost a full render —
+   * §4.1 calls that expensive, and it would rebuild every binding effect under the author's caret.
+   *
+   * Refused in preview, in BOTH realms: preview is native, and a canvas-only attribute has no
+   * business in a view whose whole job is fidelity (§4.2).
+   *
+   * A frame built before this message existed ignores it and draws every popover closed, which is
+   * the compatibility story `dist/iframe-entry.js` shipping prebuilt requires.
+   */
+  | { kind: "setPopoverOpen"; path: (string | number)[] | null }
+  /** The `<dialog>` to draw open in place, or none. The dialog twin of `setPopoverOpen`. */
+  | { kind: "setDialogOpen"; path: (string | number)[] | null }
+  /**
+   * Replace a custom element's definition in the frame's realm — the canvas half of
+   * `redefineElement` (embedding.md §7). Instances already on the canvas keep the old definition
+   * until the next render replaces them, which is why the host follows it with a `render`.
+   */
+  | { kind: "redefineElement"; doc: JxMutableNode; base?: string }
   /**
    * Set the language the artboard is drawn in — `lang` and `dir` on the frame's document element.
    *
@@ -443,7 +511,18 @@ export type IframeToParent =
   | { kind: "insertZones"; zones: InsertZone[] | null }
   // Response to `measure`: the rects of whichever requested paths resolved to a node (missing paths
   // Are simply omitted). `reqId` echoes the request so the parent can drop stale responses.
-  | { kind: "geometry"; reqId: number; hits: NodeHit[] }
+  /**
+   * Measured rects for the requested paths.
+   *
+   * `hidden` names the paths that RESOLVED to an element but are not rendered — a closed popover, a
+   * `display: none` node, a `$switch` branch that is not the live case. They are reported apart
+   * from `hits` rather than as a zero rect, because a zero rect is a truthy object: the overlay
+   * drew a 0×0 box at the artboard origin and the block action bar anchored to it, so selecting a
+   * hidden node put a selection marker in the top-left corner of the page.
+   *
+   * Optional, so a prebuilt frame that predates it still answers.
+   */
+  | { kind: "geometry"; reqId: number; hits: NodeHit[]; hidden?: (string | number)[][] }
   // Response to `evalExpr`: one result per requested expression (empty when the request's gen no
   // Longer matches the live render — the iframe never evaluates against the wrong scope). `reqId`/
   // `gen` echo the request so the parent can drop stale replies (measure/geometry precedent).
@@ -541,7 +620,7 @@ export type IframeToParent =
   | { kind: "editEnd" }
   // ─── Slash-menu bridge ──────────────────────────────────────────────────────
   // The engine (in the iframe) detected "/" in a live edit session; the parent shows the real
-  // Lit/Spectrum menu. Re-posted with a new `filter` as the author keeps typing (the engine's
+  // Host-realm menu. Re-posted with a new `filter` as the author keeps typing (the engine's
   // UpdateSlashMenu drives it). `rect` is the edited element's bbox in IFRAME-VIEWPORT coords.
   /**
    * Show the parent's slash menu at this rect.
@@ -580,6 +659,28 @@ export type IframeToParent =
   //
   // Deliberately NOT in the host's preview block-list: focusing a pane is not an edit, and it is
   // The one thing preview must still report.
+  /**
+   * A `popovertarget` invoker was clicked, and it names a popover the studio can address.
+   *
+   * The canvas renames `popover` to `data-jx-popover`, so the browser's own invoker activation no
+   * longer fires — which is a gain, not a loss: there is exactly ONE writer of open state instead
+   * of a race between the platform and the editor, and the model can no longer disagree with what
+   * is on screen. The affordance is re-supplied here, and the host runs the same command the
+   * palette and the assistant run.
+   *
+   * Posted ALONGSIDE `hit`, never instead of it: clicking a trigger both selects the button and
+   * opens its panel, which is what an author expects from a control they can also style.
+   */
+  | {
+      kind: "popoverTargetClick";
+      targetPath: (string | number)[];
+      action: "toggle" | "show" | "hide";
+    }
+  /**
+   * A click on a `<button command commandfor>` the canvas de-linked: the frame reports the target
+   * and the command, and the host's single writer of open state answers for a popover or a dialog.
+   */
+  | { kind: "commandTargetClick"; targetPath: (string | number)[]; command: string }
   | { kind: "paneFocus" }
   // ─── Preview navigation ─────────────────────────────────────────────────────
   // A link was clicked in PREVIEW mode. Preview keeps anchors live (design/edit de-link them onto

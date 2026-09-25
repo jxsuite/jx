@@ -38,12 +38,15 @@ import {
   tabOfContainer,
 } from "./canvas-surface";
 import { cloneSelection, primarySelection, toggleSelected } from "../tabs/selection";
+import { activeRegistry } from "../commands/active-registry";
 import { getNodeAtPath } from "../state";
 import type { JxPath } from "../state";
 import { setLayoutSelection, shell } from "../shell";
 import { formatEditableVerdicts } from "../format/constraints";
 import { formatByName } from "../format/format-host";
 import { collabState } from "../collab/collab-state";
+import { DIALOG_COMMANDS, isDialog, POPOVER_COMMANDS } from "@jxsuite/schema/dialogs";
+import { isPopover } from "@jxsuite/schema/overlays";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
 import type {
@@ -56,6 +59,7 @@ import type {
   IframeToParent,
   InsertZone,
   NodeHit,
+  WireDiffMarks,
   ParentToIframe,
   SelectionSnapshot,
   SerializableRect,
@@ -121,6 +125,22 @@ interface HostState {
   contentHeight: number | null;
   /** Whether the last measured content was a component-definition fragment (drops the 480px floor). */
   contentFragment: boolean;
+  /**
+   * The popover this host is drawing open, as posted. Kept so `mountIframeCanvas` can seed it onto
+   * the `render` message — a render replaces the DOM, so a re-mount would otherwise lose it.
+   */
+  popoverOpen: JxPath | null;
+  /** The dialog this host is drawing open, kept for the same reason. */
+  dialogOpen: JxPath | null;
+  /**
+   * Paths the frame resolved but could not measure, as serialized keys.
+   *
+   * Not a rect and not an absence: a node that IS in the document and IS in the DOM but is not
+   * rendered. The Outline draws these rows with a "not rendered in the canvas" mark, which is the
+   * honest answer for a selection that draws no box — the alternative was a 0×0 marker in the
+   * artboard's corner, which read as a bug in the editor rather than a fact about the document.
+   */
+  hiddenPaths: Set<string>;
   /** Whether an inline-edit session is live in this host's iframe (drives the format toolbar). */
   editing: boolean;
   /** The prop a live plain session edits (prop-bound text) — null for rich sessions/none. */
@@ -775,9 +795,25 @@ export async function revealCanvasPath(
   path: readonly (string | number)[],
 ): Promise<CanvasPoint | null> {
   const host = hostForPath();
-  if (!host) {
-    return null;
-  }
+  return host ? revealCanvasPathIn(host, path) : null;
+}
+
+/**
+ * {@link revealCanvasPath}, against an artboard the caller has already resolved.
+ *
+ * **A diff artboard cannot be found by `hostForPath`.** That resolver prefers the host rendering
+ * the focused tab and otherwise takes any ready page host — and BOTH git-diff artboards mount with
+ * `tabId: null` (it is what stops them routing mutations anywhere), so neither can match the
+ * focused tab and the fallback returns an arbitrary one of the two. A change stepper asking for
+ * "the node at this path" would measure and pan whichever it happened to get, on either side, in
+ * either pane.
+ *
+ * Callers with a panel in hand reach their host through {@link hostForCanvas} and come here.
+ */
+export async function revealCanvasPathIn(
+  host: HostState,
+  path: readonly (string | number)[],
+): Promise<CanvasPoint | null> {
   const before = await measureIn(host, path);
   if (!before) {
     return null;
@@ -791,6 +827,22 @@ export async function revealCanvasPath(
   panToParentRect({ height: before.height, top: before.top }, surface);
   await panSettled(host);
   return measureIn(host, path);
+}
+
+/**
+ * Measure one node in one artboard, without moving anything.
+ *
+ * The stepper needs BOTH sides' rects before it pans, because it pans to their union — the two
+ * artboards share one `.panzoom-wrap` and therefore one vertical position, and a change sitting at
+ * different heights on the two boards is only fully on screen if the move accounts for both.
+ * {@link revealCanvasPathIn} measures and moves in one go, which is the wrong shape for that.
+ */
+export function measureInCanvas(
+  canvasEl: HTMLElement,
+  path: readonly (string | number)[],
+): Promise<CanvasPoint | null> {
+  const host = hostForCanvas(canvasEl);
+  return host ? measureIn(host, path) : Promise.resolve(null);
 }
 
 /**
@@ -912,7 +964,7 @@ export const INSERT_HIDE_DELAY = 300;
  * The parent-realm insertion handler: open the slash menu anchored at the "+" `btn` and, on select,
  * run `transactDoc → mutateInsertNode` for the captured `zone`. Injected from studio.ts (which owns
  * the slash-menu / transact / defaultDef wiring) so this host module — and its tests — stay free of
- * the lit/Spectrum slash-menu and the mutation pipeline, mirroring the native-drag handler.
+ * the slash-menu and the mutation pipeline, mirroring the native-drag handler.
  */
 let insertZoneClickHandler: ((btn: HTMLElement, zone: InsertZone) => void) | null = null;
 
@@ -1030,8 +1082,8 @@ export interface CanvasSlashRequest {
 
 /**
  * The parent-realm slash-menu surface the canvas iframe drives (show at a rect, navigate by key,
- * dismiss). Injected from studio.ts (which owns the lit/Spectrum menu) so this host module — and
- * its tests — stay free of it, mirroring {@link insertZoneClickHandler}.
+ * dismiss). Injected from studio.ts (which owns the menu) so this host module — and its tests —
+ * stay free of it, mirroring {@link insertZoneClickHandler}.
  */
 export interface CanvasSlashHandler {
   show: (req: CanvasSlashRequest) => void;
@@ -1159,6 +1211,50 @@ let patchEscalation: ((paneId: string) => void) | null = null;
  */
 export function setIframePatchEscalation(fn: (paneId: string) => void): void {
   patchEscalation = fn;
+}
+
+/**
+ * Tell every frame showing `tab` which popover to draw open.
+ *
+ * Fans out by `tabId` for the same reason `postPatchToHosts` does: two panes can show the same
+ * document, and both must agree about which panel is open — it is the same element in both. A
+ * PREVIEW host is skipped, and the frame refuses the message as well, because preview renders
+ * popovers natively and the canvas attribute does not exist there.
+ *
+ * Also recorded on the host, so a re-mount can seed it onto the `render` message. A render replaces
+ * the DOM and would otherwise close the panel the author was editing.
+ *
+ * @param tab The tab whose canvas is affected.
+ * @param path The popover's document path, or null to close whatever is open.
+ */
+export function postPopoverOpen(tab: { id: string }, path: JxPath | null): void {
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready && host.tabId === tab.id && !host.preview) {
+      host.popoverOpen = path;
+      host.channel.post({ kind: "setPopoverOpen", path });
+    }
+  }
+}
+
+/**
+ * The dialog twin of {@link postPopoverOpen}: tell every editable frame showing `tab` which dialog
+ * to draw open.
+ */
+export function postDialogOpen(tab: { id: string }, path: JxPath | null): void {
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready && host.tabId === tab.id && !host.preview) {
+      host.dialogOpen = path;
+      host.channel.post({ kind: "setDialogOpen", path });
+    }
+  }
 }
 
 /**
@@ -1729,6 +1825,9 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     channel,
     contentFragment: false,
     contentHeight: null,
+    hiddenPaths: new Set<string>(),
+    popoverOpen: null,
+    dialogOpen: null,
     editing: false,
     editingProp: null,
     iframe,
@@ -1907,6 +2006,77 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       canvasPointerDownHandler?.();
       return;
     }
+    case "popoverTargetClick": {
+      /* The click's OTHER half — the `hit` beside it still selects the button. Routed through the
+         command rather than written here, so the trigger, the palette, the Style tab's selector and
+         the assistant are four renderings of one record (§13) rather than four writers.
+
+         `show`/`hide`/`toggle` collapse to a state because the record is a setter: the frame knows
+         which panel is open only through the host, so `toggle` is resolved HERE, where the model
+         is, and never inside the frame. Refused in preview by the host's own gate below. */
+      const tab = hostTab(state);
+      if (!tab || state.preview) {
+        return;
+      }
+      const targeted =
+        JSON.stringify(tab.session.ui.openPopover) === JSON.stringify(msg.targetPath);
+      const open = msg.action === "show" || (msg.action === "toggle" && !targeted);
+      /* A `hide` closes ITS OWN target and no other: `hidePopover()` on a popover that is not
+         showing does nothing, so an invoker for A must leave B alone. `show` and `toggle` still
+         always run — a toggle either opens the one it names or closes the one it names. */
+      if (open || targeted) {
+        void activeRegistry()?.run("canvas.setPopoverOpen", {
+          open,
+          path: msg.targetPath,
+        });
+      }
+      return;
+    }
+    case "commandTargetClick": {
+      /* An invoker's click, answered the way `popoverTargetClick` is: through the record, with a
+         toggle resolved HERE against the model. A popover command lands on the popover verb, a
+         dialog command on the dialog verb; `hide-popover`, `close` and `request-close` close only
+         the overlay they name when it is the open one, and a custom command is the document's own
+         business. */
+      const tab = hostTab(state);
+      if (!tab || state.preview) {
+        return;
+      }
+      const targeted = (open: JxPath | null) =>
+        JSON.stringify(open) === JSON.stringify(msg.targetPath);
+      /* The command's FAMILY is not the target's KIND, and the dispatch needs both. A
+         `show-popover` aimed at a `<dialog>`, or a `show-modal` at a popover, is an authoring
+         mistake Problems already reports as `command-target-mismatch`, and the platform's answer to
+         it is to ignore the click (spec.md §8.7) — so the canvas ignores it too. Routing on the
+         family alone handed the popover verb a dialog's path, and the record REFUSES one: the
+         `RangeError` came straight back out of this message listener, taking every handler queued
+         behind that message with it. The null check is the same guard for a `targetPath` an edit
+         has since invalidated, which threw for the same reason. */
+      const target = getNodeAtPath(tab.doc.document, msg.targetPath);
+      if (!target || typeof target !== "object") {
+        return;
+      }
+      if (POPOVER_COMMANDS.has(msg.command)) {
+        if (!isPopover(target)) {
+          return;
+        }
+        const open =
+          msg.command === "show-popover" ||
+          (msg.command === "toggle-popover" && !targeted(tab.session.ui.openPopover));
+        if (open || targeted(tab.session.ui.openPopover)) {
+          void activeRegistry()?.run("canvas.setPopoverOpen", { open, path: msg.targetPath });
+        }
+      } else if (DIALOG_COMMANDS.has(msg.command)) {
+        if (!isDialog(target)) {
+          return;
+        }
+        const open = msg.command === "show-modal";
+        if (open || targeted(tab.session.ui.openDialog)) {
+          void activeRegistry()?.run("canvas.setDialogOpen", { open, path: msg.targetPath });
+        }
+      }
+      return;
+    }
     case "hit": {
       /* A click in a canvas is a click in a PANE, and the parent realm never saw it. See
          `focusHostPane`; it goes first so everything below writes into the pane the person is now
@@ -1925,7 +2095,14 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       // Block action bar anchors to the panel the selection was actually made in, not panel 0.
       let panelMedia: string | null = null;
       const clicked = panelHostingCanvas(state.canvasEl)?.panel;
-      if (clicked && !clicked.mediaName?.startsWith("git-diff")) {
+      /* A panel with NO media name is not an artboard, and a click in it is not a statement about
+         the breakpoint. Edit draws exactly one full-width column (`canvasPanelTemplate(null, …)`,
+         so `mediaName` is `""`), which `panelMediaToActiveMedia` mapped to `null` — so every click
+         into the page silently reset the pane to Base, undoing the size switcher and, now, any
+         width the author had dragged the column to. Design's own panels are `"base"` or a real
+         breakpoint key, so requiring a name changes nothing there; the only case it drops is the
+         no-`$media` single panel, whose project has no breakpoint to be reset FROM. */
+      if (clicked?.mediaName && !clicked.mediaName.startsWith("git-diff")) {
         panelMedia = panelMediaToActiveMedia(clicked.mediaName);
         // The breakpoint belongs to the tab THIS host renders, resolved the same way every other
         // Doc-touching message in this switch resolves it. `updateUi` writes to `activeTab`, which
@@ -2089,9 +2266,13 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         const sbTag = state.stylebook ? shell.stylebook.selection : null;
         state.overlay.setSelection(rect, sbTag ? `<${sbTag}>` : null);
         state.overlay.setCoSelection(co);
-        if (rect) {
-          state.lastSelectionRect = rect;
-        }
+        /* Unconditional. `if (rect)` never CLEARED it, so a selection the frame could not measure —
+           now including any node it reports under `hidden` — left the previous rect standing, and
+           `getEditBarAnchorRect` went on returning it. The block action bar stayed anchored to a box
+           that was no longer on screen. `repositionBlockActionBar` already hides the bar on a null
+           anchor, so nothing else has to change. */
+        state.lastSelectionRect = rect;
+        state.hiddenPaths = new Set((msg.hidden ?? []).map((p) => JSON.stringify(p)));
       }
       return;
     }
@@ -2658,7 +2839,12 @@ type PreparedRender = Omit<
 /** One render pass's prepared payloads, by document IDENTITY. */
 type PreparedDocs = Map<
   JxMutableNode,
-  { tabId: string | null; viewTabId: string | null; payload: Promise<PreparedRender> }
+  {
+    tabId: string | null;
+    viewTabId: string | null;
+    mode: string | null;
+    payload: Promise<PreparedRender>;
+  }
 >;
 
 /**
@@ -2696,6 +2882,11 @@ const PREPARED_PASS_LIMIT = 4;
  * THAT — the document path, the layout toggle, the preview params and the mode. A mismatch in
  * either re-prepares rather than reusing. `tabId` alone would not do: an override render nulls it,
  * so two git-diff documents would agree on `null` while being views of different tabs.
+ *
+ * The pane's MODE is the third part of the key, because it is now an input to the resolution rather
+ * than something derived from `viewTabId` inside it. Two views of one document in different modes
+ * are two different renders — a Diff lens and the pane it follows are exactly that — and without
+ * this they would agree on both ids and share a payload resolved for whichever asked first.
  */
 const preparedPasses = new Map<number, PreparedDocs>();
 
@@ -2739,11 +2930,17 @@ function preparePassRender(
   tabId: string | null,
   viewTab: Tab | null,
   paneId: string,
+  modeOverride: string | null = null,
 ): Promise<PreparedRender> {
   const byDoc = preparedDocsFor(gen);
   const viewTabId = viewTab?.id ?? null;
   const cached = byDoc.get(doc);
-  if (cached && cached.tabId === tabId && cached.viewTabId === viewTabId) {
+  if (
+    cached &&
+    cached.tabId === tabId &&
+    cached.viewTabId === viewTabId &&
+    cached.mode === modeOverride
+  ) {
     return cached.payload;
   }
   // One-shot per PANE's pass, not per host and not globally. `allowAutoRequestsOnNextRender` arms
@@ -2755,7 +2952,7 @@ function preparePassRender(
   const allowAutoRequests = consumeAllowAutoRequests(paneId);
   const payload = timeSpanAsync(SPAN_PREPARE_RENDER, async (): Promise<PreparedRender> => {
     canvasPerf.renderPreparations += 1;
-    const resolved = await resolveCanvasDocument(doc, viewTab);
+    const resolved = await resolveCanvasDocument(doc, viewTab, modeOverride);
     // The doc must be structured-cloneable to cross postMessage. A Jx document is JSON by contract,
     // So a JSON round-trip (NOT structuredClone, which would throw) drops residual functions /
     // Reactive proxy artifacts that would otherwise raise DataCloneError and silently drop the
@@ -2779,6 +2976,10 @@ function preparePassRender(
       doc: cloneableDoc,
       docBase: resolved.docBase ?? `${canvasBaseOrigin()}/`,
       mapperCtx: resolved.mapperCtx,
+      /* Still a cast, but no longer a lie: `WireMapperCtx.canvasMode` is typed `string` (it mirrors
+         `PathMapCtx`, which carries the mode for `isEditableMode` and takes `CanvasMode | string`),
+         so this narrows a string to the union. It used to narrow it to a union that did not list
+         `git-diff` while git-diff renders went through here every day. */
       mode: resolved.mapperCtx.canvasMode as CanvasMode,
       shadowDoc: cloneableShadow,
       siteStyle: resolved.siteStyle,
@@ -2786,7 +2987,7 @@ function preparePassRender(
       ...(allowAutoRequests ? { allowAutoRequests: true } : {}),
     };
   });
-  byDoc.set(doc, { payload, tabId, viewTabId });
+  byDoc.set(doc, { mode: modeOverride, payload, tabId, viewTabId });
   return payload;
 }
 
@@ -2816,6 +3017,11 @@ function preparePassRender(
  * `paneOfContainer` does everywhere else stage content is handed a host and nothing else; the one
  * production caller (`canvas-render.ts`) passes `tabOfPane(surface.paneId)` explicitly, because it
  * has already resolved it to pick the document.
+ *
+ * `modeOverride` is the third question in the same family, and it exists because `viewTab` cannot
+ * answer it: a lens draws the source pane's document in a mode that is never written onto that tab,
+ * so resolving the mode from `viewTab` gave a Diff lens's artboards the SOURCE pane's mode. See
+ * {@link resolveCanvasDocument}. Null derives it from `viewTab` as before.
  */
 export async function mountIframeCanvas(
   gen: number,
@@ -2824,6 +3030,8 @@ export async function mountIframeCanvas(
   widthPx?: number | null,
   tabId: string | null = null,
   viewTab: Tab | null = tabOfContainer(canvasEl),
+  modeOverride: string | null = null,
+  diffMarks: WireDiffMarks | null = null,
 ): Promise<void> {
   const state = ensureHost(canvasEl);
   state.pendingTabIds.set(gen, tabId);
@@ -2834,16 +3042,35 @@ export async function mountIframeCanvas(
   // Own `latestGen`), so the parent must NOT gate on `view.renderGeneration`: during boot many
   // Renders fire and the generation is usually stale by the time resolution finishes, which would
   // Otherwise drop every post.
-  const prepared = await preparePassRender(gen, doc, tabId, viewTab, paneOfContainer(canvasEl));
+  const prepared = await preparePassRender(
+    gen,
+    doc,
+    tabId,
+    viewTab,
+    paneOfContainer(canvasEl),
+    modeOverride,
+  );
   const message: ParentToIframe = {
     ...prepared,
     // Per-TAB, and read at POST time so a scheme flip that raced the shared resolution is not
     // Baked into the payload every host shares. `viewTab` is this artboard's tab — defaulted from
     // `tabOfContainer(canvasEl)`, the same route the rest of this mount takes.
     colorScheme: schemeWireFor(viewTab),
+    /* Per-ARTBOARD, and post-time for a sharper version of the same reason. `preparePassRender`
+       memoizes on the document and hands the SAME payload object to every host in the pass, and a
+       git-diff pass has two hosts holding two documents — but marks are a function of BOTH sides,
+       not of the document this host draws, so they are not derivable from that cache key at all.
+       Baking them in would make the two artboards race for whose marks the pass kept. */
+    ...(diffMarks ? { diffMarks } : {}),
     gen,
     kind: "render",
+    // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
+    // The author opened before this pass would close under them without it.
+    popoverOpen: viewTab?.session.ui.openPopover ?? null,
+    dialogOpen: viewTab?.session.ui.openDialog ?? null,
   };
+  state.popoverOpen = message.popoverOpen ?? null;
+  state.dialogOpen = message.dialogOpen ?? null;
   // Preview is the fidelity view: no editing messages are honoured from it, no overlay is painted
   // Over it, and the frame stays viewport-sized so it scrolls for real. A mode switch to preview
   // Mid-split must likewise not start an edit session in the preview render. The flag and the frame
@@ -2998,6 +3225,35 @@ export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement 
       host.channel.post({ dir, kind: "setLocale", locale });
     }
   }
+}
+
+/**
+ * Replace an element's definition in every live frame (embedding.md §7's canvas half).
+ *
+ * Unscoped on purpose, where the locale and colour-scheme posts take a stage: a definition is a
+ * fact about the REALM, not about a pane, and a frame that kept the old one would draw a different
+ * element from the one beside it. Instances already on a canvas keep the definition they rendered
+ * until their host renders again, which is why {@link redefineElementOnCanvases} follows this with a
+ * render of every pane rather than trusting the message alone.
+ *
+ * The document crosses `postMessage`, so it is cloned to plain data first: a definition that came
+ * off a tab's reactive record is a proxy, and a proxy cannot be structured-cloned.
+ */
+export function postRedefineElementToLiveHosts(doc: JxMutableNode, base: string): number {
+  // oxlint-disable-next-line unicorn/prefer-structured-clone
+  const plain = JSON.parse(JSON.stringify(doc)) as JxMutableNode;
+  let posted = 0;
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready) {
+      host.channel.post({ base, doc: plain, kind: "redefineElement" });
+      posted += 1;
+    }
+  }
+  return posted;
 }
 
 /**

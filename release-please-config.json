@@ -135,6 +135,17 @@
       "release-type": "node",
       "component": "feed",
       "bump-minor-pre-major": true
+    },
+    "packages/catalog": {
+      "release-type": "node",
+      "component": "catalog",
+      "bump-minor-pre-major": true
+    },
+    "packages/ui": {
+      "release-type": "node",
+      "component": "ui",
+      "bump-minor-pre-major": true,
+      "initial-version": "0.1.0"
     }
   }
 }

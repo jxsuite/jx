@@ -1,0 +1,388 @@
+{
+  "chatCalls": [
+    "sendMessage(\"loop forever\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c0\", \"set_property\")",
+    "appendToolCallDelta(\"c0\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v0\\\"}\")",
+    "appendToolCallEnd(\"c0\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c0\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"c0\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"set_property\")",
+    "appendToolCallDelta(\"c1\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v1\\\"}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c2\", \"set_property\")",
+    "appendToolCallDelta(\"c2\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v2\\\"}\")",
+    "appendToolCallEnd(\"c2\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c2\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"c2\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c3\", \"set_property\")",
+    "appendToolCallDelta(\"c3\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v3\\\"}\")",
+    "appendToolCallEnd(\"c3\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c3\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"c3\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c4\", \"set_property\")",
+    "appendToolCallDelta(\"c4\", \"{\\\"key\\\":\\\"id\\\",\\\"path\\\":[],\\\"value\\\":\\\"v4\\\"}\")",
+    "appendToolCallEnd(\"c4\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c4\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
+    "pushToolResultMessage(\"c4\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
+    "beginAssistantTurn()",
+    "appendDelta(\"I ran out of tool-call rounds (5) before finishing.\\n\\nChanges applied so far:\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n\\nYou can continue by sending another message, or try a more specific request.\")",
+    "finishStream(\"length\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "loop forever"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c0",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v0\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c0",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v1\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 3
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 4,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c2",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v2\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c2",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 5
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 5,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c3",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v3\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c3",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          }
+        ],
+        "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
+      "endTurn(\"msg#12\") filed 5"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "(untitled)",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              },
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Set \"id\" at []."
+              }
+            ]
+          }
+        ],
+        "turn": "msg#12"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "loop forever"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v0\"}",
+          "id": "c0",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "c0"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v1\"}",
+          "id": "c1",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#5",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "c1"
+    },
+    {
+      "id": "msg#6",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v2\"}",
+          "id": "c2",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#7",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "c2"
+    },
+    {
+      "id": "msg#8",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v3\"}",
+          "id": "c3",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#9",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "c3"
+    },
+    {
+      "id": "msg#10",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v4\"}",
+          "id": "c4",
+          "name": "set_property",
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#11",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}",
+      "toolCallId": "c4"
+    },
+    {
+      "id": "msg#12",
+      "role": "assistant",
+      "content": "I ran out of tool-call rounds (5) before finishing.\n\nChanges applied so far:\n- Set \"id\" at [].\n- Set \"id\" at [].\n- Set \"id\" at [].\n- Set \"id\" at [].\n- Set \"id\" at [].\n\nYou can continue by sending another message, or try a more specific request."
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div",
+    "id": "v4"
+  },
+  "historyIndex": 5
+}

@@ -13,11 +13,12 @@
  *
  * - {@link deployChecklist} is the ordered prerequisite list, each step carrying **the command that
  *   satisfies it** rather than a sentence telling the reader to go and find one;
- * - {@link renderDeployChecklist} is its rendering, and it lives in the Bottom dock's **Activity**
- *   tab because a deploy is a long operation with a log and the dock cap is four (§2 principle 9).
- *   It draws in the Activity vocabulary — `activity-row`, `activity-steps`, `activity-step--done` —
- *   for the same reason: a fifth visual idiom for "an ordered list of stages that finish" would be
- *   a second design of a thing the tab already has;
+ * - {@link deployChecklistView} is its projection and {@link syncDeployChecklist} mounts the document
+ *   that draws it (`surfaces/panel-deploy-checklist.json`), in the Bottom dock's **Activity** tab
+ *   because a deploy is a long operation with a log and the dock cap is four (§2 principle 9). It
+ *   draws in the Activity tab's vocabulary — the same row, the same ordered steps, the same glyphs
+ *   — for the same reason: a fifth visual idiom for "an ordered list of stages that finish" would
+ *   be a second design of a thing the tab already has;
  * - {@link deployStatusItem} is the status bar's project-field item, whose **label is the next
  *   blocking prerequisite** — the shortcut and the explanation in one 24px item, and ambient state
  *   rather than a transient message, which is the only thing that bar carries (§3.2 ⑫).
@@ -34,14 +35,18 @@
  * renders (`studio.md` §15 rule 1).
  */
 
-import { html, nothing } from "lit-html";
 import { activeRegistry } from "../commands/active-registry";
 import { platformSupportsPublish } from "./pages-service";
 import { projectState } from "../store";
+import { shallowReactive } from "../reactivity";
 import { shell } from "../shell";
+import {
+  disposeDeployChecklistSurface,
+  mountDeployChecklistSurface,
+} from "../surfaces/panel-deploy-checklist";
+import type { DeployChecklistView, DeployStepRowView } from "../surfaces/panel-deploy-checklist";
 import type { DeployConfig, ProjectConfig } from "@jxsuite/schema/types";
 import type { PagesDeploymentInfo } from "./pages-service";
-import type { TemplateResult } from "lit-html";
 
 /** The chain, in the order the links must be forged. */
 export const DEPLOY_STEP_IDS = ["repo", "remote", "provider", "deployed"] as const;
@@ -84,32 +89,38 @@ export function currentDeploy(): DeployConfig | undefined {
 }
 
 /**
- * The last deployment anybody actually observed, or null when nobody has asked.
+ * The last deployment anybody actually observed, and whether anybody has asked at all.
  *
  * Module state rather than a field on the config: a deployment is a fact about Cloudflare, not
  * about this repository, and writing it into `project.json` would commit a timestamp that is stale
  * the moment it is pushed.
+ *
+ * Reactive, because the checklist is a document now and follows its inputs rather than being
+ * repainted by whatever else the dock was drawing: a deploy that finishes writes here, and the row
+ * moves off `unknown` with nothing subscribing by hand. `shallowReactive` and not `reactive`, so
+ * {@link observedDeployment} hands back the record Cloudflare answered with rather than a proxy of
+ * it — `asked` is the flag anything tracks, and the info is read whole or not at all.
  */
-let _observed: PagesDeploymentInfo | null = null;
-
-/** Whether anybody has asked at all — the difference between `todo` and `unknown`. */
-let _asked = false;
+const _seen = shallowReactive<{ asked: boolean; observed: PagesDeploymentInfo | null }>({
+  asked: false,
+  observed: null,
+});
 
 /** Record what Cloudflare answered. `null` means "asked, and there are none". */
 export function noteDeployment(info: PagesDeploymentInfo | null): void {
-  _observed = info;
-  _asked = true;
+  _seen.observed = info;
+  _seen.asked = true;
 }
 
 /** The observed deployment, or null. */
 export function observedDeployment(): PagesDeploymentInfo | null {
-  return _observed;
+  return _seen.observed;
 }
 
 /** Forget the observation — project close, and every test that asserts the `unknown` branch. */
 export function forgetDeployment(): void {
-  _observed = null;
-  _asked = false;
+  _seen.observed = null;
+  _seen.asked = false;
 }
 
 function repoStep(): DeployStep {
@@ -219,7 +230,7 @@ function deployedStep(): DeployStep {
       state: "todo",
     };
   }
-  if (!_asked) {
+  if (!_seen.asked) {
     return {
       command: "publish.deploy",
       detail: "Cloudflare has not been asked yet, so this is not a claim that nothing shipped.",
@@ -228,7 +239,7 @@ function deployedStep(): DeployStep {
       state: "unknown",
     };
   }
-  if (_observed === null) {
+  if (_seen.observed === null) {
     return {
       command: "publish.deploy",
       detail: "Cloudflare reports no deployments for this project.",
@@ -237,17 +248,18 @@ function deployedStep(): DeployStep {
       state: "todo",
     };
   }
-  return _observed.status === "success"
+  const { observed } = _seen;
+  return observed.status === "success"
     ? {
         command: "publish.deploy",
-        detail: `${_observed.environment} — ${_observed.url}`,
+        detail: `${observed.environment} — ${observed.url}`,
         id: "deployed",
         label: "Deploy",
         state: "done",
       }
     : {
         command: "publish.deploy",
-        detail: `Last deployment ${_observed.stage}: ${_observed.status}.`,
+        detail: `Last deployment ${observed.stage}: ${observed.status}.`,
         id: "deployed",
         label: "Deploy",
         state: "todo",
@@ -298,86 +310,120 @@ export function deployStatusItem(): DeployStatusItem | null {
   };
 }
 
-// ─── Rendering ────────────────────────────────────────────────────────────────
+// ─── The surface ──────────────────────────────────────────────────────────────
 
-/** Checklist state → the Activity tab's step classes, so one vocabulary draws both. */
-const STEP_CLASS: Readonly<Record<DeployStepState, string>> = {
-  done: "done",
-  todo: "pending",
-  unknown: "pending",
-};
-
+/** Which glyph a link's state wears. One character, so it fits the row it labels. */
 const STEP_ICON: Readonly<Record<DeployStepState, string>> = {
   done: "✓",
   todo: "·",
   unknown: "?",
 };
 
+/** One prerequisite, flattened for the document: a key, a state, a glyph and a sentence. */
+function stepView(step: DeployStep): DeployStepRowView {
+  return {
+    icon: STEP_ICON[step.state],
+    id: step.id,
+    state: step.state,
+    /* The detail is dropped once the link is forged: what a done step buys you is not news, and
+       four sentences about things that are fine bury the one about the thing that is not. */
+    text: step.state === "done" ? step.label : `${step.label} — ${step.detail}`,
+  };
+}
+
 /**
- * The next action, as a button — or nothing.
+ * The next action, as the document reads it — or nothing.
  *
- * A command the registry does not have, or whose `when` is false, renders NOTHING rather than a
- * dead label. The status bar's `itemTpl` takes the same position for the same reason: a surface may
- * choose whether to show a command, never whether it exists.
+ * A command the registry does not have, or whose `when` is false, draws NOTHING rather than a dead
+ * label. The status bar's projection takes the same position for the same reason: a surface may
+ * choose whether to show a command, never whether it exists (§12.4).
  */
-function actionTpl(step: DeployStep | null): TemplateResult | typeof nothing {
+function actionView(
+  step: DeployStep | null,
+): Pick<DeployChecklistView, "actionDisabled" | "actionLabel" | "actionTitle" | "hasAction"> {
+  const none = { actionDisabled: false, actionLabel: "", actionTitle: "", hasAction: false };
   if (!step) {
-    return nothing;
+    return none;
   }
   const registry = activeRegistry();
   const command = registry?.get(step.command);
   if (!registry || !command || !registry.isVisible(step.command)) {
-    return nothing;
+    return none;
   }
   const reason = registry.disabledReason(step.command);
-  return html`<sp-action-button
-    size="s"
-    ?disabled=${reason !== undefined}
-    title=${reason ? `${command.title} — requires ${reason}` : command.title}
-    @click=${() => {
-      void registry.run(step.command);
-    }}
-    >${command.title}</sp-action-button
-  >`;
+  return {
+    actionDisabled: reason !== undefined,
+    actionLabel: command.title,
+    actionTitle: reason ? `${command.title} — requires ${reason}` : command.title,
+    hasAction: true,
+  };
 }
 
 /**
- * The checklist, as the Activity tab draws it — or nothing, when no project is open.
+ * The checklist as the document draws it — or an empty row set, when no project is open.
  *
- * Rendered ABOVE the operation list rather than as an entry in it: an activity is something that
- * happened, and this is something that has not. It carries no `data-jx-region` stamp — the region
- * is `dock.bottom/panel:activity`, which the dock derives, and a hand-stamped leaf is a committed
- * budget (§13.2) that this does not need to spend.
+ * Read from inside the surface's own effect, so every reactive record it touches on the way (source
+ * control's status, the project config, the observation above, the active registry) is tracked and
+ * the row follows them.
  */
-export function renderDeployChecklist(): TemplateResult | typeof nothing {
+export function deployChecklistView(): DeployChecklistView {
   if (!projectState) {
-    return nothing;
+    return {
+      actionDisabled: false,
+      actionLabel: "",
+      actionTitle: "",
+      hasAction: false,
+      hasProject: false,
+      rowIcon: "",
+      rowState: "running",
+      steps: [],
+      summary: "",
+    };
   }
   const steps = deployChecklist();
   const next = steps.find((step) => step.state !== "done") ?? null;
-  return html`
-    <ul class="activity-list">
-      <li class="activity-row ${next ? "activity-row--running" : "activity-row--done"}">
-        <span class="activity-icon" aria-hidden="true">${next ? "⋯" : "✓"}</span>
-        <div class="activity-body">
-          <div class="activity-head">
-            <span class="activity-title">Deploy checklist</span>
-            <span class="activity-source">Publish</span>
-          </div>
-          <div class="activity-status">
-            ${next ? next.detail : "Everything this project needs to ship is in place."}
-          </div>
-          <ol class="activity-steps">
-            ${steps.map(
-              (step) => html`<li class="activity-step activity-step--${STEP_CLASS[step.state]}">
-                <span class="activity-step-icon" aria-hidden="true">${STEP_ICON[step.state]}</span>
-                ${step.label}${step.state === "done" ? "" : ` — ${step.detail}`}
-              </li>`,
-            )}
-          </ol>
-          ${actionTpl(next)}
-        </div>
-      </li>
-    </ul>
-  `;
+  return {
+    ...actionView(next),
+    hasProject: true,
+    rowIcon: next ? "⋯" : "✓",
+    rowState: next ? "running" : "done",
+    steps: steps.map((entry) => stepView(entry)),
+    summary: next ? next.detail : "Everything this project needs to ship is in place.",
+  };
+}
+
+/** Run the next blocking step's command, if the registry has one it will run. */
+function runNextStep(): void {
+  const next = nextDeployStep();
+  if (!next) {
+    return;
+  }
+  void activeRegistry()?.run(next.command);
+}
+
+/** What the surface asks this module for: the projection, and the one decision a click makes. */
+const CHECKLIST_SURFACE = { project: deployChecklistView, runAction: runNextStep };
+
+/**
+ * Mount the checklist into the container the Activity tab just painted, or take it down.
+ *
+ * The tab's `afterRender`, so it runs against the DOM lit has committed — and it runs on every
+ * paint of the dock, including the ones where another tab is showing. No container means this tab
+ * is not on screen, and the document standing in DOM that lit has already thrown away is disposed
+ * rather than left holding an effect.
+ *
+ * Rendered ABOVE the operation feed rather than as an entry in it: an activity is something that
+ * happened, and this is something that has not. It carries no `data-jx-region` stamp — the region
+ * is `dock.bottom/panel:activity`, which the dock derives, and a hand-stamped leaf is a committed
+ * budget (§13.2) that this does not need to spend.
+ *
+ * @param host The dock body element the tab was rendered into.
+ */
+export function syncDeployChecklist(host: HTMLElement): void {
+  const container = host.querySelector<HTMLElement>("[data-deploy-checklist]");
+  if (!container) {
+    disposeDeployChecklistSurface();
+    return;
+  }
+  mountDeployChecklistSurface(container, CHECKLIST_SURFACE);
 }

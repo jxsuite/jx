@@ -1,0 +1,240 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSwitch",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-field.json"
+    },
+    {
+      "$ref": "../components/jx-switch.json"
+    }
+  ],
+  "state": {
+    "wrap": true
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-4)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "80px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-switch"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A native checkbox with role=switch, drawn as a track and a thumb. The platform supplies the on/off state, Space, and the click target of the wrapping label; the element writes no aria-checked of its own. The first switch is bound to the page's state both ways."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound state"
+      },
+      "children": [
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "checked": {
+              "$ref": "#/state/wrap"
+            },
+            "hint": "Long lines fold at the pane's edge."
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/wrap"
+                },
+                "value": {
+                  "$ref": "event#/target/checked"
+                }
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Wrap long lines"
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.wrap ? 'on' : 'off'}"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "size": "sm",
+            "checked": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Small"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "checked": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Medium"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "size": "lg",
+            "checked": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Large"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "dir": "rtl",
+        "role": "group",
+        "aria-label": "Right to left"
+      },
+      "children": [
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "checked": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "On, in a right-to-left row"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-switch",
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Off, in a right-to-left row"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-switch",
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Off"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "checked": true,
+            "disabled": true
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "On, and not yours to change"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "disabled": true,
+            "hint": "Sign in to publish from here."
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Off, with a reason"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-switch",
+          "$props": {
+            "label": "Unlabelled switch"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Minify",
+        "description": "Strips whitespace from the built CSS and JavaScript."
+      },
+      "attributes": {
+        "data-prop": "minify"
+      },
+      "children": [
+        {
+          "tagName": "jx-switch"
+        }
+      ]
+    }
+  ]
+}

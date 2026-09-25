@@ -6,7 +6,7 @@
  */
 
 // oxlint-disable-next-line unicorn/prefer-export-from -- JxDocOpPair is also used locally (TransactionRecord)
-import type { JxDocOpPair } from "@jxsuite/collab/ops";
+import type { JxDocOpPair } from "@jxsuite/schema/doc-ops";
 import type { JxPath } from "../state";
 import type { Tab } from "./tab.js";
 
@@ -34,10 +34,10 @@ export type JxPatchOp =
  * Value-carrying document mutation, replayable in either direction. Mutators record a
  * forward/inverse pair per change; history applies them for surgical undo/redo and for
  * materializing states from checkpoints — without whole-document snapshots per edit. The definition
- * is canonical in `@jxsuite/collab/ops` (the collab bridge mirrors the same ops into a shared
+ * is canonical in `@jxsuite/schema/doc-ops` (the collab bridge mirrors the same ops into a shared
  * Y.Doc); re-exported here so studio call sites keep their import path.
  */
-export type { JxDocOp } from "@jxsuite/collab/ops";
+export type { JxDocOp } from "@jxsuite/schema/doc-ops";
 export type { JxDocOpPair };
 
 /**

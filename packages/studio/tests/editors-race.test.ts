@@ -111,9 +111,19 @@ void mock.module("../src/services/monaco-lazy", () => ({
   setProjectSchemasForMonaco: () => {},
 }));
 
-const { closeFunctionEditor, functionEditorTemplate, syncFunctionEditor } =
-  await import("../src/panels/editors");
-const { render: litRender } = await import("lit-html");
+const { closeFunctionEditor, syncFunctionEditor } = await import("../src/panels/editors");
+const { html, render: litRender } = await import("lit-html");
+
+/**
+ * The container the Logic tab draws for Monaco.
+ *
+ * `surfaces/logic-workspace.json` renders `[part="code-host"]` and nothing inside it — the island
+ * contract of studio-ui-guidelines.md §9.4 — so this stands in for the one node of that document
+ * this module is answerable for, painted with lit because these tests exercise the repaint.
+ */
+function functionEditorTemplate() {
+  return html`<div part="code-host"></div>`;
+}
 const { view } = await import("../src/view");
 const { activeTab } = await import("../src/workspace/workspace");
 
@@ -148,7 +158,7 @@ function setEditing(editing: Record<string, unknown> | null) {
 function paintLogic(): HTMLElement {
   litRender(functionEditorTemplate(), dock);
   syncFunctionEditor(dock);
-  const container = dock.querySelector(".fw-code") as HTMLElement;
+  const container = dock.querySelector('[part="code-host"]') as HTMLElement;
   expect(container).not.toBeNull();
   return container;
 }

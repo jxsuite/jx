@@ -4,6 +4,8 @@ description: "How the Jx documentation is written, structured, screenshotted, an
 code:
   - scripts/docs/check-doc-refs.ts
   - scripts/docs/check-doc-sync.ts
+  - scripts/normalize-markdown.ts
+  - scripts/lib/unwrap-prose.ts
   - scripts/docs/generate-reference.ts
   - scripts/docs/build-llm-export.ts
   - scripts/screenshots/manifest.json
@@ -28,6 +30,14 @@ spec:
 code:
   - packages/runtime/src/runtime.ts # repo paths that must exist
 ```
+
+One more optional key changes what the site does with a page rather than what CI checks:
+
+```yaml
+search: false # keep this page out of search-index.json
+```
+
+`search: false` keeps a page out of the site's search index, and out of nothing else: the page still builds, still has its URL, still appears in the sidebar and in `llms.txt`. It exists for pages that are worth publishing but not worth finding, which in this tree means the three reference pages derived from the specs: the [spec changelog](/docs/extending/reference/spec-changelog), [implementation status](/docs/extending/reference/implementation-status) and [standards alignment](/docs/extending/reference/standards). Their generators write it, because each is a projection of the specs that grows on every release and is read from its own page rather than searched for. The generated catalogues (formulas, operators, commands, shortcuts, starters, routes) stay indexed, because a formula name or a shortcut should land on the page that lists it, and a hand-written page is real documentation and should never carry it. Only the boolean `false` opts out. A value such as `"false"` or `no` is indexed, and the build warns about it once, because a page that is present can be found and a page that is absent cannot explain why. See [Search indexes](/docs/extending/extensions/search#opting-a-page-out).
 
 In the other direction, code comments may carry `@docs <slug>` tags (e.g. `@docs framework/concepts/reactivity`) pointing at the page that documents them. Those are validated too.
 
@@ -76,13 +86,32 @@ The point of every rule below is that a reader should be able to hear a person b
 
 Never invent synonyms for Studio surfaces. The shell regions are the **Command Bar** and the **Command Center** pill in the middle of it, the **Navigator rail** and its **Navigator** dock, the **pane** (with its **context bar** and, above that, its **jump bar**), the **Inspector**, the **Bottom dock** and the **status bar**.
 
-The Navigator panels are **Files, Source Control** and **Problems** (the rail's Project group) and **Outline, Page, Data** and **Packages** (its Document group). **Insert** has no rail button and is opened by name from the palette. **Languages** belongs to the Project group but stays off the rail, and appears only in a project with more than one locale. A **Search** panel is declared and not yet built, so it never shows. The Inspector tabs are **Content, Style, Logic, Assistant**; the Bottom dock's are **Problems, Logic, Activity**. Diff is not one of them: it is an **Editor** kind, and Source Control opens a changed file as a Diff editor in the side pane. A pane's **View** control offers **Edit, Design, Preview**, and its **Editor** control names the editor kind: **Canvas, Grid, Code, Diff, Library, Project Styles**.
+The Navigator panels are **Files, Source Control** and **Problems** (the rail's Project group) and **Outline, Page, Data** and **Packages** (its Document group). **Insert** has no rail button and is opened by name from the palette. **Languages** belongs to the Project group but stays off the rail, and appears only in a project with more than one locale. A **Search** panel is declared and not yet built, so it never shows. The Inspector tabs are **Content, Style, Logic, Assistant**; the Bottom dock's are **Problems, Logic, Activity**. Diff is not one of them: it is an **Editor** kind, and Source Control opens a changed file as a Diff editor in the side pane. A pane's **View** control offers **Edit, Design, Preview**, and its **Editor** control names the editor kind: **Canvas, Grid, Code, Diff, Library, Project Styles**. Inside the Diff editor the two halves are **Visual** and **Code**: never "Rendered", never "Raw", and never "Source", which names a different thing.
 
 A **View** is a view and an **Editor** is an editor: write "the Code editor", never "Code mode", because _mode_ belongs to the View control and mixing the two axes is what the modes page spends its opening paragraph separating.
 
 **The palette** is an acceptable collective for the **Command Center** (:kbd[⌘K]) and **Quick Access** (:kbd[⌘P]) where the difference does not matter. Name one of them where it does.
 
 **Settings** is the project's (contexts, content types, connections, packages); **Preferences** is the application's (appearance, assistant, accounts, keyboard). Never use one word for the other.
+
+## Source formatting
+
+**Write each paragraph on one line.** Do not wrap prose in the source file. Your editor's soft wrap re-flows to whatever width you are reading at; a file wrapped at 100 columns is already flowed to somebody else's width, and the two interleave into ragged half-width lines that change shape with the window. It also makes review harder: editing a wrapped paragraph re-flows every line after the edit, so a one-word change arrives as a five-line diff and a reviewer checking that a rewrite kept every claim has to reconstruct the sentences first.
+
+`bun run format:md` rewrites a wrapped file, so you can write however you like and let the formatter settle it. Much of the corpus is still wrapped from before the rule; the sweep that fixes that is a separate change, and until it lands the CI gate checks escapes only.
+
+The one thing to know is what happens to a line break that means something. Ordinary paragraph breaks are wrapping and get joined. A line break you want the reader to see is a **hard break**, written as a trailing backslash:
+
+```markdown
+**Version:** 0.4.2\
+**Status:** Partial
+```
+
+The formatter keeps those, and writes them for you in the two cases it can recognise: a run of lines that each open with a bold key, as a spec header does, and a line whose whole content is one text directive. Everything else with structure in its line breaks is a different block to begin with, so it is never at risk: tables, fenced and indented code, frontmatter, headings, list items, block quotes, container directives, HTML blocks, and link and footnote definitions all keep their own lines.
+
+Two trailing spaces are also a hard break in Markdown, and the formatter rewrites them to a backslash. An invisible break is one that an editor set to trim trailing whitespace, or a careless paste, deletes without anyone noticing.
+
+**A pipe inside a table cell has to be escaped.** Write `\|`, or the renderer reads it as the start of the next cell: the row grows a column, the surplus cells are dropped, and the text after the pipe takes the place of the one that vanished. Nothing about the page looks wrong until you read the column that lost its contents. `bun run docs:markdown` refuses any row whose cell count differs from its header, so a hand edit and a generator that forgets to escape are both caught. The formatter cannot fix one for you, because a row with too many cells does not say which of them was meant.
 
 ## Callouts
 
@@ -109,7 +138,7 @@ Use at most a couple per screenful, and never open a page with one.
 - **Studio surface page**: definition sentence (what it is, where it lives) → hero screenshot → "Open …" click path first → verb-first task sections with numbered steps and a screenshot after each state-changing step → a `:::doc-note` naming what Studio writes, linking the Framework counterpart → related links.
 - **Framework concept page**: a "Studio writes this format for you" note linking the Studio surface → smallest complete JSON example first → one H2 per variant with a short example each → how it compiles → hard rules → related links.
 - **Tutorial**: outcome + finished screenshot + rough duration + prerequisites → numbered steps with expected-result sentences ("You should now see…") → "What you built" recap → next steps.
-- **Generated reference**: do not edit these. They carry a `GENERATED` banner and are produced by `bun run docs:generate` from package data, the specs' status markers, the specs' changelogs, and the specs' `## N. Standards Alignment` tables; CI fails on drift. Releasing a spec (`bun run spec:bump`) changes [Implementation status](/docs/extending/reference/implementation-status) and [Spec changelog](/docs/extending/reference/spec-changelog); editing a spec's Standards Alignment table changes [Standards alignment](/docs/extending/reference/standards). Regenerate in the same change set.
+- **Generated reference**: build outputs, not source. They carry a `GENERATED` banner (the three spec-derived pages also `search: false`), are gitignored, and are written by `bun run docs:generate` from package data, the specs' status markers, the specs' changelogs, and the specs' `## N. Standards Alignment` tables. `postinstall` writes them for a fresh checkout, the docs gates write them before they read the page set, and the site build writes them before `jx build` reads the collection, so there is nothing to regenerate or commit in a change set. Releasing a spec (`bun run spec:change`, or `spec:bump` in place) changes [Implementation status](/docs/extending/reference/implementation-status) and [Spec changelog](/docs/extending/reference/spec-changelog); editing a spec's Standards Alignment table changes [Standards alignment](/docs/extending/reference/standards), at the next build.
 
 ## Internal links
 

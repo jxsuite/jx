@@ -1,0 +1,247 @@
+{
+  "plan": [
+    {
+      "task": "add-nav-to-header",
+      "trials": ["add-nav-to-header", "add-nav-to-header--stream-error"]
+    },
+    {
+      "task": "counter-button",
+      "trials": ["counter-button", "counter-button"]
+    },
+    {
+      "task": "list-from-state",
+      "trials": ["list-from-state", "list-from-state--graders-fail"]
+    },
+    {
+      "task": "style-card",
+      "trials": ["style-card", "style-card"]
+    }
+  ],
+  "results": {
+    "stamp": "20260101-000000",
+    "summary": {
+      "tasks": 4,
+      "passAtK": 4,
+      "passHatK": 3,
+      "meanPassRate": 0.875
+    },
+    "regressed": [],
+    "tasks": [
+      {
+        "id": "add-nav-to-header",
+        "tags": ["intent", "add_child"],
+        "k": 2,
+        "passAtK": true,
+        "passHatK": true,
+        "passRate": 1,
+        "trials": [
+          {
+            "pass": true,
+            "rounds": 4,
+            "toolCalls": 3,
+            "loopError": null,
+            "renderErrors": [],
+            "schemaErrors": []
+          },
+          {
+            "pass": true,
+            "rounds": 1,
+            "toolCalls": 1,
+            "loopError": "Upstream provider returned 503",
+            "renderErrors": [],
+            "schemaErrors": []
+          }
+        ]
+      },
+      {
+        "id": "counter-button",
+        "tags": ["intent", "state", "binding"],
+        "k": 2,
+        "passAtK": true,
+        "passHatK": true,
+        "passRate": 1,
+        "trials": [
+          {
+            "pass": true,
+            "rounds": 3,
+            "toolCalls": 3,
+            "loopError": null,
+            "renderErrors": [],
+            "schemaErrors": []
+          },
+          {
+            "pass": true,
+            "rounds": 3,
+            "toolCalls": 3,
+            "loopError": null,
+            "renderErrors": [],
+            "schemaErrors": []
+          }
+        ]
+      },
+      {
+        "id": "list-from-state",
+        "tags": ["intent", "map", "binding"],
+        "k": 2,
+        "passAtK": true,
+        "passHatK": false,
+        "passRate": 0.5,
+        "trials": [
+          {
+            "pass": true,
+            "rounds": 2,
+            "toolCalls": 1,
+            "loopError": null,
+            "renderErrors": [],
+            "schemaErrors": []
+          },
+          {
+            "pass": false,
+            "rounds": 3,
+            "toolCalls": 2,
+            "loopError": null,
+            "renderErrors": [
+              "Render threw: fruit is not defined\n  → Fix: a template binding (${...}) references state that doesn't exist. Declare it in \"state\" or correct the expression."
+            ],
+            "schemaErrors": ["/style: must be object"]
+          }
+        ]
+      },
+      {
+        "id": "style-card",
+        "tags": ["intent", "set_property", "preserve"],
+        "k": 2,
+        "passAtK": true,
+        "passHatK": true,
+        "passRate": 1,
+        "trials": [
+          {
+            "pass": true,
+            "rounds": 2,
+            "toolCalls": 3,
+            "loopError": null,
+            "renderErrors": [],
+            "schemaErrors": []
+          },
+          {
+            "pass": true,
+            "rounds": 2,
+            "toolCalls": 3,
+            "loopError": null,
+            "renderErrors": [],
+            "schemaErrors": []
+          }
+        ]
+      }
+    ]
+  },
+  "report": [
+    "# AI assistant eval — 20260101-000000",
+    "",
+    "**Mean pass-rate:** 88% · **pass@k:** 4/4 · **pass^k:** 3/4",
+    "",
+    "> ✅ No regressions vs previous run.",
+    "",
+    "| task | pass@k | pass^k | rate | Δrate | tags |",
+    "| --- | --- | --- | --- | --- | --- |",
+    "| add-nav-to-header | ✅ | ✅ | 100% | — | intent, add_child |",
+    "| counter-button | ✅ | ✅ | 100% | — | intent, state, binding |",
+    "| list-from-state | ✅ | ❌ | 50% | — | intent, map, binding |",
+    "| style-card | ✅ | ✅ | 100% | — | intent, set_property, preserve |",
+    "",
+    "Transcripts: `transcripts/<task>-<trial>.md`."
+  ],
+  "transcripts": {
+    "add-nav-to-header-1.md": [
+      "# add-nav-to-header — trial 1/2  (PASS)",
+      "",
+      "rounds=4 toolCalls=3 loopError=none",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "add-nav-to-header-2.md": [
+      "# add-nav-to-header — trial 2/2  (PASS)",
+      "",
+      "rounds=1 toolCalls=1 loopError=Upstream provider returned 503",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "counter-button-1.md": [
+      "# counter-button — trial 1/2  (PASS)",
+      "",
+      "rounds=3 toolCalls=3 loopError=none",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "counter-button-2.md": [
+      "# counter-button — trial 2/2  (PASS)",
+      "",
+      "rounds=3 toolCalls=3 loopError=none",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "list-from-state-1.md": [
+      "# list-from-state — trial 1/2  (PASS)",
+      "",
+      "rounds=2 toolCalls=1 loopError=none",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "list-from-state-2.md": [
+      "# list-from-state — trial 2/2  (FAIL)",
+      "",
+      "rounds=3 toolCalls=2 loopError=none",
+      "",
+      "## render critic: FAIL",
+      "- Render threw: fruit is not defined",
+      "  → Fix: a template binding (${...}) references state that doesn't exist. Declare it in \"state\" or correct the expression.",
+      "",
+      "## schema grader: FAIL",
+      "- /style: must be object"
+    ],
+    "style-card-1.md": [
+      "# style-card — trial 1/2  (PASS)",
+      "",
+      "rounds=2 toolCalls=3 loopError=none",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "style-card-2.md": [
+      "# style-card — trial 2/2  (PASS)",
+      "",
+      "rounds=2 toolCalls=3 loopError=none",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ]
+  },
+  "rerun": {
+    "regressed": ["list-from-state"],
+    "report": [
+      "# AI assistant eval — 20260101-010000",
+      "",
+      "**Mean pass-rate:** 0% · **pass@k:** 0/1 · **pass^k:** 0/1",
+      "",
+      "> ⚠️ **Regressions vs previous run:** list-from-state",
+      "",
+      "| task | pass@k | pass^k | rate | Δrate | tags |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| list-from-state | ❌ | ❌ | 0% | 🔴 -50% | intent, map, binding |",
+      "",
+      "Transcripts: `transcripts/<task>-<trial>.md`."
+    ]
+  }
+}

@@ -5,7 +5,7 @@
  * and concrete implementations for OpenAI and Anthropic. Designed upfront so switching
  * providers is a new implementation, not a refactor.
  *
- * The union and its six members are exported because they are the contract a third-party Studio
+ * The union and its eight members are exported because they are the contract a third-party Studio
  * backend implements for the `ai/chat` route, not an internal detail — see the docs page below.
  *
  * @license MIT
@@ -17,14 +17,31 @@ import type { ProblemDetails } from "@jxsuite/protocol";
 
 export type StreamEvent =
   | StreamDeltaEvent
+  | StreamReasoningEvent
   | StreamToolCallStartEvent
   | StreamToolCallDeltaEvent
   | StreamToolCallEndEvent
+  | StreamUsageEvent
   | StreamDoneEvent
   | StreamErrorEvent;
 
 export interface StreamDeltaEvent {
   type: "delta";
+  content: string;
+}
+
+/**
+ * A chain-of-thought fragment from a thinking model — OpenAI-compatible providers stream it as
+ * `reasoning_content` (DeepSeek, Volcengine) or `reasoning` (OpenRouter) beside `content`.
+ *
+ * It is a SEPARATE event rather than a `delta` because it is not part of the answer and must not be
+ * rendered as one — but it is part of the turn, and DeepSeek's thinking mode requires every prior
+ * turn's reasoning back on any request carrying `tools`. A client that drops these frames replays a
+ * history the provider rejects with 400 `The reasoning_content in the thinking mode must be passed
+ * back to the API`, so a backend implementing this route MUST forward them.
+ */
+export interface StreamReasoningEvent {
+  type: "reasoning";
   content: string;
 }
 
@@ -43,6 +60,27 @@ export interface StreamToolCallDeltaEvent {
 export interface StreamToolCallEndEvent {
   type: "tool_call_end";
   id: string;
+}
+
+/**
+ * What the provider counted for the request that produced this stream, when it reported a count.
+ *
+ * Emitted at most once, immediately BEFORE `done`, because a reader stops at `done`. It is optional
+ * and additive: a backend with no figure sends none, and a reader that predates it ignores it. It
+ * exists because every budget the client keeps was an estimate of four characters per token, and
+ * the provider's own count, which the client was asking for all along (`include_usage`), was
+ * discarded before it arrived.
+ */
+export interface StreamUsageEvent {
+  type: "usage";
+  /** Tokens the provider read: system prompt, tool schemas and the whole history. */
+  inputTokens: number;
+  /** Tokens the provider generated, reasoning included. */
+  outputTokens: number;
+  /** The part of `inputTokens` served from a prompt cache, when the provider says. */
+  cachedInputTokens?: number;
+  /** The part of `outputTokens` spent on chain-of-thought, when the provider says. */
+  reasoningTokens?: number;
 }
 
 export interface StreamDoneEvent {
@@ -105,14 +143,115 @@ interface OpenAIToolCallDelta {
 interface OpenAIStreamChunk {
   choices?: {
     index?: number;
-    delta?: { content?: string; tool_calls?: OpenAIToolCallDelta[] };
+    delta?: {
+      content?: string;
+      /** Thinking models' chain-of-thought: DeepSeek/Volcengine spell it this way… */
+      reasoning_content?: string;
+      /** …and OpenRouter this way. Both carry the same thing. */
+      reasoning?: string;
+      tool_calls?: OpenAIToolCallDelta[];
+    };
     finish_reason?: string | null;
   }[];
+  /** The count `stream_options.include_usage` asks for — normally a final chunk with no choices. */
+  usage?: OpenAIUsage | null;
+}
+
+/** OpenAI's usage object, as chat-completions streams it. */
+export interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number } | null;
+  completion_tokens_details?: { reasoning_tokens?: number } | null;
+}
+
+/**
+ * Normalize OpenAI's usage object into a {@link StreamUsageEvent}, or null when it carries no count.
+ * The two detail figures are included only when the provider sent them: absent means "not said",
+ * which is not the same as zero.
+ */
+export function usageEventFromOpenAI(usage?: OpenAIUsage | null): StreamUsageEvent | null {
+  if (!usage || typeof usage.prompt_tokens !== "number") {
+    return null;
+  }
+  const event: StreamUsageEvent = {
+    type: "usage",
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens ?? 0,
+  };
+  const cached = usage.prompt_tokens_details?.cached_tokens;
+  if (typeof cached === "number") {
+    event.cachedInputTokens = cached;
+  }
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens;
+  if (typeof reasoning === "number") {
+    event.reasoningTokens = reasoning;
+  }
+  return event;
+}
+
+/**
+ * The stop reasons the client reports, from an OpenAI `finish_reason`. Anything else (a content
+ * filter, a provider's own spelling) is not a stop the loop acts on, so it maps to null and the
+ * stream keeps reading.
+ */
+function stopReasonFromOpenAI(reason: string | null | undefined): string | null {
+  if (reason === "tool_calls" || reason === "length" || reason === "stop") {
+    return reason;
+  }
+  return null;
 }
 
 /** Error response body — the proxy's flat `{ error: "..." }` or OpenAI's `{ error: { message } }`. */
 interface ErrorResponseBody {
   error?: string | { message?: string; code?: string; type?: string };
+  /**
+   * The proxy's machine code, alongside its human `error` — `cf_reconnect_required` and friends.
+   *
+   * A backend that knows WHY it refused says so here, and a client can only act on the reason it is
+   * given: the whole point of the code is that the Reconnect affordance appears without the user
+   * reading a sentence and deciding what it meant.
+   */
+  code?: string;
+  /**
+   * An array-shaped envelope, as Cloudflare's own REST API uses for a BYOK base URL pointed
+   * directly at it: `{ success: false, errors: [{ code, message }] }`, with no top-level `error`
+   * key at all. Reachable only when `baseUrl` bypasses the Studio proxy and talks to such a
+   * provider directly — the proxy itself normalizes this shape before it ever reaches a client.
+   */
+  errors?: { code?: number; message?: string }[];
+}
+
+/**
+ * Extract a human-readable message from an error body, falling back to the raw body (or `fallback`
+ * when the body is empty).
+ */
+function extractErrorMessage(rawBody: string, fallback: string): string {
+  if (!rawBody) {
+    return fallback;
+  }
+  try {
+    const { error, errors } = JSON.parse(rawBody) as ErrorResponseBody;
+    if (typeof error === "string") {
+      return error;
+    }
+    if (error) {
+      const { message } = error;
+      if (message) {
+        return message;
+      }
+    }
+    const [first] = errors ?? [];
+    if (first) {
+      const { message } = first;
+      if (message) {
+        return message;
+      }
+    }
+  } catch {
+    /* Not JSON — use the raw body. */
+  }
+  return rawBody;
 }
 
 // ─── Type definitions ────────────────────────────────────────────────────────
@@ -125,9 +264,11 @@ interface ErrorResponseBody {
  */
 export const STREAM_EVENT_TYPES = {
   DELTA: "delta",
+  REASONING: "reasoning",
   TOOL_CALL_START: "tool_call_start",
   TOOL_CALL_DELTA: "tool_call_delta",
   TOOL_CALL_END: "tool_call_end",
+  USAGE: "usage",
   DONE: "done",
   ERROR: "error",
 } as const;
@@ -243,9 +384,10 @@ export function createOpenAIStreamingClient({
       } catch {
         /* Ignore */
       }
+      const message = extractErrorMessage(errorBody, response.statusText);
       yield {
         type: "error",
-        message: `API error ${response.status}: ${errorBody || response.statusText}`,
+        message: `API error ${response.status}: ${message}`,
         code: String(response.status),
       };
       return;
@@ -260,8 +402,37 @@ export function createOpenAIStreamingClient({
     const decoder = new TextDecoder();
     let buffer = "";
 
-    /** @type {Map<string, { id: string; name: string; args: string }>} */
     const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
+    /* The finish reason is REMEMBERED rather than acted on. With `include_usage`, the count arrives
+       in a chunk of its own after the one carrying `finish_reason`, so returning on the finish
+       dropped the count on every request. The stream ends at `[DONE]` or when the body closes. */
+    let stopReason: string | null = null;
+    let usage: StreamUsageEvent | null = null;
+
+    /**
+     * Close the tool calls still open. Idempotent, so a finish chunk and `[DONE]` can both call it.
+     *
+     * @yields {StreamEvent} A `tool_call_end` per open call.
+     */
+    function* closePendingToolCalls(): Generator<StreamEvent> {
+      for (const tc of pendingToolCalls.values()) {
+        yield { type: "tool_call_end", id: tc.id };
+      }
+      pendingToolCalls.clear();
+    }
+
+    /**
+     * The stream's last frames: any open calls, the count when there is one, then `done`.
+     *
+     * @yields {StreamEvent} The closing frames, in order.
+     */
+    function* finish(): Generator<StreamEvent> {
+      yield* closePendingToolCalls();
+      if (usage) {
+        yield usage;
+      }
+      yield { type: "done", stopReason: stopReason ?? "stop" };
+    }
 
     try {
       while (true) {
@@ -283,12 +454,7 @@ export function createOpenAIStreamingClient({
 
           const dataStr = trimmed.slice(6);
           if (dataStr === "[DONE]") {
-            // Emit any pending tool call ends before done
-            for (const tc of pendingToolCalls.values()) {
-              yield { type: "tool_call_end", id: tc.id };
-            }
-            pendingToolCalls.clear();
-            yield { type: "done", stopReason: "stop" };
+            yield* finish();
             return;
           }
 
@@ -299,23 +465,29 @@ export function createOpenAIStreamingClient({
             continue; // Skip unparseable chunks
           }
 
+          // Usually a final chunk with no choices, but a provider may put it beside the finish.
+          usage = usageEventFromOpenAI(parsed.usage) ?? usage;
+
           const choice = parsed.choices?.[0];
           if (!choice) {
             continue;
           }
 
           const { delta } = choice;
-          if (!delta) {
-            continue;
-          }
 
           // Text content
-          if (delta.content) {
+          if (delta?.content) {
             yield { type: "delta", content: delta.content };
           }
 
+          // Chain-of-thought, under either of the two names providers give it.
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+          if (typeof reasoning === "string" && reasoning) {
+            yield { type: "reasoning", content: reasoning };
+          }
+
           // Tool calls
-          if (delta.tool_calls) {
+          if (delta?.tool_calls) {
             for (const tc of delta.tool_calls) {
               const existing = pendingToolCalls.get(tc.index);
 
@@ -345,38 +517,17 @@ export function createOpenAIStreamingClient({
             }
           }
 
-          // Finish reason
-          if (choice.finish_reason === "tool_calls") {
-            // Emit pending tool call ends
-            for (const tc of pendingToolCalls.values()) {
-              yield { type: "tool_call_end", id: tc.id };
-            }
-            pendingToolCalls.clear();
-            yield { type: "done", stopReason: "tool_calls" };
-            return;
-          }
-
-          if (choice.finish_reason === "stop" || choice.finish_reason === "length") {
-            // Emit any pending tool call ends
-            for (const tc of pendingToolCalls.values()) {
-              yield { type: "tool_call_end", id: tc.id };
-            }
-            pendingToolCalls.clear();
-            yield {
-              type: "done",
-              stopReason: choice.finish_reason === "length" ? "length" : "stop",
-            };
-            return;
+          // Finish reason: close the calls now, report the reason at the end of the stream.
+          const finished = stopReasonFromOpenAI(choice.finish_reason);
+          if (finished) {
+            yield* closePendingToolCalls();
+            stopReason = finished;
           }
         }
       }
 
-      // Stream ended without explicit finish_reason
-      for (const tc of pendingToolCalls.values()) {
-        yield { type: "tool_call_end", id: tc.id };
-      }
-      pendingToolCalls.clear();
-      yield { type: "done", stopReason: "stop" };
+      // Stream ended without `[DONE]`
+      yield* finish();
     } catch (error) {
       void reader.cancel();
       if ((error as Error).name === "AbortError") {
@@ -435,14 +586,19 @@ export function createAnthropicStreamingClient(
  * `@jxsuite/server/ai-api`). No API key handling here — the proxy owns provider credentials.
  *
  * @param {object} opts
- * @param {string} opts.chatUrl - URL to POST `{ messages, tools, systemPrompt, model }` to
+ * @param {string | (() => string | Promise<string>)} opts.chatUrl - URL to POST `{ messages, tools,
+ *   systemPrompt, model }` to, or a function that answers it. A function is called once, inside the
+ *   first stream, so a caller can hand over its turn's signal before it waits on anything: a Stop
+ *   during a lookup over IPC then takes effect once it answers, and the stream ends cancelled with
+ *   nothing sent. The outcome is kept for the client's later streams. A rejection propagates out of
+ *   the stream, unless the signal was aborted by then, which ends it cancelled.
  * @param {string} [opts.model] - Default model if not specified per-request
  * @param {string} [opts.apiKey] - Optional client-supplied key, sent as the `X-Api-Key` header
  * @param {string} [opts.baseUrl] - Optional OpenAI-compatible base URL, sent as `X-Api-Base-URL`
  * @returns {StreamingClient}
  */
 export interface ProxyStreamingClientOptions {
-  chatUrl: string;
+  chatUrl: string | (() => string | Promise<string>);
   model?: string;
   apiKey?: string | undefined;
   baseUrl?: string | undefined;
@@ -454,6 +610,9 @@ export function createProxyStreamingClient({
   apiKey,
   baseUrl,
 }: ProxyStreamingClientOptions): StreamingClient {
+  /** The URL, once the first stream has asked for it. */
+  let resolvedUrl: Promise<string> | null = null;
+
   /**
    * @param {object[]} messages
    * @param {object[]} tools
@@ -478,9 +637,27 @@ export function createProxyStreamingClient({
       headers["X-Api-Base-URL"] = baseUrl;
     }
 
+    resolvedUrl ??= Promise.resolve(typeof chatUrl === "function" ? chatUrl() : chatUrl);
+    let url: string;
+    try {
+      url = await resolvedUrl;
+    } catch (error) {
+      // A lookup that failed after the turn was stopped is part of the stop, not an error.
+      if (signal?.aborted) {
+        yield { type: "done", stopReason: "cancelled" };
+        return;
+      }
+      throw error;
+    }
+    // Stopped while the URL was being resolved: nothing has been sent, and nothing will be.
+    if (signal?.aborted) {
+      yield { type: "done", stopReason: "cancelled" };
+      return;
+    }
+
     let response;
     try {
-      response = await fetch(chatUrl, {
+      response = await fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify({ messages, tools, systemPrompt, model }),
@@ -505,15 +682,17 @@ export function createProxyStreamingClient({
       } catch {
         /* Ignore */
       }
-      // Try to extract a clean message from JSON error bodies (e.g. the proxy's
-      // { error: "..." } shape or OpenAI's { error: { message: "..." } }).
-      let cleanMessage = errorBody || response.statusText;
+      // Extract a clean message from the JSON error body — see extractErrorMessage.
+      const cleanMessage = extractErrorMessage(errorBody, response.statusText);
+      /* The body's machine code beats the status. `code` was `String(response.status)`
+         unconditionally, so a proxy answering 401 `{ code: "cf_reconnect_required" }` reached the
+         client as `"401"` — indistinguishable from a bad BYOK key, and the one reading that would
+         have put a Reconnect button on screen was thrown away at the only place it arrived. */
+      let machineCode = "";
       try {
-        const parsed = JSON.parse(errorBody) as ErrorResponseBody;
-        if (typeof parsed.error === "string") {
-          cleanMessage = parsed.error;
-        } else if (parsed.error?.message) {
-          cleanMessage = parsed.error.message;
+        const { code } = JSON.parse(errorBody) as ErrorResponseBody;
+        if (typeof code === "string" && code) {
+          machineCode = code;
         }
       } catch {
         /* Not JSON — use the raw body. */
@@ -521,7 +700,7 @@ export function createProxyStreamingClient({
       yield {
         type: "error",
         message: cleanMessage,
-        code: String(response.status),
+        code: machineCode || String(response.status),
       };
       return;
     }

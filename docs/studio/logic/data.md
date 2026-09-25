@@ -4,6 +4,8 @@ description: "Declare what a page or component knows and watch it resolve: value
 code:
   - packages/studio/src/panels/signals-panel.ts
   - packages/studio/src/panels/data-explorer.ts
+  - packages/studio/src/surfaces/panel-signals.ts
+  - packages/studio/src/surfaces/panel-data.ts
   - packages/studio/src/component-props.ts
 ---
 
@@ -44,7 +46,7 @@ A file with nothing declared yet says so and offers **Add a value**, which creat
 ## Add an entry
 
 1. Click the **+ Add…** picker at the bottom of the panel.
-2. Choose what to add:
+2. Choose what to add. The rows are grouped under headings that say which kind of thing each run is: **Values**, **Data sources**, **Project imports** and **Extensions** where your project has them, and **Logic**.
    - **Value**: a plain value the component holds (text, a number, a flag, a list).
    - **Computed**: a value derived from other entries, recalculated automatically.
    - **Fetch from a URL**, **LocalStorage**, **SessionStorage**, **IndexedDB**, **Cookie**, **Set**, **Map**, **FormData**: the built-in data sources, covered in **[Data sources](/docs/studio/logic/data-sources)**.

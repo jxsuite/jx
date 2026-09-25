@@ -1,0 +1,162 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTooltip",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-tooltip.json"
+    }
+  ],
+  "state": {
+    "names": ["floppy-disk", "copy"]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "180px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& button": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "var(--jx-control-h)",
+      "height": "var(--jx-control-h)",
+      "padding": "0",
+      "appearance": "none",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer"
+    },
+    "& button:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "1px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tooltip"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A tip is a hint popover: it can sit over an open menu explaining a row, because a hint does not dismiss an auto popover the way a second auto one would. It is never focusable, and it never names itself onto anything — the control points at it with aria-describedby, which resolves because the kit is light DOM."
+    },
+    {
+      "tagName": "p",
+      "textContent": "Both buttons below are icon-only, so the tip is the only sentence a reader gets. The first is wired the declarative way, with interestfor on the control; the second names its control with for. Both work on every engine — where interest invokers are missing the element binds the control it is wired to itself — and either way the tip stays up for as long as the pointer or the focus is on it, and Escape puts it away."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Declarative"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "interestfor"
+        },
+        {
+          "tagName": "button",
+          "attributes": {
+            "type": "button",
+            "aria-label": "Save",
+            "aria-describedby": "sb-tip-save",
+            "interestfor": "sb-tip-save"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": "floppy-disk"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-tooltip",
+          "id": "sb-tip-save",
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Save the file — ⌘S"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Fallback"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "for, with an arrow"
+        },
+        {
+          "tagName": "button",
+          "id": "sb-copy-button",
+          "attributes": {
+            "type": "button",
+            "aria-label": "Copy",
+            "aria-describedby": "sb-tip-copy"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": "copy"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-tooltip",
+          "id": "sb-tip-copy",
+          "$props": {
+            "for": "sb-copy-button",
+            "arrow": true,
+            "delay": 250
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Copy the selection"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

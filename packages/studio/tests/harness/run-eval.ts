@@ -9,7 +9,7 @@
  * Usage: JX_AI_KEY=... bun run packages/studio/tests/harness/run-eval.js # all defined tests
  * JX_AI_KEY=... bun run packages/studio/tests/harness/run-eval.js L1.1 L1.3
  *
- * See docs/ai-assistant-headless-harness.md §3 Step 4.
+ * See docs/extending/contributing/ai-evals.md.
  */
 
 import { readFileSync } from "node:fs";
@@ -17,11 +17,16 @@ import { resolve } from "node:path";
 
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 
+// Before `real-llm.js`, which loads happy-dom: this captures Bun's fetch, not the window's.
+import { useNativeFetch } from "./native-fetch.js";
 import { loadFixture } from "./load-fixture.js";
 import { buildRealHarness, runPrompt } from "./real-llm.js";
-import { scoreRun } from "./score.js";
+import { scoreRun, unscorableError } from "./score.js";
 import { textOf, anyStyle, anyNode } from "./doc-query.js";
 import { validateDoc } from "../../src/services/jx-validate";
+
+// The provider is reached as a server reaches it: happy-dom's fetch would apply CORS to it.
+useNativeFetch();
 
 /** Context handed to a test's `check`: the model's file writes plus a reader for them. */
 interface EvalCtx {
@@ -317,8 +322,9 @@ async function runOnce(test: EvalTest): Promise<RunResult> {
   harness.client = counter;
   try {
     await runPrompt(harness, test.prompt);
-    if (harness.chatState.status === "error") {
-      return { error: harness.chatState.error, rounds: counter.rounds() };
+    const error = unscorableError(harness.chatState);
+    if (error !== null) {
+      return { error, rounds: counter.rounds() };
     }
     const ctx = { writes: fx.writes, readWritten: fx.readWritten };
     return await scoreRun({

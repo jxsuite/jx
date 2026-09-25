@@ -1,0 +1,272 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookColorArea",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-color-area.json"
+    },
+    {
+      "$ref": "../components/jx-color-slider.json"
+    }
+  ],
+  "state": {
+    "hue": 265,
+    "saturation": 72,
+    "brightness": 88
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-5)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [part=\"cell\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "width": "200px"
+    },
+    "& [part=\"caption\"]": {
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-color-area"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A saturation and brightness square under one hue. Inside it are two real range inputs, one per axis, transparent rather than hidden: they carry the slider role, the names, the announced values and the tab stops, so the square is fully operable from the keyboard. The element adds the arrow across the other axis, a ten-step Shift+Arrow, and the pointer maths."
+    },
+    {
+      "tagName": "p",
+      "textContent": "Every value the pointer can reach is reachable with the arrow keys, and one press with no movement sets the colour outright, so nothing here requires a dragging motion."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Bound to a hue"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound square"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "cell"
+          },
+          "children": [
+            {
+              "tagName": "jx-color-area",
+              "$props": {
+                "label": "Accent colour",
+                "hue": {
+                  "$ref": "#/state/hue"
+                },
+                "saturation": {
+                  "$ref": "#/state/saturation"
+                },
+                "brightness": {
+                  "$ref": "#/state/brightness"
+                }
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "=",
+                    "target": {
+                      "$ref": "#/state/saturation"
+                    },
+                    "value": {
+                      "$ref": "event#/target/saturation"
+                    }
+                  },
+                  {
+                    "operator": "=",
+                    "target": {
+                      "$ref": "#/state/brightness"
+                    },
+                    "value": {
+                      "$ref": "event#/target/brightness"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-color-slider",
+              "$props": {
+                "label": "Hue",
+                "channel": "hue",
+                "value": {
+                  "$ref": "#/state/hue"
+                }
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "=",
+                    "target": {
+                      "$ref": "#/state/hue"
+                    },
+                    "value": {
+                      "$ref": "event#/target/value"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "caption"
+              },
+              "textContent": "hue ${Math.round(state.hue)}, saturation ${Math.round(state.saturation)}%, brightness ${Math.round(state.brightness)}%"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Variants and states"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Variants"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "cell"
+          },
+          "children": [
+            {
+              "tagName": "jx-color-area",
+              "$props": {
+                "label": "Warm",
+                "hue": 20,
+                "saturation": 90,
+                "brightness": 95
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "caption"
+              },
+              "textContent": "A warm hue, at the top corner"
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "cell"
+          },
+          "children": [
+            {
+              "tagName": "jx-color-area",
+              "$props": {
+                "label": "Coarse grid",
+                "hue": 150,
+                "step": 10,
+                "saturation": 50,
+                "brightness": 50
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "caption"
+              },
+              "textContent": "step 10, so an arrow moves a tenth and Shift takes it to the edge"
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "cell"
+          },
+          "children": [
+            {
+              "tagName": "jx-color-area",
+              "$props": {
+                "label": "Not yours to change",
+                "hue": 265,
+                "saturation": 40,
+                "brightness": 60,
+                "disabled": true
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "caption"
+              },
+              "textContent": "Disabled: both ranges refuse, and the pointer is refused too"
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "cell"
+          },
+          "children": [
+            {
+              "tagName": "jx-color-area",
+              "$props": {
+                "label": "Grey",
+                "hue": 265,
+                "saturation": 0,
+                "brightness": 100
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "caption"
+              },
+              "textContent": "Saturation zero: the hue is still 265, because the square never writes it"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

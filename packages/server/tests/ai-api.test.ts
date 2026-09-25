@@ -512,6 +512,31 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
     );
   });
 
+  it("forwards a thinking model's reasoning under either field name", async () => {
+    /* Dropping these makes the NEXT round a 400 the client cannot repair: DeepSeek's thinking mode
+       requires every prior turn's reasoning back on any request carrying `tools`. */
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            { choices: [{ delta: { reasoning_content: "Weighing it up" } }] },
+            { choices: [{ delta: { reasoning: "and again" } }] },
+            { choices: [{ delta: { content: "Hello", reasoning_content: "" } }] },
+            { choices: [{ delta: {}, finish_reason: "stop" }] },
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.filter((e) => e.type === "reasoning").map((e) => e.content)).toEqual([
+          "Weighing it up",
+          "and again",
+        ]);
+        expect(events.filter((e) => e.type === "delta").map((e) => e.content)).toEqual(["Hello"]);
+      },
+    );
+  });
+
   it("normalizes a streamed tool call across fragments", async () => {
     await withUpstream(
       (() =>
@@ -580,6 +605,82 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
     );
   });
 
+  /* `include_usage` puts the count in a chunk AFTER the finish. Closing on the finish dropped it,
+     so the client never received a real token count. It must precede `done`: readers stop there. */
+  it("forwards the usage count after the finish chunk, immediately before done", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            { choices: [{ delta: { content: "Hi" } }] },
+            { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+            {
+              choices: [],
+              usage: {
+                completion_tokens: 7,
+                completion_tokens_details: { reasoning_tokens: 3 },
+                prompt_tokens: 812,
+                prompt_tokens_details: { cached_tokens: 512 },
+              },
+            },
+            "[DONE]",
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.slice(-2)).toEqual([
+          {
+            cachedInputTokens: 512,
+            inputTokens: 812,
+            outputTokens: 7,
+            reasoningTokens: 3,
+            type: "usage",
+          },
+          { stopReason: "tool_calls", type: "done" },
+        ]);
+      },
+    );
+  });
+
+  it("forwards a count beside the finish, and sends none when the upstream reports none", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            {
+              choices: [{ delta: { content: "a" }, finish_reason: "length" }],
+              usage: { prompt_tokens: 4 },
+            },
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.slice(-2)).toEqual([
+          { inputTokens: 4, outputTokens: 0, type: "usage" },
+          { stopReason: "length", type: "done" },
+        ]);
+      },
+    );
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          sseUpstream([
+            { choices: [{ delta: {}, finish_reason: "content_filter" }] },
+            { choices: [{ finish_reason: "stop" }], usage: null },
+            { choices: [], usage: { completion_tokens: 2 } },
+          ]),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        expect(events.some((e) => e.type === "usage")).toBe(false);
+        expect(events.at(-1)).toEqual({ stopReason: "stop", type: "done" });
+      },
+    );
+  });
+
   it("surfaces an upstream error body as an error event", async () => {
     await withUpstream(
       (() =>
@@ -606,6 +707,30 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
         expect(events.find((e) => e.type === "error")!.message).toBe("bad request");
+      },
+    );
+  });
+
+  it("surfaces Cloudflare's array-shaped error envelope, not the raw JSON", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          Response.json(
+            {
+              errors: [{ code: 7000, message: "No route for that URI" }],
+              messages: [],
+              result: null,
+              success: false,
+            },
+            { status: 404 },
+          ),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
+        const events = await readSSEEvents(res!);
+        const err = events.find((e) => e.type === "error");
+        expect(err!.message).toBe("No route for that URI");
+        expect(err!.code).toBe("404");
       },
     );
   });
@@ -657,6 +782,29 @@ describe("GET /__studio/ai/models — upstream proxy", () => {
         const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
         const data = (await res!.json()) as { upstreamError: number };
         expect(data.upstreamError).toBe(500);
+      },
+    );
+  });
+
+  it("reports the real reason when the upstream has no /models route (Cloudflare's shape)", async () => {
+    await withUpstream(
+      (() =>
+        Promise.resolve(
+          Response.json(
+            {
+              errors: [{ code: 7000, message: "No route for that URI" }],
+              messages: [],
+              result: null,
+              success: false,
+            },
+            { status: 404 },
+          ),
+        )) as unknown as typeof fetch,
+      async () => {
+        const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
+        const data = (await res!.json()) as { upstreamError: number; upstreamMessage: string };
+        expect(data.upstreamError).toBe(404);
+        expect(data.upstreamMessage).toBe("No route for that URI");
       },
     );
   });

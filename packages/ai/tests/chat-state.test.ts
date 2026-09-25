@@ -60,6 +60,32 @@ describe("chat-state streaming guards", () => {
     expect(chat.streamingContent).toBe("");
   });
 
+  it("ignores appendReasoning when not streaming", () => {
+    const chat = createChatState();
+    chat.appendReasoning("ignored");
+    expect(chat.messages.length).toBe(0);
+  });
+
+  it("ignores appendReasoning after the stream is finished", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.appendReasoning("thinking");
+    chat.finishStream("stop");
+    chat.appendReasoning("late");
+    expect(chat.messages.at(-1)!.reasoningContent).toBe("thinking");
+  });
+
+  it("accumulates reasoning deltas separately from the answer text", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.appendReasoning("first ");
+    chat.appendDelta("Hi!");
+    chat.appendReasoning("second");
+    expect(chat.messages.at(-1)!.reasoningContent).toBe("first second");
+    expect(chat.messages.at(-1)!.content).toBe("Hi!");
+    expect(chat.streamingContent).toBe("Hi!");
+  });
+
   it("ignores appendToolCallStart when not streaming", () => {
     const chat = createChatState();
     chat.appendToolCallStart("tc_1", "noop");
@@ -125,6 +151,65 @@ describe("chat-state tool-call accumulation", () => {
     chat.appendToolResult("missing", toolSuccess(null, "nope"));
     expect(chat.pendingToolCalls[0]!.result).toBeNull();
   });
+
+  /* The agent loop runs its tools after the round's stream has finished, so the result is attached
+     when there is no streaming message and no pending call. */
+  it("finds the record on its request after the stream has finished", () => {
+    const chat = createChatState();
+    chat.sendMessage("Do two things");
+    chat.appendToolCallStart("tc_1", "first");
+    chat.appendToolCallStart("tc_2", "second");
+    chat.finishStream("tool_calls");
+    const request = chat.messages.at(-1)!;
+
+    chat.appendToolResult("tc_1", toolSuccess(null, "one"));
+    chat.pushToolResultMessage("tc_1", "{}");
+    // The second call's result lands after the first call's reply.
+    chat.appendToolResult("tc_2", toolSuccess(null, "two"));
+
+    expect(request.toolCalls!.map((tc) => tc.result?.summary)).toEqual(["one", "two"]);
+  });
+
+  it("an id a later round reuses answers only the later request", () => {
+    const chat = createChatState();
+    chat.sendMessage("Go");
+    chat.appendToolCallStart("call_0", "tool");
+    chat.finishStream("tool_calls");
+    chat.appendToolResult("call_0", toolSuccess(null, "first"));
+    chat.pushToolResultMessage("call_0", "{}");
+    chat.beginAssistantTurn();
+    chat.appendToolCallStart("call_0", "tool");
+    chat.finishStream("tool_calls");
+    chat.appendToolResult("call_0", toolSuccess(null, "second"));
+
+    const requests = chat.messages.filter((m) => m.role === "assistant");
+    expect(requests.map((m) => m.toolCalls![0]!.result?.summary)).toEqual(["first", "second"]);
+  });
+
+  it("attaches nothing when no request comes before the replies", () => {
+    const chat = createChatState();
+    // An empty transcript, and one that holds only a reply, carry no request to attach to.
+    expect(() => chat.appendToolResult("tc_1", toolSuccess(null, "orphan"))).not.toThrow();
+    chat.pushToolResultMessage("tc_1", "{}");
+    chat.appendToolResult("tc_1", toolSuccess(null, "orphan"));
+    expect(chat.messages.some((m) => m.toolCalls)).toBe(false);
+  });
+
+  it("never reaches past the turn's user message to an earlier request with the same id", () => {
+    const chat = createChatState();
+    chat.sendMessage("Go");
+    chat.appendToolCallStart("tc_1", "tool");
+    chat.finishStream("tool_calls");
+    chat.appendToolResult("tc_1", toolSuccess(null, "first"));
+    chat.pushToolResultMessage("tc_1", "{}");
+    chat.sendMessage("again");
+    chat.finishStream("stop");
+    chat.messages.pop();
+    // The message before the (absent) replies is the user's, which carries no calls.
+    chat.appendToolResult("tc_1", toolSuccess(null, "stray"));
+    expect(chat.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "user"]);
+    expect(chat.messages[1]!.toolCalls![0]!.result?.summary).toBe("first");
+  });
 });
 
 describe("chat-state pushToolResultMessage", () => {
@@ -170,6 +255,14 @@ describe("chat-state error and cancel", () => {
     expect(chat.error).toBe("boom");
     expect(chat.streamingContent).toBe("");
     expect(chat.messages.filter((m) => m.role === "assistant").length).toBe(0);
+  });
+
+  it("setError clears the calls the failed round had streamed", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.appendToolCallStart("tc_1", "tool");
+    chat.setError("boom");
+    expect(chat.pendingToolCalls).toEqual([]);
   });
 
   it("setError is safe when there is no active streaming message", () => {
@@ -287,6 +380,97 @@ describe("chat-state setters", () => {
   });
 });
 
+describe("chat-state usage", () => {
+  it("records the provider's count, where it was taken, and shows it as the token count", () => {
+    const chat = createChatState();
+    chat.sendMessage("hi");
+    chat.recordUsage({
+      type: "usage",
+      inputTokens: 120,
+      outputTokens: 30,
+      cachedInputTokens: 100,
+      reasoningTokens: 8,
+    });
+    expect(chat.usage).toEqual({
+      inputTokens: 120,
+      outputTokens: 30,
+      cachedInputTokens: 100,
+      reasoningTokens: 8,
+      // No reasoning was streamed, so the 8 reasoning tokens occupy nothing on the next send.
+      contextTokens: 142,
+      lastMessageId: chat.messages[1]!.id,
+      messageCount: 2, // The user message and the reply being streamed
+    });
+    expect(chat.tokenCount).toBe(142);
+  });
+
+  it("keeps reasoning in the context when the turn streamed it, since it is replayed", () => {
+    const chat = createChatState();
+    chat.sendMessage("think");
+    chat.appendReasoning("weighing it");
+    chat.appendDelta("Here is the answer."); // An answered turn is sent, reasoning and all
+    chat.recordUsage(
+      { type: "usage", inputTokens: 100, outputTokens: 40, reasoningTokens: 25 },
+      { systemTokens: 60 },
+    );
+    expect(chat.usage?.contextTokens).toBe(140);
+    expect(chat.usage?.systemTokens).toBe(60);
+  });
+
+  it("does not count reasoning as replayed when the turn is never sent", () => {
+    // A turn carrying only reasoning is dropped by toMessagesArray, reasoning and all.
+    const chat = createChatState();
+    chat.sendMessage("think");
+    chat.appendReasoning("thinking, then cut off");
+    chat.recordUsage({ type: "usage", inputTokens: 100, outputTokens: 40, reasoningTokens: 40 });
+    expect(chat.usage?.contextTokens).toBe(100);
+  });
+
+  it("ignores a frame whose counts are not finite, non-negative numbers", () => {
+    const chat = createChatState();
+    chat.sendMessage("hi");
+    const bad = [
+      { inputTokens: Number.NaN, outputTokens: 1 },
+      { inputTokens: 1, outputTokens: -1 },
+      { inputTokens: "10" as unknown as number, outputTokens: 1 },
+      { inputTokens: 1, outputTokens: Number.POSITIVE_INFINITY },
+    ];
+    for (const counts of bad) {
+      chat.recordUsage({ type: "usage", ...counts });
+    }
+    expect(chat.usage).toBeNull();
+    expect(chat.tokenCount).toBe(0);
+  });
+
+  it("disregards a reasoning figure that is not a count", () => {
+    const chat = createChatState();
+    chat.sendMessage("hi");
+    chat.recordUsage({
+      type: "usage",
+      inputTokens: 10,
+      outputTokens: 5,
+      reasoningTokens: Number.NaN,
+    });
+    expect(chat.usage?.contextTokens).toBe(15);
+  });
+
+  it("falls back to the last message when no reply is streaming", () => {
+    const chat = createChatState();
+    chat.recordUsage({ type: "usage", inputTokens: 5, outputTokens: 5, reasoningTokens: 2 });
+    expect(chat.usage).toMatchObject({ contextTokens: 8, lastMessageId: "", messageCount: 0 });
+  });
+
+  it("clearUsage forgets the count, and clearChat forgets it too", () => {
+    const chat = createChatState();
+    chat.recordUsage({ type: "usage", inputTokens: 1, outputTokens: 1 });
+    chat.clearUsage();
+    expect(chat.usage).toBeNull();
+    chat.recordUsage({ type: "usage", inputTokens: 1, outputTokens: 1 });
+    chat.clearChat();
+    expect(chat.usage).toBeNull();
+  });
+});
+
 describe("chat-state toMessagesArray", () => {
   it("emits plain user and assistant entries", () => {
     const chat = createChatState();
@@ -352,6 +536,53 @@ describe("chat-state toMessagesArray", () => {
     const toolMsg = msgs.find((m) => m.role === "tool")!;
     expect(toolMsg.tool_call_id).toBe("tc_1");
     expect(toolMsg.content).toBe("completed");
+  });
+
+  it("omits the in-flight assistant placeholder", () => {
+    /* The turn being generated by the very request this builds. Sent as a trailing
+       {"role":"assistant","content":""}, DeepSeek's thinking mode answered 400 asking for the
+       reasoning_content that a turn which has not happened yet cannot have. */
+    const chat = createChatState();
+    chat.sendMessage("Import that site");
+
+    expect(chat.messages.length).toBe(2);
+    expect(chat.toMessagesArray()).toEqual([{ role: "user", content: "Import that site" }]);
+  });
+
+  it("omits an assistant turn that ended with neither text nor tool calls", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.finishStream("stop");
+
+    expect(chat.toMessagesArray()).toEqual([{ role: "user", content: "Hello" }]);
+  });
+
+  it("replays reasoning_content on the turn that streamed it", () => {
+    const chat = createChatState();
+    chat.sendMessage("Add a button");
+    chat.appendReasoning("The user wants a button.");
+    chat.appendToolCallStart("tc_1", "addElement");
+    chat.appendToolCallDelta("tc_1", "{}");
+    chat.finishStream("tool_calls");
+    chat.pushToolResultMessage("tc_1", "done");
+    chat.beginAssistantTurn();
+
+    const msgs = chat.toMessagesArray() as { role: string; reasoning_content?: string }[];
+    const assistant = msgs.find((m) => m.role === "assistant")!;
+    expect(assistant.reasoning_content).toBe("The user wants a button.");
+    // And the next round's placeholder is still not among them.
+    expect(msgs.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+  });
+
+  it("emits no reasoning_content for a provider that streamed none", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.appendDelta("Hi!");
+    chat.finishStream("stop");
+
+    const assistant = chat.toMessagesArray().at(-1)!;
+    expect(assistant).toEqual({ role: "assistant", content: "Hi!" });
+    expect("reasoning_content" in assistant).toBe(false);
   });
 
   it("treats an assistant message with an empty toolCalls array as plain text", () => {

@@ -1,0 +1,67 @@
+{
+  "name": "legacy-unscoped",
+  "description": "The unscoped legacy key (jx-ai-chat-history, no project open) migrates into the unscoped session store.",
+  "root": "",
+  "storage": {
+    "jx-ai-chat-history": [
+      { "id": "leg_1", "role": "user", "content": "Before projects", "timestamp": 1767225601000 },
+      {
+        "id": "leg_2",
+        "role": "assistant",
+        "content": "Unscoped legacy.",
+        "timestamp": 1767225602000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_T_1",
+    "storeActiveId": "s_T_1",
+    "sessions": [
+      {
+        "id": "s_T_1",
+        "title": "Before projects",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      { "id": "leg_1", "role": "user", "content": "Before projects", "timestamp": 1767225601000 },
+      {
+        "id": "leg_2",
+        "role": "assistant",
+        "content": "Unscoped legacy.",
+        "timestamp": 1767225602000
+      }
+    ],
+    "wire": [
+      { "role": "user", "content": "Before projects" },
+      { "role": "assistant", "content": "Unscoped legacy." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": {
+      "jx-ai-chat-session:s_T_1": [
+        { "id": "leg_1", "role": "user", "content": "Before projects", "timestamp": 1767225601000 },
+        {
+          "id": "leg_2",
+          "role": "assistant",
+          "content": "Unscoped legacy.",
+          "timestamp": 1767225602000
+        }
+      ],
+      "jx-ai-chat-sessions": {
+        "version": 1,
+        "activeId": "s_T_1",
+        "sessions": [
+          {
+            "id": "s_T_1",
+            "title": "Before projects",
+            "createdAt": 1767225601000,
+            "updatedAt": 1767225602000,
+            "messageCount": 2
+          }
+        ]
+      }
+    }
+  }
+}

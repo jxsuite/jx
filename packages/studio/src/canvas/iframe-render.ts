@@ -3,8 +3,10 @@
  * In-iframe render core — turns a fully-resolved document into live DOM via @jxsuite/runtime,
  * stamping `data-jx-path` so the editor can map nodes back to document paths across the frame
  * boundary. The parent does the heavy resolution (layout distribution, site-context, `$head`,
- * components, edit-mode transforms) and posts the result; this core stays dependency-light (runtime
- * + reactivity + the pure path-mapping helpers) so the iframe bundle is small.
+ * components, edit-mode transforms) and posts the result; this core stays dependency-light
+ * (runtime
+ *
+ * - Reactivity + the pure path-mapping helpers) so the iframe bundle is small.
  *
  * Because the iframe is served from the real project origin, the runtime's verbatim
  * `el.setAttribute("src", "/images/foo.jpg")` resolves natively — the fix that motivated the whole
@@ -19,6 +21,8 @@ import {
   runScoped,
   setCanvasAssetResolver,
   setCanvasDelinkAnchors,
+  setCanvasDelinkCommands,
+  setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
   setRootMedia,
   setSkipAutoRequests,
@@ -26,10 +30,14 @@ import {
   setStampPropBindings,
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
-import { classifyRenderNode, serializeJxPath } from "./path-mapping";
+import { classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapping";
+/* No cycle: `iframe-position.ts` imports only `path-mapping` and a type. It already owns the
+   stamped-attribute lookup, escaping included, so a second query built here would be a second
+   answer to "which element is this path". */
+import { elementForPath } from "./iframe-position";
 import type { AssetContext } from "./asset-resolve";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
-import type { CanvasMode } from "./iframe-protocol";
+import type { CanvasMode, WireDiffMarks } from "./iframe-protocol";
 import type { JxDocument } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 
@@ -124,6 +132,10 @@ export const EDIT_PLACEHOLDER_STYLE_ID = "jx-canvas-edit-css";
  * `:not([data-jx-active-block])` keeps the slash hint winning on an empty block that HAS the caret:
  * both rules match the same element, and the emptiness test broke the specificity tie that used to
  * decide it by source order.
+ */
+/*
+ * NOTE: this is a template literal, so a BACKTICK anywhere inside — including in a CSS comment —
+ * ends the string and produces a syntax error several lines later. Quote property names bare.
  */
 export const EDIT_PLACEHOLDER_CSS = `
 .empty-media-placeholder {
@@ -234,6 +246,270 @@ export function syncEditModeCss(doc: Document, mode: CanvasMode): void {
   style.id = EDIT_PLACEHOLDER_STYLE_ID;
   style.textContent = EDIT_PLACEHOLDER_CSS;
   doc.head.append(style);
+}
+
+/** Id of the injected canvas UA-substitute stylesheet (the overlay rules). */
+export const CANVAS_OVERLAY_STYLE_ID = "jx-canvas-overlay-css";
+
+/**
+ * The rules that stand in for the UA behaviour a de-linked overlay has just lost.
+ *
+ * **This sheet's predicate IS the predicate of `setCanvasDelinkPopovers` /
+ * `setCanvasDelinkCommands` — every mode but Preview — and that is the invariant to keep.** An
+ * attribute renamed without its substitute rule is an overlay that can never be drawn: `popover`
+ * renamed to `data-jx-popover` with no replacement hide rule lays every CLOSED panel out as
+ * ordinary in-flow content and inflates the artboard, and a dialog stamped `data-jx-dialog-open`
+ * stays hidden behind the UA `dialog:not([open])` for good. These rules used to ship inside
+ * `EDIT_PLACEHOLDER_CSS`, which is installed for design/edit alone, so Stylebook and a git-diff
+ * side de-linked without them. A read-only artboard must draw an overlay exactly as the design
+ * canvas does — a git-diff pair is read side by side, and the artboard-growth argument below is
+ * about a content-sized frame, not about editing.
+ */
+/*
+ * NOTE: this is a template literal, so a BACKTICK anywhere inside — including in a CSS comment —
+ * ends the string and produces a syntax error several lines later. Quote property names bare.
+ */
+export const CANVAS_OVERLAY_CSS = `
+/* The UA rule a de-popovered element lost, re-supplied at UA-EQUIVALENT PRECEDENCE.
+
+   The cascade layer is the mechanism and it is the whole point. An unlayered author declaration
+   beats a layered one whatever its specificity, and every declaration applyStyle emits is an
+   unlayered rule in an adopted sheet. That is exactly how author origin beats UA origin on the
+   shipped page, so the canvas reproduces the real cascade rather than an approximation of it.
+
+   This used to read "a base declaration is written as an INLINE style", which was true and is the
+   reason the guarantee survived the move: inline beat layered harder still, and unlayered beats it
+   by the same rule one step down. Jx emits no layer of its own, which is what keeps that true.
+
+   Deliberately NOT forced with a priority flag. A popover whose base rule sets display is laid out
+   on every page whether open or not; that is a real defect, @jxsuite/schema/overlays reports it as
+   base-display, and the canvas's job is to SHOW it, not to hide it behind a stronger rule. */
+@layer jx-canvas-ua {
+  [data-jx-popover]:not([data-jx-popover-open]) {
+    display: none;
+  }
+  dialog[data-jx-dialog-open] {
+    display: block;
+  }
+}
+/* SHOWN IN PLACE, and the position declaration is what makes that true.
+
+   Dropping the popover attribute drops the UA rule that made the panel fixed, so a panel that never
+   set position itself — every one in the fleet — lands in normal flow at its document position,
+   contributes to #jx-canvas-root's scrollHeight, and the host grows the artboard to fit it. That is
+   the whole geometry fix, and it is why an open panel is reachable at all.
+
+   The two alignment declarations are the other half, and they were found by measuring rather than
+   by reasoning. Every drawer in the fleet is declared inside its header's flex row, so in flow it
+   becomes a FLEX ITEM: align-items:center on the row centres a 904px panel on a 64px header and
+   half of it sits above the artboard at a negative offset, where it contributes nothing to the
+   scrollable overflow the host measures. Pinned to the start and refused any flex sizing, the same
+   panel hangs down from its own position and the artboard grows by its full height.
+
+   Forced, because a panel that DOES set position: fixed would otherwise keep it and be laid out
+   against the frame's own viewport — which in a de-linked mode is the document's full height, so a
+   drawer pinned with inset: 0 lands halfway down a long page and a short component frame clips it.
+   This is a presentation override for a canvas affordance, the same kind as the layout-region
+   dimming in EDIT_PLACEHOLDER_CSS, and it is NOT the same move as forcing display: that would hide
+   a real defect in the document (base-display), while this hides nothing — Preview renders the
+   panel natively, top layer and all. */
+[data-jx-popover][data-jx-popover-open] {
+  position: relative !important;
+  inset: auto !important;
+  align-self: start !important;
+  flex: none !important;
+  outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
+  outline-offset: 2px;
+}
+[data-jx-popover][data-jx-popover-open]::before {
+  content: "POPOVER \\00B7  SHOWN IN PLACE";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 0 0 3px 0;
+  background: color-mix(in srgb, #808080 78%, transparent);
+  color: #fff;
+  font: 700 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+dialog[data-jx-dialog-open] {
+  position: relative !important;
+  inset: auto !important;
+  align-self: start !important;
+  flex: none !important;
+  outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
+  outline-offset: 2px;
+}
+dialog[data-jx-dialog-open]::before {
+  content: "DIALOG \\00B7  SHOWN IN PLACE";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 0 0 3px 0;
+  background: color-mix(in srgb, #808080 78%, transparent);
+  color: #fff;
+  font: 700 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+`;
+
+/**
+ * Keep the overlay stylesheet in sync with the render mode: present (idempotently) wherever the
+ * render de-links its overlays, removed for preview — which keeps the real `popover`/`open`
+ * attributes, so the real UA rules and the real top layer apply there.
+ */
+export function syncCanvasOverlayCss(doc: Document, mode: CanvasMode): void {
+  const existing = doc.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`);
+  if (mode === "preview") {
+    existing?.remove();
+    return;
+  }
+  if (existing) {
+    return;
+  }
+  const style = doc.createElement("style");
+  style.id = CANVAS_OVERLAY_STYLE_ID;
+  style.textContent = CANVAS_OVERLAY_CSS;
+  doc.head.append(style);
+}
+
+/** Id of the injected git-diff change-mark stylesheet. */
+export const DIFF_MARK_STYLE_ID = "jx-canvas-diff-css";
+
+/**
+ * Change marks for the diff artboards.
+ *
+ * **Colour is never the only encoding.** Each kind carries a distinct `border-left-style` and a
+ * distinct gutter glyph, so the three states stay apart for a reader with a red/green deficiency in
+ * the ordinary render, not only under forced colours. That is also what makes the forced-colours
+ * block below cheap: it drops the wash and keeps style and glyph, which were already carrying the
+ * meaning.
+ *
+ * **The forced-colours block has to live HERE, in the frame.** `styles/forced-colors.css` is chrome
+ * and never reaches this document. The artboard's own opt-out (`forced-color-adjust: none` on
+ * `iframe.canvas-iframe`) is about not repainting the AUTHOR'S palette, which is why these rules
+ * add editor chrome through an attribute selector rather than restyling content.
+ *
+ * Hexes rather than custom properties for the reason `EDIT_PLACEHOLDER_CSS` gives: this is a
+ * separate document where the parent's tokens do not exist. The pair is chosen against the white
+ * artboard (`.canvas-panel-viewport` pins `background: white; color-scheme: light` whatever the
+ * chrome theme is), so the dark chrome tints `--success`/`--danger` carry would be illegible here.
+ */
+export const DIFF_MARK_CSS = `
+[data-jx-diff] {
+  position: relative;
+  border-left-width: 3px;
+  border-left-color: currentColor;
+}
+[data-jx-diff]::before {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 3px;
+  content: "";
+}
+[data-jx-diff="added"] {
+  border-left-style: solid;
+  border-left-color: #0a7c42;
+  background: color-mix(in srgb, #0a7c42 12%, transparent);
+}
+[data-jx-diff="removed"] {
+  border-left-style: double;
+  border-left-color: #c9252d;
+  background: color-mix(in srgb, #c9252d 12%, transparent);
+}
+[data-jx-diff="modified-before"] {
+  border-left-style: dashed;
+  border-left-color: #c9252d;
+  background: color-mix(in srgb, #c9252d 8%, transparent);
+}
+[data-jx-diff="modified-after"] {
+  border-left-style: dashed;
+  border-left-color: #0a7c42;
+  background: color-mix(in srgb, #0a7c42 8%, transparent);
+}
+[data-jx-diff-within] {
+  border-left: 3px dotted color-mix(in srgb, #808080 60%, transparent);
+}
+@media (forced-colors: active) {
+  [data-jx-diff],
+  [data-jx-diff-within] {
+    background: none;
+    border-left-color: CanvasText;
+  }
+}
+`;
+
+/**
+ * Keep the change-mark stylesheet in sync with whether this render carries marks.
+ *
+ * Gated on the MARKS, not on the mode. The decoration should depend on the payload the decoration
+ * needs: a git-diff artboard whose comparison is still loading has no marks to show, and a mode
+ * check would leave a stale sheet behind it.
+ */
+export function syncDiffCss(doc: Document, on: boolean): void {
+  const existing = doc.head.querySelector(`#${DIFF_MARK_STYLE_ID}`);
+  if (!on) {
+    existing?.remove();
+    return;
+  }
+  if (existing) {
+    return;
+  }
+  const style = doc.createElement("style");
+  style.id = DIFF_MARK_STYLE_ID;
+  style.textContent = DIFF_MARK_CSS;
+  doc.head.append(style);
+}
+
+/**
+ * Stamp this artboard's change marks onto the rendered tree.
+ *
+ * Replaces the whole set: every previous `data-jx-diff` comes off first, so a render carrying no
+ * marks clears the last one's rather than layering on it.
+ *
+ * **An unresolvable mark climbs to the nearest stamped ancestor** and lands there as
+ * `data-jx-diff-within` — "something inside here changed that cannot be drawn here". Not every
+ * document path reaches an element: a component's internals are created by its own
+ * `connectedCallback` and never pass through {@link makeStamper}, and only the first expanded row
+ * of a repeater carries the template's collapsed path. Dropping those marks silently would make the
+ * artboard disagree with a count the header states out loud; climbing keeps the change locatable
+ * and honest about its resolution.
+ */
+export function applyDiffMarks(container: HTMLElement, marks: WireDiffMarks | null): void {
+  for (const stale of container.querySelectorAll("[data-jx-diff], [data-jx-diff-within]")) {
+    if (stale instanceof HTMLElement) {
+      delete stale.dataset.jxDiff;
+      delete stale.dataset.jxDiffWithin;
+    }
+  }
+  if (!marks?.length) {
+    return;
+  }
+  for (const mark of marks) {
+    const exact = elementForPath(container, mark.path);
+    if (exact) {
+      exact.dataset.jxDiff = mark.kind;
+      continue;
+    }
+    /* Climb by whole `["children", i]` hops: a path's segments come in that pairing, so dropping
+       one at a time would ask for `[..., "children"]`, which is never an address. */
+    let { path } = mark;
+    while (path.length >= 2) {
+      path = path.slice(0, -2);
+      const ancestor = elementForPath(container, path);
+      if (ancestor) {
+        ancestor.dataset.jxDiffWithin = "";
+        break;
+      }
+    }
+  }
 }
 
 /**
@@ -454,6 +730,71 @@ export function applyPreviewColorScheme(doc: Document, scheme: "light" | "dark" 
   }
 }
 
+/**
+ * Draw the popover at `path` open, and every other one closed.
+ *
+ * The canvas-only twin of `showPopover()` — one attribute, no top layer, no light dismiss, and
+ * idempotent, so the parent may post the same value as often as it likes. Re-applied after every
+ * render AND after every patch: an `attributes` op routes through `replaceSubtree`, which rebuilds
+ * the element and takes the attribute with it.
+ *
+ * A path naming a node that is not a de-popovered panel opens nothing rather than throwing — the
+ * frame's copy of a value the host may have computed against a document it has since changed.
+ *
+ * @param root The render container (`#jx-canvas-root`).
+ * @param path Serialized document path of the popover to open, or null to close them all.
+ * @docs studio/interface/canvas
+ */
+export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): void {
+  for (const el of root.querySelectorAll("[data-jx-popover-open]")) {
+    delete (el as HTMLElement).dataset.jxPopoverOpen;
+  }
+  if (path === null) {
+    return;
+  }
+  const target = root.querySelector(`[data-jx-popover]${jxPathSelector(path)}`);
+  if (target) {
+    (target as HTMLElement).dataset.jxPopoverOpen = "";
+  }
+}
+
+/**
+ * Mark the one `<dialog>` the canvas draws open — the dialog twin of
+ * {@link applyCanvasPopoverOpen}.
+ *
+ * @param root The render container (`#jx-canvas-root`).
+ * @param path Serialized document path of the dialog to open, or null to close them all.
+ * @docs studio/interface/canvas
+ */
+/*
+ * The dialog rules in the sheet above, explained here rather than inside the template literal,
+ * because a comment inside the string ships in iframe-entry.js.
+ *
+ * `dialog[data-jx-dialog-open] { display: block }` in the `jx-canvas-ua` layer is the dialog's
+ * other half: its authored `open` is renamed away, so the browser's own
+ * `dialog:not([open]) { display: none }` keeps every dialog closed, and this is the one rule that
+ * shows the dialog the canvas opened. Layered for the reason the popover rule gives: an author
+ * `display` on the base rule beats it, and that defect (@jxsuite/schema/dialogs' base-display) has
+ * to show on the canvas rather than hide behind a stronger rule.
+ *
+ * The forced `position` block is the popover's, by the same move: the UA's absolute positioning
+ * and modal top layer are gone with the renamed attributes, so the open dialog lays out in normal
+ * flow at its document position and the artboard grows to fit it. Preview renders it modally,
+ * backdrop and all.
+ */
+export function applyCanvasDialogOpen(root: ParentNode, path: string | null): void {
+  for (const el of root.querySelectorAll("[data-jx-dialog-open]")) {
+    delete (el as HTMLElement).dataset.jxDialogOpen;
+  }
+  if (path === null) {
+    return;
+  }
+  const target = root.querySelector(`dialog${jxPathSelector(path)}`);
+  if (target) {
+    (target as HTMLElement).dataset.jxDialogOpen = "";
+  }
+}
+
 /** Inject the document's `$head` (link/meta/script) into the iframe's <head>, de-duped by href/src. */
 export function injectHead(doc: JxDocument, assets: AssetContext | null = null): void {
   const head = (doc as { $head?: HeadEntry[] }).$head;
@@ -500,7 +841,8 @@ export function injectHead(doc: JxDocument, assets: AssetContext | null = null):
 
 /**
  * Build the `onNodeCreated` hook that stamps `data-jx-path` (page content) or `data-jx-layout-path`
- * + `data-jx-layout-file` (layout-originated nodes) on rendered nodes.
+ *
+ * - `data-jx-layout-file` (layout-originated nodes) on rendered nodes.
  */
 export function makeStamper(ctx: PathMapCtx) {
   /*
@@ -650,6 +992,12 @@ export async function renderResolvedDocument(opts: {
   assets?: AssetContext | null;
   /** This render may fetch automatic `Request` entries even outside preview (Data-panel Refresh). */
   allowAutoRequests?: boolean;
+  /** Change marks for a git-diff artboard, in this side's own document coordinates. */
+  diffMarks?: WireDiffMarks | null;
+  /** Serialized path of the popover to draw open, or null/absent for none. */
+  popoverOpen?: string | null;
+  /** The dialog to draw open after this render, serialized; the twin of `popoverOpen`. */
+  dialogOpen?: string | null;
 }): Promise<RenderHandle> {
   /* FIRST, before anything emits CSS or an attribute. The resolver is module-global in the runtime,
      so it is set on every render — including to null — or a previous document's context would
@@ -672,6 +1020,15 @@ export async function renderResolvedDocument(opts: {
   // De-link `<a href>` in design/edit so clicks select the anchor instead of navigating the iframe;
   // Preview keeps real links live (mirrors the server-function gate above).
   setCanvasDelinkAnchors(opts.mode !== "preview");
+  /* De-popover in the same modes and for the same reason: an OPEN popover is in the top layer,
+     whose containing block is the viewport — a fiction here, since the frame is sized to its own
+     content — and which contributes to no ancestor's scrollable overflow, so the artboard could
+     never grow to fit one. Preview keeps the real top layer, backdrop and all. */
+  setCanvasDelinkPopovers(opts.mode !== "preview");
+  /* And de-link invoker commands, `inert` and a dialog's `open` with them: a `show-modal` invoker
+     would put its dialog in the top layer and make the rest of the page inert, which is the
+     popover problem plus an unclickable document. The frame reports the click instead. */
+  setCanvasDelinkCommands(opts.mode !== "preview");
   // Stamp `data-jx-bound-prop` on component-internal invertible text bindings in design/edit only —
   // The inline prop-edit affordance. Set every render so a preview/stylebook render in the same
   // Iframe clears it (page-level templates are inert in design/edit via prepareForEditMode, so only
@@ -680,8 +1037,14 @@ export async function renderResolvedDocument(opts: {
   applySiteStyle(opts.siteStyle, (opts.doc as { $media?: Record<string, string> }).$media ?? {});
   injectHead(opts.doc, assets);
   syncEditModeCss(opts.container.ownerDocument, opts.mode);
+  // The substitute rules for the attributes the de-link above renamed. Same predicate as the
+  // De-link, not the narrower design/edit one: a Stylebook specimen and a git-diff side rename
+  // Their overlays too, and without this sheet a closed panel would lay out in flow and an open
+  // Dialog could never be shown.
+  syncCanvasOverlayCss(opts.container.ownerDocument, opts.mode);
   syncPreviewShell(opts.container.ownerDocument, opts.mode);
   syncStylebookCss(opts.container.ownerDocument, opts.mode);
+  syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));
   // Seed the runtime's root $media before buildScope so a COMPONENT with its own `@--name` blocks
   // But no own `$media` resolves the breakpoint to its real query (the iframe path calls buildScope
   // Directly and never the runtime's `Jx()` entry, which is the only other place _rootMedia is set).
@@ -704,9 +1067,14 @@ export async function renderResolvedDocument(opts: {
     () => renderNode(opts.doc, $defs, { _path: [], onNodeCreated }) as HTMLElement,
   );
   opts.container.replaceChildren(el);
+  applyCanvasPopoverOpen(opts.container, opts.popoverOpen ?? null);
+  applyCanvasDialogOpen(opts.container, opts.dialogOpen ?? null);
   // Claim (or release) the editing host AFTER the tree lands, so the browser computes editability
   // Against the final DOM rather than an empty container.
   syncEditableRoot(opts.container, opts.mode);
+  // Marks last, and for the same reason: they are resolved by querying stamped attributes, which
+  // Only exist once the tree the stamper walked is actually in the container.
+  applyDiffMarks(opts.container, opts.diffMarks ?? null);
   return {
     ctx: { defs: $defs, docBase: opts.docBase, mapperCtx: opts.mapperCtx, mode: opts.mode },
     dispose: stop,
