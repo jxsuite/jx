@@ -1253,23 +1253,27 @@ describe("the button group", () => {
 
   test("a value with no glyph shows its CSS keyword in full, not an abbreviation", async () => {
     /* `no-wr` and `wr-rev` were undecodable beside a wrap arrow that read perfectly, which taught
-       a reader that the row's buttons could not be read at all. */
+       a reader that the row's buttons could not be read at all. Written out, `wrap-reverse` is 76px
+       and the three-button row overran a 190px Inspector, drawing a clipped frame and a word cut
+       mid-letter, so it is an overflow row now: a word is never abbreviated and never truncated
+       either. `nowrap` stays, being short and the row's own default. */
     setupTab({ display: "flex" });
     const c = await renderPanel();
     const wrapRow = row(c, "flexWrap")!;
     const button = (value: string) =>
       wrapRow.querySelector<HTMLElement & { icon: string }>(
         `[part="button"][data-value="${value}"]`,
-      )!;
+      );
     const text = (value: string) =>
-      button(value).querySelector<HTMLElement>('[part="label"] > span')!;
-    expect(button("wrap").icon).toBe("arrow-u-down-left");
+      button(value)!.querySelector<HTMLElement>('[part="label"] > span')!;
+    expect(button("wrap")!.icon).toBe("arrow-u-down-left");
     expect(text("wrap").hidden).toBe(true);
-    for (const value of ["nowrap", "wrap-reverse"]) {
-      expect(button(value).icon, value).toBe("");
-      expect(text(value).hidden, value).toBe(false);
-      expect(text(value).textContent, value).toBe(value);
-    }
+    expect(button("nowrap")!.icon).toBe("");
+    expect(text("nowrap").hidden).toBe(false);
+    expect(text("nowrap").textContent).toBe("nowrap");
+    expect(button("wrap-reverse")).toBeNull();
+    const overflow = await openList(chooser(wrapRow));
+    expect(overflow.map((el) => el.dataset.commandId)).toEqual(["wrap-reverse"]);
   });
 
   test("Align content draws the cross axis, the same one Align items draws", async () => {
