@@ -415,11 +415,17 @@ export function registerImportTools(
         /* The turn's own signal too. `assistant.stop` aborts the request through `abortImportRun`,
            but that is not the only way a turn ends: the loop's signal can be aborted directly, and
            a run left going after its turn died would keep a headless browser open for minutes with
-           nothing left to receive the result. */
-        turnSignal()?.addEventListener("abort", () => {
+           nothing left to receive the result.
+
+           It stops THIS run and nothing after it, so it is removed the moment the run settles: left
+           on the turn's signal, a Stop later in the same turn (a question after the import, say)
+           rewrote the finished run as stopped. */
+        const turn = turnSignal();
+        const stopRun = () => {
           abortImportRun();
           finishImportRun(id, { status: "stopped" });
-        });
+        };
+        turn?.addEventListener("abort", stopRun, { once: true });
 
         const apiKey = getOpenAiKey();
         const baseUrl = getBaseUrl();
@@ -484,6 +490,7 @@ export function registerImportTools(
             onReady,
           );
         } catch (error) {
+          turn?.removeEventListener("abort", stopRun);
           const message = error instanceof Error ? error.message : String(error);
           if (signal.aborted) {
             finishImportRun(id, { error: message, status: "stopped" });
@@ -502,6 +509,7 @@ export function registerImportTools(
           );
         }
 
+        turn?.removeEventListener("abort", stopRun);
         finishImportRun(id, { status: "done" });
         imported = true;
         clearPendingImportBrief();

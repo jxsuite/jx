@@ -635,6 +635,69 @@ describe("createProxyStreamingClient", () => {
     expect(headers["X-Api-Base-URL"]).toBeUndefined();
   });
 
+  /* A platform may resolve the URL over IPC (desktop). A function is called inside the first
+     stream, after the caller has handed over its turn's signal, so a Stop during that wait ends the
+     stream before anything is sent. */
+  it("resolves a lazy chatUrl once, inside the first stream, and reuses it", async () => {
+    const { calls } = mockFetch(() =>
+      streamingResponse(sseBody([JSON.stringify({ type: "done", stopReason: "stop" })]), {
+        status: 200,
+      }),
+    );
+    let asked = 0;
+    const client = createProxyStreamingClient({
+      chatUrl: () => {
+        asked += 1;
+        return Promise.resolve("https://proxy/lazy");
+      },
+    });
+    expect(asked).toBe(0);
+    await collect(client.streamChat([], [], "", new AbortController().signal));
+    await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(asked).toBe(1);
+    expect(calls.map((call) => call.url)).toEqual(["https://proxy/lazy", "https://proxy/lazy"]);
+  });
+
+  it("a stream stopped while the URL resolves ends cancelled and sends nothing", async () => {
+    const { calls } = mockFetch(() => streamingResponse(sseBody([]), { status: 200 }));
+    const controller = new AbortController();
+    const client = createProxyStreamingClient({
+      chatUrl: () => {
+        controller.abort();
+        return "https://proxy/chat";
+      },
+    });
+    const events = await collect(client.streamChat([], [], "", controller.signal));
+    expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
+    expect(calls).toEqual([]);
+  });
+
+  it("a chatUrl that rejects after the stream was stopped ends it cancelled", async () => {
+    mockFetch(() => streamingResponse(sseBody([]), { status: 200 }));
+    const controller = new AbortController();
+    const client = createProxyStreamingClient({
+      chatUrl: () => {
+        controller.abort();
+        return Promise.reject(new Error("no platform"));
+      },
+    });
+    const events = await collect(client.streamChat([], [], "", controller.signal));
+    expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
+  });
+
+  it("a chatUrl that rejects rejects the stream", async () => {
+    mockFetch(() => streamingResponse(sseBody([]), { status: 200 }));
+    const client = createProxyStreamingClient({
+      chatUrl: () => Promise.reject(new Error("no platform")),
+    });
+    const stream = collect(client.streamChat([], [], "", new AbortController().signal));
+    const outcome = await stream.then(
+      () => "resolved",
+      (error: Error) => error.message,
+    );
+    expect(outcome).toBe("no platform");
+  });
+
   it("forwards tool-call lifecycle events", async () => {
     mockFetch(() =>
       streamingResponse(

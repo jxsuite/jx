@@ -586,14 +586,19 @@ export function createAnthropicStreamingClient(
  * `@jxsuite/server/ai-api`). No API key handling here — the proxy owns provider credentials.
  *
  * @param {object} opts
- * @param {string} opts.chatUrl - URL to POST `{ messages, tools, systemPrompt, model }` to
+ * @param {string | (() => string | Promise<string>)} opts.chatUrl - URL to POST `{ messages, tools,
+ *   systemPrompt, model }` to, or a function that answers it. A function is called once, inside the
+ *   first stream, so a caller can hand over its turn's signal before it waits on anything: a Stop
+ *   during a lookup over IPC then takes effect once it answers, and the stream ends cancelled with
+ *   nothing sent. The outcome is kept for the client's later streams. A rejection propagates out of
+ *   the stream, unless the signal was aborted by then, which ends it cancelled.
  * @param {string} [opts.model] - Default model if not specified per-request
  * @param {string} [opts.apiKey] - Optional client-supplied key, sent as the `X-Api-Key` header
  * @param {string} [opts.baseUrl] - Optional OpenAI-compatible base URL, sent as `X-Api-Base-URL`
  * @returns {StreamingClient}
  */
 export interface ProxyStreamingClientOptions {
-  chatUrl: string;
+  chatUrl: string | (() => string | Promise<string>);
   model?: string;
   apiKey?: string | undefined;
   baseUrl?: string | undefined;
@@ -605,6 +610,9 @@ export function createProxyStreamingClient({
   apiKey,
   baseUrl,
 }: ProxyStreamingClientOptions): StreamingClient {
+  /** The URL, once the first stream has asked for it. */
+  let resolvedUrl: Promise<string> | null = null;
+
   /**
    * @param {object[]} messages
    * @param {object[]} tools
@@ -629,9 +637,27 @@ export function createProxyStreamingClient({
       headers["X-Api-Base-URL"] = baseUrl;
     }
 
+    resolvedUrl ??= Promise.resolve(typeof chatUrl === "function" ? chatUrl() : chatUrl);
+    let url: string;
+    try {
+      url = await resolvedUrl;
+    } catch (error) {
+      // A lookup that failed after the turn was stopped is part of the stop, not an error.
+      if (signal?.aborted) {
+        yield { type: "done", stopReason: "cancelled" };
+        return;
+      }
+      throw error;
+    }
+    // Stopped while the URL was being resolved: nothing has been sent, and nothing will be.
+    if (signal?.aborted) {
+      yield { type: "done", stopReason: "cancelled" };
+      return;
+    }
+
     let response;
     try {
-      response = await fetch(chatUrl, {
+      response = await fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify({ messages, tools, systemPrompt, model }),

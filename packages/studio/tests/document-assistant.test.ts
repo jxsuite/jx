@@ -25,10 +25,29 @@ let lastClientOpts: Record<string, unknown> | null = null;
 let capturedTools: string[][] = [];
 let capturedSystemPrompts: string[] = [];
 
-function fakeClient(rounds: StreamEvent[][]): StreamingClient {
+function fakeClient(rounds: StreamEvent[][], chatUrl?: unknown): StreamingClient {
   let call = 0;
+  let url: Promise<unknown> | null = null;
   return {
-    async *streamChat(_messages: unknown, tools?: unknown, systemPrompt?: unknown) {
+    async *streamChat(
+      _messages: unknown,
+      tools?: unknown,
+      systemPrompt?: unknown,
+      signal?: AbortSignal,
+    ) {
+      /* The real proxy client's contract: a lazy URL is resolved once, inside the first stream,
+         and a stream stopped by then sends nothing. The resolved URL is what the options record. */
+      url ??= Promise.resolve(
+        typeof chatUrl === "function" ? (chatUrl as () => unknown)() : chatUrl,
+      );
+      const resolved = await url;
+      if (lastClientOpts) {
+        lastClientOpts = { ...lastClientOpts, chatUrl: resolved };
+      }
+      if (signal?.aborted) {
+        yield { stopReason: "cancelled", type: "done" } as StreamEvent;
+        return;
+      }
       capturedTools.push(
         ((tools as { function: { name: string } }[]) ?? []).map((t) => t.function.name),
       );
@@ -59,7 +78,7 @@ void mock.module("@jxsuite/ai", () => ({
     if (createErrorMessage) {
       throw new Error(createErrorMessage);
     }
-    return fakeClient(nextRounds);
+    return fakeClient(nextRounds, opts.chatUrl);
   },
   createToolRegistry,
 }));
@@ -656,11 +675,20 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     /* `sendMessage` persists again in its `finally`, and New Chat clears the session id out from
        under it. Writing there would resurrect the conversation the reader just discarded — under
        whichever session id happened to be next. */
+    const tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p", textContent: "one" }],
+      tagName: "div",
+    });
     nextRounds = [
       [
         { content: "half a th", type: "delta" },
-        { stopReason: "stop", type: "done" },
+        ...toolCallRound("c1", "add_child", {
+          index: 1,
+          node: { tagName: "span" },
+          parentPath: [],
+        }),
       ],
+      [{ stopReason: "stop", type: "done" }],
     ];
 
     const a = createDocumentAssistant();
@@ -674,6 +702,48 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     // Nothing was written back under a session the reader had already dismissed.
     expect(listSessions("").every((s) => loadSession("", s.id)?.length !== 0)).toBe(true);
     expect(a.chatState.messages).toHaveLength(0);
+    /* And the discarded turn did nothing. New Chat stops the turn, and the stop is armed before the
+       send's first wait, so the call it would have streamed never ran into the chat that replaced
+       it, and nothing was requested at all. */
+    expect(tab.doc.document.children).toHaveLength(1);
+    expect(capturedTools).toEqual([]);
+  });
+
+  /* On desktop the chat URL is an IPC round trip, and the chat already reads as streaming while it
+     is answered, so Stop is on screen and clickable. A Stop in that window used to find no
+     controller: the turn went on to stream and run its tools, and its calls ran with no record in
+     the transcript, because the Stop had already cleared the reply they would have been drawn in. */
+  test("a Stop while the chat URL is resolved streams nothing and changes nothing", async () => {
+    let answer: (url: string) => void = () => {};
+    installMockPlatform({
+      aiChatUrl: () =>
+        new Promise<string>((settle) => {
+          answer = settle;
+        }),
+    });
+    const tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p", textContent: "one" }],
+      tagName: "div",
+    });
+    nextRounds = [
+      toolCallRound("c1", "set_text", { path: ["children", 0], value: "AFTER STOP" }),
+      [{ stopReason: "stop", type: "done" }],
+    ];
+
+    const a = createDocumentAssistant();
+    const sending = a.sendMessage("change it");
+    await flush(1);
+    expect(a.chatState.status).toBe("streaming");
+    a.stop();
+    answer("/__mock/ai/chat");
+    await sending;
+
+    expect(tab.doc.document.children).toEqual([{ tagName: "p", textContent: "one" }]);
+    expect(capturedTools).toEqual([]);
+    // No orphan: the stopped reply is gone, and no call or reply was left behind.
+    expect(a.chatState.messages.map((m) => m.role)).toEqual(["user"]);
+    expect(a.chatState.status).toBe("idle");
+    expect(a.chatState.error).toBeNull();
   });
   test("create_project re-anchors the agent's undo batch onto the adopted tab", async () => {
     /* Adoption closes every tab and opens the new project's, so the batch `runAgentLoop` opened on
