@@ -1,6 +1,6 @@
 {
   "name": "v1-project-session",
-  "description": "The everyday case: a project-scoped index naming its active session, whose payload is what the current build persists (reasoning kept, tool-call records with result null, the tool reply). Restored verbatim; a second session stays listed but unloaded.",
+  "description": "The everyday case: a project-scoped index naming its active session, whose payload an older build wrote (reasoning kept, tool-call records carrying result null, the tool reply). Restore backfills each record's result from the tool reply that answered it; a second session stays listed but unloaded.",
   "root": "/proj/demo",
   "storage": {
     "jx-ai-chat-sessions:/proj/demo": {
@@ -96,7 +96,7 @@
             "id": "call_1",
             "name": "add_child",
             "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\"}}",
-            "result": null
+            "result": { "success": true, "summary": "Added h1 as child 0 of the root." }
           }
         ]
       },

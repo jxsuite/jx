@@ -1,6 +1,6 @@
 {
   "name": "saved-by-current-build",
-  "description": "Written by the current build, not by hand: four turns through a real createDocumentAssistant (a document tool with reasoning and usage, an answered ask_user, Stop while ask_user waits so the round's second call never runs, then a send that seals it). storage is that run's snapshot; expected is today's loader reading it back.",
+  "description": "Written by the current build, not by hand: four turns through a real createDocumentAssistant (a document tool with reasoning and usage, an answered ask_user, Stop while ask_user waits so the round's second call never runs, then a send that seals it). storage is that run's snapshot, whose tool-call records carry no result (the tool reply is the outcome's one copy); expected is today's loader reading it back, each result backfilled from its reply.",
   "root": "/proj/round-trip",
   "storage": {
     "jx-ai-chat-session:/proj/round-trip:s_T_1": [
@@ -20,8 +20,7 @@
           {
             "id": "call_head",
             "name": "add_child",
-            "arguments": "{\"index\":0,\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"},\"parentPath\":[]}",
-            "result": null
+            "arguments": "{\"index\":0,\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"},\"parentPath\":[]}"
           }
         ]
       },
@@ -53,8 +52,7 @@
           {
             "id": "call_layout",
             "name": "ask_user",
-            "arguments": "{\"options\":[\"One column\",\"Two columns\"],\"question\":\"Which layout should the page use?\"}",
-            "result": null
+            "arguments": "{\"options\":[\"One column\",\"Two columns\"],\"question\":\"Which layout should the page use?\"}"
           }
         ]
       },
@@ -86,14 +84,12 @@
           {
             "id": "call_footer",
             "name": "ask_user",
-            "arguments": "{\"question\":\"Dark or light footer?\"}",
-            "result": null
+            "arguments": "{\"question\":\"Dark or light footer?\"}"
           },
           {
             "id": "call_link",
             "name": "add_child",
-            "arguments": "{\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"},\"parentPath\":[]}",
-            "result": null
+            "arguments": "{\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"},\"parentPath\":[]}"
           }
         ]
       },
@@ -163,7 +159,7 @@
             "id": "call_head",
             "name": "add_child",
             "arguments": "{\"index\":0,\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"},\"parentPath\":[]}",
-            "result": null
+            "result": { "success": true, "summary": "Inserted node at [\"children\",0]." }
           }
         ]
       },
@@ -196,7 +192,11 @@
             "id": "call_layout",
             "name": "ask_user",
             "arguments": "{\"options\":[\"One column\",\"Two columns\"],\"question\":\"Which layout should the page use?\"}",
-            "result": null
+            "result": {
+              "success": true,
+              "data": { "answer": "Two columns", "skipped": false },
+              "summary": "The user answered: \"Two columns\""
+            }
           }
         ]
       },
@@ -229,13 +229,19 @@
             "id": "call_footer",
             "name": "ask_user",
             "arguments": "{\"question\":\"Dark or light footer?\"}",
-            "result": null
+            "result": {
+              "success": false,
+              "error": "The user did not answer — the turn was stopped."
+            }
           },
           {
             "id": "call_link",
             "name": "add_child",
             "arguments": "{\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"},\"parentPath\":[]}",
-            "result": null
+            "result": {
+              "success": false,
+              "error": "This tool call was never completed — the session was reloaded or the history was trimmed."
+            }
           }
         ]
       },

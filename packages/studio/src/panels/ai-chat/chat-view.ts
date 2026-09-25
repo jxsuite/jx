@@ -12,9 +12,11 @@
  *
  * §7.4 (AI honesty) is why three things here are not what they were:
  *
- * - **A chip renders its OUTCOME.** `ToolCallRecord.result` has always been populated by the loop
- *   and ignored by this renderer, so a chip that said `update_style: ["children",0]` said exactly
- *   as much when the edit had been refused as when it had landed.
+ * - **A chip renders its OUTCOME.** It reads `ToolCallRecord.result`, so a chip that said
+ *   `update_style: ["children",0]` no longer says exactly as much when the edit was refused as when
+ *   it landed. A restored chat backfills each record's result from the tool message that answered it
+ *   (`services/tool-outcomes.ts`); the live loop does not populate it yet, which harness slice J1.4
+ *   fixes (packages/ai/HARNESS-PLAN.md).
  * - **A turn renders what it CHANGED.** The changed-files summary comes off the write ledger
  *   (`services/ai-writes.ts`), which records whether each change went through a transaction or
  *   straight to disk — so the undo caveat is rendered to the human holding ⌘Z instead of being
@@ -289,7 +291,16 @@ export function toolOutcomeText(tc: ToolCallRecord): string {
   if (!result) {
     return "";
   }
-  return (result.success ? result.summary : result.error) ?? "";
+  const text = (result.success ? result.summary : result.error) ?? "";
+  /* An import's summary is written for the model: its first sentence says what happened ("Imported
+     <url> into <root> and opened it", or that it was not opened), and the rest instructs the model
+     what to read and ask next. The person reads the first sentence; the rest is not addressed to
+     them. The live chip draws the run's own log beside it. */
+  if (tc.name === IMPORT_TOOL && result.success) {
+    const end = /\.(?:\s|$)/.exec(text);
+    return end ? text.slice(0, end.index + 1) : text;
+  }
+  return text;
 }
 
 /** How a question card reaches the store that resolves it, and an import its record. */
