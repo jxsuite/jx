@@ -28,7 +28,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 
 ## Design
 
-Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. Full guide: **[Design mode](/docs/studio/design)**.
+Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. Design doesn't show the Document Header card, so the artboards get the whole pane; a page's title, layout and frontmatter are in Edit view or on the Navigator's **Page** panel. Full guide: **[Design mode](/docs/studio/design)**.
 
 ![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../../images/mode-design.png)
 

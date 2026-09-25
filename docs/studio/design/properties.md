@@ -79,7 +79,7 @@ The **Element** section and **Component Settings** stay pointed at the _primary_
 
 ## What lives elsewhere
 
-- **A page's layout, title, and SEO fields** are on the **Document Header** card at the top of the page itself, covered in **[Page settings and frontmatter](/docs/studio/editing/frontmatter)**.
+- **A page's layout, title, and SEO fields** are on the **Document Header** card, docked at the top of the canvas in Edit view, and on the Navigator's **Page** panel, covered in **[Page settings and frontmatter](/docs/studio/editing/frontmatter)**.
 - **Repeaters, conditions, events**, and a custom element's observed attributes and CSS interface are on the **[Logic tab](/docs/studio/logic/events)**, because wiring a condition and wiring a click handler are the same job. Select a repeating list and Content says so rather than drawing an empty accordion: its items, filter, sort and template are all wiring, so the tab offers an **Open Logic** button instead.
 - **Breakpoints and colour schemes** are defined once, for the whole project, in _Project Settings > Contexts_. See **[Breakpoints](/docs/studio/design/breakpoints)**. Choosing which one to work in is the pane context bar's job, so adding a breakpoint never costs you your element selection.
 

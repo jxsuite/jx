@@ -16,7 +16,7 @@ code:
 
 Every page carries information that isn't part of its visible text: a title, a description for search engines, an image for social shares. Content like a blog post adds fields such as a date, an author, or tags. This is the page's _frontmatter_, and Studio edits all of it as plain forms.
 
-Two surfaces show these fields: the **Page** panel in the Navigator, and the **Document Header** card on the page itself.
+Two surfaces show these fields: the **Page** panel in the Navigator, and the **Document Header** card docked at the top of the canvas in Edit view.
 
 ## The Page panel
 
@@ -60,9 +60,9 @@ The escape hatch for everything else that can live in a page's head: analytics, 
 
 ## The Document Header card
 
-Every page with frontmatter or head tags carries a **Document Header** card, and it sits on the page rather than in a panel: in Edit view it's the first block of the document itself, above your first paragraph, and it scrolls with the page. In Design view it's pinned above the artboards, at normal size, so the fields stay usable however far you've zoomed out.
+Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card instead of pushing the page down. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the **Page** panel in the Navigator.
 
-Its bar names what the document is: the collection it belongs to, or **Document** when it belongs to none. For a page it also prints the route it will be published at. Underneath sit the **Title** field, the layout picker for site pages, and the collection's own fields: the same set as the Page panel's Frontmatter section. There's no control to summon or dismiss the card; a document that has a header shows one.
+Its bar names what the document is: the collection it belongs to, or **Document** when it belongs to none. For a page it also prints the route it will be published at. Underneath sit the **Title** field, the layout picker for site pages, and the collection's own fields: the same set as the Page panel's Frontmatter section. There's no control to summon or dismiss the card; a document that has a header shows one in Edit view.
 
 ![The Document Header card above a post open in Edit view](../../images/properties-bar.png)
 
