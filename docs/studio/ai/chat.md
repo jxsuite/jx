@@ -10,6 +10,7 @@ code:
   - packages/studio/src/panels/ai-chat/sessions-view.ts
   - packages/studio/src/surfaces/ai-chat.ts
   - packages/studio/src/services/ai-session-store.ts
+  - packages/studio/src/services/tool-outcomes.ts
   - packages/studio/src/services/import-client.ts
 ---
 
@@ -73,7 +74,7 @@ Three things follow from that:
 
 - **You can decline.** Every question has a **You decide** button. The assistant takes its best guess and tells you what it chose.
 - **Waiting costs the assistant nothing.** A reply that stops to ask you three questions still has its full budget of work left. The limit is on how much it does on its own, and it does nothing at all while it waits for you. If you'd rather it stopped altogether, **Stop** ends the whole reply.
-- **A question does not survive a reload.** Reload Studio while one is open and the card stays in the transcript but goes quiet, with a line saying so. Just send a message to pick the thread back up.
+- **An open question does not survive a reload.** Reload Studio while one is open and the card stays in the transcript but goes quiet, with a line saying so. Just send a message to pick the thread back up. A question you had already answered keeps its answer when the chat is reopened.
 
 :::doc-tip
 The assistant is told to ask sparingly: only for things that are genuinely your judgement, only one at a time, and never for something it could have looked up itself. When it asks, the answer changes what it builds.
@@ -110,7 +111,7 @@ For disk-level changes, source control is the review tool: the **[Source Control
 The header names the current chat and holds two buttons: the history button (left) opens the **Chats** list, and **+** starts a new chat.
 
 - Chats are titled after your first message and listed newest-first with a timestamp and message count.
-- Click a chat to reopen it; the conversation continues where it left off.
+- Click a chat to reopen it; the conversation continues where it left off, and each action the assistant took still shows whether it succeeded.
 - Hover a row and click the trash button to delete a chat. Deleting the open one leaves you in a fresh empty chat.
 - When you reopen Studio, your last open chat is restored.
 

@@ -272,8 +272,11 @@ export function trimContext(
 
 // ─── Orphaned tool calls ────────────────────────────────────────────────────
 
-/** What a synthesized result says, so a reader and the model see the same reason. */
-const UNANSWERED_TOOL_RESULT = JSON.stringify({
+/**
+ * What a synthesized result says, so a reader and the model see the same reason. Exported so a
+ * restore can tell a seal from a reply (services/tool-outcomes.ts).
+ */
+export const UNANSWERED_TOOL_RESULT = JSON.stringify({
   success: false,
   error:
     "This tool call was never completed — the session was reloaded or the history was trimmed.",

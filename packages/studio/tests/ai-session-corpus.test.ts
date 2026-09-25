@@ -74,6 +74,8 @@ const { createDocumentAssistant } = await import("../src/services/document-assis
 const { pruneOrphanToolMessages } = await import("../src/services/context-manager");
 const { answerAsk, isAwaitingAnswer, resetAsk } = await import("../src/services/ai-ask");
 const { getActiveSessionId } = await import("../src/services/ai-session-store");
+const { backfillToolResults } = await import("../src/services/tool-outcomes");
+const { projectChip } = await import("../src/panels/ai-chat/chat-view");
 const { setProjectAdopter } = await import("../src/services/project-adoption");
 const { setWorkspaceProject } = await import("../src/workspace/workspace");
 const { resetProjectConfigDocument } = await import("../src/tabs/project-config");
@@ -518,20 +520,67 @@ describe("a payload the current build saves", () => {
     const requester = lastRequest.findIndex((e) => JSON.stringify(e).includes('"call_link"'));
     expect(lastRequest[requester + 1]).toMatchObject({ role: "tool", tool_call_id: "call_link" });
 
-    /* What the live chat persisted is exactly what a reload restores: persistChat's filter (it
-       skips an assistant turn with neither text nor tool calls) is the only difference allowed. */
+    /* What the live chat persisted is what a reload restores, with two differences allowed:
+       persistChat's filter (it skips an assistant turn with neither text nor tool calls), and each
+       tool call's outcome, which a restore backfills from the tool message that answered it
+       (services/tool-outcomes.ts). The live loop still leaves `result` null (harness J1.4 fixes
+       that), so the restored chat is the one whose chips show how each call ended. */
     const persisted = live.chatState.messages.filter(
       (m) => m.role !== "assistant" || m.content || (m.toolCalls?.length ?? 0) > 0,
     );
     const revived = createDocumentAssistant();
     expect(revived.activeSessionId()).toBe(live.activeSessionId());
-    expect(firstDifference(plain(persisted), plain(revived.chatState.messages))).toBeNull();
+    const expectedRestore = plain(backfillToolResults(persisted));
+    expect(firstDifference(expectedRestore, plain(revived.chatState.messages))).toBeNull();
+    const revivedCalls = revived.chatState.messages.flatMap((m) => m.toolCalls ?? []);
+    expect(revivedCalls.every((tc) => tc.result)).toBe(true);
     const liveWire = plain(live.chatState.toMessagesArray());
     const revivedWire = plain(revived.chatState.toMessagesArray());
     expect(firstDifference(liveWire, revivedWire)).toBeNull();
     // The provider's count is not persisted; a restored chat budgets from the estimate again.
     expect(live.chatState.usage).not.toBeNull();
     expect(revived.chatState.usage).toBeNull();
+  });
+});
+
+describe("a reload while a question is open", () => {
+  /* A turn suspended on the author may wait as long as they like, and the conversation is
+     otherwise saved only when a turn starts and ends. The question is saved as it is put, so a
+     reload in the meantime finds it and restores it inert, rather than losing the unfinished turn
+     (specs/ai.md §3.4). */
+  test("restores the question, and the round before it, with the question inert", async () => {
+    resetWorkspaceWithTab({ children: [{ tagName: "p", textContent: "Hello" }], tagName: "div" });
+    setWorkspaceProject(ROUND_TRIP_ROOT);
+    const assistant = createDocumentAssistant();
+    tick();
+    nextRounds = [
+      [
+        ...callEvents("call_rule", "add_child", {
+          index: 1,
+          node: { tagName: "hr" },
+          parentPath: [],
+        }),
+        { stopReason: "tool_calls", type: "done" },
+      ],
+      [
+        ...callEvents("call_open", "ask_user", { question: "Dark or light footer?" }),
+        { stopReason: "tool_calls", type: "done" },
+      ],
+    ];
+    const sending = assistant.sendMessage("Style the footer");
+    await untilAsking();
+
+    // The page goes away with the question open: its promise is gone, its transcript is not.
+    const revived = createDocumentAssistant();
+    const calls = revived.chatState.messages.flatMap((m) => m.toolCalls ?? []);
+    expect(calls.map((c) => c.name)).toEqual(["add_child", "ask_user"]);
+    const [done, open] = calls;
+    expect(projectChip(done!).outcome).toBe("ok");
+    expect(open!.result).toBeNull();
+    expect(projectChip(open!).askState).toBe("unanswered");
+
+    resetAsk();
+    await sending;
   });
 });
 
