@@ -101,7 +101,9 @@ async function main() {
      down, it would become the baseline the next run is diffed against, so it is refused instead. */
   const trials = results.flatMap((r) => r.trials);
   if (trials.every((t) => t.rounds === 0 && t.loopError !== null)) {
-    console.error(`✗ No trial reached the model: ${trials[0]?.loopError ?? "no trials ran"}`);
+    console.error(
+      `✗ No trial got a reply from the model: ${trials[0]?.loopError ?? "no trials ran"}`,
+    );
     process.exit(2);
   }
 

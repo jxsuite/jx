@@ -10,6 +10,7 @@
  */
 
 import { toRaw } from "../../src/reactivity";
+import { EMPTY_TURN_TEXT } from "../../src/services/tool-executor";
 import { undo, redo } from "../../src/tabs/transact";
 import { validateDoc } from "../../src/services/jx-validate";
 import type { Tab } from "../../src/tabs/tab";
@@ -29,6 +30,25 @@ function parseToolResult(content: string): unknown {
   } catch {
     return { success: false, error: "(unparseable tool result)", _raw: content };
   }
+}
+
+/**
+ * Why a settled run cannot be scored, or null when it can.
+ *
+ * A failed request (a transport error, a provider refusal, a round cap with nothing applied) has no
+ * model behaviour to score, so the run is reported as errored. An empty reply is different: the
+ * model was reached and answered with nothing, which is behaviour, and the worst one. It is scored
+ * (no tool calls, so completeness and efficiency 1) rather than dropped, or worst-of-N would pick a
+ * better run over it.
+ */
+export function unscorableError(chatState: {
+  status: string;
+  error: string | null;
+}): string | null {
+  if (chatState.status !== "error" || chatState.error === EMPTY_TURN_TEXT) {
+    return null;
+  }
+  return chatState.error;
 }
 
 /** Extract the flat list of tool calls the model emitted, in order. */
