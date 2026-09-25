@@ -10,13 +10,17 @@
  * install` could not typecheck `packages/desktop` at all, and CI had to run `electrobun prepare`
  * just to reach `tsc`.
  *
- * The submodule replaces that for TYPECHECKING only. Hutch's `.hutch/devkit` remains the build
- * sysroot, and the two agree by construction: the devkit is a verbatim copy of the same five
- * directories (196 of 197 files byte-identical at 2.0.1 — the exception is a Linux-only null guard
- * in `webGPU.ts` with no type surface). So the gate here asserts they name the same RELEASE rather
- * than the same bytes; demanding byte equality would fail on upstream's own release-versus-tag
- * slop, which is not ours to police. `--fix` reports those byte differences anyway, because a
- * growing list is the signal that the assumption stopped holding.
+ * The submodule replaces that for typechecking AND for the one bundle Hutch does not compile: the
+ * webview init script, which `packages/desktop/scripts/pre-build.ts` builds with plain `bun build`
+ * through the same tsconfig `paths`. With the submodule absent that bundle silently inlines
+ * `node_modules/electrobun`'s throwing stub, and desktop 5.0.0 through 5.1.3 shipped exactly that
+ * from release lanes with a bare checkout. Hutch's `.hutch/devkit` remains the sysroot for Hutch's
+ * own bundling of the main process, and the two agree by construction: the devkit is a verbatim
+ * copy of the same five directories (196 of 197 files byte-identical at 2.0.1 — the exception is a
+ * Linux-only null guard in `webGPU.ts` with no type surface). So the gate here asserts they name
+ * the same RELEASE rather than the same bytes; demanding byte equality would fail on upstream's own
+ * release-versus-tag slop, which is not ours to police. `--fix` reports those byte differences
+ * anyway, because a growing list is the signal that the assumption stopped holding.
  *
  * The version has two writers — the `electrobun` devDependency pin and this submodule's gitlink —
  * so the gate is what keeps them together. A Dependabot bump moves the pin alone, goes red here,
@@ -27,9 +31,11 @@
  *     bun scripts/check-electrobun-vendor.ts --fix          # …and move to the pinned tag
  *     bun scripts/check-electrobun-vendor.ts --fix --soft   # …and never exit non-zero
  *
- * `--init` is what CI uses. It deliberately stops short of moving the gitlink, because moving it is
- * exactly how a Dependabot bump would stop looking like a mismatch — CI has to materialise the
- * submodule to typecheck at all, and still report the disagreement it was sent to find.
+ * `--init` is what CI uses, and what `pre-build.ts` and every desktop bundle lane run before the
+ * init bundle is compiled (`scripts/desktop-build-lanes.test.ts` holds the lanes to it). It
+ * deliberately stops short of moving the gitlink, because moving it is exactly how a Dependabot
+ * bump would stop looking like a mismatch — CI has to materialise the submodule to typecheck or
+ * build at all, and still report the disagreement it was sent to find.
  *
  * `--fix --soft` is what the root `postinstall` uses: a contributor without the submodule should
  * get an actionable line, not a failed `bun install`. It also suppresses the drift report, which is

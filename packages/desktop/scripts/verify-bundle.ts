@@ -10,6 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { STUDIO_ASSETS, STUDIO_WORKERS } from "@jxsuite/studio/hosting/layout";
+import { initBundleProblems } from "./init-bundle";
 
 /**
  * Paths every packaged app-code dir must contain, relative to the bundle's `app/` dir.
@@ -29,6 +30,9 @@ const STUDIO_REQUIRED = STUDIO_ASSETS.filter((a) => a.required).flatMap((a) =>
     : [`views/studio/${a.path}`],
 );
 
+/** The launcher's init bundle, the one required file whose CONTENT is judged as well. */
+export const INIT_BUNDLE = "views/studio/dist/init.js";
+
 export const REQUIRED = [
   "bun/index.js",
   // @jxsuite/create resolves these next to its bundled module (app/bun/).
@@ -42,12 +46,30 @@ export const REQUIRED = [
   /* The launcher's own PAL-init bundle, which is the one studio-tree file the manifest does NOT
      know about: the desktop builds it and stages it into studio's dist/. Without it the packaged
      app boots with no platform registered. */
-  "views/studio/dist/init.js",
+  INIT_BUNDLE,
 ];
 
-/** @returns Missing required paths (relative to appDir); empty array means the bundle is complete. */
+/**
+ * @returns One line per defect, empty when the bundle is complete: a missing required path
+ *   (relative to appDir), or `views/studio/dist/init.js: <problem>` for an init bundle that is
+ *   present but would not boot. Every line starts with the path it is about, so the post-build
+ *   report stays one path per line.
+ */
 export function verifyBundle(appDir: string): string[] {
   const missing = REQUIRED.filter((rel) => !existsSync(join(appDir, rel)));
+
+  /* Existence alone passed every 5.x release, whose init.js was present and threw on import — it
+     had inlined node_modules/electrobun's throwing stub instead of the vendored view SDK. Judged
+     here again, on the packaged copy, so a bundle that skipped pre-build's check (or was staged by
+     some other route) still cannot ship. */
+  const initPath = join(appDir, INIT_BUNDLE);
+  if (existsSync(initPath)) {
+    for (const problem of initBundleProblems(readFileSync(initPath, "utf8"), {
+      electrobun: true,
+    })) {
+      missing.push(`${INIT_BUNDLE}: ${problem}`);
+    }
+  }
 
   // Every starter listed in the staged registry must have its project tree staged too, or the
   // New Project starter gallery offers clones that fail. Deriving ids from the registry keeps
