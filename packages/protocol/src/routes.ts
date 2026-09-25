@@ -83,7 +83,7 @@ export const STUDIO_ROUTES = {
     "GET",
     "/__studio/locate-directory",
     `Resolve the absolute path of a showDirectoryPicker() folder by the id in its ${LOCATION_ID_FILE}`,
-    "The New Project Location field loses its Browse… button and is typed by hand.",
+    "Browse… reports that the folder could not be placed; the Location is typed by hand.",
   ),
   createProject: route(
     "POST",
