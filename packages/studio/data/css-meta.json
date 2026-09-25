@@ -175,6 +175,7 @@
       "$order": 71,
       "type": "string",
       "$input": "button-group",
+      "$buttonValues": ["nowrap", "wrap"],
       "$icons": {
         "wrap": "arrow-u-down-left"
       },

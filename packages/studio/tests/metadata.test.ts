@@ -207,7 +207,10 @@ describe("css-meta.json", () => {
     /* The Style panel prints a glyph-less value verbatim (`panels/style-panel.ts`), so the guard is
        that the keyword itself reads: a one-word CSS value does, `flex-start` compressed to `start`
        did not, and `wrap-reverse` compressed to `wr-rev` did not either. Anything multi-word needs
-       a glyph or it needs to stop being a button. */
+       a glyph or it needs to stop being a button, which is where `wrap-reverse` went: written out it
+       is 76px, and the three-button row ran past a 190px Inspector and drew a segmented frame with
+       its right border cut off and the word sliced mid-letter. In the `…` menu it costs the rarest
+       of the three values one click and the row fits at the 160px drag floor. */
     const bare: string[] = [];
     for (const [prop, entry] of defs) {
       if (entry.$input !== "button-group") {
@@ -220,12 +223,12 @@ describe("css-meta.json", () => {
         }
       }
     }
-    // The four the design accepts as words, and nothing else.
+    /* The three the design accepts as words, and nothing else. Each is one short word, and each is
+       its row's leading default, so the words come first and the glyphs follow. */
     expect(bare.toSorted()).toEqual([
       "alignContent: normal",
       "alignSelf: auto",
       "flexWrap: nowrap",
-      "flexWrap: wrap-reverse",
     ]);
   });
 
