@@ -16,6 +16,8 @@
 import { html, render as litRender } from "lit-html";
 import type { TemplateResult } from "lit-html";
 import { mountShellSurface } from "../surfaces/shell";
+import { mountBootFailureSurface } from "../surfaces/boot-failure";
+import type { BootRefusal } from "../platforms/default-platform";
 
 /**
  * The four overlay layers that `ui/layers.ts` renders into, in stacking order.
@@ -81,6 +83,33 @@ export async function mountShellTree(host: ParentNode = document.body): Promise<
   /* After the frame, so the layers are its siblings in the order they always were. lit's `render`
      manages only the range between its own markers, so appending here leaves `#app` alone. */
   litRender(overlayLayers(), root);
+}
+
+/**
+ * Render the boot-failure screen into `host` INSTEAD of the frame.
+ *
+ * `studio.ts` calls this when no platform adapter can be had — a launcher declared or announced
+ * itself and registered nothing (`platforms/default-platform.ts`). The frame is not drawn under it
+ * or beside it: every region of the frame is a promise to open, save or create something, and the
+ * whole reason this screen exists is that desktop 5.0.0 to 5.1.3 made those promises from a window
+ * with no backend. No overlay layers either — nothing that could raise a toast or a dialog is going
+ * to run.
+ *
+ * It mounts into the same {@link shellRoot} the frame would have, and clears it the same way, so a
+ * test (or a host) that already painted a frame there is left with the screen alone.
+ *
+ * @param refusal Why the dev-server fallback was refused.
+ * @param host Where the screen goes. Defaults to the document body.
+ */
+export async function mountBootFailureTree(
+  refusal: BootRefusal,
+  host: ParentNode = document.body,
+): Promise<void> {
+  const root = shellRoot(host);
+  root.textContent = "";
+  // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
+  delete root["_$litPart$"];
+  await mountBootFailureSurface(root, refusal);
 }
 
 /**

@@ -80,6 +80,28 @@ describe("stageStudioAssets", () => {
     expect(html.indexOf("init.js")).toBeLessThan(html.indexOf("studio.js"));
   });
 
+  /* The staged document declares its boot module, so a studio.js that finds no adapter draws the
+     boot-failure screen instead of falling back to the dev server — which is what desktop
+     5.0.0-5.1.3 did inside a `views://` window when init.js threw on import. The meta is what
+     survives an init.js that never loaded at all (a 404, a syntax error): nothing it could have
+     set would exist. */
+  test("the staged index.html carries the jx-boot meta", async () => {
+    await stageStudioAssets(desktopDir);
+    const html = await readFile(join(desktopDir, "assets", "studio", "index.html"), "utf8");
+    expect(html.split("</head>")[0]).toContain('<meta name="jx-boot" content="launcher" />');
+  });
+
+  /* Electrobun's macOS CEF path injects its preload — the thing that defines `window.__electrobun`,
+     without which the init bundle's Electroview constructor throws — by splicing after the literal
+     string "<head>". A head tag with an attribute, or a script ahead of it, and every window boots
+     without its bridge. */
+  test("a literal head tag precedes the first script, for the macOS preload splice", async () => {
+    await stageStudioAssets(desktopDir);
+    const html = await readFile(join(desktopDir, "assets", "studio", "index.html"), "utf8");
+    expect(html.indexOf("<head>")).toBeGreaterThan(-1);
+    expect(html.indexOf("<head>")).toBeLessThan(html.indexOf("<script"));
+  });
+
   test("stages the split chunks — the editor cannot boot without them", async () => {
     await stageStudioAssets(desktopDir);
     const out = join(desktopDir, "assets", "studio");

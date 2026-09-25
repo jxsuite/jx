@@ -34,10 +34,14 @@
        here instead means a plain `git clone` typechecks: no network, no Hutch, no `electrobun
        prepare` step in front of `tsc`.
 
-       Hutch's `.hutch/devkit` is still the BUILD sysroot, and the two are the same release rather
-       than two sources of truth — the devkit is a verbatim copy of these same directories, and
-       `bun run electrobun:verify` fails when the submodule and the pin disagree. `.gitmodules`
-       carries the full rationale.
+       These `paths` are also the BUILD sysroot for the webview init bundle: `scripts/pre-build.ts`
+       compiles `src/init.ts` with plain `bun build`, which reads them, and with the submodule
+       absent it silently falls back to `node_modules/electrobun`'s throwing stub — desktop 5.0.0
+       through 5.1.3 shipped that, so pre-build now runs `check-electrobun-vendor.ts --init` first
+       and judges the result. Hutch's `.hutch/devkit` remains the sysroot for Hutch's own bundling of
+       the main process, and the two are the same release rather than two sources of truth — the
+       devkit is a verbatim copy of these same directories, and `bun run electrobun:verify` fails
+       when the submodule and the pin disagree. `.gitmodules` carries the full rationale.
 
        These three entries are the entire `electrobun` surface this package imports; add one here and
        to `SDK_ENTRY_POINTS` in `scripts/check-electrobun-vendor.ts` if a fourth is ever needed.

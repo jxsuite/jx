@@ -1,3 +1,4 @@
+// oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 /**
  * The destination half of the New Project wizard's second step (specs/desktop.md §4.5).
  *
@@ -140,6 +141,85 @@ describe("path destinations", () => {
     setLocationParent("/home/dev/Sites");
     await browseLocation(() => {});
     expect(locationView("s").parent).toBe("/home/dev/Sites");
+    // A cancel is the user's own answer: there is nothing to report.
+    expect(locationView("s").error).toBe("");
+  });
+
+  /* The customer's report: a folder was picked and nothing happened. `pickDirectory` rejected, the
+     modal calls this as `void browseLocation(...)`, and with no catch the rejection went nowhere.
+     Now the reason lands under the Location field, and the call itself never rejects. */
+  test("a failed Browse… says why under Location, and never rejects", async () => {
+    const reason = 'Jx Studio could not look up where "Sites" is: Failed to fetch.';
+    installMockPlatform({
+      createDestination: "path",
+      pickDirectory: (async () => {
+        throw new Error(reason);
+      }) as never,
+    });
+    setLocationParent("/home/dev/Typed");
+    let repaints = 0;
+    await expect(
+      browseLocation(() => {
+        repaints += 1;
+      }),
+    ).resolves.toBeUndefined();
+
+    const view = locationView("s");
+    expect(view.error).toBe(reason);
+    expect(view.browsing).toBe(false);
+    expect(view.browseLabel).toBe("Browse…");
+    // The failure is not a pick: whatever was typed stays.
+    expect(view.parent).toBe("/home/dev/Typed");
+    // Once for the busy label, once for the answer, exactly as a success.
+    expect(repaints).toBe(2);
+
+    // Typing a path is the fix the message asks for, so it clears the message.
+    setLocationParent("/x");
+    expect(locationView("s").error).toBe("");
+  });
+
+  test("a failure with no message still says something", async () => {
+    installMockPlatform({
+      createDestination: "path",
+      pickDirectory: (async () => {
+        const silent = new Error("placeholder");
+        silent.message = "";
+        throw silent;
+      }) as never,
+    });
+    await browseLocation(() => {});
+    expect(locationView("s").error).toBe(
+      "The folder could not be chosen. Type its path into Location instead.",
+    );
+  });
+
+  test("a rejection that is not an Error is shown as its string", async () => {
+    installMockPlatform({
+      createDestination: "path",
+      // oxlint-disable-next-line eslint/prefer-promise-reject-errors -- the non-Error rejection IS the case under test: an RPC layer that rejects with a bare string.
+      pickDirectory: (() => Promise.reject("RPC timed out")) as never,
+    });
+    await browseLocation(() => {});
+    expect(locationView("s").error).toBe("RPC timed out");
+  });
+
+  test("a cancel leaves a standing Browse… failure in place, and a later pick clears it", async () => {
+    let next: () => Promise<string | null> = () => Promise.reject(new Error("could not open"));
+    installMockPlatform({
+      createDestination: "path",
+      pickDirectory: (() => next()) as never,
+    });
+    await browseLocation(() => {});
+    expect(locationView("s").error).toBe("could not open");
+
+    next = async () => null;
+    await browseLocation(() => {});
+    expect(locationView("s").error).toBe("could not open");
+
+    next = async () => "/Users/dev/Projects";
+    await browseLocation(() => {});
+    expect(locationView("s").error).toBe("");
+    expect(locationView("s").parent).toBe("/Users/dev/Projects");
   });
 
   test("browseLocation is a no-op on a platform with no directory dialog", async () => {
