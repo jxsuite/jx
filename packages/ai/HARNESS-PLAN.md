@@ -175,7 +175,7 @@ Shared type-only files `ai/core-types.ts` (JsonValue) and `ai/*/types.ts` go on 
   - This gate is what catches `Promise.withResolvers`, `Object.groupBy`, `Array.fromAsync` and DOM types.
 - `packages/studio/tests/ai-import-rules.test.ts`
   - `st/**` never imports `@jxsuite/ai/{gateway,providers,testing}`.
-  - It records a minified-size ratchet for the AI modules that `services/document-assistant.ts` reaches.
+  - It records a minified-size ratchet for the AI modules that `services/document-assistant.ts` reaches. J1.17 lands the import rule alone; the ratchet lands with J1.11, when Studio first reaches `./harness` and the graph it measures starts to grow.
 - Static imports only inside `packages/ai`, with no lazy `import()`. This keeps away the Bun 1.4.0 overlapping-dynamic-import coverage drop.
 
 ---
@@ -2121,6 +2121,7 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
   - `runAgentLoop` becomes an adapter using `onEvent`.
   - `chat-state` `beginAssistantTurn(id?)` and `pushToolResultMessage(…, id?)`.
   - `isTurnActive` backed by the assistant's `TurnLock`.
+  - `ai-import-rules.test.ts` gains the minified-size ratchet (§2), deferred from J1.17.
 - Commits: (1) core plus tests; (2) the adapter switch with goldens unchanged; (3) the old loop body deleted.
 - Tests: H1, H3, H6-H8, H10.
 - Spec: `ai.md` minor, new "§3.8 The turn engine" (outcomes, event order, anchor, fixed system prompt). Docs: harness page §harness.
@@ -2182,6 +2183,7 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
   - `packages/server/src/ai-api.ts` adopts them; its resolver keeps SSRF and key provenance as server-local functions.
 - Tests: the server frame goldens are byte-identical; `ai-api.test.ts` unchanged; `./gateway` added to the worker gate and the Studio import rule.
 - Spec: `ai.md` minor, new "§2.4 One gateway implementation"; `server.md` §4 patch.
+- Deferred, each to the slice that brings its behaviour: `upstreamErrorCode`, `wire`, `providers` and the quirks (J1.18, J1.19); the size ratchet (J1.11).
 
 **J1.18: One normaliser** (behaviour)
 
