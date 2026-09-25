@@ -1,6 +1,6 @@
 {
   "//": "The Worker-safe subpaths of @jxsuite/ai, typechecked as a Cloudflare Worker would see them.",
-  "//why": "./streaming-client and ./tools are the entries a Worker backend imports (tests/worker-safety.test.ts proves their BUNDLE graph reaches no node:, bun, @vue/reactivity or Studio module). A bundle scan cannot see a GLOBAL, though: `Bun.file(...)` or `document.title` compiles to no import at all, so the bundle stays clean and the Worker throws at runtime. This program is the other half: lib is bare ES2023 (no DOM), and the only ambient types are @cloudflare/workers-types (no bun-types, no @types/node), so a reference to a Bun or DOM global is a type error here. Two globals slip through: workers-types 5.x declares `process` and `Buffer` as `any` (they exist under nodejs_compat), so tsc accepts them, and the test scans the bundled text for those instead. skipLibCheck is false so the workers-types declarations themselves are held to the same flags. allowImportingTsExtensions is needed because the type-only import of @jxsuite/protocol pulls protocol and schema sources that import `./x.ts`. `include` names ONLY the Worker-safe entry files; everything else in the program is there because one of them imports it, which is the point.",
+  "//why": "./streaming-client, ./tools and ./gateway are the entries a Worker backend imports (tests/worker-safety.test.ts proves their BUNDLE graph reaches no node:, bun, @vue/reactivity or Studio module). A bundle scan cannot see a GLOBAL, though: `Bun.file(...)` or `document.title` compiles to no import at all, so the bundle stays clean and the Worker throws at runtime. This program is the other half: lib is bare ES2023 (no DOM), and the only ambient types are @cloudflare/workers-types (no bun-types, no @types/node), so a reference to a Bun or DOM global is a type error here. Two globals slip through: workers-types 5.x declares `process` and `Buffer` as `any` (they exist under nodejs_compat), so tsc accepts them, and the test scans the bundled text for those instead. skipLibCheck is false so the workers-types declarations themselves are held to the same flags. allowImportingTsExtensions is needed because the type-only import of @jxsuite/protocol pulls protocol and schema sources that import `./x.ts`. `include` names ONLY the Worker-safe entry files; everything else in the program is there because one of them imports it, which is the point.",
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
@@ -15,5 +15,5 @@
     "lib": ["ES2023"],
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/streaming-client.ts", "src/tools.ts"]
+  "include": ["src/gateway/index.ts", "src/streaming-client.ts", "src/tools.ts"]
 }

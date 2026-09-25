@@ -293,6 +293,7 @@
       "name": "@jxsuite/server",
       "version": "4.2.2",
       "dependencies": {
+        "@jxsuite/ai": "workspace:^",
         "@jxsuite/catalog": "workspace:^",
         "@jxsuite/collab": "workspace:^",
         "@jxsuite/compiler": "workspace:^",

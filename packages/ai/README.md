@@ -1,15 +1,16 @@
 # @jxsuite/ai
 
-The provider-agnostic substrate Jx Studio's assistant is built on: a streaming LLM client abstraction that normalizes provider SSE into eight event shapes, a tool registry that speaks OpenAI function-calling, and a reactive chat store. It has no Jx-domain dependencies (just a type-only import of `ProblemDetails` from `@jxsuite/protocol`, plus `@vue/reactivity`), and its only platform APIs are `fetch`, `TextDecoder` and `AbortSignal`, so the same modules run in the browser and in Bun/Node.
+The provider-agnostic substrate Jx Studio's assistant is built on: a streaming LLM client abstraction that normalizes provider SSE into eight event shapes, a tool registry that speaks OpenAI function-calling, and a reactive chat store. It has no Jx-domain dependencies beyond `@jxsuite/protocol`, for the wire's problem documents (the gateway builds them at runtime; everything else imports only the `ProblemDetails` type), plus `@vue/reactivity` for the chat store. Its platform APIs are the web-standard ones (`fetch`, `Request` and `Response`, streams, `TextEncoder` and `TextDecoder`, `AbortSignal`), so the same modules run in the browser, in Bun/Node and, for the Worker-safe subpaths, in a Cloudflare Worker.
 
 Governing spec: [`specs/ai.md`](../../specs/ai.md) §1-§2 (Status: Partial). User-facing documentation for the Studio feature lives at [`docs/studio/ai.md`](../../docs/studio/ai.md).
 
-| Entrypoint                     | Exports                                                                                                                                                                           |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@jxsuite/ai`                  | Barrel: the three factories, `createToolDefinition`, `createToolRegistry`, `createChatState`, the `ChatUsage` type, `STREAM_EVENT_TYPES`, and the streaming types                 |
-| `@jxsuite/ai/streaming-client` | `StreamingClient`, `StreamEvent` and its eight members, the three factories and their option types, `STREAM_EVENT_TYPES`, `usageEventFromOpenAI` and its `OpenAIUsage` input type |
-| `@jxsuite/ai/tools`            | `createToolDefinition`, `createToolRegistry`, `toolSuccess`, `toolError`, and their types                                                                                         |
-| `@jxsuite/ai/chat-state`       | `createChatState`, `ChatStore`, `ChatUsage`, `Message`, `ToolCallRecord`, `ChatState`, `MessageRole`                                                                              |
+| Entrypoint                     | Exports                                                                                                                                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@jxsuite/ai`                  | Barrel: the three factories, `createToolDefinition`, `createToolRegistry`, `createChatState`, the `ChatUsage` type, `STREAM_EVENT_TYPES`, and the streaming types                                                   |
+| `@jxsuite/ai/streaming-client` | `StreamingClient`, `StreamEvent` and its eight members, the three factories and their option types, `STREAM_EVENT_TYPES`, `usageEventFromOpenAI` and its `OpenAIUsage` input type                                   |
+| `@jxsuite/ai/tools`            | `createToolDefinition`, `createToolRegistry`, `toolSuccess`, `toolError`, and their types                                                                                                                           |
+| `@jxsuite/ai/chat-state`       | `createChatState`, `ChatStore`, `ChatUsage`, `Message`, `ToolCallRecord`, `ChatState`, `MessageRole`                                                                                                                |
+| `@jxsuite/ai/gateway`          | `createChatHandler`, `modelsResponse`, `normalizeOpenAIStream`, `encodeSse`, `problemResponse`, `extractUpstreamErrorMessage`, and the `Upstream`, `GatewayRefusal`, `ChatAdmission` and `ChatGatewayOptions` types |
 
 `toolSuccess` / `toolError` are **not** re-exported by the barrel. Import them from `@jxsuite/ai/tools`. Importing the subpaths instead of the root is also what makes the package tree-shakeable.
 
@@ -22,7 +23,7 @@ streamChat(messages: object[], tools: object[], systemPrompt: string, signal: Ab
   : AsyncGenerator<StreamEvent>;
 ```
 
-Every implementation yields the same discriminated union, whose type strings are also published as `STREAM_EVENT_TYPES`: `delta {content}`, `reasoning {content}`, `tool_call_start {id, name}`, `tool_call_delta {id, args}`, `tool_call_end {id}`, `usage {inputTokens, outputTokens, cachedInputTokens?, reasoningTokens?}`, `done {stopReason}`, `error {message, code?, problem?}`. This union is the contract a third-party Studio backend must satisfy for the `ai/chat` route (see [`packages/protocol/README.md`](../protocol/README.md)); `@jxsuite/server` emits the same format without depending on this package. `StreamEvent` and each member are exported, so an implementer can import the type instead of reconstructing it.
+Every implementation yields the same discriminated union, whose type strings are also published as `STREAM_EVENT_TYPES`: `delta {content}`, `reasoning {content}`, `tool_call_start {id, name}`, `tool_call_delta {id, args}`, `tool_call_end {id}`, `usage {inputTokens, outputTokens, cachedInputTokens?, reasoningTokens?}`, `done {stopReason}`, `error {message, code?, problem?}`. This union is the contract a third-party Studio backend must satisfy for the `ai/chat` route (see [`packages/protocol/README.md`](../protocol/README.md)); `@jxsuite/server` emits the same format through [the gateway](#the-gateway). `StreamEvent` and each member are exported, so an implementer can import the type instead of reconstructing it.
 
 ```ts
 import { createProxyStreamingClient } from "@jxsuite/ai";
@@ -46,7 +47,38 @@ Three behaviours are easy to get wrong when consuming the stream:
 
 1. **Cancellation is a `done`, not an `error`.** An `AbortError` from `fetch` or mid-read becomes `{ type: "done", stopReason: "cancelled" }`. Treating abort as failure paints a user's Stop button as a crash. The OpenAI client's other stop reasons are `"stop"`, `"tool_calls"` and `"length"`.
 2. **A finish is remembered, not acted on.** A `finish_reason` of `stop`, `length` or `tool_calls` emits `tool_call_end` for every call still open and records the reason (any other value is ignored), but the stream keeps reading, because with `include_usage` the count arrives in a chunk of its own after the finish. The stream ends at `[DONE]` or when the body closes, and ends the same way every time: `tool_call_end` for anything still open, one `usage` frame when the provider reported a count, then exactly one `done` carrying the recorded reason (`stop` when there was none). `usage` precedes `done` because a reader stops at `done`. The proxy client tracks nothing of its own, so a body that closes without a `done` frame ends its generator with no `done` at all.
-3. **`error` frames may carry an RFC 9457 `problem` beside the human `message`,** because the response has already begun with a 200 and the status can no longer change (a committed standards row in `specs/ai.md` §5). The field is optional and no client in this package sets it. `@jxsuite/server`'s proxy is what populates it, and `createProxyStreamingClient` passes it through. Read `problem.type` for machine dispatch when it is present; keep showing `message`.
+3. **`error` frames may carry an RFC 9457 `problem` beside the human `message`,** because the response has already begun with a 200 and the status can no longer change (a committed standards row in `specs/ai.md` §5). The field is optional and no client in this package sets it. The gateway (which `@jxsuite/server`'s proxy runs) is what populates it, and `createProxyStreamingClient` passes it through. Read `problem.type` for machine dispatch when it is present; keep showing `message`.
+
+## The gateway
+
+`@jxsuite/ai/gateway` is the other side of the wire: the server half of the `ai/chat` and `ai/models` routes, which `@jxsuite/server` runs and any other backend can. The host supplies its policy and the gateway does the rest:
+
+```ts
+import { createChatHandler, modelsResponse } from "@jxsuite/ai/gateway";
+
+const chat = createChatHandler<{ signal: AbortSignal }>({
+  // Whose key, which base URL: the host's rules. Return a refusal to answer with a problem instead.
+  resolveUpstream: () => ({
+    apiKey: env.OPENAI_API_KEY,
+    baseUrl: "https://api.openai.com/v1",
+    defaultModel: "gpt-4o",
+    family: "openai-compat",
+    managed: false,
+  }),
+  maxBodyBytes: 1_000_000,
+  maxMessages: 200,
+});
+
+const response = await chat(request, { signal: request.signal });
+const models = modelsResponse({ configured: true, models: [{ id: "gpt-4o" }] });
+```
+
+- **The order is fixed.** `admit` (before the body is read), `resolveUpstream`, the body (`413` once it passes `maxBodyBytes`, counted on the bytes actually read, and `400` when it is not JSON), `messages` (`400` when it is present and not an array), `maxMessages` (`413`), `onAccepted`, then the stream. The first step that refuses answers the request as `application/problem+json`, and the provider is never contacted. `problemResponse` writes `error` beside `detail` and a refusal's `code` beside both, so a problem reader and an older `{error, code}` reader both understand it.
+- **The stream is always a `200`.** The upstream request is on the wire before the response is returned, and anything that goes wrong after that (a network failure, a provider's non-2xx, a reset mid-stream) is an `error` frame, while an abort is `done: cancelled`. `normalizeOpenAIStream` is the server's normalizer, moved here unchanged, so its frames are the ones `packages/server/tests/fixtures/ai-upstream/*.server.json` records.
+- **`fetch` is looked up per request** unless you pass one, so a host (or a test) can swap it.
+- **`modelsResponse(body)` is always a `200`,** because the models route is a capability probe. What the catalogue says is the host's business.
+
+`./gateway` is Worker-safe. Studio never imports it (`packages/studio/tests/ai-import-rules.test.ts`).
 
 ## The tool registry
 
@@ -93,4 +125,4 @@ Further surprises:
 
 ## Versioning
 
-Published to npm as `@jxsuite/ai`, following the monorepo's release train. Like every published `@jxsuite` library, it ships TypeScript source: every `exports` subpath resolves to `./src/*.ts`, so a consumer must be able to compile TypeScript out of `node_modules`. Within the monorepo, `@jxsuite/studio` depends on it via `workspace:^` and is its only consumer. `@vue/reactivity` is pinned to an **exact** version, matching `@jxsuite/studio`, `@jxsuite/runtime` and `@jxsuite/compiler`: reactive proxies from one copy do not track in effects from another, and the failure is silent.
+Published to npm as `@jxsuite/ai`, following the monorepo's release train. Like every published `@jxsuite` library, it ships TypeScript source: every `exports` subpath resolves to `./src/*.ts`, so a consumer must be able to compile TypeScript out of `node_modules`. Within the monorepo, `@jxsuite/studio` (the client subpaths) and `@jxsuite/server` (`./gateway`) depend on it via `workspace:^`. `@vue/reactivity` is pinned to an **exact** version, matching `@jxsuite/studio`, `@jxsuite/runtime` and `@jxsuite/compiler`: reactive proxies from one copy do not track in effects from another, and the failure is silent.
