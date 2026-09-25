@@ -73,7 +73,10 @@ export interface Composer {
   view: () => ComposerView;
   /** The reader typed. */
   edit: (text: string) => void;
-  /** Send what is typed, if anything is and nothing is already in flight. */
+  /**
+   * Send what is typed, if anything is. During a turn, only when a question waits: that send is its
+   * answer.
+   */
   send: () => void;
   clear: () => void;
   /** Open the attach menu under the button that was pressed. */

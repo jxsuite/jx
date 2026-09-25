@@ -1117,7 +1117,7 @@ const DAT = inSuite("dat", [
   },
   {
     name: "a send while a turn's tools run is refused, and the turn reads active until it ends",
-    async run() {
+    async run(rec) {
       nextRounds = [
         toolCallRound("q1", "ask_user", { question: "Keep it?" }),
         [{ stopReason: "stop", type: "done" }],
@@ -1129,11 +1129,47 @@ const DAT = inSuite("dat", [
       }
       const activeWhileWaiting = a.isTurnActive();
       expect(activeWhileWaiting).toBe(true);
+      const streams = rec.clientLog.calls.length;
       await a.sendMessage("second");
+      expect(rec.clientLog.calls).toHaveLength(streams);
+      expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+        "first",
+      ]);
       answerAsk("yes");
       await first;
       expect(a.isTurnActive()).toBe(false);
       return datObserve(a, { activeWhileWaiting });
+    },
+  },
+  {
+    name: "after New Chat stops a waiting turn, the next send is accepted once it has ended",
+    async run() {
+      nextRounds = [
+        toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+        [{ stopReason: "stop", type: "done" }],
+      ];
+      const a = createDocumentAssistant();
+      const first = a.sendMessage("first");
+      for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+        await flush(1);
+      }
+      a.newChat();
+      // Stopped, but not yet unwound: the window still holds the turn.
+      expect(a.isTurnActive()).toBe(true);
+      await a.whenTurnEnds();
+      expect(a.isTurnActive()).toBe(false);
+      nextRounds = [
+        [
+          { content: "Importing.", type: "delta" },
+          { stopReason: "stop", type: "done" },
+        ],
+      ];
+      await a.sendMessage("import");
+      await first;
+      expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+        "import",
+      ]);
+      return datObserve(a);
     },
   },
   {
