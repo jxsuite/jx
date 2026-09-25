@@ -40,6 +40,7 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 export interface ComposerOptions {
   /** Receives the full message content (typed text + serialized context). */
   onSend: (text: string) => void;
+  /** Whether a turn is in flight: the whole turn, tools included, not only its token stream. */
   isStreaming: () => boolean;
   /**
    * Whether the turn is suspended on a question. The composer becomes the answer field: Enter still
@@ -239,7 +240,8 @@ export function createComposer(opts: ComposerOptions): Composer {
   }
 
   function send() {
-    if (!draft.trim() || opts.isStreaming()) {
+    // A send while a question waits is its answer, so a running turn refuses only an ordinary send.
+    if (!draft.trim() || (opts.isStreaming() && !(opts.isAwaiting?.() ?? false))) {
       return;
     }
     const text = buildMessageWithContext(draft, chips);
@@ -290,7 +292,9 @@ export function createComposer(opts: ComposerOptions): Composer {
         : "Ask the assistant… (Enter to send)",
       sendDisabled: draft.trim().length === 0,
       sendLabel: awaiting ? "Answer" : "Send",
-      sendState: streaming ? "stop" : "send",
+      /* Answer, else Stop, else Send. A waiting question outranks Stop because the composer is its
+         answer field, and a turn in flight otherwise offers Stop for all of it, tools included. */
+      sendState: !awaiting && streaming ? "stop" : "send",
     };
   }
 

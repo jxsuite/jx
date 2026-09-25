@@ -35,7 +35,7 @@ The row under the message box holds the composer's controls:
 - **Attach context** (paperclip) pins the current page or the selected element to your message (below).
 - The **model picker** switches models mid-conversation. The list comes from the provider you have configured, and only from that one: change the key or the endpoint and the picker re-asks rather than showing you the previous provider's catalogue. Where the provider says which of its models can call tools, one that cannot is labelled, and picking it puts a line under the picker: that model will answer your questions but will not edit anything. It is a fine choice when you want to think out loud, just not the one to blame when nothing changes on the canvas.
 - **API key & endpoint** (gear) reopens the **Assistant settings** dialog.
-- **Send** becomes **Stop** while the assistant is replying; click it to halt the reply and any further actions.
+- **Send** becomes **Stop** for the whole of a reply, including while its actions run; click it to halt the reply and any further actions. A new message can't start until the reply has finished. When the assistant is waiting on a question, the button reads **Answer** instead, because what you send is the answer.
 
 ## How much the assistant is holding
 
@@ -121,7 +121,7 @@ History is stored on your machine and kept per project, so conversations never m
 
 Everything the chat can do is also a command, so it is in the palette under **Assistant**, works from the keyboard, and can be rebound: **Focus Composer** (:kbd[⌘⇧A]), **New Chat**, **Chat History**, **Retry**, **Attach Selection** and **Stop**. The header's buttons run those same commands rather than a private copy of them, which is why a button's tooltip always prints the shortcut you actually have.
 
-Two of them state when they cannot act instead of going quiet: **Retry** needs a connected provider and a last message to re-send, and **Stop** is live only while a reply is streaming. Hover either one, or read the greyed row in the palette, and it says which.
+Two of them state when they cannot act instead of going quiet: **Retry** needs a connected provider, a last message to re-send and no reply still running, and **Stop** is live only while a reply is running, its actions and questions included. Hover either one, or read the greyed row in the palette, and it says which.
 
 ## Next
 

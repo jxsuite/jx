@@ -13,7 +13,8 @@ It was produced by mapping the current code with five independent readers, draft
 | J1.2 Freeze v1 and the Worker gate        | Merged: jxsuite/jx#372                                                                                             |
 | J1.3 Persisted tool outcomes              | jxsuite/jx#374                                                                                                     |
 | J1.4 Loop honesty in the old loop         | jxsuite/jx#376 (stacked on jxsuite/jx#374)                                                                         |
-| J1.5 Stop is armed before the first await | This pull request (stacked on jxsuite/jx#376)                                                                      |
+| J1.5 Stop is armed before the first await | jxsuite/jx#377 (stacked on jxsuite/jx#376)                                                                         |
+| J1.6 One turn per window                  | This pull request (stacked on jxsuite/jx#377)                                                                      |
 | J1.17 `./gateway` extraction              | jxsuite/jx#375 (independent; `upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19)  |
 
 Update this table as slices land, and delete the document when Phase 1 is finished, as the standards adoption plan was.

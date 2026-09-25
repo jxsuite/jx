@@ -74,8 +74,9 @@ export interface LiveContextSources {
   /** Whether the assistant has usable credentials (`services/ai-models`). */
   aiConfigured: () => boolean;
   /**
-   * Whether the assistant is mid-stream. `panels/ai-panel.ts` keeps its `DocumentAssistant` module-
-   * private, so there is nothing to read yet; the caller passes a probe when one exists.
+   * Whether an assistant turn is in flight, tools and questions included. `panels/ai-panel.ts`
+   * keeps its `DocumentAssistant` module-private, so the caller passes its probe
+   * (`isAssistantStreaming`).
    */
   aiStreaming?: () => boolean;
   /** Whether a turn is suspended on an `ask_user` question (`panels/ai-panel.ts`). */
