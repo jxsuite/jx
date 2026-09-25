@@ -167,7 +167,7 @@ const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { selectionCommands } = await import("../src/canvas/canvas-render");
 const { isSpliceablePath } = await import("../src/tabs/selection");
 const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
-const { recordWrite, writesForTurn } = await import("../src/services/ai-writes");
+const { writesForTurn } = await import("../src/services/ai-writes");
 const { projectChip } = await import("../src/panels/ai-chat/chat-view");
 const { refreshFormats } = await import("../src/format/format-host");
 const { ensureProxyProbe, isProxyConfigured, proxyStateCode, resetModelCache } =
@@ -320,9 +320,9 @@ function editHarness(rec: Recording, opts: { ok?: boolean; stopDuring?: boolean 
   toolRegistry.register(
     createToolDefinition({
       description: "records one write",
-      async execute() {
+      async execute(_args, ctx) {
         const ok = opts.ok ?? true;
-        recordWrite({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
+        ctx.ledger.record({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
         if (opts.stopDuring) {
           controller.abort();
         }
@@ -967,8 +967,8 @@ const LOOPT = inSuite("loopt", [
       toolRegistry.register(
         createToolDefinition({
           description: "creates a project the way create_project does",
-          async execute() {
-            recordWrite({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
+          async execute(_args, ctx) {
+            ctx.ledger.record({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
             return { success: true, summary: "Created project at /abs/site and opened it." };
           },
           name: "bootstrap",

@@ -658,6 +658,10 @@
             {
               "path": "extending/embedding/runtime-host",
               "label": "Embedding the runtime in your app"
+            },
+            {
+              "path": "extending/embedding/assistant-harness",
+              "label": "Writing assistant tools"
             }
           ]
         },

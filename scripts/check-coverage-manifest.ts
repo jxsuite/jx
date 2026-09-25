@@ -72,6 +72,8 @@ export const ALLOWLIST = new Set([
   "src/provider.ts",
   // The @jxsuite/ai gateway's host contract (Upstream, GatewayRefusal, ...): interfaces only.
   "src/gateway/types.ts",
+  // The @jxsuite/ai tool-call shapes (ToolContext, WriteLedger, Actor, ...): types only.
+  "src/core-types.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

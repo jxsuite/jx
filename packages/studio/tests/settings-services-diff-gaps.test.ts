@@ -23,7 +23,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { nothing, render as litRender } from "lit-html";
 import { createToolRegistry } from "@jxsuite/ai";
 import { problems, resetNotifications } from "../src/services/notify";
-import { beginTurn, endTurn, resetAiWrites, writesForTurn } from "../src/services/ai-writes";
+import { fileTurn, resetAiWrites, writesForTurn } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
 import { clearStudioStorage } from "../src/services/profile";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 
@@ -303,10 +304,14 @@ describe("ai-project-tools — write_file when the disk refuses", () => {
 
   test("reports the path and the reason, and records a failed disk write in the ledger", async () => {
     const tools = harness(() => Promise.reject(new Error("EACCES: permission denied")));
-    beginTurn("turn-1");
+    const turn1Call = recordingContext();
 
-    const res = await tools.execute("write_file", { content: "hello", path: "data/notes.txt" });
-    const recorded = endTurn("msg-1");
+    const res = await tools.execute(
+      "write_file",
+      { content: "hello", path: "data/notes.txt" },
+      turn1Call,
+    );
+    const recorded = fileTurn("msg-1", turn1Call.ledger.writes);
 
     expect(res.success).toBe(false);
     expect(res.error).toBe('Failed to write "data/notes.txt": EACCES: permission denied');
@@ -328,10 +333,14 @@ describe("ai-project-tools — write_file when the disk refuses", () => {
   test("a rejection that is not an Error is stringified rather than reported as an object", async () => {
     const notAnError = "quota exceeded" as unknown as Error;
     const tools = harness(() => Promise.reject(notAnError));
-    beginTurn("turn-2");
+    const turn2Call = recordingContext();
 
-    const res = await tools.execute("write_file", { content: "hello", path: "data/other.txt" });
-    const recorded = endTurn("msg-2");
+    const res = await tools.execute(
+      "write_file",
+      { content: "hello", path: "data/other.txt" },
+      turn2Call,
+    );
+    const recorded = fileTurn("msg-2", turn2Call.ledger.writes);
 
     expect(res.error).toBe('Failed to write "data/other.txt": quota exceeded');
     expect(recorded[0]?.error).toBe("quota exceeded");

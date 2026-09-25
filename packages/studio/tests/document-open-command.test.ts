@@ -14,7 +14,8 @@ import { makeContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
 import { checkPlacements } from "../src/commands/levels";
 import { createCommandToolRegistry } from "../src/services/ai-command-tools";
-import { beginTurn, endTurn } from "../src/services/ai-writes";
+import { fileTurn } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
 import { closeAllTabs, openTab, tabCommands, workspace } from "../src/workspace/workspace";
 import type { AnyCommand } from "../src/commands/registry";
 import type { CommandContext } from "../src/commands/context";
@@ -152,15 +153,15 @@ describe("through the bridge", () => {
     // A navigation says nothing about undo.
     expect(definition.description).not.toContain("Undo");
 
-    beginTurn("t");
-    expect(await tools.execute("open_document", { path: "pages/about.json" })).toEqual({
+    const tCall = recordingContext();
+    expect(await tools.execute("open_document", { path: "pages/about.json" }, tCall)).toEqual({
       success: true,
       summary:
         '"pages/about.json" is the active document, on the canvas; the document tools now ' +
         "operate on it.",
     });
     // No ledger entry: nothing was written.
-    expect(endTurn("t")).toEqual([]);
+    expect(fileTurn("t", tCall.ledger.writes)).toEqual([]);
   });
 
   test("the refusal for a file that did not open reaches the model verbatim", async () => {
