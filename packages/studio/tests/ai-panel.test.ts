@@ -632,18 +632,16 @@ describe("ai-panel", () => {
 
 // ─── §7.4: Retry and Restore to here ─────────────────────────────────────────
 
-const { beginTurn, endTurn, recordWrite, resetAiWrites } =
-  await import("../src/services/ai-writes");
+const { fileTurn, resetAiWrites } = await import("../src/services/ai-writes");
 const { problems, resetNotifications, toasts } = await import("../src/services/notify");
 const { activeTab, closeAllTabs } = await import("../src/workspace/workspace");
 
 /** File a ledger entry against a message id, the way the agent loop does. */
 function ledger(id: string, writes: { disk: boolean; ok: boolean; path: string }[]) {
-  beginTurn(`for:${id}`);
-  for (const w of writes) {
-    recordWrite({ ...w, tool: "write_file" });
-  }
-  endTurn(id);
+  fileTurn(
+    id,
+    writes.map((w) => ({ ...w, tool: "write_file" })),
+  );
 }
 
 /* The loop files its ledger in its `finally`. After a Stop mid-stream the turn's last reactive write

@@ -28,19 +28,12 @@ import { workspace } from "../workspace/workspace";
 import { getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
 import { clearPendingImportBrief, pendingImportBrief } from "./import-seed";
-import {
-  abortImportRun,
-  beginImportRun,
-  finishImportRun,
-  importRun,
-  recordImportProgress,
-} from "./import-run";
+import type { ImportBrief } from "./import-seed";
+import { abortImportRun, beginImportRun, finishImportRun, importRun } from "./import-run";
 import { adoptCreatedProject } from "./project-adoption";
 import type { AdoptOutcome } from "./project-adoption";
-import { currentToolCallId, turnSignal } from "./ai-turn-signal";
-import { recordWrite } from "./ai-writes";
 
-import type { ToolRegistry } from "@jxsuite/ai/tools";
+import type { JsonValue, ToolRegistry } from "@jxsuite/ai/tools";
 import type { Tab } from "../tabs/tab";
 import type { ImportBreakpointPolicy, ImportReadyEvent, ImportSiteSummary } from "../types";
 
@@ -73,6 +66,11 @@ export interface ImportToolsCtx {
   adoptProject?: (root: string) => Promise<void>;
   /** Fired once adoption is VERIFIED — the session store re-keys the live chat here. */
   onProjectAdopted?: (root: string) => void;
+  /**
+   * The New Project Import form's brief, when the run started there. Defaults to the one the form
+   * stores (`services/import-seed.ts`); a host with no form binds its own.
+   */
+  brief?: { read: () => ImportBrief | null; clear: () => void };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -152,19 +150,15 @@ function destinationProblem(destination: string): string | null {
 }
 
 /**
- * One run has already succeeded in this session.
+ * The session fact that one run has already succeeded in this conversation.
  *
  * Not the same question as `workspace.projectRoot`, and that is the whole reason it exists: on
  * desktop, adoption may open the project in ANOTHER window, leaving this one's root empty — so the
  * `no-project` tier would happily advertise a second import over the top of the first.
- * `create_project` has the identical hazard today.
+ * `create_project` has the identical hazard today. A session fact rather than a module flag, and it
+ * lasts as the flag did: New Chat starts with none, and opening another chat keeps it.
  */
-let imported = false;
-
-/** Forget that an import ran. New Chat, and tests. */
-export function resetImportGuard(): void {
-  imported = false;
-}
+const IMPORT_DONE = "import.done";
 
 /**
  * A compact, factual account of the run for the model to reason about — and to ask about.
@@ -259,7 +253,12 @@ function describeRun(id: string, root: string, summary?: ImportSiteSummary): str
  */
 export function registerImportTools(
   registry: Pick<ToolRegistry, "register">,
-  { getTab, adoptProject, onProjectAdopted }: ImportToolsCtx,
+  {
+    getTab,
+    adoptProject,
+    onProjectAdopted,
+    brief: briefStore = { clear: clearPendingImportBrief, read: pendingImportBrief },
+  }: ImportToolsCtx,
 ): void {
   registry.register(
     createToolDefinition({
@@ -335,7 +334,7 @@ export function registerImportTools(
         },
         required: ["url"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const {
           url,
           directory,
@@ -365,7 +364,7 @@ export function registerImportTools(
             "A project is already open in this window — import_site is only for bootstrapping.",
           );
         }
-        if (imported) {
+        if (ctx.session.get(IMPORT_DONE) === true) {
           return toolError(
             "A site has already been imported in this conversation. Start a new chat to import " +
               "another, or use the file tools on the project that was created.",
@@ -386,7 +385,7 @@ export function registerImportTools(
           return toolError("The url must start with http:// or https://.");
         }
 
-        const brief = pendingImportBrief();
+        const brief = briefStore.read();
         const requested = typeof directory === "string" ? directory.trim() : "";
         if (requested && brief && requested !== brief.directory) {
           /* The wizard's Location field is the user's answer to "where does this go". A model that
@@ -411,22 +410,23 @@ export function registerImportTools(
           return toolError(problem);
         }
 
-        const id = currentToolCallId();
+        const id = ctx.callId;
         const signal = beginImportRun(id, { directory: destination, url: target.href });
-        /* The turn's own signal too. `assistant.stop` aborts the request through `abortImportRun`,
+        /* The call's own signal too. `assistant.stop` aborts the request through `abortImportRun`,
            but that is not the only way a turn ends: the loop's signal can be aborted directly, and
            a run left going after its turn died would keep a headless browser open for minutes with
            nothing left to receive the result.
 
            It stops THIS run and nothing after it, so it is removed the moment the run settles: left
-           on the turn's signal, a Stop later in the same turn (a question after the import, say)
-           rewrote the finished run as stopped. */
-        const turn = turnSignal();
+           on the signal, a Stop later in the same turn (a question after the import, say) rewrote
+           the finished run as stopped. The loop also unlinks the call's signal once the call
+           settles, so a later Stop reaches it no more than it reaches the listener. */
+        const callSignal = ctx.signal;
         const stopRun = () => {
           abortImportRun();
           finishImportRun(id, { status: "stopped" });
         };
-        turn?.addEventListener("abort", stopRun, { once: true });
+        callSignal.addEventListener("abort", stopRun, { once: true });
 
         const apiKey = getOpenAiKey();
         const baseUrl = getBaseUrl();
@@ -486,12 +486,14 @@ export function registerImportTools(
               ...(baseUrl ? { baseUrl } : {}),
               ...(model ? { model } : {}),
             },
-            (evt) => recordImportProgress(id, evt),
+            (evt) => {
+              ctx.progress(evt as unknown as JsonValue);
+            },
             signal,
             onReady,
           );
         } catch (error) {
-          turn?.removeEventListener("abort", stopRun);
+          callSignal.removeEventListener("abort", stopRun);
           const message = error instanceof Error ? error.message : String(error);
           if (signal.aborted) {
             finishImportRun(id, { error: message, status: "stopped" });
@@ -510,13 +512,13 @@ export function registerImportTools(
           );
         }
 
-        turn?.removeEventListener("abort", stopRun);
+        callSignal.removeEventListener("abort", stopRun);
         finishImportRun(id, { status: "done" });
         /* The imported project is on disk from here, and no undo reaches it: it is what the turn
            changed, whichever window ends up opening it. */
-        recordWrite({ disk: true, ok: true, path: result.root, tool: "import_site" });
-        imported = true;
-        clearPendingImportBrief();
+        ctx.ledger.record({ disk: true, ok: true, path: result.root, tool: "import_site" });
+        ctx.session.set(IMPORT_DONE, true);
+        briefStore.clear();
 
         /* The early adoption if there was one, otherwise adopt now: a backend that sends no `ready`
            line is not broken, it is older, and the project must still open. */

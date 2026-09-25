@@ -15,7 +15,8 @@ It was produced by mapping the current code with five independent readers, draft
 | J1.4 Loop honesty in the old loop         | Merged: jxsuite/jx#376                                                                                             |
 | J1.5 Stop is armed before the first await | Merged: jxsuite/jx#377                                                                                             |
 | J1.6 One turn per window                  | Merged: jxsuite/jx#378                                                                                             |
-| J1.7 Honest turn outcomes                 | This pull request (its live eval needed the eval harness fixes of jxsuite/jx#379)                                  |
+| J1.7 Honest turn outcomes                 | jxsuite/jx#380 (its live eval needed the eval harness fixes of jxsuite/jx#379)                                     |
+| J1.8 ToolContext                          | This pull request (stacked on jxsuite/jx#380; `refusal` moves to J1.11, its first caller)                          |
 | J1.17 `./gateway` extraction              | Merged: jxsuite/jx#375 (`upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19)       |
 
 Update this table as slices land, and delete the document when Phase 1 is finished, as the standards adoption plan was.
@@ -323,7 +324,7 @@ export interface ToolRegistry {
   list: () => ToolDefinition[];
   listForLLM: () => object[];
   validate: (toolName: string, args: object) => { valid: boolean; errors?: string[] };
-  /** ctx omitted → createToolContext(). Wrapping registries MUST forward ctx (Studio types it required, T3). */
+  /** ctx omitted → createToolContext(). Wrapping registries MUST forward ctx (T3's test enforces it; the type leaves `ctx` optional). */
   execute: (toolName: string, args: object, ctx?: ToolContext) => Promise<ToolResult>;
   getDefinition: (toolName: string) => ToolDefinition | undefined;
   /** J1.8: the refusal sentence `execute` would answer right now, or null. Wrappers forward it. */
@@ -2090,7 +2091,7 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 - Files:
   - `ai/tools.ts`: `ToolContext`, `createToolContext`, `createLedger`, `createSessionFacts`, `linkCallSignal`, `interactive`, `refusal?`, `execute(args, ctx?)`.
   - `ai/core-types.ts` (allowlisted).
-  - `gated-registry.ts` and `ai-command-tools.ts` forward ctx (typed required) and `refusal`.
+  - `gated-registry.ts` and `ai-command-tools.ts` forward ctx. (`refusal` moves to J1.11: `invokeTool` is its first caller, and Studio's reachability rule refuses a function nothing calls.)
   - `tool-executor.ts` builds ctx per call (child signal, callId, actor, a turn ledger, session facts from the assistant, progress to `recordImportProgress(callId, …)`) and uses `def.interactive`.
   - Ten `recordWrite` sites become `ctx.ledger.record` (eight, plus the two F7 bootstrap records J1.7 added).
   - `ai-writes.ts` becomes `fileTurn`.
@@ -2122,6 +2123,7 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 - Files:
   - `ai/harness/*.ts`: `runTurn`, `TurnRun`, `createTurnLock`, `fromStreamingClient`, `DEFAULT_TURN_POLICY` (defaults equal to post-J1.7 behaviour).
   - `invokeTool` in `ai/tools.ts`: parse, refusal, execute, normalise.
+  - `refusal?` on `ToolRegistry`, answered by `gated-registry.ts` and `ai-command-tools.ts` and forwarded by `composeToolRegistries` (moved from J1.8).
   - `st/services/harness/{chat-reducer,turn-hooks}.ts` with tests.
   - `runAgentLoop` becomes an adapter using `onEvent`.
   - `chat-state` `beginAssistantTurn(id?)` and `pushToolResultMessage(…, id?)`.

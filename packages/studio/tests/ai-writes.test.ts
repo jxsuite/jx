@@ -9,9 +9,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   MAX_TURNS,
-  beginTurn,
-  endTurn,
-  recordWrite,
+  fileTurn,
+  openTurnLedger,
   resetAiWrites,
   summarizeWrites,
   turnAnchor,
@@ -27,48 +26,41 @@ beforeEach(() => {
 
 describe("recording", () => {
   test("a turn files its writes under the message id it ends on", () => {
-    beginTurn("t1");
-    recordWrite(doc("pages/index.json"));
-    recordWrite(disk("layouts/base.json"));
-    expect(endTurn("msg_7")).toHaveLength(2);
+    const ledger = openTurnLedger("t1");
+    ledger.record(doc("pages/index.json"));
+    ledger.record(disk("layouts/base.json"));
+    expect(fileTurn("msg_7", ledger.writes)).toHaveLength(2);
     expect(writesForTurn("msg_7").map((w) => w.path)).toEqual([
       "pages/index.json",
       "layouts/base.json",
     ]);
   });
 
-  test("a write outside a turn costs nothing and is reported nowhere", () => {
-    /* A tool invoked from a command or a test is not part of an assistant turn, and must not
-       silently attach itself to whichever one happened to run last. */
-    recordWrite(doc("pages/index.json"));
-    beginTurn("t1");
-    expect(endTurn("msg_1")).toEqual([]);
-    expect(writesForTurn("msg_1")).toEqual([]);
+  /* The slot this replaced was one ledger for the window: a tool run outside the loop recorded
+     into whichever turn happened to be open, and two turns could not each keep their own. */
+  test("each turn keeps its own ledger", () => {
+    const first = openTurnLedger("t1");
+    const second = openTurnLedger("t2");
+    first.record(doc("a.json"));
+    second.record(doc("b.json"));
+    expect(first.writes.map((w) => w.path)).toEqual(["a.json"]);
+    expect(second.writes.map((w) => w.path)).toEqual(["b.json"]);
   });
 
-  test("beginTurn is idempotent on the same id, so a re-entered loop is still one turn", () => {
-    beginTurn("t1");
-    recordWrite(doc("a.json"));
-    beginTurn("t1");
-    recordWrite(doc("b.json"));
-    expect(endTurn("msg_1").map((w) => w.path)).toEqual(["a.json", "b.json"]);
+  test("a ledger names the turn it records", () => {
+    expect(openTurnLedger("turn:2").turnId).toBe("turn:2");
   });
 
   test("a turn that changed nothing files nothing — the panel renders no summary at all", () => {
-    beginTurn("t1");
-    expect(endTurn("msg_1")).toEqual([]);
+    expect(fileTurn("msg_1", openTurnLedger("t1").writes)).toEqual([]);
     expect(writesForTurn("msg_1")).toEqual([]);
-  });
-
-  test("endTurn with no open turn is harmless", () => {
-    expect(endTurn("msg_1")).toEqual([]);
   });
 
   test("the ledger is bounded — old turns drop, the messages stay", () => {
     for (let i = 0; i <= MAX_TURNS; i++) {
-      beginTurn(`t${i}`);
-      recordWrite(doc(`p${i}.json`));
-      endTurn(`msg_${i}`);
+      const ledger = openTurnLedger(`t${i}`);
+      ledger.record(doc(`p${i}.json`));
+      fileTurn(`msg_${i}`, ledger.writes);
     }
     expect(writesForTurn("msg_0")).toEqual([]);
     expect(writesForTurn(`msg_${MAX_TURNS}`)).toHaveLength(1);

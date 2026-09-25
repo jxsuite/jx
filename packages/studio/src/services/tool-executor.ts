@@ -29,14 +29,16 @@
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
-import type { ToolRegistry } from "@jxsuite/ai/tools";
+import { createSessionFacts, createToolContext, linkCallSignal } from "@jxsuite/ai/tools";
+import type { Actor, SessionFacts, ToolRegistry } from "@jxsuite/ai/tools";
 
 import type { Tab } from "../tabs/tab";
+import type { ImportProgressEvent } from "../types";
 import { batchTab, beginBatch, endBatch } from "../tabs/transact";
 import { ensureProxyProbe, resetModelCache } from "./ai-models";
 import { estimatePromptTokens } from "./context-manager";
-import { beginTurn, endTurn, turnAnchor, turnWrites } from "./ai-writes";
-import { beginToolCall, beginTurnSignal, endTurnSignal } from "./ai-turn-signal";
+import { fileTurn, openTurnLedger, turnAnchor } from "./ai-writes";
+import { recordImportProgress } from "./import-run";
 
 const MAX_ROUNDS = 5;
 
@@ -54,9 +56,6 @@ export const EMPTY_TURN_TEXT = "The model sent back an empty reply.";
  */
 const MAX_TOTAL_ROUNDS = 25;
 
-/** Tools that suspend the turn on a human rather than doing work. */
-const INTERACTIVE_TOOLS = new Set(["ask_user"]);
-
 interface RunAgentLoopOptions {
   chatState: ReturnType<typeof createChatState>;
   streamingClient: StreamingClient;
@@ -64,6 +63,8 @@ interface RunAgentLoopOptions {
   systemPrompt: string;
   signal?: AbortSignal;
   getTab?: () => Tab | null;
+  /** The conversation's facts, which every call's context carries; a fresh set when omitted. */
+  session?: SessionFacts;
 }
 
 /**
@@ -77,6 +78,7 @@ export async function runAgentLoop({
   systemPrompt,
   signal,
   getTab,
+  session = createSessionFacts(),
 }: RunAgentLoopOptions): Promise<void> {
   const allErrors: string[] = [];
   const appliedSummaries: string[] = [];
@@ -84,12 +86,16 @@ export async function runAgentLoop({
   /* The ledger is filed under the turn's last DRAWN assistant message (see services/ai-writes), so
      the scan starts at the message this turn answers. */
   const turnUserId = chatState.messages.findLast((m) => m.role === "user")?.id;
-  beginTurn(`turn:${chatState.messages.length}`);
-
-  /* The signal, published for the tools rather than passed to them: `ToolRegistry.execute` takes
-     none. Without it a tool that waits for a human never learns the turn was stopped, and the
-     `await` below is the whole loop. See services/ai-turn-signal.ts. */
-  beginTurnSignal(signal);
+  /* What every call's context carries (specs/ai.md §3.7): this turn's ledger, the conversation's
+     facts, and who the calls act as. The signal and the call id are the call's own, below. */
+  const ledger = openTurnLedger(`turn:${chatState.messages.length}`);
+  const actor: Actor = {
+    id: `assistant:${session.sessionId ?? "local"}:${ledger.turnId}`,
+    kind: "assistant",
+    model: chatState.model,
+    sessionId: session.sessionId,
+    turnId: ledger.turnId,
+  };
 
   // Batch all tool-call mutations into a single undo step, anchored on the tab being edited.
   if (getTab) {
@@ -233,16 +239,30 @@ export async function runAgentLoop({
         }
         let result;
         // The ledger's length before the call, so the call can be judged by what it recorded.
-        const writesBefore = turnWrites().length;
-        // Published, not passed: `ToolRegistry.execute` takes the args and nothing else.
-        beginToolCall(id);
+        const writesBefore = ledger.writes.length;
+        /* The call's own signal: it aborts with the turn, so a tool waiting on a person or a crawl
+           learns of a Stop, and it is unlinked once the call settles, so a Stop later in the turn
+           reaches nothing that has already finished. */
+        const link = signal ? linkCallSignal(signal) : null;
+        const ctx = createToolContext({
+          actor,
+          callId: id,
+          ledger,
+          progress: (event) => {
+            recordImportProgress(id, event as unknown as ImportProgressEvent);
+          },
+          session,
+          ...(link ? { signal: link.signal } : {}),
+        });
         try {
-          result = await toolRegistry.execute(call.name, parseToolArguments(call.arguments));
+          result = await toolRegistry.execute(call.name, parseToolArguments(call.arguments), ctx);
         } catch (error) {
           result = {
             success: false,
             error: `Failed to parse arguments: ${(error as Error).message}`,
           };
+        } finally {
+          link?.release();
         }
         /* The transcript was replaced while the call ran: another chat was opened from Chat
            History, which stops the turn. The reply belongs to a request that is no longer there,
@@ -251,16 +271,15 @@ export async function runAgentLoop({
         if (turnUserId !== undefined && !chatState.messages.some((m) => m.id === turnUserId)) {
           return;
         }
-        if (!INTERACTIVE_TOOLS.has(call.name)) {
+        // A call that suspends the turn on a person does not spend its work budget.
+        if (toolRegistry.getDefinition(call.name)?.interactive !== true) {
           didWork = true;
         }
         reanchorBatch();
         if (!result.success && result.error) {
           allErrors.push(result.error);
         }
-        const wrote = turnWrites()
-          .slice(writesBefore)
-          .some((write) => write.ok);
+        const wrote = ledger.writes.slice(writesBefore).some((write) => write.ok);
         if (result.success && result.summary && wrote) {
           appliedSummaries.push(result.summary);
         }
@@ -307,9 +326,8 @@ export async function runAgentLoop({
     }
     chatState.setError(tail);
   } finally {
-    endTurnSignal();
     endBatch();
-    endTurn(turnAnchor(chatState.messages, turnUserId) ?? "");
+    fileTurn(turnAnchor(chatState.messages, turnUserId) ?? "", ledger.writes);
   }
 }
 
