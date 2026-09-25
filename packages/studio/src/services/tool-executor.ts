@@ -29,7 +29,7 @@ import type { Tab } from "../tabs/tab";
 import { batchTab, beginBatch, endBatch } from "../tabs/transact";
 import { ensureProxyProbe, resetModelCache } from "./ai-models";
 import { estimatePromptTokens } from "./context-manager";
-import { beginTurn, endTurn } from "./ai-writes";
+import { beginTurn, endTurn, turnAnchor } from "./ai-writes";
 import { beginToolCall, beginTurnSignal, endTurnSignal } from "./ai-turn-signal";
 
 const MAX_ROUNDS = 5;
@@ -72,8 +72,9 @@ export async function runAgentLoop({
   const allErrors: string[] = [];
   const appliedSummaries: string[] = [];
 
-  /** The ledger is filed under the assistant message the turn ends on — see services/ai-writes. */
-  const turnId = () => chatState.messages.at(-1)?.id ?? "";
+  /* The ledger is filed under the turn's last DRAWN assistant message (see services/ai-writes), so
+     the scan starts at the message this turn answers. */
+  const turnUserId = chatState.messages.findLast((m) => m.role === "user")?.id;
   beginTurn(`turn:${chatState.messages.length}`);
 
   /* The signal, published for the tools rather than passed to them: `ToolRegistry.execute` takes
@@ -171,8 +172,6 @@ export async function runAgentLoop({
         }
       }
 
-      chatState.finishStream(stopReason);
-
       if (streamError) {
         /* A lapsed hosted grant is the one stream error that makes the app's OWN reading wrong.
            The probe settles once at boot, so without this every gate keeps offering an assistant
@@ -182,9 +181,15 @@ export async function runAgentLoop({
           resetModelCache();
           ensureProxyProbe();
         }
+        /* `setError` alone, never after `finishStream`: it removes the round's partial message,
+           and only while that message is still the streaming one. Finishing first let go of it, so
+           the partial (a tool call cut off mid-arguments, as often as not) stayed in the
+           transcript and went out on the next send. */
         chatState.setError(streamError);
         return;
       }
+
+      chatState.finishStream(stopReason);
 
       /* The calls the model streamed decide whether tools run, not the finish reason the provider
          reported beside them. Some OpenAI-compatible backends (Workers AI among them) end a
@@ -211,13 +216,19 @@ export async function runAgentLoop({
         // Published, not passed: `ToolRegistry.execute` takes the args and nothing else.
         beginToolCall(id);
         try {
-          const args = call.arguments ? (JSON.parse(call.arguments) as object) : {};
-          result = await toolRegistry.execute(call.name, args);
+          result = await toolRegistry.execute(call.name, parseToolArguments(call.arguments));
         } catch (error) {
           result = {
             success: false,
             error: `Failed to parse arguments: ${(error as Error).message}`,
           };
+        }
+        /* The transcript was replaced while the call ran: another chat was opened from Chat
+           History, which stops the turn. The reply belongs to a request that is no longer there,
+           so writing it would land a stray `tool` message in the other conversation, and could
+           overwrite a restored record's result where a provider reuses call ids. */
+        if (turnUserId !== undefined && !chatState.messages.some((m) => m.id === turnUserId)) {
+          return;
         }
         if (!INTERACTIVE_TOOLS.has(call.name)) {
           didWork = true;
@@ -235,6 +246,12 @@ export async function runAgentLoop({
 
       if (didWork) {
         workRounds += 1;
+      }
+      /* A Stop that landed during the round's last call. Nothing is left to stop in this round, so
+         without this the loop opened the next one: a placeholder pushed after the author stopped,
+         and a request streamed on the aborted signal. */
+      if (signal?.aborted) {
+        return;
       }
       if (workRounds < MAX_ROUNDS && round < MAX_TOTAL_ROUNDS) {
         chatState.beginAssistantTurn();
@@ -268,6 +285,30 @@ export async function runAgentLoop({
   } finally {
     endTurnSignal();
     endBatch();
-    endTurn(turnId());
+    endTurn(turnAnchor(chatState.messages, turnUserId) ?? "");
   }
+}
+
+/**
+ * A call's arguments as the object a tool takes.
+ *
+ * An empty string is no arguments. JSON that parses to something other than an object (`null`, an
+ * array, a number) is refused here with its own sentence, rather than reaching the registry, where
+ * a validator reading a property of `null` threw a message about the validator. The prefix is the
+ * one a JSON syntax error already carries, so the model reads both as one kind of mistake.
+ *
+ * @param {string} text - The call's accumulated argument text
+ * @returns {object}
+ * @throws {SyntaxError | TypeError} Caught by the loop and returned to the model as a tool error
+ */
+function parseToolArguments(text: string): object {
+  if (!text) {
+    return {};
+  }
+  const parsed = JSON.parse(text) as unknown;
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const type = parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed;
+    throw new TypeError(`arguments must be a JSON object, got ${type}`);
+  }
+  return parsed;
 }

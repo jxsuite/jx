@@ -75,7 +75,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#4\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -93,7 +93,10 @@
           "arguments": "{not json",
           "id": "c1",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "Failed to parse arguments: JSON Parse error: Expected '}'"
+          }
         }
       ]
     },

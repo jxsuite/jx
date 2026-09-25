@@ -323,6 +323,7 @@ export async function installAiWritesSpy(): Promise<AiWritesSpy> {
     recordWrite,
     resetAiWrites,
     summarizeWrites,
+    turnAnchor,
     writesForTurn,
   } = real;
   const events: AiWritesEvent[] = [];
@@ -346,6 +347,7 @@ export async function installAiWritesSpy(): Promise<AiWritesSpy> {
       resetAiWrites();
     },
     summarizeWrites,
+    turnAnchor,
     writesForTurn,
   }));
   installed = {

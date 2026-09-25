@@ -159,7 +159,10 @@
           "arguments": "{\"location\":\"/home/dev/Sites\",\"name\":\"Batched Site\"}",
           "id": "c1",
           "name": "create_project",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Created project \"Batched Site\" at /home/dev/Sites/batched-site and opened it. The file tools (list_files, read_file, write_file) and document tools are now available — start with list_files to see the scaffolded pages, layouts, and components."
+          }
         }
       ]
     },

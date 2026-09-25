@@ -323,8 +323,9 @@ function scriptCalls(fx: TranscriptFixture): string[] {
 
 const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
   /**
-   * A stream error recorded in the loop's own order (finishStream, then setError): the partial
-   * assistant turn is NOT removed, so it reaches the wire. Frozen as today's behavior.
+   * A stream error recorded in the order the loop made the calls before J1.4 (finishStream, then
+   * setError): the partial assistant turn is NOT removed, so it reaches the wire. The loop now
+   * calls setError alone, which removes it, but sessions saved by earlier builds carry this shape.
    */
   "stream-error-partial-kept": (fx) =>
     scriptCalls(fx).join(",").includes("finishStream,setError") &&
@@ -360,7 +361,11 @@ const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
   "parallel-tool-calls": (fx) => wireOf(fx).some((e) => (e.tool_calls?.length ?? 0) > 1),
   "tool-result-message": (fx) =>
     wireOf(fx).some((e) => e.role === "tool" && typeof e.tool_call_id === "string"),
-  /** What Studio's loop leaves on a record: it attaches the result after `finishStream`. */
+  /**
+   * A record with no result: a call a Stop left unrun. Until J1.4 Studio's loop left EVERY record
+   * like this (its `appendToolResult` looked for the record after `finishStream` had let go of it),
+   * so sessions saved by earlier builds carry it on calls that did run.
+   */
   "tool-record-result-null": (fx) => calls(fx).some((c) => c.result === null),
   /** A record that does carry its result, which never reaches the wire. */
   "tool-record-result-set": (fx) =>

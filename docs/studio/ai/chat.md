@@ -56,11 +56,11 @@ Even without attachments the assistant already knows a lot: each message carries
 
 ## Watch it work
 
-The assistant's reply streams in live. When it acts on your project, each action appears as a small labeled chip in the reply (one per edit or file operation), and each chip says what **became** of that action: a tick and the change it made, or a cross and the reason it was refused. A chip with neither is still in flight.
+The assistant's reply streams in live. When it acts on your project, each action appears as a small labeled chip in the reply (one per edit or file operation), and each chip says what **became** of that action: a tick and the change it made, or a cross and the reason it was refused. A chip with neither is still in flight, and it gets its tick or cross the moment that action finishes, while the rest of the reply carries on.
 
-Under the chips, a reply that changed anything carries a one-line summary: "Changed 3 files", plus a count of any that were **written to disk, where undo cannot reach them**. Expand it for the list of paths. When every change in a reply went through the editor, the summary also offers **Restore to here**, which rolls that whole reply back in one step.
+Under the chips, a reply that changed anything carries a one-line summary: "Changed 3 files", plus a count of any that were **written to disk, where undo cannot reach them**. Expand it for the list of paths. When every change in a reply went through the editor, the summary also offers **Restore to here**, which rolls that whole reply back in one step. The summary sits under the last part of the reply you can see, so a reply you stopped, or one whose last step said nothing, still shows what it changed.
 
-Document edits land on the canvas as they happen, so for canvas work you can literally watch the page change. If something goes wrong mid-request (a lost connection, a provider error), the chat shows the error with advice on how to recover, and a **Retry** button that sends your last message again.
+Document edits land on the canvas as they happen, so for canvas work you can literally watch the page change. If something goes wrong mid-request (a lost connection, a provider error), the chat shows the error with advice on how to recover, and a **Retry** button that sends your last message again. The half-finished part of the reply is removed rather than kept, so a half-written action is never sent back to the provider. Anything the assistant finished before the error stays, each chip with its outcome.
 
 A long request that reaches the assistant's per-message limit on tool calls is not an error: it finishes with a note saying it ran out of rounds and listing what it did apply, and everything it changed stays changed. Send another message to continue.
 
@@ -111,7 +111,7 @@ For disk-level changes, source control is the review tool: the **[Source Control
 The header names the current chat and holds two buttons: the history button (left) opens the **Chats** list, and **+** starts a new chat.
 
 - Chats are titled after your first message and listed newest-first with a timestamp and message count.
-- Click a chat to reopen it; the conversation continues where it left off, and each action the assistant took still shows whether it succeeded.
+- Click a chat to reopen it; the conversation continues where it left off, and each action the assistant took still shows whether it succeeded. Opening a chat while a reply is still running stops that reply, and nothing more from it lands in the chat you opened.
 - Hover a row and click the trash button to delete a chat. Deleting the open one leaves you in a fresh empty chat.
 - When you reopen Studio, your last open chat is restored.
 

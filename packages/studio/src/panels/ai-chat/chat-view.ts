@@ -14,9 +14,9 @@
  *
  * - **A chip renders its OUTCOME.** It reads `ToolCallRecord.result`, so a chip that said
  *   `update_style: ["children",0]` no longer says exactly as much when the edit was refused as when
- *   it landed. A restored chat backfills each record's result from the tool message that answered it
- *   (`services/tool-outcomes.ts`); the live loop does not populate it yet, which harness slice J1.4
- *   fixes (packages/ai/HARNESS-PLAN.md).
+ *   it landed. The live loop attaches each result as its call finishes (`appendToolResult`), and a
+ *   restored chat backfills it from the tool message that answered the call
+ *   (`services/tool-outcomes.ts`).
  * - **A turn renders what it CHANGED.** The changed-files summary comes off the write ledger
  *   (`services/ai-writes.ts`), which records whether each change went through a transaction or
  *   straight to disk — so the undo caveat is rendered to the human holding ⌘Z instead of being

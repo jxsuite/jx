@@ -117,7 +117,7 @@
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"(untitled)\",\"tool\":\"Set \\\"id\\\" at [].\"})",
-      "endTurn(\"msg#6\") filed 2"
+      "endTurn(\"msg#4\") filed 2"
     ],
     "turns": [
       {
@@ -138,7 +138,7 @@
             ]
           }
         ],
-        "turn": "msg#6"
+        "turn": "msg#4"
       }
     ]
   },
@@ -157,7 +157,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"one\"}",
           "id": "a",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },
@@ -176,7 +179,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"two\"}",
           "id": "b",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },

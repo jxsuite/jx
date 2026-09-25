@@ -259,7 +259,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v0\"}",
           "id": "c0",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },
@@ -278,7 +281,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v1\"}",
           "id": "c1",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },
@@ -297,7 +303,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v2\"}",
           "id": "c2",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },
@@ -316,7 +325,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v3\"}",
           "id": "c3",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },
@@ -335,7 +347,10 @@
           "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v4\"}",
           "id": "c4",
           "name": "set_property",
-          "result": null
+          "result": {
+            "success": true,
+            "summary": "Set \"id\" at []."
+          }
         }
       ]
     },

@@ -35,7 +35,14 @@
       "role": "assistant",
       "content": "Let me look.",
       "timestamp": 1767225601000,
-      "toolCalls": [{ "id": "call_1", "name": "list_files", "arguments": "{}", "result": null }]
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "list_files",
+          "arguments": "{}",
+          "result": { "success": true, "data": { "files": ["pages/index.json", "project.json"] } }
+        }
+      ]
     },
     {
       "id": "msg_T_3",

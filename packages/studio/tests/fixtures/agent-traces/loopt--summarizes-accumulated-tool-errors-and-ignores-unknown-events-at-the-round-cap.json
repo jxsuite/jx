@@ -195,7 +195,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#11\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#10\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -213,7 +213,10 @@
           "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
           "id": "c",
           "name": "set_text",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "No node exists at path [\"children\",9]."
+          }
         }
       ]
     },
@@ -232,7 +235,10 @@
           "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
           "id": "c",
           "name": "set_text",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "No node exists at path [\"children\",9]."
+          }
         }
       ]
     },
@@ -251,7 +257,10 @@
           "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
           "id": "c",
           "name": "set_text",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "No node exists at path [\"children\",9]."
+          }
         }
       ]
     },
@@ -270,7 +279,10 @@
           "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
           "id": "c",
           "name": "set_text",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "No node exists at path [\"children\",9]."
+          }
         }
       ]
     },
@@ -289,7 +301,10 @@
           "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
           "id": "c",
           "name": "set_text",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "No node exists at path [\"children\",9]."
+          }
         }
       ]
     },

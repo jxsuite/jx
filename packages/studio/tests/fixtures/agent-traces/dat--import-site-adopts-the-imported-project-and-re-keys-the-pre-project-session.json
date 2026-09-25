@@ -160,7 +160,17 @@
           "arguments": "{\"directory\":\"/home/dev/Sites/imported-site\",\"url\":\"https://example.com\"}",
           "id": "i1",
           "name": "import_site",
-          "result": null
+          "result": {
+            "success": true,
+            "data": {
+              "root": "/abs/imported-site",
+              "summary": {
+                "pages": 2,
+                "warnings": []
+              }
+            },
+            "summary": "Imported https://example.com/ into /abs/imported-site and opened it. The file and document tools are available now. Read the emitted pages, layouts and components before proposing changes — then ask the user about anything the import had to guess at (pages it skipped, components it may have split wrongly, a layout it did not find, a page that did not render faithfully)."
+          }
         }
       ]
     },

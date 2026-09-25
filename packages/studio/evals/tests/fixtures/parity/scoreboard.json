@@ -45,8 +45,8 @@
           },
           {
             "pass": true,
-            "rounds": 2,
-            "toolCalls": 2,
+            "rounds": 1,
+            "toolCalls": 1,
             "loopError": "Upstream provider returned 503",
             "renderErrors": [],
             "schemaErrors": []
@@ -164,7 +164,7 @@
     "add-nav-to-header-2.md": [
       "# add-nav-to-header — trial 2/2  (PASS)",
       "",
-      "rounds=2 toolCalls=2 loopError=Upstream provider returned 503",
+      "rounds=1 toolCalls=1 loopError=Upstream provider returned 503",
       "",
       "## render critic: pass",
       "",

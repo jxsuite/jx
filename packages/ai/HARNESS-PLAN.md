@@ -11,7 +11,9 @@ It was produced by mapping the current code with five independent readers, draft
 | Phase 0 (hardening and drift)      | Merged: jxsuite/jx#370, jxsuite/platform#69                                                                        |
 | J1.1 Doc-op foundation             | Merged: jxsuite/jx#371 (`applyDocOpsAsUser` deferred to J1.16, its first caller, under Studio's reachability rule) |
 | J1.2 Freeze v1 and the Worker gate | Merged: jxsuite/jx#372                                                                                             |
-| J1.3 Persisted tool outcomes       | This pull request                                                                                                  |
+| J1.3 Persisted tool outcomes       | jxsuite/jx#374                                                                                                     |
+| J1.4 Loop honesty in the old loop  | This pull request (stacked on jxsuite/jx#374)                                                                      |
+| J1.17 `./gateway` extraction       | jxsuite/jx#375 (independent; `upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19)  |
 
 Update this table as slices land, and delete the document when Phase 1 is finished, as the standards adoption plan was.
 
@@ -1616,7 +1618,7 @@ export function createMemoryHarnessHost(): {
 
 | Change                                                                                                                                                           | Slice |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| `appendToolResult(id, result)` finds the record anywhere in `messages` (D1); `setError` clears `pendingToolCalls`                                                | J1.4  |
+| `appendToolResult(id, result)` finds the record on the request directly before the trailing tool replies (D1); `setError` clears `pendingToolCalls`              | J1.4  |
 | `Message` becomes `LiveMessage` (structurally identical plus optional `blocks`/`meta`); `toMessagesArray()` becomes `toOpenAIMessages(toChatMessages(messages))` | J1.10 |
 | `beginAssistantTurn(id?: string)`, `pushToolResultMessage(toolCallId, content, id?: string)`                                                                     | J1.11 |
 | `setError(message, code?: string)`, `ChatStore.errorCode: string \| null`                                                                                        | J1.18 |
