@@ -48,7 +48,7 @@ Nothing else is asked at creation time. The site's production URL, its deploymen
 
 ### On Jx Cloud
 
-Cloud projects are GitHub repositories, so the same step asks for a **repository location** instead of a folder:
+Jx Cloud, the hosted Studio, is in development. On it, projects are GitHub repositories, so the same step asks for a **repository location** instead of a folder:
 
 1. **Owner** (required): the account the repository is created under, either your personal account or any organization you've installed the Jx Suite app on.
 2. **Repository**: the repository name, derived from the project name the same way the directory is. Studio warns you if that name is already taken under the chosen owner.

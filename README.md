@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A full-stack web framework with a visual editor, built on plain JSON and Markdown.<br> Pages, styles, state, data, and server logic are all declarative documents. Edit them in code, on a canvas, or with an agent.
+  A full-stack web framework with a visual editor, built on plain JSON and Markdown.<br> Sites compile to static HTML, so they are quick to serve, have almost no attack surface, and cost close to nothing to run. Pages, styles, state, data, and server logic are all declarative documents. Edit them in code, on a canvas, or with an agent.
 </p>
 
 <p align="center">
@@ -78,7 +78,7 @@ Start from a blank project or one of 13 starters. Publishing is git-push-driven:
 
 ## Studio
 
-Jx Studio is a desktop application for editing Jx projects. The visual editor runs as the desktop app, and there is no hosted, sign-in version. Contributors working in this repository can also run it in the browser via the dev server.
+Jx Studio is a desktop application for editing Jx projects, and the desktop app is how you run the visual editor today. Jx Cloud, a hosted version you reach in a browser and sign in to with GitHub, is in development. Contributors working in this repository can also run Studio in the browser via the dev server.
 
 <p align="center">
   <img src="docs/images/hero.png" alt="Jx Studio editing the jxsuite.com homepage: layers panel, live canvas, and element inspector" width="800">
