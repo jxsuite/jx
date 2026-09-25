@@ -25,7 +25,7 @@ import {
   STUDIO_WORKERS,
 } from "../src/hosting/layout";
 import type { AssetBase } from "../src/hosting/layout";
-import { canvasShellHtml, IN_PLACE, studioShellHtml } from "../src/hosting/document";
+import { BOOT_META, canvasShellHtml, IN_PLACE, studioShellHtml } from "../src/hosting/document";
 
 /** The three layouts a real host uses. */
 const NESTED: AssetBase = { mode: "nested", prefix: "/studio-assets/" };
@@ -173,6 +173,30 @@ describe("studioShellHtml", () => {
 
   test("no boot module means no stray script tag", () => {
     expect(studioShellHtml().match(/<script/g)).toHaveLength(1);
+  });
+
+  /* The meta is how the studio entry tells "the dev server, which should fall back" from "a
+     launcher whose boot module never ran, which must not" (platforms/default-platform.ts). */
+  test("declaring a boot module stamps the jx-boot meta into the head", () => {
+    const html = studioShellHtml({ boot: ["/edit-init.js"] });
+    const meta = `<meta name="${BOOT_META.name}" content="${BOOT_META.content}" />`;
+    expect(meta).toBe('<meta name="jx-boot" content="launcher" />');
+    expect(html.split("</head>")[0]).toContain(meta);
+    // Before any script, so a boot module that never loaded cannot take it with it.
+    expect(html.indexOf(meta)).toBeLessThan(html.indexOf("<script"));
+  });
+
+  test("no boot module means no jx-boot meta, so the dev server keeps its fallback", () => {
+    expect(studioShellHtml()).not.toContain("jx-boot");
+    expect(studioShellHtml({ boot: [] })).not.toContain("jx-boot");
+  });
+
+  /* Electrobun's macOS CEF path injects its preload by splicing after the literal "<head>"; an
+     attribute on the tag would silently move the preload out of the document. */
+  test("the head tag stays a literal, attribute-free <head> either way", () => {
+    for (const html of [studioShellHtml(), studioShellHtml({ boot: ["/init.js"] })]) {
+      expect(html).toContain("\n  <head>\n");
+    }
   });
 
   test("carries an empty body — the frame is src/shell/tree.ts", () => {

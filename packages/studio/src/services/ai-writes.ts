@@ -20,26 +20,10 @@
  */
 
 import type { Message } from "@jxsuite/ai/chat-state";
+import { createLedger } from "@jxsuite/ai/tools";
+import type { AiWrite, WriteLedger } from "@jxsuite/ai/tools";
 
-/** One change the assistant made, as recorded by the tool that made it. */
-export interface AiWrite {
-  /** Project-relative path, or the document path for an in-editor mutation. */
-  path: string;
-  /** The tool that did it — the command title the chip renders. */
-  tool: string;
-  /**
-   * True when the change went to disk with no transaction behind it.
-   *
-   * This is the undo caveat, as a fact rather than a sentence: a `disk` write is NOT reachable by
-   * ⌘Z, by the tab's history, or by "Restore to here". The panel says so, in those words, to the
-   * person who would otherwise press ⌘Z and believe it worked.
-   */
-  disk: boolean;
-  /** False when the tool reported a failure — a listed attempt that changed nothing. */
-  ok: boolean;
-  /** Why it failed, when it did. */
-  error?: string;
-}
+export type { AiWrite } from "@jxsuite/ai/tools";
 
 /** Every write recorded during one assistant turn, in the order the tools made them. */
 export interface AiTurn {
@@ -54,52 +38,42 @@ const turns: AiTurn[] = [];
 /** How many turns of ledger are kept. Older ones drop their summary; the messages remain. */
 export const MAX_TURNS = 50;
 
-let open: AiTurn | null = null;
-
-/**
- * Start recording. Called by the agent loop once per user turn.
- *
- * Idempotent on the same id so a nested or re-entered loop cannot split one turn's writes across
- * two ledgers — which is the same class of bug as the batch that was opened against whichever tab
- * happened to be active.
- *
- * @param {string} id
- */
-export function beginTurn(id: string): void {
-  if (open?.id === id) {
-    return;
-  }
-  open = { id, writes: [] };
+/** One turn's ledger, named for the turn it records. */
+export interface TurnLedger extends WriteLedger {
+  readonly turnId: string;
 }
 
 /**
- * Record one change. A no-op when no turn is open, so a tool invoked outside the loop — a command,
- * a test — costs nothing and reports nothing.
+ * A fresh ledger for one turn. The loop opens it when the turn starts, hands it to every call as
+ * `ctx.ledger`, and files it with {@link fileTurn} when the turn ends.
  *
- * @param {AiWrite} write
+ * Per turn, not a module slot: the slot this replaced was one ledger for the whole window, so a
+ * tool run outside the loop recorded into whichever turn happened to be open, and two turns could
+ * not each keep their own.
+ *
+ * @param {string} turnId - The turn it records, which also names the actor its calls run as
+ * @returns {TurnLedger}
  */
-export function recordWrite(write: AiWrite): void {
-  open?.writes.push(write);
+export function openTurnLedger(turnId: string): TurnLedger {
+  return Object.assign(createLedger(), { turnId });
 }
 
 /**
- * Close the open turn and file it under `id`.
+ * File a finished turn's writes under `anchor`, the message the transcript draws its summary under.
  *
- * The id arrives at the END because it is the assistant message's id, which does not exist when the
- * turn starts — the loop opens the turn before it knows what the model will say.
+ * The anchor arrives at the END because it is an assistant message's id, which does not exist when
+ * the turn starts. A turn with no drawn message is filed under `""`, which no message has, so the
+ * transcript draws its changes nowhere. A turn that wrote nothing files nothing.
  *
- * @param {string} id - The assistant message the turn produced
- * @returns {AiWrite[]} What was recorded
+ * @param {string} anchor - The message the turn's changes are drawn under
+ * @param {readonly AiWrite[]} writes - The turn's ledger
+ * @returns {AiWrite[]} What was filed
  */
-export function endTurn(id: string): AiWrite[] {
-  if (!open) {
+export function fileTurn(anchor: string, writes: readonly AiWrite[]): AiWrite[] {
+  if (writes.length === 0) {
     return [];
   }
-  const turn: AiTurn = { id, writes: open.writes };
-  open = null;
-  if (turn.writes.length === 0) {
-    return [];
-  }
+  const turn: AiTurn = { id: anchor, writes: [...writes] };
   turns.push(turn);
   while (turns.length > MAX_TURNS) {
     turns.shift();
@@ -152,13 +126,12 @@ export function summarizeWrites(writes: AiWrite[]): string {
 /** Drop every ledger. For tests and for the "new chat" / "close project" paths. */
 export function resetAiWrites(): void {
   turns.splice(0);
-  open = null;
 }
 
 /**
  * The message a turn's changes are filed under: its last DRAWN assistant message, which is the one
  * the transcript renders the changed-files summary beneath (panels/ai-chat/chat-view.ts), and so
- * the id {@link endTurn} is given.
+ * the id {@link fileTurn} is given.
  *
  * Not simply the last message. A turn can end on a `tool` reply (a Stop during the last call, or a
  * cap reached with nothing applied), on a final round that said nothing, or after a stream error

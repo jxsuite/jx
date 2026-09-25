@@ -3,8 +3,14 @@ title: "The desktop app"
 description: "Jx Studio as a native app: open projects with native dialogs, one window per project, automatic background updates, and no dev server to run."
 spec:
   - desktop.md#1
+  - desktop.md#3.4
   - desktop.md#4
 code:
+  - packages/desktop/src/boot.ts
+  - packages/desktop/src/init.ts
+  - packages/studio/src/platforms/default-platform.ts
+  - packages/studio/src/surfaces/boot-failure.ts
+  - packages/studio/src/surfaces/boot-failure.json
   - packages/desktop/src/index.ts
   - packages/desktop/src/menu.ts
   - packages/desktop/src/updater.ts
@@ -77,6 +83,16 @@ Everything on this page applies to it. Projects open the same way, through the s
 - **Your desktop draws the window frame**, so the minimize/maximize/close buttons are your system's rather than Studio's.
 
 Windows there come from the _File_ menu's **New Window**, from the **This Window / New Window** question above, or from running `jx-studio <project>` again, and running it for a project that is already open raises that window instead of opening a second one.
+
+## If a window can't reach the app
+
+Everything a window does with your files (opening and creating projects, reading, saving) goes through the app's background process. If a window starts without that connection, it shows **Jx Studio couldn't connect to its backend** in place of the editor, together with the error it ran into. Nothing on disk is touched, so closing the window loses nothing.
+
+Click **Reload** first. If the message comes back, quit and reopen Jx Studio, then reinstall it from the [install page](/docs/start/install). When you report it, click **Copy details** and include what it copies, along with your operating system and its version.
+
+:::doc-note
+Versions 5.0.0 through 5.1.3 didn't catch this, and every desktop build in that range started without its connection. The window opened normally, but the New Project gallery offered only **Start from scratch**, **Browse…** opened a picker whose choice never reached **Location**, and **Create Project** failed with "Failed to fetch". Those symptoms together are this problem, and your projects are unaffected. Those versions also can't apply an update, so the notice to restart never appears: download the current release from the [install page](/docs/start/install) and install it over the old one.
+:::
 
 ## Next
 

@@ -100,13 +100,15 @@ The gate uses the ACTIVE project's generated entry documents — the same payloa
 
 ### 3.2 The turn is accountable
 
-An assistant that edits documents must be able to say what it changed, and the author must be able to take it back. Three properties are normative.
+An assistant that edits documents must be able to say what it changed, and the author must be able to take it back. Four properties are normative.
 
 **Every write is recorded, with whether it reached disk.** A tool that mutates the open document goes through the transaction path and is therefore reachable by undo; a tool that writes a file directly is not. That difference is a **fact recorded per write**, not a caveat in the system prompt, and the turn's summary states it: _"Changed 2 files · 1 written to disk — undo cannot reach it."_ **Restore to here** is offered only when every recorded change was transactional, and it re-checks at the moment it is clicked, because the ledger is bounded and may have been trimmed. A turn's writes are filed under the **last assistant message it drew**, the one the transcript renders the summary beneath, which is not always the last message: a turn can end on a tool reply (a Stop during the last call, or a cap reached with nothing applied, which draws no message), on a final round that said nothing, or after a stream error removed its round's partial. A turn capped after applying changes files under its cap message (below), which is drawn. A turn whose user message has left the transcript (another chat was opened while it ran) files under nothing, and writes nothing more into the transcript that replaced it.
 
 **A tool chip states its outcome, not just its name.** A chip that cannot fail looks identical to one that did. The loop attaches each call's result to the call's own record, on the request that made it, as the call finishes, and the chip renders that record while the turn is still running; a restore backfills the same outcome from the `tool` reply (§3.4).
 
-**Partial success is not failure.** Exhausting the tool-call budget after applying changes ends the turn with an ordinary message describing what was applied. Rendering it as an error is wrong twice over: it misreports the turn, and the error path _deletes the streaming message_, destroying the only account of the edits that did land. A stream error is what that path is for: it removes the failed round's partial message, which may carry a tool call cut off mid-arguments and would otherwise go out on the next send, and keeps every round before it with the calls they ran.
+**Partial success is not failure.** Exhausting the tool-call budget after applying changes ends the turn with an ordinary message describing what was applied. Rendering it as an error is wrong twice over: it misreports the turn, and the error path _deletes the streaming message_, destroying the only account of the edits that did land. A stream error is what that path is for: it removes the failed round's partial message, which may carry a tool call cut off mid-arguments and would otherwise go out on the next send, and keeps every round before it with the calls they ran. **Applied means a change was recorded**: a call counts as applied when it succeeded with a summary **and** the write ledger grew by an `ok` write while it ran. A summary alone is not enough, because a read (`list_files`, `search_files`, an answered question) reports in a sentence too. A change the tool itself reports back as a problem (one that introduced schema errors, say) is not applied either: it stays in the document, and it is the error the model is asked to fix. Creating or importing a project is a write, recorded as one to disk, since the project exists on disk from then on and no undo reaches it. A turn that only looked around and exhausted the budget applied nothing, so it ends as an error, and the message it would have written lists only the calls that changed something.
+
+**A turn that drew nothing says so.** When the model answers with neither text nor a tool call, and nothing earlier in the turn was drawn either, the turn ends on an error row ("The model sent back an empty reply.") with Retry, rather than leaving the author's message without a reply. A stopped turn is never empty: the author ended it.
 
 ### 3.3 The batch follows the document, not the tab
 
@@ -155,6 +157,22 @@ The assistant's tools are two kinds, and the difference is who wrote the tool.
 **Every projected tool is `strict: false`, deliberately.** `@jxsuite/ai`'s registry validator never checks `enum` and treats a required `null` as missing, which would refuse `select_node { path: null }` — a legal call. The registry's coercion (`coerceArgs`, applied inside `registry.run` for every caller) is the single validator, and its `RangeError` sentence is what the model reads.
 
 **The loop sees one registry**, `composeToolRegistries(hand, commands)`: the hand side gated by tier, the command side gated by the record, listed hand-first, routed by name, with an unknown name answered as `@jxsuite/ai` answers it. The two name sets are disjoint and their sum is the composite's length, asserted with counts, because `ToolRegistry.register` only warns on a duplicate name. The prompt's tool list is the same two filters — `toolActive` for the hand rows and `advertisedCommandTools` for the records — so it advertises exactly what the gate will honour.
+
+### 3.7 A tool call carries its context
+
+> **Status:** Implemented
+
+A tool is handed everything it needs to know about the call it serves as its second argument, a `ToolContext` (`@jxsuite/ai/tools`), rather than reaching for it through module state. The same tool can then run in a Studio window, a Worker or an MCP server, and two turns cannot share a slot that belongs to one of them. Four properties are normative.
+
+**The context carries per-call facts only.** It is `{ signal, callId, actor, ledger, session, progress }`: the call's own signal, the provider's id for the call, who the call acts for, the turn's write ledger, the conversation's session facts, and a sink for progress on a long call. A host service a tool needs (the adopter that opens a project, the store a wizard filled in) is bound when the tool is registered, not passed per call.
+
+**The signal is the call's, not the turn's.** It aborts when the turn does, with the turn's reason, and the host unlinks it once the call settles (`linkCallSignal`). A Stop therefore reaches a call that is still running, a question waiting on the author or an import mid-crawl, and never a call that has already finished.
+
+**A write is recorded on the call's ledger, and the ledger belongs to the turn.** Every call in a turn records into that turn's one ledger, and the host files it under the message the turn drew when the turn ends (§3.2). A tool run outside any turn, from a command or a test, gets a detached context: a signal that never aborts, an empty id, and a fresh ledger nothing files, so it records into no one's turn.
+
+**What a conversation remembers is a session fact.** A fact a tool must keep across turns, such as an import having already run, is set on `ctx.session` and read back from it; the host decides how long the facts last. In Studio they last until New Chat: every turn of a chat sees the same set, and opening another chat from Chat History keeps them, which is how the one-import guard they replaced has always behaved. They are not saved with the conversation, so a reload starts with none.
+
+A registry that wraps another (the availability gate, the union with the command tools) forwards the context unchanged, so the leaf tool always receives the one the host built. A definition declares `interactive` when its call suspends the turn on a person rather than doing work, which is how a host knows the round spends no work budget (§3.4).
 
 ## 4. Security & Trust
 

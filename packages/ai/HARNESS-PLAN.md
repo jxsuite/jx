@@ -11,11 +11,13 @@ It was produced by mapping the current code with five independent readers, draft
 | Phase 0 (hardening and drift)             | Merged: jxsuite/jx#370, jxsuite/platform#69                                                                        |
 | J1.1 Doc-op foundation                    | Merged: jxsuite/jx#371 (`applyDocOpsAsUser` deferred to J1.16, its first caller, under Studio's reachability rule) |
 | J1.2 Freeze v1 and the Worker gate        | Merged: jxsuite/jx#372                                                                                             |
-| J1.3 Persisted tool outcomes              | jxsuite/jx#374                                                                                                     |
-| J1.4 Loop honesty in the old loop         | jxsuite/jx#376 (stacked on jxsuite/jx#374)                                                                         |
-| J1.5 Stop is armed before the first await | jxsuite/jx#377 (stacked on jxsuite/jx#376)                                                                         |
-| J1.6 One turn per window                  | This pull request (stacked on jxsuite/jx#377)                                                                      |
-| J1.17 `./gateway` extraction              | jxsuite/jx#375 (independent; `upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19)  |
+| J1.3 Persisted tool outcomes              | Merged: jxsuite/jx#374                                                                                             |
+| J1.4 Loop honesty in the old loop         | Merged: jxsuite/jx#376                                                                                             |
+| J1.5 Stop is armed before the first await | Merged: jxsuite/jx#377                                                                                             |
+| J1.6 One turn per window                  | Merged: jxsuite/jx#378                                                                                             |
+| J1.7 Honest turn outcomes                 | jxsuite/jx#380 (its live eval needed the eval harness fixes of jxsuite/jx#379)                                     |
+| J1.8 ToolContext                          | This pull request (stacked on jxsuite/jx#380; `refusal` moves to J1.11, its first caller)                          |
+| J1.17 `./gateway` extraction              | Merged: jxsuite/jx#375 (`upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19)       |
 
 Update this table as slices land, and delete the document when Phase 1 is finished, as the standards adoption plan was.
 
@@ -322,7 +324,7 @@ export interface ToolRegistry {
   list: () => ToolDefinition[];
   listForLLM: () => object[];
   validate: (toolName: string, args: object) => { valid: boolean; errors?: string[] };
-  /** ctx omitted → createToolContext(). Wrapping registries MUST forward ctx (Studio types it required, T3). */
+  /** ctx omitted → createToolContext(). Wrapping registries MUST forward ctx (T3's test enforces it; the type leaves `ctx` optional). */
   execute: (toolName: string, args: object, ctx?: ToolContext) => Promise<ToolResult>;
   getDefinition: (toolName: string) => ToolDefinition | undefined;
   /** J1.8: the refusal sentence `execute` would answer right now, or null. Wrappers forward it. */
@@ -1904,7 +1906,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | F4       | producers coerce canonical numeric strings; the legacy validator is unchanged; strict 2020-12 at the rebaseline | J1.15, P2.5 |
 | F5       | `create_component`/`create_page` call `normalizeProjectPath`; every portable file tool does                     | J1.9, J1.25 |
 | F6       | kept for parity; Phase 2 rebaseline                                                                             | P2.5        |
-| F7       | `create_project`/`import_site` record `{path: root, disk: true}`                                                | J1.9        |
+| F7       | `create_project`/`import_site` record `{path: root, disk: true}` (moved forward: applied-means-wrote needs it)  | J1.7        |
 | F8       | `resetAiWrites` on New Chat and close project                                                                   | J1.9        |
 | F9       | `./tools` still warns; `createCatalog` throws                                                                   | J1.20       |
 
@@ -2089,9 +2091,9 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 - Files:
   - `ai/tools.ts`: `ToolContext`, `createToolContext`, `createLedger`, `createSessionFacts`, `linkCallSignal`, `interactive`, `refusal?`, `execute(args, ctx?)`.
   - `ai/core-types.ts` (allowlisted).
-  - `gated-registry.ts` and `ai-command-tools.ts` forward ctx (typed required) and `refusal`.
+  - `gated-registry.ts` and `ai-command-tools.ts` forward ctx. (`refusal` moves to J1.11: `invokeTool` is its first caller, and Studio's reachability rule refuses a function nothing calls.)
   - `tool-executor.ts` builds ctx per call (child signal, callId, actor, a turn ledger, session facts from the assistant, progress to `recordImportProgress(callId, …)`) and uses `def.interactive`.
-  - Eight `recordWrite` sites become `ctx.ledger.record`.
+  - Ten `recordWrite` sites become `ctx.ledger.record` (eight, plus the two F7 bootstrap records J1.7 added).
   - `ai-writes.ts` becomes `fileTurn`.
   - `ai-ask.ts` takes the signal and callId from ctx.
   - `ai-import-tools.ts` uses ctx; brief and adopter are bound at registration.
@@ -2102,13 +2104,12 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 - Spec: `ai.md` minor, new "§3.7 A tool call carries its context". Docs: new `docs/extending/embedding/assistant-harness.md` with a `nav.json` entry and `code:` `packages/ai/src/tools.ts`.
 - Acceptance: agent traces, LOOPT, RECON and DAT unchanged.
 
-**J1.9: Bootstrap writes, ledger reset and path containment** (behaviour, small)
+**J1.9: Ledger reset and path containment** (behaviour, small; the bootstrap writes, F7, landed with J1.7)
 
 - Files:
-  - `ai-project-tools.ts` and `ai-import-tools.ts` record `{path: root, disk: true}` (F7);
   - `document-assistant.ts` calls `resetAiWrites` on New Chat and close project (F8);
   - `ai-tools.ts` `create_component`/`create_page` call `normalizeProjectPath` (F5).
-- Tests: the escape paths `..`, absolute and `C:\` are refused; bootstrap turns show "Changed".
+- Tests: the escape paths `..`, absolute and `C:\` are refused.
 - Spec: `ai.md` patch (§3.2, §4). Docs: `chat.md`.
 
 **J1.10: `./messages`** (pure refactor)
@@ -2122,6 +2123,7 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 - Files:
   - `ai/harness/*.ts`: `runTurn`, `TurnRun`, `createTurnLock`, `fromStreamingClient`, `DEFAULT_TURN_POLICY` (defaults equal to post-J1.7 behaviour).
   - `invokeTool` in `ai/tools.ts`: parse, refusal, execute, normalise.
+  - `refusal?` on `ToolRegistry`, answered by `gated-registry.ts` and `ai-command-tools.ts` and forwarded by `composeToolRegistries` (moved from J1.8).
   - `st/services/harness/{chat-reducer,turn-hooks}.ts` with tests.
   - `runAgentLoop` becomes an adapter using `onEvent`.
   - `chat-state` `beginAssistantTurn(id?)` and `pushToolResultMessage(…, id?)`.

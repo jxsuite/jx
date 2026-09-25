@@ -10,6 +10,7 @@
  */
 
 import { createChatState, createProxyStreamingClient, createToolRegistry } from "@jxsuite/ai";
+import { createSessionFacts } from "@jxsuite/ai/tools";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { activeTab, workspace } from "../workspace/workspace";
@@ -27,7 +28,7 @@ import {
   createCommandToolRegistry,
 } from "./ai-command-tools";
 import { registerProjectTools } from "./ai-project-tools";
-import { registerImportTools, resetImportGuard } from "./ai-import-tools";
+import { registerImportTools } from "./ai-import-tools";
 import { createGatedToolRegistry } from "./gated-registry";
 import type { ToolAvailability } from "./gated-registry";
 import { adoptProject } from "./project-adoption";
@@ -75,6 +76,9 @@ export function createDocumentAssistant() {
 
   /** The persisted session backing the live chat; null = fresh unsaved chat. */
   let sessionId: string | null = null;
+  /* What the conversation's tools remember across its turns (an import already ran): every call's
+     `ctx.session`. New Chat starts over; a new session id keeps what the conversation knew. */
+  let sessionFacts = createSessionFacts();
 
   const getProjectStyle = () =>
     (workspace.projectConfig as ProjectConfig | null)?.style as Record<string, string> | undefined;
@@ -316,9 +320,9 @@ export function createDocumentAssistant() {
     controller = new AbortController();
     const { signal } = controller;
     turnActive.value = true;
-    let endTurn!: () => void;
+    let settleTurnEnded!: () => void;
     turnEnded = new Promise<void>((settle) => {
-      endTurn = settle;
+      settleTurnEnded = settle;
     });
     try {
       const plat = getPlatform();
@@ -334,12 +338,16 @@ export function createDocumentAssistant() {
         baseUrl: getBaseUrl() || undefined,
       });
 
+      if (sessionFacts.sessionId !== sessionId) {
+        sessionFacts = createSessionFacts(sessionId, sessionFacts.toJSON());
+      }
       await runAgentLoop({
         chatState,
         streamingClient,
         toolRegistry,
         systemPrompt: buildPrompt(),
         signal,
+        session: sessionFacts,
         getTab: () => activeTab.value,
       });
     } catch (error) {
@@ -355,7 +363,7 @@ export function createDocumentAssistant() {
       // Persist again once the stream settled so the completed reply (or the state
       // After an error/abort cleanup) survives a reload without another send.
       persistChat();
-      endTurn();
+      settleTurnEnded();
     }
   }
 
@@ -390,7 +398,7 @@ export function createDocumentAssistant() {
     stop();
     resetAsk();
     resetImportRuns();
-    resetImportGuard();
+    sessionFacts = createSessionFacts();
     chatState.clearChat();
     sessionId = null;
     sessionStore.setActiveSession(projectRoot(), null);
