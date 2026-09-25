@@ -59,6 +59,21 @@ const chatState = reactive({
   },
 });
 
+/* The assistant's turn fact: true from an accepted send until its loop ends, tools and questions
+   included. A test that only flips `chatState.status` to "streaming" is a turn too. */
+const liveTurn = reactive({ active: false });
+/** Who is waiting for the live turn to end, the way `whenTurnEnds` callers wait. */
+let turnEndWaiters: (() => void)[] = [];
+/** End the live turn: its loop has unwound, so anyone waiting on it may go. */
+function endLiveTurn() {
+  liveTurn.active = false;
+  const waiters = turnEndWaiters;
+  turnEndWaiters = [];
+  for (const settle of waiters) {
+    settle();
+  }
+}
+
 let msgCounter = 0;
 function pushMessage(role: Message["role"], content: string, extra: Partial<Message> = {}) {
   msgCounter += 1;
@@ -95,6 +110,13 @@ void mock.module("../src/services/document-assistant", () => ({
     activeSessionId: () => activeId,
     chatState,
     deleteSession: deleteSessionMock,
+    isTurnActive: () => liveTurn.active || chatState.status === "streaming",
+    whenTurnEnds: () =>
+      liveTurn.active
+        ? new Promise<void>((settle) => {
+            turnEndWaiters.push(settle);
+          })
+        : Promise.resolve(),
     listSessions: () => sessionList,
     newChat: newChatMock,
     openSession: openSessionMock,
@@ -243,6 +265,8 @@ async function closeSettings() {
 beforeEach(() => {
   resetWorkspaceWithTab();
   selectionCount = 0;
+  liveTurn.active = false;
+  turnEndWaiters = [];
 });
 
 // ─── Ordered scenario (module-level singleton state) ─────────────────────────
@@ -885,6 +909,30 @@ describe("the Assistant command family", () => {
     chatState.status = "idle";
   });
 
+  /* The chat's status belongs to the token stream and reads idle while a round's tools run. The
+     turn is still in flight, so Stop stays on offer and a second send starts nothing (D2). */
+  test("a turn's tools keep Stop on offer, and a send is refused until the turn ends", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-test" });
+    chatState.status = "idle";
+    liveTurn.active = true;
+    await flush(3);
+    expect(q('[part="composer-stop"]')).not.toBeNull();
+    expect(registry.isEnabled("assistant.stop")).toBe(true);
+    expect(registry.isEnabled("assistant.retry")).toBe(false);
+
+    sendMessage.mockClear();
+    const ta = q<HTMLTextAreaElement>('[part="composer-input"]')!;
+    setValue(ta, "another thing");
+    key(ta, "Enter");
+    await flush(3);
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    liveTurn.active = false;
+    await flush(3);
+    expect(q('[part="composer-send"]')).not.toBeNull();
+    expect(registry.isEnabled("assistant.stop")).toBe(false);
+  });
+
   test("`assistant.stop` is live only while a turn is in flight", async () => {
     // `ctx.ai.streaming` had ZERO readers and no producer: `live-context.ts` declared the probe
     // Optional and `studio.ts` never passed one, so this predicate would have been false forever.
@@ -914,6 +962,8 @@ describe("a turn suspended on a question", () => {
         },
       ],
     });
+    // A question is put by a turn that is still running.
+    liveTurn.active = true;
     /* Wrapped, NOT returned bare: `await raiseQuestion()` would unwrap a returned promise and
        wait for the answer this helper exists to set up. */
     const settled = askUser({ context: "", id: "q1", options, question: "Which pages matter?" });
@@ -923,6 +973,7 @@ describe("a turn suspended on a question", () => {
 
   beforeEach(() => {
     resetAsk();
+    liveTurn.active = false;
     chatState.messages.length = 0;
     sendMessage.mockClear();
   });
@@ -976,15 +1027,17 @@ describe("a turn suspended on a question", () => {
     expect(await settled).toEqual({ answer: null, skipped: true });
   });
 
-  test("`assistant.stop` is enabled on a waiting turn, not just a streaming one", async () => {
-    /* A suspended turn moves no tokens, so `ctx.ai.streaming` reads false — and that is exactly
-       the turn a reader who does not want to answer needs to end. */
+  test("`assistant.stop` is enabled while a turn waits on a question", async () => {
+    /* A suspended turn moves no tokens, so the chat's status reads idle, but it is still the turn,
+       and it is exactly the one a reader who does not want to answer needs to end. */
     const { settled } = await raiseQuestion();
-    expect(isAssistantStreaming()).toBe(false);
+    expect(chatState.status).toBe("idle");
+    expect(isAssistantStreaming()).toBe(true);
     expect(registry.isEnabled("assistant.stop")).toBe(true);
 
     cancelAsk();
     expect(await settled).toEqual({ answer: null, skipped: false });
+    liveTurn.active = false; // The loop ends once its question is settled.
     await flush(3);
     expect(registry.isEnabled("assistant.stop")).toBe(false);
   });
@@ -1057,6 +1110,24 @@ describe("the New Project Import hand-off", () => {
     // It does NOT store the brief — the form that gathered it did, so `import_site` can read the
     // Destination whether or not this hand-off is what started the run.
     expect(sendMessage.mock.calls[0]![0]).toContain("/home/dev/Sites/example");
+  });
+
+  /* New Chat stops the running turn, but its loop unwinds afterwards, and the window holds one turn
+     until it has. The hand-off waits for it rather than being refused and lost. */
+  test("waits for a turn New Chat stopped to end, then sends the import", async () => {
+    liveTurn.active = true;
+    newChatMock.mockClear();
+    sendMessage.mockClear();
+
+    const handing = revealImportHandoff(BRIEF);
+    await flush(3);
+    expect(newChatMock).toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    endLiveTurn();
+    await handing;
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage.mock.calls[0]![0]).toContain("Modernise the typography");
   });
 });
 

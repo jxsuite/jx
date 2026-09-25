@@ -13,7 +13,7 @@ import { createChatState, createProxyStreamingClient, createToolRegistry } from 
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { activeTab, workspace } from "../workspace/workspace";
-import { toRaw } from "../reactivity";
+import { shallowRef, toRaw } from "../reactivity";
 import { projectState } from "../store";
 import { adoptProjectConfig } from "../tabs/project-config";
 import type { Tab } from "../tabs/tab";
@@ -227,6 +227,19 @@ export function createDocumentAssistant() {
 
   let controller: AbortController | null = null;
 
+  /**
+   * Whether a turn is in flight: true from the moment a send is accepted until its loop has ended.
+   *
+   * Not the chat's `status`, which belongs to the token stream: it reads idle while a round's tools
+   * run, while a question waits on the author and during an import. Guarding on it let a second
+   * send start a second turn beside the first, and let the composer offer Send in the middle of
+   * one. One window runs one turn, and this is the fact that says whether it is running.
+   */
+  const turnActive = shallowRef(false);
+
+  /** Settles when the turn in flight has ended, finally included; already settled when none is. */
+  let turnEnded: Promise<void> = Promise.resolve();
+
   function buildPrompt() {
     const tab = activeTab.value;
     const inventory = projectState
@@ -269,7 +282,7 @@ export function createDocumentAssistant() {
   }
 
   async function sendMessage(text: string) {
-    if (!text.trim() || chatState.status === "streaming") {
+    if (!text.trim() || turnActive.value || chatState.status === "streaming") {
       return;
     }
 
@@ -302,6 +315,11 @@ export function createDocumentAssistant() {
        resolved inside the first request, on the armed signal. */
     controller = new AbortController();
     const { signal } = controller;
+    turnActive.value = true;
+    let endTurn!: () => void;
+    turnEnded = new Promise<void>((settle) => {
+      endTurn = settle;
+    });
     try {
       const plat = getPlatform();
       // Re-read the persisted model each send: the session is constructed once at module load
@@ -333,10 +351,29 @@ export function createDocumentAssistant() {
       chatState.setError(error instanceof Error ? error.message : String(error));
     } finally {
       controller = null;
+      turnActive.value = false;
       // Persist again once the stream settled so the completed reply (or the state
       // After an error/abort cleanup) survives a reload without another send.
       persistChat();
+      endTurn();
     }
+  }
+
+  /** Whether a turn is in flight, tools and questions included. Reactive: read it in an effect. */
+  function isTurnActive(): boolean {
+    return turnActive.value;
+  }
+
+  /**
+   * Resolves once the turn in flight, if any, has ended.
+   *
+   * Stop, New Chat and Open Session end a turn but cannot finish it: they abort its signal, and the
+   * loop unwinds afterwards, at least a microtask later and as late as the call it was running
+   * allows. Until then the window still holds that turn, so a send made in the meantime is refused.
+   * A caller that means to start the next turn waits here first.
+   */
+  function whenTurnEnds(): Promise<void> {
+    return turnEnded;
   }
 
   function stop() {
@@ -445,7 +482,9 @@ export function createDocumentAssistant() {
 
   return {
     chatState,
+    isTurnActive,
     sendMessage,
+    whenTurnEnds,
     stop,
     newChat,
     listSessions,

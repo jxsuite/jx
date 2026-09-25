@@ -237,13 +237,19 @@ export interface CommandContext {
   };
   ai: {
     configured: boolean;
+    /**
+     * A turn is in flight: from an accepted send until its loop ends, with its tools, its questions
+     * and its imports included (specs/ai.md §3.0). Not the token stream, which the chat's own
+     * status reports and which reads idle whenever the turn's tools are running.
+     */
     streaming: boolean;
     /**
      * A turn is suspended on an `ask_user` question.
      *
-     * Distinct from `streaming` rather than folded into it: no tokens are moving, so a surface that
-     * paints a spinner on `streaming` must not paint one here — but the turn is alive and holding a
-     * tool open, so Stop is enabled on the union of the two.
+     * Always inside a turn, so `streaming` holds too. Kept as its own fact for `when` predicates
+     * and the live-context probe: while a question waits, a send is its answer rather than a new
+     * turn (the composer reads the same fact straight from `panels/ai-panel.ts`). Stop's union with
+     * it is the same thing as `streaming`.
      */
     waiting: boolean;
   };
