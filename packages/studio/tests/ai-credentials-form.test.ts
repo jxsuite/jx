@@ -18,7 +18,7 @@
 import { clearSeededSettings, flush, installMockPlatform, seedSettings } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
-import { storedModel } from "../src/services/ai-settings";
+import { clearAiProvider, storedModel } from "../src/services/ai-settings";
 import { preferredModel } from "../src/services/ai-models";
 import { createAiCredentialsForm } from "../src/ui/ai-credentials-form";
 import type { AiCredentialsFormOptions } from "../src/ui/ai-credentials-form";
@@ -311,6 +311,29 @@ describe("ai-credentials-form", () => {
     expect(part(c.container, "models-error")!.textContent).toContain("type the model ID directly");
   });
 
+  /**
+   * The reason is often an upstream body passed through whole, and a JSON body is one unbroken
+   * word. A flex item's automatic minimum is its min-content width, so the error set the `models`
+   * row's width, pushed past the 320px column, and scrolled Preferences › Assistant sideways. It
+   * reflows instead, and is shown whole. happy-dom does not lay out, so this asserts the rules that
+   * do.
+   */
+  test("an unbroken upstream reason reflows inside the column instead of widening it", async () => {
+    const body = '{"error":{"message":"Incorrect_API_key_provided:_sk-xxxxxxxxxxxxxxxxxxxxxxxx"}}';
+    fetchImpl = async () =>
+      Response.json(
+        { models: [], configured: true, upstreamError: 401, upstreamMessage: body },
+        { status: 200 },
+      );
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    const error = part(c.container, "models-error")!;
+    expect(error.textContent).toContain(body);
+    expect(getComputedStyle(error).overflowWrap).toBe("anywhere");
+    expect(getComputedStyle(error).minWidth).toBe("0");
+  });
+
   test("Save persists key, endpoint, and model and fires onSaved", async () => {
     const onSaved = mock(() => {});
     const c = await makeForm({ onSaved });
@@ -324,28 +347,155 @@ describe("ai-credentials-form", () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
-  test("Cancel is only offered when a key exists; startEdit preloads drafts and fetches models", async () => {
+  /**
+   * The reported defect: the pair was drawn from facts that had nothing to do with pending edits —
+   * Save always, Cancel whenever a key was stored — so Preferences showed a Save that would
+   * re-store what was there and a Cancel that abandoned nothing. The pair is now the pending edit's
+   * own affordance: absent at rest, drawn by the first change, and taken away by either answer.
+   */
+  test("Save and Cancel appear only while the drafts differ from what is stored", async () => {
     const onCancel = mock(() => {});
     const c = await makeForm({ onCancel });
-    // No stored key → no Cancel button.
+    // Nothing stored and nothing typed: nothing to keep and nothing to abandon.
+    expect(part(c.container, "actions")).toBeNull();
+    expect(part(c.container, "save")).toBeNull();
     expect(part(c.container, "cancel")).toBeNull();
 
-    seedSettings({ "jx.ai.openaiKey": "sk-existing" });
+    seedSettings({ "jx.ai.openaiKey": "sk-existing", "jx.ai.baseUrl": "http://h/v1" });
     fetchCalls.length = 0;
     c.form.startEdit();
     await flush(4);
 
-    // Drafts preloaded from the stored settings; Cancel offered now that a key exists.
+    // Drafts preloaded from the stored settings.
     expect(input(c.container, "key").value).toBe("sk-existing");
     /* Empty rather than "gpt-4o": nothing has been chosen, and a prefilled default is a choice the
        user did not make — Save would then persist it. */
     expect(input(c.container, "model").value).toBe("");
-    expect(part(c.container, "cancel")).not.toBeNull();
     // StartEdit auto-fetched the model list.
     expect(fetchCalls.length).toBe(1);
+    /* A stored key is no longer a reason to offer Cancel: the form shows exactly what is stored,
+       so there is still nothing to abandon. */
+    expect(part(c.container, "save")).toBeNull();
+    expect(part(c.container, "cancel")).toBeNull();
+
+    type(c.container, "endpoint", "http://elsewhere/v1");
+    expect(part(c.container, "save")).not.toBeNull();
+    expect(part(c.container, "cancel")).not.toBeNull();
 
     press(c.container, "cancel");
+    await flush(2);
     expect(onCancel).toHaveBeenCalledTimes(1);
+    // Cancel put the stored value back, and with nothing left to abandon it took itself away.
+    expect(input(c.container, "endpoint").value).toBe("http://h/v1");
+    expect(part(c.container, "save")).toBeNull();
+    expect(part(c.container, "cancel")).toBeNull();
+    expect(globalThis.localStorage.getItem("jx.ai.baseUrl")).toBe("http://h/v1");
+  });
+
+  test("undoing an edit by hand takes the pair away", async () => {
+    const c = await makeForm();
+    type(c.container, "key", "sk-x");
+    expect(part(c.container, "save")).not.toBeNull();
+    type(c.container, "key", "");
+    expect(part(c.container, "save")).toBeNull();
+    expect(part(c.container, "cancel")).toBeNull();
+  });
+
+  /**
+   * Save stores each value through its definition's `normalize` — a key trimmed, an endpoint
+   * without its trailing slash — so a draft that differs only in what Save would erase is not an
+   * edit: the store would come out exactly as it went in.
+   */
+  test("a difference the store would normalise away is not an edit", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-a", "jx.ai.baseUrl": "http://h/v1" });
+    const c = await makeForm();
+    c.form.startEdit();
+    await flush(4);
+    type(c.container, "endpoint", "http://h/v1/");
+    type(c.container, "key", " sk-a ");
+    expect(part(c.container, "save")).toBeNull();
+    expect(part(c.container, "cancel")).toBeNull();
+    // And a real difference beside them still counts.
+    type(c.container, "model", "o3");
+    expect(part(c.container, "save")).not.toBeNull();
+  });
+
+  /**
+   * A draft the reader never touched is a view of the store, so a credential changed or revoked
+   * elsewhere — a Disconnect in Preferences › Accounts, another window — reaches it on the next
+   * repaint instead of surfacing as an unsaved edit that Save would write back. A draft the reader
+   * DID edit is theirs, and a repaint never takes it.
+   */
+  test("an untouched draft follows the store; an edited one is kept", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-a" });
+    const c = await makeForm();
+    c.form.startEdit();
+    await flush(4);
+    expect(input(c.container, "key").value).toBe("sk-a");
+
+    clearAiProvider();
+    await c.repaint();
+    // The revoked key is not held over as an "edit" that Save would store again.
+    expect(input(c.container, "key").value).toBe("");
+    expect(part(c.container, "save")).toBeNull();
+
+    type(c.container, "endpoint", "http://mine");
+    seedSettings({ "jx.ai.openaiKey": "sk-b" });
+    await c.repaint();
+    expect(input(c.container, "key").value).toBe("sk-b");
+    expect(input(c.container, "endpoint").value).toBe("http://mine");
+    // The endpoint is still the reader's edit, so there is still something to commit.
+    expect(part(c.container, "save")).not.toBeNull();
+    expect(part(c.container, "cancel")).not.toBeNull();
+  });
+
+  /**
+   * The New Project gates create the form and never call `startEdit`. Their drafts used to begin
+   * blank over whatever was stored, so a stored endpoint or model read as an edit — and Save then
+   * overwrote both with nothing.
+   */
+  test("a host that never calls startEdit starts from the store", async () => {
+    seedSettings({ "jx.ai.model": "m1", "jx.ai.baseUrl": "http://h/v1" });
+    const c = await makeForm();
+    expect(input(c.container, "model").value).toBe("m1");
+    expect(input(c.container, "endpoint").value).toBe("http://h/v1");
+    expect(part(c.container, "save")).toBeNull();
+
+    type(c.container, "key", "sk-gate");
+    press(c.container, "save");
+    expect(globalThis.localStorage.getItem("jx.ai.openaiKey")).toBe("sk-gate");
+    // What was already stored survives the gate's Save rather than being blanked by it.
+    expect(globalThis.localStorage.getItem("jx.ai.model")).toBe("m1");
+    expect(globalThis.localStorage.getItem("jx.ai.baseUrl")).toBe("http://h/v1");
+  });
+
+  /**
+   * Answering takes the pair away, so the button the reader pressed is gone the moment it acts. Its
+   * focus would fall to `<body>` — in a modal sheet, nowhere — so it lands on the key field
+   * instead. A repaint while the reader is in a FIELD moves nothing.
+   */
+  test("answering from the keyboard leaves focus in the form, not on <body>", async () => {
+    const c = await makeForm();
+    type(c.container, "endpoint", "http://h/v1");
+    input(c.container, "endpoint").focus();
+    await c.repaint();
+    expect(document.activeElement).toBe(input(c.container, "endpoint"));
+
+    const control = (part(c.container, "cancel")!.querySelector('[part="control"]') ??
+      part(c.container, "cancel")!) as HTMLElement;
+    control.focus();
+    expect(document.activeElement).toBe(control);
+    press(c.container, "cancel");
+    expect(part(c.container, "cancel")).toBeNull();
+    expect(document.activeElement).toBe(input(c.container, "key"));
+
+    type(c.container, "key", "sk-focus");
+    const save = (part(c.container, "save")!.querySelector('[part="control"]') ??
+      part(c.container, "save")!) as HTMLElement;
+    save.focus();
+    press(c.container, "save");
+    expect(part(c.container, "save")).toBeNull();
+    expect(document.activeElement).toBe(input(c.container, "key"));
   });
 
   /**
@@ -359,17 +509,20 @@ describe("ai-credentials-form", () => {
   test("Save leaves the form showing what it stored, and a second Save does not erase it", async () => {
     const c = await makeForm();
     type(c.container, "key", "sk-keepme");
-    type(c.container, "endpoint", "https://opencode.ai/zen/go/v1");
+    type(c.container, "endpoint", "https://opencode.ai/zen/go/v1/");
     type(c.container, "model", "deepseek-v4-pro");
     press(c.container, "save");
     await flush(2);
 
-    // The fields still show what was persisted — not blanks.
+    // The fields still show what was persisted — not blanks, and not the slash the store dropped.
     expect(input(c.container, "key").value).toBe("sk-keepme");
     expect(input(c.container, "endpoint").value).toBe("https://opencode.ai/zen/go/v1");
     expect(input(c.container, "model").value).toBe("deepseek-v4-pro");
 
-    // And pressing Save again is a no-op re-write rather than a revoke.
+    /* And there is no second Save to press: the drafts now ARE the store, so the pair went away
+       with the edit it answered. A press finds nothing, and nothing is revoked. */
+    expect(part(c.container, "save")).toBeNull();
+    expect(part(c.container, "cancel")).toBeNull();
     press(c.container, "save");
     expect(globalThis.localStorage.getItem("jx.ai.openaiKey")).toBe("sk-keepme");
     expect(globalThis.localStorage.getItem("jx.ai.baseUrl")).toBe("https://opencode.ai/zen/go/v1");
@@ -453,9 +606,15 @@ describe("ai-credentials-form", () => {
     /* A document styles through `part`, never through a class: every `.ai-creds*` rule moved into
        the document's own style block. */
     expect(c.container.querySelector("[class]")).toBeNull();
-    for (const name of ["title", "note", "label", "models", "actions", "save"]) {
+    for (const name of ["title", "note", "label", "models"]) {
       expect(part(c.container, name)).not.toBeNull();
     }
+    // The commit pair is named too, once there is something to commit.
+    type(c.container, "key", "sk-x");
+    for (const name of ["actions", "cancel", "save"]) {
+      expect(part(c.container, name)).not.toBeNull();
+    }
+    expect(c.container.querySelector("[class]")).toBeNull();
   });
 
   test("intro replaces the default blurb but keeps the heading", async () => {

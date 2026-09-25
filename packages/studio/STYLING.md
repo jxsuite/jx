@@ -73,6 +73,16 @@ The scale is coarse, so structural px are acceptable and **not** policed:
 - Prefer `--jx-space-*` for new padding, gap and margin where a step fits (1=2, 2=4, 3=8, 4=12, 5=16, 6=24, 7=32px).
 - Off-grid spacing (6px, 10px), grid track sizes, fixed widths and heights, 1–2px borders, and `z-index` may stay as literals.
 - Drop shadows and modal scrims use `rgba(0 0 0 / …)` — neutral and theme-agnostic.
+- A row that holds a small kit button, action button or checkbox (`size: "sm"`) centres it with `alignItems: "center"`, never `baseline`. Those controls extend their hit area past the drawn box with an absolutely positioned `::before`, and declare `contain: layout` so the extension adds nothing to a scrolling ancestor's overflow; a layout-contained box has no baseline, so a baseline row aligns on the button's bottom edge and drops the text beside it. `tests/surface-baseline-rows.test.ts` fails a surface that baseline-aligns one.
+
+### Text selection
+
+The chrome is not text. `styles/tokens.json` sets `user-select: none` once, on the root, and every surface inherits it, so a drag across the window highlights no label, button or heading. The same file restates it on `dialog`, because Chromium's UA sheet gives a modal dialog `user-select: text` and every Studio modal is a `jx-dialog` opened with `showModal()`.
+
+- Do not write `userSelect: "none"` in a new surface: it is already the inherited value. The handful of rules that predate the root policy are redundant and harmless.
+- A part whose text the reader must copy, and that offers no other way to copy it, opts back in on that part alone, from its own surface document: `userSelect: "text"`, or `"all"` for a token that is only useful whole (the GitHub device code). Today that is the dialog message and its island, the device code, the Assistant's transcript bodies, and the Problems and Activity logs.
+- Inputs, textareas, `contenteditable`, Monaco and the canvas iframe keep their own selection and need no rule. The canvas is a separate document that never links `tokens.css`.
+- `tests/selection-policy.test.ts` holds the opt-ins to a list, so a new selectable region is a one-line, reviewed change there.
 
 ### Intentional exceptions
 

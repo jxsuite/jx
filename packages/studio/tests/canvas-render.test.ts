@@ -6,6 +6,7 @@
 import {
   flush,
   installMockPlatform,
+  installResizeObserver,
   resetStudioState,
   resetWorkspaceWithTab,
   standUpPaneGrid,
@@ -17,11 +18,13 @@ import { notifyModule } from "./notify-mock";
 import { initShellRefs, setProjectState } from "../src/store";
 import {
   activeCanvasSurface,
+  disposePaneSurface,
   registerCanvasSurface,
   surfaceForPane,
   tabOfPane,
   unregisterCanvasSurface,
 } from "../src/canvas/canvas-surface";
+import { STAGE_SCROLLBAR_VAR } from "../src/canvas/stage-scrollbar";
 import {
   activateTab,
   activeTab,
@@ -1863,6 +1866,128 @@ describe("edit mode", () => {
   });
 });
 
+// ─── The stage's scrollbar, published for the zoom pod ────────────────────────
+/* The pod floats in chrome that spans the scrollbar gutter; Edit is the one mode whose stage
+   scrolls under it, so Edit publishes the width and every teardown puts it back to 0. */
+
+describe("the stage's scrollbar width, published on the cell", () => {
+  /** Put the primary stage inside a pane CELL, which is where the width is written. */
+  function cellAroundStage(): HTMLElement {
+    const cell = document.createElement("div");
+    cell.setAttribute("part", "pane");
+    document.body.append(cell);
+    cell.append(stageEl());
+    return cell;
+  }
+
+  function editScroller(): HTMLElement {
+    return stageEl().querySelector<HTMLElement>('[part="edit-canvas"]')!;
+  }
+
+  test("Edit observes its own scroller and writes the scrollbar's width on the cell", async () => {
+    const observers = installResizeObserver();
+    try {
+      const cell = cellAroundStage();
+      openSyncedTab();
+      setMode("edit");
+      renderCanvas();
+      await flush();
+
+      const scroller = editScroller();
+      expect(surfaceForPane("primary").stageScrollbar?.scroller).toBe(scroller);
+      expect(observers.observes(scroller)).toBe(true);
+      // Happy-dom lays nothing out, so there is no scrollbar yet.
+      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
+
+      // The page outgrew the pane: a 15px classic scrollbar took the edge of the scroller.
+      Object.defineProperty(scroller, "offsetWidth", { configurable: true, value: 1144 });
+      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1129 });
+      observers.resize(scroller);
+      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("15px");
+
+      // A content-only repaint keeps the scroller, and with it the one observer.
+      const record = surfaceForPane("primary").stageScrollbar;
+      renderCanvas();
+      await flush();
+      expect(surfaceForPane("primary").stageScrollbar).toBe(record);
+    } finally {
+      observers.restore();
+    }
+  });
+
+  test("leaving Edit releases the scroller, so Design's pod is back at its plain inset", async () => {
+    const observers = installResizeObserver();
+    try {
+      const cell = cellAroundStage();
+      openSyncedTab();
+      setMode("edit");
+      renderCanvas();
+      await flush();
+      const scroller = editScroller();
+      Object.defineProperty(scroller, "offsetWidth", { configurable: true, value: 1144 });
+      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1129 });
+      observers.resize(scroller);
+      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("15px");
+
+      setMode("design");
+      renderCanvas();
+      await flush();
+
+      expect(surfaceForPane("primary").stageScrollbar).toBeNull();
+      expect(observers.observes(scroller)).toBe(false);
+      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
+    } finally {
+      observers.restore();
+    }
+  });
+
+  test("clearing the stage to no tab releases it too", async () => {
+    const observers = installResizeObserver();
+    try {
+      const cell = cellAroundStage();
+      openSyncedTab();
+      setMode("edit");
+      renderCanvas();
+      await flush();
+      const scroller = editScroller();
+      Object.defineProperty(scroller, "offsetWidth", { configurable: true, value: 1144 });
+      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1129 });
+      observers.resize(scroller);
+
+      closeAllTabs();
+      renderCanvas();
+
+      expect(surfaceForPane("primary").stageScrollbar).toBeNull();
+      expect(observers.observes(scroller)).toBe(false);
+      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
+    } finally {
+      observers.restore();
+    }
+  });
+
+  test("a pane's own teardown disconnects its observer and zeroes its cell", () => {
+    const cell = document.createElement("div");
+    cell.setAttribute("part", "pane");
+    const stage = document.createElement("div");
+    cell.append(stage);
+    document.body.append(cell);
+    const doomed = registerCanvasSurface("scrollbar-teardown", stage);
+    const disconnect = mock(() => {});
+    doomed.stageScrollbar = {
+      observer: { disconnect } as never,
+      scroller: document.createElement("div"),
+    };
+    cell.style.setProperty(STAGE_SCROLLBAR_VAR, "15px");
+
+    disposePaneSurface("scrollbar-teardown");
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(doomed.stageScrollbar).toBeNull();
+    expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
+    cell.remove();
+  });
+});
+
 // ─── Iframe render pipeline (success / staleness / rejection) ──────────────────
 
 describe("iframe render pipeline", () => {
@@ -2341,8 +2466,8 @@ describe("renderOverlays", () => {
 
 /**
  * `#frontmatter-panel` is deleted; the stage draws the card's host. What is asserted here is WHERE
- * — the two authoring views put it in different places for a reason, and every other surface must
- * put it nowhere at all.
+ * — Edit docks it above the page's scroller at the pane's width, and every other surface, Design
+ * included, puts it nowhere at all.
  */
 describe("the Document Header slot", () => {
   // The card really renders here — its SEO block reaches for the media listing, so the stage needs
@@ -2365,42 +2490,49 @@ describe("the Document Header slot", () => {
 
   const slot = () => stageEl().querySelector('[part="doc-header"]');
 
-  test("Edit puts it INSIDE the document column, above the artefact", async () => {
+  test("Edit docks it above the page's scroller at the pane's width", async () => {
     openHeaderedTab();
     setMode("edit");
     renderCanvas();
     await flush();
 
-    /* ORDER, which is what the contract was always about: the card is the column's first block and
-       the artefact follows it; the two resize handles are not in the column at all. Read across the
-       column's own parts rather than off `firstElementChild`, because a document's conditional
-       branch is a `display: contents` box — it generates no layout, so it is not what "first child"
-       means to a reader or to the CSS, and an assertion that keys on it would be testing the
-       runtime's shape rather than the stage's. */
+    /* NOT in the column. The column's width is the breakpoint's or the drag's, and the column is
+       inside the scroller, so a card drawn there was exactly as wide as a 320px page and scrolled
+       off with its first screen. Read across the column's own parts, because that is where it used
+       to be: the artefact is the only block left in it. */
+    expect(slot()).not.toBeNull();
     const column = stageEl().querySelector('[part="edit-column"]')!;
     const blocks = [
       ...column.querySelectorAll('[part="doc-header"], [part="panel"], [part="edit-handle"]'),
     ].map((el) => el.getAttribute("part"));
-    expect(blocks).toEqual(["doc-header", "panel"]);
-    expect((slot() as HTMLElement | null)?.dataset.placement).toBe("in-column");
-    // In the column means in the document's own scroller: it scrolls with the artefact.
-    expect(slot()?.closest('[part="edit-canvas"]')).not.toBeNull();
+    expect(blocks).toEqual(["panel"]);
+    expect(slot()?.closest('[part="edit-column"]')).toBeNull();
+    // Outside the scroller, so the page scrolls UNDER it rather than taking it along.
+    expect(slot()?.closest('[part="edit-canvas"]')).toBeNull();
+    // Ahead of it in document order, which is "above" once the stage cell is a column.
+    const order = [...stageEl().querySelectorAll('[part="doc-header"], [part="edit-canvas"]')].map(
+      (el) => el.getAttribute("part"),
+    );
+    expect(order).toEqual(["doc-header", "edit-canvas"]);
+    // The stage cell stacks and stretches: that is what makes the band the PANE's width.
+    expect(stageEl().style.flexDirection).toBe("column");
+    expect(stageEl().style.alignItems).toBe("stretch");
+    expect((slot() as HTMLElement | null)?.dataset.placement).toBeUndefined();
   });
 
-  test("Design pins it above the panzoom surface, and stacks the stage to make room", async () => {
+  test("Design draws no header, and the stage stays a row", async () => {
+    // The artboards get the whole pane; the Navigator's Page panel carries the same fields.
     openHeaderedTab();
     setMode("design");
     renderCanvas();
     await flush();
 
-    expect((slot() as HTMLElement | null)?.dataset.placement).toBe("pinned");
-    // The artboards are drawn under a transform; the card must not be inside it.
-    expect(slot()?.closest('[part="panzoom"]')).toBeNull();
-    expect(stageEl().style.flexDirection).toBe("column");
-    expect(stageEl().style.alignItems).toBe("stretch");
+    expect(slot()).toBeNull();
+    expect(stageEl().style.flexDirection).toBe("");
+    expect(stageEl().style.alignItems).toBe("");
   });
 
-  test("Design with breakpoints pins one slot, not one per artboard", async () => {
+  test("Design with breakpoints draws no header either, over any of its artboards", async () => {
     const tab = openSyncedTab({
       $media: { "--": "400px", tablet: "(min-width: 768px)" },
       children: [{ tagName: "p", textContent: "Hi" }],
@@ -2412,18 +2544,63 @@ describe("the Document Header slot", () => {
     renderCanvas();
     await flush();
 
-    expect(stageEl().querySelectorAll('[part="doc-header"]').length).toBe(1);
+    expect(stageEl().querySelectorAll('[part="doc-header"]').length).toBe(0);
     expect(stageEl().querySelectorAll('[part="panel"]').length).toBeGreaterThan(1);
   });
 
   test("a document with no header gets no slot, and the stage stays a row", async () => {
     openSyncedTab();
-    setMode("design");
+    setMode("edit");
     renderCanvas();
     await flush();
 
     expect(slot()).toBeNull();
     expect(stageEl().style.flexDirection).toBe("");
+    expect(stageEl().style.alignItems).toBe("");
+  });
+
+  test("Edit → Design → Edit takes the card down and brings it back", async () => {
+    /* The two moving parts are `wantsDocHeader` releasing the host (`attachDocumentHeaderHost(…,
+       null)`) and the mode transition clearing the two inline writes Edit made to stack the cell.
+       Either one missing leaves a card the stage no longer draws, or a Design stage laid out as a
+       column around nothing. */
+    openHeaderedTab();
+    setMode("edit");
+    renderCanvas();
+    await flush();
+    expect(stageEl().querySelector('[part="doc-header"] [part="card"]')).not.toBeNull();
+    expect(stageEl().style.flexDirection).toBe("column");
+
+    setMode("design");
+    renderCanvas();
+    await flush();
+    expect(slot()).toBeNull();
+    expect(stageEl().querySelector('[part="card"]')).toBeNull();
+    expect(stageEl().style.flexDirection).toBe("");
+    expect(stageEl().style.alignItems).toBe("");
+
+    setMode("edit");
+    renderCanvas();
+    await flush();
+    expect(stageEl().querySelector('[part="doc-header"] [part="card"]')).not.toBeNull();
+    expect(stageEl().style.flexDirection).toBe("column");
+  });
+
+  test("a document that loses its header unstacks the stage without a mode change", async () => {
+    /* Whether a document HAS a header changes with the document, not the mode — which is why Edit
+       writes the stage's axis on every render rather than on the transition. */
+    const tab = openHeaderedTab();
+    setMode("edit");
+    renderCanvas();
+    await flush();
+    expect(stageEl().style.flexDirection).toBe("column");
+
+    delete (tab.doc.document as { title?: string }).title;
+    renderCanvas();
+    await flush();
+    expect(slot()).toBeNull();
+    expect(stageEl().style.flexDirection).toBe("");
+    expect(stageEl().style.alignItems).toBe("");
   });
 
   test("Preview, Source and Grid draw no header — they are not authoring views", async () => {
@@ -2617,14 +2794,15 @@ describe("a derived pane's stage", () => {
   test("draws no Document Header card, while the pane that OWNS the tab draws one", async () => {
     /* `canvas-render.ts:677`. The card is an editing surface over the SAME frontmatter — Title,
        Route, SEO — and two of them side by side is two writers for one field. Under the mutation
-       the lens grows a second card. */
+       the lens grows a second card. Both sides in EDIT, the one mode that draws a card at all: in
+       Design neither pane would, and the lens gate would pass without being asked anything. */
     installMockPlatform();
     mountDocHeader();
     try {
       const tab = openSyncedTab();
       tab.doc.document.title = "Designing for slowness";
-      setMode("design");
-      const lensWrap = standUpLens(lensRecord());
+      setMode("edit");
+      const lensWrap = standUpLens(lensRecord({ mode: "edit" }));
 
       renderCanvas(PRIMARY_PANE);
       renderCanvas(SECONDARY_PANE);

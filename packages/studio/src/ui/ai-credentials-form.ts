@@ -13,9 +13,9 @@
  *
  * This module is the FLOW; `surfaces/ai-credentials-form.json` is what it draws. It keeps the three
  * drafts, decides which credentials a listing is sent with, what Save persists and re-reads, and
- * whether Cancel is on offer; the surface renders those and reports what the reader did. `render()`
- * hands back the surface's own host element rather than a template, because every gate is still a
- * lit template that interpolates the form beside the keyless offer — see
+ * whether there is anything to Save or Cancel; the surface renders those and reports what the
+ * reader did. `render()` hands back the surface's own host element rather than a template, because
+ * every gate is still a lit template that interpolates the form beside the keyless offer — see
  * `surfaces/ai-credentials-form.ts` for why that element is the mount point and why re-rendering
  * the gate cannot disturb it.
  *
@@ -25,12 +25,13 @@
 
 import { fetchAvailableModels, proxyModelsErrorMessage } from "../services/ai-models";
 import {
+  aiProviderDiffers,
   getBaseUrl,
   getOpenAiKey,
-  hasOpenAiKey,
   saveAiProvider,
   storedModel,
 } from "../services/ai-settings";
+import type { AiProvider } from "../services/ai-settings";
 import { createAiCredentialsSurface } from "../surfaces/ai-credentials-form";
 import type {
   AiCredentialsSurface,
@@ -47,7 +48,10 @@ export interface AiCredentialsFormOptions {
   requestRender: () => void;
   /** Called after Save persists the credentials. */
   onSaved?: () => void;
-  /** Called when Cancel dismisses the form (Cancel is only offered when a key already exists). */
+  /**
+   * Called when Cancel puts the drafts back to what is stored (Cancel is only offered while they
+   * differ from it).
+   */
   onCancel?: () => void;
   /**
    * Optional context line replacing the default blurb.
@@ -85,21 +89,55 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
   let modelsLoading = false;
   let modelsError = "";
 
+  /**
+   * What the store held when the drafts last agreed with it — the answer to "has the reader touched
+   * this field?". A draft still equal to its basis is a VIEW of the store, not an edit, so
+   * {@link followStore} may move it; one that differs is the reader's and nothing but a Save or a
+   * Cancel replaces it. Starts blank because the drafts do, which is what lets a host that never
+   * calls `startEdit` still open on what is stored.
+   */
+  let basis: AiProvider = { apiKey: "", baseUrl: "", model: "" };
+
   /** Made on the first render, and kept for the life of the controller. */
   let surface: AiCredentialsSurface | null = null;
 
   /**
-   * Load the drafts from what is stored.
+   * What is stored, in the shape the drafts take.
    *
    * The model comes from {@link storedModel} rather than `getModel()`, so a user who has never
    * picked one drafts an empty field instead of the `"gpt-4o"` default. Saving a prefilled default
    * writes a choice nobody made, and `jx.ai.model: "gpt-4o"` is exactly what a broken install was
    * left holding.
    */
+  function stored(): AiProvider {
+    return { apiKey: getOpenAiKey(), baseUrl: getBaseUrl(), model: storedModel() };
+  }
+
+  /** Load the drafts from what is stored, discarding any edit, and take that as the new basis. */
   function loadDrafts() {
-    keyDraft = getOpenAiKey();
-    baseUrlDraft = getBaseUrl();
-    modelDraft = storedModel();
+    basis = stored();
+    keyDraft = basis.apiKey;
+    baseUrlDraft = basis.baseUrl;
+    modelDraft = basis.model;
+  }
+
+  /**
+   * Bring every untouched draft up to what is stored now, and keep every edited one.
+   *
+   * Without this a draft could drift from the store with nobody having typed, and a form that
+   * offers Save and Cancel only while it differs would offer them for an edit nobody made. Two
+   * hosts did exactly that: the New Project gates never call `startEdit`, so their drafts began
+   * blank over a stored endpoint or model — and Save then overwrote both with nothing — and a
+   * Disconnect in Preferences › Accounts left the Assistant form holding the key it had just
+   * revoked, which its Save would have stored again. Run from {@link render}, the host's repaint,
+   * and never from a setter, so a keystroke is never rebased onto the store under the reader.
+   */
+  function followStore() {
+    const now = stored();
+    keyDraft = keyDraft === basis.apiKey ? now.apiKey : keyDraft;
+    baseUrlDraft = baseUrlDraft === basis.baseUrl ? now.baseUrl : baseUrlDraft;
+    modelDraft = modelDraft === basis.model ? now.model : modelDraft;
+    basis = now;
   }
 
   /** Open the form pre-filled with the current settings, and load the model list. */
@@ -122,7 +160,8 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * `setOpenAiKey`/`setBaseUrl` treat as _clear_, so pressing Save a second time on the emptied
    * form deleted the key and endpoint that the first press had just stored. Reading back through
    * the getters also shows what was actually kept — trimmed, and with the endpoint's trailing slash
-   * stripped — rather than what was typed.
+   * stripped — rather than what was typed. And because the drafts then equal the store, the form is
+   * no longer `dirty`: Save and Cancel go away, so a second press has nothing to land on.
    */
   function save() {
     saveAiProvider({ apiKey: keyDraft, baseUrl: baseUrlDraft, model: modelDraft });
@@ -135,7 +174,10 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     opts.requestRender();
   }
 
-  /** Dismiss the form without saving (only offered when a key already exists). */
+  /**
+   * Put the drafts back to what is stored. Only offered while they differ from it, so it always
+   * abandons something — which is also why it takes itself away.
+   */
   function cancel() {
     loadDrafts();
     modelsError = "";
@@ -196,12 +238,14 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
   function view(): AiCredentialsView {
     return {
       baseUrlDraft,
+      /* Compared as the store would hold each value, so what Save would erase — whitespace, an
+         endpoint's trailing slash — is not an edit. See `aiProviderDiffers`. */
+      dirty: aiProviderDiffers({ apiKey: keyDraft, baseUrl: baseUrlDraft, model: modelDraft }),
       fetchLabel: modelsLoading
         ? "Fetching…"
         : availableModels.length > 0
           ? "Refresh models"
           : "Fetch models",
-      haveKey: hasOpenAiKey(),
       intro: opts.intro ?? DEFAULT_INTRO,
       keyDraft,
       modelDraft,
@@ -238,6 +282,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
   }
 
   function render(): HTMLElement {
+    followStore();
     if (surface) {
       surface.update(view());
     } else {

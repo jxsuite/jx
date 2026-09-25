@@ -18,32 +18,6 @@
   min-height: 0;
 }
 
-/* ─── Document Header card ─────────────────────
-   Region ⑧: the artefact's own header, drawn IN the stage. `#frontmatter-panel` — a fourth
-   full-width band up to 40vh that appeared and vanished as a side effect of the canvas mode — is
-   gone, grid row and all.
-
-   Two placements, because the stage draws a page two ways. In Edit the card is `in-column`: a block
-   of the document's own centered column that scrolls with it, so it is part of the artefact rather
-   than a strip above it. In Design the artboards are under a pan/zoom transform, and a form drawn
-   at 40% is a picture of a form — so the card is `pinned` above the surface at 1:1, and that is the
-   one placement that still needs a cap. */
-.doc-header-host[hidden] {
-  display: none;
-}
-.doc-header-host.in-column {
-  display: block;
-  padding-bottom: 16px;
-}
-.doc-header-host.pinned {
-  flex-shrink: 0;
-  max-height: 40vh;
-  overflow-y: auto;
-}
-.doc-header-host.pinned .doc-header {
-  border-width: 0 0 1px;
-  border-radius: 0;
-}
 /* ─── Content edit mode canvas ─────────────── */
 .content-edit-canvas {
   width: 100%;

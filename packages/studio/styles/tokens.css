@@ -12,7 +12,11 @@
 
    The four --canvas-* steps are the exception and are meant to be: they colour surfaces that
    render as a light DOCUMENT in both chromes, so they are mixed from the black and white keywords
-   and do not follow the theme. See tokens.json for what else moved here out of styles/spectrum.css. */
+   and do not follow the theme. See tokens.json for what else moved here out of styles/spectrum.css.
+
+   user-select: none on :root is Studio's selection policy: the chrome is not text. Every surface
+   inherits it, a modal dialog restates it below, and a part whose text the reader must copy opts
+   back in from its own surface document, against the list tests/selection-policy.test.ts holds. */
 
 :root {
   box-sizing: border-box;
@@ -24,6 +28,7 @@
   font-family: var(--jx-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: var(--jx-text-md, 12px);
   line-height: 1.5;
+  user-select: none;
   --panel-w-left: 240px;
   --panel-w-right: 280px;
   --bg: var(--jx-bg, #111114);
@@ -88,6 +93,17 @@
   height: 100%;
   overflow: hidden;
   background: var(--jx-bg, #111114);
+}
+/* The root's `user-select: none` restated, because a modal dialog would otherwise take it back:
+   Chromium's UA sheet gives a MODAL dialog `user-select: text` (measured: `auto` while closed or
+   after show(), `text` after showModal()), and Blink inherits that into every node inside. Every
+   Studio modal is a jx-dialog opened with showModal(), so without this rule the headline, labels
+   and buttons of every dialog would be selectable whatever the root says. An author rule beats the
+   UA one at any specificity, since it is not `!important`. A dialog's MESSAGE opts back in from
+   its own surface document (`surfaces/dialog.json`), and an input inside one stays selectable
+   without help. */
+:root dialog {
+  user-select: none;
 }
 :root[data-theme="light"],
 :root[data-theme="light"] body {

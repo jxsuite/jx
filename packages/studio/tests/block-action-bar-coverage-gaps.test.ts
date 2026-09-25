@@ -263,6 +263,39 @@ describe("block action bar gaps", () => {
     expect(isOffscreen()).toBe(false);
   });
 
+  /* Inside the STAGE is not on screen once Edit docks the Document Header card above its scroller:
+     the band and the page share one stage cell, so a node scrolled up under the band is inside the
+     one and covered by the other. Clipping against the stage left the bar floating over the card,
+     pointing at a node nobody could see. Wherever the pane has a scroller, that is the viewport. */
+  test("an anchor above the Edit scroller's top is offscreen even while it is inside the stage", async () => {
+    setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
+    const { panels } = surfaceForPane("primary");
+    const scroller = document.createElement("div");
+    panels.push({
+      canvas: document.createElement("div"),
+      mediaName: "base",
+      scrollContainer: scroller,
+    } as unknown as (typeof panels)[number]);
+    try {
+      // A 800px stage whose top 300px is the band; the page scrolls in the 500px below it.
+      stubRect(surfaceForPane("primary").wrap, { height: 800, left: 0, top: 0, width: 1600 });
+      stubRect(scroller, { height: 500, left: 0, top: 300, width: 1600 });
+      host.anchor = { height: 20, left: 30, top: 400, width: 100 };
+      await render();
+      expect(bar()).toBeTruthy();
+      expect(isOffscreen()).toBe(false);
+
+      // Scrolled up under the band: inside the stage, above the scroller.
+      host.anchor = { height: 20, left: 30, top: 100, width: 100 };
+      scrollDoc();
+      await raf();
+      await flush();
+      expect(isOffscreen()).toBe(true);
+    } finally {
+      panels.length = 0;
+    }
+  });
+
   test("a bar wider than the window is clamped back inside the right edge", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
     await render();

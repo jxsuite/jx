@@ -49,7 +49,8 @@
       "margin": "0"
     },
     "& [part=\"code\"]": {
-      "$description": "`<code>`, not a styled `<div>`: this is a literal string to be transcribed, and the element that says so is also the one a reader's own stylesheet and a screen reader's character-by-character mode already know about.",
+      "$description": "`<code>`, not a styled `<div>`: this is a literal string to be transcribed, and the element that says so is also the one a reader's own stylesheet and a screen reader's character-by-character mode already know about. It is this dialog's message, and the one string in it the reader must carry to another screen, so it opts back in to selection against the root's `user-select: none`. `all` rather than `text`: one click selects the whole code, so a copy never leaves a character behind.",
+      "userSelect": "all",
       "fontFamily": "var(--font-mono)",
       "fontSize": "24px",
       "fontWeight": "700",

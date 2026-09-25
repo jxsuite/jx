@@ -77,6 +77,24 @@ describe("what the generated sheet must contain", () => {
     expect(css).toContain("background: var(--jx-bg, #f7f7f9);");
   });
 
+  test("the chrome is not text: selection is off at the root, and a modal dialog re-states it", () => {
+    /* On `:root` so every node in the document inherits it, the boot paint and anything mounted
+       outside `#shell-root` included. The dialog half is not a duplicate: Chromium's UA sheet gives
+       a MODAL dialog `user-select: text`, and without an author rule on the dialog itself every
+       headline and button inside one would be selectable again. */
+    const root = css.slice(css.indexOf(":root {"), css.indexOf("}", css.indexOf(":root {")));
+    expect(root).toContain("user-select: none;");
+    const at = css.indexOf(":root dialog {");
+    expect(at).toBeGreaterThan(-1);
+    expect(css.slice(at, css.indexOf("}", at))).toContain("user-select: none;");
+    // The reason travels with the rule, as the comment directly above it.
+    const comment = css.slice(css.lastIndexOf("/*", at), at);
+    expect(comment).toContain("showModal()");
+    expect(comment.trimEnd().endsWith("*/")).toBe(true);
+    // And the header says what the root declaration is, since the root rule carries no comment.
+    expect(css.slice(0, css.indexOf(":root {"))).toContain("selection policy");
+  });
+
   test("every semantic token is an alias of a kit token, with a hex fallback", () => {
     // What `check-styles.ts` reads to hold the guidelines table; the shape is load-bearing for it.
     for (const [token, kit] of [

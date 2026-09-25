@@ -55,7 +55,7 @@ import {
 
 import { isEditing } from "./editor/inline-edit";
 import { applyTransform, registerCanvasViewCommands } from "./canvas/canvas-utils";
-import { diffCommands } from "./canvas/diff-toolbar";
+import { diffCommands, setDiffChromeRepaint } from "./canvas/diff-toolbar";
 import type { CanvasSurface } from "./canvas/canvas-surface";
 import {
   initCanvasRender,
@@ -510,6 +510,9 @@ paneContext.mount(primaryCell?.chrome ?? document.createElement("div"), {
   parseMediaEntries,
   setCanvasMode,
 });
+/* The diff's Visual/Code switch decides whether the zoom pod is drawn, and the half it writes is
+   not reactive — so the switch repaints the chrome as well as the stage. See `setDiffChromeRepaint`. */
+setDiffChromeRepaint(paneContext.render);
 
 overlaysPanel.mount({
   isEditing,

@@ -218,12 +218,13 @@
               },
               "children": [
                 {
+                  "$description": "A row of quiet tools, so NOT compact. A compact group draws every member's frame and fill whatever its quiet says, which is the segmented look a choice wants and not the borderless one a toolbar wants; Spectrum's group here was `compact quiet`, a combination the kit spells as compact=false with its members' default quiet.",
                   "tagName": "jx-action-group",
                   "attributes": {
                     "part": "toolbar-actions"
                   },
                   "$props": {
-                    "compact": true,
+                    "compact": false,
                     "label": "File tree actions"
                   },
                   "children": [

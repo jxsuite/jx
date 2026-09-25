@@ -12,6 +12,7 @@ import {
   clearSettings,
   hasSetting,
   hydrateSettings,
+  normalizeSetting,
   onSettingsChanged,
   readStoredSetting,
   resetSettings,
@@ -128,6 +129,19 @@ describe("writing", () => {
     expect(readStoredSetting(SETTINGS.aiBaseUrl)).toBe("https://example.test/v1");
     setSetting(SETTINGS.aiOpenAiKey, "  sk-padded  ");
     expect(readStoredSetting(SETTINGS.aiOpenAiKey)).toBe("sk-padded");
+  });
+
+  /**
+   * The rule the writes apply, exported so a form can ask what Save WOULD store without storing it.
+   * Every registered setting declares a normalizer today, so the pass-through branch is exercised
+   * with a definition made for the purpose.
+   */
+  test("normalizeSetting is what a write would store, and stores nothing", () => {
+    expect(normalizeSetting(SETTINGS.aiBaseUrl, " http://h/v1/ ")).toBe("http://h/v1");
+    expect(normalizeSetting(SETTINGS.aiOpenAiKey, " sk-a ")).toBe("sk-a");
+    expect(readStoredSetting(SETTINGS.aiOpenAiKey)).toBe("");
+    const plain = { default: "", key: "test.plain", scope: "device" as const };
+    expect(normalizeSetting(plain, "  as typed ")).toBe("  as typed ");
   });
 
   /**
