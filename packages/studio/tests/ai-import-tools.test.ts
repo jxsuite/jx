@@ -515,6 +515,45 @@ describe("import_site — the run", () => {
     expect(importRun("call_1")!.status).toBe("stopped");
   });
 
+  /* The run's stop is scoped to the run. A Stop later in the same turn (a question the model puts
+     after the import, say) belongs to whatever the turn is doing then, and must not rewrite the
+     finished run as stopped. */
+  test("a Stop after the run finished leaves it done", async () => {
+    const adoptProject = landing();
+    const { registry } = harness({ adoptProject });
+    const controller = new AbortController();
+    beginTurnSignal(controller.signal);
+
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/x",
+      url: "https://example.com",
+    });
+    captured!.resolve({ config: {}, root: "/home/dev/Sites/x" });
+    const res = await running;
+    expect(res.success).toBe(true);
+    expect(importRun("call_1")!.status).toBe("done");
+
+    controller.abort();
+    expect(importRun("call_1")!.status).toBe("done");
+  });
+
+  test("a failed run stays failed after a later Stop", async () => {
+    const { registry } = harness();
+    const controller = new AbortController();
+    beginTurnSignal(controller.signal);
+
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/x",
+      url: "https://example.com",
+    });
+    captured!.reject(new Error("Navigation timeout"));
+    const res = await running;
+    expect(res.success).toBe(false);
+
+    controller.abort();
+    expect(importRun("call_1")!.status).toBe("failed");
+  });
+
   test("a project that was written but not opened here says so instead of claiming it opened", async () => {
     // `openRecentProject` swallows its failures, so a resolved promise is not proof of adoption.
     const { registry } = harness({ adoptProject: mock(async () => {}) });

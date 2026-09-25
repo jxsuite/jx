@@ -142,7 +142,7 @@ When it finishes, the assistant tells you how many pages it captured, what it ha
 
 That's also why it can stop and ask you something. An import guesses at a lot: which pages matter, whether three similar blocks are one component, what to do about a page robots.txt kept it out of. When one of those is genuinely your call, the assistant asks you there in the Inspector and waits for your answer (see **[When the assistant asks you something](/docs/studio/ai/chat)**).
 
-To stop a running import, use **Stop** in the assistant, or run **Assistant: Stop Responding** from the command palette.
+To stop a running import, use **Stop** in the assistant, or run **Assistant: Stop Responding** from the command palette. Stop only affects an import that is still running: once one has finished or failed, stopping the assistant's reply afterwards leaves that outcome as it was.
 
 A garbled line in the import's stream doesn't stop the run; the pages already crawled are kept. But it isn't ignored either: when the run finishes, Studio counts the lines it couldn't read and posts a warning saying so, because an import that quietly skipped a step looks exactly like one that didn't.
 
