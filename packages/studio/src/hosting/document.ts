@@ -24,6 +24,20 @@ import type { AssetBase } from "./layout";
 /** The default base: the tree served at the document's own directory, in the package's own shape. */
 export const IN_PLACE: AssetBase = { mode: "nested", prefix: "./" };
 
+/**
+ * The marker a document carries when it declares boot modules: `<meta name="jx-boot"
+ * content="launcher">`.
+ *
+ * It is how the studio entry tells "nobody registered an adapter because this is the dev server"
+ * from "somebody was supposed to and did not". The two looked identical from inside the bundle, and
+ * Studio answered both with the dev-server adapter, so a launcher whose boot script 404'd or failed
+ * to parse got a window that drew, fetched `/__studio/*` from an origin with nothing behind it, and
+ * failed on the first click. A meta rather than a script global because it is in the markup before
+ * any script runs, and so survives exactly the failures it exists to report: a boot module that
+ * never loaded cannot have set anything. `platforms/default-platform.ts` is the reader.
+ */
+export const BOOT_META = { name: "jx-boot", content: "launcher" } as const;
+
 export interface DocumentOptions {
   /** Where the asset tree is mounted. Defaults to {@link IN_PLACE}. */
   readonly base?: AssetBase | undefined;
@@ -39,6 +53,12 @@ export interface DocumentOptions {
    * or publishes the `__jxCloud` signal for the studio entry to build the adapter from. It must do
    * so SYNCHRONOUSLY — a module script with top-level await does not block a later script tag, and
    * the entry reads the global as it evaluates.
+   *
+   * **Declaring a boot module turns the dev-server fallback off.** A non-empty list stamps
+   * {@link BOOT_META} into the head, and a studio entry that then finds no adapter and no cloud
+   * signal draws a boot-failure screen instead of registering the dev-server adapter
+   * (`platforms/default-platform.ts`). A host that serves the HTTP protocol at its own origin and
+   * wants that fallback declares no boot module.
    */
   readonly boot?: readonly string[] | undefined;
   /** Document title. Defaults to "Jx Studio". */
@@ -66,12 +86,19 @@ export function studioShellHtml(options: DocumentOptions = {}): string {
     .map((path) => `    <link rel="stylesheet" href="${url(path)}" />`)
     .join("\n");
   const boot = (options.boot ?? []).map((mod) => `    ${scriptTag(mod)}`).join("\n");
+  /* Only when there IS a boot module: `packages/studio/index.html` is generated with none and CI
+     diffs it byte for byte, and the dev server it is served by is the one host that should fall
+     back. The `<head>` below stays a literal, attribute-free tag — Electrobun's macOS CEF path
+     injects its preload by splicing after that exact string. */
+  const bootMeta = boot
+    ? `    <meta name="${BOOT_META.name}" content="${BOOT_META.content}" />\n`
+    : "";
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${options.title ?? "Jx Studio"}</title>
+${bootMeta}    <title>${options.title ?? "Jx Studio"}</title>
     <link rel="icon" href="${url(STUDIO_FAVICON)}" />
 ${links}
   </head>
