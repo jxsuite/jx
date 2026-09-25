@@ -23,8 +23,13 @@ describe("dialogs and openExternal before init", () => {
     expect(result).toBeNull();
   });
 
-  test("openDirectoryDialog returns null without a shell", async () => {
-    expect(await openDirectoryDialog()).toBeNull();
+  /* `null` is the user cancelling, and nobody cancelled: there was no dialog to show. Answering
+     `null` here made New Project's Browse… a button that did nothing, so it rejects with the
+     sentence Studio shows under the Location field. */
+  test("openDirectoryDialog rejects without a shell, saying the dialog is unavailable", async () => {
+    await expect(openDirectoryDialog()).rejects.toThrow(
+      "The system folder dialog is not available in this build. Type the path into Location instead.",
+    );
   });
 
   /* With neither the electrobun shell nor an OS opener there is nothing to hand the URL to.

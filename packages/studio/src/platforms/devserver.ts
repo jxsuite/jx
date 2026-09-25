@@ -320,7 +320,12 @@ export function createDevServerPlatform() {
      * undefined and the modal falls back to a typed Location field.
      *
      * The picked handle carries no filesystem path, so it is resolved by the id the picker tags the
-     * folder with (see `@jxsuite/studio/directory-picker`).
+     * folder with (see `@jxsuite/studio/directory-picker`). Resolves `null` only when the user
+     * dismisses the chooser; every other failure rejects with a sentence the modal shows under
+     * Location. So `locate` keeps the helper's contract: `null` is "no folder holds this id" (the
+     * route's 200 `{ path: null }`), and a non-ok answer throws the problem the server sent rather
+     * than posing as a miss. A network failure (`TypeError: Failed to fetch`, e.g. a page that is
+     * not being served by the dev server at all) propagates as is, and the picker names it.
      */
     ...(canPickDirectory()
       ? {
@@ -330,9 +335,11 @@ export function createDevServerPlatform() {
                 `/__studio/locate-directory?name=${encodeURIComponent(name)}&id=${encodeURIComponent(id)}`,
               );
               if (!res.ok) {
-                return null;
+                // A proxy, or a `views://` host with no dev server behind it, may answer in HTML.
+                const body: unknown = await res.json().catch(() => null);
+                throw new Error(problemMessage(body, res.status));
               }
-              const found = await readJson<{ path?: string }>(res);
+              const found = await readJson<{ path?: string | null }>(res);
               return found.path ?? null;
             });
           },
