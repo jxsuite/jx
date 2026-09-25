@@ -64,6 +64,7 @@ import type { AiChatSurface, AiChatView } from "../surfaces/ai-chat";
 import type { AnyCommand } from "../commands/registry";
 import type { CommandContext } from "../commands/context";
 import type { EffectScope } from "@vue/reactivity";
+import type { Message } from "@jxsuite/ai/chat-state";
 
 // ─── State (module-level, persists across tab switches) ─────────────────────
 
@@ -138,9 +139,10 @@ let projectionQueued = false;
  * projection is O(messages), so running it once per write would rebuild the whole list three times
  * for one event. And the write LEDGER (`services/ai-writes.ts`) is a plain array: `endTurn` files
  * it immediately after the assistant message lands, so a projection that ran synchronously inside
- * the effect would read the turn's changed-files summary one write too early, every time. The old
- * frame loop hid both by accident of deferral; this states them. Precedent: `panels/overlays.ts`,
- * §9.3's second scheduler.
+ * the effect would read the turn's changed-files summary one write too early, every time. (When it
+ * lands later than that, after a Stop mid-stream, the send re-projects once the turn has settled.)
+ * The old frame loop hid both by accident of deferral; this states them. Precedent:
+ * `panels/overlays.ts`, §9.3's second scheduler.
  */
 export function renderAiPanel(): void {
   if (projectionQueued || !surface) {
@@ -187,8 +189,16 @@ function watchAssistant() {
       const last = cs.messages.at(-1);
       void last?.content;
       void last?.toolCalls?.length;
+      /* A call's result lands on its request's record once the tool has run, and the chip draws
+         it. By then the tail may be an earlier call's `tool` reply rather than the request, so the
+         request is found behind the replies, and every one of its records is tracked. */
+      for (const tc of latestRequest(cs.messages)?.toolCalls ?? []) {
+        void tc.result;
+      }
       void cs.status;
       void cs.error;
+      // A usage frame moves the token count and nothing else this effect reads.
+      void cs.tokenCount;
       // The registry is composed AFTER the bootstrap mounts this, and it is a reactive holder —
       // Reading it here is what turns the header's skeleton into its real buttons.
       void activeRegistry();
@@ -206,6 +216,22 @@ function watchAssistant() {
       renderAiPanel();
     });
   });
+}
+
+/**
+ * The assistant message the tool replies at the end of the transcript answer: the one whose chips a
+ * running tool's result is about to change.
+ *
+ * @param {readonly Message[]} messages
+ * @returns {Message | undefined}
+ */
+function latestRequest(messages: readonly Message[]): Message | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index]!.role !== "tool") {
+      return messages[index];
+    }
+  }
+  return undefined;
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
@@ -248,6 +274,13 @@ async function handleAssistantSend(text: string) {
   } catch {
     // Synchronous failure (e.g. network unreachable) — the DocumentAssistant's
     // Own try/catch calls chatState.setError(), which the watcher renders.
+  } finally {
+    /* The turn's changes are filed in the loop's `finally`, and the ledger is not reactive. It is
+       usually filed in the same job as the turn's last reactive write, but not after a Stop
+       mid-stream: that write (`cancelStream`) lands microtasks before the aborted stream winds
+       down, so the coalesced projection has already drawn the reply without its summary. One
+       projection once the turn has settled is the one that is guaranteed to see it. */
+    renderAiPanel();
   }
 }
 

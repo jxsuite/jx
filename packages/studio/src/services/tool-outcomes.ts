@@ -4,9 +4,10 @@
  * A tool call's outcome is recorded twice while a turn runs: as the `result` on its
  * `ToolCallRecord`, which the chip renders, and as the `tool` message that answers it, which the
  * provider reads. The second is the one that must survive, because it is the one the wire carries,
- * and it is the one that always did: the first was never populated for a finished call (the loop
- * closes the stream before its tools run), so every persisted `result` was `null`: every restored
- * chip rendered as still pending, and an answered question as one still open (specs/ai.md §3.4).
+ * and it is the one that always did: until harness slice J1.4 the first was never populated for a
+ * finished call (the loop looked for the record after closing the stream), so every persisted
+ * `result` was `null`: every restored chip rendered as still pending, and an answered question as
+ * one still open (specs/ai.md §3.4).
  *
  * So the tool message is the single source. A save strips `result` from every record, which keeps
  * the payload free of a second, disagreeing copy; a restore backfills each record from the reply

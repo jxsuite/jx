@@ -42,6 +42,7 @@ void mock.module("../src/services/ai-writes", () => ({
   recordWrite: () => {},
   resetAiWrites: () => {},
   summarizeWrites: () => stubSummary,
+  turnAnchor: () => null,
   writesForTurn: () => stubWrites,
 }));
 

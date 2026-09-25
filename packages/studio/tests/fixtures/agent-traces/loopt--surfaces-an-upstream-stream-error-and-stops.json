@@ -1,10 +1,5 @@
 {
-  "chatCalls": [
-    "sendMessage(\"hi\")",
-    "toMessagesArray()",
-    "finishStream(\"stop\")",
-    "setError(\"upstream 500\")"
-  ],
+  "chatCalls": ["sendMessage(\"hi\")", "toMessagesArray()", "setError(\"upstream 500\")"],
   "clientCalls": [
     {
       "round": 1,
@@ -38,7 +33,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"\") filed 0"],
     "turns": []
   },
   "finalMessages": [
@@ -46,11 +41,6 @@
       "id": "msg#1",
       "role": "user",
       "content": "hi"
-    },
-    {
-      "id": "msg#2",
-      "role": "assistant",
-      "content": ""
     }
   ],
   "finalState": {

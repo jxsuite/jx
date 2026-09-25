@@ -8,6 +8,7 @@
  */
 import {
   clearSeededSettings,
+  flush,
   installMockPlatform,
   resetStudioState,
   resetWorkspaceWithTab,
@@ -80,6 +81,7 @@ const { selectionCommands } = await import("../src/canvas/canvas-render");
 const { isSpliceablePath } = await import("../src/tabs/selection");
 const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
 const { writesForTurn } = await import("../src/services/ai-writes");
+const { pendingAsk } = await import("../src/services/ai-ask");
 
 /** Which editor the registry fixture reports the focused pane as showing. */
 let editorKind: "canvas" | "config" = "canvas";
@@ -328,6 +330,46 @@ describe("document-assistant", () => {
     expect(a.activeSessionId()).toBe(secondId);
   });
 
+  /* Chat History stays open to the author while a turn waits on them, and opening a chat stops the
+     turn and replaces the transcript under it. Nothing more of that turn may land in the chat now
+     on screen: not the stopped call's reply, and not its changes, which would otherwise be drawn
+     as "Changed 1 file" under a reply that changed nothing. */
+  test("a chat opened while a turn waits gets none of that turn's reply or changes", async () => {
+    const tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p", textContent: "one" }],
+      tagName: "div",
+    });
+    nextRounds = [
+      [
+        { content: "first reply", type: "delta" },
+        { stopReason: "stop", type: "done" },
+      ],
+    ];
+    const a = createDocumentAssistant();
+    await a.sendMessage("first chat");
+    const firstId = a.activeSessionId()!;
+    a.newChat();
+    // An edit, then a question the author leaves open while they look through Chat History.
+    nextRounds = [
+      toolCallRound("c1", "add_child", { index: 1, node: { tagName: "span" }, parentPath: [] }),
+      toolCallRound("q1", "ask_user", { question: "Keep it?" }),
+    ];
+    const running = a.sendMessage("second chat");
+    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      await flush(1);
+    }
+    expect(pendingAsk()).not.toBeNull();
+
+    a.openSession(firstId);
+    await running;
+
+    expect(a.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(a.chatState.messages.map((m) => writesForTurn(m.id))).toEqual([[], []]);
+    expect(loadSession("", firstId)!.map((m) => m.role)).toEqual(["user", "assistant"]);
+    // The edit itself landed, and stays in the document's history like any other.
+    expect((tab.doc.document.children as unknown[]).length).toBe(2);
+  });
+
   test("restores the last-active session on creation", () => {
     globalThis.localStorage.setItem(
       LEGACY_PERSIST_KEY,
@@ -474,7 +516,12 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
       success: true,
       summary: "Deleted 2 element(s).",
     });
-    expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([
+    /* Filed under the request, the turn's last drawn message: the final round said nothing, so the
+       message the turn ends on is an empty one the transcript never draws. */
+    const request = a.chatState.messages.find((m) => m.toolCalls?.length);
+    expect(a.chatState.messages.at(-1)!.content).toBe("");
+    expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([]);
+    expect(writesForTurn(request!.id)).toEqual([
       { disk: false, ok: true, path: "/project/index.json", tool: "Delete" },
     ]);
   });
@@ -502,7 +549,8 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
         "selected on the canvas that has a sibling position.",
       success: false,
     });
-    expect(writesForTurn(a.chatState.messages.at(-1)!.id)).toEqual([]);
+    const request = a.chatState.messages.find((m) => m.toolCalls?.length);
+    expect(writesForTurn(request!.id)).toEqual([]);
   });
 
   test("create_project adopts the scaffold and re-keys the pre-project session", async () => {

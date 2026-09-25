@@ -1,0 +1,130 @@
+{
+  "chatCalls": [
+    "sendMessage(\"edit it\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c1\", \"edit\")",
+    "appendToolCallDelta(\"c1\", \"{}\")",
+    "appendToolCallEnd(\"c1\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c1\", {\"success\":true,\"summary\":\"Edited.\"})",
+    "pushToolResultMessage(\"c1\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Edited.\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendDelta(\"Now the\")",
+    "setError(\"upstream 500\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "edit it"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": ["edit"]
+    },
+    {
+      "round": 2,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c1",
+                "type": "function",
+                "function": {
+                  "name": "edit",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "{\"success\":true,\"summary\":\"Edited.\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": [
+      "beginTurn(\"turn:2\")",
+      "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"/pages/index.json\",\"tool\":\"Edit\"})",
+      "endTurn(\"msg#2\") filed 1"
+    ],
+    "turns": [
+      {
+        "files": [
+          {
+            "file": "/pages/index.json",
+            "writes": [
+              {
+                "disk": false,
+                "ok": true,
+                "tool": "Edit"
+              }
+            ]
+          }
+        ],
+        "turn": "msg#2"
+      }
+    ]
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "edit it"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{}",
+          "id": "c1",
+          "name": "edit",
+          "result": {
+            "success": true,
+            "summary": "Edited."
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true,\"summary\":\"Edited.\"}",
+      "toolCallId": "c1"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "upstream 500",
+    "model": "test",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": null,
+  "historyIndex": null
+}

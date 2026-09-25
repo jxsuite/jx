@@ -26,6 +26,11 @@
     ["appendToolCallEnd", "call_2"],
     ["finishStream", "tool_calls"],
     [
+      "appendToolResult",
+      "call_2",
+      { "success": true, "summary": "Added section as child 1 of the root." }
+    ],
+    [
       "pushToolResultMessage",
       "call_2",
       "{\"success\":true,\"summary\":\"Added section as child 1 of the root.\"}"
@@ -51,7 +56,10 @@
           "id": "call_1",
           "name": "add_child",
           "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"sec",
-          "result": null
+          "result": {
+            "success": false,
+            "error": "Failed to parse arguments: JSON Parse error: Unterminated string"
+          }
         }
       ]
     },
@@ -72,7 +80,7 @@
           "id": "call_2",
           "name": "add_child",
           "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"section\"}}",
-          "result": null
+          "result": { "success": true, "summary": "Added section as child 1 of the root." }
         }
       ]
     },
@@ -81,13 +89,13 @@
       "role": "tool",
       "toolCallId": "call_2",
       "content": "{\"success\":true,\"summary\":\"Added section as child 1 of the root.\"}",
-      "timestamp": 1767225612000
+      "timestamp": 1767225613000
     },
     {
       "id": "msg_T_6",
       "role": "assistant",
       "content": "Added a pricing section.",
-      "timestamp": 1767225613000
+      "timestamp": 1767225614000
     }
   ],
   "wire": [

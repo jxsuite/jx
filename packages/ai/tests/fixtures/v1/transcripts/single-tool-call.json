@@ -1,12 +1,7 @@
 {
   "name": "single-tool-call",
-  "description": "One tool call, in the order Studio's agent loop makes the calls: finishStream first, then appendToolResult (which finds nothing to attach to, so the record keeps result: null), then the tool reply message and the next round. An assistant turn with tool calls and no text is sent with content null.",
-  "shapes": [
-    "single-tool-call",
-    "content-null-with-tool-calls",
-    "tool-result-message",
-    "tool-record-result-null"
-  ],
+  "description": "One tool call, in the order Studio's agent loop makes the calls: finishStream first, then appendToolResult (which finds the call's record on its request and attaches the result), then the tool reply message and the next round. An assistant turn with tool calls and no text is sent with content null.",
+  "shapes": ["single-tool-call", "content-null-with-tool-calls", "tool-result-message"],
   "script": [
     ["sendMessage", "Add a heading"],
     ["appendToolCallStart", "call_1", "add_child"],
@@ -40,7 +35,7 @@
           "id": "call_1",
           "name": "add_child",
           "arguments": "{\"parentPath\":[],\"node\":{\"tagName\":\"h1\",\"textContent\":\"Welcome\"}}",
-          "result": null
+          "result": { "success": true, "summary": "Added h1 as child 0 of the root." }
         }
       ]
     },
