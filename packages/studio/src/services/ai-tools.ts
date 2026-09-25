@@ -9,7 +9,7 @@
  */
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
-import type { ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
+import type { ToolRegistry, ToolResult, WriteLedger } from "@jxsuite/ai/tools";
 import type { JxMutableNode, JxPath, JxStateDefinition } from "@jxsuite/schema/types";
 import { getNodeAtPath } from "../state";
 import type { Tab } from "../tabs/tab";
@@ -25,7 +25,6 @@ import {
 import type { JxNodeValue } from "../tabs/transact";
 import type { JsonValue } from "../types";
 import { validateDoc } from "./jx-validate";
-import { recordWrite } from "./ai-writes";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import {
   reportDocumentWrite,
@@ -60,6 +59,7 @@ function noDocError(): ToolResult {
  * way (optimistic apply + undo); reporting the errors lets the agent loop self-correct on the next
  * round. Both rules are specs/ai.md §3.1.
  *
+ * @param {WriteLedger} ledger - The call's ledger (`ctx.ledger`)
  * @param {import("../tabs/tab").Tab} tab
  * @param {(t: import("../tabs/tab").Tab) => void} mutationFn
  * @param {string} summary
@@ -69,6 +69,7 @@ function noDocError(): ToolResult {
  * @returns {Promise<import("@jxsuite/ai/tools").ToolResult>}
  */
 async function applyAndValidate(
+  ledger: WriteLedger,
   tab: Tab,
   mutationFn: (t: Tab) => void,
   summary: string,
@@ -96,7 +97,7 @@ async function applyAndValidate(
   /* One ledger entry per mutation, so the panel's "Changed N files" counts documents the model
      touched rather than sentences it wrote (§7.4). `disk: false` is the load-bearing half: this
      went through transactDoc, so the tab's history — and "Restore to here" — can reach it. */
-  recordWrite({ disk: false, ok: true, path: tab.documentPath ?? "(untitled)", tool: summary });
+  ledger.record({ disk: false, ok: true, path: tab.documentPath ?? "(untitled)", tool: summary });
 
   return reportDocumentWrite(tab, before, summary, deps);
 }
@@ -232,7 +233,7 @@ export function registerAiTools(
          */
         required: ["path", "key"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -243,6 +244,7 @@ export function registerAiTools(
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateUpdateProperty(t, path, key, value ?? undefined),
           `Set "${key}" at ${JSON.stringify(path)}.`,
@@ -278,7 +280,7 @@ export function registerAiTools(
         },
         required: ["parentPath", "index", "node"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -321,6 +323,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateInsertNode(t, parentPath, index, childNode),
           `Inserted node at ${JSON.stringify([...parentPath, "children", index])}.`,
@@ -364,7 +367,7 @@ export function registerAiTools(
          */
         required: ["path", "property"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -380,6 +383,7 @@ export function registerAiTools(
         const prop = property;
         const val = value == null ? undefined : String(value);
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateUpdateStyle(t, path, prop, val),
           `Set style "${prop}" at ${JSON.stringify(path)}.`,
@@ -410,7 +414,7 @@ export function registerAiTools(
         },
         required: ["path", "value"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -420,6 +424,7 @@ export function registerAiTools(
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           /* Through the recording mutators, as two `set-key` ops, rather than by writing the node
              directly. An unrecorded write reaches the canvas only as a full re-render, history only
@@ -458,7 +463,7 @@ export function registerAiTools(
         },
         required: ["key", "value"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -471,6 +476,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           /* `mutateAddDef` rather than `mutateUpdateProperty`: the latter deletes on "", which is
              wrong for a state default (`"title": ""`). It also records the op, so the canvas, the
@@ -507,7 +513,7 @@ export function registerAiTools(
          */
         required: ["key"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -520,6 +526,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           /* The recording def mutators, for the reason `add_state` gives. Removing the last key
              drops the empty `state` object, as the Inspector's own removal does. */
@@ -567,7 +574,7 @@ export function registerAiTools(
         },
         required: ["fromPath", "toParentPath", "toIndex"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         const tab = getTab();
         if (!tab) {
           return noDocError();
@@ -593,6 +600,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
+          ctx.ledger,
           tab,
           (t) => mutateMoveNode(t, fromPath, toParentPath, toIndex),
           `Moved node from ${JSON.stringify(fromPath)} to ${JSON.stringify([...toParentPath, "children", toIndex])}.`,
@@ -628,7 +636,7 @@ export function registerAiTools(
         },
         required: ["path", "content"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         if (!saveFile) {
           return {
             success: false,
@@ -661,14 +669,14 @@ export function registerAiTools(
           // The save serializer, layout-less (`@jxsuite/schema/json-layout`): the assistant supplied a
           // Value, not a text, so the formatter's layout for fresh output is the right one.
           await saveFile(relPath, serializeJson(content, null));
-          recordWrite({ disk: true, ok: true, path: relPath, tool: "create_component" });
+          ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "create_component" });
           return {
             success: true,
             summary: await reconcileAfterWrite(relPath, `Created component at "${relPath}".`),
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          recordWrite({
+          ctx.ledger.record({
             disk: true,
             error: message,
             ok: false,
@@ -707,7 +715,7 @@ export function registerAiTools(
         },
         required: ["path", "content"],
       },
-      async execute(args) {
+      async execute(args, ctx) {
         if (!saveFile) {
           return {
             success: false,
@@ -739,14 +747,14 @@ export function registerAiTools(
         try {
           // As `create_component`: a value the assistant supplied, written in the formatter's layout.
           await saveFile(relPath, serializeJson(content, null));
-          recordWrite({ disk: true, ok: true, path: relPath, tool: "create_page" });
+          ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "create_page" });
           return {
             success: true,
             summary: await reconcileAfterWrite(relPath, `Created page at "${relPath}".`),
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          recordWrite({
+          ctx.ledger.record({
             disk: true,
             error: message,
             ok: false,

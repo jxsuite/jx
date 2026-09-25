@@ -59,14 +59,19 @@
  * @license MIT
  */
 
-import { toolError } from "@jxsuite/ai/tools";
-import type { ToolDefinition, ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
+import { createToolContext, toolError } from "@jxsuite/ai/tools";
+import type {
+  ToolContext,
+  ToolDefinition,
+  ToolRegistry,
+  ToolResult,
+  WriteLedger,
+} from "@jxsuite/ai/tools";
 import { activeRegistry } from "../commands/active-registry";
 import { argsSchema } from "../commands/command-args";
 import { inCanvas } from "../commands/context";
 import { toRaw } from "../reactivity";
 import { projectState } from "../state";
-import { recordWrite } from "./ai-writes";
 import { reportDocumentWrite, snapshotBeforeWrite } from "./ai-write-report";
 import type { WriteReportDeps, WriteSnapshot } from "./ai-write-report";
 import type { CommandContext } from "../commands/context";
@@ -198,7 +203,7 @@ function projected(registry: CommandRegistry): AnyCommand[] {
 function definitionOf(
   registry: CommandRegistry,
   command: AnyCommand,
-  execute: (name: string, args: object) => Promise<ToolResult>,
+  execute: (name: string, args: object, ctx: ToolContext) => Promise<ToolResult>,
 ): ToolDefinition | undefined {
   const tool = command.aiTool!;
   let parameters: object;
@@ -217,7 +222,7 @@ function definitionOf(
     parameters: parameters as ToolDefinition["parameters"],
     strict: false,
     llmStrict: false,
-    execute: (args) => execute(tool.name, args),
+    execute: (args, ctx) => execute(tool.name, args, ctx),
   };
 }
 
@@ -235,7 +240,7 @@ function definitionOf(
  */
 export function advertisedCommandTools(
   registry: CommandRegistry,
-  execute: (name: string, args: object) => Promise<ToolResult> = async (name) =>
+  execute: (name: string, args: object, ctx: ToolContext) => Promise<ToolResult> = async (name) =>
     toolError(`Tool "${name}" was listed without an executor.`),
 ): ToolDefinition[] {
   const definitions: ToolDefinition[] = [];
@@ -324,13 +329,18 @@ function defaultPaths(command: AnyCommand, tab: Tab | null): string[] {
  * had — and files nothing, because the ledger names files that changed; `undefined` is a report
  * that named none and takes the record's defaults.
  */
-function fileLedger(command: AnyCommand, tab: Tab | null, wrote?: readonly string[]): void {
+function fileLedger(
+  ledger: WriteLedger,
+  command: AnyCommand,
+  tab: Tab | null,
+  wrote?: readonly string[],
+): void {
   if (command.undo === undefined) {
     return;
   }
   const disk = command.undo === "none";
   for (const path of wrote ?? defaultPaths(command, tab)) {
-    recordWrite({ disk, ok: true, path, tool: command.title });
+    ledger.record({ disk, ok: true, path, tool: command.title });
   }
 }
 
@@ -355,7 +365,11 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
    * @param {object} received
    * @returns {Promise<ToolResult>}
    */
-  async function execute(name: string, received: object): Promise<ToolResult> {
+  async function execute(
+    name: string,
+    received: object,
+    ctx: ToolContext = createToolContext(),
+  ): Promise<ToolResult> {
     const registry = activeRegistry();
     const command = commandFor(name);
     if (!registry || !command) {
@@ -426,7 +440,7 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
          Left to the loop, the throw would be labelled "Failed to parse arguments" and the ledger
          would never be filed. So the ledger is filed from `undo`'s defaults — the report that would
          have named the paths is the thing that failed — and the model is told both halves. */
-      fileLedger(command, tab, projectUnchanged ? [] : undefined);
+      fileLedger(ctx.ledger, command, tab, projectUnchanged ? [] : undefined);
       const message = error instanceof Error ? error.message : String(error);
       return { error: `${command.title} ran, but its report failed: ${message}`, success: false };
     }
@@ -442,7 +456,7 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
         summary = `${command.title} changed nothing: project.json is exactly as it was.`;
       }
     }
-    fileLedger(command, tab, wrote);
+    fileLedger(ctx.ledger, command, tab, wrote);
     if (tab && snapshot) {
       const verdict = await reportDocumentWrite(tab, snapshot, summary, deps);
       if (!verdict.success) {
@@ -530,9 +544,9 @@ export function composeToolRegistries(hand: ToolRegistry, commands: ToolRegistry
         ? side.validate(name, args)
         : { valid: false, errors: [`Unknown tool: "${name}"`] };
     },
-    async execute(name, args) {
+    async execute(name, args, ctx) {
       const side = sideOf(name);
-      return side ? side.execute(name, args) : toolError(`Unknown tool: "${name}"`);
+      return side ? side.execute(name, args, ctx) : toolError(`Unknown tool: "${name}"`);
     },
   };
 }

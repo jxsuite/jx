@@ -13,7 +13,8 @@ import { createToolRegistry } from "@jxsuite/ai";
 import { registerProjectTools } from "../src/services/ai-project-tools";
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
-import { beginTurn, endTurn, resetAiWrites } from "../src/services/ai-writes";
+import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
+import { recordingContext } from "./harness/recording-context";
 import type { CreateProjectDestination, DirEntry } from "../src/types";
 
 /** The shape of the `createProject` options the create_project tool sends to the platform. */
@@ -688,9 +689,13 @@ describe("ai-project-tools — create_project", () => {
       { adoptProject: async () => {} },
       { createProject: async () => ({ config: {}, root: "/abs/solo" }) },
     );
-    beginTurn("created");
-    await created.registry.execute("create_project", { location: "/home/dev/Sites", name: "Solo" });
-    expect(endTurn("m1")).toEqual([
+    const createdCall = recordingContext();
+    await created.registry.execute(
+      "create_project",
+      { location: "/home/dev/Sites", name: "Solo" },
+      createdCall,
+    );
+    expect(fileTurn("m1", createdCall.ledger.writes)).toEqual([
       { disk: true, ok: true, path: "/abs/solo", tool: "create_project" },
     ]);
 
@@ -703,9 +708,13 @@ describe("ai-project-tools — create_project", () => {
         },
       },
     );
-    beginTurn("failed");
-    await failing.registry.execute("create_project", { location: "/home/dev/Sites", name: "Dup" });
-    expect(endTurn("m2")).toEqual([]);
+    const failedCall = recordingContext();
+    await failing.registry.execute(
+      "create_project",
+      { location: "/home/dev/Sites", name: "Dup" },
+      failedCall,
+    );
+    expect(fileTurn("m2", failedCall.ledger.writes)).toEqual([]);
     resetAiWrites();
   });
 

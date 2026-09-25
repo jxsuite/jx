@@ -11,7 +11,7 @@ import type { Tab } from "../src/tabs/tab";
 import { registerAiTools } from "../src/services/ai-tools";
 import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
 import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
-import { recordWrite, resetAiWrites, writesForTurn } from "../src/services/ai-writes";
+import { resetAiWrites, writesForTurn } from "../src/services/ai-writes";
 import { projectChip } from "../src/panels/ai-chat/chat-view";
 
 /**
@@ -617,9 +617,9 @@ describe("ai agent loop — how a turn ended", () => {
         name: "edit",
         description: "records one write",
         parameters: { type: "object", properties: {} },
-        async execute() {
+        async execute(_args, ctx) {
           const ok = opts.ok ?? true;
-          recordWrite({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
+          ctx.ledger.record({ disk: false, ok, path: "/pages/index.json", tool: "Edit" });
           if (opts.stopDuring) {
             controller.abort();
           }
@@ -959,8 +959,8 @@ describe("ai agent loop — what a turn applied, and a turn that drew nothing", 
         name: "bootstrap",
         description: "creates a project the way create_project does",
         parameters: { type: "object", properties: {} },
-        async execute() {
-          recordWrite({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
+        async execute(_args, ctx) {
+          ctx.ledger.record({ disk: true, ok: true, path: "/abs/site", tool: "create_project" });
           return { success: true, summary: "Created project at /abs/site and opened it." };
         },
       }),

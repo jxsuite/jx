@@ -158,6 +158,22 @@ The assistant's tools are two kinds, and the difference is who wrote the tool.
 
 **The loop sees one registry**, `composeToolRegistries(hand, commands)`: the hand side gated by tier, the command side gated by the record, listed hand-first, routed by name, with an unknown name answered as `@jxsuite/ai` answers it. The two name sets are disjoint and their sum is the composite's length, asserted with counts, because `ToolRegistry.register` only warns on a duplicate name. The prompt's tool list is the same two filters — `toolActive` for the hand rows and `advertisedCommandTools` for the records — so it advertises exactly what the gate will honour.
 
+### 3.7 A tool call carries its context
+
+> **Status:** Implemented
+
+A tool is handed everything it needs to know about the call it serves as its second argument, a `ToolContext` (`@jxsuite/ai/tools`), rather than reaching for it through module state. The same tool can then run in a Studio window, a Worker or an MCP server, and two turns cannot share a slot that belongs to one of them. Four properties are normative.
+
+**The context carries per-call facts only.** It is `{ signal, callId, actor, ledger, session, progress }`: the call's own signal, the provider's id for the call, who the call acts for, the turn's write ledger, the conversation's session facts, and a sink for progress on a long call. A host service a tool needs (the adopter that opens a project, the store a wizard filled in) is bound when the tool is registered, not passed per call.
+
+**The signal is the call's, not the turn's.** It aborts when the turn does, with the turn's reason, and the host unlinks it once the call settles (`linkCallSignal`). A Stop therefore reaches a call that is still running, a question waiting on the author or an import mid-crawl, and never a call that has already finished.
+
+**A write is recorded on the call's ledger, and the ledger belongs to the turn.** Every call in a turn records into that turn's one ledger, and the host files it under the message the turn drew when the turn ends (§3.2). A tool run outside any turn, from a command or a test, gets a detached context: a signal that never aborts, an empty id, and a fresh ledger nothing files, so it records into no one's turn.
+
+**What a conversation remembers is a session fact.** A fact a tool must keep across turns, such as an import having already run, is set on `ctx.session` and read back from it; the host decides how long the facts last. In Studio they last until New Chat: every turn of a chat sees the same set, and opening another chat from Chat History keeps them, which is how the one-import guard they replaced has always behaved. They are not saved with the conversation, so a reload starts with none.
+
+A registry that wraps another (the availability gate, the union with the command tools) forwards the context unchanged, so the leaf tool always receives the one the host built. A definition declares `interactive` when its call suspends the turn on a person rather than doing work, which is how a host knows the round spends no work budget (§3.4).
+
 ## 4. Security & Trust
 
 The assistant executes only through the same file/RPC surfaces a human uses, behind the server's Origin/Host gate and path containment (`@jxsuite/server` §4.2). It has no independent network or filesystem access beyond the connected provider endpoint.
