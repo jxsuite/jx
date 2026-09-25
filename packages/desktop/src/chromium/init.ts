@@ -1,28 +1,16 @@
-import { registerPlatform } from "@jxsuite/studio/platform";
+/* FIRST, and it must stay first: `../boot` announces this launcher on `globalThis.__jxLauncher` and
+   starts recording page errors as its module body evaluates. ESM evaluates imports in order, so
+   only from this position does it run before the modules below — and it is one of THEM throwing at
+   import (desktop 5.0.0-5.1.3, in the Electrobun shim) that it exists to record. See boot.ts. */
+import { bootLauncher, stripLaunchToken } from "../boot";
 import { hydrateGithubToken } from "@jxsuite/studio/github-auth";
 import { createDesktopPlatform } from "./platform";
 
 // CreateDesktopPlatform reads ?token from the shell URL to authenticate its WS upgrade.
-const platform = createDesktopPlatform();
-registerPlatform(platform);
+await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "chromium" });
 
-/* Ask the 0600 credential store whether a GitHub token exists, so the accounts pane can say so on
-   the first frame. The answer is a boolean: the token itself stays out of the webview until a
-   sign-in asks for it. */
-try {
-  const { stored } = await platform.githubAuth.status();
-  hydrateGithubToken(stored);
-} catch {
-  // An unreachable store just means the accounts pane says "not signed in" until a sign-in runs.
-}
-
-// Strip ?token from the address bar after boot so it never leaks (e.g. via a Referer header or a
-// Copy-pasted URL). The platform already captured it above; the loopback bind + only-our-HTML-at-
-// Origin invariant is the real boundary. Best-effort: guarded for non-browser (test) environments.
-try {
-  const url = new URL(location.href);
-  if (url.searchParams.has("token")) {
-    url.searchParams.delete("token");
-    history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }
-} catch {}
+/* Strip ?token from the address bar after boot so it never leaks (e.g. via a Referer header or a
+   copy-pasted URL). The platform already captured it above — and it goes whether or not the boot
+   succeeded: a failed boot leaves the window open on Studio's failure screen, and the token must
+   not sit in that address bar either. */
+stripLaunchToken();

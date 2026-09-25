@@ -154,7 +154,7 @@ import { seedPublishConnected } from "./publish/publish-panel";
 
 import { getPlatform, hasPlatform, registerPlatform } from "./platform";
 import { parseMediaEntries } from "./utils/canvas-media";
-import { resolveDefaultPlatform } from "./platforms/default-platform";
+import { PlatformUnavailableError, resolveDefaultPlatform } from "./platforms/default-platform";
 import { mountResizeEdges } from "./resize-edges";
 import {
   defBadgeLabel,
@@ -266,7 +266,7 @@ import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
 import type { JxDocument, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
-import { mountShellTree } from "./shell/tree";
+import { mountBootFailureTree, mountShellTree } from "./shell/tree";
 
 // The bundler's `<link rel=modulepreload>` batching is installed on the module scope: before the
 // First lazy `import()` of any surface that runs, so the palette's first open does not pay a
@@ -453,8 +453,24 @@ initCssData(webdata);
 // Register the default platform adapter (PAL) if none was pre-registered (desktop registers its own
 // On window.__jxPlatform). resolveDefaultPlatform picks cloud when the shell signalled it, creating
 // The cloud adapter inside THIS bundle so collab shares studio's single yjs, else the dev server.
+//
+// Unless a launcher was declared or announced and registered nothing: then there is no adapter to
+// Pick, and resolveDefaultPlatform throws rather than hand a desktop window the dev-server adapter
+// (what 5.0.0-5.1.3 did — a frame that drew, and a first click that said "Failed to fetch"). The
+// Boot-failure screen is drawn INSTEAD of the frame, and the error is rethrown because ESM has no
+// Top-level return: stopping the module is the only way to keep every line below from running
+// Against no platform, and the uncaught error is the console's copy of what the screen says.
+// Nothing above this line may call getPlatform(), or it would throw first with a message about
+// Registration order instead of this one.
 if (!hasPlatform()) {
-  registerPlatform(resolveDefaultPlatform());
+  try {
+    registerPlatform(resolveDefaultPlatform());
+  } catch (error) {
+    if (error instanceof PlatformUnavailableError) {
+      await mountBootFailureTree(error.refusal);
+    }
+    throw error;
+  }
 }
 
 mountResizeEdges();
