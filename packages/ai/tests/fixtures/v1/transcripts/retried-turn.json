@@ -1,0 +1,38 @@
+{
+  "name": "retried-turn",
+  "description": "Retry: retryLast removes the last assistant turn and its user message, and the caller sends the text again. The transcript and the wire carry only the second attempt.",
+  "shapes": ["retried-turn", "plain-exchange"],
+  "script": [
+    ["sendMessage", "Summarize the page"],
+    ["appendDelta", "It is a landing page"],
+    ["finishStream", "stop"],
+    ["retryLast"],
+    ["sendMessage", "Summarize the page"],
+    [
+      "appendDelta",
+      "A landing page for a realty office, with a hero, listings and a contact form."
+    ],
+    ["finishStream", "stop"]
+  ],
+  "messages": [
+    {
+      "id": "msg_T_1",
+      "role": "user",
+      "content": "Summarize the page",
+      "timestamp": 1767225605000
+    },
+    {
+      "id": "msg_T_2",
+      "role": "assistant",
+      "content": "A landing page for a realty office, with a hero, listings and a contact form.",
+      "timestamp": 1767225605000
+    }
+  ],
+  "wire": [
+    { "role": "user", "content": "Summarize the page" },
+    {
+      "role": "assistant",
+      "content": "A landing page for a realty office, with a hero, listings and a contact form."
+    }
+  ]
+}

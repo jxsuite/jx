@@ -1,0 +1,4 @@
+HTTP/1.1 500 Internal Server Error
+Content-Type: text/plain; charset=utf-8
+
+Internal Server Error

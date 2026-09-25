@@ -1,0 +1,134 @@
+{
+  "name": "v1-repaired-and-trimmed",
+  "description": "What the current build persists after a send that trimmed and repaired: trimContext's summary note leads, and an unanswered ask_user already carries its sealed reply. Restored verbatim, and the repair has nothing left to do.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_trimmed",
+      "sessions": [
+        {
+          "id": "s_trimmed",
+          "title": "Keep going",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225605000,
+          "messageCount": 5
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_trimmed": [
+      {
+        "id": "ctx_summary_1767225600000",
+        "role": "user",
+        "content": "[Earlier conversation truncated. 31 messages dropped to stay within token budget. The most recent 4 messages are preserved.]",
+        "timestamp": 1767225600000
+      },
+      {
+        "id": "msg_T_1",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225601000,
+        "toolCalls": [
+          {
+            "id": "call_q",
+            "name": "ask_user",
+            "arguments": "{\"question\":\"Keep the hero image?\"}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
+        "id": "sealed_call_q_0",
+        "role": "tool",
+        "timestamp": 1767225601000,
+        "toolCallId": "call_q"
+      },
+      { "id": "msg_T_2", "role": "user", "content": "Keep going", "timestamp": 1767225602000 },
+      {
+        "id": "msg_T_3",
+        "role": "assistant",
+        "content": "Continuing without the question.",
+        "timestamp": 1767225603000
+      }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_trimmed",
+    "storeActiveId": "s_trimmed",
+    "sessions": [
+      {
+        "id": "s_trimmed",
+        "title": "Keep going",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225605000,
+        "messageCount": 5
+      }
+    ],
+    "restored": [
+      {
+        "id": "ctx_summary_1767225600000",
+        "role": "user",
+        "content": "[Earlier conversation truncated. 31 messages dropped to stay within token budget. The most recent 4 messages are preserved.]",
+        "timestamp": 1767225600000
+      },
+      {
+        "id": "msg_T_1",
+        "role": "assistant",
+        "content": "",
+        "timestamp": 1767225601000,
+        "toolCalls": [
+          {
+            "id": "call_q",
+            "name": "ask_user",
+            "arguments": "{\"question\":\"Keep the hero image?\"}",
+            "result": null
+          }
+        ]
+      },
+      {
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
+        "id": "sealed_call_q_0",
+        "role": "tool",
+        "timestamp": 1767225601000,
+        "toolCallId": "call_q"
+      },
+      { "id": "msg_T_2", "role": "user", "content": "Keep going", "timestamp": 1767225602000 },
+      {
+        "id": "msg_T_3",
+        "role": "assistant",
+        "content": "Continuing without the question.",
+        "timestamp": 1767225603000
+      }
+    ],
+    "wire": [
+      {
+        "role": "user",
+        "content": "[Earlier conversation truncated. 31 messages dropped to stay within token budget. The most recent 4 messages are preserved.]"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_q",
+            "type": "function",
+            "function": {
+              "name": "ask_user",
+              "arguments": "{\"question\":\"Keep the hero image?\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_q",
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}"
+      },
+      { "role": "user", "content": "Keep going" },
+      { "role": "assistant", "content": "Continuing without the question." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

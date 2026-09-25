@@ -1,0 +1,81 @@
+{
+  "name": "v1-project-isolation",
+  "description": "Three stores side by side (this project, another project, unscoped). Only the open project's active session is restored; the others are neither read nor touched.",
+  "root": "/proj/a",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/a": {
+      "version": 1,
+      "activeId": "s_a",
+      "sessions": [
+        {
+          "id": "s_a",
+          "title": "Question for A",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/a:s_a": [
+      { "id": "a_1", "role": "user", "content": "Question for A", "timestamp": 1767225601000 },
+      { "id": "a_2", "role": "assistant", "content": "Answer for A", "timestamp": 1767225602000 }
+    ],
+    "jx-ai-chat-sessions:/proj/b": {
+      "version": 1,
+      "activeId": "s_b",
+      "sessions": [
+        {
+          "id": "s_b",
+          "title": "Question for B",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/b:s_b": [
+      { "id": "b_1", "role": "user", "content": "Question for B", "timestamp": 1767225601000 },
+      { "id": "b_2", "role": "assistant", "content": "Answer for B", "timestamp": 1767225602000 }
+    ],
+    "jx-ai-chat-sessions": {
+      "version": 1,
+      "activeId": "s_u",
+      "sessions": [
+        {
+          "id": "s_u",
+          "title": "Unscoped question",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ]
+    },
+    "jx-ai-chat-session:s_u": [
+      { "id": "u_1", "role": "user", "content": "Unscoped question", "timestamp": 1767225601000 },
+      { "id": "u_2", "role": "assistant", "content": "Unscoped answer", "timestamp": 1767225602000 }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_a",
+    "storeActiveId": "s_a",
+    "sessions": [
+      {
+        "id": "s_a",
+        "title": "Question for A",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      { "id": "a_1", "role": "user", "content": "Question for A", "timestamp": 1767225601000 },
+      { "id": "a_2", "role": "assistant", "content": "Answer for A", "timestamp": 1767225602000 }
+    ],
+    "wire": [
+      { "role": "user", "content": "Question for A" },
+      { "role": "assistant", "content": "Answer for A" }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

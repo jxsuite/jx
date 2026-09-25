@@ -13,7 +13,7 @@
 
 ## 1. Overview
 
-`@jxsuite/ai` is the assistant that edits a Jx project from natural-language instructions inside Studio. It generates and edits pages and components on the canvas while the user watches. It ships **no account and no hosted model**: the user connects their own provider, and Studio talks to it through the dev/desktop server's AI proxy (`/__studio/ai/*`, see `@jxsuite/server` §4). The package itself (`@jxsuite/ai`) has no Jx dependencies — it is a provider-agnostic streaming tool-call client built on `@vue/reactivity`.
+`@jxsuite/ai` is the assistant that edits a Jx project from natural-language instructions inside Studio. It generates and edits pages and components on the canvas while the user watches. It ships **no account and no hosted model**: the user connects their own provider, and Studio talks to it through the dev/desktop server's AI proxy (`/__studio/ai/*`, see `@jxsuite/server` §4). The package itself (`@jxsuite/ai`) is a provider-agnostic streaming tool-call client. It depends on `@jxsuite/protocol`, and through it on `@jxsuite/schema`, for the wire's problem documents; only its reactive chat store uses `@vue/reactivity`. Its leaves — `./streaming-client` and `./tools` — are **Worker-safe**: they import no `node:*`, no `@vue/reactivity` and no DOM, and `packages/ai/tests/worker-safety.test.ts` and the `typecheck:ai-worker` gate hold them to it, because the platform's Worker imports them. The root entry is not Worker-safe, since it re-exports the chat store.
 
 ## 2. Provider Contract
 

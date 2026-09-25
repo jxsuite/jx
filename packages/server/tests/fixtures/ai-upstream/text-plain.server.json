@@ -1,0 +1,26 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Héllo"
+    },
+    {
+      "type": "delta",
+      "content": ", 世界"
+    },
+    {
+      "type": "delta",
+      "content": " 👋"
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

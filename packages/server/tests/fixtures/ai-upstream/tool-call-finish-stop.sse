@@ -1,0 +1,6 @@
+data: {"id":"chatcmpl-WorkersAiStop","object":"chat.completion.chunk","created":1727000009,"model":"@cf/meta/llama-4-scout-17b-16e-instruct","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_wai_1","type":"function","function":{"name":"set_text","arguments":"{\"path\":[\"children\",0],\"value\":\"Hello\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-WorkersAiStop","object":"chat.completion.chunk","created":1727000009,"model":"@cf/meta/llama-4-scout-17b-16e-instruct","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

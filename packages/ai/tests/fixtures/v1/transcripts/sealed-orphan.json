@@ -1,0 +1,91 @@
+{
+  "name": "sealed-orphan",
+  "description": "A transcript as Studio's pruneOrphanToolMessages leaves it: Stop landed while ask_user waited, so the second call of the round was never run. Its synthesized failure is inserted directly after the requesting message (ahead of the real reply) with the requester's timestamp. Authored; Studio's ai-session-corpus test re-derives the sealed message from the real function.",
+  "shapes": ["sealed-orphan", "parallel-tool-calls", "tool-record-result-null"],
+  "messages": [
+    {
+      "id": "msg_T_1",
+      "role": "user",
+      "content": "Ask me about the footer, then add a contact link",
+      "timestamp": 1767225601000
+    },
+    {
+      "id": "msg_T_2",
+      "role": "assistant",
+      "content": "",
+      "timestamp": 1767225602000,
+      "toolCalls": [
+        {
+          "id": "call_ask",
+          "name": "ask_user",
+          "arguments": "{\"question\":\"Dark or light footer?\"}",
+          "result": null
+        },
+        {
+          "id": "call_add",
+          "name": "add_child",
+          "arguments": "{\"parentPath\":[\"children\",2],\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"}}",
+          "result": null
+        }
+      ]
+    },
+    {
+      "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
+      "id": "sealed_call_add_0",
+      "role": "tool",
+      "timestamp": 1767225602000,
+      "toolCallId": "call_add"
+    },
+    {
+      "id": "msg_T_3",
+      "role": "tool",
+      "toolCallId": "call_ask",
+      "content": "{\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"}",
+      "timestamp": 1767225603000
+    },
+    { "id": "msg_T_4", "role": "user", "content": "Carry on", "timestamp": 1767225604000 },
+    {
+      "id": "msg_T_5",
+      "role": "assistant",
+      "content": "Picking up where we left off.",
+      "timestamp": 1767225605000
+    }
+  ],
+  "wire": [
+    { "role": "user", "content": "Ask me about the footer, then add a contact link" },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_ask",
+          "type": "function",
+          "function": {
+            "name": "ask_user",
+            "arguments": "{\"question\":\"Dark or light footer?\"}"
+          }
+        },
+        {
+          "id": "call_add",
+          "type": "function",
+          "function": {
+            "name": "add_child",
+            "arguments": "{\"parentPath\":[\"children\",2],\"node\":{\"tagName\":\"a\",\"textContent\":\"Contact\"}}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_add",
+      "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_ask",
+      "content": "{\"success\":false,\"error\":\"The user did not answer — the turn was stopped.\"}"
+    },
+    { "role": "user", "content": "Carry on" },
+    { "role": "assistant", "content": "Picking up where we left off." }
+  ]
+}

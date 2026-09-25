@@ -1,0 +1,27 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "Two"
+    },
+    {
+      "type": "delta",
+      "content": " words"
+    },
+    {
+      "type": "usage",
+      "inputTokens": 20,
+      "outputTokens": 3
+    },
+    {
+      "type": "done",
+      "stopReason": "stop"
+    }
+  ],
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

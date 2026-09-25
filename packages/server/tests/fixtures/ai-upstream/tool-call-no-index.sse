@@ -1,0 +1,10 @@
+data: {"id":"chatcmpl-AbC123NoIndex","object":"chat.completion.chunk","created":1727000006,"model":"gemini-2.5-flash","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"call_A","type":"function","function":{"name":"read_document","arguments":"{\"path\":\"a.json\"}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123NoIndex","object":"chat.completion.chunk","created":1727000006,"model":"gemini-2.5-flash","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"id":"call_B","type":"function","function":{"name":"list_files","arguments":"{\"dir\":"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123NoIndex","object":"chat.completion.chunk","created":1727000006,"model":"gemini-2.5-flash","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"\"src\"}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-AbC123NoIndex","object":"chat.completion.chunk","created":1727000006,"model":"gemini-2.5-flash","system_fingerprint":"fp_7f6be3efb0","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

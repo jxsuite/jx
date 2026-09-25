@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "type": "error",
+      "message": "API error 403: Authentication error",
+      "code": "403"
+    }
+  ]
+}

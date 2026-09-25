@@ -1,0 +1,104 @@
+{
+  "chatCalls": [
+    "sendMessage(\"do both\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"a\", \"first\")",
+    "appendToolCallEnd(\"a\")",
+    "appendToolCallStart(\"b\", \"second\")",
+    "appendToolCallEnd(\"b\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"a\", {\"success\":true})",
+    "pushToolResultMessage(\"a\", \"{\\\"success\\\":true}\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "live",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "do both"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page",
+        "first",
+        "second"
+      ]
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#3\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "do both"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "",
+          "id": "a",
+          "name": "first",
+          "result": null
+        },
+        {
+          "arguments": "",
+          "id": "b",
+          "name": "second",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":true}",
+      "toolCallId": "a"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "test",
+    "status": "idle",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0,
+  "extra": {
+    "ran": ["first"]
+  }
+}

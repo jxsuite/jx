@@ -1,0 +1,60 @@
+{
+  "chatCalls": [
+    "sendMessage(\"hi\")",
+    "toMessagesArray()",
+    "setTokenCount(5516)",
+    "setContextWarning(false)",
+    "setTokenCount(5516)",
+    "setModel(\"gpt-4o\")",
+    "setError(\"network down\")"
+  ],
+  "clientCalls": [],
+  "ledger": {
+    "events": [],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "hi"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "network down",
+    "model": "gpt-4o",
+    "status": "error",
+    "tokenCount": 5516,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0,
+  "extra": {
+    "activeSession": "session#1",
+    "clientOptions": {
+      "chatUrl": "/__mock/ai/chat",
+      "model": "gpt-4o"
+    },
+    "platformCalls": ["aiChatUrl()"],
+    "projectRoot": null,
+    "sessions": {
+      "(unscoped)": [
+        {
+          "id": "session#1",
+          "persisted": ["msg#1 user"],
+          "title": "hi"
+        }
+      ]
+    },
+    "writtenFiles": []
+  }
+}

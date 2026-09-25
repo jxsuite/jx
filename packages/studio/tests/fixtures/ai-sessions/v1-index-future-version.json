@@ -1,0 +1,48 @@
+{
+  "name": "v1-index-future-version",
+  "description": "An index claiming version 2 with a field v1 does not know. readIndex checks only for a sessions array, never the version, so it is read as v1 and its session restored.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 2,
+      "activeId": "s_next",
+      "sessions": [
+        {
+          "id": "s_next",
+          "title": "From the future",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 2
+        }
+      ],
+      "pinned": ["s_next"]
+    },
+    "jx-ai-chat-session:/proj/demo:s_next": [
+      { "id": "next_1", "role": "user", "content": "From the future", "timestamp": 1767225601000 },
+      { "id": "next_2", "role": "assistant", "content": "Read as v1.", "timestamp": 1767225602000 }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_next",
+    "storeActiveId": "s_next",
+    "sessions": [
+      {
+        "id": "s_next",
+        "title": "From the future",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 2
+      }
+    ],
+    "restored": [
+      { "id": "next_1", "role": "user", "content": "From the future", "timestamp": 1767225601000 },
+      { "id": "next_2", "role": "assistant", "content": "Read as v1.", "timestamp": 1767225602000 }
+    ],
+    "wire": [
+      { "role": "user", "content": "From the future" },
+      { "role": "assistant", "content": "Read as v1." }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

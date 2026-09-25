@@ -1,0 +1,321 @@
+{
+  "chatCalls": [
+    "sendMessage(\"delete everything repeatedly\")",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c\", \"set_text\")",
+    "appendToolCallDelta(\"c\", \"{\\\"path\\\":[\\\"children\\\",9],\\\"value\\\":\\\"x\\\"}\")",
+    "appendToolCallEnd(\"c\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c\", {\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"})",
+    "pushToolResultMessage(\"c\", \"{\\\"success\\\":false,\\\"error\\\":\\\"No node exists at path [\\\\\\\"children\\\\\\\",9].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c\", \"set_text\")",
+    "appendToolCallDelta(\"c\", \"{\\\"path\\\":[\\\"children\\\",9],\\\"value\\\":\\\"x\\\"}\")",
+    "appendToolCallEnd(\"c\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c\", {\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"})",
+    "pushToolResultMessage(\"c\", \"{\\\"success\\\":false,\\\"error\\\":\\\"No node exists at path [\\\\\\\"children\\\\\\\",9].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c\", \"set_text\")",
+    "appendToolCallDelta(\"c\", \"{\\\"path\\\":[\\\"children\\\",9],\\\"value\\\":\\\"x\\\"}\")",
+    "appendToolCallEnd(\"c\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c\", {\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"})",
+    "pushToolResultMessage(\"c\", \"{\\\"success\\\":false,\\\"error\\\":\\\"No node exists at path [\\\\\\\"children\\\\\\\",9].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c\", \"set_text\")",
+    "appendToolCallDelta(\"c\", \"{\\\"path\\\":[\\\"children\\\",9],\\\"value\\\":\\\"x\\\"}\")",
+    "appendToolCallEnd(\"c\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c\", {\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"})",
+    "pushToolResultMessage(\"c\", \"{\\\"success\\\":false,\\\"error\\\":\\\"No node exists at path [\\\\\\\"children\\\\\\\",9].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
+    "appendToolCallStart(\"c\", \"set_text\")",
+    "appendToolCallDelta(\"c\", \"{\\\"path\\\":[\\\"children\\\",9],\\\"value\\\":\\\"x\\\"}\")",
+    "appendToolCallEnd(\"c\")",
+    "finishStream(\"tool_calls\")",
+    "appendToolResult(\"c\", {\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"})",
+    "pushToolResultMessage(\"c\", \"{\\\"success\\\":false,\\\"error\\\":\\\"No node exists at path [\\\\\\\"children\\\\\\\",9].\\\"}\")",
+    "setError(\"I ran out of tool-call rounds (5) before finishing.\\n\\nErrors encountered:\\n- No node exists at path [\\\"children\\\",9].\\n\\nYou can continue by sending another message, or try a more specific request.\")"
+  ],
+  "clientCalls": [
+    {
+      "round": 1,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "user",
+            "content": "delete everything repeatedly"
+          }
+        ],
+        "carried": 0
+      },
+      "systemPrompt": {
+        "hash": "e3b0c44298fc",
+        "headings": [],
+        "length": 0
+      },
+      "tools": [
+        "read_document",
+        "set_property",
+        "add_child",
+        "set_style",
+        "set_text",
+        "add_state",
+        "update_state",
+        "move_node",
+        "create_component",
+        "create_page"
+      ]
+    },
+    {
+      "round": 2,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c",
+                "type": "function",
+                "function": {
+                  "name": "set_text",
+                  "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}"
+          }
+        ],
+        "carried": 1
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 3,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c",
+                "type": "function",
+                "function": {
+                  "name": "set_text",
+                  "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}"
+          }
+        ],
+        "carried": 3
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 4,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c",
+                "type": "function",
+                "function": {
+                  "name": "set_text",
+                  "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}"
+          }
+        ],
+        "carried": 5
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 5,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c",
+                "type": "function",
+                "function": {
+                  "name": "set_text",
+                  "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}"
+          }
+        ],
+        "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    }
+  ],
+  "ledger": {
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#11\") filed 0"],
+    "turns": []
+  },
+  "finalMessages": [
+    {
+      "id": "msg#1",
+      "role": "user",
+      "content": "delete everything repeatedly"
+    },
+    {
+      "id": "msg#2",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
+          "id": "c",
+          "name": "set_text",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#3",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}",
+      "toolCallId": "c"
+    },
+    {
+      "id": "msg#4",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
+          "id": "c",
+          "name": "set_text",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#5",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}",
+      "toolCallId": "c"
+    },
+    {
+      "id": "msg#6",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
+          "id": "c",
+          "name": "set_text",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#7",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}",
+      "toolCallId": "c"
+    },
+    {
+      "id": "msg#8",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
+          "id": "c",
+          "name": "set_text",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#9",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}",
+      "toolCallId": "c"
+    },
+    {
+      "id": "msg#10",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}",
+          "id": "c",
+          "name": "set_text",
+          "result": null
+        }
+      ]
+    },
+    {
+      "id": "msg#11",
+      "role": "tool",
+      "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}",
+      "toolCallId": "c"
+    }
+  ],
+  "finalState": {
+    "contextWarning": false,
+    "error": "I ran out of tool-call rounds (5) before finishing.\n\nErrors encountered:\n- No node exists at path [\"children\",9].\n\nYou can continue by sending another message, or try a more specific request.",
+    "model": "test",
+    "status": "error",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0
+}

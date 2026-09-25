@@ -1,0 +1,55 @@
+{
+  "name": "v1-missing-message-ids",
+  "description": "Persisted messages without an id, with an empty id, and without a timestamp. Restore synthesizes restored_<time>_<rand> ids for the first two and leaves the missing timestamp missing.",
+  "root": "/proj/demo",
+  "storage": {
+    "jx-ai-chat-sessions:/proj/demo": {
+      "version": 1,
+      "activeId": "s_ids",
+      "sessions": [
+        {
+          "id": "s_ids",
+          "title": "No id here",
+          "createdAt": 1767225601000,
+          "updatedAt": 1767225602000,
+          "messageCount": 3
+        }
+      ]
+    },
+    "jx-ai-chat-session:/proj/demo:s_ids": [
+      { "role": "user", "content": "No id here", "timestamp": 1767225601000 },
+      { "id": "", "role": "assistant", "content": "Empty id.", "timestamp": 1767225602000 },
+      { "id": "msg_T_3", "role": "user", "content": "No timestamp" }
+    ]
+  },
+  "expected": {
+    "assistantSessionId": "s_ids",
+    "storeActiveId": "s_ids",
+    "sessions": [
+      {
+        "id": "s_ids",
+        "title": "No id here",
+        "createdAt": 1767225601000,
+        "updatedAt": 1767225602000,
+        "messageCount": 3
+      }
+    ],
+    "restored": [
+      { "role": "user", "content": "No id here", "timestamp": 1767225601000, "id": "restored_T_1" },
+      {
+        "id": "restored_T_2",
+        "role": "assistant",
+        "content": "Empty id.",
+        "timestamp": 1767225602000
+      },
+      { "id": "msg_T_3", "role": "user", "content": "No timestamp" }
+    ],
+    "wire": [
+      { "role": "user", "content": "No id here" },
+      { "role": "assistant", "content": "Empty id." },
+      { "role": "user", "content": "No timestamp" }
+    ],
+    "repair": { "dropped": 0, "sealed": 0 },
+    "storage": "unchanged"
+  }
+}

@@ -1,0 +1,10 @@
+data: {"choices":[],"created":0,"id":"","model":"","object":"","prompt_filter_results":[{"prompt_index":0,"content_filter_results":{"hate":{"filtered":false,"severity":"safe"},"violence":{"filtered":false,"severity":"safe"}}}]}
+
+data: {"choices":[{"content_filter_results":{"hate":{"filtered":false,"severity":"safe"},"violence":{"filtered":false,"severity":"safe"}},"delta":{"role":"assistant","content":""},"finish_reason":null,"index":0,"logprobs":null}],"created":1727000008,"id":"chatcmpl-AbC123Filter","model":"gpt-4o-2024-08-06","object":"chat.completion.chunk","system_fingerprint":"fp_7f6be3efb0"}
+
+data: {"choices":[{"content_filter_results":{"hate":{"filtered":false,"severity":"safe"},"violence":{"filtered":false,"severity":"safe"}},"delta":{"content":"Here is how"},"finish_reason":null,"index":0,"logprobs":null}],"created":1727000008,"id":"chatcmpl-AbC123Filter","model":"gpt-4o-2024-08-06","object":"chat.completion.chunk","system_fingerprint":"fp_7f6be3efb0"}
+
+data: {"choices":[{"content_filter_results":{"hate":{"filtered":false,"severity":"safe"},"violence":{"filtered":true,"severity":"high"}},"delta":{},"finish_reason":"content_filter","index":0,"logprobs":null}],"created":1727000008,"id":"chatcmpl-AbC123Filter","model":"gpt-4o-2024-08-06","object":"chat.completion.chunk","system_fingerprint":"fp_7f6be3efb0"}
+
+data: [DONE]
+

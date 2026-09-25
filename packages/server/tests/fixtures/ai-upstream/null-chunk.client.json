@@ -1,0 +1,12 @@
+{
+  "frames": [
+    {
+      "type": "delta",
+      "content": "a"
+    },
+    {
+      "type": "error",
+      "message": "Stream error: null is not an object (evaluating 'parsed.usage')"
+    }
+  ]
+}

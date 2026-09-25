@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "type": "error",
+      "message": "API error 502: Bad Gateway",
+      "code": "502"
+    }
+  ]
+}

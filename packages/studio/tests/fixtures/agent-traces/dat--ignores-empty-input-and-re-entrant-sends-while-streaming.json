@@ -1,0 +1,37 @@
+{
+  "chatCalls": ["set status = \"streaming\""],
+  "clientCalls": [],
+  "ledger": {
+    "events": [],
+    "turns": []
+  },
+  "finalMessages": [],
+  "finalState": {
+    "contextWarning": false,
+    "error": null,
+    "model": "gpt-4o",
+    "status": "streaming",
+    "tokenCount": 0,
+    "usage": null
+  },
+  "finalDocument": {
+    "children": [
+      {
+        "tagName": "p",
+        "textContent": "Hello"
+      }
+    ],
+    "tagName": "div"
+  },
+  "historyIndex": 0,
+  "extra": {
+    "activeSession": null,
+    "clientOptions": null,
+    "platformCalls": [],
+    "projectRoot": null,
+    "sessions": {
+      "(unscoped)": []
+    },
+    "writtenFiles": []
+  }
+}
