@@ -8,7 +8,19 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { REQUIRED, verifyBundle } from "../scripts/verify-bundle";
+import { INIT_BUNDLE, REQUIRED, verifyBundle } from "../scripts/verify-bundle";
+
+/** A sound launcher init bundle: the inlined view SDK and the boot signal src/boot.ts publishes. */
+const CLEAN_INIT = "class Electroview {}\nglobalThis.__jxLauncher ??= {};\n";
+
+/* What desktop 5.0.0–5.1.3 packaged instead (verbatim lines from the 5.1.3 macOS init.js): the
+   file exists, so the old existence-only gate passed it, and it throws the moment it is imported. */
+const THROWING_INIT = `// ../../node_modules/electrobun/lib/moved.cjs
+var require_moved = __commonJS(function() {
+  throw new Error("Electrobun 2.x APIs come from the Hutch devkit, not node_modules. ");
+});
+var import_view = __toESM(require_moved(), 1);
+`;
 
 const STARTER_IDS = ["alpha", "beta"];
 
@@ -19,7 +31,7 @@ function stageCompleteBundle(): void {
   for (const rel of REQUIRED) {
     const abs = join(appDir, rel);
     mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, rel.endsWith(".json") ? "[]" : "content");
+    writeFileSync(abs, rel === INIT_BUNDLE ? CLEAN_INIT : rel.endsWith(".json") ? "[]" : "content");
   }
   writeFileSync(
     join(appDir, "bun", "registry.json"),
@@ -66,5 +78,23 @@ describe("verifyBundle", () => {
   test("a missing registry is reported without throwing", () => {
     rmSync(join(appDir, "bun", "registry.json"));
     expect(verifyBundle(appDir)).toEqual(["bun/registry.json"]);
+  });
+
+  test("an init bundle built against node_modules/electrobun is reported, with the remedy", () => {
+    writeFileSync(join(appDir, INIT_BUNDLE), THROWING_INIT);
+    const problems = verifyBundle(appDir);
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems.every((line) => line.startsWith(`${INIT_BUNDLE}: `))).toBe(true);
+    expect(problems.join("\n")).toContain("check-electrobun-vendor.ts --init");
+  });
+
+  test("a sound init bundle is not reported", () => {
+    writeFileSync(join(appDir, INIT_BUNDLE), CLEAN_INIT);
+    expect(verifyBundle(appDir)).toEqual([]);
+  });
+
+  test("a missing init bundle is reported once, as a missing path", () => {
+    rmSync(join(appDir, INIT_BUNDLE));
+    expect(verifyBundle(appDir)).toEqual([INIT_BUNDLE]);
   });
 });

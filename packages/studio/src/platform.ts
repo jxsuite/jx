@@ -20,11 +20,51 @@
 
 import type { StudioPlatform } from "./types";
 
-const g = globalThis as unknown as { __jxPlatform?: StudioPlatform };
+/** What a launcher's boot module recorded when its adapter could not be constructed. */
+export interface LauncherBootError {
+  message: string;
+  stack?: string | undefined;
+}
+
+/**
+ * A launcher's announcement that it owns this window's adapter (spec/desktop.md §3.3).
+ *
+ * Published by the launcher boot module's FIRST import, before any other module in its bundle
+ * evaluates, so it exists even when a later import throws. Present with no adapter registered, it
+ * means the launcher failed, and Studio must say so rather than fall back to the dev server. That
+ * fallback is what desktop 5.0.0-5.1.3 did for months: its init bundle threw on import, and every
+ * window ran the dev-server adapter against a `views://` origin with nothing behind it.
+ */
+export interface LauncherSignal {
+  /** Which launcher announced (`"electrobun"`, `"chromium"`), once its boot module's body ran. */
+  launcher?: string | undefined;
+  /** The first error the page raised during boot, or the adapter factory's own throw. */
+  error?: LauncherBootError | undefined;
+}
+
+const g = globalThis as unknown as {
+  __jxPlatform?: StudioPlatform;
+  __jxLauncher?: LauncherSignal;
+};
 
 /** @param {StudioPlatform} platform */
 export function registerPlatform(platform: StudioPlatform) {
   g.__jxPlatform = platform;
+}
+
+/**
+ * Publish the launcher signal on `globalThis.__jxLauncher`, or return the one already published.
+ *
+ * Idempotent, so an error recorded by the first announcer survives a second call.
+ */
+export function announceLauncher(): LauncherSignal {
+  g.__jxLauncher ??= {};
+  return g.__jxLauncher;
+}
+
+/** The launcher signal, when a launcher's boot module announced itself in this window. */
+export function launcherSignal(): LauncherSignal | undefined {
+  return g.__jxLauncher;
 }
 
 // ─── In-flight accounting ─────────────────────────────────────────────────────

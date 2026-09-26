@@ -144,7 +144,8 @@ function makeSession(initialRoot: string | null) {
     listExtensionCatalog: mock(async () => [
       { name: "@jxsuite/feed", sections: [{ key: "feed" }], source: "first-party" },
     ]),
-    pickDirectory: mock(async () => "/picked"),
+    /* `ProjectSession.pickDirectory` answers `{ path }`, the RPC's wire shape, not a bare string. */
+    pickDirectory: mock(async () => ({ path: "/picked" })),
     openProject: mock(async () => {
       root = "/proj/opened";
       return {
@@ -577,7 +578,7 @@ describe("per-window RPC", () => {
   test("pickDirectory delegates to this window's session", async () => {
     openProjectWindow("/proj/pick");
     const session = sessions.at(-1)!;
-    expect(await lastRequests().pickDirectory()).toBe("/picked");
+    expect(await lastRequests().pickDirectory()).toEqual({ path: "/picked" });
     expect(session.pickDirectory).toHaveBeenCalledTimes(1);
   });
 
