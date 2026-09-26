@@ -170,11 +170,11 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "A REAL DIVERGENCE, and a product call. `edit.copyStyles`/`edit.pasteStyles` are registered " +
       "and live with their own inline bodies, which address `deps.target()` — the ONE " +
       "right-clicked node. These two address `session.selection` — all of it, in one transaction. " +
-      'UX-REDESIGN-PLAN §6.5 says the batch is the intent ("structural commands iterating inside ' +
-      'one transaction, so a batch is one undo step"), which makes the LIVE command the wrong one ' +
+      'studio.md §6.7 and studio-ui-guidelines.md §8.1 say the batch is the intent ("a structural ' +
+      'command over a selection is one transaction", so the batch is one undo step), which makes the LIVE command the wrong one ' +
       "and this the right one. Wiring it changes what a paste does to a multi-selection, so " +
       "somebody has to choose it rather than a refactor sliding it in",
-    pasteStyles: "see `copyStyles` — the same divergence, and the half that carries the §6.5 batch",
+    pasteStyles: "see `copyStyles` — the same divergence, and the half that carries the batch",
   },
   "editor/slash-menu.ts": {
     isSlashMenuOpen:

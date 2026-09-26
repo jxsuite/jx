@@ -1,4 +1,4 @@
-# Lane 2 of the screenshot gate (UX-REDESIGN-PLAN §13.5).
+# Lane 2 of the screenshot gate (scripts/screenshots/README.md, "The gate").
 #
 # Lane 1 (`scripts/check-shot-contract.ts`, in the `checks` job) is semantically blind: a command
 # that still exists and now means something different sails through it green. Nightly-only would
@@ -278,7 +278,7 @@ jobs:
           # Changes for no visible reason, this line is what says the browser moved.
           "$bin" --version
 
-      # NO `--force`. It is the re-baseline flag — UX-REDESIGN-PLAN §13.4 spends it on "one
+      # NO `--force`. It is the re-baseline flag — the shot contract's Determinism rules spend it on "one
       # reviewable commit" when the FIXTURES change — and it works by skipping `writeIfChanged`,
       # the pixel comparison that exists so committed screenshots do not churn. Passing it here
       # overwrote all 63 PNGs unconditionally on every run, and Chromium does not re-encode a PNG

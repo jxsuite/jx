@@ -184,7 +184,7 @@ Specs (`/specs`, §-numbered) are the source of truth; user docs (`/docs`, publi
 
 Screenshots are never hand-taken and never hand-committed. `docs/images/` and `scripts/screenshots/capture.lock.json` are written only by `bun run screenshots`, which stamps each image's origin; an image whose hash is absent from the lock fails `docs:check`, and a docs page may only reference an image the lock names.
 
-The shot contract (`scripts/screenshots/README.md`, designed in `packages/studio/UX-REDESIGN-PLAN.md` §13) governs what a shot may say, and `bun scripts/check-shot-contract.ts` enforces it on every PR with no browser, in seconds. Two rules decide every judgement call:
+The shot contract (`scripts/screenshots/README.md`, its normative home) governs what a shot may say, and `bun scripts/check-shot-contract.ts` enforces it on every PR with no browser, in seconds. Two rules decide every judgement call:
 
 1. **A shot may name inputs the app accepts; never values the app derives.** Deltas (`toggle*`), screen coordinates and rendered text are all derived. The manifest contains no CSS or XPath selector, no `wait: {ms}`, and no `toggle*` command id — each is a committed budget that may only ratchet down.
 2. **The pipeline may only ask the app to do sooner what the plan already commits to.** Nothing exists in `src/` solely to be photographed. If a shot needs a capability that fails this test, the shot is deleted or replaced by prose — never by a line of application code. A compatibility branch kept alive "so the screenshot manifest keeps working" is a defect.

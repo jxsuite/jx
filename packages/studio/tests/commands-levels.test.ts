@@ -1,5 +1,6 @@
 /**
- * The containment taxonomy and the level × placement matrix (UX-REDESIGN-PLAN §5.1).
+ * The containment taxonomy and the level × placement matrix (specs/studio.md §13.2,
+ * specs/studio-ui-guidelines.md §12.1).
  *
  * No DOM: `levels.ts` is pure data plus three predicates, and keeping it that way is what lets the
  * CI checks import it in a bare Bun process.

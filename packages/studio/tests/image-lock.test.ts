@@ -1,6 +1,6 @@
 /**
- * The capture lock and `docs:images:check` (UX-REDESIGN-PLAN §13.5), plus the PNG reader the lane's
- * report is built on.
+ * The capture lock and `docs:images:check` (scripts/screenshots/README.md, "The gate"), plus the
+ * PNG reader the lane's report is built on.
  *
  * These live under `packages/studio/tests` for the same reason `shot-contract-check.test.ts` does:
  * the CI matrix runs `bun test` per workspace, so a test at the repo root runs nowhere. The rules

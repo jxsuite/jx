@@ -1,5 +1,5 @@
 /**
- * The command record and its registry (UX-REDESIGN-PLAN §5.1).
+ * The command record and its registry (specs/studio.md §13.1).
  *
  * The registry takes its context by injection, so these tests build the exact state they assert
  * against with `makeContext()` — no app, no DOM, no state modules.

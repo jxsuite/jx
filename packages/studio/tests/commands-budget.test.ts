@@ -1,4 +1,4 @@
-/** The chrome budget (UX-REDESIGN-PLAN §2, principle 9): five primary commands, four tabs per dock. */
+/** The chrome budget (studio-ui-guidelines.md §12.2): five primary commands, four tabs per dock. */
 import { describe, expect, test } from "bun:test";
 import {
   checkChromeBudget,

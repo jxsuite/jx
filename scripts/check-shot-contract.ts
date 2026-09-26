@@ -1,5 +1,5 @@
 /**
- * Check-shot-contract.ts — Lane 1 of the screenshot gate (UX-REDESIGN-PLAN §13.5).
+ * Check-shot-contract.ts — Lane 1 of the screenshot gate (scripts/screenshots/README.md).
  *
  * `docs:verify` does not verify screenshots. `scripts/docs/check-doc-refs.ts:209-231` asserts only
  * that a referenced image resolves into `docs/images/`, that its basename is a name the manifest
@@ -887,7 +887,7 @@ export function checkShotContract(input: ContractInput): ContractResult {
 /** The paragraph printed under a failure — what to do, not just what broke. */
 export const REMEDY =
   "A manifest step names an INPUT the app accepts; it may never name a value the app derives " +
-  "(UX-REDESIGN-PLAN §13, R1). Fix the step, not the check: rename the id, correct the args, or " +
+  "(scripts/screenshots/README.md, R1). Fix the step, not the check: rename the id, correct the args, or " +
   "delete the shot. Raising a number in CONTRACT_BUDGET or TOGGLE_DEBT needs the same written " +
   "justification as lowering a coverage threshold — those counts are the migration's scoreboard.";
 
@@ -1009,7 +1009,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   const result = checkShotContract({ commands, manifest });
   if (result.violations.length > 0) {
-    console.error("Shot contract violations (UX-REDESIGN-PLAN §13.2–§13.5):\n");
+    console.error("Shot contract violations (scripts/screenshots/README.md):\n");
     for (const violation of result.violations) {
       console.error(`  ✗ ${violation}`);
     }

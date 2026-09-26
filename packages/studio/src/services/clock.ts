@@ -8,7 +8,8 @@
  * 1. **They were untestable.** A formatter that reads the wall clock can only be asserted against an
  *    offset from the real present, so "yesterday" and "over a year ago" were never covered.
  * 2. **They drift.** Two captures of the same state minutes apart legitimately read `01:59 PM` and
- *    `02:04 PM` (UX-REDESIGN-PLAN §13.4 measured exactly that on the git-panel shot).
+ *    `02:04 PM` (the shot contract's Determinism section measured exactly that on the git-panel
+ *    shot).
  *
  * This is deliberately NOT a global `Date.now` override. Monaco, every `setTimeout`, the collab
  * clock and the transaction log all read the real clock and must keep reading it — pinning time for

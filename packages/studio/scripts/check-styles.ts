@@ -39,18 +39,18 @@
  * to be and why it is what it is now. A rule that forced those to be coy would delete more than it
  * protected.
  *
- * The fourth rule is the FOCUS RING. UX-REDESIGN-PLAN §12 P0 workstream 7 replaced eight bare
- * `outline: none` declarations with `:focus-visible` pairs and promised "a stylelint rule bans bare
- * `outline: none`" — the sweep landed and the rule never did, so the next `outline: none` would
- * have gone in unremarked and taken a control off the keyboard with it. A ban alone would have been
- * the weaker gate, because the defect is not the suppression: it is a suppression whose RESTORE is
- * missing. So each allowance names the `:focus-visible` rule that puts the ring back, and the check
- * verifies that rule still exists and still sets an outline — deleting the restore turns the
- * allowance red at the line the suppression is on. See FOCUS_RING_ALLOWANCES.
+ * The fourth rule is the FOCUS RING. The shell redesign's first enforcement pass replaced eight
+ * bare `outline: none` declarations with `:focus-visible` pairs and promised "a stylelint rule bans
+ * bare `outline: none`" — the sweep landed and the rule never did, so the next `outline: none`
+ * would have gone in unremarked and taken a control off the keyboard with it. A ban alone would
+ * have been the weaker gate, because the defect is not the suppression: it is a suppression whose
+ * RESTORE is missing. So each allowance names the `:focus-visible` rule that puts the ring back,
+ * and the check verifies that rule still exists and still sets an outline — deleting the restore
+ * turns the allowance red at the line the suppression is on. See FOCUS_RING_ALLOWANCES.
  *
  * The fifth and sixth rules are about SILENCE rather than styling, and they live here because this
  * file is the package's idiom for "a wide, shallow property with a ratcheting allow-list" — the
- * shape UX-REDESIGN-PLAN §7.1 asks for by name:
+ * shape the notification tiers ask for (specs/studio-ui-guidelines.md §13):
  *
  * - **`statusMessage` is banned from `src/`.** It is deleted: 78 call sites — 26 failures and 52
  *   successes — printed the same 11px grey line and erased it after three seconds. Outcomes go to

@@ -1,5 +1,5 @@
-// Enforces the level × placement matrix from packages/studio/UX-REDESIGN-PLAN.md §5.1 (normative
-// Copy in specs/studio-ui-guidelines.md §12).
+// Enforces the level × placement matrix of specs/studio-ui-guidelines.md §12.1 (the levels
+// Themselves are specs/studio.md §13.2).
 //
 // Every Studio command declares a containment level — what it acts on — and a set of `menus`
 // Placements — where it renders. Each placement admits a fixed set of levels: `blockbar` is a
@@ -46,9 +46,7 @@ const commands = source.defaultCommandSet();
 const violations = checkPlacements(commands);
 
 if (violations.length > 0) {
-  console.error(
-    "Level × placement violations (UX-REDESIGN-PLAN §5.1 / studio-ui-guidelines §12):\n",
-  );
+  console.error("Level × placement violations (studio-ui-guidelines §12.1):\n");
   for (const violation of violations) {
     console.error(`  ✗ ${violation.commandId} ${violation.message}`);
   }
