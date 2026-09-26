@@ -26,6 +26,7 @@ const responses: Record<string, unknown> = {
   gitStatus: { ahead: 0, behind: 0, branch: "main", files: [] },
   gitUnstage: null,
   getProjectRoot: { root: "/abs/proj" },
+  readFileBytes: { data: "/9j/4AAQ" },
   setWindowProject: { config: { name: "Test" }, deduped: false },
   getRecentProjects: [{ name: "Recent", root: "/abs/recent", timestamp: 7 }],
   getSettings: { aiApiKey: "sk-abc" },
@@ -465,6 +466,14 @@ describe("chromium desktop platform", () => {
       aiApiKey: "sk-abc",
       theme: "dark",
     });
+  });
+
+  /* The second adapter over the same handler names, and the same base64 boundary: both launchers
+     decode identically, which is the point of them taking one route rather than chromium doing a
+     same-origin fetch it alone could get away with. */
+  test("readFileBytes decodes the base64 the launcher answers", async () => {
+    const buffer = await platform.readFileBytes!("public/hero.jpg");
+    expect([...new Uint8Array(buffer)]).toEqual([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
   });
 
   test("probeRootProject returns null when readFile fails (no project → welcome screen)", async () => {

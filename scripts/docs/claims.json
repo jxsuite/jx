@@ -59,9 +59,9 @@
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/index.md",
+      "file": "sites/jxsuite.com/pages/framework.md",
       "text": "$5 VPS",
-      "reason": "Illustrative third-party hosting price, not a Jx product claim."
+      "reason": "Illustrative third-party hosting price, labelled as such in the same sentence, not a Jx product claim."
     },
     {
       "id": "price-figure",

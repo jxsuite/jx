@@ -165,6 +165,26 @@ describe("file operations", () => {
     expect(platform.readFile("missing.md")).rejects.toThrow("No such file: missing.md");
   });
 
+  /* Bytes, not the JSON envelope `readFile` answers. `mockFetch` only speaks JSON, so this one
+     stands up its own stub: the point of the test is that the body arrives undecoded. */
+  test("readFileBytes returns the raw body from the session's bytes route", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = ((url: string) => {
+      calls.push(url);
+      return Promise.resolve(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47])));
+    }) as unknown as typeof fetch;
+    const platform = createCloudPlatform(PROJECT);
+    const bytes = new Uint8Array(await platform.readFileBytes!("public/logo.png"));
+    expect([...bytes]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    expect(calls[0]).toBe(`${BASE}/file/bytes?path=public%2Flogo.png`);
+  });
+
+  test("readFileBytes surfaces the server message on failure", async () => {
+    mockFetch({ "/file/bytes": { status: 404, body: { error: "No such file: gone.png" } } });
+    const platform = createCloudPlatform(PROJECT);
+    expect(platform.readFileBytes!("gone.png")).rejects.toThrow("No such file: gone.png");
+  });
+
   test("writeFile PUTs a JSON body against the session base", async () => {
     const calls = mockFetch({ "/file": { body: { ok: true } } });
     const platform = createCloudPlatform(PROJECT);

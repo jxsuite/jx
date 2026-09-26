@@ -473,6 +473,18 @@ describe("platform methods", () => {
     expect(lastCall("openProject")!.args).toEqual([]);
   });
 
+  /* The image editor's read path. The adapter's job is the base64 boundary: the backend cannot send
+     bytes over a JSON-serialized RPC, so it sends a string and this is where it becomes a JPEG
+     again. `/9j/4AAQ` is a real JPEG's first bytes, so a mangled decode is visible as a wrong
+     marker rather than as a length that happens to match. */
+  test("readFileBytes decodes the base64 the backend answers", async () => {
+    impls.set("readFileBytes", () => ({ data: "/9j/4AAQ" }));
+    const buffer = await platform.readFileBytes!("public/hero.jpg");
+    expect([...new Uint8Array(buffer)]).toEqual([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    expect(lastCall("readFileBytes")!.args[0]).toEqual({ path: "public/hero.jpg" });
+    impls.delete("readFileBytes");
+  });
+
   test("probeRootProject reads project.json when present", async () => {
     impls.set("getProjectRoot", () => ({ root: "/proj" }));
     impls.set("readFile", () => JSON.stringify({ name: "My Site" }));

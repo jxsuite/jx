@@ -1206,6 +1206,33 @@ export async function handleStudioApi(
     }
   }
 
+  /* Read a file's raw BYTES.
+     The read side of `/__studio/file/upload`, and a separate route from `/__studio/file` rather
+     than a flag on it, because the two differ in more than encoding: that route answers a JSON
+     envelope `{ content, path }` with `max-age=5`, and both are wrong here. A caller wanting bytes
+     wants a body, and a caller about to overwrite the file must not be handed a five-second-old
+     copy of it — an edit applied to stale bytes is a silently wrong file.
+
+     `Bun.file` streams from disk and infers the media type from the extension, which is what makes
+     this a handful of lines rather than a decoder. */
+  if (path === "/__studio/file/bytes" && req.method === "GET") {
+    const fp = url.searchParams.get("path");
+    if (!fp) {
+      return problem("invalidRequest", "Missing path");
+    }
+    const abs = expandTilde(fp);
+    try {
+      assertAccessible(abs, root, activeProjectRoot);
+    } catch (error) {
+      return new Response(errorMessage(error), { status: 400 });
+    }
+    const file = Bun.file(abs);
+    if (!(await file.exists())) {
+      return problem("notFound", "Not found");
+    }
+    return new Response(file, { headers: { "Cache-Control": "no-store" } });
+  }
+
   // Write file
   if (path === "/__studio/file" && req.method === "PUT") {
     const fp = url.searchParams.get("path");

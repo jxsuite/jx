@@ -859,6 +859,21 @@ export function createProjectSession(initialRoot: string | null) {
     return readFile(abs, "utf8");
   }
 
+  /**
+   * A file's raw bytes, base64 across the wire.
+   *
+   * The mirror of {@link uploadFile}, and it exists because {@link readFileHandler} decodes UTF-8:
+   * a JPEG through that one comes back as replacement characters. The shell cannot get these bytes
+   * any other way — its own origin is `views://` and the loopback that serves project files is
+   * cross-origin, so an `<img>` taints a canvas and a `fetch` is refused outright.
+   */
+  async function readFileBytesHandler(params: { path: string }): Promise<{ data: string }> {
+    const root = requireRoot();
+    const abs = resolve(root, params.path);
+    assertUnderRoot(abs, root);
+    return { data: Buffer.from(await Bun.file(abs).arrayBuffer()).toString("base64") };
+  }
+
   async function writeFileHandler(params: { path: string; content: string }): Promise<void> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
@@ -1236,6 +1251,7 @@ export function createProjectSession(initialRoot: string | null) {
     pickDirectory,
     listDirectory,
     handleReadFile: readFileHandler,
+    handleReadFileBytes: readFileBytesHandler,
     handleWriteFile: writeFileHandler,
     handleDeleteFile: deleteFile,
     handleRenameFile: renameFile,
