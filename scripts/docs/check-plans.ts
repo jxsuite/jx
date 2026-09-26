@@ -171,9 +171,17 @@ function declaredSlices(plans: readonly PlanDoc[]): string[] {
  * declares. Slice ids are distinctive by grammar (`<PREFIX>.<n>`), which is what makes a
  * repository-wide search for them meaningful.
  */
+/**
+ * A section of a plan cited in prose: "plan §N", "the plan's §N", "NAME-PLAN §N", "§N of the plan".
+ * This is the form ~1,000 comments used for the deleted `packages/studio/UX-REDESIGN-PLAN.md`, and
+ * it names no file a search could find. Naming a deleted document as history is fine; citing its
+ * sections as though they still said something is not.
+ */
+const PLAN_SECTION = String.raw`\b(?:[Pp]lan|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-PLAN(?:\.md)?)(?:'s|’s)?\s+§\s?\d|§\s?\d[\d.]*[a-z]?\s+of\s+(?:the\s+)?(?:[Pp]lan\b|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-PLAN)`;
+
 export function mentionPattern(plans: readonly PlanDoc[]): RegExp {
   const slices = declaredSlices(plans).map((id) => escapeRegExp(id));
-  const alternatives = [PLAN_CITATION.source];
+  const alternatives = [PLAN_CITATION.source, PLAN_SECTION];
   if (slices.length > 0) {
     alternatives.push(String.raw`(?<![\w.])(?:${slices.join("|")})(?!\w|\.\d)`);
   }
@@ -187,7 +195,13 @@ export function mentionPattern(plans: readonly PlanDoc[]): RegExp {
  * lines this lets through.
  */
 export function mentionPrefilter(plans: readonly PlanDoc[]): RegExp {
-  return new RegExp(["plan:", ...declaredSlices(plans).map((id) => escapeRegExp(id))].join("|"));
+  const literals = ["plan:", ...declaredSlices(plans).map((id) => escapeRegExp(id))];
+  return new RegExp(
+    [
+      ...literals,
+      String.raw`(?:lan|LAN(?:\.md)?)(?:'s|’s)?\s+§|\bof (?:the )?(?:[Pp]lan\b|[A-Z][\w-]*-PLAN)`,
+    ].join("|"),
+  );
 }
 
 const claimKey = (file: string, anchor?: string) => (anchor ? `${file}#${anchor}` : file);

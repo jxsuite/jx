@@ -588,6 +588,26 @@ describe("citations", () => {
     );
   });
 
+  test("citation-outside-plans: a plan's section cited in prose, in either order", () => {
+    // Assembled at runtime for the same reason as PLAN: this file is itself scanned.
+    const sign = "§";
+    const mention = (text: string): Mention => ({ path: "packages/x/src/a.ts", line: 9, text });
+    for (const text of [
+      `// the keymap (plan ${sign}5.3)`,
+      `// the plan's ${sign}6.2 says so`,
+      `// see UX-REDESIGN-PLAN ${sign}13.5`,
+      `// (${sign}9.6 of UX-REDESIGN-PLAN)`,
+    ]) {
+      expectViolation({ mentions: [mention(text)] }, "citation-outside-plans");
+    }
+    // Naming a deleted document as history cites nothing.
+    expectNoViolation(
+      { mentions: [mention("// UX-REDESIGN-PLAN.md was deleted in 7670f37e")] },
+      "citation-outside-plans",
+    );
+    expectNoViolation({ mentions: [mention(`// ${sign}5 of the spec`)] }, "citation-outside-plans");
+  });
+
   test("plan-doc-outside-plans", () => {
     expectViolation({ paths: ["packages/studio/UX-REDESIGN-PLAN.md"] }, "plan-doc-outside-plans");
     expectViolation({ paths: [".claude/plans/cozy.md"] }, "plan-doc-outside-plans");
