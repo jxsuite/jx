@@ -46,7 +46,7 @@ prs: # every pull request that carried a slice of it
 | `requires`    | no                           | Plan IDs. Written in **one direction only**, by the dependent; the reverse edges are derived.                                                       |
 | `gaps`        | no                           | `gap:` ids from a Standards Alignment row that this plan closes.                                                                                    |
 | `workspaces`  | past `stub`, for `implement` | Existing directories, so a plan's CI cost is visible before it starts.                                                                              |
-| `size`        | yes                          | `S`, `M` or `L`. `L` requires a `## Slices` table.                                                                                                  |
+| `size`        | yes                          | `S`, `M` or `L`. An `L` plan past `stub` requires a `## Slices` table.                                                                              |
 | `prs`         | once `active`                | `owner/repo#N` for every pull request that carried a slice.                                                                                         |
 
 ## Lifecycle
