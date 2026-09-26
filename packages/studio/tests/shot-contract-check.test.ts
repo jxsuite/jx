@@ -1,5 +1,6 @@
 /**
- * Lane 1 of the screenshot gate: `bun scripts/check-shot-contract.ts` (UX-REDESIGN-PLAN §13.5).
+ * Lane 1 of the screenshot gate: `bun scripts/check-shot-contract.ts`
+ * (scripts/screenshots/README.md).
  *
  * Two halves, deliberately:
  *

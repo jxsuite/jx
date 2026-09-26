@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
 /**
- * The Palette — one omnibox, several modes (UX-REDESIGN-PLAN §5.4).
+ * The Palette — one omnibox, several modes (specs/studio.md §13; its rendering rules are
+ * specs/studio-ui-guidelines.md §12).
  *
  * This file used to be a filename-substring finder with one hidden domain swap in it: with no
  * project open the same trigger, the same chrome and the same placeholder silently listed recent
  * PROJECTS instead. It is now the surface the whole shell shrinks into — the place a capability
- * goes when it is retired from the chrome (§2 principle 9), which only works if everything is
- * reachable here by name, with its chord printed beside it.
+ * goes when it is retired from the chrome (the chrome budget, specs/studio-ui-guidelines.md §12.2),
+ * which only works if everything is reachable here by name, with its chord printed beside it.
  *
  * Four properties earn that:
  *

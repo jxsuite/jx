@@ -1,5 +1,5 @@
 /**
- * Check-image-lock.ts — the capture lock, and `docs:images:check` (UX-REDESIGN-PLAN §13.5).
+ * Check-image-lock.ts — the capture lock, and `docs:images:check` (scripts/screenshots/README.md).
  *
  * `scripts/docs/check-doc-refs.ts` asserts that a referenced image resolves into `docs/images/`,
  * that its basename is a name the manifest COULD produce, and `existsSync`. Nothing compares bytes,
@@ -1083,7 +1083,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     }
     console.error(
       "\nDocs images and the capture lock are written only by `bun run screenshots`, and the " +
-        "screenshots CI lane re-captures and pushes both for you (UX-REDESIGN-PLAN §13.5).",
+        "screenshots CI lane re-captures and pushes both for you (scripts/screenshots/README.md).",
     );
     return 1;
   }

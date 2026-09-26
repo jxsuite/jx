@@ -1,6 +1,6 @@
 # The shot contract
 
-This file is the **normative home of the shot contract** (UX-REDESIGN-PLAN §13.5). Not a spec section, deliberately: every substantive spec edit is a `spec:bump` release, so writing the region grammar into `specs/studio.md` would add a release to every registry rename that touches it, and the predictable failure would be bumping `CONTRACT_VERSION` instead of fixing four manifest lines.
+This file is the **normative home of the shot contract**. Not a spec section, deliberately: every substantive spec edit is a `spec:bump` release, so writing the region grammar into `specs/studio.md` would add a release to every registry rename that touches it, and the predictable failure would be bumping `CONTRACT_VERSION` instead of fixing four manifest lines.
 
 Shots live in [manifest.json](./manifest.json). The runner boots the repo dev server, materialises a writable copy of every project a shot opens, drives Studio in headless Chromium through `window.__jxAutomation`, and writes PNGs to the manifest's `outDir`.
 

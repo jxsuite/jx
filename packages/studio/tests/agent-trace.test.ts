@@ -1,5 +1,6 @@
 /**
- * Agent-trace.test.ts — the agent loop's observable behaviour, frozen as golden traces (J1.2).
+ * Agent-trace.test.ts — the agent loop's observable behaviour, frozen as golden traces before the
+ * harness refactor.
  *
  * Every scenario the three agent-loop suites exercise is replayed here through the REAL
  * `runAgentLoop` (and, for the document-assistant scenarios, the real `sendMessage` path), with the
@@ -17,8 +18,8 @@
  * as witnesses — a golden recorded from a mis-mirrored setup would otherwise freeze the wrong
  * behaviour without a word.
  *
- * J1.2 freezes CURRENT behaviour, defects included. A red trace means the loop's behaviour moved:
- * if that was the intent, re-record with `JX_UPDATE_GOLDENS=1 bun test --isolate
+ * The traces freeze CURRENT behaviour, defects included. A red trace means the loop's behaviour
+ * moved: if that was the intent, re-record with `JX_UPDATE_GOLDENS=1 bun test --isolate
  * tests/agent-trace.test.ts` and review the golden diff as the behaviour change it is.
  */
 import {
@@ -1463,7 +1464,7 @@ const DAT = inSuite("dat", [
       await a.sendMessage("clear the page");
       expect(tab.doc.document.children).toEqual([]);
       expect(tab.history.index).toBe(1);
-      // Filed under the request, the turn's last drawn message (J1.4).
+      // Filed under the request, the turn's last drawn message (specs/ai.md §3.2).
       const request = a.chatState.messages.find((m) => m.toolCalls?.length);
       const ledger = writesForTurn(request!.id);
       expect(ledger).toEqual([

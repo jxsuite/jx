@@ -1,5 +1,5 @@
 /**
- * One shot, executed against the contract (UX-REDESIGN-PLAN §13.2–§13.4).
+ * One shot, executed against the contract (scripts/screenshots/README.md).
  *
  * Boot the app into a stated world, drive it through named capabilities, assert, photograph region
  * ids. Nothing in this file names a CSS selector, and nothing in it sleeps.

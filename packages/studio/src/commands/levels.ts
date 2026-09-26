@@ -1,7 +1,8 @@
 /**
  * Levels.ts — the containment taxonomy and the level × placement matrix.
  *
- * Two vocabularies live here, and keeping them apart is the whole point (UX-REDESIGN-PLAN §5.1):
+ * Two vocabularies live here, and keeping them apart is the whole point (specs/studio.md
+ * §13.2–§13.3):
  *
  * - {@link Level} answers WHAT a record acts on. It governs placement and is CI-checked.
  * - {@link KeyScope} answers WHERE a chord is live. It governs keyboard dispatch only.

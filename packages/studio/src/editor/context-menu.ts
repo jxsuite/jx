@@ -1,7 +1,8 @@
 /// <reference lib="dom" />
 // ─── Clipboard & Context Menu ─────────────────────────────────────────────────
 /**
- * The element context menu is a RENDERING of the command registry (UX-REDESIGN-PLAN §5.5).
+ * The element context menu is a RENDERING of the command registry (specs/studio-ui-guidelines.md
+ * §12).
  *
  * This file used to hold an 18-item literal of `{ label, action, danger }` records — a fourth
  * hand-maintained copy of verbs that also exist in the toolbar, the block action bar and the

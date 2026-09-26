@@ -1,11 +1,11 @@
 /**
  * Context.ts — the record every `when` / `enablement` predicate closes over.
  *
- * One flat-ish record of the facts a command can be gated on (UX-REDESIGN-PLAN §5.2). Predicates
+ * One flat-ish record of the facts a command can be gated on (specs/studio.md §13.4). Predicates
  * are plain closures over this record — the shape `services/gated-registry.ts` already ships for
- * the AI's tools — not a serialisable string DSL. §13 rejects the DSL explicitly: a `"project.open
- * && editor.kind == 'canvas'"` grammar needs a tokenizer, a parser and a reactive evaluator to buy
- * serialisability nothing in Studio consumes.
+ * the AI's tools — not a serialisable string DSL, which the shell redesign rejected explicitly: a
+ * `"project.open && editor.kind == 'canvas'"` grammar needs a tokenizer, a parser and a reactive
+ * evaluator to buy serialisability nothing in Studio consumes.
  *
  * This module owns the SHAPE and a pure builder. It deliberately imports nothing from the state
  * modules: the registry takes a `getContext()` thunk, so wiring the live sources (the reactive

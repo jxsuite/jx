@@ -601,7 +601,7 @@ describe("ai agent loop — the interactive round budget", () => {
   });
 });
 
-// ─── J1.4: the turn is honest about how it ended ─────────────────────────────
+// ─── The turn is honest about how it ended (ai.md §3.2) ──────────────────────
 
 describe("ai agent loop — how a turn ended", () => {
   /**
@@ -824,7 +824,7 @@ describe("ai agent loop — how a turn ended", () => {
   });
 });
 
-// ─── J1.7: a turn's outcome is what it did ───────────────────────────────────
+// ─── A turn's outcome is what it did (ai.md §3.2) ────────────────────────────
 
 describe("ai agent loop — what a turn applied, and a turn that drew nothing", () => {
   /* A model that answers with neither text nor a tool call used to leave the author's message with

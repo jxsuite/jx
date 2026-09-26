@@ -9,7 +9,8 @@
  * restoration after a toast or a Problems jump, and the screenshot pipeline, which today addresses
  * the shell through sixteen CSS selectors, seven of which name nodes the shell redesign deletes.
  *
- * **The grammar** (UX-REDESIGN-PLAN §13.2) is `<surface>[.<instance>][/<part>]`:
+ * **The grammar** (scripts/screenshots/README.md, "The region grammar") is
+ * `<surface>[.<instance>][/<part>]`:
  *
  * ```text
  * navigator                     the Navigator dock

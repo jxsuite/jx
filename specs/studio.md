@@ -961,7 +961,7 @@ The menu label does not change for a collection folder. The tree's own verbs are
 
 > **Status: Implemented.** A destructive dialog states **what it breaks**, not only whether it can be undone. Deleting a component used on seven pages must not look like deleting an unused one.
 
-Every delete and rename confirmation carries the reference count from `findReferences` (§9.6 of UX-REDESIGN-PLAN; the PAL member in `desktop.md` §3.1), resolved **before** the dialog opens — a sentence that becomes true after the user has already confirmed is the same defect as no sentence.
+Every delete and rename confirmation carries the reference count from `findReferences` (the PAL member in `desktop.md` §3.1), resolved **before** the dialog opens — a sentence that becomes true after the user has already confirmed is the same defect as no sentence.
 
 | Action     | The sentence states                                                                                     |
 | ---------- | ------------------------------------------------------------------------------------------------------- |

@@ -1,5 +1,5 @@
 /**
- * The shot contract — five verbs, no selectors, no sleeps (UX-REDESIGN-PLAN §13.2).
+ * The shot contract — five verbs, no selectors, no sleeps (scripts/screenshots/README.md).
  *
  * A manifest is a list of shots. Each shot states its **boot state** totally (`open`), **drives**
  * the app through named capabilities (`steps`), **asserts** (`expect`), and **captures** region ids

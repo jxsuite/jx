@@ -276,11 +276,11 @@ function clampBarToWindow(bar: HTMLElement): void {
  * `formatBold` because Jx owns its markup. So ⌘B in the canvas did nothing at all, in an app whose
  * toolbar advertised it.
  *
- * They are the case UX-REDESIGN-PLAN §5.1 uses to justify two fields, so they are written the way
- * it says: `level: "selection"` — a range inside the selected node is still the selection, and a
- * fifth `range` level would demand a fifth region — with `keyScope: "caret"`, which is what makes
- * the chord live only where a caret is. They were, until this change, the only capability in Studio
- * with a chord and no record.
+ * They are the case that justifies the record's two fields (specs/studio.md §13.2–§13.3), so they
+ * are written the way it says: `level: "selection"` — a range inside the selected node is still the
+ * selection, and a fifth `range` level would demand a fifth region — with `keyScope: "caret"`,
+ * which is what makes the chord live only where a caret is. They were, until this change, the only
+ * capability in Studio with a chord and no record.
  *
  * **The set is the schema's, the verbs are the registry's.** `data/elements-meta.json` says which
  * of the eight a given tag accepts (`$inlineActions`), so the bar draws four on an `<h1>` and eight
