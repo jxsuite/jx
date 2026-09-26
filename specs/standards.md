@@ -26,9 +26,13 @@ The specs own the tables. Nothing generates them, and nothing else is authoritat
 
 ### 2.1 Recognized issuing bodies
 
+> **Status: Partial.** The catalog admits issuing bodies outside these eight: the `Org` union in `scripts/docs/lib/standards.ts` ends in `Other`, and `scripts/docs/standards.json` files CommonMark, GFM, JSON Feed 1.1 and Sitemaps 0.9 under `Other` and Gitignore under `Git`, which is not in the union at all. Nothing in `scripts/docs/check-standards.ts` compares a catalog entry's `org` with this list, so those five standards are cited as rows across four specs.
+
 A row may cite a published standard from IETF, W3C, WHATWG, the Unicode Consortium, Ecma International, IANA (its registries), ISO, or JSON Schema. The issuing body is not a column: it is a property of the standard rather than of the binding, so it is recorded once in the catalog (§5.1) and rendered on the generated page.
 
 ### 2.2 What is not a standard
+
+> **Status: Partial.** The three resolutions below hold, but the rule is not applied to the rest of the corpus: CommonMark (`parser.md` §10, `jx-markdown.md` §13), GFM (`parser.md` §10), Gitignore (`studio.md` §19), and JSON Feed 1.1 and Sitemaps 0.9 (`site-architecture.md` §16) are de-facto or community formats cited as rows, while `spec.md` §18 and `imports.md` §7 keep the Custom Elements Manifest in prose for having no standards body.
 
 A library, a framework convention, or a de-facto vendor format is **not** citable, however widely adopted. Those belong in ordinary spec prose.
 
@@ -145,6 +149,8 @@ It ratchets in both directions, as `scripts/docs/claims.json` does for marketing
 
 ### 5.2 Canonical URL forms per body
 
+> **Status: Partial.** `CANONICAL` in `scripts/docs/lib/standards.ts` enforces the forms below through `canonicalUrlProblem`, but three patterns admit a second spelling of the same document: the WHATWG pattern accepts a trailing `#fragment`, the IANA pattern an optional trailing `/`, and the JSON Schema pattern any path, a trailing `/` included, which the table's `https://json-schema.org/…` form does not pin either. An entry whose org is `Other`, or is outside the `Org` union, is never checked, so §10's RFC 3986 claim of no query and no fragment holds today only because no catalog URL carries one.
+
 | Body        | Form                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------- |
 | IETF        | `https://www.rfc-editor.org/rfc/rfcNNNN`, or `/info/bcpNN` and `/info/stdNN`          |
@@ -159,6 +165,8 @@ It ratchets in both directions, as `scripts/docs/claims.json` does for marketing
 `tools.ietf.org` is retired and `datatracker.ietf.org/doc/html/rfcNNNN` is a second spelling of the same document; both are rejected with the replacement named, so the fix is mechanical. One canonical form per body is deliberate: two would mean the same RFC gets two spellings across sixteen specs and neither a reader nor a diff could tell them apart.
 
 ### 5.3 Identifier grammar
+
+> **Status: Partial.** `STANDARD_ID` in `scripts/docs/lib/standards.ts` accepts every form below, and `catalog-org-mismatch` in `scripts/docs/check-standards.ts` rejects a numbered identifier filed under the wrong body, but the converse is unchecked: `orgOfId` infers no body from a title-cased name, so a document of a body that numbers its documents may be catalogued under one (`HTTP Semantics` filed under IETF passes), and nothing stops two catalog entries from sharing a URL. Every current entry complies, so the identifier is stable across specs because of the catalog's contents rather than the gate.
 
 `RFC 9110`, `BCP 47`, `STD 90`, `UAX #15`, `UTS #46`, `ECMA-402`, `ISO/IEC 8859-1`, or a title-cased name for a body that does not number its documents (`WebAuthn Level 3`, `JSON Schema 2020-12`). The identifier is what the generated page groups by, so it is stable across specs.
 

@@ -17,6 +17,8 @@
 
 ## 2. Provider Contract
 
+> **Status: Partial.** The wire, the `usage` frame, the calls deciding rather than the finish, and Stop armed before the first wait ship. A model-listing failure is not always distinguished: Studio keeps `upstreamMessage` as the only witness of `upstreamError` (`proxyModelsError` in `packages/studio/src/services/ai-models.ts`), so a listing answered with `upstreamError` set and no message, or an empty one, fills the picker with the default catalogue and says nothing (`packages/studio/src/ui/ai-credentials-form.ts`). `upstreamMessage` is optional in `AiModelsResponse` (`packages/protocol/src/types.ts`), and the dev server's own fallback for a bodiless failure is the upstream's status text, which can be empty.
+
 - The client speaks the **OpenAI chat-completions** wire format (streaming SSE, tool calls).
 - A **user-supplied key and base URL** are required; the server proxy attaches them per request and never persists them. The proxy refuses to forward a server-environment key to a user-supplied base URL, and blocks cloud-metadata/link-local hosts (see `@jxsuite/server` §4.2).
 - Local and self-hosted OpenAI-compatible endpoints (e.g. LM Studio, Ollama's OpenAI shim) are supported by pointing the base URL at them.
@@ -53,7 +55,7 @@ Brokered credentials are the platform's to hold and refresh; the client never se
 
 ### 2.2 The request is the history the provider will accept
 
-> **Status: Implemented.** `toMessagesArray` in `packages/ai/src/chat-state.ts`; the `reasoning` frame in `packages/ai/src/streaming-client.ts` and `packages/ai/src/gateway/normalize.ts` (the normalizer `packages/server/src/ai-api.ts` runs, §2.4).
+> **Status: Partial.** The history rule ships: `toMessagesArray` in `packages/ai/src/chat-state.ts`; the `reasoning` frame in `packages/ai/src/streaming-client.ts` and `packages/ai/src/gateway/normalize.ts` (the normalizer `packages/server/src/ai-api.ts` runs, §2.4). The open part is the native Anthropic provider, in the marker at the end of this section.
 
 The conversation Studio displays and the array it puts on the wire are not the same object, and two of the differences are contractual rather than cosmetic:
 
@@ -83,6 +85,8 @@ The **policy** stays with the host, and the gateway never second-guesses it. Who
 The gateway is Worker-safe (§1): its only runtime imports outside itself are `@jxsuite/protocol`'s two problem modules, and the fetch it calls the upstream with is looked up per request unless the host supplies one.
 
 ## 3. Tool Surface
+
+> **Status: Partial.** The tool schemas and the edit-application path do not live in `packages/ai/src`: `packages/ai/src/tools.ts` holds only the generic registry, `ToolContext` and write ledger, the hand tools are registered in `packages/studio/src/services/ai-*.ts` (§3.6), and their document edits apply through `transactDoc` in `packages/studio/src/tabs/transact.ts`. The tool list this paragraph defers is still not enumerated here, although `AI_TOOL_TIERS` in `packages/studio/src/services/ai-system-prompt.ts` and the command records that declare `aiTool` are that list.
 
 The assistant is given a fixed set of document-editing tools (create/edit page and component, inspect the tree, apply edits the canvas renders live). The tool schemas and the edit-application path live in `packages/ai/src`. This section is a placeholder; the concrete tool list will be enumerated here once it stabilizes.
 
@@ -175,6 +179,8 @@ A tool is handed everything it needs to know about the call it serves as its sec
 A registry that wraps another (the availability gate, the union with the command tools) forwards the context unchanged, so the leaf tool always receives the one the host built. A definition declares `interactive` when its call suspends the turn on a person rather than doing work, which is how a host knows the round spends no work budget (§3.4).
 
 ## 4. Security & Trust
+
+> **Status: Partial.** The file/RPC surfaces, the Origin/Host gate and path containment hold (`packages/server/src/net-guard.ts`). The base-URL host block that §2 names and the two IANA rows in §5 describe is narrower than both: `isBlockedHost` in `packages/server/src/ai-api.ts` refuses a hostname whose text begins `fe80:`, so the rest of `fe80::/10` (`[fe90::1]`, `[febf::1]`) is forwarded, and it tests `169.254.` against the dotted IPv4 spelling alone, so the IPv4-mapped form of the metadata address (`[::ffff:169.254.169.254]`, which the URL parser serializes as `[::ffff:a9fe:a9fe]`) is forwarded too. `packages/server/tests/ai-api.test.ts` covers only `169.254.169.254` and `[fe80::1]`.
 
 The assistant executes only through the same file/RPC surfaces a human uses, behind the server's Origin/Host gate and path containment (`@jxsuite/server` §4.2). It has no independent network or filesystem access beyond the connected provider endpoint.
 

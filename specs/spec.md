@@ -104,6 +104,8 @@ Jx borrows the **shape** of these standards. Where the semantics diverge — `$r
 
 ### 3.1 Root Structure
 
+> **Status: Partial.** Every field matches the code except `tagName`, which the table marks Required at the root. Neither the generated root schema (`packages/schema/schema.json`) nor any per-project `document.schema.json` requires it, the runtime's `resolveTagName` renders a missing tag as `div`, and page documents omit it (`sites/test-blank/pages/contact.json`); only an element node requires `tagName` (`packages/schema/defs/element-def.schema.ts`).
+
 Every Jx document is a JSON object with the following top-level fields:
 
 ```json
@@ -391,6 +393,8 @@ Functions and data sources are both declared via `$prototype`:
 
 ##### 4b — Function (Inline computed)
 
+> **Status: Partial.** The bare-`return;` rule ships in every tier through `bodyReturnsValue` (`packages/schema/src/guards.ts`). The "no `arguments`" condition holds only in the interpreter (`resolveFunction` in `packages/runtime/src/runtime.ts`): `compile-element.ts`, `compile-client.ts` and the build-time scope in `packages/compiler/src/shared.ts` classify a string body by `bodyReturnsValue` alone, so a body with declared `parameters` that returns a value compiles to a `computed()` with its parameter unbound. No tier classifies by reactive use, as the first paragraph below describes; classification reads the declaration and the body text.
+
 ```json
 "titleClass": {
   "$prototype": "Function",
@@ -418,6 +422,8 @@ A body counts as returning a value only when something follows `return` on the s
 
 ##### 4d — Function Properties
 
+> **Status: Partial.** The property table, parameter-object normalization and compiled-site bundling (`packages/compiler/src/site/bundler.ts`) ship. Four rules hold in only some tiers: usage-based classification of a `$src` entry is `compile-element.ts`'s alone (the interpreter introspects the imported function, and `compile-client.ts` makes every `$src` entry a computed, so a `$src` handler bound to `on*` attaches no listener); declaring both `body` and `$src` throws at runtime scope build but is never a compile-time error; `compile-client.ts` ignores `$lazy`; and the interpreter's `resolveParamNames` recognizes `state` only in first position rather than binding by name.
+
 | Property      | Required     | Description                                                                                                     |
 | ------------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
 | `$prototype`  | Yes          | Must be `"Function"`                                                                                            |
@@ -444,6 +450,8 @@ A body counts as returning a value only when something follows `return` on the s
 **`$lazy`.** A Function def may set `"$lazy": true` alongside `$src`, which replaces the static import with a memoized dynamic `import()` taken on first call. A static import is a download, a parse and an evaluate on every page that renders the component, whether or not anything calls the function; `$lazy` moves all three to the moment somebody does. The local binding keeps its name, so call sites are unchanged — but the function now **returns a promise**, and so may only be called, never bound as a value. Declaring `$lazy` on an entry the document uses as a computed is a build error rather than a promise rendered into the DOM. Server-timing functions are imported by the generated server output — the site worker when `build.adapter` is set, a per-page `_server.js` handler otherwise (compiler.md §6). The bundler backend is `Bun.build` under Bun and esbuild under Node (see compiler.md).
 
 ##### 4e — Data Source (External Class)
+
+> **Status: Partial.** The `Request` example's `urlParams` field is read by nothing (§11.1): the runtime's `Request` case, `ExternalClassDef` and the compiled `emitRequestFetch` (`packages/compiler/src/shared.ts`) all ignore it, so the entry fetches `/api/users/` once and never re-fetches when `userId` changes.
 
 ```json
 {
@@ -660,13 +668,15 @@ Resolution is **scheme dispatch**, not a cascading fallback: the leading token s
 - `parent#/` — resolves against the same merged scope as a bare state read
 - `window#/` / `document#/` — the corresponding global object
 
-> **Status: Implemented** for `$map/`, `$reduce/`, `$args/`, `event#/`, `#/state/`, `window#/`, `document#/` in `resolveRef`. **Partial** for node-level external-file refs: `$switch` cases and `$elements` entries are fetched and resolved (§14, §16), but a bare `{ "$ref": "./x.json" }` child is **not** — see §13.
+> **Status: Implemented.** Scheme dispatch follows the rules above: `resolveRef` (`packages/runtime/src/runtime.ts`) handles `$map/`, `#/state/`, `parent#/`, `window#/` and `document#/`, and `resolveExprRef` (`packages/runtime/src/expression.ts`) handles `$reduce/`, `$args/` and `event#/`. External-file refs resolve where §7.2 says they do, in `$switch` cases and `$elements` entries (§14, §16), in the interpreter; a compiled target does not render an external `$switch` case (§14.1). A bare `{ "$ref": "./x.json" }` child is not a resolution position, and is removed (§13.1).
 
 ---
 
 ## 8. Element Definitions
 
 ### 8.1 DOM Property Mapping
+
+> **Status: Partial.** The runtime writes any non-reserved key as a DOM property, and the lit element target binds it. The static emitter does not: `buildAttrs` (`packages/compiler/src/shared.ts`), which `compile-static`, the client prerender and the component prerender share, writes only `id`, `className`, `hidden`, `tabIndex`, `title`, `lang` and `dir`, so `href`, `src`, `alt`, `value`, `placeholder`, `type`, `checked`, `disabled`, `name` and `selected`, all declared on `ElementDef`, are dropped from prerendered HTML.
 
 Any valid DOM element property may be set directly on an element definition object:
 
@@ -768,6 +778,8 @@ The compiler's template pass replaces `children` with the resolved array and rec
 
 ### 8.5 Slot Support
 
+> **Status: Partial.** The interpreter distributes by `name` as described (`distributeSlots` in `packages/runtime/src/runtime.ts`). Built output does not. The component module's light-DOM emulation (`compile-element.ts`) finds the first `<slot>` and moves every slotted child there whatever its `slot` name, and the static prerender (`renderStaticNode` in `packages/compiler/src/shared.ts`, reached through `expandComponents` in `packages/compiler/src/site/site-build.ts`) substitutes all of the instance's children for every `<slot>`, so the example below prerenders the header and the body into both `<header>` and `<main>`.
+
 Custom elements support the standard HTML `slot` mechanism for content composition:
 
 ```json
@@ -811,7 +823,7 @@ Any element may carry `$title` and `$description` as developer-facing metadata a
 - `$description` provides extended documentation for the element's purpose
 - In markdown remark directives, these map to `--title` and `--description` attributes
 
-> **Status: Implemented.** Runtime RESERVED_KEYS includes both; schema validates them on ElementDef.
+> **Status: Implemented.** Runtime `RESERVED_KEYS` includes both and the compiler's `buildAttrs` never emits them; the parser maps them to and from `--title`/`--description` (`JX_ANNOTATION_KEYS` in `extensions/parser/src/transpile.ts`). `ElementDef` declares neither key, so the schema admits them through its `additionalProperties` rather than validating them as strings.
 
 ### 8.7 Overlays: popover, dialog, invoker commands
 
@@ -860,6 +872,8 @@ Deliberately not judged: colour and contrast, target size, focus order and readi
 
 ### 9.1 Style Objects
 
+> **Status: Partial.** The runtime conforms (§9.6). The static compiler does not: a `${…}` base declaration it can resolve against a build-time scope, and a component definition's resolved host style, are written into an inline `style` attribute (`inlineStyleDeclarations` and the `hostStyle` argument of `buildAttrs` in `packages/compiler/src/shared.ts`), so in prerendered HTML a `:hover` or `@media` block cannot override those declarations.
+
 The `style` property accepts an object with camelCase CSS property names:
 
 ```json
@@ -885,6 +899,8 @@ A **reactive value on a custom property, in a rule targeting the element itself*
 An author's own `attributes: { "style": "…" }` is untouched by any of this; it remains a literal attribute, at inline precedence, and overrides the object.
 
 ### 9.2 Nested CSS Selectors
+
+> **Status: Partial.** Flattening, selector-list distribution, recursion, the declaration-body at-rules and their array form, and `@keyframes` ship in `buildStyleRules` (`packages/runtime/src/css.ts`). Two parts do not: no static build renders a block's `$description` as a comment (the compiler's `pushStyleRules` and `packages/site/src/site-style.ts` emit the rule text only), and the compiler's handle is the author's FIRST class whenever `className` is set (`collectStyles` in `packages/compiler/src/shared.ts`), so an element's rules also style every other element carrying that class; the generated class is `jx-<n>` on pages rather than `.<tagName>-<n>`.
 
 CSS nesting is supported via special keys. Keys beginning with `:`, `.`, `&`, or `[` are treated as nested selectors:
 
@@ -978,6 +994,8 @@ A keyframes block nested inside `@media` or `@supports` keeps that wrapper. Insi
 > **Status: Implemented.** Wrapping a declaration-body at-rule in a selector produced a block the parser discards without a word, which is why an anchor-positioned panel could declare no custom fallback at all. Scoping a keyframe stop produced the same silence one layer down: no parse error, no warning, and a live `Animation` object with no keyframes in it.
 
 ### 9.3 Static Style Extraction
+
+> **Status: Partial.** Extraction into one head `<style>` block ships (`compileStyles`, `pushStyleRules` in `packages/compiler/src/shared.ts`). The report does not: `takeDroppedReactiveStyles` has no production caller, so no build prints what it dropped, and where a build-time scope exists the compiler inlines the resolved template instead of dropping it (§9.1). And the project schema's `StyleObject` (`staticStyleObjectSchema` in `packages/schema/src/schema.ts`) accepts any string value, so it still admits a `${…}` template the paragraph below says it cannot carry.
 
 The compiler extracts all static `style` definitions into a single `<style>` block in the document `<head>`.
 
@@ -1105,6 +1123,8 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 
 ### 10.3 Filtering and Sorting
 
+> **Status: Partial.** The interpreter filters and sorts (`renderMappedArrayInto` in `packages/runtime/src/runtime.ts`). No compiled path reads either key: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts`, both mapped-array emitters in `compile-client.ts` and the site build's build-time `expandMappedArrayStatic` (`packages/compiler/src/site/site-build.ts`) map `items` as given, so a built list shows every item in source order.
+
 ```json
 {
   "$prototype": "Array",
@@ -1118,6 +1138,8 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 > **Status: Implemented.** The runtime renders array members inline (wrapper-less) via `renderMappedArrayInto()`, handling items, filter, sort, `$map/item`, and `$map/index`.
 
 ### 10.4 Keys
+
+> **Status: Partial.** The interpreter reconciles by key as described below. The compiled targets do not: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts` and the client target lower a mapped array to an unkeyed `.map()` with no lit `repeat()`, so compiled rows are rebuilt rather than moved. And a `key` spelled `#/$map/item/…` is refused by the schema (`ArrayNamespace.key`) and falls back to the index at runtime (`mappedRowKey`).
 
 A mapped array MAY declare a `key`: a `$map/item` pointer evaluated once per item that names the row's identity.
 
@@ -1140,13 +1162,15 @@ Each row's bindings live in an effect scope of their own, stopped when the row i
 
 The first render of a list is synchronous; every later reconciliation is coalesced into one microtask. An array mutated in place — `reverse()`, `sort()`, an index write — notifies once per element it touches, and a reconciliation run between two of those writes would see an array that is half of each state, tearing down a row that is only transiently absent. A row's own bindings stay synchronous.
 
-> **Status: Implemented.** Runtime `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place. The compiler's `repeat()` lowering for keyed lists is pending.
+> **Status: Implemented.** Runtime `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place.
 
 ---
 
 ## 11. Web API Namespaces
 
 ### 11.1 Prototype Namespace Syntax
+
+> **Status: Partial.** `$prototype` dispatch ships (`resolvePrototype` in `packages/runtime/src/runtime.ts`). The example's `urlParams` field is read by nothing: the runtime's `Request` case reads only `url`, `method`, `headers`, `body`, `debounce` and `manual`, `ExternalClassDef` does not declare it, and the compiled `emitRequestFetch` (`packages/compiler/src/shared.ts`) ignores it, so a `Request` re-fetches reactively only through a `${…}` template in `url`.
 
 Web APIs are accessed via `$prototype` in a `state` entry:
 
@@ -1165,24 +1189,26 @@ Web APIs are accessed via `$prototype` in a `state` entry:
 
 ### 11.2 Supported Prototypes
 
-| `$prototype`      | Web API      | Status                                                                  |
-| ----------------- | ------------ | ----------------------------------------------------------------------- |
-| `Request`         | Fetch API    | **Implemented** — reactive URL, debounce, manual mode, abort controller |
-| `URLSearchParams` | URL API      | **Implemented** — computed `.toString()`                                |
-| `FormData`        | FormData API | **Implemented** — basic field population                                |
-| `LocalStorage`    | Storage API  | **Implemented** — reactive read/write with persistence                  |
-| `SessionStorage`  | Storage API  | **Implemented** — session-scoped reactive storage                       |
-| `Cookie`          | Cookie API   | **Implemented** — maxAge, path, domain, secure, sameSite (see §11.2a)   |
-| `IndexedDB`       | IDB API      | **Implemented** — store creation, indexes, CRUD helper                  |
-| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                         |
-| `Set`             | —            | **Implemented** — `new Set(default)`                                    |
-| `Map`             | —            | **Implemented** — `new Map(Object.entries(default))`                    |
-| `Blob`            | Blob API     | **Implemented** — parts and type                                        |
-| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                       |
+> **Status: Partial.** The interpreter's `resolvePrototype` handles every Web API row but `ReadableStream`, whose case returns `null`; the `Array` row is the §10 children node, not a state prototype. The client target (`compile-client.ts`) lowers `LocalStorage`, `SessionStorage`, `Request` and `Cookie`; the element target (`compile-element.ts`), which compiles every site component, lowers only `Request` and turns a storage or cookie entry into a plain initial value (its `default`), with no read and no persistence. `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` reach a built page as the literal definition object in both targets, and the compiled `Request` (`emitRequestFetch` in `packages/compiler/src/shared.ts`) has no debounce or abort. Each cell below that reads Partial names its compiled gap.
+
+| `$prototype`      | Web API      | Status                                                                                              |
+| ----------------- | ------------ | --------------------------------------------------------------------------------------------------- |
+| `Request`         | Fetch API    | **Partial** — reactive URL, debounce, manual mode, abort controller; compiled: no debounce or abort |
+| `URLSearchParams` | URL API      | **Partial** — computed `.toString()`; compiled: not lowered                                         |
+| `FormData`        | FormData API | **Partial** — basic field population; compiled: not lowered                                         |
+| `LocalStorage`    | Storage API  | **Partial** — reactive read/write with persistence; element target: `default` only                  |
+| `SessionStorage`  | Storage API  | **Partial** — session-scoped reactive storage; element target: `default` only                       |
+| `Cookie`          | Cookie API   | **Partial** — maxAge, path, domain, secure, sameSite (see §11.2a); element target: `default` only   |
+| `IndexedDB`       | IDB API      | **Partial** — store creation, indexes, CRUD helper; compiled: not lowered                           |
+| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                                                     |
+| `Set`             | —            | **Partial** — `new Set(default)`; compiled: not lowered                                             |
+| `Map`             | —            | **Partial** — `new Map(Object.entries(default))`; compiled: not lowered                             |
+| `Blob`            | Blob API     | **Partial** — parts and type; compiled: not lowered                                                 |
+| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                                                   |
 
 #### 11.2a The `Cookie` prototype's attribute rules
 
-> **Status: Implemented.**
+> **Status: Partial.** The runtime conforms (`serializeCookie` and `readCookie` in `packages/runtime/src/cookie.ts`). The compiled client target does not: `emitCookieInit` in `compile-client.ts` reads the cookie with a regular expression built from the author's name, and never writes the cookie back, so a compiled page neither persists a change nor applies any of the derived attributes.
 
 Three attributes are **derived rather than taken as declared**, because a browser that disagrees with a cookie's attributes drops it silently — the write appears to succeed and the value is simply never there again ([RFC 6265bis](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis) §4.1.3, §5.4.7):
 
@@ -1199,15 +1225,19 @@ The cookie **name is data, never pattern syntax**: the reader splits the cookie 
 
 ### 11.3 Timing Values
 
-| Value        | When                                                   | Status          |
-| ------------ | ------------------------------------------------------ | --------------- |
-| `"client"`   | Resolved at runtime in the browser (default)           | **Implemented** |
-| `"server"`   | Resolved at runtime on the server via RPC              | **Implemented** |
-| `"compiler"` | Resolved at build time; result baked into emitted HTML | **Implemented** |
+> **Status: Partial.** The compiler row ships only for an external class that names an `$implementation`: a self-contained class is refused with a console warning (§12.4), and a `$prototype: "Request"` is never fetched at build time, because `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) finds no class mapping for it and skips it, yet the site build strips both as resolved compiler entries, so nothing is baked and the page gets no fetch either. The client row holds in the interpreter, but in compiled output only for the built-ins a target lowers (§11.2) and for a registry class with a `lower` capability: an external class with `timing: "client"` reaches a built page as its literal definition object (compiler.md §3), and one with no `timing` is resolved at build time (`resolvePrototypes`), so the two tiers disagree about the default. The server row does not hold in a built site: the route is generated, but no compiled page calls it (§11.4), and in an interpreting host the function can run in the browser.
 
-> **Status: Implemented.** The site build resolves `timing: "compiler"` entries at build time (`prototype-resolver`) and bakes the resolved data into the compiled tree; the resolved entries are then stripped from emitted output. The compiler's `isDynamic` check skips them, so a component whose only state is compiler-timed compiles as fully static HTML.
+| Value        | When                                                   | Status                                                                                                            |
+| ------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `"client"`   | Resolved at runtime in the browser (default)           | **Partial** — a built page does not instantiate an external class (compiler.md §3)                                |
+| `"server"`   | Resolved at runtime on the server via RPC              | **Partial** — the route ships, no compiled caller (§11.4)                                                         |
+| `"compiler"` | Resolved at build time; result baked into emitted HTML | **Partial** — an external class with an `$implementation` only; not a `Request` or a self-contained class (§12.4) |
+
+> **Status: Implemented.** The site build resolves a `timing: "compiler"` external class that names an `$implementation` at build time (`prototype-resolver`) and bakes the resolved data into the compiled tree; the resolved entries are then stripped from emitted output. The compiler's `isDynamic` check skips them, so a component whose only state is compiler-timed compiles as fully static HTML.
 
 ### 11.4 Server Timing — RPC Function Boundary
+
+> **Status: Partial.** The server half ships for a component's entries: `compileServer` and `compileSiteServer` (`packages/compiler/src/targets/compile-server.ts`) emit the route and call the function with `(args, env)`, and the dev server's `/__jx_server__` proxy does the same (`packages/server/src/resolve.ts`). A page's own entry gets no route that loads: with no adapter, the per-page `_server.js` is emitted beside the page in `dist/` but imports its `$src` as written, relative to the source page, and the build neither copies nor bundles that module (compiler.md §6.2); with `build.adapter` set, the site build collects entries from components alone and skips the per-page `_server.js`, so a page entry is dropped (`packages/compiler/src/site/site-build.ts`, site-architecture.md §14.1.1), although Site-Wide Bundling below says pages are collected. The browser half does not ship in a built site: `compile-client.ts` treats a `timing: "server"` entry as plain reactive state and emits no fetch, `compile-element.ts` has no server-entry handling, and a built site ships no `@jxsuite/runtime`, so nothing calls the route. That includes `jx dev` on a site project, which serves the compiled pages (§16.7). In an interpreting host (Studio's live preview and canvas, or `jx dev` on a root without a `project.json`) the runtime tries a browser `import()` first (Security Boundary, below).
 
 `timing: "server"` designates a cross-process function call. The entry points to a named export in a server-side module via `$src` and `$export`. No `$prototype` is used:
 
@@ -1264,7 +1294,7 @@ When any `arguments` value is a signal `$ref`, the call becomes reactive.
 
 **In a compiled deployment**, private environment variables and server-only credentials remain in the server process: the compiler emits the function into a route in the generated server output that the browser can only call over HTTP, and the browser receives only the serialized return value. Where that route lands depends on `build.adapter`: with an adapter set it goes into the generated site worker (`dist/worker.js`, or `dist/_worker.js` under the Cloudflare Pages adapter); with no adapter the compiler emits a standalone per-page `_server.js` handler beside the page instead (compiler.md §6.2). The `env` parameter gives server functions access to platform bindings (KV namespaces, D1 databases, email workers, secrets) without exposing them to the client.
 
-> **Status: Partial (dev boundary).** During `jx dev`, the interpreting runtime currently attempts a browser-side `import()` of the `$src` module before falling back to the `/__jx_server__` proxy. A `*.server.js` that is browser-loadable therefore has its **source delivered to the client** in dev — so do not embed secrets in the module body; read them from `env` inside the function, which only the proxy (and the compiled worker) provides. The compiled deployment does not have this gap. Making the dev path proxy-first is a tracked follow-up.
+> **Status: Partial (dev boundary).** In an interpreting host (Studio's live preview and canvas, or `jx dev` on a root without a `project.json`), the interpreting runtime currently attempts a browser-side `import()` of the `$src` module before falling back to the `/__jx_server__` proxy. A `*.server.js` that is browser-loadable therefore has its **source delivered to the client** there — so do not embed secrets in the module body; read them from `env` inside the function, which only the proxy (and the compiled worker) provides. The compiled deployment does not have this gap. Making the interpreting path proxy-first is a tracked follow-up.
 
 #### Site-Wide Bundling
 
@@ -1277,6 +1307,8 @@ When `build.adapter` is set in `project.json`, all `timing: "server"` entries ac
 ## 12. External Class Integration
 
 ### 12.1 Built-in Prototypes
+
+> **Status: Partial.** `Function`, `LocalStorage`, `SessionStorage` and `Request` resolve in the interpreter, except `Request`'s URL params (§11.1); their compiled lowering is §11.2's. The compile-time rows do not match the code: there is no `MarkdownFile` (the parser's manifest, `extensions/parser/jx-extension.json`, names it `Markdown`); `MarkdownCollection`, `ContentCollection` and `ContentEntry` resolve only through the extension registry, once `@jxsuite/parser` is listed in `project.json` `extensions` (`registryClassPath` in `packages/compiler/src/site/prototype-resolver.ts`); `Array` is a children-level node (§10), not a state prototype; and the runtime built-ins `URLSearchParams`, `Cookie`, `IndexedDB`, `Set`, `Map`, `FormData`, `Blob` and `ReadableStream` (§11.2) are missing from the table.
 
 Jx provides several `$prototype` types that resolve automatically without any `imports` or `$src` configuration:
 
@@ -1338,6 +1370,8 @@ For **third-party or project-local** classes, `$src` on any `state` entry with a
 
 ### 12.3 External Class Contract
 
+> **Status: Partial.** The constructor config, the `resolve()`/`.value`/instance order and `subscribe(callback)` ship in the interpreter (`importAndInstantiate` and `resolveClassJson` in `packages/runtime/src/runtime.ts`). A built page never instantiates an external class: a `timing: "client"` class reaches it as its literal definition (compiler.md §3), and the build-time resolver (`packages/compiler/src/site/prototype-resolver.ts`) skips `.value`, going from `resolve()` straight to the instance. `unsubscribe()` is never called, so a subscription outlives its component, and no tool reads `returnType`: the Studio repeater check (`packages/studio/src/editor/convert-to-repeater.ts`) reads a `returns` key that `packages/server/src/studio-api.ts` copies from `methods.resolve.returns`, which only `ContentCollection.class.json` declares.
+
 **Constructor:** Receives a single configuration object containing all `state` properties except reserved keywords (`$prototype`, `$src`, `$export`, `timing`, `default`, `description`).
 
 **Value resolution:** Checked in order:
@@ -1366,6 +1400,8 @@ instance.unsubscribe();
 ```
 
 ### 12.4 `.class.json` Schema-Defined Classes
+
+> **Status: Partial.** The `.class.json` entrypoint, `$implementation` and runtime self-contained mode (`classFromSchema`) ship. "Tooling uses this metadata" does not hold: nothing reads `returnType` except `packages/compiler/src/targets/compile-class.ts`, which only sniffs it for an async prefix (§12.3). And the build-time resolver (`packages/compiler/src/site/prototype-resolver.ts`) refuses a class with no `$implementation` with a console warning, after which the site build strips the entry and reports no error, so self-contained mode is runtime-only (compiler.md §5.4).
 
 All non-Function external classes **must** use a `.class.json` file as their `$src` entrypoint. These are JSON Schema 2020-12 documents describing a class structure with an optional `$implementation` key:
 
@@ -1416,6 +1452,8 @@ The `returnType` field on a method uses standard JSON Schema to describe the out
 
 ### 12.5 Import Maps
 
+> **Status: Partial.** The import-map rules ship. Two statements do not match the code: imports cascade from `project.json` (`packages/site/src/context.ts`), not `site.json`, and the last step before the unknown-prototype warning is the extension registry's manifest classes, present only for extensions listed in `project.json` `extensions`, not built-in mappings (§12.1).
+
 To avoid repeating `$src` paths across every state entry, a document may declare a top-level `imports` key that maps `$prototype` names to `.class.json` paths:
 
 ```json
@@ -1450,13 +1488,15 @@ To avoid repeating `$src` paths across every state entry, a document may declare
 
 At runtime, `buildScope` injects the mapped `$src` into each bare `$prototype` entry before any resolution pass executes, so all downstream resolution (`resolvePrototype` → `resolveExternalPrototype` → `resolveClassJson`) works unchanged.
 
-> **Status: Implemented.** Runtime pre-processes `doc.imports` in `buildScope`. Compiler merges site-level imports into page documents via `injectContext`. Built-in prototype mappings (`MarkdownFile`, `MarkdownCollection`) resolve at compile time without imports. Site-loader defaults include `imports: {}`.
+> **Status: Implemented.** Runtime pre-processes `doc.imports` in `buildScope`. Compiler merges project-level imports into page documents via `injectContext`. Site-loader defaults include `imports: {}`.
 
 ---
 
 ## 13. Component Encapsulation
 
 ### 13.1 Component Instances
+
+> **Status: Partial.** Registration and instantiation by tag ship. The example below is wrong: `$elements` is an ARRAY of `{ "$ref" }` objects or package names (the schema's `type: "array"`, `registerElements` in `packages/runtime/src/runtime.ts`, `compileElement`), and the tag comes from the referenced document's own `tagName`, not a key; the keyed map shown throws at runtime and fails validation.
 
 A component instance is created by **registering** the component document in the top-level `$elements` map (§16) and then placing an element node with its **custom-element `tagName`**, passing data through `$props`:
 
@@ -1483,6 +1523,8 @@ A component instance is created by **registering** the component document in the
 
 ### 13.2 Explicit Props
 
+> **Status: Partial.** The interpreter implements the rule below (`instanceSupplies` in `packages/runtime/src/runtime.ts`). The compiled element does not: the `connectedCallback` that `compile-element.ts` emits merges a property only when `this.hasOwnProperty(key)`, so a compiled parent's `.title=` binding, which goes through the reflected accessor and creates no own property, is dropped and the component renders its default.
+
 Props are passed via `$props` on the instance node. This is the only mechanism for passing state across component boundaries:
 
 ```json
@@ -1500,6 +1542,8 @@ Props are passed via `$props` on the instance node. This is the only mechanism f
 
 ### 13.3 Signal Forwarding
 
+> **Status: Partial.** Forwarding is one way, parent to child, and fully so only in the interpreter, which writes the resolved value onto the child as a property and re-writes it from an effect when the parent changes (`renderCustomElementWithProps` in `packages/runtime/src/runtime.ts`). A compiled parent binds `.prop=`, but the compiled element defines no property accessors and reads a property once, in `connectedCallback` (§16.2), so it takes the parent's value at connection and loses every later change. In both tiers a child's write to a primitive prop updates only the child, and only a shared object or array proxy is seen by both scopes.
+
 When a `$props` value is a `$ref` to a signal, the child receives the same reactive reference — writes in either scope trigger effects in both.
 
 ### 13.4 Scope Isolation
@@ -1513,6 +1557,8 @@ Signal scope is bounded at the component (custom element) level. Child component
 ## 14. Dynamic Component Switching
 
 ### 14.1 `$switch` Syntax
+
+> **Status: Partial.** The interpreter implements the section (below). No compiled target renders an external `$ref` case: `compile-client.ts`, `compile-element.ts` and the static prerender in `packages/compiler/src/shared.ts` filter them out, so a built page renders an empty container for the example that follows, with no diagnostic.
 
 ```json
 {
@@ -1584,6 +1630,8 @@ A bare identifier or `#/state/` ref resolves in this order:
 
 ### 16.1 Definition
 
+> **Status: Partial.** The interpreter binds root-level `on*` handlers on the host (`bindDefinitionHandlers` in `packages/runtime/src/runtime.ts`). The compiled element module every site build ships (`compileElement`) does not: its `template()` renders only the definition's children and no host listener is emitted, so a root `onclick`, `onkeydown` or `ontoggle` is dropped in production.
+
 A Jx component whose root `tagName` contains a hyphen is a custom element definition:
 
 ```json
@@ -1602,6 +1650,8 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
 
 ### 16.2 Property-First Interface
 
+> **Status: Partial.** The interpreter defines a property accessor forwarding into state for every non-private state key that is not already an `HTMLElement` property (`packages/runtime/src/runtime.ts`). The compiled element module (`compile-element.ts`) defines none: it reads a property only in `connectedCallback`, so `el.key = v` after connection, including the `.key=` binding a compiled parent re-commits when its own state changes, writes an inert own property and the element never re-renders.
+
 Custom elements use JavaScript properties as their primary data interface. `$props` can include signal references, functions, objects, and scalars. HTML observed attributes are a secondary mechanism.
 
 ### 16.3 Dependency Registration (`$elements`)
@@ -1619,6 +1669,8 @@ Dependencies are registered depth-first before the parent.
 
 ### 16.4 Lifecycle Hooks
 
+> **Status: Partial.** The interpreter implements all four rows and `mount()`'s two hooks. The compiled element (`packages/compiler/src/targets/compile-element.ts`) calls `onMount(this.state)` without the host, and emits no `adoptedCallback` and no `attributeChangedCallback`, so `onAdopted` never runs in a built site.
+
 | Callback                   | `state` Entry | Called When                            |
 | -------------------------- | ------------- | -------------------------------------- |
 | `connectedCallback`        | `onMount`     | Element inserted into DOM and rendered |
@@ -1630,9 +1682,9 @@ Dependencies are registered depth-first before the parent.
 
 A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
 
-> **Status: Implemented.**
-
 ### 16.5 Observed Attributes
+
+> **Status: Partial.** The interpreter implements the section (`absorbAttribute` and `declaredDefaults` in `packages/runtime/src/runtime.ts`). The compiled element module ignores `observedAttributes`: it emits no `static get observedAttributes`, no connect-time attribute read and no `attributeChangedCallback`, so in a built site `<user-card username="Ada">` renders the default, and later changes and removals do nothing.
 
 ```json
 {
@@ -1648,9 +1700,9 @@ An observed attribute already on the element when it connects is read into state
 
 REMOVING an observed attribute restores the state entry's declared default. The removal is reported as a null value, and writing that through gave a `string` entry the value `null` and a `number` entry `Number(null)`, which is `0` — so a numeric prop could never express "unset", and clearing one wrote a zero where the author meant to delete a key. The default is the value the entry held before anyone set the attribute, which is what the removal asks to go back to. An entry declared in the shorthand form (`"username": "Guest"`) has that literal as its default; an entry that is computed (`$expression`, `$prototype`, `$ref`, `$src`) has none and a removal leaves it alone. A `boolean` is unaffected, because presence already IS its value. An entry with no declared default falls back by type: `0` for a number, the empty string otherwise, never null.
 
-> **Status: Implemented.**
-
 ### 16.6 Light DOM Rendering
+
+> **Status: Partial.** The compiler ships the light default, `$shadow` and `defaults.shadow`, the declarative-root prerender and its adoption, and `:host` translation (`packages/compiler/src/shadow.ts`). Three parts do not: the interpreter has no shadow support (no `$shadow`, `attachShadow` or `:host` handling in `runtime.ts`); `site-build.ts` calls `compileElement` without `defaults`, so a project-level `defaults.shadow` reaches the prerender but not the component module; and built output does not distribute slots by `name` (§8.5): the component module's light-DOM emulation replaces only the first `<slot>` and leaves the `<slot>` element in place when nothing is slotted, and the static prerender (`renderStaticNode` in `packages/compiler/src/shared.ts`) writes all slotted content into every `<slot>`.
 
 Custom elements render to the light DOM by default. No shadow root is attached there, and none of the shadow-scoped styling primitives apply: no `attachShadow`, no `shadowrootmode`, no `::part`.
 
@@ -1686,9 +1738,11 @@ What the client render then does is **replace**, not hydrate: lit renders its ow
 
 **Content-Security-Policy is unaffected.** The component stylesheet stays an external `<link>`, merely relocated, so no hash changes (site-architecture.md §14.3.1).
 
-> **Status: Implemented.** Light DOM is the default; the `$shadow` opt-in emits and adopts a declarative shadow root, verified in a browser for both modes.
+> **Status: Implemented.** In compiled output, light DOM is the default, and a component's own `$shadow` emits and adopts a declarative shadow root, verified in a browser for both modes.
 
 ### 16.7 Development vs. Production
+
+> **Status: Partial.** Both renderers exist as tabled. The Development column describes Studio's live preview and canvas (`packages/server/src/live-preview.ts`) and roots without a `project.json`, not `jx dev` on a site project, which builds with `buildSite` and serves the compiled pages (`startDev` in `packages/server/src/dev.ts`); and the "~10 kB deps" figure has no committed measurement.
 
 |          | Development           | Production                       |
 | -------- | --------------------- | -------------------------------- |
@@ -1706,7 +1760,7 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 - `emits` on functions — CEM `Event` objects
 - `attribute` and `reflects` on typed `state` entries
 
-> **Status: Partial.** Schema includes CEM fields. Studio has CEM editing UI. Full CEM document export is pending.
+> **Status: Partial.** The schema fields ship, and Studio edits `parameters`, `emits` and a typed entry's `attribute` and `reflects` (`packages/studio/src/panels/signals-panel.ts`), but nothing in `packages/studio/src` reads or writes the root `observedAttributes` array (studio.md §6.5). A per-document CEM 2.1.0 generator exists (`exportCemManifest` in `packages/studio/src/services/cem-export.ts`), but nothing calls it (`studio.ts` imports it as `_exportCemManifest`), no build emits a project `custom-elements.json`, and the generator maps only typed state entries carrying `attribute` into CEM `attributes`, not `observedAttributes`.
 
 ### 16.9 Instantiation Limits
 
@@ -1850,6 +1904,8 @@ An `$expression` entry is an object containing a single `$expression` key whose 
 
 ### 19.3 Operator Arity
 
+> **Status: Partial.** Arity and mode routing ship (`isMutating` in `packages/runtime/src/expression.ts`; `buildScope` and the compiled targets route a mutating node to a handler and a pure node to a computed). Nothing enforces that a mutating node never appears as an operand: the schema's `ExpressionOperand` (`packages/schema/defs/expression-node.schema.ts`) admits the assignment and array-mutation branches, and the interpreter performs such a mutation as a side effect of evaluating the operand.
+
 An expression node is one of two **modes**, determined entirely by its operator:
 
 - **Mutating** — the node writes to its `target` and returns nothing. Used as an event handler. (`=`, the compound assigns, and the array-mutation methods.)
@@ -1876,6 +1932,8 @@ For **binary** operators, `target` is the left operand and `value` the right; th
 ```
 
 ### 19.4 Blessed Operator Set
+
+> **Status: Partial.** The set is closed in the schema, so `jx validate` rejects an unknown operator, and in the interpreter, which throws on one. The compiler does not refuse it: `compileExpression` (`packages/runtime/src/expression.ts`) falls through to `"undefined"`, a test pins that, and `jx build` runs no schema validation, so a document with an unknown operator builds. The table also omits `call` (§19.4c) and the §19.4d methods, which the closed set includes.
 
 The operator set is **closed**. An operator outside this list is a compile-time error; logic requiring it must use a `body` string. The set is chosen to cover the mutation patterns already present in `body` strings across the existing examples (e.g. Appendix A's `push`, `splice`, and `!`-toggle handlers).
 
@@ -1989,6 +2047,8 @@ In production evaluation `?:` and `switch` evaluate only the taken branch. Under
 
 ### 19.4c Named Formulas and the `call` Operator
 
+> **Status: Partial.** Named formulas, `$args/`, `call`, `BLESSED_GLOBALS` and `BLESSED_HELPERS` ship (`packages/runtime/src/expression.ts`). Recursion is not bounded as stated: no compiler check rejects a call cycle, the callable `buildScope` builds does not carry `callDepth`, so `MAX_CALL_DEPTH` bounds only the raw-definition path, and compiled formulas (`emitFormulaFn` in `packages/compiler/src/shared.ts`) have no bound. The helper table is stale: eight helpers ship (`packages/schema/src/intl.ts`, site-architecture.md §13.7), not three.
+
 A **named formula** is a Shape 5 expression entry with `parameters` (the same convention as Function entries, §5.3 4d — bare names or CEM parameter objects): a pure, reusable computation. Parameterless pure entries remain computed values exactly as before; the presence of `parameters` makes the entry **callable** instead.
 
 ```json
@@ -2072,6 +2132,8 @@ Evaluation is null-safe, matching path reads: a missing receiver or a method abs
 
 ### 19.5 The `event#` Reference Scheme
 
+> **Status: Partial.** The scheme resolves in the interpreter and compiles to the handler's event parameter (`packages/runtime/src/expression.ts`). The compile-time error is not implemented: no compiler, schema or `jx validate` check restricts `event#/` to handler position, so a pure computed that reads it resolves against a null event.
+
 Handlers receive `(state, event)` (§4.3). To allow `$expression` handlers to read event data without escalating to a `body` string, the reference system (§7.2) is extended with one scheme:
 
 | Scheme        | Example                 | Resolves to                          |
@@ -2108,6 +2170,8 @@ Example — an input handler with no `body` string:
 ```
 
 ### 19.6 Placement
+
+> **Status: Partial.** All three positions ship in the interpreter, the element target and the static target. Two parts do not: `jx validate` has no lint for a tag discriminant that is also an assignment target (`packages/compiler/src/site/validate-command.ts` runs only the popover, dialog and accessibility lints), and `compile-client.ts` refuses a tag expression on a dynamic page ("A tag chosen at creation is not supported on a dynamic page yet").
 
 `$expression` is valid in three positions:
 
@@ -2281,6 +2345,8 @@ The interpreter accepts an optional **trace** — a `report(path, value)` callba
 
 ### 20.2 Statement Kinds
 
+> **Status: Partial.** All six kinds ship in both halves (`packages/runtime/src/statements.ts`). Awaiting a thenable holds only in the interpreter's `runStatements`: `compileStatements` emits plain statements with no `await`, and the compiled handlers are synchronous arrows, so a compiled body runs its next statement before an async call settles.
+
 Every statement kind reuses a web-platform name — §19.4's law extended to statement position:
 
 | Kind       | Shape                                                | Source of the name                           |
@@ -2300,13 +2366,15 @@ Every statement kind reuses a web-platform name — §19.4's law extended to sta
 
 ### 20.3 Lowering
 
+> **Status: Partial.** The interpreter and `compile-client.ts` lower both forms. The element target does not: a structured body with `parameters` always lowers to a `(s, e)` handler in `packages/compiler/src/targets/compile-element.ts`, not a positional callable, and its `$args/` refs compile to `_args.x` with no `_args` in scope.
+
 `body: Statement[]` follows the named-formula pattern (§19.4c): without `parameters` the entry lowers to an event handler `(state, event)`; with `parameters` it lowers to a positional callable whose arguments bind to `$args/` names. The engine is `runStatements` (interpreter) + `compileStatements` (JS emitter) — one module, both halves, mirroring §19.8: `if`/`else` and `switch` emit their genuine ECMAScript statement forms, dispatch emits `dispatchEvent(new CustomEvent(type, init))`, and the two event verbs emit `event?.stopPropagation()` and `event?.preventDefault()`. Inline event bindings accept structured bodies through the existing Function binding form — `JxEventBinding` is unchanged.
 
 ---
 
 ## 21. Evaluation Surface
 
-> **Status: Partial.** The surface is stated accurately, which is what this section is for; a Trusted Types policy guards the shell's own injection sink; enforcement is declined (§21.5).
+> **Status: Implemented.** The surface is stated accurately, which is what this section is for; a Trusted Types policy guards the shell's own injection sink; enforcement is declined (§21.5).
 
 Jx documents contain executable code — `${}` templates and `body`/`$src` functions. Where and how that code runs differs by mode, and the security posture differs with it. This section states the surface honestly so hosts can make an informed decision.
 
@@ -2314,7 +2382,7 @@ Jx documents contain executable code — `${}` templates and `body`/`$src` funct
 
 The compiler produces plain HTML/CSS plus per-island ES modules. It does **not** emit `new Function` or `eval`: a `${}` template is **spliced verbatim** into an emitted module as a real template literal (`compile-client.ts`), and statements/`$expression` lower to genuine JS. A compiled static or island page therefore runs under a strict CSP with **no `'unsafe-eval'`**.
 
-> **Status: Implemented.** Enforced by a test (`packages/compiler/tests/no-eval.test.ts`) that compiles templates, `$switch` external cases, and a `.class.json`, and asserts the emitted JS contains no `new Function(`/`eval(`.
+> **Status: Implemented.** No emitter in `packages/compiler/src/targets` writes `new Function` or `eval`; the compiler's own `new Function` sites in `packages/compiler/src/shared.ts` run in the build host (§21.2). A test (`packages/compiler/tests/no-eval.test.ts`) locks the client target: it compiles a template, a computed body and a handler, and asserts the emitted JS contains neither.
 
 The corollary is a **build-time** concern, not a runtime one: because template text becomes code in the bundle, any document string that reaches a template position becomes executable at build time. A pipeline that compiles **untrusted** documents (e.g. user-submitted content merged into the tree) must sanitize or escape `${` sequences first — treat compiling a document as running it.
 
