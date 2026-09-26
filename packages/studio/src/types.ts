@@ -567,9 +567,13 @@ export interface StudioPlatform {
     onReady?: (evt: ImportReadyEvent) => void,
   ) => Promise<{ root: string; config: ProjectConfig; result?: ImportSiteSummary }>;
   /**
-   * Open a native directory picker and return the chosen absolute path (null when cancelled). Backs
-   * the New Project modal's **Browse…** button on `createDestination: "path"` platforms. Desktop
-   * only — the dev server has no native dialog, so its Location field is typed by hand.
+   * Open a native directory picker and return the chosen absolute path. Backs the New Project
+   * modal's **Browse…** button on `createDestination: "path"` platforms: desktop (the system
+   * dialog), and the dev server in a browser that has `showDirectoryPicker` (Chromium-based).
+   *
+   * Resolves `null` only when the user cancels; rejects with a displayable Error otherwise. The
+   * modal shows that message under the Location field, and typing a path clears it. A picker that
+   * resolves `null` for a failure is a dead button: the click visibly does nothing.
    */
   pickDirectory?: () => Promise<string | null>;
   /** Stack B AI assistant: URL of the OpenAI-compatible SSE chat proxy (`/__studio/ai/chat`). */

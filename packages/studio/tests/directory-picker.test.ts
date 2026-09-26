@@ -1,3 +1,4 @@
+// oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 /**
  * Tests for src/services/directory-picker.ts — the browser-side folder chooser behind the New
  * Project modal's **Browse…** button.
@@ -7,8 +8,11 @@
  * caller-supplied `locate` which directory carries that id. These tests stub
  * `globalThis.showDirectoryPicker` (no DOM needed — the module reads the global lazily inside each
  * call) and assert the whole contract: the options handed to the picker, that the id written to
- * disk is the same id sent to the backend, every failure path resolving `null`, and the tag being
- * cleaned up even when `locate` throws. Every stubbed global is restored in `afterEach`.
+ * disk is the same id sent to the backend, and the one rule the modal depends on: **`null` means
+ * the user dismissed the chooser, and every other failure rejects with a sentence fit to show.** It
+ * used to resolve `null` for all of them, which is how Browse… came to do nothing at all when the
+ * lookup broke. The tag is removed on every path where one was created, including a write that
+ * failed after the empty file already existed. Every stubbed global is restored in `afterEach`.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import {
@@ -67,7 +71,13 @@ class FakeDirectoryHandle {
   readonly name: string;
   createError: Error | null = null;
   writeError: Error | null = null;
+  closeError: Error | null = null;
   removeError: Error | null = null;
+  /**
+   * Whether the tag file is on disk. `getFileHandle({ create: true })` creates it (empty) before a
+   * byte is written, which is exactly why a failed write must still clean up.
+   */
+  exists = false;
 
   constructor(name = "Projects") {
     this.name = name;
@@ -79,6 +89,7 @@ class FakeDirectoryHandle {
     if (this.createError) {
       return Promise.reject(this.createError);
     }
+    this.exists = true;
     return Promise.resolve({
       createWritable: () => {
         if (this.writeError) {
@@ -86,6 +97,9 @@ class FakeDirectoryHandle {
         }
         return Promise.resolve({
           close: () => {
+            if (this.closeError) {
+              return Promise.reject(this.closeError);
+            }
             this.closed += 1;
             return Promise.resolve();
           },
@@ -100,19 +114,25 @@ class FakeDirectoryHandle {
 
   removeEntry(name: string): Promise<void> {
     this.removed.push(name);
-    return this.removeError ? Promise.reject(this.removeError) : Promise.resolve();
+    if (this.removeError) {
+      return Promise.reject(this.removeError);
+    }
+    this.exists = false;
+    return Promise.resolve();
   }
 }
 
 /**
- * Stub `showDirectoryPicker` with one that resolves `outcome` (or rejects when it is an `Error`),
- * returning the array the options of every call are recorded into.
+ * Stub `showDirectoryPicker` with one that resolves `outcome` when it is a handle and rejects with
+ * it otherwise, returning the array the options of every call are recorded into.
  */
-function installPicker(outcome: FakeDirectoryHandle | Error): PickerOptions[] {
+function installPicker(outcome: unknown): PickerOptions[] {
   const calls: PickerOptions[] = [];
   setPicker((options?: PickerOptions) => {
     calls.push(options ?? {});
-    return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome);
+    return outcome instanceof FakeDirectoryHandle
+      ? Promise.resolve(outcome)
+      : Promise.reject(outcome);
   });
   return calls;
 }
@@ -132,11 +152,26 @@ function recordLocate(outcome: string | null | Error): {
   };
 }
 
+/** An Error with a DOMException-style `name`, as Chrome rejects the chooser with. */
+function namedError(name: string, message: string): Error {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+}
+
 /** The rejection Chrome produces when the user dismisses the folder chooser. */
 function abortError(): Error {
-  const error = new Error("The user aborted a request.");
-  error.name = "AbortError";
-  return error;
+  return namedError("AbortError", "The user aborted a request.");
+}
+
+/** What a promise rejected with, for assertions on more than the message. */
+async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected the promise to reject");
 }
 
 // ─── Availability ────────────────────────────────────────────────────────────
@@ -159,11 +194,15 @@ describe("canPickDirectory", () => {
 // ─── pickDirectoryPath ───────────────────────────────────────────────────────
 
 describe("pickDirectoryPath without the API", () => {
-  test("resolves null without ever consulting the backend", async () => {
+  /* The dev-server adapter never offers Browse… without the API, so only an embedder wiring the
+     helper by hand gets here. `null` would read as a cancel the user never made. */
+  test("rejects with a sentence, without ever consulting the backend", async () => {
     setPicker(undefined);
     const { calls, locate } = recordLocate("/home/dev/Projects");
 
-    expect(await pickDirectoryPath(locate)).toBeNull();
+    await expect(pickDirectoryPath(locate)).rejects.toThrow(
+      "This browser has no folder chooser. Type the folder's path into Location instead.",
+    );
     expect(calls).toEqual([]);
   });
 });
@@ -227,46 +266,114 @@ describe("pickDirectoryPath with the API", () => {
     expect(calls).toEqual([]);
   });
 
-  test("resolves null without calling locate when the tag cannot be created", async () => {
-    const handle = new FakeDirectoryHandle();
-    handle.createError = new Error("NotAllowedError");
-    installPicker(handle);
+  /* A DOMException from another realm (an iframe's picker) is not `instanceof Error` in this one,
+     so dismissal is read from the `name` alone. */
+  test("reads a cancel structurally, so a plain { name: 'AbortError' } is still a cancel", async () => {
+    installPicker({ message: "The user aborted a request.", name: "AbortError" });
     const { calls, locate } = recordLocate("/home/dev/Projects");
 
     expect(await pickDirectoryPath(locate)).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  /* The picker runs synchronously from the click, so a SecurityError means the environment is
+     wrong (a cross-origin frame, a spent gesture). Swallowing it was the dead button. */
+  test("rejects, naming the refusal, when the chooser will not open (SecurityError)", async () => {
+    const handle = new FakeDirectoryHandle();
+    const refusal = namedError("SecurityError", "Must be handling a user gesture.");
+    installPicker(refusal);
+    const { calls, locate } = recordLocate("/home/dev/Projects");
+
+    const error = await rejectionOf(pickDirectoryPath(locate));
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "The folder chooser could not open (Must be handling a user gesture.). Type the folder's path into Location instead.",
+    );
+    expect((error as Error).cause).toBe(refusal);
+    expect(handle.created).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  test("rejects when the chooser fails with a thrown non-Error", async () => {
+    installPicker("picker exploded");
+    const { locate } = recordLocate("/home/dev/Projects");
+
+    await expect(pickDirectoryPath(locate)).rejects.toThrow(
+      /^The folder chooser could not open \(picker exploded\)/,
+    );
+  });
+
+  test("rejects without calling locate when the tag cannot be created", async () => {
+    const handle = new FakeDirectoryHandle();
+    const refusal = new Error("NotAllowedError");
+    handle.createError = refusal;
+    installPicker(handle);
+    const { calls, locate } = recordLocate("/home/dev/Projects");
+
+    const error = await rejectionOf(pickDirectoryPath(locate));
+    expect((error as Error).message).toBe(
+      "Jx Studio can't write to \"Projects\" (NotAllowedError), so it can't create a project there. Choose a folder you can write to.",
+    );
+    expect((error as Error).cause).toBe(refusal);
     expect(handle.created).toHaveLength(1);
     expect(calls).toEqual([]);
     // Nothing was created, so there is nothing to clean up.
     expect(handle.removed).toEqual([]);
+    expect(handle.exists).toBe(false);
   });
 
-  test("resolves null without calling locate when the tag cannot be written", async () => {
+  test("rejects, and removes the empty tag, when the tag cannot be written", async () => {
     const handle = new FakeDirectoryHandle();
     handle.writeError = new Error("NoModificationAllowedError");
     installPicker(handle);
     const { calls, locate } = recordLocate("/home/dev/Projects");
 
-    expect(await pickDirectoryPath(locate)).toBeNull();
+    await expect(pickDirectoryPath(locate)).rejects.toThrow(/can't write to "Projects"/);
     expect(handle.written).toEqual([]);
     expect(calls).toEqual([]);
+    // `getFileHandle({ create: true })` already put an empty file on disk: it must not stay.
+    expect(handle.removed).toEqual([LOCATION_ID_FILE]);
+    expect(handle.exists).toBe(false);
   });
 
-  test("resolves null when the backend cannot place the folder", async () => {
+  test("rejects, and removes the tag, when the written bytes cannot be flushed", async () => {
+    const handle = new FakeDirectoryHandle();
+    handle.closeError = new Error("QuotaExceededError");
+    installPicker(handle);
+    const { calls, locate } = recordLocate("/home/dev/Projects");
+
+    await expect(pickDirectoryPath(locate)).rejects.toThrow(
+      /can't write to "Projects" \(QuotaExceededError\)/,
+    );
+    expect(calls).toEqual([]);
+    expect(handle.removed).toEqual([LOCATION_ID_FILE]);
+    expect(handle.exists).toBe(false);
+  });
+
+  test("rejects, saying the folder was not found, when the backend cannot place it", async () => {
     const handle = new FakeDirectoryHandle();
     installPicker(handle);
     const { locate } = recordLocate(null);
 
-    expect(await pickDirectoryPath(locate)).toBeNull();
+    await expect(pickDirectoryPath(locate)).rejects.toThrow(
+      /^Jx Studio could not find where "Projects" is\..*Type its full path into Location instead\.$/,
+    );
     // The backend never claimed it, so this side must clear the tag.
     expect(handle.removed).toEqual([LOCATION_ID_FILE]);
+    expect(handle.exists).toBe(false);
   });
 
-  test("resolves null but still clears the tag when locate throws", async () => {
+  test("rejects with the lookup's own reason, and still clears the tag, when locate throws", async () => {
     const handle = new FakeDirectoryHandle();
     installPicker(handle);
-    const { locate } = recordLocate(new Error("500 from /__studio/locate-directory"));
+    const failure = new Error("500 from /__studio/locate-directory");
+    const { locate } = recordLocate(failure);
 
-    expect(await pickDirectoryPath(locate)).toBeNull();
+    const error = await rejectionOf(pickDirectoryPath(locate));
+    expect((error as Error).message).toBe(
+      'Jx Studio could not look up where "Projects" is: 500 from /__studio/locate-directory. Type the folder\'s path into Location instead.',
+    );
+    expect((error as Error).cause).toBe(failure);
     expect(handle.removed).toEqual([LOCATION_ID_FILE]);
   });
 

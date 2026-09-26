@@ -32,7 +32,9 @@ const appDir = resolve(buildDir, dirname(dirname(hits[0]!)));
 
 const missing = verifyBundle(appDir);
 if (missing.length > 0) {
-  console.error(`[post-build] bundle at ${appDir} missing ${missing.length} required path(s):`);
+  console.error(
+    `[post-build] bundle at ${appDir} failed ${missing.length} check(s) (a missing path, or a file whose content would not boot):`,
+  );
   for (const rel of missing) {
     console.error(`  ${rel}`);
   }
