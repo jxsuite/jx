@@ -101,6 +101,18 @@
             },
             {
               "tagName": "a",
+              "attributes": { "href": "/templates" },
+              "style": {
+                "display": "block",
+                "color": "var(--color-text-muted)",
+                "textDecoration": "none",
+                "transition": "color 0.15s",
+                ":hover": { "color": "var(--color-text-primary)" }
+              },
+              "children": ["Templates"]
+            },
+            {
+              "tagName": "a",
               "attributes": { "href": "/features" },
               "style": {
                 "display": "block",
@@ -122,6 +134,18 @@
                 ":hover": { "color": "var(--color-text-primary)" }
               },
               "children": ["Compare"]
+            },
+            {
+              "tagName": "a",
+              "attributes": { "href": "/cloud" },
+              "style": {
+                "display": "block",
+                "color": "var(--color-text-muted)",
+                "textDecoration": "none",
+                "transition": "color 0.15s",
+                ":hover": { "color": "var(--color-text-primary)" }
+              },
+              "children": ["Jx Cloud (soon)"]
             }
           ]
         },
@@ -151,6 +175,18 @@
                 ":hover": { "color": "var(--color-text-primary)" }
               },
               "children": ["Docs"]
+            },
+            {
+              "tagName": "a",
+              "attributes": { "href": "/framework" },
+              "style": {
+                "display": "block",
+                "color": "var(--color-text-muted)",
+                "textDecoration": "none",
+                "transition": "color 0.15s",
+                ":hover": { "color": "var(--color-text-primary)" }
+              },
+              "children": ["Framework"]
             },
             {
               "tagName": "a",
