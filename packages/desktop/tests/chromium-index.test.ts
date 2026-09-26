@@ -103,6 +103,9 @@ const handlerMocks = {
   handleCreateDirectory: mock(() => Promise.resolve()),
   handleDeleteFile: mock(() => Promise.resolve()),
   handleReadFile: mock((p: { path: string }) => Promise.resolve(`read:${p.path}`)),
+  /* The launcher imports this STATICALLY, so its absence from this mock is not a missing stub, it
+     is `SyntaxError: Export named 'handleReadFileBytes' not found` and the whole file fails to load. */
+  handleReadFileBytes: mock((p: { path: string }) => Promise.resolve({ data: `bytes:${p.path}` })),
   handleRenameFile: mock(() => Promise.resolve()),
   handleResolveSiteContext: mock(() => Promise.resolve({ sitePath: "." })),
   handleUploadFile: mock(() => Promise.resolve()),
@@ -513,6 +516,11 @@ describe("chromium launcher RPC dispatch", () => {
     const result = await rpc("readFile", { path: "hello.txt" });
     expect(result).toBe("read:hello.txt");
     expect(handlerMocks.handleReadFile).toHaveBeenCalledWith({ path: "hello.txt" });
+  });
+
+  test("readFileBytes dispatches to handleReadFileBytes with params", async () => {
+    expect(await rpc("readFileBytes", { path: "hero.jpg" })).toEqual({ data: "bytes:hero.jpg" });
+    expect(handlerMocks.handleReadFileBytes).toHaveBeenCalledWith({ path: "hero.jpg" });
   });
 
   test("void handlers resolve with null (?? null normalization)", async () => {

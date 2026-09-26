@@ -39,15 +39,14 @@ export async function toBase64(data: string | File | Blob | ArrayBuffer): Promis
  * Decode a base64 string to raw bytes — the inverse of {@link bytesToBase64}.
  *
  * The RPC platforms' `readFileBytes` answers base64 because their params and results are JSON, so
- * this is where a JPEG becomes a JPEG again. `atob` yields one character per byte, and reading them
- * back with `charCodeAt` is what keeps a byte above 0x7F from being re-encoded as UTF-8 — the exact
+ * this is where a JPEG becomes a JPEG again. `atob` yields one character per byte, and reading the
+ * code point back out is what keeps a byte above 0x7F from being re-encoded as UTF-8 — the exact
  * corruption that makes `readFile` useless for an image.
+ *
+ * `Uint8Array.from` with a mapper rather than an index loop, because `atob`'s output is latin1: one
+ * code unit per byte, none of them a surrogate, so iterating characters and iterating bytes are the
+ * same walk and the index never has to be reasoned about.
  */
 export function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
+  return Uint8Array.from(atob(base64), (char) => char.codePointAt(0) ?? 0);
 }
