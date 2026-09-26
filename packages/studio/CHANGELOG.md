@@ -1,5 +1,66 @@
 # Changelog
 
+## [5.4.0](https://github.com/jxsuite/jx/compare/studio-v5.3.0...studio-v5.4.0) (2026-09-26)
+
+
+### Features
+
+* **ai:** the gateway, one implementation of the chat and models routes ([cbf5728](https://github.com/jxsuite/jx/commit/cbf5728d2f81e8f36a42a1e94cac6a6b0944e3a8))
+* **ai:** the gateway, one implementation of the chat and models routes ([404923f](https://github.com/jxsuite/jx/commit/404923f303ee6869469b5310560f37c6bcfe1f20))
+* **schema:** document ops and the JSON serializer as portable @jxsuite/schema subpaths (harness J1.1) ([4467d3a](https://github.com/jxsuite/jx/commit/4467d3a6a78982fd025d81b58b3eb015c8d9f49d))
+* **schema:** the document-op vocabulary and its inverse, as @jxsuite/schema/doc-ops ([69cf43f](https://github.com/jxsuite/jx/commit/69cf43fe16f373a912bc8ec94f08eae89d22c5db))
+* **schema:** the layout-preserving JSON serializer, as @jxsuite/schema/json-layout ([a08fffe](https://github.com/jxsuite/jx/commit/a08fffe58e7696f2bd22adb311ab2a4a5b00438d))
+* **studio:** batch modulepreload links, cache scroller/track resolution ([d756ae3](https://github.com/jxsuite/jx/commit/d756ae3a53987316215082161222ea5444390d50))
+* **studio:** the PAL can answer a project file's raw bytes ([47a1ee8](https://github.com/jxsuite/jx/commit/47a1ee86457c00ffb19130c0856c22deac33b968))
+* **studio:** the PAL can answer a project file's raw bytes ([58e6267](https://github.com/jxsuite/jx/commit/58e6267c45bc436910ad6af321f450920e2b53d1))
+
+
+### Bug Fixes
+
+* **ai:** run streamed tool calls on any finish but not after Stop, and forward usage ([1513100](https://github.com/jxsuite/jx/commit/1513100f789ab88ea25dfcf69f44ba76dcdb2e75))
+* **desktop,studio:** 5.x desktop windows booted without their backend; fail loud and report Browse errors ([b128b9a](https://github.com/jxsuite/jx/commit/b128b9a8b0ab7d57865113bd73213d544fe7dcd9))
+* **desktop:** gate the shared AI proxy with the per-process service token ([9cef376](https://github.com/jxsuite/jx/commit/9cef3766536b6ad0d2be04dc852212b7f976c2c5))
+* **desktop:** the launcher's handlers mock needs the member the launcher imports ([f09b251](https://github.com/jxsuite/jx/commit/f09b251157de1ff296f6f5404cc2a8002eca4ac0))
+* **evals:** the harnesses reach their provider, and a trial that never did does not pass ([bb0b589](https://github.com/jxsuite/jx/commit/bb0b5896903c0743a49ea9cea506d8316db8a3bb))
+* **evals:** the harnesses reach their provider, and a trial that never did does not pass ([64029c4](https://github.com/jxsuite/jx/commit/64029c4de2e2d85b530cebbe492ab7f01e897add))
+* **evals:** the headless eval scores a run instead of throwing on its document ([b3358a8](https://github.com/jxsuite/jx/commit/b3358a8485c8865cbde81fd7f866a8ba1e87b0b9))
+* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([8d364ea](https://github.com/jxsuite/jx/commit/8d364eac66bea8302f0dcac03f8f72587e49d8c6))
+* **studio,desktop:** Browse reports why it could not choose a folder ([a80221f](https://github.com/jxsuite/jx/commit/a80221f6bd76b2db1d280405325404dfbaaee017))
+* **studio,desktop:** refuse the dev-server fallback when a launcher failed to start ([f4e17aa](https://github.com/jxsuite/jx/commit/f4e17aac63bb1bd439e1fdef200585f12a07ecef))
+* **studio:** a hand-off waits for the turn New Chat stopped, instead of being lost ([1f773b8](https://github.com/jxsuite/jx/commit/1f773b89e4ebf48d45a15a12fa72f7cf7fdb01bb))
+* **studio:** a live chip shows how its call ended; a stopped or failed turn leaves an honest record ([f064bc5](https://github.com/jxsuite/jx/commit/f064bc5e07d70d0429d62ba69ec3826ccf228e20))
+* **studio:** a live chip shows how its call ended; a stopped or failed turn leaves an honest record ([6a70470](https://github.com/jxsuite/jx/commit/6a704701bf1fefa4666e3fe1c1b23d4c9115ac5d))
+* **studio:** a reopened chat shows how each tool call ended and keeps an open question ([0488ee1](https://github.com/jxsuite/jx/commit/0488ee10a5c4d689ea3850424dcdabe2311b2a19))
+* **studio:** a reopened chat shows how each tool call ended and keeps an open question ([879b7fe](https://github.com/jxsuite/jx/commit/879b7fe793e457380399a064040c427b64859200))
+* **studio:** a turn reports what it applied, and a turn that drew nothing says so ([2d063c5](https://github.com/jxsuite/jx/commit/2d063c5a2fa7226715aa061412c46a033951c970))
+* **studio:** a turn reports what it applied, and a turn that drew nothing says so ([60a84f4](https://github.com/jxsuite/jx/commit/60a84f4f5e5ccfdf63b2a550ed11a147e6d9d40f))
+* **studio:** account for the persistent formula-palette mount in expression-editor.test.ts ([6a723f7](https://github.com/jxsuite/jx/commit/6a723f7e54e49134634f38275f491dbbdc3f11a3))
+* **studio:** mark Command Bar controls no-drag in a form Electrobun can see ([47fc742](https://github.com/jxsuite/jx/commit/47fc742084ef6572f989f434d763f2839ffe213e))
+* **studio:** offer the account picker when Cloudflare names no account ([43f0563](https://github.com/jxsuite/jx/commit/43f056326deb05c1ec222848eab415b559b32f6f))
+* **studio:** one turn per window, and Stop stays on offer for all of it ([81c7824](https://github.com/jxsuite/jx/commit/81c78242a58d247d5b1ecf697122160ee7600e6a))
+* **studio:** one turn per window, and Stop stays on offer for all of it ([076b9c7](https://github.com/jxsuite/jx/commit/076b9c7de6411be8af206aa48b321d4d2fec8a00))
+* **studio:** record the assistant's text and state edits as document ops ([a6a4ab7](https://github.com/jxsuite/jx/commit/a6a4ab7af690f81fd3d0f5c01b3bfb4d6980dd97))
+* **studio:** resolve three canvas/chrome stacking-order defects ([7032b9e](https://github.com/jxsuite/jx/commit/7032b9e8f17b2792d33fca0f3cd5caa9de239d8f))
+* **studio:** resolve three canvas/chrome stacking-order defects ([0e0f4fc](https://github.com/jxsuite/jx/commit/0e0f4fcb05765fb068f1edbea59e32a2760c2c4a))
+* **studio:** Stop is armed before the send path's first wait ([d9a8059](https://github.com/jxsuite/jx/commit/d9a805929d4efc91a8ab6918dc3784fcf367a9c4))
+* **studio:** Stop is armed before the send path's first wait ([297f75e](https://github.com/jxsuite/jx/commit/297f75ecb2ec7bed6622a7e298a160a24863bdc0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.38.0
+    * @jxsuite/collab bumped to 0.10.0
+    * @jxsuite/create bumped to 1.3.12
+    * @jxsuite/formulas bumped to 0.0.19
+    * @jxsuite/markup bumped to 0.4.11
+    * @jxsuite/protocol bumped to 2.4.0
+    * @jxsuite/runtime bumped to 4.0.2
+    * @jxsuite/schema bumped to 2.3.0
+    * @jxsuite/site bumped to 2.0.2
+    * @jxsuite/ui bumped to 0.4.0
+
 ## [5.3.0](https://github.com/jxsuite/jx/compare/studio-v5.2.0...studio-v5.3.0) (2026-09-22)
 
 

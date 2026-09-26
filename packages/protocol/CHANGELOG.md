@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.4.0](https://github.com/jxsuite/jx/compare/protocol-v2.3.1...protocol-v2.4.0) (2026-09-26)
+
+
+### Features
+
+* **studio:** the PAL can answer a project file's raw bytes ([47a1ee8](https://github.com/jxsuite/jx/commit/47a1ee86457c00ffb19130c0856c22deac33b968))
+* **studio:** the PAL can answer a project file's raw bytes ([58e6267](https://github.com/jxsuite/jx/commit/58e6267c45bc436910ad6af321f450920e2b53d1))
+
+
+### Bug Fixes
+
+* **desktop,studio:** 5.x desktop windows booted without their backend; fail loud and report Browse errors ([b128b9a](https://github.com/jxsuite/jx/commit/b128b9a8b0ab7d57865113bd73213d544fe7dcd9))
+* **desktop:** the launcher's handlers mock needs the member the launcher imports ([f09b251](https://github.com/jxsuite/jx/commit/f09b251157de1ff296f6f5404cc2a8002eca4ac0))
+* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([8d364ea](https://github.com/jxsuite/jx/commit/8d364eac66bea8302f0dcac03f8f72587e49d8c6))
+* **studio,desktop:** Browse reports why it could not choose a folder ([a80221f](https://github.com/jxsuite/jx/commit/a80221f6bd76b2db1d280405325404dfbaaee017))
+* **studio:** offer the account picker when Cloudflare names no account ([43f0563](https://github.com/jxsuite/jx/commit/43f056326deb05c1ec222848eab415b559b32f6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.3.0
+
 ## [2.3.1](https://github.com/jxsuite/jx/compare/protocol-v2.3.0...protocol-v2.3.1) (2026-09-18)
 
 
