@@ -702,6 +702,13 @@ function checkCoverage(
       }
     }
     for (const roadmap of spec.roadmaps) {
+      // A numbered roadmap marked Removed has been retired: its heading has to stay.
+      if (
+        roadmap.anchor &&
+        spec.sections.find((s) => s.anchor === roadmap.anchor)?.status === "Removed"
+      ) {
+        continue;
+      }
       out.push(
         v(
           "roadmap-in-spec",
@@ -887,9 +894,28 @@ export function loadPlansInput(root = ROOT): PlansInput {
   };
 }
 
+/**
+ * `--audit <stem>` (repeatable) previews a census: the named specs are judged as audited, and only
+ * violations in those specs and their plans/ directories are reported. It changes nothing on disk.
+ */
+export function auditPreview(
+  input: PlansInput,
+  stems: readonly string[],
+): { input: PlansInput; keep: (x: Violation) => boolean } {
+  const files = new Set(stems.map((s) => `${s}.md`));
+  const unaudited = (input.unaudited ?? UNAUDITED).filter((f) => !files.has(f));
+  const keep = (x: Violation) =>
+    stems.some((s) => x.file === `specs/${s}.md` || x.file.startsWith(`plans/${s}/`));
+  return { input: { ...input, unaudited }, keep };
+}
+
 if (import.meta.main) {
-  const input = loadPlansInput();
-  const violations = checkPlans(input);
+  const argv = process.argv.slice(2);
+  const stems = argv.flatMap((a, i) => (argv[i - 1] === "--audit" ? [a] : []));
+  const preview = stems.length > 0 ? auditPreview(loadPlansInput(), stems) : undefined;
+  const input = preview?.input ?? loadPlansInput();
+  const keep = preview?.keep ?? (() => true);
+  const violations = checkPlans(input).filter((x) => keep(x));
   if (violations.length > 0) {
     for (const x of violations) {
       const where = x.line === undefined ? x.file : `${x.file}:${x.line}`;
