@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.1](https://github.com/jxsuite/jx/compare/connector-v0.6.0...connector-v0.6.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **connector:** avoid await-thenable lint failure in d1-http streaming test ([ad03370](https://github.com/jxsuite/jx/commit/ad033708775e2c1e47554032e12eb144670c2cc7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.3.0
+
 ## [0.6.0](https://github.com/jxsuite/jx/compare/connector-v0.5.7...connector-v0.6.0) (2026-09-14)
 
 

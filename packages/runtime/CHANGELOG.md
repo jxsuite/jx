@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.0.2](https://github.com/jxsuite/jx/compare/runtime-v4.0.1...runtime-v4.0.2) (2026-09-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.3.0
+
 ## [4.0.1](https://github.com/jxsuite/jx/compare/runtime-v4.0.0...runtime-v4.0.1) (2026-09-14)
 
 

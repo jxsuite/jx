@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.0](https://github.com/jxsuite/jx/compare/schema-v2.2.0...schema-v2.3.0) (2026-09-26)
+
+
+### Features
+
+* **schema:** document ops and the JSON serializer as portable @jxsuite/schema subpaths (harness J1.1) ([4467d3a](https://github.com/jxsuite/jx/commit/4467d3a6a78982fd025d81b58b3eb015c8d9f49d))
+* **schema:** the document-op vocabulary and its inverse, as @jxsuite/schema/doc-ops ([69cf43f](https://github.com/jxsuite/jx/commit/69cf43fe16f373a912bc8ec94f08eae89d22c5db))
+* **schema:** the layout-preserving JSON serializer, as @jxsuite/schema/json-layout ([a08fffe](https://github.com/jxsuite/jx/commit/a08fffe58e7696f2bd22adb311ab2a4a5b00438d))
+
 ## [2.2.0](https://github.com/jxsuite/jx/compare/schema-v2.1.0...schema-v2.2.0) (2026-09-14)
 
 

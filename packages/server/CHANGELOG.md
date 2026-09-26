@@ -1,5 +1,42 @@
 # Changelog
 
+## [4.3.0](https://github.com/jxsuite/jx/compare/server-v4.2.2...server-v4.3.0) (2026-09-26)
+
+
+### Features
+
+* **ai:** the gateway, one implementation of the chat and models routes ([cbf5728](https://github.com/jxsuite/jx/commit/cbf5728d2f81e8f36a42a1e94cac6a6b0944e3a8))
+* **ai:** the gateway, one implementation of the chat and models routes ([404923f](https://github.com/jxsuite/jx/commit/404923f303ee6869469b5310560f37c6bcfe1f20))
+* **studio:** the PAL can answer a project file's raw bytes ([47a1ee8](https://github.com/jxsuite/jx/commit/47a1ee86457c00ffb19130c0856c22deac33b968))
+* **studio:** the PAL can answer a project file's raw bytes ([58e6267](https://github.com/jxsuite/jx/commit/58e6267c45bc436910ad6af321f450920e2b53d1))
+
+
+### Bug Fixes
+
+* **ai:** run streamed tool calls on any finish but not after Stop, and forward usage ([1513100](https://github.com/jxsuite/jx/commit/1513100f789ab88ea25dfcf69f44ba76dcdb2e75))
+* **desktop:** gate the shared AI proxy with the per-process service token ([9cef376](https://github.com/jxsuite/jx/commit/9cef3766536b6ad0d2be04dc852212b7f976c2c5))
+* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([8d364ea](https://github.com/jxsuite/jx/commit/8d364eac66bea8302f0dcac03f8f72587e49d8c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.38.0
+    * @jxsuite/collab bumped to 0.10.0
+    * @jxsuite/compiler bumped to 4.0.2
+    * @jxsuite/create bumped to 1.3.12
+    * @jxsuite/import bumped to 0.40.4
+    * @jxsuite/protocol bumped to 2.4.0
+    * @jxsuite/runtime bumped to 4.0.2
+    * @jxsuite/schema bumped to 2.3.0
+    * @jxsuite/site bumped to 2.0.2
+    * @jxsuite/starters bumped to 1.8.2
+  * devDependencies
+    * @jxsuite/auth bumped to 0.6.1
+    * @jxsuite/connector bumped to 0.6.1
+    * @jxsuite/parser bumped to 1.8.2
+
 ## [4.2.2](https://github.com/jxsuite/jx/compare/server-v4.2.1...server-v4.2.2) (2026-09-18)
 
 

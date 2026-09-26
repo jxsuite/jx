@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/jxsuite/jx/compare/collab-v0.9.0...collab-v0.10.0) (2026-09-26)
+
+
+### Features
+
+* **schema:** document ops and the JSON serializer as portable @jxsuite/schema subpaths (harness J1.1) ([4467d3a](https://github.com/jxsuite/jx/commit/4467d3a6a78982fd025d81b58b3eb015c8d9f49d))
+* **schema:** the document-op vocabulary and its inverse, as @jxsuite/schema/doc-ops ([69cf43f](https://github.com/jxsuite/jx/commit/69cf43fe16f373a912bc8ec94f08eae89d22c5db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 2.3.0
+
 ## [0.9.0](https://github.com/jxsuite/jx/compare/collab-v0.8.5...collab-v0.9.0) (2026-09-14)
 
 
