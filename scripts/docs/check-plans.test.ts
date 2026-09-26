@@ -12,6 +12,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 
 import type { Mention, PlansInput, ViolationCode } from "./check-plans.ts";
 import {
+  auditPreview,
   checkPlans,
   isMentionScanned,
   loadPlansInput,
@@ -450,6 +451,26 @@ describe("coverage", () => {
     expectViolation(audited(["compiler"], [plan("compiler/tiers")]), "roadmap-in-spec");
   });
 
+  test("a numbered roadmap marked Removed is retired, and its heading stays", () => {
+    const retired = parseSpecSource(
+      specSource(
+        "Partial",
+        "## 1. A",
+        "> **Status: Partial.**",
+        "## 2. Implementation Roadmap",
+        "> **Status: Removed.** Open work is tracked on each feature's own section.",
+      ),
+      "retired.md",
+    );
+    const plans = [plan("compiler/tiers"), plan("retired/a", { claims: ["retired.md#1"] })];
+    const input = fixture({
+      specs: [...SPECS, retired],
+      registry: registry(plans, { audits: new Set(["retired"]) }),
+    });
+    const violations = checkPlans(input);
+    expect(violations.filter((x) => x.file === "specs/retired.md")).toEqual([]);
+  });
+
   test("header-stale: a Pending header over built sections is Partial", () => {
     expectViolation(
       audited(
@@ -463,6 +484,23 @@ describe("coverage", () => {
   test("graduation-ready: an audited draft spec with nothing open graduates by spec:bump", () => {
     const v = first(audited(["done"], [plan("compiler/tiers")]), "graduation-ready");
     expect(v?.message).toContain("bun run spec:bump done.md patch");
+  });
+});
+
+describe("auditPreview (--audit <stem>)", () => {
+  test("judges the named spec as audited and reports only its own violations", () => {
+    const { input, keep } = auditPreview(fixture({}), ["compiler"]);
+    expect(input.unaudited).not.toContain("compiler.md");
+    const reported = checkPlans(input).filter((x) => keep(x));
+    expect(reported.map((x) => x.code)).toEqual(["audit-missing"]);
+    expect(reported[0]?.file).toBe("specs/compiler.md");
+  });
+
+  test("keeps plans under the named spec and drops everything else", () => {
+    const { keep } = auditPreview(fixture({}), ["ai"]);
+    expect(keep({ code: "field-missing", file: "plans/ai/x.md", message: "" })).toBe(true);
+    expect(keep({ code: "field-missing", file: "plans/compiler/x.md", message: "" })).toBe(false);
+    expect(keep({ code: "audit-missing", file: "specs/ai.md", message: "" })).toBe(true);
   });
 });
 

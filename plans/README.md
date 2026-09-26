@@ -215,6 +215,7 @@ Re-derive it after each detailing pull request with `bun run plans:status`, whic
 
 ```sh
 bun run plans:check                     # the gate (CI runs it in the checks job)
+bun run plans:check --audit compiler    # preview a census: judge one spec as audited, report only it
 bun run plans:status                    # per-spec readiness, the ready queue, topological waves, the spec order
 bun run plans:status --spec compiler    # one spec: its open items and who claims each
 bun run plans:status --who-claims compiler.md#3
