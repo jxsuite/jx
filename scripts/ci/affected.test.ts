@@ -84,6 +84,24 @@ describe("nothing at all", () => {
     expect(d.bundles).toEqual([]);
   });
 
+  test("a plans-only diff runs no test job", () => {
+    // Plans are prose under a new top-level directory, which would otherwise FAIL OPEN into all
+    // Twenty-two workspaces on every census and detailing pull request.
+    const d = decide(["plans/README.md", "plans/compiler/csp-emission.md"], workspaces);
+    expect(d.mode).not.toBe("all");
+    expect(d.testDirs).toEqual([]);
+    expect(d.bundles).toEqual([]);
+  });
+
+  test("a plan landing with its code runs only that code's workspace", () => {
+    const d = decide(
+      ["plans/compiler/csp-emission.md", "packages/compiler/src/csp.ts"],
+      workspaces,
+    );
+    expect(d.testDirs).toContain("packages/compiler");
+    expect(d.testDirs).not.toContain("packages/studio");
+  });
+
   test("an empty diff runs nothing", () => {
     const d = decide([], workspaces);
     expect(d.testDirs).toEqual([]);

@@ -1,27 +1,87 @@
+---
+status: active
+disposition: implement
+claims:
+  - ai.md
+  - ai.md#2.2
+size: L
+workspaces:
+  - packages/ai
+  - packages/studio
+  - packages/server
+prs:
+  - jxsuite/jx#370
+  - jxsuite/platform#69
+  - jxsuite/jx#371
+  - jxsuite/jx#372
+  - jxsuite/jx#374
+  - jxsuite/jx#375
+  - jxsuite/jx#376
+  - jxsuite/jx#377
+  - jxsuite/jx#378
+  - jxsuite/jx#379
+  - jxsuite/jx#380
+  - jxsuite/jx#381
+---
+
 # Jx harness core: the Phase 1 plan
+
+## Context
 
 The working design for Phase 1 of the Jx harness program: turning `@jxsuite/ai` into a runtime-neutral harness core that the Studio page, Bun, a Cloudflare Worker or Durable Object, and a headless host all run. It is a plan document, not a spec. The contracts it describes become normative only as each slice lands them in `specs/ai.md` (and the other specs named per slice), and a slice that departs from this document says so in its pull request.
 
 It was produced by mapping the current code with five independent readers, drafting three competing designs (migration-first, host-portability-first, contract-first), scoring them with three judges, and synthesising the majority winner with the others' strongest ideas and every blocker the judges raised. Citations are to the tree at the time it was written; statements such as "in flight" or "uncommitted" describe that moment.
 
-## Status
+Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and jxsuite/platform#69. The plan moved here from `packages/ai/HARNESS-PLAN.md` when `plans/` was introduced; its §-numbers are its own and are unchanged.
 
-| Slice                                     | State                                                                                                              |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Phase 0 (hardening and drift)             | Merged: jxsuite/jx#370, jxsuite/platform#69                                                                        |
-| J1.1 Doc-op foundation                    | Merged: jxsuite/jx#371 (`applyDocOpsAsUser` deferred to J1.16, its first caller, under Studio's reachability rule) |
-| J1.2 Freeze v1 and the Worker gate        | Merged: jxsuite/jx#372                                                                                             |
-| J1.3 Persisted tool outcomes              | Merged: jxsuite/jx#374                                                                                             |
-| J1.4 Loop honesty in the old loop         | Merged: jxsuite/jx#376                                                                                             |
-| J1.5 Stop is armed before the first await | Merged: jxsuite/jx#377                                                                                             |
-| J1.6 One turn per window                  | Merged: jxsuite/jx#378                                                                                             |
-| J1.7 Honest turn outcomes                 | jxsuite/jx#380 (its live eval needed the eval harness fixes of jxsuite/jx#379)                                     |
-| J1.8 ToolContext                          | This pull request (stacked on jxsuite/jx#380; `refusal` moves to J1.11, its first caller)                          |
-| J1.17 `./gateway` extraction              | Merged: jxsuite/jx#375 (`upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19)       |
+## Outcome
 
-Update this table as slices land, and delete the document when Phase 1 is finished, as the standards adoption plan was.
+- `ai.md` §2.2 → Implemented. J1.24 lands the native Anthropic provider, which is the Partial marker this plan claims there, and removes `ai.md#2.2` from `claims` in the same pull request.
+- `ai.md` (the whole-spec marker) → removed. The preamble says the spec is "a stub … sections will be expanded as the subsystem stabilizes"; Phase 1 is that expansion (§2.3 to §2.6 and §3.7 to §3.14, per risk 12). The pull request that merges the last open slice deletes the marker, which closes the last claim, and deletes this file.
+- Every behavioural contract a slice lands is written into `specs/ai.md`, or the spec its **Spec** line names, as that slice merges. Nothing in this file becomes normative by being here.
+
+## Slices
+
+| Slice | Scope                                               | Claims      | State                 |
+| ----- | --------------------------------------------------- | ----------- | --------------------- |
+| J1.1  | Doc-op foundation                                   | —           | merged jxsuite/jx#371 |
+| J1.2  | Freeze v1 and the Worker gate                       | —           | merged jxsuite/jx#372 |
+| J1.3  | Persisted tool outcomes                             | —           | merged jxsuite/jx#374 |
+| J1.4  | Loop honesty in the old loop                        | —           | merged jxsuite/jx#376 |
+| J1.5  | Stop is armed before the first await                | —           | merged jxsuite/jx#377 |
+| J1.6  | One turn per window                                 | —           | merged jxsuite/jx#378 |
+| J1.7  | Honest turn outcomes                                | —           | merged jxsuite/jx#380 |
+| J1.8  | ToolContext                                         | —           | merged jxsuite/jx#381 |
+| J1.9  | Ledger reset and path containment                   | —           | open                  |
+| J1.10 | `./messages`                                        | —           | open                  |
+| J1.11 | `./harness` behind `runAgentLoop`                   | —           | open                  |
+| J1.12 | Pair repair                                         | —           | open                  |
+| J1.13 | Per-actor lanes                                     | —           | open                  |
+| J1.14 | Restore undoes the turn                             | —           | open                  |
+| J1.15 | Doc-op strictness in the old tools                  | —           | open                  |
+| J1.16 | `./jx-tools` producers                              | —           | open                  |
+| J1.17 | `./gateway` extraction                              | —           | merged jxsuite/jx#375 |
+| J1.18 | One normaliser                                      | —           | open                  |
+| J1.19 | Wire v2 with the OpenAI-compatible provider         | —           | open                  |
+| J1.20 | `./catalog` membership and facts                    | —           | open                  |
+| J1.21 | Interactions and approvals run before the tool body | —           | open                  |
+| J1.22 | Checkpoints and resume                              | —           | open                  |
+| J1.23 | Sessions                                            | —           | open                  |
+| J1.24 | Native Anthropic                                    | `ai.md#2.2` | open                  |
+| J1.25 | Project tools over a ProjectHost, and the six twins | —           | open                  |
+| J1.26 | Studio approvals on                                 | —           | open                  |
+| J1.27 | Parallel read-only calls                            | —           | open                  |
+| J1.28 | Summarising compaction                              | —           | open                  |
+
+- Each slice pull request updates its row and appends itself to `prs`. The rows carried over from the old Status table keep their notes here:
+  - J1.1: `applyDocOpsAsUser` was deferred to J1.16, its first caller, under Studio's reachability rule.
+  - J1.7: its live eval needed the eval harness fixes of jxsuite/jx#379.
+  - J1.8: `refusal` moved to J1.11, its first caller.
+  - J1.17: `upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19.
 
 ---
+
+## Decisions
 
 **Base.** This design starts from Design A, the majority winner (judges 1 and 3). It keeps A's method:
 
@@ -69,9 +129,9 @@ Loop-host map citations (TE, DA, CM, CS, SC, PANEL, VIEW) use that map's legend.
 
 ---
 
-## 0. Decisions and blocker resolutions
+### 0. Decisions and blocker resolutions
 
-### 0.1 Rules every slice follows
+#### 0.1 Rules every slice follows
 
 1. **Refactor and behaviour never share a PR.**
    - An extraction must change nothing. It is proven against the J1.2 golden corpus in the same PR.
@@ -99,8 +159,9 @@ Loop-host map citations (TE, DA, CM, CS, SC, PANEL, VIEW) use that map's legend.
    This is enforced inside `packages/ai`, because platform CI cannot see a jx PR.
 
 9. **No tool body awaits a person.** Questions and confirmations are resolved by the invoker before `execute` or `settle`. Side effects therefore happen only after approval, and a resumed call never re-runs a half-executed body (M-12).
+10. **Permanent files cite the spec, never a slice.** Code, tests, fixtures and commit subjects name the `specs/ai.md` section a behaviour lands in. A slice id (`J1.4`) exists only in this file, which is deleted when Phase 1 ends.
 
-### 0.2 Blockers and where each is resolved
+#### 0.2 Blockers and where each is resolved
 
 | Blocker (judge)                                                                                                     | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                | Where              |
 | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
@@ -124,9 +185,25 @@ Loop-host map citations (TE, DA, CM, CS, SC, PANEL, VIEW) use that map's legend.
 | B's `ToolEntry.kind` broke the interactive budget for bridged tools (J1 on B)                                       | The `interactive` flag stays separate from `interaction()`. The budget reads `interactive`.                                                                                                                                                                                                                                                                                                                                                               | §3.1               |
 | Required annotation metadata breaks ad-hoc test tools (J1 on C)                                                     | Adapters over a plain registry never throw. A missing annotation reads as MCP's conservative default. `createCatalog` (production composition) and a test over the 29 production tools are the forcing function.                                                                                                                                                                                                                                          | §3.5, J1.20        |
 
+### 9. Decisions taken at their recommended defaults
+
+These were open, each with a recommended default, when this plan moved into `plans/`. An active plan carries no open decision, so each is recorded here at that default, which is what the slices execute unless a slice's pull request says otherwise and updates this list.
+
+1. **Decided (default):** **Persist the ledger and import logs** as `meta.host` annotations so Restore survives a reload (H14)? Recommendation: after J1.23. The field is reserved.
+2. **Decided (default):** **T13, answering Stop-unrun calls at turn end** with "Not run: the turn was stopped" instead of sealing them on the next send. Recommendation: defer. It is model-visible and the current seal works.
+3. **Decided (default):** **Anthropic `prefixMismatch` in production.** Recommendation: `drop_block` with `input_transformations` monitoring, and `error` in CI and evals, per the skill's three-step check.
+4. **Decided (default):** **Headless approvals.** Treat a git-backed project as project-undoable so `CONFIRM` does not elicit on every tree edit? Recommendation: tree edits proceed on a git-backed root; overwrites confirm.
+5. **Decided (default):** **Undoability of DO edits**: a reviewable run branch (`document`) or `none`. This drives validation timing on the platform. Recommendation: `document`, with the op-pair journal as undo.
+6. **Decided (default):** **Headless JSON layout**: keep Studio's positional-layout quirk (parity), or remap pointers through structural ops. Recommendation: parity first.
+7. **Decided (default):** **Whether OpenAI proper accepts an unknown `reasoning_content`** after a model switch (H8). Keep sending it, and add a dialect switch if a 400 is observed.
+8. **Decided (default):** **`set_style` media and selector arguments** (`mutateUpdateMediaStyle` exists). Recommendation: a scaffolding PR after P2.5.
+9. **Decided (default):** **Where the anthropic context message goes on models without mid-conversation system support** (Sonnet 5). Recommendation: a user text block after the `tool_result` blocks, with a 400 fallback detected once per session.
+
 ---
 
-## 1. Ground truth this design integrates with (verified in the working tree)
+## Implementation
+
+### 1. Ground truth this design integrates with (verified in the working tree)
 
 - **`@jxsuite/schema/doc-ops`** (J1.1, uncommitted, `packages/schema/src/doc-ops.ts`). It exports `JxDocOp`, `JxDocOpPair`, `cloneValue`, `getNodeAtPath`, `childArray`, `applyDocOpToDoc`, `inverseOf` and `applyDocOpsWithInverse`.
   - `inverseOf` records `insertionSlot(index, length)`, the slot the node actually lands in (clamped, and counted from the end for a negative index).
@@ -150,7 +227,7 @@ Loop-host map citations (TE, DA, CM, CS, SC, PANEL, VIEW) use that map's legend.
 
 ---
 
-## 2. Subpath map and import lattice
+### 2. Subpath map and import lattice
 
 | Subpath              | Status               | Worker-safe                  | Imports (runtime)                                                                                  | First slice | Consumers                                         |
 | -------------------- | -------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------- |
@@ -187,9 +264,9 @@ Shared type-only files `ai/core-types.ts` (JsonValue) and `ai/*/types.ts` go on 
 
 ---
 
-## 3. Exact API by subpath
+### 3. Exact API by subpath
 
-### 3.1 `@jxsuite/ai/tools` (evolved in J1.8, J1.20 and J1.21)
+#### 3.1 `@jxsuite/ai/tools` (evolved in J1.8, J1.20 and J1.21)
 
 Unchanged exports: `JSONSchema`, `ToolResult`, `toolSuccess`, `toolError`, `createToolRegistry` (its validator, `listForLLM` and texts), `createToolDefinition`.
 
@@ -386,7 +463,7 @@ export function normalizeToolResult(result: ToolResult): ToolResult;
 6. **Execute.** `registry.execute(name, args, ctx)` keeps its own validation, gate and catch texts.
 7. **Normalise.** `normalizeToolResult`. `executed` is true only for step 6.
 
-### 3.2 `@jxsuite/ai/messages` (J1.10; extended in J1.12, J1.23 and J1.24)
+#### 3.2 `@jxsuite/ai/messages` (J1.10; extended in J1.12, J1.23 and J1.24)
 
 ```ts
 export type { JsonValue } from "./core-types";
@@ -581,7 +658,7 @@ export interface SystemBlock {
 
 `persistWindow` takes the last `max` messages, then moves the start forward to the first `user` message in that window (H4).
 
-### 3.3 `@jxsuite/ai/streaming-client` (additive only)
+#### 3.3 `@jxsuite/ai/streaming-client` (additive only)
 
 ```ts
 // v1 members gain optional fields; a v1 reader ignores them (map §6.4).
@@ -719,7 +796,7 @@ export interface ProxyStreamingClientOptions {
 
 The v1 wrappers (`createOpenAIStreamingClient`, `createProxyStreamingClient`, `createAnthropicStreamingClient`) keep their options and behaviour. From J1.18 the OpenAI client uses the gateway's normaliser (§3.7). The platform's `^0.37` import keeps compiling at every release.
 
-### 3.4 `@jxsuite/ai/harness` (J1.11; extended in J1.21, J1.22, J1.24, J1.27 and J1.28)
+#### 3.4 `@jxsuite/ai/harness` (J1.11; extended in J1.21, J1.22, J1.24, J1.27 and J1.28)
 
 ```ts
 import type {
@@ -1070,7 +1147,7 @@ export function summarizeForCompaction(
    - Otherwise emit `turn_end{cap_failed, error:{message: capText}}`.
 4. **Finally.** Release the lock. Nothing is emitted after `turn_end`.
 
-### 3.5 `@jxsuite/ai/catalog` (J1.20; extended in J1.21 and J1.22)
+#### 3.5 `@jxsuite/ai/catalog` (J1.20; extended in J1.21 and J1.22)
 
 ```ts
 import type {
@@ -1191,7 +1268,7 @@ export interface InvocationState {
 }
 ```
 
-### 3.6 `@jxsuite/ai/jx-tools` (J1.16; file tools and twins in J1.25)
+#### 3.6 `@jxsuite/ai/jx-tools` (J1.16; file tools and twins in J1.25)
 
 ```ts
 import type { JxDocOp } from "@jxsuite/schema/doc-ops";
@@ -1401,7 +1478,7 @@ Studio never registers `duplicate_node` or `delete_node` from `DOC_TOOLS` on the
 | Project config       | `add_project_locale`, `disable_extension`                                   | F/F/T/F, project  |
 | Install              | `enable_extension`                                                          | F/T/T/T, disk     |
 
-### 3.7 `@jxsuite/ai/gateway` (J1.17 extraction; J1.18 behaviour; v2 in J1.19)
+#### 3.7 `@jxsuite/ai/gateway` (J1.17 extraction; J1.18 behaviour; v2 in J1.19)
 
 ```ts
 import type { ProblemDetails, AiModelsResponse } from "@jxsuite/protocol";
@@ -1475,7 +1552,7 @@ export function problemResponse(refusal: GatewayRefusal): Response;
 export function checkChatRequestV2(body: unknown): string | null;
 ```
 
-### 3.8 `@jxsuite/ai/providers` (openai-compat in J1.19, anthropic in J1.24)
+#### 3.8 `@jxsuite/ai/providers` (openai-compat in J1.19, anthropic in J1.24)
 
 ```ts
 export interface ProviderRequest {
@@ -1536,7 +1613,7 @@ export function providerModel(provider: Provider, model: string): import("./harn
 9. "Prompt is too long" becomes `problem.type = contextOverflow`. This is the only text match in the codebase (G-12).
 10. Capabilities: `{family:"anthropic", promptLayout:"append", toolListing:"stable", requiresMaxTokens:true, maxCacheBreakpoints:4, midConversationSystem: per model}`.
 
-### 3.9 `@jxsuite/ai/sessions` (J1.23)
+#### 3.9 `@jxsuite/ai/sessions` (J1.23)
 
 ```ts
 export const SESSION_LIMITS: {
@@ -1574,7 +1651,7 @@ export function createMemorySessionStore(): SessionStore;
 
 The localStorage store, and later the IndexedDB and desktop-RPC stores, live in `st/services/`, so no DOM type reaches `@jxsuite/ai` (P-3). The payload remains a **bare array** that today's build loads (S1).
 
-### 3.10 `@jxsuite/ai/testing` (J1.18; extended in J1.19 and J1.22)
+#### 3.10 `@jxsuite/ai/testing` (J1.18; extended in J1.19 and J1.22)
 
 ```ts
 export function scriptedModel(
@@ -1618,7 +1695,7 @@ export function createMemoryHarnessHost(): {
 }; // J1.22
 ```
 
-### 3.11 `@jxsuite/ai/chat-state` (additive)
+#### 3.11 `@jxsuite/ai/chat-state` (additive)
 
 | Change                                                                                                                                                           | Slice |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
@@ -1628,7 +1705,7 @@ export function createMemoryHarnessHost(): {
 | `setError(message, code?: string)`, `ChatStore.errorCode: string \| null`                                                                                        | J1.18 |
 | `appendReasoningBlock(block: ReasoningBlock)`                                                                                                                    | J1.24 |
 
-### 3.12 `@jxsuite/schema/doc-ops` (J1.1, extended in J1.15)
+#### 3.12 `@jxsuite/schema/doc-ops` (J1.1, extended in J1.15)
 
 J1.1 as it stands, with no signature changes. In J1.15, `inverseOf` also throws:
 
@@ -1639,7 +1716,7 @@ J1.15 also moves in, next to it: `structuralBatch`, `isSpliceablePath`, `isAnces
 
 **Clamp-and-record stays, and so do the into-self refusal and the `children: []` residue.**
 
-### 3.13 Studio seams (outside `@jxsuite/ai`)
+#### 3.13 Studio seams (outside `@jxsuite/ai`)
 
 ```ts
 // st/tabs/transact.ts
@@ -1771,7 +1848,7 @@ export function studioDocumentHost(deps: { getTab: () => Tab | null }): Document
 | `tool_progress`                             | `recordImportProgress(callId, …)`                                                                                    |
 | `write`, `tool_start`                       | nothing (relay hosts only)                                                                                           |
 
-### 3.14 `@jxsuite/protocol` (J1.18)
+#### 3.14 `@jxsuite/protocol` (J1.18)
 
 - `AiModelInfo` gains `description?`, `ownedBy?` (fixing the drift), `family?: "openai-compat" | "anthropic"` and `reasoning?: boolean`.
 - `AiModelsResponse` gains `wire?: number[]` (absent means `[1]`) and `limits?: {maxMessages?: number; maxBodyBytes?: number}`.
@@ -1780,7 +1857,7 @@ export function studioDocumentHost(deps: { getTab: () => Tab | null }): Document
 
 ---
 
-## 4. Invariants and the test that enforces each
+### 4. Invariants and the test that enforces each
 
 | #   | Invariant                                                                                                                                                                                                                                      | Enforced by                                                                  |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -1818,11 +1895,11 @@ export function studioDocumentHost(deps: { getTab: () => Tab | null }): Document
 
 ---
 
-## 5. Behaviour-preservation table
+### 5. Behaviour-preservation table
 
 Columns are: current behaviour, where it lives after Phase 1, spec rule, and slice. Spec rules are `specs/ai.md` unless noted.
 
-### 5.1 The loop (L1 to L24)
+#### 5.1 The loop (L1 to L24)
 
 | ID       | Today                                                              | Lives now                                                                                                   | Rule        | Slice        |
 | -------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------- | ------------ |
@@ -1847,7 +1924,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | L23      | Applied means it has a summary                                     | applied means an ok write (`appliedSignal:"write"`, D7)                                                     | §3.2        | J1.7         |
 | L24      | Error accumulation                                                 | kept                                                                                                        | —           | —            |
 
-### 5.2 The send path and the panel (S1 to S12)
+#### 5.2 The send path and the panel (S1 to S12)
 
 | ID    | Today                                                               | Lives now                                                                                                         | Rule        | Slice        |
 | ----- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------- | ------------ |
@@ -1866,7 +1943,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | Panel | Answer keystroke, Retry, `ctx.ai.streaming`/`waiting`               | reads `interactions.pending` and `isTurnActive()`; Retry unchanged                                                | §3.0, §3.4  | J1.6, J1.21  |
 | Panel | Restore is `undo(activeTab)` once                                   | undoes each lane entry of the turn while it is the top entry of its tab (D8)                                      | §3.2        | J1.14        |
 
-### 5.3 Module singletons (S1 to S14 of the tools map)
+#### 5.3 Module singletons (S1 to S14 of the tools map)
 
 | Singleton                                         | Replacement                                                                          | Slice        |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------ |
@@ -1882,7 +1959,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | S12 validator                                     | `DocumentValidator` bound to the tool (ajv in page/Bun, cfworker in Worker)          | J1.16, J1.25 |
 | S13 command latches                               | unchanged (Studio-only records)                                                      | —            |
 
-### 5.4 Defects D1 to D16 and findings F1 to F9
+#### 5.4 Defects D1 to D16 and findings F1 to F9
 
 | ID       | Decision                                                                                                        | Slice       |
 | -------- | --------------------------------------------------------------------------------------------------------------- | ----------- |
@@ -1910,7 +1987,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | F8       | `resetAiWrites` on New Chat and close project                                                                   | J1.9        |
 | F9       | `./tools` still warns; `createCatalog` throws                                                                   | J1.20       |
 
-### 5.5 Conversation invariants (I1 to I17) and persistence hazards (H1 to H17)
+#### 5.5 Conversation invariants (I1 to I17) and persistence hazards (H1 to H17)
 
 | Item    | Where it lives                                                                                                                   | Slice              |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
@@ -1944,7 +2021,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | H16     | page-run migrations                                                                                                              | J1.23, P2.4        |
 | H17     | `maxMessages` counts neutral messages                                                                                            | J1.18              |
 
-### 5.6 Anthropic hazards (A1 to A6)
+#### 5.6 Anthropic hazards (A1 to A6)
 
 | Hazard | Resolution                                                                                                                                            | Slice        |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
@@ -1954,7 +2031,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | A5     | `maxTokens` / `defaultMaxTokens`                                                                                                                      | J1.24        |
 | A6     | `SystemBlock.cache`, at most 4 breakpoints                                                                                                            | J1.24        |
 
-### 5.7 Doc-op bugs and decisions (doc-ops map §7)
+#### 5.7 Doc-op bugs and decisions (doc-ops map §7)
 
 | Item                                                         | Decision                                                                                                                                                                                         | Slice       |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
@@ -1972,7 +2049,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 | Decision 5: `set_text ""`                                    | keeps `[""]`; description rewording at P2.5                                                                                                                                                      | —           |
 | Decision 6: selection when children are replaced             | pruned under the replaced children                                                                                                                                                               | J1.15       |
 
-### 5.8 External conflicts (external map §5)
+#### 5.8 External conflicts (external map §5)
 
 | Conflict                                  | Resolution                                                                                                  | Slice        |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------ |
@@ -1985,7 +2062,7 @@ Columns are: current behaviour, where it lives after Phase 1, spec rule, and sli
 
 ---
 
-## 6. Phase 1 PR slices, in order
+### 6. Phase 1 PR slices, in order
 
 Every slice lands code, tests, a fragment written by `bun run spec:change <spec> <level> -m "…"`, and the docs pages `bun run docs:sync` names.
 
@@ -2360,7 +2437,9 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 
 ---
 
-## 7. Test strategy (summary)
+## Tests
+
+### 7. Test strategy (summary)
 
 - **Goldens.** J1.2's corpus is the single parity reference, and every later delta is explicit in the PR. The replay model (`./testing`) fails on any request mismatch, which makes wire parity byte-level. From J1.19, one cassette of the eval task set runs in CI with no key.
 - **Property tests.**
@@ -2375,7 +2454,9 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 
 ---
 
-## 8. Risks, most serious first
+## Risks
+
+### 8. Risks, most serious first
 
 1. **Model-visible text drift during moves.** Mitigation: rule 7, the C2 and description snapshots, and live evals on J1.7, J1.11, J1.15, J1.16, J1.19, J1.24, J1.27 and J1.28.
 2. **Anthropic binding 400s from Studio's non-append history** (trim, seal, `slice(-50)`). Mitigation:
@@ -2403,14 +2484,14 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
 11. **Test churn from the ledger and interaction moves weakening assertions.** Mitigation: `recordingContext()` and a line-by-line review of changed assertions.
 12. **Spec churn** (about 18 `ai.md` releases). Mitigation: `spec:change` fragments, and new sections appended in landing order (§2.3 to §2.6, §3.7 to §3.14), never renumbered.
 
-## 9. Open decisions (with recommended defaults)
+## Specs & docs
 
-1. **Persist the ledger and import logs** as `meta.host` annotations so Restore survives a reload (H14)? Recommendation: after J1.23. The field is reserved.
-2. **T13, answering Stop-unrun calls at turn end** with "Not run: the turn was stopped" instead of sealing them on the next send. Recommendation: defer. It is model-visible and the current seal works.
-3. **Anthropic `prefixMismatch` in production.** Recommendation: `drop_block` with `input_transformations` monitoring, and `error` in CI and evals, per the skill's three-step check.
-4. **Headless approvals.** Treat a git-backed project as project-undoable so `CONFIRM` does not elicit on every tree edit? Recommendation: tree edits proceed on a git-backed root; overwrites confirm.
-5. **Undoability of DO edits**: a reviewable run branch (`document`) or `none`. This drives validation timing on the platform. Recommendation: `document`, with the op-pair journal as undo.
-6. **Headless JSON layout**: keep Studio's positional-layout quirk (parity), or remap pointers through structural ops. Recommendation: parity first.
-7. **Whether OpenAI proper accepts an unknown `reasoning_content`** after a model switch (H8). Keep sending it, and add a dialect switch if a 400 is observed.
-8. **`set_style` media and selector arguments** (`mutateUpdateMediaStyle` exists). Recommendation: a scaffolding PR after P2.5.
-9. **Where the anthropic context message goes on models without mid-conversation system support** (Sonnet 5). Recommendation: a user text block after the `tool_result` blocks, with a 400 fallback detected once per session.
+- Every slice lands a fragment written by `bun run spec:change ai.md <level> -m "…"` (or for the spec its **Spec** line in §6 names), and the docs pages `bun run docs:sync` names. Fragment sentences and commit subjects carry no angle-bracket generic types.
+- Code, tests, fixtures and commit subjects cite `specs/ai.md` sections, never a slice id. Slice ids exist only in this file, which is deleted when Phase 1 ends; `bun run plans:check` fails a slice id anywhere else.
+- `docs/studio/ai.md` is the user-facing page. A slice that changes what an author sees updates it in the same pull request.
+
+## Acceptance
+
+- Every row of the Slices table reads `merged`.
+- `specs/ai.md` has no open item: §2.2 and the preamble marker are gone, so `bun run plans:check` reports every claim closed and asks for this file's deletion, which the last slice's pull request does.
+- The `packages/ai`, `packages/studio` and `packages/server` suites are green under `bun test --isolate --coverage`, with the eval goldens and the Worker gate (`bun run typecheck:ai-worker`) green.
