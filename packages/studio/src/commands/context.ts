@@ -32,6 +32,9 @@ export const CAPABILITIES = [
   "dataRows",
   "windowControls",
   "findReferences",
+  /* The image editor's gate. A backend that cannot hand Studio a project file's raw bytes cannot
+     decode one, so the Image mode is not offered at all rather than offered and then failing. */
+  "readFileBytes",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -315,6 +318,7 @@ export function emptyContext(): CommandContext {
       dataRows: false,
       windowControls: false,
       findReferences: false,
+      readFileBytes: false,
     },
   };
 }
