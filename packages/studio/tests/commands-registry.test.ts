@@ -452,7 +452,7 @@ describe("run coerces the args against the record's schema", () => {
   });
 
   test("availability is checked first — an unavailable command refuses on availability", () => {
-    // §12.4's order: "not available" before "bad argument", because the second refusal only
+    // §13.1's order: "not available" before "bad argument", because the second refusal only
     // Matters to a caller who could run the command at all.
     const { registry, setContext, received } = build();
     setContext(emptyContext());

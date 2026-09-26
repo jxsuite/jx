@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
 /**
- * The pane's own chrome — region ⑦ (context bar) and region ⑩ (the floating zoom pod).
+ * The pane's own chrome — the pane context bar and the floating zoom pod.
  *
  * This replaces `#tab-bar`, which was a 28px band styled identically to the tab strip above it,
  * holding **five unrelated axes** with no labels on any of them: a document-stack breadcrumb
  * (navigation), a zoom widget (viewport), route params and component test props (document data), a
- * colour-scheme switch and feature toggles (rendering state), and Export (a mode action). Plan §3.2
- * ⑦ replaces them with three axes that each say what they are:
+ * colour-scheme switch and feature toggles (rendering state), and Export (a mode action). The pane
+ * context bar replaces them with three axes that each say what they are:
  *
  * - **Editor kind** — `Canvas ⌄`, offering only the kinds this document declares. A document with one
  *   kind renders the name as text rather than as a dropdown that cannot go anywhere.
@@ -15,10 +15,10 @@
  *   Canvas. The two are drawn apart because they are two axes: preview is a flag over an edit or
  *   design base, so the radio marks the base throughout and the toggle says whether it is on.
  * - **Rendering context** — `md ⌄ Light ⌄`, folding the size breakpoint, the colour scheme, the
- *   feature queries and the layout show/hide switch into one popover. Per §2 principle 5 this
- *   control **only selects**; its footer is "Manage contexts…", which routes to the definition site
- *   — Project Settings › Contexts (`settings/contexts-section.ts`), the one place a breakpoint, a
- *   colour scheme or a feature query is defined.
+ *   feature queries and the layout show/hide switch into one popover. Per §6.2 ("The breakpoint and
+ *   scheme axes") this control **only selects**; its footer is "Manage contexts…", which routes to
+ *   the definition site — Project Settings › Contexts (`settings/contexts-section.ts`), the one
+ *   place a breakpoint, a colour scheme or a feature query is defined.
  * - **Resolving with** — the document DATA a render resolves against: a page's route params, a
  *   component's test props. Its own popover beside the context one, headed "resolving with", with
  *   the fields in a vertical stack. A SECOND popover rather than a fourth group in the first,
@@ -34,12 +34,13 @@
  * **The bar is not a grid row.** It renders inside the pane's own cell (`#pane-chrome`, stacked
  * over `#canvas-wrap`), because a per-pane surface cannot be a row of the application grid — the
  * second pane would have no way to have one. The stage is offset by {@link PANE_CONTEXT_VAR} rather
- * than by a track, and the zoom pod floats bottom-right over the canvas exactly as §3.2 ⑩ asks.
+ * than by a track, and the zoom pod floats bottom-right over the canvas, as
+ * `docs/studio/interface/tabs.md` ("The pane context bar") describes it.
  *
  * **The read-only banner rides with the bar.** `collab/collab-state.ts` says whether a guest may
- * write (§7.4); the surface that owes them the sentence is this one, because it is the per-pane,
- * per-document chrome that sits directly above the editing surface. It is stacked under the bar
- * inside the document's `[part="band"]` and the offset is MEASURED from that band
+ * write (`collab.md` §4); the surface that owes them the sentence is this one, because it is the
+ * per-pane, per-document chrome that sits directly above the editing surface. It is stacked under
+ * the bar inside the document's `[part="band"]` and the offset is MEASURED from that band
  * ({@link applyPaneContextOffset}), so a two-line banner pushes the stage down instead of covering
  * the document it is warning you about.
  */
@@ -268,9 +269,9 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         void tab.session.ui.previewProps;
         void tab.session.ui.showLayout;
         void tab.session.ui.zoom;
-        // The read-only banner (§7.4) is part of this chrome, so its two facts are tracked here
-        // Too: a peer downgrading you mid-session must make the sentence appear, not wait for the
-        // Next zoom.
+        // The read-only banner (`collab.md` §4) is part of this chrome, so its two facts are
+        // Tracked here too: a peer downgrading you mid-session must make the sentence appear, not
+        // Wait for the next zoom.
         void collabState(tab).active;
         void collabState(tab).readOnly;
       }
@@ -322,7 +323,7 @@ export function applyPaneContextOffset(height: number, host?: HTMLElement | null
  *
  * The band is the DOCUMENT's, handed back by the mount rather than found by selector — a surface
  * that re-queries its own markup is holding a node that the next render may already have replaced
- * (guidelines §9.4).
+ * (`studio-ui-guidelines.md` §9.4).
  */
 function topBandHeight(surface: PaneContextSurfaceHandle): number {
   return Math.max(surface.band()?.offsetHeight ?? 0, PANE_CONTEXT_HEIGHT);
@@ -416,7 +417,7 @@ export function dismissPresetMenu(): void {
  *
  * **It is the kit menu, not a second one.** `surfaces/menu.ts` already owns roving focus,
  * typeahead, light dismissal, the disabled row's `requires` sentence and the Escape that closes it
- * (guidelines §12.5); this hands it rows.
+ * (`studio-ui-guidelines.md` §12.5); this hands it rows.
  */
 function openPresetMenu(paneId: string, anchor: HTMLElement): void {
   dismissPresetMenu();
@@ -617,13 +618,13 @@ export function presetRows(paneId: string): PresetRow[] {
  * Everything one pane's chrome draws, as words and keyed rows.
  *
  * There is no takeover branch. Opening a function body or a formula reveals the dock's Logic tab
- * (P8) and leaves the canvas standing underneath it, so the axes still describe the document on the
- * stage and the zoom pod still has something to zoom. Suppressing them while the dock was open
+ * (§16.3) and leaves the canvas standing underneath it, so the axes still describe the document on
+ * the stage and the zoom pod still has something to zoom. Suppressing them while the dock was open
  * removed the controls for the very document the reader could still see.
  *
- * **There is no breadcrumb either.** The address is ⑥'s job — `panels/jump-bar.ts`, one row above —
- * and the Logic tab's own header carries the Close. This bar drew a second Back and a second trail
- * beside both of them.
+ * **There is no breadcrumb either.** The address is the jump bar's job — `panels/jump-bar.ts`, one
+ * row above — and the Logic tab's own header carries the Close. This bar drew a second Back and a
+ * second trail beside both of them.
  */
 function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView {
   /* A LENS suppresses the two axes that WRITE. Editor kind and Canvas view both land in
@@ -802,9 +803,9 @@ interface PaneLocale {
  * and "groups a document declares nothing for are absent" is the rule the whole popover follows.
  *
  * The fallback chain is what makes the control honest about a file it has not been told about:
- * `previewLocale` is the author's explicit choice, the path is the file's own language (§13.3 puts
- * a translation in its own directory), and the default locale is what an unprefixed page renders
- * as.
+ * `previewLocale` is the author's explicit choice, the path is the file's own language
+ * (`site-architecture.md` §13.3 puts a translation in its own directory), and the default locale is
+ * what an unprefixed page renders as.
  */
 function localeOf(tab: Tab | null): PaneLocale | null {
   const i18n = getEffectiveLocales();
@@ -949,7 +950,7 @@ function localeGroup(locale: PaneLocale | null): Partial<PaneContextView> {
   };
 }
 
-// ─── ⑩ The floating zoom pod ─────────────────────────────────────────────────
+// ─── The floating zoom pod ───────────────────────────────────────────────────
 
 /** The fit entries the pod offers, in menu order. `1` is "actual size", a numeric fit. */
 const FIT_CHOICES: readonly { value: string; fit: FitMode; label: string }[] = [
@@ -1011,7 +1012,7 @@ function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
  * These four controls wrote `session.ui` directly through `updateUi`, which is why none of the
  * three axes was a command: the popover WAS the capability, and the palette, the assistant and
  * `__jxAutomation` had no name for it. Going through the registry makes the control and the verb
- * one thing (§2, principle 1) and gets the breakpoint refusal for free.
+ * one thing (one definition site per action, §13) and gets the breakpoint refusal for free.
  */
 function runContextCommand(paneId: string, id: string, args: Record<string, unknown>): void {
   // THIS pane, named. The bar is drawn once per pane and the side bar's controls write the side
@@ -1161,7 +1162,7 @@ export function isResolvingOpen(paneId: string): boolean {
  * Open or close it.
  *
  * A named end state rather than a toggle, so `canvas.setResolvingOpen { open: false }` means the
- * same thing twice and a screenshot can photograph it (§13's R1).
+ * same thing twice and a screenshot can photograph it (R1, `scripts/screenshots/README.md`).
  *
  * It writes the panel and does NOT re-project the bar. A popover moves into the top layer while it
  * is open; nothing about the bar changes when it does, and the only thing the bar redraws for is

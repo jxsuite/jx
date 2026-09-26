@@ -309,7 +309,8 @@ export function openPublishSurface(options: PublishSurfaceOptions): PublishSurfa
     setAccount: (value: string) => {
       /* What the control now holds, first and unconditionally. A binding only writes when the
          scope CHANGES, so a surface that decided a value without announcing the raw one would
-         leave the control showing something the scope does not have (§9.3). */
+         leave the control showing something the scope does not have
+         (studio-ui-guidelines.md §9.3). */
       scope.accountId = value;
       options.onField("accountId", value);
     },

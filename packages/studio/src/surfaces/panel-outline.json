@@ -684,7 +684,7 @@
               ]
             },
             "empty": {
-              "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (guidelines §11): one sentence saying what the region is for, then the one action that fills it.",
+              "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (studio-ui-guidelines.md §11): one sentence saying what the region is for, then the one action that fills it.",
               "tagName": "div",
               "attributes": {
                 "part": "empty"

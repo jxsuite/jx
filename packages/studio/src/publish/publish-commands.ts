@@ -1,5 +1,6 @@
 /**
- * Publish-commands.ts — the `Publish:` family (plan §9.5), defined beside the deploy it drives.
+ * Publish-commands.ts — the `Publish:` family (`docs/studio/publish.md`), defined beside the deploy
+ * it drives.
  *
  * Two unrelated operations were called "Publish" and neither was a command. `publishToGithub`
  * created a git repository; `openPublishPanel` connected Cloudflare Pages — and it had **zero call
@@ -16,7 +17,7 @@
  * | `publish.openDashboard` | opens the connected Pages project on Cloudflare           |
  *
  * **`runDeploy` is an Activity, not a toast.** A deploy pushes a branch and then waits on a build
- * that is happening somewhere else; that is the definition of the long operation §7.3 gave the
+ * that is happening somewhere else; that is the definition of the long operation §16.4 gave the
  * Activity tab, and `fail()` raises the Problem so the failure outlives the run and carries a
  * Retry. The caller therefore never also notifies (§16).
  *
@@ -42,7 +43,7 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
  * Six attempts five seconds apart: a Pages build takes minutes, so this is not "wait for the build"
  * — it is "wait for the deployment RECORD", which appears within seconds of the push. The activity
  * says which of the two it is waiting for, because a progress line that implies the former and
- * delivers the latter is the dishonesty §7.3 exists to end.
+ * delivers the latter is the dishonesty §16.4 exists to end.
  */
 export const DEPLOY_POLL = { attempts: 6, delayMs: 5000 } as const;
 
@@ -135,7 +136,7 @@ export async function runDeploy(
  *
  * `enablement` reads `platformSupportsPublish()` rather than a `capability.*` key because there is
  * no `publish` capability yet — adding one is a `commands/context.ts` + `commands/live-context.ts`
- * change, and §5.2 is explicit that PAL differences belong there. Until it exists this is the one
+ * change, and §13.4 is explicit that PAL differences belong there. Until it exists this is the one
  * `if (platform.x)` the family carries, in the one place a reader looks for it.
  */
 export function publishCommands(): AnyCommand[] {
@@ -157,8 +158,8 @@ export function publishCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       // `when` already asked about the project.
       enablement: () => platformSupportsPublish(),
-      /* No `aiTool`, by §12.4's second deletion rule: an auth flow that waits on a person, with
-         credentials. */
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's second rule: an auth flow that waits on a
+         person, with credentials. */
       run: async () => {
         const { openPublishPanel } = await import("./publish-panel");
         openPublishPanel();
@@ -177,8 +178,8 @@ export function publishCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       enablement: (ctx) =>
         ctx.project.isRepo && currentDeploy() !== undefined && platformSupportsPublish(),
-      /* No `aiTool`, by §12.4's third deletion rule: remote and irreversible, the same class as
-         `packages.remove`. */
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's third rule: remote and irreversible, the
+         same class as `packages.remove`. */
       run: async () => {
         await runDeploy();
       },

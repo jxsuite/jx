@@ -2,13 +2,13 @@
 /**
  * Preferences-dialog.ts — ⌘, the application-preferences surface Studio did not have.
  *
- * Plan §9.3 draws the line this file finally makes real. **Project Settings** configures a project
- * and belongs to the project (breakpoints, definitions, deploy); **Preferences** configures the
+ * §15 draws the line this file finally makes real. **Project Settings** configures a project and
+ * belongs to the project (breakpoints, definitions, deploy); **Preferences** configures the
  * application and follows you between them. Studio shipped only the first, behind a gear in the
  * rail — the slot every other editor spends on the second — and so had nowhere at all to put the
  * chrome theme, the assistant's provider key, the keyboard, or the three credentials it holds.
  *
- * Four sections, and each one closes a hole that was named in the plan:
+ * Four sections, and each one closes a hole the shell redesign named:
  *
  * - **Appearance** — the chrome theme. `shell.theme` and `view.setTheme` already existed; nothing
  *   rendered them, so the only way to change the theme was to run a command by hand.
@@ -19,11 +19,12 @@
  *   this, `clearGithubToken()` had zero callers: signing out of GitHub was not expressible.
  * - **Keyboard** — GENERATED from `commands/reference.ts`'s `shortcutReference()`, the same
  *   projection `docs/studio/interface/shortcuts.md` is built from. The registry is the one place a
- *   chord is declared, so the sheet cannot drift from the app or from the docs. Per §13.5 there is
- *   deliberately no screenshot of it — photographing generated content is a bug. It is searchable
- *   two ways, because there are two questions ("what is the shortcut for X" and "what did I just
- *   press"), and rebindable — as a LAYER over the registry (`settings/preferences-keymap.ts`), so
- *   the sheet stays a projection and the app's own record of a default is never edited.
+ *   chord is declared, so the sheet cannot drift from the app or from the docs. Per CLAUDE.md's
+ *   Screenshot Policy there is deliberately no screenshot of it — photographing generated content
+ *   is a bug. It is searchable two ways, because there are two questions ("what is the shortcut for
+ *   X" and "what did I just press"), and rebindable — as a LAYER over the registry
+ *   (`settings/preferences-keymap.ts`), so the sheet stays a projection and the app's own record of
+ *   a default is never edited.
  *
  * **This module is the FLOW; `surfaces/preferences.json` is what it draws.** Every function below
  * either answers a question about state or changes some, and the answers leave here as strings and

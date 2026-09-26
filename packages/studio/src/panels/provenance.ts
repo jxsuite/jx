@@ -1,5 +1,5 @@
 /**
- * Provenance — where the value in a field came from, as one chip (plan §6.2).
+ * Provenance — where the value in a field came from, as one chip (§6.7).
  *
  * Four states, and the two that carry information NAME THEIR SOURCE:
  *
@@ -12,7 +12,7 @@
  * | mixed     | neutral, "mixed (3)" — see below  | clear across all  |
  *
  * **Mixed** is what a multi-selection says when the selected elements disagree about a field
- * (§6.5). It is a fifth state of THIS chip rather than a fifth widget, because it answers the same
+ * (§6.7). It is a fifth state of THIS chip rather than a fifth widget, because it answers the same
  * question the other four answer — _where did the value in this box come from?_ — and the honest
  * answer is "from several places, and they differ". It names how many elements are involved, so
  * "mixed" never has to mean "some unknown number of things". Typing into a Mixed field commits the
@@ -38,7 +38,7 @@
  * looks. That is the split the header above always described; it is now the whole file.
  */
 
-/** The states of §6.2 (four) plus §6.5's `mixed`, in the order the table lists them. */
+/** §6.7's four chip states plus its multi-selection `mixed`, in the order the table lists them. */
 export type ProvenanceState = "set" | "inherited" | "default" | "bound" | "mixed";
 
 /** Where one field's value came from, and what clicking the chip does about it. */

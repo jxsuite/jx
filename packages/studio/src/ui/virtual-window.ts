@@ -9,7 +9,7 @@
  * project. The two trees pay a smaller version of the same bill — a 5 000-node page drew 5 000
  * rows, each an `sp-icon` custom element — and they now pay it through this file.
  *
- * **It lives in `ui/`, not in `browse/`.** P3 workstream 11 promised "one virtual-list primitive
+ * **It lives in `ui/`, not in `browse/`.** The shell redesign promised "one virtual-list primitive
  * behind the Files tree and the Outline tree, reused by the Library grid", and what shipped sat
  * inside the Library and was imported by the Library alone. A primitive two surfaces share cannot
  * live inside one of them: the next surface that needs it either reaches across a feature boundary

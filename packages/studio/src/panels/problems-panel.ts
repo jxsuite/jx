@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 /**
- * Problems — everything that must be fixed, listed until it is (plan §7.1, §7.2).
+ * Problems — everything that must be fixed, listed until it is (§16.1, §16.3).
  *
- * `services/notify.ts` landed the RECORD in P4 wave A: a failure is a `Notification` with `tier:
+ * `services/notify.ts` landed the RECORD first: a failure is a `Notification` with `tier:
  * "problem"`, which means the app promises to keep it until somebody fixes it. This is the surface
  * that keeps the promise. Until it existed, `problems` was a reactive array with a count (the rail
  * badge, the status bar) and no way to read what was in it.
@@ -41,11 +41,10 @@
  * it mounts, so it answers with the call the dock already made: `render` runs for the active tab
  * only, and `afterRender` consumes what it left.
  *
- * **One record, one host.** Problems lives in the BOTTOM DOCK — plan §7.2's table says so outright
- * ("Problems | Bottom dock ⑪, badge on the rail") and §3.2 ⑪ makes it the dock's first tab. §3.2 ③
- * also lists it among the Navigator's panels; that line loses, because a list open in two docks at
- * once is two hosts for one record, and hosting it in the Navigator spends left-dock width on
- * something that belongs under the pane grid.
+ * **One record, one host.** Problems lives in the BOTTOM DOCK, as its first tab (§16.3). The shell
+ * redesign also listed it among the Navigator's panels; that line lost, because a list open in two
+ * docks at once is two hosts for one record, and hosting it in the Navigator spends left-dock width
+ * on something that belongs under the pane grid.
  *
  * **And no rail button.** It had one, in the PROJECT group, which meant a control on the far left
  * that opened a dock along the bottom — the rail carried a per-dock branch in three places to keep
@@ -272,12 +271,12 @@ export function syncProblemsSurface(host: HTMLElement): void {
 }
 
 /**
- * Define the Problems panel — the P3 placeholder, built.
+ * Define the Problems panel — the chrome phase's placeholder, built.
  *
- * P3 registered this id with `when: () => false` and a `render` that threw: "declared in the design
- * and not yet in the app", holding the rail slot §3.2 ② had already spent so the budget counted it
- * from the day it was named. This is the edit that phase described — the predicate is gone, the
- * body is real, and the badge is live.
+ * The shell redesign's chrome phase registered this id with `when: () => false` and a `render` that
+ * threw: "declared in the design and not yet in the app", holding a Navigator rail slot so the
+ * budget counted it from the day it was named. This is the edit that phase described — the
+ * predicate is gone, the body is real, and the badge is live.
  *
  * One caller: `panels/bottom-dock.ts`'s {@link import("./bottom-dock").registerBottomPanels}, which
  * is the module that owns the dock this record is drawn in. `registerPanel` throws on a duplicate

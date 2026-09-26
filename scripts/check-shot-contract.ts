@@ -13,10 +13,10 @@
  *     the panel registry declares "page"
  *
  * — in the PR that caused it, so the renamer sees it rather than an archaeologist three weeks
- * later. It enforces the two rules §13 establishes:
+ * later. It enforces the shot contract's two rules (scripts/screenshots/README.md):
  *
  * R1. A shot may name inputs the app accepts, never values the app derives. R2. The pipeline may
- * only ask the app to do sooner what the plan already commits to.
+ * only ask the app to do sooner what the design already commits to.
  *
  * Rules, in the order they fire:
  *
@@ -24,14 +24,15 @@
  *    seed. The projection is the app's registry ∪
  *    {@link import("../packages/studio/src/services/automation").seedIds} ∪ the shrinking
  *    `AUTOMATION_COMMANDS` gap list.
- * 2. No command id matches `/\.toggle[A-Z]/` — §13.3 clause 3. A toggle is a delta against unstated
- *    state, which is what silently inverted 18 steps when the assistant's default flipped.
- *    {@link TOGGLE_DEBT} is **empty**, so any toggle id is a hard error the first time it appears.
+ * 2. No command id matches `/\.toggle[A-Z]/` — the idempotence rule, studio.md §13.5. A toggle is a
+ *    delta against unstated state, which is what silently inverted 18 steps when the assistant's
+ *    default flipped. {@link TOGGLE_DEBT} is **empty**, so any toggle id is a hard error the first
+ *    time it appears.
  * 3. `args` validate against the command's own `args` JSON Schema, where one is declared.
  * 4. No CSS or XPath selector anywhere in the manifest, and no hand-stamped (non-derived) region id
  *    beyond the committed count — the `ALLOWED_ORPHANS` idiom from
  *    `packages/studio/scripts/check-styles.ts`. The selector counters are all at **zero**.
- * 5. The `input`-step and `unstable` counts §13.3 caps, same shape.
+ * 5. The `input`-step and `unstable` budgets (scripts/screenshots/README.md, "The gate"), same shape.
  * 6. `manifest.contract` matches {@link CONTRACT_VERSION}.
  *
  * **Quarantined shots are read past.** A shot carrying `status: {state: "quarantined"}` is one the
@@ -64,11 +65,12 @@ function fromRoot(path: string): string {
 }
 
 // ─── The command projection ───────────────────────────────────────────────────
-// §13.3 makes `__jxAutomation.run` a projection of the command registry. It is not one yet: the
-// Registry (`commands/defaults.ts`) holds the records written in the new form, and the 39-entry
-// `AUTOMATION_COMMANDS` table holds the ids the manifest actually addresses. The projection is
-// Their union, registry first, so a record's `args` schema wins over the shim's. When S3 deletes
-// `AUTOMATION_COMMANDS`, one entry leaves DEFAULT_COMMAND_SOURCES and nothing else here changes.
+// The projection rule (studio.md §13.5) makes `__jxAutomation.run` a projection of the command
+// Registry. It is not one yet: the registry (`commands/defaults.ts`) holds the records written in
+// The new form, and the 39-entry `AUTOMATION_COMMANDS` table holds the ids the manifest actually
+// Addresses. The projection is their union, registry first, so a record's `args` schema wins over
+// The shim's. When `AUTOMATION_COMMANDS` is deleted, one entry leaves DEFAULT_COMMAND_SOURCES and
+// Nothing else here changes.
 
 /** One command as this check sees it — the three fields a manifest step can break against. */
 export interface CommandRecord {
@@ -96,7 +98,8 @@ export const CONTRACT_VERSION = 1;
 // ─── Committed budgets ────────────────────────────────────────────────────────
 
 /**
- * The counts §13.3 caps, committed at what the CONVERTED manifest holds.
+ * The budgets scripts/screenshots/README.md caps ("The gate"), committed at what the CONVERTED
+ * manifest holds.
  *
  * The check fails when a count goes UP — that is the whole contract. When a count goes down the run
  * prints a ratchet line naming the new value; lowering the committed number is then a one-line
@@ -110,29 +113,31 @@ export const CONTRACT_VERSION = 1;
  * - `clipSelectors` `clip: {selector}`. **0** — `of: "viewport"` names the camera's own frame.
  * - `argSelectors` a puppeteer handler prefix (`xpath/`, `pierce/`) inside a step's `args`. Always
  *   zero, and landing it at zero is what keeps it zero.
- * - `inputSteps` raw input: keystrokes, typing, caret placement, synthetic drags. §13.6 wanted ≤6. It
- *   lands at **14**, and the gap is almost entirely the two ids that have no command record yet
- *   (`element.insertData`, `media.browse`) plus `tab-strip-shot`, which types into a real editor
- *   because the dirty flag is EARNED, not asserted. Each falls out as its record lands.
+ * - `inputSteps` raw input: keystrokes, typing, caret placement, synthetic drags. The contract's
+ *   migration aimed for ≤6. It lands at **14**, and the gap is almost entirely the two ids that
+ *   have no command record yet (`element.insertData`, `media.browse`) plus `tab-strip-shot`, which
+ *   types into a real editor because the dirty flag is EARNED, not asserted. Each falls out as its
+ *   record lands.
  *
  *   **14 → 13 when "resolving with" became a popover.** `counter-test-prop` typed into
  *   `pane.primary/prop:count`, which a popover puts behind a gesture — so the value got a record
  *   (`canvas.setTestProp`) and the shot names it. The change that could have cost a step paid one
  *   back, because the fields moving out of reach is exactly what forced the capability to be named.
  *
- *   **19 → 14 in P6.2**, the ratchet moving the way it is meant to: `settings.selectEntry` was the
- *   five of them, and it did not become a record of its own — `settings.open` grew an `entry`
- *   argument, because a map-layout section's entry is a KEY in that section and naming it is naming
- *   state. Not one `settings.open {section}` step changed.
+ *   **19 → 14 when Project Settings became a document** (studio.md §17.1), the ratchet moving the way
+ *   it is meant to: `settings.selectEntry` was the five of them, and it did not become a record of
+ *   its own — `settings.open` grew an `entry` argument, because a map-layout section's entry is a KEY
+ *   in that section and naming it is naming state. Not one `settings.open {section}` step changed.
  *
- *   **18 → 19 in P5, and it is the one direction this file says a number may not move**, so here is
- *   the justification the rule asks for. A quarantined shot's steps are not counted (they are read
- *   past, below), so `block-action-bar-shot` being broken since 6604ede8 is what took this to 18 —
- *   the count fell because a shot STOPPED WORKING. P5 fixed what broke it (`probe.revealPath` was
- *   inert on the Edit surface: it panned `view.panY`, which only reaches the screen through a panzoom
- *   transform Edit does not render), and lifting the quarantine hands its one `caret` step back. No
- *   step was added, and the number of shots the app can actually be driven through went up. This is
- *   the only way this budget may rise: a step returning from quarantine, named.
+ *   **18 → 19 when a quarantined shot came back, and it is the one direction this file says a number
+ *   may not move**, so here is the justification the rule asks for. A quarantined shot's steps are
+ *   not counted (they are read past, below), so `block-action-bar-shot` being broken since 6604ede8
+ *   is what took this to 18 — the count fell because a shot STOPPED WORKING. What broke it was then
+ *   fixed (`probe.revealPath` was inert on the Edit surface: it panned `view.panY`, which only
+ *   reaches the screen through a panzoom transform Edit does not render), and lifting the quarantine
+ *   hands its one `caret` step back. No step was added, and the number of shots the app can actually
+ *   be driven through went up. This is the only way this budget may rise: a step returning from
+ *   quarantine, named.
  *
  *   **13 → 14, and it is the same way and the same reason.** `slash-menu-shot` came back from
  *   quarantine, handing its one `caret` step back. It went in because a synthetic "/" opened nothing,
@@ -143,9 +148,9 @@ export const CONTRACT_VERSION = 1;
  *   step (`insert.openSlashMenu`), which is the conversion this file exists to ask for: the step now
  *   names an input the app accepts by name. Net input steps for the shot: three to one. The budget
  *   rises by the one `caret` step quarantine was hiding.
- * - `nonDerivedRegions` DISTINCT region ids no registry stamps for free — the hand-stamped leaves
- *   §13.3 budgets for (`navigator/panel:git/commit`, `navigator/statements`, the settings entry
- *   rows…). Contract 0 counted 17 CSS selectors here.
+ * - `nonDerivedRegions` DISTINCT region ids no registry stamps for free — the hand-stamped leaves the
+ *   README's "The gate" budgets for (`navigator/panel:git/commit`, `navigator/statements`, the
+ *   settings entry rows…). Contract 0 counted 17 CSS selectors here.
  *
  *   **11 → 10 when "resolving with" became a popover**, and `pane.primary/prop:count` is the one that
  *   left: a test value is set by `canvas.setTestProp` now, so no shot addresses the field.
@@ -157,10 +162,10 @@ export const CONTRACT_VERSION = 1;
  *   — an `inspector/…` id on a control that is not in the Inspector. `ui/regions.ts` derives it now,
  *   scoped to the one Inspector, and the number falls the way this file says a number should: because
  *   a hand-stamp became unnecessary.
- * - `unstable` `{reason, until}` escape hatches. **2** after P6.2 retired the five `settings.
- *   selectEntry` steps. Of what is left, one is `blog-insert-data`'s, whose id LANDED in P5
- *   (`insert.data`) and whose step survives because the shot's subject is the merge-tag LIST, a
- *   control — a docs decision, not a registry gap. See {@link REMEDY}.
+ * - `unstable` `{reason, until}` escape hatches. **2** after Project Settings became a document and
+ *   retired the five `settings.selectEntry` steps. Of what is left, one is `blog-insert-data`'s,
+ *   whose id has since LANDED (`insert.data`) and whose step survives because the shot's subject is
+ *   the merge-tag LIST, a control — a docs decision, not a registry gap. See {@link REMEDY}.
  */
 export const CONTRACT_BUDGET = {
   selectorActions: 0,
@@ -179,12 +184,13 @@ export type ContractCounts = Record<BudgetKey, number>;
 /**
  * The toggle ids the manifest still names, and how many steps name each. **Empty, and staying so.**
  *
- * §13.3 clause 3 requires zero: `canvas.togglePreview` cannot say which state it ends in, so six
- * screenshots taken through it photographed whichever way the default happened to point that week.
- * S2 replaced all ten steps with the state each was reaching for — `canvas.setMode {mode:
- * "preview"}` ×6, `inspector.setSection {section: "__element", open: true}` ×3, and the one
- * `view.toggleActivity {tab: "layers"}` in `block-action-bar-shot`, which was not switching panel
- * at all: it was COLLAPSING the dock, and now says `view.setNavigator {open: false}`.
+ * The idempotence rule (studio.md §13.5) requires zero: `canvas.togglePreview` cannot say which
+ * state it ends in, so six screenshots taken through it photographed whichever way the default
+ * happened to point that week. The manifest conversion replaced all ten steps with the state each
+ * was reaching for — `canvas.setMode {mode: "preview"}` ×6, `inspector.setSection {section:
+ * "__element", open: true}` ×3, and the one `view.toggleActivity {tab: "layers"}` in
+ * `block-action-bar-shot`, which was not switching panel at all: it was COLLAPSING the dock, and
+ * now says `view.setNavigator {open: false}`.
  *
  * With the list empty, any toggle id is a hard error the first time it appears. Re-opening it is a
  * deliberate act in a PR that argues for it, the same bar as raising a budget.
@@ -192,11 +198,12 @@ export type ContractCounts = Record<BudgetKey, number>;
 export const TOGGLE_DEBT: Readonly<Record<string, number>> = {};
 
 /**
- * Region ids the app stamps for free, per the §13.2 grammar `<surface>[.<instance>][/<part>]`.
+ * Region ids the app stamps for free, per the region grammar `<surface>[.<instance>][/<part>]`
+ * (scripts/screenshots/README.md, "The region grammar").
  *
  * Anything else is hand-stamped and counts against `nonDerivedRegions`. A CSS selector never
  * matches any of these, which is what makes the contract-1 manifest count 16/16 non-derived today
- * and what makes S2's conversion visible as the number falling.
+ * and what made the manifest conversion visible as the number falling.
  */
 export const DERIVED_REGION_PATTERNS: readonly RegExp[] = [
   // Bare surfaces and instances.
@@ -240,15 +247,17 @@ const INPUT_ACTIONS = new Set([
 /**
  * Contract-1 bespoke verbs, read as the command step each one already is.
  *
- * This is §13.6's own conversion table, applied at READ time rather than waiting for S2 to apply it
- * at edit time — and it is what makes §13.7's promise true today: a P3 panel rename fails Lane 1 on
- * exactly the four `setActivity` steps that name `blocks`, `imports` and `head`, in the renaming
- * PR, naming both ids. Without it the check would see 58 of the manifest's 400 actions and the 46
- * `setActivity` steps would rename silently.
+ * This is the manifest conversion's own table, applied at READ time rather than waiting for the
+ * conversion to apply it at edit time — and it is what makes the gate's promise true today: a panel
+ * rename fails Lane 1 (scripts/screenshots/README.md, "The gate") on exactly the four `setActivity`
+ * steps that name `blocks`, `imports` and `head`, in the renaming PR, naming both ids. Without it
+ * the check would see 58 of the manifest's 400 actions and the 46 `setActivity` steps would rename
+ * silently.
  *
  * `valueAs` names the argument the verb's single `value` field carries; verbs without it pass their
- * own named fields through (`openSettings {section}`, `editFunction {path, eventKey}`). When S2
- * rewrites the manifest into `cmd:` steps, this table is deleted and nothing else moves.
+ * own named fields through (`openSettings {section}`, `editFunction {path, eventKey}`). When the
+ * conversion rewrites the manifest into `cmd:` steps, this table is deleted and nothing else
+ * moves.
  */
 const LEGACY_ACTIONS: Readonly<Record<string, { id: string; valueAs?: string }>> = {
   editDef: { id: "formula.editDef" },
@@ -273,7 +282,7 @@ const LEGACY_ACTIONS: Readonly<Record<string, { id: string; valueAs?: string }>>
 
 // ─── Pure rules ───────────────────────────────────────────────────────────────
 
-/** §13.3 clause 3: `view.toggleAssistant` names a delta; `view.setAssistant` names a state. */
+/** `view.toggleAssistant` names a delta; `view.setAssistant` names a state (studio.md §13.5). */
 export function isToggleId(id: string): boolean {
   return /\.toggle[A-Z]/.test(id);
 }
@@ -373,7 +382,7 @@ interface ArgsSchema {
   minimum?: number;
   maximum?: number;
   /**
-   * Non-standard, and the reason the §13.5 error string reads the way it does: the registry that
+   * Non-standard, and the reason Lane 1's error string reads the way it does: the registry that
    * owns the value space, so the failure says "the panel registry declares" rather than "the schema
    * declares". JSON Schema ignores unknown keywords, so this costs nothing at runtime.
    */
@@ -576,8 +585,8 @@ export function validateArgs(schema: object, args: Record<string, unknown>): str
 
 // ─── Manifest traversal ───────────────────────────────────────────────────────
 // Deliberately shape-tolerant: it reads contract 1 (`actions`/`waitFor`/`regions`/`variants`) and
-// Contract 2 (`steps`/`expect`/`capture`) in one pass, so S2's conversion shows up as the budgets
-// Falling rather than as a rewrite of this file.
+// Contract 2 (`steps`/`expect`/`capture`) in one pass, so the manifest conversion shows up as the
+// Budgets falling rather than as a rewrite of this file.
 
 interface CommandStep {
   /** `manifest shot "tab-strip-shot" step 12`, or `… variant "cleanup" step 3`. */
@@ -614,7 +623,7 @@ function asArgs(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
-/** A contract-1 action's own fields, read as the command args §13.6's codemod will write. */
+/** A contract-1 action's own fields, read as the command args the manifest conversion writes. */
 function legacyArgs(
   verb: { id: string; valueAs?: string },
   action: Record<string, unknown>,
@@ -680,8 +689,8 @@ export function readManifest(raw: unknown): ManifestFacts {
       takeRegion(at, clip.selector);
     }
   };
-  // `waitFor` selectors are counted, not addressed: S2 turns all 43 into `expect` entries, so
-  // Nothing here ever needs to name the step that held one.
+  // `waitFor` selectors are counted, not addressed: the manifest conversion turned all 43 into
+  // `expect` entries, so nothing here ever needs to name the step that held one.
   const takeWaits = (waits: unknown) => {
     for (const wait of records(waits)) {
       if (wait.type === "selector") {
@@ -727,10 +736,11 @@ export function readManifest(raw: unknown): ManifestFacts {
     facts.shots += 1;
     const name = typeof shot.name === "string" ? shot.name : `#${index + 1}`;
     const label = `manifest shot "${name}"`;
-    // A quarantined shot is one the repo ADMITS is broken (§13.5). The runner skips it, `docs:check`
-    // Fails if a page still illustrates itself with it, and holding a disabled shot to the contract
-    // Would only mean the fix has to be made twice. Its ids are checked again the moment the
-    // Quarantine is lifted, which is the point at which someone is looking.
+    // A quarantined shot is one the repo ADMITS is broken (scripts/screenshots/README.md,
+    // "Authoring notes"). The runner skips it, `docs:check` fails if a page still illustrates itself
+    // With it, and holding a disabled shot to the contract would only mean the fix has to be made
+    // Twice. Its ids are checked again the moment the quarantine is lifted, which is the point at
+    // Which someone is looking.
     if (isRecord(shot.status) && shot.status.state === "quarantined") {
       facts.quarantined.push(name);
       continue;
@@ -808,7 +818,7 @@ export function checkShotContract(input: ContractInput): ContractResult {
       toggleSeen.set(step.id, (toggleSeen.get(step.id) ?? 0) + 1);
       if (!(step.id in toggleDebt)) {
         violations.push(
-          `${head}; a toggle names a delta against unstated state (§13.3 clause 3) — ` +
+          `${head}; a toggle names a delta against unstated state (the idempotence rule, studio.md §13.5) — ` +
             `declare "${setterFor(step.id)}" and name the value the step ends in`,
         );
         // A new toggle is usually also an unknown id. Reporting both buries the actionable one.
@@ -906,7 +916,7 @@ export function formatSummary(result: ContractResult): string {
   if (result.toggleSteps > 0) {
     lines.push(
       `  toggle debt: ${result.toggleSteps} step(s) over ${Object.keys(TOGGLE_DEBT).length} id(s) ` +
-        `— §13.3 clause 3 requires zero; S2 converts them.`,
+        `— the idempotence rule (studio.md §13.5) requires zero; convert them to setters.`,
     );
   }
   return lines.join("\n");
@@ -924,8 +934,8 @@ interface CommandModule {
  * Import each module and fold its declarations into one table, first declaration winning.
  *
  * A module may export `defaultCommandSet()` (the registry), `seedIds()` (the seed registry),
- * `AUTOMATION_COMMANDS` (the shim table S3 deletes), or any combination. Exporting NONE of them is
- * a usage error, not a silent empty projection.
+ * `AUTOMATION_COMMANDS` (the shim table, which only shrinks), or any combination. Exporting NONE of
+ * them is a usage error, not a silent empty projection.
  *
  * `seedIds()` is read rather than the shim's three `disposition: "seed"` entries because those
  * three were a hand-kept list, and `seed.git` and `seed.projectList` were both shipping while

@@ -16,13 +16,13 @@
  *
  * **Rows are `registry.forPlacement("outline/row")`.** Every row used to carry five hand-built
  * action buttons, always visible, on every row. They collapse to the selected row plus the hovered
- * one, which is Gutenberg's rule and the one plan §3.2 ⑩ codifies: the floating bar owns
- * selection-scoped verbs, the inspector owns values. The verbs, their names, their chords and their
- * disabled reasons all come from the records in `block-action-bar.ts` — the surface renders, it
- * does not decide. A row that is neither selected nor hovered is projected with an EMPTY command
- * list, so the cluster costs nothing rather than being hidden by a rule: a `display: none` kit
- * element is still an upgraded custom element, which is the whole cost the collapse exists to
- * remove.
+ * one, which is Gutenberg's rule and the one studio-ui-guidelines.md §12.1 codifies: the floating
+ * bar owns selection-scoped verbs, the inspector owns values. The verbs, their names, their chords
+ * and their disabled reasons all come from the records in `block-action-bar.ts` — the surface
+ * renders, it does not decide. A row that is neither selected nor hovered is projected with an
+ * EMPTY command list, so the cluster costs nothing rather than being hidden by a rule: a `display:
+ * none` kit element is still an upgraded custom element, which is the whole cost the collapse
+ * exists to remove.
  *
  * **A row says something.** On a real page the tree was a wall of rows all reading "div": only
  * text-bearing nodes got a preview and containers got the tag they already wear as a coloured
@@ -504,7 +504,8 @@ function selectModelRow(index: number, gesture: { range?: boolean } = {}): void 
 }
 
 /**
- * Apply one row activation to the selection, honouring the two accumulate gestures (§6.5).
+ * Apply one row activation to the selection, honouring the two accumulate gestures
+ * (studio-ui-guidelines.md §8.1).
  *
  * - Plain: replace the selection with this path. **This is the only branch a keyboard walk or an
  *   unmodified click can reach, and it is byte-identical to what the Outline always did.**
@@ -1254,9 +1255,10 @@ export function mountOutlinePanel(
         editInput,
         editReady: (element) => {
           /* On a microtask, because `onNodeCreated` fires as the node is BUILT and one tick before
-             it is in the document — which is exactly why it is the seam (guidelines §9.4): it
-             hands over the element earlier than awaiting the mount would, and the host decides
-             when it is worth anything. An unconnected input cannot take focus. */
+             it is in the document — which is exactly why it is the seam
+             (studio-ui-guidelines.md §9.4): it hands over the element earlier than awaiting the
+             mount would, and the host decides when it is worth anything. An unconnected input
+             cannot take focus. */
           queueMicrotask(() => {
             const input = element as HTMLInputElement;
             if (input.isConnected) {
@@ -1267,10 +1269,10 @@ export function mountOutlinePanel(
         },
         expand: expandOutlineRow,
         emptyAction: () => {
-          /* `"insert"`, not `"blocks"`. The panel was renamed in P3.1 and this call kept the old id
-             for three phases, so the one action an empty page offers landed the Navigator on "No
-             Navigator panel is registered as blocks". `setActivityTab` takes a `NavigatorPanelId`
-             now, so this cannot recur. */
+          /* `"insert"`, not `"blocks"`. The panel was renamed with the registry-driven rail (§5.1),
+             and this call kept the old id for three phases, so the one action an empty page offers
+             landed the Navigator on "No Navigator panel is registered as blocks". `setActivityTab`
+             takes a `NavigatorPanelId` now, so this cannot recur. */
           setActivityTab("insert");
         },
         hover: hoverRow,
@@ -1350,8 +1352,8 @@ export function detachOutline(): void {
  * Contribute the Outline panel.
  *
  * `level: "document"` — it writes the open document's tree (reorder, rename, delete, duplicate).
- * "Outline" rather than "Layers" is §3.2 ③'s name for it; the id stays `layers` because that is
- * what `view.setActivity` and 26 screenshot steps address it by, and an id is not a label.
+ * "Outline" rather than "Layers" is §5.1's name for it; the id stays `layers` because that is what
+ * `view.setActivity` and 26 screenshot steps address it by, and an id is not a label.
  */
 export function registerLayersPanel(): void {
   registerPanel({

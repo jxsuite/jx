@@ -12,8 +12,8 @@
  * scheme layer, nested selector)`. It has always computed that tuple — it is the per-field key and
  * the five-branch if/else below — and it used to hide it behind three disconnected widgets on two
  * different bars. `target-line.ts` renders it as one sentence instead, and the three widgets are
- * gone: the breakpoint and scheme axes are selected on the pane context bar (region ⑦), and the
- * selector is the one axis this tab owns.
+ * gone: the breakpoint and scheme axes are selected on the pane context bar, and the selector is
+ * the one axis this tab owns.
  *
  * Every row then says where its value came from. `provenance.ts` supplies the vocabulary;
  * `computeInheritedSources()` supplies the donor breakpoint the cascade walk always knew and this
@@ -28,17 +28,18 @@
  * bound property, and an equal write is skipped. `renderOnly("rightPanel")` is gone from this file
  * with it.
  *
- * **Two controls are lists, and the list is the KIT MENU** (`surfaces/menu.ts`, §12.5). The unit
- * picker and the keyword suggestions were each an `sp-overlay` + `sp-menu` of their own; the Value
- * Source picker was a third. All three are `openMenu()` now, which is also how roving focus,
- * typeahead and Escape arrive here without a line of keyboard code.
+ * **Two controls are lists, and the list is the KIT MENU** (`surfaces/menu.ts`,
+ * `studio-ui-guidelines.md` §12.5). The unit picker and the keyword suggestions were each an
+ * `sp-overlay` + `sp-menu` of their own; the Value Source picker was a third. All three are
+ * `openMenu()` now, which is also how roving focus, typeahead and Escape arrive here without a line
+ * of keyboard code.
  *
  * **Nothing here is an island any more.** One control was: `specs/ui.md` §5.6 (Colour) was Pending,
  * so a colour row drew an announced `[part="control-host"]` and a lit `paintColorControl` filled
- * it, and that was the last Spectrum on this surface. §5.6 landed. The row is a `jx-color-field` in
- * the document beside every other control, its palette is a `jx-swatch-group` slotted into the
- * picker, and `ui/color-selector.ts` is what remains: which colours THIS PROJECT has named, which
- * is a question no kit element can answer.
+ * it, and that was the last Spectrum on this surface. `ui.md` §5.6 landed. The row is a
+ * `jx-color-field` in the document beside every other control, its palette is a `jx-swatch-group`
+ * slotted into the picker, and `ui/color-selector.ts` is what remains: which colours THIS PROJECT
+ * has named, which is a question no kit element can answer.
  *
  * @docs studio/design/style-inspector
  */
@@ -337,7 +338,7 @@ export function resetAffectedDisclosure(): void {
  *
  * The breakpoint and the colour scheme are DEFINED in Project Settings › Contexts and SELECTED on
  * the pane context bar. A Target Line segment that opened its own list would be the third selector
- * §6.4 forbids, so it routes to the definition site through the same command the context bar's
+ * §6.2 forbids, so it routes to the definition site through the same command the context bar's
  * "Manage contexts…" footer runs.
  */
 function runCommand(id: string, args?: Record<string, unknown>): void {
@@ -543,7 +544,7 @@ interface ProvenanceCtx {
   signals: string[];
   clear: (prop: string) => void;
   /**
-   * Properties the selected elements DISAGREE about, and how many elements are selected (§6.5).
+   * Properties the selected elements DISAGREE about, and how many elements are selected (§6.7).
    *
    * Empty for a selection of one — which is what keeps every other branch of `provenanceOf`
    * reachable exactly as often as it was before the selection became a set.
@@ -727,7 +728,7 @@ interface RowActions {
   choices?: StyleChoice[];
   choicesLabel?: string;
   choose?: (value: string) => void;
-  /** The Value Source ladder for this position (§6.3). */
+  /** The Value Source ladder for this position (§6.6). */
   source?: {
     mode: SlotMode;
     caps: SlotMode[];
@@ -1060,7 +1061,7 @@ function fieldRow(
   row.placeholder = placeholder;
   applyChip(row, actions, opts.provenance);
 
-  // The Value Source ladder (§6.3), and only where the position has one to offer. A longhand child
+  // The Value Source ladder (§6.6), and only where the position has one to offer. A longhand child
   // Is not a document position of its own — its value is a slice of the shorthand above it — so it
   // Carries no chip, which is what it has always done.
   if (!opts.child) {
@@ -1395,7 +1396,7 @@ function buildView(canvasMode: () => string): StylePanelView {
       return emptyView("Open a page to style what you click.", true);
     }
     // No separate `Styling: <h1>` header. It said the same thing the Target Line's scope chip says,
-    // Except that it said it as a caption, after the fact, and without the blast radius (§6.1).
+    // Except that it said it as a caption, after the fact, and without the blast radius (§6.2).
     return buildEditor(tab, node, {
       effectiveStyle: getEffectiveStyle(node.style),
       stylebookSelector: shell.stylebook.selection,
@@ -1445,7 +1446,7 @@ function buildEditor(
   const mediaTab = tab.session.ui.activeMedia || null;
   const { activeSelector } = tab.session.ui;
 
-  // ── Scheme-layer routing (spec §9.5) ────────────────────────────────────────
+  // ── Scheme-layer routing (spec.md §9.5) ─────────────────────────────────────
   // With the tab-bar scheme control forcing a scheme that has a matching declared scheme query,
   // Base-context edits target that scheme's `@--name` block — no extra sidebar tabs. Breakpoint
   // Tabs stay breakpoint-scoped (scheme × breakpoint compound blocks are unsupported).
@@ -1476,7 +1477,7 @@ function buildEditor(
     ]),
   ];
 
-  // ── The Target Line (§6.1) ─────────────────────────────────────────────────
+  // ── The Target Line (§6.2) ─────────────────────────────────────────────────
   const stylebookTag = stylebookTagOf(stylebookSelector);
   const elementLabel =
     stylebookTag ?? (typeof node.tagName === "string" ? node.tagName : "element");
@@ -1510,7 +1511,8 @@ function buildEditor(
       },
       onAddCustom: () => {
         // One flow, through `ui/layers.ts` — the imperative `<input>` this replaces was appended to
-        // A bar lit-html owns, bypassing both the renderer and the overlay stack (§11.4).
+        // A bar lit-html owns, bypassing both the renderer and the overlay stack (§6.2, "Nested
+        // Selector Context").
         void showPromptDialog("Add Selector", {
           confirmLabel: "Use",
           message: "A state or nested rule to edit under this element.",
@@ -1537,7 +1539,7 @@ function buildEditor(
     style === ownRootStyle
       ? activeStyle
       : resolveContextStyle(ownRootStyle, activeSelector, editMedia);
-  // ── The selection, and what it means to commit to it (§6.5) ────────────────
+  // ── The selection, and what it means to commit to it (§6.7) ────────────────
   // Every selected element gets the same write, inside ONE `transactDoc` — so setting padding on
   // Six cards is one decision and one undo step. With one element selected this loop runs once
   // Against `sel` and is indistinguishable from the single-target commit it replaces.

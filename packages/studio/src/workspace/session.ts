@@ -1,12 +1,13 @@
 /**
  * Session.ts — what a project looked like when you left it, and how it looks that way again.
  *
- * Plan §4.4: "Session state persists **per project root** … open tabs and order per pane, active
- * tab, per-tab editor kind / view / zoom / rendering context." P3's "Newly possible" states the
- * consequence plainly: **the session survives a relaunch.** Neither shipped. The per-project record
- * held `layouts` and `activeLayout` and nothing else, its interface said "Session state (§4.4)
- * grows into this shape", and reopening a project landed on the home page with an empty strip — so
- * nine open documents, a split, and the breakpoint you were checking were lost every time.
+ * The shell redesign promised that session state persists **per project root** — open tabs and
+ * order per pane, active tab, per-tab editor kind / view / zoom / rendering context — and stated
+ * the consequence plainly: **the session survives a relaunch** (§14.8). Neither shipped. The
+ * per-project record held `layouts` and `activeLayout` and nothing else, its interface said session
+ * state would "grow into this shape", and reopening a project landed on the home page with an empty
+ * strip — so nine open documents, a split, and the breakpoint you were checking were lost every
+ * time.
  *
  * **Paths, not tab ids.** A tab id is minted per open and means nothing across a reload; the
  * document's path is the identity the workspace already dedupes on (`openFileInTab` scans

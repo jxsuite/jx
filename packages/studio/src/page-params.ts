@@ -2,12 +2,12 @@
 /**
  * Dynamic route-param helpers for the tab-bar's $params picker.
  *
- * A page like `pages/products/[sku].json` declares its candidate values in a `$paths` block (spec
- * §4.3). At build time the compiler expands those into concrete routes (`resolvePathEntries` in
- * `@jxsuite/compiler`); in the studio the same shapes are resolved live so the author can pick one
- * value to render. The chosen values are substituted into the canvas render document
- * (`substitutePreviewParams`), which mirrors what the compiler's context injection produces for the
- * matching built page.
+ * A page like `pages/products/[sku].json` declares its candidate values in a `$paths` block
+ * (site-architecture.md §4.3). At build time the compiler expands those into concrete routes
+ * (`resolvePathEntries` in `@jxsuite/compiler`); in the studio the same shapes are resolved live so
+ * the author can pick one value to render. The chosen values are substituted into the canvas render
+ * document (`substitutePreviewParams`), which mirrors what the compiler's context injection
+ * produces for the matching built page.
  */
 
 import { documentUrlPattern as routePattern } from "@jxsuite/site/routes";

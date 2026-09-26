@@ -8,9 +8,9 @@
  *
  * **Every rail button opens the Navigator, and the grouping is by LEVEL.** Every button is a
  * `jx-action-button` in its stacked form, so it carries an 11px text label under its icon — an icon
- * whose only name is a hover tooltip is the accessibility failure §2 principle 6 names — and
- * `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel collapses
- * its dock, which is a two-state control, not a one-way selection.
+ * whose only name is a hover tooltip is the accessibility failure studio-ui-guidelines.md §12.3
+ * names — and `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel
+ * collapses its dock, which is a two-state control, not a one-way selection.
  *
  * The foot is the ⚙ **Settings** menu, a menu button rendered from the `settings/menu` placement: a
  * record joins the gear by declaring the placement and there is nothing here to update in step.

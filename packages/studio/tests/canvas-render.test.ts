@@ -364,7 +364,8 @@ void mock.module("../src/files/file-ops.js", () => ({
      partial mock has to cover what that path imports — see the iframe-host note above. */
   confirmFileDelete: () => Promise.resolve(false),
   renamePromptMessage: () => Promise.resolve(""),
-  /* And one the TAB STRIP reads: its close offers to save first (§8.7's three-way dialog). */
+  /* And one the TAB STRIP reads: its close offers to save first (the three-way dialog of
+     studio-ui-guidelines.md §8.7). */
   saveFile: () => Promise.resolve(true),
 }));
 
@@ -883,7 +884,7 @@ describe("a logic target open in the dock", () => {
      `renderCanvasContent` used to RETURN on `editingFunction` / `editingFormula`, after calling a
      seam in the panel module. That was the takeover: the stage froze — it kept whatever DOM it was
      last painted with and stopped tracking the document — and the seams existed only to be called
-     from here. P8 put both surfaces in the Bottom dock's Logic tab, over a page that is still on
+     from here. Both now live in the Bottom dock's Logic tab (§16.3), over a page that is still on
      screen, so the canvas must go on rendering it. `panels/bottom-dock.ts` reveals the tab from its
      own effect and `panels/editors.ts` owns the Monaco instance from the panel's `afterRender`.
   */
@@ -1264,7 +1265,7 @@ describe("source mode", () => {
    * the contract.
    *
    * `surfaceForPane("primary").monacoEditor` is declared eight lines above `view.functionEditor`
-   * and has the same shape, but P8's teardown fix only reached the dock. Its 600ms timer closes
+   * and has the same shape, but the teardown fix went to the dock alone. Its 600ms timer closes
    * over the editor, a disposed Monaco answers `getValue()` with `""`, and for a FORMAT-backed
    * document the callback then ran `parseSourceForPath(path, "")` and assigned the result: the
    * page's body replaced with an empty parse, 600ms after the user left Code view, the tab left
@@ -2337,7 +2338,7 @@ describe("renderOverlays", () => {
   });
 });
 
-// ─── The Document Header card's slot (§3.2 ⑧) ─────────────────────────────────
+// ─── The Document Header card's slot ──────────────────────────────────────────
 
 /**
  * `#frontmatter-panel` is deleted; the stage draws the card's host. What is asserted here is WHERE
@@ -2461,7 +2462,7 @@ describe("the Document Header slot", () => {
   });
 });
 
-// ─── Per-pane rendering (P8) ──────────────────────────────────────────────────
+// ─── Per-pane rendering (§18.3) ───────────────────────────────────────────────
 
 describe("renderCanvas is addressed by pane", () => {
   test("renders the NAMED pane's tab into the NAMED pane's stage", async () => {

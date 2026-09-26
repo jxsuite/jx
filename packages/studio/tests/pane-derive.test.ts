@@ -1727,11 +1727,12 @@ describe("the lifecycle of a derived pane", () => {
  * `locale` is a COMPANION, and the two halves that makes true: the record carries a tag, and the
  * pane refuses to open a file that is not there.
  *
- * Jx has no message catalogue (§13.3) — a translation is a different file in a different directory
- * — so a preset that changed only the chip would be the defect this module's header warns about.
- * The probe is the other half: `companionTarget` is pure, so "is there a French copy" is a question
- * only the disk can answer, and answering it wrongly is either a blank pane (a path that does not
- * exist) or a sentence about a missing translation shown for every frame before the answer lands.
+ * Jx has no message catalogue (site-architecture.md §13.3) — a translation is a different file in a
+ * different directory — so a preset that changed only the chip would be the defect this module's
+ * header warns about. The probe is the other half: `companionTarget` is pure, so "is there a French
+ * copy" is a question only the disk can answer, and answering it wrongly is either a blank pane (a
+ * path that does not exist) or a sentence about a missing translation shown for every frame before
+ * the answer lands.
  */
 describe("the locale companion — a different FILE, and only when it is there", () => {
   function registry() {

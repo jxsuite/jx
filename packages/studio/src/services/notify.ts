@@ -1,5 +1,6 @@
 /**
- * Notify.ts — the third record type (plan §1), and the app's only way to say what happened.
+ * Notify.ts — the third record type, beside `Command` and `Panel` (§16), and the app's only way to
+ * say what happened.
  *
  * What this replaces: 78 `statusMessage()` call sites — 26 failures and 52 successes — rendered in
  * identical 11px grey text in a 24px strip and destroyed after 3000 ms. A failure and a save looked
@@ -7,20 +8,20 @@
  * read them. `statusMessage` is deleted, not wrapped; `scripts/check-styles.ts` bans the name from
  * `src/` so it cannot regrow.
  *
- * **A notification is a record, and its lifetime is chosen by the action it requires** (§7.1):
+ * **A notification is a record, and its lifetime is chosen by the action it requires** (§16.1):
  *
  * | Tier      | Host                       | Lifetime           | Use when                       |
  * | --------- | -------------------------- | ------------------ | ------------------------------ |
  * | `toast`   | the fourth overlay layer   | timed, dismissible | reversible, or needs no action |
  * | `problem` | the Bottom dock's Problems | until it is fixed  | it must be fixed               |
  *
- * §7.1 names a third tier — **inline**, the refusal a field draws at the control (`jx-field`'s own
+ * §16.1 names a third tier — **inline**, the refusal a field draws at the control (`jx-field`'s own
  * `[part="error"]`, projected by whichever inspector document owns the row). It is deliberately NOT
  * a member of {@link NotificationTier}: an inline error is a value a control renders next to the
  * field the user is editing, not a record the app posts to a host, and it has no store to live in.
  * Declaring a tier here whose only possible outcome is being dropped on the floor would be exactly
  * the silence this module exists to end, so the union has two members and the third tier arrives as
- * a field's own projected value (P4.4).
+ * a field's own projected value (§16.5).
  *
  * **Recovery is a command id, not a per-call-site closure.** `notify.error("Save failed", { action:
  * "file.save" })` gives the toast and the Problems row a Retry button whose label, availability,
@@ -64,8 +65,9 @@ const DEFAULT_TIER: Readonly<Record<Severity, NotificationTier>> = {
 /**
  * How long a toast rests before it is taken away, by severity.
  *
- * §7.1 caps the band at 4–8s. A warning that nobody has to act on still deserves the long end of
- * it, because it is the one a reader is most likely to have looked away from.
+ * `studio-ui-guidelines.md` §13.2 caps the band at 4–8s. A warning that nobody has to act on still
+ * deserves the long end of it, because it is the one a reader is most likely to have looked away
+ * from.
  */
 export const TOAST_LIFETIME_MS: Readonly<Record<Severity, number>> = {
   error: 8000,
@@ -214,7 +216,7 @@ export function notify(
   return record;
 }
 
-/** `notify.success(msg, opts)` and its three siblings — the shape §7.1 names. */
+/** `notify.success(msg, opts)` and its three siblings — the shape §16.1 names. */
 function severityHelper(severity: Severity) {
   return (message: string, options: NotifyOptions = {}) => notify(severity, message, options);
 }

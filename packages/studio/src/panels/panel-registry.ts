@@ -5,17 +5,18 @@
  * A {@link PanelRecord} is to a surface what a `Command` is to an action: its name, the containment
  * level of the state it WRITES, the dock that hosts it, the predicate that decides whether it
  * exists at all, and the function that draws it. The rail, the panel header and the dock budget
- * become RENDERINGS of these records — plan §2 principle 1, applied to regions rather than verbs.
+ * become RENDERINGS of these records — one definition site per action (§13), applied to regions
+ * rather than verbs.
  *
  * It mirrors the shipped `settings/settings-modal.ts` contribution point
  * (`registerSettingsSection`) deliberately: a module-level `Map`, keyed by id, written by the
  * module that OWNS the surface. The one thing it adds is the field that makes the rail derivable —
  *
  * **`level` is required, and it is the level of the state the panel WRITES, not the state it
- * reads** (plan §2 principle 3). Insert reads the project's component registry and writes the
- * document tree, so it is `document`. Files reads documents and writes project files, so it is
- * `project`. That rule, and not intuition, is what settles every contested placement and what stops
- * the rail re-accreting: the two rail groups are two rows of
+ * reads** (§13.2). Insert reads the project's component registry and writes the document tree, so
+ * it is `document`. Files reads documents and writes project files, so it is `project`. That rule,
+ * and not intuition, is what settles every contested placement and what stops the rail
+ * re-accreting: the two rail groups are two rows of
  * {@link
  * import("../commands/levels").PANEL_PLACEMENT_MATRIX}, checked at registration exactly the
  * way a command's `menus` are.
@@ -99,15 +100,16 @@ export interface NavigatorPanelDeps {
 /**
  * The focused document, as a document-level panel reads it. `null` when no tab is open.
  *
- * A `level: "project"` panel must not read this — that is principle 3's corollary, and the reason
- * the Source Control badge used to vanish when the last tab closed. {@link registerPanel} cannot
- * enforce it (a closure's imports are not inspectable), so the contract is stated here and asserted
- * by `tests/panel-registry.test.ts`, which renders every project-level panel with `doc: null`.
+ * A `level: "project"` panel must not read this — that is `studio-ui-guidelines.md` §12.1's closing
+ * rule, and the reason the Source Control badge used to vanish when the last tab closed.
+ * {@link registerPanel} cannot enforce it (a closure's imports are not inspectable), so the contract
+ * is stated here and asserted by `tests/panel-registry.test.ts`, which renders every project-level
+ * panel with `doc: null`.
  */
 export interface NavigatorDocument {
   document: JxMutableNode;
   mode: string;
-  /** The whole selection SET the navigator/inspector panels render against (§6.5). */
+  /** The whole selection SET the navigator/inspector panels render against (§6.7). */
   selection: JxPath[];
   canvas: Record<string, unknown> | null;
   content?: { frontmatter?: Record<string, unknown> } | undefined;
@@ -146,9 +148,9 @@ export interface PanelRecord {
    *
    * Not a hiding mechanism — a rail-less panel is still reachable by `view.setActivity`, by the
    * palette and by another surface linking to it. It is how a record survives the interval between
-   * losing its rail slot and gaining its real home (Insert becomes an overlay in P3.5; State folds
-   * into Data). Declaring it `false` also removes the panel's `rail/<level>` placement, which is
-   * what keeps the rail inside its four-per-group budget.
+   * losing its rail slot and gaining its real home (Insert, reachable from the canvas and palette;
+   * State, folded into Data — §5.1). Declaring it `false` also removes the panel's `rail/<level>`
+   * placement, which is what keeps the rail inside its four-per-group budget.
    */
   rail?: boolean;
   /**
@@ -287,10 +289,10 @@ const RAIL_GROUP_LEVELS: readonly { level: Level; label: string }[] = [
  * Every panel that has a rail button, whatever dock draws its body.
  *
  * The rail is NOT the Navigator's tab strip. `panelPlacements()` has always awarded `rail/<level>`
- * on `rail !== false` alone — the dock is a separate placement — and Problems is the panel that
- * proves it: its body is the Bottom dock's first tab (plan §7.2), and it still owns a rail slot and
- * a badge, because "how many things need fixing" is a question you ask without opening anything.
- * Filtering this by `dock === "navigator"` is what would put the same list in two hosts at once.
+ * on `rail !== false` alone — the dock is a separate placement. Problems proved it for a release:
+ * its body is the Bottom dock's first tab, and it owned a rail slot and a badge until §16.3 took
+ * every Bottom-dock tab off the rail and put its count in the status bar. Filtering this by `dock
+ * === "navigator"` is what would put the same list in two hosts at once.
  */
 function railablePanels(): readonly PanelRecord[] {
   return listPanels().filter((panel) => panel.rail !== false);

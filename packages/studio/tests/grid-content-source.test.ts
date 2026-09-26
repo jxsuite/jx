@@ -357,7 +357,7 @@ describe("refresh and backing paths", () => {
   });
 });
 
-describe("the draft perspective (§7.6)", () => {
+describe("the draft perspective (site-architecture.md §7.6)", () => {
   const DRAFTED_MD = "---\ntitle: Drafted\ndraft: true\n---\n\nNot ready\n";
 
   test("the Draft column sits immediately after Path, and is the schema's own column", async () => {

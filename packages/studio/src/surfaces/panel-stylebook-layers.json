@@ -95,7 +95,7 @@
       "whiteSpace": "nowrap"
     },
     "& [part=\"empty\"]": {
-      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (§11): one sentence saying what the region is for, then where its content comes from.",
+      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (studio-ui-guidelines.md §11): one sentence saying what the region is for, then where its content comes from.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "center",

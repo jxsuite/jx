@@ -243,9 +243,10 @@ describe("closing", () => {
 });
 
 describe("the help.about record", () => {
-  // About left the rail in P4: it is opened roughly once in an app's lifetime, so it cannot repay a
-  // Permanent slot. It stays reachable by name from the palette, and sits at the bottom of the ⬢
-  // Studio menu (`commandbar/overflow`) since `group: "9_help"` sorts after every other group there.
+  /* About left the rail during the shell redesign: it is opened roughly once in an app's lifetime,
+     so it cannot repay a permanent slot. It stays reachable by name from the palette, and sits at
+     the bottom of the ⬢ Studio menu (`commandbar/overflow`) since `group: "9_help"` sorts after
+     every other group there. */
   test("is declared once, application-level, at the bottom of the Studio menu and the palette", () => {
     const [record] = aboutCommands();
     expect(aboutCommands()).toHaveLength(1);

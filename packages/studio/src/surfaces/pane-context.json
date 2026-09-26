@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPaneContext",
-  "$description": "The pane's own chrome — region ⑦ (the context bar) and region ⑩ (the floating zoom pod), one mount per pane. It replaces `#tab-bar`, a 28px band styled identically to the tab strip above it that held five unrelated axes with no labels on any of them; the three axes here each say what they are, and the label is what stops the band re-accreting into an anonymous strip of chips. `panels/pane-context.ts` keeps every decision — which editor kinds a document declares, which canvas views it has, whether preview is a flag over them, what a lens may not write, which pane's stage a zoom verb lands on, and what a route param's candidate values are — and hands this document one projection of words, booleans and keyed rows. The bar and the banner share `[part=\"band\"]` so the adapter can MEASURE what the stage must clear: a banner's height is its wrapped text, and only layout knows how many lines that is.",
+  "$description": "The pane's own chrome — the pane context bar and the floating zoom pod, one mount per pane. It replaces `#tab-bar`, a 28px band styled identically to the tab strip above it that held five unrelated axes with no labels on any of them; the three axes here each say what they are, and the label is what stops the band re-accreting into an anonymous strip of chips. `panels/pane-context.ts` keeps every decision — which editor kinds a document declares, which canvas views it has, whether preview is a flag over them, what a lens may not write, which pane's stage a zoom verb lands on, and what a route param's candidate values are — and hands this document one projection of words, booleans and keyed rows. The bar and the banner share `[part=\"band\"]` so the adapter can MEASURE what the stage must clear: a banner's height is its wrapped text, and only layout knows how many lines that is.",
   "tagName": "div",
   "attributes": {
     "part": "chrome"
@@ -110,7 +110,7 @@
       "pointerEvents": "auto"
     },
     "& [part=\"ctx\"]": {
-      "$description": "One column of labelled groups over a footer that leaves for the definition site. This control only SELECTS (§2 principle 5) — nothing in it defines a breakpoint, a scheme or a feature query.",
+      "$description": "One column of labelled groups over a footer that leaves for the definition site. This control only SELECTS; the definitions live in Project Settings › Contexts (§6.2), and nothing in it defines a breakpoint, a scheme or a feature query.",
       "display": "flex",
       "flexDirection": "column",
       "gap": "10px",

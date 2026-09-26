@@ -1,11 +1,11 @@
 /**
  * Value Source — the one vocabulary for "how is this value produced", and the derivation that says
- * which productions a given document position actually permits (plan §6.3).
+ * which productions a given document position actually permits (§6.6).
  *
  * Six controls used to answer that question in six dialects: `abc / $ref / ${} / fx` on the dynamic
  * slot, `inline / $expression / ref` on the Events tab, `lit / $ref / expr` on every expression
  * operand, and `Static value / route param / Custom…` in the schema-driven forms. They are the same
- * four rungs of the Rule of Least Power ladder (spec §2.2) wearing four costumes, and a user who
+ * four rungs of the Rule of Least Power ladder (spec.md §2.2) wearing four costumes, and a user who
  * learned one learned none of the others. {@link VALUE_SOURCE_LABELS} is the single vocabulary;
  * every surface that offers the choice spells it the same way.
  *
@@ -48,11 +48,11 @@ import { isFunctionDef, isRef, isTemplateString } from "@jxsuite/schema/guards";
 /** A rung of the value ladder — one way a document position can produce its value. */
 export type SlotMode = "literal" | "ref" | "template" | "expression" | "function";
 
-/** Ladder order, least powerful first (spec §2.2). Every rung list is sorted by this. */
+/** Ladder order, least powerful first (spec.md §2.2). Every rung list is sorted by this. */
 export const SLOT_MODE_ORDER: SlotMode[] = ["literal", "ref", "template", "expression", "function"];
 
 /**
- * The user-facing name of each rung — the whole point of §6.3. `ref` keeps its ellipsis because
+ * The user-facing name of each rung — the whole point of §6.6. `ref` keeps its ellipsis because
  * choosing it opens a picker rather than committing a value.
  */
 export const VALUE_SOURCE_LABELS: Record<SlotMode, string> = {

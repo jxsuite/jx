@@ -1,11 +1,12 @@
 /**
  * Every command factory in `src/` is composed into `appCommandSet()`.
  *
- * Twice now a phase has defined command records, tested them, and shipped them unreachable. P4 left
- * `help.about` out; P7 left FOURTEEN out — `sourceControlCommands`, `publishCommands`,
- * `gridViewCommands` and `redirectsCommands` — so Push, Deploy, Save View and the whole Redirects
- * editor were absent from the palette with no other entry point, while their own unit tests passed
- * and `check-command-levels` reported a healthy number of the records it COULD see.
+ * Twice now a phase of the shell redesign has defined command records, tested them, and shipped
+ * them unreachable. The feedback phase left `help.about` out; the content phase left FOURTEEN out —
+ * `sourceControlCommands`, `publishCommands`, `gridViewCommands` and `redirectsCommands` — so Push,
+ * Deploy, Save View and the whole Redirects editor were absent from the palette with no other entry
+ * point, while their own unit tests passed and `check-command-levels` reported a healthy number of
+ * the records it COULD see.
  *
  * It is a structural hazard, not carelessness: a record is registered in the module that owns it,
  * and `commands/app-commands.ts` is the one shared file no workstream owns. Nothing failed, because
@@ -66,10 +67,11 @@ describe("command composition", () => {
     // There are two roots and they are different code paths. `appCommandSet()` is what
     // `check-command-levels` counts and what `docs/studio/interface/commands.md` is generated from;
     // The RUNNING APP registers through `register*(commandRegistry)` calls in `studio.ts`. A record
-    // In one and not the other is invisible exactly where it matters: P7 left four factories in
-    // Neither (Push, Deploy, Save View and the whole Redirects editor absent from the palette), and
-    // P4 put `help.about` in the projection alone — so CI counted a command the app could not run,
-    // In the same change that deleted the button it replaced.
+    // In one and not the other is invisible exactly where it matters: the shell redesign's content
+    // Phase left four factories in neither (Push, Deploy, Save View and the whole Redirects editor
+    // Absent from the palette), and its feedback phase put `help.about` in the projection alone —
+    // So CI counted a command the app could not run, in the same change that deleted the button it
+    // Replaced.
     const files = sourceFiles(SRC);
     const texts = new Map(files.map((f) => [f, readFileSync(f, "utf8")]));
     const unregistered: string[] = [];
@@ -82,10 +84,10 @@ describe("command composition", () => {
         if (UNCALLED.has(name) || !COMPOSITION.includes(`...${name}(`)) {
           continue;
         }
-        // Three wired-up paths, and a factory needs one of them. What neither P7's four nor
-        // P4's `help.about` had was ANY of them: their `register*` existed but the bootstrap never
-        // Called it, or there was no register at all and only the projection spread — so CI counted
-        // A command the app could not run.
+        // Three wired-up paths, and a factory needs one of them. What neither the content phase's
+        // Four nor the feedback phase's `help.about` had was ANY of them: their `register*` existed
+        // But the bootstrap never called it, or there was no register at all and only the
+        // Projection spread — so CI counted a command the app could not run.
         const registrars = [...text.matchAll(/^export function (register\w+)/gm)].map((m) => m[1]);
         const booted =
           BOOTSTRAP.includes(`${name}(`) ||

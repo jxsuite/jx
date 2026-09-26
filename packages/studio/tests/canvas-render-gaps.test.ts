@@ -203,7 +203,8 @@ void mock.module("../src/files/file-ops.js", () => ({
      partial mock has to cover what that path imports — see the iframe-host note above. */
   confirmFileDelete: () => Promise.resolve(false),
   renamePromptMessage: () => Promise.resolve(""),
-  /* And one the TAB STRIP reads: its close offers to save first (§8.7's three-way dialog). */
+  /* And one the TAB STRIP reads: its close offers to save first (the three-way dialog of
+     studio-ui-guidelines.md §8.7). */
   saveFile: () => Promise.resolve(true),
 }));
 

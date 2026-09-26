@@ -828,7 +828,7 @@ describe("panToParentRect", () => {
     makeRenderedPanel({ scrollContainer });
     stubRect(primary().wrap, { height: 885, top: 0 });
 
-    // The measured case from P4: children/1 at y=1139 in an 885px viewport.
+    // The measured case: children/1 at y=1139 in an 885px viewport.
     panToParentRect({ height: 40, top: 1139 });
 
     // ElCenterY = 1159, vpCenterY = 442.5, offsetY = -716.5 → scrollTop = 0 + 716.5

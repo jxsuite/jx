@@ -20,11 +20,11 @@
  * {@link REMOVED_SHOT_KEYS} refuses each one by name, because a manifest that still carries them is
  * asking for behaviour the runner deleted rather than behaviour it has yet to implement.
  *
- * Two rules govern the whole file (§13.1):
+ * Two rules govern the whole file (scripts/screenshots/README.md, R1 and R2):
  *
  * > R1. A shot may name inputs the app accepts. It may never name values the app derives. Deltas,
  * > coordinates and rendered text are all derived. R2. The pipeline may only ask the app to do sooner
- * > what the plan already commits to doing.
+ * > what the design already commits to doing.
  */
 
 /** The manifest shape this runner implements. A bump is for surface SHAPE, never content drift. */
@@ -43,7 +43,7 @@ export type JxPathLike = (string | number)[];
 
 // ─── open ─────────────────────────────────────────────────────────────────────
 
-/** One dock's stated position. Stated, never toggled — a toggle is a delta (§13.3 clause 3). */
+/** One dock's stated position. Stated, never toggled — a toggle is a delta (studio.md §13.5). */
 export interface DockState {
   collapsed?: boolean;
   tab?: string;
@@ -53,9 +53,9 @@ export interface DockState {
  * The world the app wakes up in — **total, not a delta**.
  *
  * `profile` is what makes that true: it names a startup profile (`services/profile.ts`), which
- * resets every app-owned key before any other field applies. So a default flip — P3.6 moving the
- * assistant column, say — is a no-op here instead of silently inverting eighteen steps, which is
- * exactly what happened the last time a shot named a delta.
+ * resets every app-owned key before any other field applies. So a default flip — the assistant
+ * leaving its own column, say — is a no-op here instead of silently inverting eighteen steps, which
+ * is exactly what happened the last time a shot named a delta.
  *
  * Fields left unstated resolve from `manifest.defaults` and then to the profile's own value. That
  * fallback is a DEFINED state, not "whatever was in storage", which is the only reason omitting a
@@ -104,8 +104,8 @@ export const DEFAULT_DEVICE_SCALE_FACTOR = 2;
  * The profile a shot gets when it does not ask for one.
  *
  * `fresh`, not `default`, and deliberately: a capture of "whatever this machine had in
- * localStorage" is the exact failure §13.4 is about. Resuming persisted state is a thing a shot has
- * to ask for out loud.
+ * localStorage" is the exact nondeterminism scripts/screenshots/README.md ("Determinism") rules
+ * out. Resuming persisted state is a thing a shot has to ask for out loud.
  */
 export const DEFAULT_PROFILE = "fresh";
 
@@ -138,12 +138,14 @@ export interface SeedStep {
 }
 
 /**
- * The budgeted hatch (§13.3): state cannot express a gesture **in flight**.
+ * The budgeted hatch (scripts/screenshots/README.md, "The five verbs"): state cannot express a
+ * gesture **in flight**.
  *
  * Four kinds, and faking any of them would be a worse lie than a two-line hatch — a `dirty: true`
  * primitive is photography, a hover that sets a class is not a hover. Every one is addressed by a
  * REGION ID or a `JxPath`, never by a selector, and the manifest-wide count is committed and
- * monotonically non-increasing. §13.6 expects it to land at ≤ 6.
+ * monotonically non-increasing. The contract's migration aimed for ≤ 6; `CONTRACT_BUDGET` in
+ * `scripts/check-shot-contract.ts` holds the committed count.
  */
 export type InputStep = { unstable?: Unstable } & (
   | { input: "hover"; region: string }
@@ -224,7 +226,7 @@ export interface ThenSegment {
 
 // ─── shots ────────────────────────────────────────────────────────────────────
 
-/** A shot the docs may not reference until someone fixes it (§13.5). */
+/** A shot the docs may not reference until someone fixes it (README, "Authoring notes"). */
 export interface ShotStatus {
   state: "quarantined";
   reason: string;
@@ -260,7 +262,8 @@ export interface ResolvedShot extends Omit<Shot, "open"> {
 // ─── The region grammar ───────────────────────────────────────────────────────
 
 /**
- * The eight surfaces §13.2 declares. A region id always begins with one of these.
+ * The eight surfaces the region grammar declares (scripts/screenshots/README.md). A region id
+ * always begins with one of these.
  *
  * The runner checks WELL-FORMEDNESS only. Whether an id is one the app actually stamps is Lane 1's
  * question (it reads the registries) and, at capture time, the app's own — an id that resolves to

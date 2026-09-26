@@ -534,7 +534,7 @@ describe("find and replace", () => {
   });
 });
 
-// ─── Saved views (plan §12 P7.2) ─────────────────────────────────────────────
+// ─── Saved views (site-architecture.md §7.2) ─────────────────────────────────
 
 const VIEW_GRID = "grid://collection/views";
 

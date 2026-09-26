@@ -159,13 +159,15 @@ describe("run is registry.run", () => {
   test("an id with a registry gap says which phase lands it", async () => {
     const { deps } = makeFixture();
     const error = await rejection(createAutomationApi(deps).run("media.browse"));
-    expect(error.message).toContain("has no command record yet (P7.5 — media.browse)");
+    expect(error.message).toContain(
+      "has no command record yet (media.browse, site-architecture.md §9.4)",
+    );
   });
 
   test("an id whose record has landed leaves the countdown entirely", async () => {
-    // `element.insertData` was the P5 entry. It is now `insert.data` in `canvas/canvas-render.ts`,
-    // So the old id is not a gap with a phase attached — it is simply not a command, and the
-    // Countdown must not keep answering for ids that have been superseded.
+    // `element.insertData` was once on that countdown. It is now `insert.data` in
+    // `canvas/canvas-render.ts`, so the old id is not a gap with a phase attached — it is simply
+    // Not a command, and the countdown must not keep answering for ids that have been superseded.
     const { deps } = makeFixture();
     const error = await rejection(createAutomationApi(deps).run("element.insertData"));
     expect(error.message).toContain('unknown command "element.insertData"');
@@ -178,7 +180,8 @@ describe("run is registry.run", () => {
     // `setStatus` was 53 manifest steps of staging the word "Ready" over the status bar.
     const staged = await rejection(api.run("view.setStatus", { text: "Ready" }));
     expect(staged.message).toContain("the status bar is not staged");
-    // `layers.contextMenu` matched RENDERED TEXT, which R1 forbids outright.
+    // `layers.contextMenu` matched RENDERED TEXT, which the shot contract's R1 forbids outright
+    // (scripts/screenshots/README.md).
     const byText = await rejection(api.run("layers.contextMenu", { label: "x" }));
     expect(byText.message).toContain("matched RENDERED TEXT");
   });

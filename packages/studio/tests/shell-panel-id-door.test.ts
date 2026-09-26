@@ -4,9 +4,9 @@
  * `shell.leftTab` is a `string` because it is also read back from state an older build persisted,
  * and {@link migratePanelId} is what translates one of those. What had no answer was the WRITE
  * path: `setActivityTab` took a `string`, so the Outline's empty state could call it with
- * `"blocks"` — a panel renamed to `insert` in P3.1 — and the Navigator would land on
- * `unknownPanel`'s dead body reading "No Navigator panel is registered as blocks". Three phases,
- * 8,311 passing tests, six green gates, and a control whose one job was to open a panel.
+ * `"blocks"` — a panel since renamed to `insert` — and the Navigator would land on `unknownPanel`'s
+ * dead body reading "No Navigator panel is registered as blocks". Three phases, 8,311 passing
+ * tests, six green gates, and a control whose one job was to open a panel.
  *
  * The fix is a type: `setActivityTab(tab: NavigatorPanelId)`. That leaves exactly one gap the type
  * cannot close — an id arriving from `PanelRecord.id`, which is deliberately a `string` because the

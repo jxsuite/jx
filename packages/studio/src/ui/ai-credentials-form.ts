@@ -8,7 +8,7 @@
  *
  * The interim `Assistant: Settings…` dialog that used to host it is deleted: a provider key is an
  * application setting, and the surface that owns application settings is also the one that can list
- * it and revoke it (plan §9.3). Nothing about this form changed for the move, which is the argument
+ * it and revoke it (§15). Nothing about this form changed for the move, which is the argument
  * for it having been a reusable form rather than a section of a dialog.
  *
  * This module is the FLOW; `surfaces/ai-credentials-form.json` is what it draws. It keeps the three
@@ -214,9 +214,10 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
   /**
    * What the reader typed, announced on the scope before anything else reads it.
    *
-   * A document's binding writes only when the value it reads CHANGES (§9.3), so a draft the flow
-   * decided without the raw text passing through would leave the field holding something the flow
-   * does not have. Nothing rewrites a draft today; the echo is what makes a rewrite possible.
+   * A document's binding writes only when the value it reads CHANGES (the controlled-input rule of
+   * studio-ui-guidelines.md §9.3), so a draft the flow decided without the raw text passing through
+   * would leave the field holding something the flow does not have. Nothing rewrites a draft today;
+   * the echo is what makes a rewrite possible.
    */
   function setKey(value: string) {
     keyDraft = value;

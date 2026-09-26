@@ -388,9 +388,9 @@ function setCanvasMode(tab: Tab | null, mode: string) {
  *
  * Four deliberate properties, three of them new and each with a failure behind it:
  *
- * 1. **To the side.** §8.2 has promised this since P3 and it never shipped — the chain ran
- *    `openFileInTab` → `openTab` → `activePane()`, so "open the layout that wraps this page" opened
- *    it ON TOP of the page it was teaching about.
+ * 1. **To the side.** §14.2 says so, the shell redesign had promised it since its chrome phase, and it
+ *    never shipped — the chain ran `openFileInTab` → `openTab` → `activePane()`, so "open the
+ *    layout that wraps this page" opened it ON TOP of the page it was teaching about.
  * 2. **The focus FOLLOWS.** The open is a gesture, not a read: the author asked to edit the component,
  *    so the pane it lands in takes the keyboard. The failure it replaces is the opposite one — an
  *    assistant pane that takes the keyboard means the author's next keystroke edits the definition
@@ -627,7 +627,7 @@ export function hasUnsavedTabs(): boolean {
 }
 
 window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
-  // The session, so a relaunch reopens what was open (§4.4). Before the prompt, not after: the
+  // The session, so a relaunch reopens what was open (§14.8). Before the prompt, not after: the
   // Author may cancel the close, and the record is the same either way.
   flushSession();
   if (hasUnsavedTabs()) {
@@ -908,7 +908,7 @@ registerRenderer("chatPanel", () => chatPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
 renderStatusbar();
 mountStatusbar();
-// ⑥ The jump bar, in the pane's own grid cell above the context bar. It renders the whole address
+// The jump bar, in the pane's own grid cell above the context bar. It renders the whole address
 // — project › file › node › node — and it is the only breadcrumb in the shell: the pane context
 // Bar drew a second one, and it named a sub-document stack nothing could push onto.
 mountJumpBar(primaryCell?.jump ?? document.createElement("div"));
@@ -1072,7 +1072,7 @@ if (_projectParam) {
          *
          * A named document is an instruction and wins, whether it came from `?file=` or from a
          * `?project=` that pointed INTO the project. A bare `?project=<dir>` is "open this
-         * project", and what that means is the documents it was last left with (§4.4) — the
+         * project", and what that means is the documents it was last left with (§14.8) — the
          * `project.json → home page` redirect below is the answer this replaces.
          *
          * This branch opens inline and never went near `openHomePage`, so it was the one door of
@@ -1146,7 +1146,7 @@ if (_projectParam) {
           render();
           // Opening a file is stated by the tab strip and the status bar's DOCUMENT field.
         }
-        /* This window may now write its session (§4.4). The `?file=` branch above opens inline and
+        /* This window may now write its session (§14.8). The `?file=` branch above opens inline and
            never reaches `openLastSessionOrHome`, which is the other place that says this — so
            without it a window opened at a named file would restore other windows' sessions and
            never record its own. */
@@ -1493,11 +1493,11 @@ commandRegistry.registerAll(derivationCommands(derivationDeps));
 /*
  * The rest of the app's contribution points, each defined beside the state it writes.
  *
- * This block is the bootstrap's whole share of plan §13's registry work: every record below lives
- * in the module that implements it, and this is the ONE place that composes them into the registry
- * `__jxAutomation.run` projects. Nothing here decides what a command is called, when it is
- * available or what it does — that would be the second definition site the design exists to
- * prevent (plan §2, principle 1).
+ * This block is the bootstrap's whole share of the registry work (§13, §13.5): every record below
+ * lives in the module that implements it, and this is the ONE place that composes them into the
+ * registry `__jxAutomation.run` projects. Nothing here decides what a command is called, when it is
+ * available or what it does — that would be the second definition site the design exists to prevent
+ * (§13).
  */
 registerShellViewCommands(commandRegistry, {
   // The registry's own answer, so a gated-off panel cannot be persisted as a showing tab.
@@ -1584,11 +1584,11 @@ registerGridViewCommands(commandRegistry);
 registerRedirectsCommands(commandRegistry);
 registerAboutCommands(commandRegistry);
 registerCollabCommands(commandRegistry);
-/* The `Assistant:` family (§11.1) — Focus Composer, New Chat, Chat History, Attach Selection, Retry
-   and Stop. Every one existed as a button in the chat view and as nothing else, so the category held
-   zero records and none of them was in the palette, bindable, or reachable by name. The chat header
-   and the error row render these ids through the registry now, which is what makes this line the
-   definition site rather than a second copy. */
+/* The `Assistant:` family (`ai.md` §3.0) — Focus Composer, New Chat, Chat History, Attach
+   Selection, Retry and Stop. Every one existed as a button in the chat view and as nothing else, so
+   the category held zero records and none of them was in the palette, bindable, or reachable by
+   name. The chat header and the error row render these ids through the registry now, which is what
+   makes this line the definition site rather than a second copy. */
 commandRegistry.registerAll(assistantCommands());
 /*
  * The structural selection verbs — Move Up/Down/In/Out, Convert to Component, Edit Component.

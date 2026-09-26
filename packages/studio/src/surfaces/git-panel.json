@@ -15,7 +15,7 @@
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
     "& [part=\"empty\"]": {
-      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (§11): one sentence saying what the region is for, then the action that fills it.",
+      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (studio-ui-guidelines.md §11): one sentence saying what the region is for, then the action that fills it.",
       "display": "flex",
       "flex": "1",
       "flexDirection": "column",

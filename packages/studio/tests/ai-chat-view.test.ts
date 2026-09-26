@@ -8,8 +8,8 @@
  * handed; that the document draws it, and that a click on it does what it says, is
  * `tests/ai-panel.test.ts`'s subject, against the mounted document.
  *
- * The three buttons this file used to draw are COMMANDS (§11.1), and {@link projectCommand} is what
- * is left of them. They are tested the way `tests/statusbar.test.ts` tests the bar: against a
+ * The three buttons this file used to draw are COMMANDS (ai.md §3.0), and {@link projectCommand} is
+ * what is left of them. They are tested the way `tests/statusbar.test.ts` tests the bar: against a
  * registry of bare stubs, because the contract is "projects the record the registry holds, and
  * nothing when it holds none". The last test in the file closes the loop the same way the status
  * bar's does: every id named in the panel is one the real app declares.
@@ -162,10 +162,10 @@ describe("helpers", () => {
 describe("the context budget", () => {
   /*
    * `services/context-manager.ts` has computed the token count and the warning flag on every turn
-   * since it was written, and `chat-state.ts` has stored them, and NOTHING read either. Plan §11.6:
-   * "Context budget manager → tokenCount / contextWarning actually rendered". A conversation was
-   * silently trimmed, the assistant forgot what you told it ten turns ago, and the two numbers that
-   * would have explained why sat in the store.
+   * since it was written, and `chat-state.ts` has stored them, and NOTHING read either; the
+   * Assistant's header now renders both. A conversation was silently trimmed, the assistant forgot
+   * what you told it ten turns ago, and the two numbers that would have explained why sat in the
+   * store.
    */
   test("the count is compact — a four-digit number in a 28px header is noise", () => {
     expect(tokenLabel(18_400)).toBe("18.4k");
@@ -282,7 +282,7 @@ describe("projectRows", () => {
   });
 });
 
-// ─── §7.4: the three things the renderer would not say ───────────────────────
+// ─── ai.md §3.2: the three things the renderer would not say ─────────────────
 
 describe("tool chips carry outcomes", () => {
   /* An import's summary is written for the model; the person reads its first sentence, which says

@@ -1,7 +1,7 @@
 /**
  * Doc-query.js — tiny read helpers for writing outcome assertions against a final Jx document.
  *
- * Outcome assertions (testing-plan §3.1 Completeness) check _what the document became_, independent
+ * Outcome assertions (the rubric's Completeness axis) check _what the document became_, independent
  * of which tools the model used to get there.
  *
  * See docs/extending/contributing/ai-evals.md.

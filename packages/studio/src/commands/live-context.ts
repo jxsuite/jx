@@ -65,7 +65,7 @@ export function isTextEntryFocused(doc: Document = document): boolean {
 export interface LiveContextSources {
   /** `studio.ts`'s `getCanvasMode()` — the per-tab preview toggle already composed in. */
   canvasMode: () => string;
-  /** `canvas/iframe-host.ts`'s bridge-derived caret flag (P1). */
+  /** `canvas/iframe-host.ts`'s bridge-derived caret flag (§10). */
   isCaretActive: () => boolean;
   /** `ui/layers.ts`'s `isModalOpen()`. */
   isModalOpen: () => boolean;
@@ -140,13 +140,13 @@ export function createLiveContext(sources: LiveContextSources): () => CommandCon
 
     ctx.editor.kind = tab ? editorKindForMode(mode) : "none";
     ctx.canvas.view = canvasViewForMode(mode);
-    /* The grid, counted from the grid. This read spent two phases saying "panes land in P3; until
-       then the grid is one pane showing the focused tab" — through P3, which built the pane model,
-       and through P8, which gave every pane a live stage. It counted `workspace.tabOrder`, the
-       FOCUSED pane's strip, so it could never answer 2 and answered 0 whenever no tab was open,
-       while a pane with no tab is still a pane. `derived` was declared and never assigned at all.
-       `services/automation.ts` publishes this whole record as `probe.state()`, so the screenshot
-       pipeline and the assistant were both reading it.
+    /* The grid, counted from the grid. This read spent two phases saying that until panes landed
+       the grid was one pane showing the focused tab — through the shell redesign's chrome phase,
+       which built the pane model, and through its panes phase, which gave every pane a live stage.
+       It counted `workspace.tabOrder`, the FOCUSED pane's strip, so it could never answer 2 and
+       answered 0 whenever no tab was open, while a pane with no tab is still a pane. `derived` was
+       declared and never assigned at all. `services/automation.ts` publishes this whole record as
+       `probe.state()`, so the screenshot pipeline and the assistant were both reading it.
 
        `derived` is ASSIGNED now, and it means "the grid contains a derived pane" — the fact the two
        predicates that need it actually ask. A third phase of a declared-never-assigned context key

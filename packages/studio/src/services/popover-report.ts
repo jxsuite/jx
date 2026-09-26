@@ -113,9 +113,9 @@ export function reportPopoverProblems(doc: JxElement, path?: string): number {
       ...(path === undefined ? {} : { path }),
     });
   }
-  /* The dialog and invoker-command rules (spec §8.7) file under the same source: one report for
-     everything the platform overlays. They carry no repair button yet — the popover repairs move
-     `display` into `:popover-open`, and a dialog's open rule is a different selector. */
+  /* The dialog and invoker-command rules (`spec.md` §8.7) file under the same source: one report
+     for everything the platform overlays. They carry no repair button yet — the popover repairs
+     move `display` into `:popover-open`, and a dialog's open rule is a different selector. */
   const dialogDefects = findDialogDefects(doc, KIT_SCOPE);
   for (const defect of dialogDefects) {
     notify(defect.severity, defect.message, {

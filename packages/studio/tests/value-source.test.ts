@@ -28,7 +28,7 @@ describe("value-source vocabulary", () => {
     }
   });
 
-  test("the four §6.3 names replace abc / $ref / ${} / fx", () => {
+  test("the four §6.6 names replace abc / $ref / ${} / fx", () => {
     expect(VALUE_SOURCE_LABELS.literal).toBe("Fixed value");
     expect(VALUE_SOURCE_LABELS.ref).toBe("From data…");
     expect(VALUE_SOURCE_LABELS.template).toBe("Mixed text");

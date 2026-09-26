@@ -1,12 +1,13 @@
 /**
  * The three verbs over `project.json` `extensions[]`.
  *
- * Two properties carry the file. First, §12.4's rule that a family over one piece of state declares
- * ONE availability rule — asserted over a context matrix rather than by reading three records and
- * hoping. Second, that every argument-dependent refusal NAMES the value and says what to do, which
- * is what makes the same refusal readable to a person in the palette and to the agent in a tool
- * result. Since `registry.run` coerces `package` against each record's derived enum, the first
- * refusal a caller meets is the schema's own, and these tests assert that sentence.
+ * Two properties carry the file. First, studio-ui-guidelines.md §12.4's rule that a family over one
+ * piece of state declares ONE availability rule — asserted over a context matrix rather than by
+ * reading three records and hoping. Second, that every argument-dependent refusal NAMES the value
+ * and says what to do, which is what makes the same refusal readable to a person in the palette and
+ * to the agent in a tool result. Since `registry.run` coerces `package` against each record's
+ * derived enum, the first refusal a caller meets is the schema's own, and these tests assert that
+ * sentence.
  */
 import { installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -51,12 +52,12 @@ afterEach(() => {
   refreshFormats();
 });
 
-describe("one availability rule across the family (§12.4)", () => {
+describe("one availability rule across the family (studio-ui-guidelines.md §12.4)", () => {
   test("all three agree in every context", () => {
     /*
-     * The disagreement §12.4 catalogues is always the same shape: the loose member is the one that
-     * writes. All three of these write, so a matrix is the honest test — reading the records and
-     * eyeballing them is what let six other families drift.
+     * The disagreement studio-ui-guidelines.md §12.4 catalogues is always the same shape: the
+     * loose member is the one that writes. All three of these write, so a matrix is the honest
+     * test — reading the records and eyeballing them is what let six other families drift.
      */
     for (const open of [true, false]) {
       const registry = registryWith(open);
@@ -105,7 +106,7 @@ describe("one availability rule across the family (§12.4)", () => {
   });
 });
 
-describe("argument refusals name the value (§12.4)", () => {
+describe("argument refusals name the value (studio-ui-guidelines.md §12.4)", () => {
   /*
    * The two refusals below are the SCHEMA's, not `enableExtension`'s. `registry.run` coerces
    * `package` against the derived enum before `run` is entered, so a value the choice list would

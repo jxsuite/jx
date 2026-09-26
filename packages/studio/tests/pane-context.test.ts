@@ -1,5 +1,5 @@
 /**
- * The pane's chrome — the context bar (region ⑦) and the floating zoom pod (region ⑩).
+ * The pane's chrome — the context bar and the floating zoom pod.
  *
  * These cases are the old `tab-bar` suite re-aimed at what replaced it, and then re-aimed again at
  * the DOCUMENT that replaced the lit template. The claims that changed:
@@ -11,9 +11,9 @@
  * - **The rendering context only selects.** Its popover ends in "Manage contexts…", which runs
  *   `settings.open` — the definition site — rather than defining anything itself.
  * - **The pod floats.** Zoom left the band; the fit picker writes the declared {@link FitMode}.
- * - **The band is where a standing statement goes.** The read-only banner (§7.4) is drawn here,
- *   inside the band the stage is offset by, because this is the per-document chrome directly above
- *   the editing surface.
+ * - **The band is where a standing statement goes.** The read-only banner (collab.md §4) is drawn
+ *   here, inside the band the stage is offset by, because this is the per-document chrome directly
+ *   above the editing surface.
  *
  * **Nothing below names a class**, and that is the conversion's own gate: a surface document styles
  * through `part` and states itself through roles, so a test that still found a control by
@@ -402,7 +402,7 @@ describe("the bar", () => {
 
 describe("a logic editor open in the dock", () => {
   // The bar used to blank itself the moment `editingFunction` or `editingFormula` was set, on the
-  // Grounds that a full-screen sub-editor owned the stage. P8 put both in the Bottom dock's Logic
+  // Grounds that a full-screen sub-editor owned the stage. Both moved into the Bottom dock's Logic
   // Tab and left the page rendering underneath, so the axes describe the document that is still on
   // Screen and the pod still has something to zoom. Suppressing them removed the controls for the
   // Document the reader could see.
@@ -426,7 +426,7 @@ describe("a logic editor open in the dock", () => {
 
   test("draws no Back and no breadcrumb — the dock header and the jump bar own both", async () => {
     // Two exits and two trails, side by side, for one sub-document. The Logic tab's header carries
-    // The real Close (P8.5) and ⑥ carries the address; this bar drew a second of each.
+    // The real Close and the jump bar carries the address; this bar drew a second of each.
     const tab = openTestTab();
     await mountBar();
     tab.session.ui.editingFunction = { defName: "greet", type: "def" };
@@ -1006,7 +1006,7 @@ describe("resolving with", () => {
      * contract: behind a click, typing a test prop costs a second gesture and the manifest's input
      * budget may only ratchet down. The answer is not n text fields on a 28px band that also
      * carries the editor, the view and the rendering context — it is that a transient surface opens
-     * by COMMAND (§13.2), so the shot spends a `cmd` step and the input budget is untouched.
+     * by COMMAND, so the shot spends a `cmd` step and the input budget is untouched.
      */
     resetStudioState({ isSiteProject: true });
     resetWorkspaceWithTab(
@@ -1143,7 +1143,7 @@ describe("resolving with", () => {
   });
 });
 
-// ─── ⑩ The floating zoom pod ──────────────────────────────────────────────────
+// ─── The floating zoom pod ────────────────────────────────────────────────────
 
 describe("zoom pod", () => {
   /** What the pod's reset button reads. */

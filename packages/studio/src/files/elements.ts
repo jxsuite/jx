@@ -2,11 +2,10 @@
  * Elements.ts — what belongs in a document's (or a project's) `$elements`, decided once.
  *
  * `$elements` is the list of component modules a document may use. Three surfaces wrote it, each
- * with its own idea of what "already imported" means, and plan §11.2 names all three: the Packages
- * panel's cherry-pick checkboxes, its "Add component…" picker, and the automatic push when a
- * component is dropped on the canvas. "One `enableElement()` / `disableElement()` service behind
- * all three. Today the same array is written three ways with no shared UI and no shared
- * validation."
+ * with its own idea of what "already imported" means: the Packages panel's cherry-pick checkboxes,
+ * its "Add component…" picker, and the automatic push when a component is dropped on the canvas.
+ * §9.1.3 puts one `enableElement()` / `disableElement()` service behind all three, because the same
+ * array was written three ways with no shared UI and no shared validation.
  *
  * They really did disagree. The canvas drop matched a local component by `ref.endsWith(basename)`,
  * so `./components/card.json` counted `./vendor/card.json` as already imported and the drop

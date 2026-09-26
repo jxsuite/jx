@@ -265,15 +265,14 @@ export function mountElementsPanel(ctx: NavigatorPanelContext, host: HTMLElement
 /**
  * Contribute the Insert panel — **off the rail** (`rail: false`).
  *
- * §3.2 ② removes Elements from the Navigator rail because it is not a view of anything: it is an
- * insert palette, and a palette belongs at the caret (slash menu), on the canvas (`+`) and behind
- * ⌘⇧A, all of which are P3.5's Insert command family. The record survives that interval so the
- * surface stays reachable — `view.setActivity {tab:"insert"}`, the palette, and the screenshot
- * pipeline all still address it — and giving up its rail slot is what keeps the DOCUMENT group at
- * four.
+ * §5.1 keeps Insert off the Navigator rail because it is not a view of anything: it is an insert
+ * palette, and a palette belongs at the caret (slash menu), on the canvas (`+`) and behind ⌘⇧A, all
+ * of which are the Insert command family. The record survives so the surface stays reachable —
+ * `view.setActivity {tab:"insert"}`, the palette, and the screenshot pipeline all still address it
+ * — and giving up its rail slot is what keeps the DOCUMENT group at four.
  *
- * `level: "document"`, per principle 3's own worked example: it READS the project's component
- * registry and WRITES the document tree.
+ * `level: "document"`, per §13.2's own worked example: it READS the project's component registry
+ * and WRITES the document tree.
  */
 export function registerInsertPanel(): void {
   registerPanel({

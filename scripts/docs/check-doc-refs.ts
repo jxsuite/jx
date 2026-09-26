@@ -324,7 +324,7 @@ if (warnings.length > 0) {
 }
 
 // ─── The capture lock ────────────────────────────────────────────────────────
-// Two page-context assertions §13.5 puts here rather than in `docs:images:check`, because
+// Two page-context assertions live here rather than in `docs:images:check`, because
 // "docs/studio/publish.md illustrates itself with a quarantined shot" is only actionable if it
 // Names the page. The byte-level half — every PNG in docs/images/ is one the pipeline produced,
 // And every shot definition is current — is `bun run docs:images:check`.

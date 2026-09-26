@@ -15,8 +15,8 @@
  *
  * Two things are NOT tested here any more, both because they left. Breakpoints were one of four
  * `$media` definition sites and live in Contexts (tests/contexts-section.test.ts). The platform
- * adapter moved to Deploy in P6.2 (tests/project-sections.test.ts) — Overview says what the site
- * IS, Deploy says where it ships.
+ * adapter moved to Deploy (tests/project-sections.test.ts) — Overview says what the site IS, Deploy
+ * says where it ships.
  */
 import {
   flush,
@@ -372,7 +372,8 @@ describe("global styles shortcut", () => {
   /*
    * The button RENDERS FROM `styles.open` and runs it. It used to write `session.ui.canvasMode`
    * itself — a second implementation of a capability that also existed as no command at all, so
-   * the only way to reach Project Styles from a closed configuration tab was this button. §12.5.
+   * the only way to reach Project Styles from a closed configuration tab was this button
+   * (studio-ui-guidelines.md §12.5).
    */
   function installStylesRegistry() {
     const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
@@ -405,7 +406,7 @@ describe("global styles shortcut", () => {
 
   test("its tooltip is the record's own title, so the two cannot drift", async () => {
     // The button's LABEL is in-context copy — "Edit Global Styles" is what this field is about —
-    // But what it invokes is named by the record, which is the half §12.3 governs.
+    // But what it invokes is named by the record, the half studio-ui-guidelines.md §12.3 governs.
     installStylesRegistry();
     const { container } = await setup({});
     expect(part(container, "styles-open").getAttribute("title")).toBe("Open Project Styles");

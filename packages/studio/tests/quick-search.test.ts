@@ -1,5 +1,5 @@
 /**
- * The Palette — one omnibox, several modes (plan §5.4).
+ * The Palette — one omnibox, several modes (docs/studio/interface/quick-access.md).
  *
  * Three things are worth stating about the shape of this file:
  *
