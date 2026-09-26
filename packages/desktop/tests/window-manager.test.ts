@@ -89,6 +89,7 @@ function makeSession(initialRoot: string | null) {
     setFileEventSink: mock((_sink: unknown) => {}),
     dispose: mock(() => {}),
     handleReadFile: mock(async (_p: { path: string }) => '{"name":"Proj"}'),
+    handleReadFileBytes: mock(async (_p: { path: string }) => ({ data: "aGk=" })),
     handleWriteFile: mock(async () => {}),
     handleDeleteFile: mock(async () => {}),
     handleRenameFile: mock(async () => {}),
@@ -391,6 +392,8 @@ describe("per-window RPC", () => {
 
     await reqs.readFile({ path: "x" });
     expect(session.handleReadFile).toHaveBeenCalledWith({ path: "x" });
+    await reqs.readFileBytes({ path: "hero.jpg" });
+    expect(session.handleReadFileBytes).toHaveBeenCalledWith({ path: "hero.jpg" });
     await reqs.writeFile({ content: "c", path: "p" });
     expect(session.handleWriteFile).toHaveBeenCalledWith({ content: "c", path: "p" });
     await reqs.gitStatus();

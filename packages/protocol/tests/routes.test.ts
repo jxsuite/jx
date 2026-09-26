@@ -172,7 +172,7 @@ describe("STUDIO_ROUTES", () => {
     expect(STUDIO_ROUTES.fileBytes.method).toBe("GET");
     expect(STUDIO_ROUTES.fileBytes.path).not.toBe(STUDIO_ROUTES.fileRead.path);
     expect(STUDIO_ROUTES.fileBytes.optional).toBe(true);
-    expect(STUDIO_ROUTES.fileBytes.summary).toContain("UTF-8");
+    expect(STUDIO_ROUTES.fileBytes.summary).toContain("undecoded");
   });
 
   test("file routes share one path across GET/PUT/DELETE", () => {
