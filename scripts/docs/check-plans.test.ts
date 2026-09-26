@@ -319,7 +319,12 @@ describe("shape", () => {
   });
 
   test("slices-missing, slice-grammar, slice-duplicate", () => {
-    expectViolation(only(plan("compiler/tiers", { size: "L" })), "slices-missing");
+    expectViolation(
+      only(plan("compiler/tiers", { size: "L", status: "drafted" })),
+      "slices-missing",
+    );
+    const stubL = only(plan("compiler/tiers", { size: "L" }));
+    expect(checkPlans(fixture(stubL))).toEqual([]);
     const sliced = (id: string, slice: string, claims: string[]) =>
       plan(id, {
         claims,

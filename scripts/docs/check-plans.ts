@@ -280,7 +280,9 @@ function checkPlanShape(plan: PlanDoc, input: PlansInput, out: Violation[]): voi
       );
     }
   }
-  if ((plan.size === "L" || plan.status === "active") && plan.slices.length === 0) {
+  // A stub needs only its Context; an L plan owes its slices once it is drafted.
+  const sliced = plan.status === "active" || (plan.size === "L" && plan.status !== "stub");
+  if (sliced && plan.slices.length === 0) {
     out.push(
       v(
         "slices-missing",
