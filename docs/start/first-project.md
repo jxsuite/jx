@@ -9,7 +9,7 @@ In about ten minutes you'll create a site in Jx Studio, design a page, add a bit
 
 ## 1. Get Studio
 
-Download the desktop app for [macOS, Windows, or Linux](/docs/start/install). There is no hosted Studio to sign into; it runs on your machine, against your files. Full details are in **[Install Jx Studio](/docs/start/install)**.
+Download the desktop app for [macOS, Windows, or Linux](/docs/start/install). It runs on your machine, against your files. (Jx Cloud, the hosted version you sign in to with GitHub, is in development.) Full details are in **[Install Jx Studio](/docs/start/install)**.
 
 ## 2. Create a project
 

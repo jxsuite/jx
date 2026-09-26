@@ -83,7 +83,7 @@
                 },
                 {
                   "tagName": "a",
-                  "attributes": { "href": "/features" },
+                  "attributes": { "href": "/framework" },
                   "style": {
                     "color": "var(--color-text-secondary)",
                     "textDecoration": "none",
@@ -92,7 +92,7 @@
                     "transition": "color 0.15s",
                     ":hover": { "color": "var(--color-text-primary)" }
                   },
-                  "children": ["Features"]
+                  "children": ["Framework"]
                 },
                 {
                   "tagName": "a",
@@ -308,7 +308,7 @@
             {
               "tagName": "a",
               "attributes": {
-                "href": "/features"
+                "href": "/framework"
               },
               "style": {
                 "display": "block",
@@ -319,7 +319,7 @@
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
-              "children": ["Features"]
+              "children": ["Framework"]
             },
             {
               "tagName": "a",

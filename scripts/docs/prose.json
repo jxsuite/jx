@@ -131,12 +131,6 @@
       "file": "sites/jxsuite.com/pages/download.md",
       "text": "🐧",
       "reason": "The platform icon on the Linux download card."
-    },
-    {
-      "id": "emoji",
-      "file": "sites/jxsuite.com/pages/features.json",
-      "text": "like-button",
-      "reason": "A heart in a code sample of a like-button component, which is the sample's content."
     }
   ]
 }
