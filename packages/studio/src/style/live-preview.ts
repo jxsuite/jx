@@ -1,14 +1,14 @@
 /**
  * Pushing a project-style edit to every live canvas — one definition site.
  *
- * Plan §9.4's promise is "tune a design token and watch the page change", and until now that was
- * true of exactly one kind of canvas. `postSiteStyleToLiveHosts` skips stylebook hosts by
- * construction ({@link file://../canvas/iframe-host.ts}: `host.ready && !host.stylebook`), because
- * a specimen canvas does not render the site sheet — it renders a GENERATED document whose root
- * carries the transposed effective style, and its live channel is `styleUpdate`, not
- * `siteStyleUpdate`. So a token edited in the token editor reached every page canvas immediately
- * and left the Project Styles canvas — the one the plan puts _beside_ the editor — showing the old
- * palette until something forced a full re-render.
+ * §7.1's promise is that tuning a token shows the page changing, and until now that was true of
+ * exactly one kind of canvas. `postSiteStyleToLiveHosts` skips stylebook hosts by construction
+ * ({@link file://../canvas/iframe-host.ts}: `host.ready && !host.stylebook`), because a specimen
+ * canvas does not render the site sheet — it renders a GENERATED document whose root carries the
+ * transposed effective style, and its live channel is `styleUpdate`, not `siteStyleUpdate`. So a
+ * token edited in the token editor reached every page canvas immediately and left the Project
+ * Styles canvas — the one §7.1 puts _beside_ the editor — showing the old palette until something
+ * forced a full re-render.
  *
  * Two hosts, two messages, one event. Every surface that writes `projectConfig.style` calls this
  * instead of picking one of the two posts, which is the only arrangement in which the pair cannot

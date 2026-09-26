@@ -128,7 +128,10 @@ export interface FmRowView {
   label: string;
   /** Which control the row draws. */
   kind: "text" | "number" | "boolean" | "select" | "media";
-  /** Whether the value is set on this document — §4.2's dot, and the row's only clear affordance. */
+  /**
+   * Whether the value is set on this document — studio-ui-guidelines.md §4.2's dot, and the row's
+   * only clear affordance.
+   */
   isSet: boolean;
   /** The text, number or chosen value, always as a string. Empty for a boolean row. */
   value: string;

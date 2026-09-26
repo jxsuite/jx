@@ -24,13 +24,13 @@
  *   palette, and the host node arriving all reach the surface through
  *   {@link ActiveGridPanel.bump}.
  *
- * **The panel owns the view state** (plan §12 P7.2). Saved views persist through `grid-layout.ts` —
- * one store, the grid id as its key, so "per collection" needs no code — and this module is what
- * drives them onto the four surfaces they touch: the engine (column order, width and visibility,
- * applied by a REBUILD, which is cheap because the data never leaves the controller), the
- * controller (sort and grouping, which are row order and belong to the data), and the surface's own
- * filter box. Applying a view is therefore one function with one order of operations, not five
- * controls that each half-remember what the others did.
+ * **The panel owns the view state** (saved views, site-architecture.md §7.2). Saved views persist
+ * through `grid-layout.ts` — one store, the grid id as its key, so "per collection" needs no code —
+ * and this module is what drives them onto the four surfaces they touch: the engine (column order,
+ * width and visibility, applied by a REBUILD, which is cheap because the data never leaves the
+ * controller), the controller (sort and grouping, which are row order and belong to the data), and
+ * the surface's own filter box. Applying a view is therefore one function with one order of
+ * operations, not five controls that each half-remember what the others did.
  */
 import { effect, effectScope, reactive } from "../reactivity";
 import { showConfirmDialog, showPromptDialog } from "../ui/layers";
@@ -259,9 +259,9 @@ function projectViews(controller: GridController, at: { x: number; y: number }):
  * The View panel: saved views, then the four facets one of them is made of.
  *
  * One control rather than four, because the chrome budget is a cap on named things in the toolbar
- * (plan §2, principle 9) and these four are only ever adjusted together. Each edit writes the
- * working layout and applies immediately — there is no Apply button, so there is no state in which
- * the panel shows something the grid is not already doing.
+ * (studio-ui-guidelines.md §12.2) and these four are only ever adjusted together. Each edit writes
+ * the working layout and applies immediately — there is no Apply button, so there is no state in
+ * which the panel shows something the grid is not already doing.
  */
 function openViewPopover(
   controller: GridController,
@@ -727,7 +727,8 @@ export function gridViewCommands(): AnyCommand[] {
       requires: "a grid on screen",
       when: (ctx) => ctx.project.open,
       enablement: () => activeGridSurface() !== null,
-      /* No `aiTool`, by §12.4's second deletion rule: it prompts for a name. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: it prompts for a
+         name. */
       run: async () => {
         const { controller, panel } = requireSurface("grid.saveView");
         await promptSaveView(controller, panel);
@@ -744,7 +745,7 @@ export function gridViewCommands(): AnyCommand[] {
       requires: "a grid on screen",
       when: (ctx) => ctx.project.open,
       enablement: () => activeGridSurface() !== null,
-      /* No `aiTool`, by §12.4's first deletion rule: chrome. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome. */
       run: (_ctx, args) => {
         const { gridId, name } = viewNameArg("grid.applyView", args);
         const { panel } = requireSurface("grid.applyView");

@@ -3,8 +3,8 @@
  *
  * `registerSettingsSection` is a **preserved public contract** (specs/extensions.md §9.1): an
  * extension's `project` class declares a `$studio.settings` block and `settings/extension-sections`
- * turns it into one of these records. P6 moved Project Settings out of a modal and into a document
- * in the pane; the registry did not move with it, because a section is a contribution to
+ * turns it into one of these records. Project Settings moved out of a modal and into a document in
+ * the pane (§17.1); the registry did not move with it, because a section is a contribution to
  * CONFIGURATION, not to a dialog. Splitting it out is what lets the host be replaced without the
  * contribution point being touched.
  *
@@ -15,10 +15,11 @@
  *
  * **What is requested and what is displayed are two variables, and unregistering touches neither.**
  * The modal had one, and its `unregisterSettingsSection` reset it to `"general"` — which is half of
- * the deep-link race P6 exists to close. The contribution sync unregisters stale keys before it
- * registers fresh ones, so a section merely being REFRESHED took the caller's requested section
- * down with it, silently, after the awaited readiness promise had already resolved. Here a request
- * outlives its section going away and is satisfied the moment the key comes back.
+ * the deep-link race `settings.open { section, entry }` (§17.1) exists to close. The contribution
+ * sync unregisters stale keys before it registers fresh ones, so a section merely being REFRESHED
+ * took the caller's requested section down with it, silently, after the awaited readiness promise
+ * had already resolved. Here a request outlives its section going away and is satisfied the moment
+ * the key comes back.
  */
 
 /** A Project Settings section: an inner-nav entry plus a renderer for the content area. */

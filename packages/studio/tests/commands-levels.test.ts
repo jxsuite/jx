@@ -22,7 +22,7 @@ import type { PlaceableRecord } from "../src/commands/levels";
 
 describe("the vocabularies", () => {
   test("level and keyScope are separate axes", () => {
-    // Plan §5.1: conflating them is how "position encodes scope" degrades into unenforced prose.
+    // §13.3: conflating them is how "position encodes scope" degrades into unenforced prose.
     // "caret" is a dispatch scope with no level, "application" a level with no dispatch meaning.
     expect(KEY_SCOPES).toContain("caret");
     expect(LEVELS).not.toContain("caret");
@@ -32,7 +32,7 @@ describe("the vocabularies", () => {
 
   test("there is no fifth `range` level", () => {
     // Inline formatting is level "selection" + keyScope "caret". A fifth level would demand a
-    // Fifth region and there is none (plan §13).
+    // Fifth region and there is none (§13.2).
     expect([...LEVELS]).toEqual(["application", "project", "document", "selection"]);
   });
 
@@ -99,7 +99,7 @@ describe("checkRecordPlacements", () => {
     expect(violation?.commandId).toBe("selection.duplicate");
     expect(violation?.placement).toBe("commandbar/primary");
     expect(violation?.message).toContain("admits only application, document");
-    // The matrix note travels with the failure so the fix does not need the plan open.
+    // The matrix note travels with the failure so the fix does not need the spec open.
     expect(violation?.message).toContain("by frequency");
   });
 

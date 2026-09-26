@@ -185,7 +185,7 @@ function restrictGroups(operators: readonly string[]): ExprSelectGroup[] {
   })).filter((group) => group.rows.length > 0);
 }
 
-/** The three rungs of the value ladder, spelled the way `ui/value-source.ts` spells them (§6.3). */
+/** The three rungs of the value ladder, spelled the way `ui/value-source.ts` spells them (§6.6). */
 const SOURCE_OPTIONS: ExprOption[] = [
   { label: VALUE_SOURCE_LABELS.literal, value: "literal" },
   { label: VALUE_SOURCE_LABELS.ref, value: "ref" },
@@ -298,7 +298,7 @@ function operatorInfo(op: string): OperatorInfo {
 /**
  * Which rung of the value ladder an operand occupies. The three answers are the same three the
  * Properties, Style and Logic tabs give, and they are spelled the same way — `ui/value-source.ts`
- * owns the words, so `lit / $ref / expr` is gone from the operand picker (plan §6.3).
+ * owns the words, so `lit / $ref / expr` is gone from the operand picker (§6.6).
  *
  * @param {unknown} operand
  * @returns {"ref" | "expression" | "literal"}
@@ -1058,7 +1058,7 @@ export function flattenExpression(
 
 /**
  * The projection ONE operand slot reads as — a statement's `if` test, a `$switch` discriminant, a
- * `dispatchEvent` detail (spec §20). The same rows, with no operator row above them.
+ * `dispatchEvent` detail (spec.md §20). The same rows, with no operator row above them.
  */
 export function flattenOperand(
   operand: unknown,

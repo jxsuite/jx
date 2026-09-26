@@ -391,9 +391,10 @@ export interface ManifestShot {
 /**
  * Image basenames a shot can produce, read in BOTH contract shapes.
  *
- * Contract 1 is `name` + `regions[].name` + `variants[].suffix`; §13.2's contract is
- * `capture[].image`. Reading both means S2's conversion does not have to touch this file — the same
- * tolerance `check-shot-contract.ts` buys for the same reason.
+ * Contract 1 is `name` + `regions[].name` + `variants[].suffix`; the five-verb contract
+ * (scripts/screenshots/README.md, "The five verbs") is `capture[].image`. Reading both means the
+ * manifest conversion does not have to touch this file — the same tolerance
+ * `check-shot-contract.ts` buys for the same reason.
  */
 export function shotImageNames(shot: Record<string, unknown>): Set<string> {
   const names = new Set<string>();
@@ -618,7 +619,7 @@ function describeRuntime(runtime: CaptureRuntime | undefined): string {
   return `chromium ${runtime.chromium} · ${runtime.fontset} · ${runtime.os}`;
 }
 
-/** The three §13.5 assertions, plus lock integrity, as one pure pass over preloaded facts. */
+/** The header's three assertions, plus lock integrity, as one pure pass over preloaded facts. */
 export function checkImageLock(input: LockCheckInput): LockCheckResult {
   const { disk, lock, manifest } = input;
   const refs = input.refs ?? [];
@@ -633,7 +634,7 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
     if (disk.length > 0 || shots.length > 0) {
       violations.push(
         `${DEFAULT_LOCK} does not exist, and ${DEFAULT_IMAGES_DIR} holds ${disk.length} image(s). ` +
-          `The lock is written only by "bun run screenshots" (§13.5) — capture, or let the ` +
+          `The lock is written only by "bun run screenshots" (scripts/screenshots/README.md, "The gate") — capture, or let the ` +
           `screenshots lane capture and push it for you.`,
       );
     }
@@ -653,7 +654,7 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
     if (!entry) {
       violations.push(
         `${image.path} has no entry in ${DEFAULT_LOCK} — screenshots are never hand-taken ` +
-          `(§13.5). Produce it with "bun run screenshots", or delete it.`,
+          `(scripts/screenshots/README.md, "The gate"). Produce it with "bun run screenshots", or delete it.`,
       );
       continue;
     }

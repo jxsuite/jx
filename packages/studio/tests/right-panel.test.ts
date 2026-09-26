@@ -326,7 +326,7 @@ describe("the layout selection", () => {
     expect(headerTarget()).toBe("<header> in layouts/base.json");
   });
 
-  test("the inspector header names the BATCH when several elements are selected (§6.5)", async () => {
+  test("the inspector header names the BATCH when several elements are selected (§6.7)", async () => {
     const tab = resetWorkspaceWithTab();
     mount(makeCtx() as never);
     render();

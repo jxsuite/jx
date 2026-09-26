@@ -229,8 +229,9 @@ describe("renderStylebookMode", () => {
   });
 
   test("the chrome bar's two controls name themselves, and the toggle states which way it is", async () => {
-    /* §2 principle 6: no unlabelled control. Both names are spelled from PROJECT_STYLES_TITLE, so
-       the surface has one name and not one per control. The wire value must never surface here. */
+    /* No unlabelled control (studio-ui-guidelines.md §12.3). Both names are spelled from
+       PROJECT_STYLES_TITLE, so the surface has one name and not one per control. The wire value
+       must never surface here. */
     makeTab();
     shell.stylebook.customizedOnly = false;
     await renderStylebookMode(stage, ctx);

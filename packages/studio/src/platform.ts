@@ -13,7 +13,7 @@
  *
  * **Every call is counted.** `getPlatform()` hands out a counting proxy, not the raw adapter, so
  * "is Studio waiting on I/O?" is one number rather than thirty hand-instrumented methods
- * (`probe.idle()` condition 4, spec §13.5). Wrapping at the READ point rather than at
+ * (`probe.idle()`'s in-flight I/O condition, §13.5). Wrapping at the READ point rather than at
  * `registerPlatform` is deliberate: desktop pre-registers its adapter on `window.__jxPlatform`
  * without ever calling the registrar, and this is the seam both paths share.
  */
@@ -76,8 +76,8 @@ const inFlight = new Map<string, number>();
  * One entry per platform call whose promise has not settled, named by its method.
  *
  * Repeats are meaningful: two concurrent `gitStatus` reads are two reasons the shell is not
- * settled, and the rejection message that names them is the whole point of §13.4 — 115 sleeps were
- * 115 places that could not fail.
+ * settled, and the rejection message that names them is the whole point of "Determinism" in
+ * `scripts/screenshots/README.md` — 115 sleeps were 115 places that could not fail.
  */
 export function platformInFlight(): string[] {
   const names: string[] = [];

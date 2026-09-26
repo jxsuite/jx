@@ -126,7 +126,7 @@ describe("selection publishing", () => {
   });
 });
 
-// ─── §7.4: the states co-editing could not announce ──────────────────────────
+// ─── collab.md §4: the states co-editing could not announce ──────────────────
 /* `"detached"` used to mean three things at once and say none of them — this build has no
    collaboration, this document is solo, and the attach was tried and FAILED. A freeze, meanwhile,
    was a three-second grey line, which is exactly what a bug looks like. */

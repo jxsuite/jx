@@ -340,7 +340,7 @@ describe("contextmenu forwarding", () => {
     stop();
   });
 
-  test("right-click on empty space keeps the BROWSER's menu — plan §10's dead zone", () => {
+  test("right-click on empty space keeps the BROWSER's menu — no dead zone", () => {
     /*
      * It used to `preventDefault()` before looking for a hit, "legacy parity" with a handler that
      * did the same, and then post `path: null` — which `showContextMenu` returns early on. So the

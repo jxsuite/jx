@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Activity — where a long operation lives while it runs, and what it leaves behind (plan §7.3).
+ * Activity — where a long operation lives while it runs, and what it leaves behind (§16.4).
  *
  * What this replaces: `ui/progress-modal.ts` was **the only surface in Studio with a real error
  * view** — a red headline, the captured log in a `<pre>`, an explicit Close — and it had four call
@@ -19,14 +19,14 @@
  *   on its row, which is the affordance a hung install has never had;
  * - And it **fails into Problems** — {@link ActivityHandle.fail} raises a `notify.error` carrying the
  *   log as its `detail`, so the failure outlives the run and carries a Retry command. That is
- *   §7.3's "the progress modal's error view is promoted into Problems", in one function.
+ *   §16.4's promotion of the progress modal's error view into Problems, in one function.
  *
  * **Nothing here blocks.** `showProgressModal` still exists for the four dependency-install sites
- * §7.3 keeps blocking, and it is now a thin front end over {@link beginActivity} — so even the
+ * §16.4 keeps blocking, and it is now a thin front end over {@link beginActivity} — so even the
  * blocking case leaves an inspectable entry behind, and closing the modal no longer loses it.
  *
  * `services/idle.ts` reads {@link activityIdleBlockers}: an open operation means the app is not
- * settled, which is the §13.6 S4 obligation every phase's checklist carries.
+ * settled, which is how §16.4 makes running activities a `probe.idle()` source.
  *
  * **The feed itself is a Jx document** (`surfaces/panel-activity.json`, mounted by
  * `surfaces/panel-activity.ts`). What stays here is the record and the vocabulary a row is written
@@ -154,7 +154,7 @@ export interface ActivityOptions {
    * Stop the operation.
    *
    * Its presence is what draws the Cancel button, so an operation that cannot honestly be stopped
-   * must not pass one — a Cancel that does nothing is the failure §7 exists to end, restated as a
+   * must not pass one — a Cancel that does nothing is the failure §16 exists to end, restated as a
    * button.
    */
   cancel?: () => void;
@@ -176,7 +176,7 @@ export interface ActivityHandle {
   /**
    * Finish with a failure — and raise the Problem that outlives it.
    *
-   * The log goes into the notification's `detail`, so the persistent, inspectable error view §7.3
+   * The log goes into the notification's `detail`, so the persistent, inspectable error view §16.4
    * asks for is the Problems row, not a modal that has to stay open to be read.
    */
   fail: (message: string, opts?: { action?: string; path?: string }) => void;
@@ -324,7 +324,7 @@ export function resetActivities(): void {
 /**
  * What is still running, as `services/idle.ts` phrases it.
  *
- * §13.6 S4 puts this on every phase's checklist: an app with an operation in flight has not
+ * §16.4 makes this a `probe.idle()` condition (§13.5): an app with an operation in flight has not
  * finished reacting, so a screenshot taken now photographs a half-done import. A FINISHED entry is
  * not a blocker — the list stays on screen forever and waiting for it to empty would never settle.
  */
@@ -449,8 +449,8 @@ const ACTIVITY_SURFACE: ActivitySurfaceDeps = {
  * Two documents, two hosts, and that is the seam rather than a layout: a document CLEARS the host
  * it is given and lit renders BESIDE foreign nodes, so a document and a lit template can never
  * share a container. The checklist belongs to `publish/deploy-checklist.ts` — a deploy is a long
- * operation with a log, which is why P4 folded it in here rather than giving it a fifth dock tab —
- * and it sits above the feed because its whole job is to say what is missing BEFORE you begin.
+ * operation with a log, which is why it was folded in here rather than given a fifth dock tab — and
+ * it sits above the feed because its whole job is to say what is missing BEFORE you begin.
  *
  * **`data-deploy-checklist` and `data-activity-surface` are the markers, and they are attributes
  * rather than classes for two reasons.** Nothing styles them, and a class no stylesheet defines is
@@ -500,7 +500,8 @@ export function registerActivityPanel(): void {
     dock: "bottom",
     icon: "clock-counter-clockwise",
     // No rail button: the Bottom dock's tabs are reached by ⌘J and `view.setBottomTab`, and a
-    // Fifth rail slot for a surface with no steady state would spend chrome §2 principle 9 caps.
+    // Fifth rail slot for a surface with no steady state would spend chrome the budget caps
+    // (studio-ui-guidelines.md §12.2).
     rail: false,
     badge: () => (runningActivities().length > 0 ? runningActivities().length : null),
     render: () => renderActivityBody(),

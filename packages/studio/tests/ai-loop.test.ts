@@ -316,7 +316,7 @@ describe("ai agent loop — integration", () => {
     disposeTab(tab);
   });
 
-  test("a run that hit the round cap AFTER applying changes is not an error (§7.4)", async () => {
+  test("a run that hit the round cap AFTER applying changes is not an error (ai.md §3.2)", async () => {
     /* Partial success is not failure. `setError` paints the turn red and — in chat-state.ts —
        deletes the streaming message, so a run that made five edits and then hit the cap reported
        as an error that had also erased its own account of the five edits. */
@@ -413,7 +413,7 @@ describe("ai agent loop — integration", () => {
   });
 });
 
-// ─── §7.4: the batch follows the tab it edits ────────────────────────────────
+// ─── ai.md §3.3: the batch follows the tab it edits ──────────────────────────
 
 describe("cross-tab batching", () => {
   test("a turn that moves to a second document gives BOTH documents a history entry", async () => {

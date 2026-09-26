@@ -3,13 +3,12 @@
  *
  * ## The name and the wire value are different things
  *
- * The surface a user reaches is called **Project Styles** (plan §9.4). The canvas view it opens is
- * the string `"stylebook"`, a member of `CANVAS_MODES` in
- * {@link file://../canvas/iframe-protocol.ts} and therefore half of a `ParentToIframe` union: the
- * studio bundle and `dist/iframe-entry.js` agree on it, and changing it means rebuilding both in
- * lockstep. So it is not a name and may never be renamed to follow one.
- * {@link PROJECT_STYLES_TITLE} is the name; {@link PROJECT_STYLES_VIEW} is the wire value; a
- * surface that needs one must not reach for the other.
+ * The surface a user reaches is called **Project Styles** (§7.1). The canvas view it opens is the
+ * string `"stylebook"`, a member of `CANVAS_MODES` in {@link file://../canvas/iframe-protocol.ts}
+ * and therefore half of a `ParentToIframe` union: the studio bundle and `dist/iframe-entry.js`
+ * agree on it, and changing it means rebuilding both in lockstep. So it is not a name and may never
+ * be renamed to follow one. {@link PROJECT_STYLES_TITLE} is the name; {@link PROJECT_STYLES_VIEW}
+ * is the wire value; a surface that needs one must not reach for the other.
  *
  * ## One vocabulary for the `@` blocks
  *
@@ -19,7 +18,7 @@
  * {@link TokenContext} list so a surface cannot grow a second override path for the second kind (a
  * per-scheme writer and a per-media writer that disagreed about pruning an emptied block is exactly
  * what this replaces). Contexts are **defined** in Project Settings › Contexts and only selected or
- * overridden here — §2 principle 5.
+ * overridden here — §6.2.
  *
  * On-disk format is unchanged by anything in this module: it reads and writes the same
  * `style["--token"]` and `style["@--ctx"]["--token"]` shapes the compiler already consumes.
@@ -55,7 +54,7 @@ export interface TokenGroup {
 
 /**
  * The groups, in order. `other` is rendered only when something lands in it — a bucket named
- * "Other" over an empty list teaches nothing (§2 principle 6).
+ * "Other" over an empty list teaches nothing (`studio-ui-guidelines.md` §11.1).
  *
  * A group is a name and a prefix and nothing else. The example values an add row hints with are a
  * property of the FORM, not of the model, and they live beside the form that shows them.

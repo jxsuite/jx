@@ -151,9 +151,10 @@ export const PLACEMENT_MATRIX: Readonly<Record<Placement, PlacementRule>> = {
 /**
  * Every surface a Panel record may occupy.
  *
- * The rail's two level groups are SEPARATE placements, not one "mixed" region — principle 2's whole
- * point. `navigator` is the dock body below them, which hosts whichever panel the rail selected and
- * prints that panel's level in its header, so it is the one panel placement admitting two levels.
+ * The rail's two level groups are SEPARATE placements, not one "mixed" region — the whole point of
+ * the level × placement matrix (studio-ui-guidelines.md §12.1). `navigator` is the dock body below
+ * them, which hosts whichever panel the rail selected and prints that panel's level in its header,
+ * so it is the one panel placement admitting two levels.
  */
 export const PANEL_PLACEMENTS = [
   "rail/project",
@@ -170,7 +171,7 @@ export type PanelPlacement = (typeof PANEL_PLACEMENTS)[number];
  * `studio-ui-guidelines.md` §12 beside {@link PLACEMENT_MATRIX}.
  *
  * The rail rows are what stop it re-accreting: a panel cannot be filed in the PROJECT group because
- * "it feels project-ish", only because the state it WRITES is the project's (principle 3).
+ * "it feels project-ish", only because the state it WRITES is the project's (§13.2).
  */
 export const PANEL_PLACEMENT_MATRIX: Readonly<Record<PanelPlacement, PlacementRule>> = {
   "rail/project": {
@@ -216,7 +217,7 @@ function dockPlacement(dock: PlaceablePanel["dock"]): PanelPlacement {
  * Every placement a Panel record occupies: its dock body, plus its rail group when it has a button.
  *
  * The rail group is DERIVED from the level rather than declared, which is what makes "grouped by
- * level with a divider" (§3.2 ②) a property of the data instead of an ordering convention in the
+ * level with a divider" (§5.1) a property of the data instead of an ordering convention in the
  * rail's template. A rail panel whose level has no group (`application`, `selection`) therefore
  * names a placement the matrix does not contain, and is rejected below.
  */

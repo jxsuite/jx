@@ -231,7 +231,7 @@ describe("the assistant is not a dock", () => {
   test("there are three docks, and none of them is the chat", () => {
     // The fifth grid column is gone: the assistant is the Inspector's fourth TAB, so it has no
     // Collapse flag, no size and no resize handle to keep in step with anything. The third dock
-    // Is the BOTTOM one (P4.2) — a real dock, with all three of those.
+    // Is the BOTTOM one (§16.3) — a real dock, with all three of those.
     expect(Object.keys(shell.docks).toSorted()).toEqual(["bottom", "left", "right"]);
     expect(DOCK_IDS).toEqual(["left", "right", "bottom"]);
   });

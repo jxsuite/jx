@@ -1,10 +1,11 @@
 /**
- * Tests for src/collab/collab-commands.ts — the `Collaborate:` family (§7.4).
+ * Tests for src/collab/collab-commands.ts — the `Collaborate:` family (collab.md §4).
  *
  * Co-editing has had no verb anywhere in the app: no way to start it, invite anyone, follow anyone
- * or stop. `CATEGORIES` has carried "Collaborate" since P2 with nothing filed under it. These pin
- * the shape the registry checks — an idempotent setter with no bare toggle beside it, a `requires`
- * sentence on every record — and the two answers each verb can honestly give.
+ * or stop. `CATEGORIES` has carried "Collaborate" since the registry landed, with nothing filed
+ * under it. These pin the shape the registry checks — an idempotent setter with no bare toggle
+ * beside it, a `requires` sentence on every record — and the two answers each verb can honestly
+ * give.
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";

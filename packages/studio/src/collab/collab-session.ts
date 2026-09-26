@@ -664,7 +664,7 @@ export function ensureCollab(tab: Tab): void {
 
 /**
  * Join or leave this document's collaboration session — the idempotent setter behind `Collaborate:
- * Share this document` and `Collaborate: Stop sharing` (§7.4).
+ * Share this document` and `Collaborate: Stop sharing` (collab.md §4).
  *
  * Leaving sets a flag the watcher effect reads rather than calling `detachSession` directly, so the
  * effect remains the one owner of the session lifecycle and re-joining is the same call with the
@@ -709,7 +709,7 @@ async function attachSession(tab: Tab): Promise<void> {
   const platform = maybePlatform();
   if (!path || !platform?.collab) {
     /* Not a failure and not a session: this build/platform has no collaboration to offer. Saying
-       so is the difference between "nobody else is here" and "something broke" (§7.4). */
+       so is the difference between "nobody else is here" and "something broke" (collab.md §4). */
     collabState(tab).status = "unavailable";
     return;
   }
@@ -753,7 +753,7 @@ async function attachSession(tab: Tab): Promise<void> {
     } catch (error) {
       /* An attach that threw is a FAILURE, and it used to be reported as "detached" — the same
          value a solo document carries. A relay that is down, a token that expired and a document
-         nobody shared were one indistinguishable state (§7.4). */
+         nobody shared were one indistinguishable state (collab.md §4). */
       state.status = "failed";
       state.active = false;
       state.attachError = error instanceof Error ? error.message : String(error);

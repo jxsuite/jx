@@ -167,7 +167,7 @@ export interface AskToolOptions {
   /**
    * Called once a question has been put to the author, before the turn waits on the answer. A host
    * saves the conversation here: a turn suspended on a person may wait for as long as they like,
-   * and a reload in the meantime must still find the question to restore as open (specs/ai.md
+   * and a reload in the meantime must still find the question to restore as open (`specs/ai.md`
    * §3.4).
    */
   onPending?: () => void;

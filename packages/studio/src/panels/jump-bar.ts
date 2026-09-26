@@ -1,16 +1,16 @@
 /// <reference lib="dom" />
 /**
- * ⑥ The jump bar — the pane's address, and every place you can go from it.
+ * The jump bar — the pane's address, and every place you can go from it.
  *
  * **The two half-breadcrumbs this replaces.** Studio grew two trails, neither of which could say
  * where you were:
  *
- * 1. `panels/pane-context.ts`'s `navTpl()` (the old `#tab-bar` breadcrumb, plan §3.2 ⑥ names it as
- *    `tab-bar.ts:129-185`) — a `Back` button plus one span per `session.documentStack` frame. It
- *    appeared ONLY while you were inside a sub-document, printed the frame's file basename (which
- *    is the SAME basename for a `$map` template, so it read `index.json › index.json`), and knew
- *    nothing about the project above it or the selection below it. It is deleted, and so is the
- *    stack it walked: nothing ever pushed a frame, so it could only ever draw its empty branch.
+ * 1. `panels/pane-context.ts`'s `navTpl()` (the old `#tab-bar` breadcrumb, `tab-bar.ts:129-185`) — a
+ *    `Back` button plus one span per `session.documentStack` frame. It appeared ONLY while you were
+ *    inside a sub-document, printed the frame's file basename (which is the SAME basename for a
+ *    `$map` template, so it read `index.json › index.json`), and knew nothing about the project
+ *    above it or the selection below it. It is deleted, and so is the stack it walked: nothing ever
+ *    pushed a frame, so it could only ever draw its empty branch.
  * 2. `surfaces/statusbar.ts`'s selection field — a clickable ancestor trail, `selection.set` per
  *    crumb. It appeared ONLY while something was selected, and knew nothing about the document it
  *    was inside.
@@ -23,12 +23,12 @@
  *   project        file              selection ancestors
  * ```
  *
- * **The status bar keeps only what an address cannot say.** Plan §3.2 ⑫ and `studio.md` §16.2 give
- * the bar AMBIENT STATE, and an ancestor trail in a second place is exactly the duplication the
- * shell redesign exists to remove — three breadcrumbs would be worse than the two we started with.
- * So the trail moves here whole, and `statusbar/selection` keeps the two facts this bar cannot
- * state: HOW MANY things are selected (a count is not a path) and which Stylebook rule the Style
- * panel is editing (a selector is not a node).
+ * **The status bar keeps only what an address cannot say.** `studio.md` §16.2 gives the bar AMBIENT
+ * STATE, and an ancestor trail in a second place is exactly the duplication the shell redesign
+ * exists to remove — three breadcrumbs would be worse than the two we started with. So the trail
+ * moves here whole, and `statusbar/selection` keeps the two facts this bar cannot state: HOW MANY
+ * things are selected (a count is not a path) and which Stylebook rule the Style panel is editing
+ * (a selector is not a node).
  *
  * **Every interactive item is a command, resolved from the registry.** There is no click handler in
  * this file that names behaviour: a segment names a command id and its args, and the registry
@@ -47,7 +47,7 @@
  * (studio-ui-guidelines.md §6, §9.3). What stays here is the part that is a decision: which pane
  * this bar is about, what its address is, which of its steps the registry can run, and what a
  * chevron opens — and the chevron opens the KIT MENU, `surfaces/menu.ts`, because a list of
- * commands is what that surface already is (§12.5).
+ * commands is what that surface already is (studio-ui-guidelines.md §12.5).
  */
 
 import { displayTagName } from "@jxsuite/schema/guards";
@@ -81,7 +81,8 @@ const JUMP_BAR_HEIGHT = 24;
 
 /**
  * What a segment addresses. The kind is stamped on the element so a test — and a shot — can name a
- * step of the address without matching its rendered text, which is derived (§13 R1).
+ * step of the address without matching its rendered text, which is derived (the shot contract's R1,
+ * `scripts/screenshots/README.md`).
  */
 export type JumpSegmentKind = "project" | "file" | "editor" | "node";
 
@@ -301,7 +302,7 @@ export function jumpSegments(
 function editorSegment(sigil: string, def: FunctionEditDef | FormulaEditDef): JumpSegment {
   return {
     choices: [],
-    // No command, and none is missing: the Logic tab's own header carries the Close (P8.5), which
+    // No command, and none is missing: the Logic tab's own header carries the Close (§16.3), which
     // Is where a reader looking at the editor already is. A second exit up here would be a button
     // Beside the address that means "stop being at this address" — and the pane context bar drew
     // Exactly that, a Back of its own, until this excision removed it.
@@ -350,7 +351,7 @@ function segmentTitle(registry: CommandRegistry, segment: JumpSegment, id: strin
  *
  * An unregistered or invisible command makes the step a READOUT rather than removing it, and more
  * than one alternative is what earns a chevron: one is not a choice, and a control that cannot move
- * is chrome (§2 principle 9).
+ * is chrome (studio-ui-guidelines.md §12.2).
  */
 function projectStep(
   registry: CommandRegistry | null,
@@ -411,7 +412,8 @@ export function dismissJumpMenu(): void {
  * The rows are built from the segment's choices, and every row runs a command — the same command
  * the segment itself names, with a different path. Nothing here decides what selecting means, and
  * nothing here draws a panel: `surfaces/menu.ts` owns the roving caret, typeahead, Escape and light
- * dismissal, because a list of commands is what that surface already is (§12.5).
+ * dismissal, because a list of commands is what that surface already is: a second one is the defect
+ * studio-ui-guidelines.md §12.5 names.
  */
 function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
   const registry = activeRegistry();

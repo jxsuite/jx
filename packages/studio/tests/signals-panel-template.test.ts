@@ -809,7 +809,7 @@ describe("the function editor", () => {
   });
 });
 
-// ─── Function body mode (statements vs code, spec §20) ───────────────────────
+// ─── Function body mode (statements vs code, spec.md §20) ────────────────────
 
 describe("the function body's two modes", () => {
   test("a string body is the Code mode: the switch says so, and the text box is there", async () => {

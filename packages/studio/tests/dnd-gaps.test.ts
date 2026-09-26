@@ -683,7 +683,7 @@ describe("applyDropInstruction — uncovered branches", () => {
      * so a page importing `../shared/card.json` counted `./components/card.json` as already
      * imported, skipped the import, and left `<my-card>` resolving to the other card — or to
      * nothing. `files/elements.ts` compares resolved paths, which is the one rule all four writers
-     * of this array now share (plan §11.2).
+     * of this array now share (§9.1.3).
      */
     const doc = makeDoc();
     doc.$elements = [{ $ref: "../shared/card.json" }];

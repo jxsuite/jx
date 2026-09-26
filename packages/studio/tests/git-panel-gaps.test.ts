@@ -617,7 +617,8 @@ describe("branch selector", () => {
 
   /* A `<select>` always holds one of its options, so putting the control back on the checked-out
      branch is a WRITE the document has to be able to see. The panel announces what the reader
-     chose first, which is what makes putting it back a change rather than a no-op (§9.3). */
+     chose first, which is what makes putting it back a change rather than a no-op
+     (studio-ui-guidelines.md §9.3). */
   test("the picker goes back to the checked-out branch when the dialog is dismissed", async () => {
     seedRepoUi();
     const panel = await draw();

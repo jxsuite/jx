@@ -513,7 +513,8 @@ describe("the preset menu", () => {
     await openPresetMenu();
     const opened = menuItems();
     expect(opened.length).toBeGreaterThan(0);
-    // Each row's identity begins with the id it runs; §12.5 forbids a second list beside them.
+    /* Each row's identity begins with the id it runs; studio-ui-guidelines.md §12.5 forbids a
+       second list beside them. */
     for (const row of opened) {
       expect(row.dataset["commandId"]).toMatch(/^pane\.(derive|pin|unsplit)/);
     }

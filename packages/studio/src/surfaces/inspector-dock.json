@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioInspectorDock",
-  "$description": "⑨ The Inspector dock's own chrome, as a Jx document over the kit: a header naming what the dock is pointed at, a real `tablist` of four tabs, and four `tabpanel`s. It draws no tab BODY — all four are mounted documents of their own (`surfaces/properties-panel.json`, `surfaces/style-panel.json`, `surfaces/logic-panel.json`, and the assistant's) — so each panel carries one empty `[part=\"panel-body\"]` island the adapter announces through `onNodeCreated` (studio-ui-guidelines.md §9.4). The four panels are keyed on the tab id and the id list never changes, so a body host is created ONCE and lives as long as the dock: that is what the old module's hand-built permanent containers were for, and it is now a property of a keyed `$map` rather than a rule someone has to keep. `panels/right-panel.ts` keeps every decision — which tab is selected, per document or detached; what the target's name is; and which of the four seams a host is handed to.",
+  "$description": "The Inspector dock's own chrome, as a Jx document over the kit: a header naming what the dock is pointed at, a real `tablist` of four tabs, and four `tabpanel`s. It draws no tab BODY — all four are mounted documents of their own (`surfaces/properties-panel.json`, `surfaces/style-panel.json`, `surfaces/logic-panel.json`, and the assistant's) — so each panel carries one empty `[part=\"panel-body\"]` island the adapter announces through `onNodeCreated` (studio-ui-guidelines.md §9.4). The four panels are keyed on the tab id and the id list never changes, so a body host is created ONCE and lives as long as the dock: that is what the old module's hand-built permanent containers were for, and it is now a property of a keyed `$map` rather than a rule someone has to keep. `panels/right-panel.ts` keeps every decision — which tab is selected, per document or detached; what the target's name is; and which of the four seams a host is handed to.",
   "tagName": "div",
   "attributes": {
     "part": "inspector-dock"
@@ -42,7 +42,7 @@
       }
     },
     "& [part=\"tabs\"]": {
-      "$description": "Four words in a 280px dock, allowed to compress rather than to become anonymous — which is why the tabs are not icons (§3.2 ⑨). The kit tab's own 220px cap would let one tab push the last off the strip, so each takes an equal quarter.",
+      "$description": "Four words in a 280px dock, allowed to compress rather than to become anonymous — which is why the tabs are not icons (§6). The kit tab's own 220px cap would let one tab push the last off the strip, so each takes an equal quarter.",
       "flex": "0 0 auto",
       "gap": "0",
       "fontSize": "var(--jx-text-sm)"

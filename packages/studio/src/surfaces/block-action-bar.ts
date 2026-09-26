@@ -19,7 +19,7 @@
  * takes its pragmatic-dnd registration as it is created — `canDrag` and the dragged path are the
  * flow's, so the registration outlives every selection change and the bar never carries two. The
  * link panel is the kit's `jx-popover`, and an element's own `showPopover()` is the one overlay
- * call §9.4 leaves on this side of the seam.
+ * call `studio-ui-guidelines.md` §9.4 leaves on this side of the seam.
  *
  * **Every control the flow has to reach again is announced, never queried.** `format.link`'s button
  * is the link panel's anchor and ⌥↑ needs the toolbar itself; both are recorded here as the runtime
@@ -332,8 +332,8 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
       }
       /*
        * Placing is by measured coordinate — the anchor's box, read here rather than bound in the
-       * document, which is the one measurement §9.4 leaves on this side of the seam — and showing
-       * is the element's own `showPopover`.
+       * document, which is the one measurement `studio-ui-guidelines.md` §9.4 leaves on this side
+       * of the seam — and showing is the element's own `showPopover`.
        *
        * A custom element connects asynchronously, so the panel may not yet carry the `popover`
        * attribute that makes it showable: `jx-ready` is the element saying it does. The same

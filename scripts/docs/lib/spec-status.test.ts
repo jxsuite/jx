@@ -140,7 +140,7 @@ describe("markers", () => {
     const [section] = s.sections;
     expect(section?.status).toBe("Implemented");
     expect(section?.markers.map((m) => m.status)).toEqual(["Implemented", "Future"]);
-    // A Future remainder is deferred, not unbuilt: the §6.6 shape is not an open item.
+    // A Future remainder is deferred, not unbuilt: the spec.md §6.6 shape is not an open item.
     expect(openItems(s)).toEqual([]);
   });
 

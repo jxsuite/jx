@@ -12,7 +12,7 @@
  * error plumbing both still share.
  *
  * **Raw JSON does not open a second editor.** It shows what is on disk and hands the author to the
- * Code editor over the SAME tab — one document, three editors (§9.3), so switching to the text and
+ * Code editor over the SAME tab — one document, three editors (§17.1), so switching to the text and
  * back keeps one undo stack instead of forking two.
  *
  * **The markup left.** Each section is a Jx document over the kit — `surfaces/settings-deploy.json`
@@ -130,7 +130,7 @@ function deployActions(container: HTMLElement): DeployActions {
  * Where the project is built for, and what it is built with.
  *
  * The adapter moved off Overview: Overview says what the site IS, and the adapter is a fact about
- * where it SHIPS — the same split §2 principle 5 applies to Contexts.
+ * where it SHIPS — the same split §6.2 applies to Contexts.
  *
  * The pane calls this again whenever something it cannot see may have changed, and a remount would
  * take the keyboard out of the picker the reader is in — so a standing surface is updated and only

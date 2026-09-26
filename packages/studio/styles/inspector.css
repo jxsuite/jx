@@ -76,7 +76,7 @@
   text-decoration: underline;
 }
 
-/* ─── Provenance dots on a section heading (plan §6.2) ────────────────────────
+/* ─── Provenance dots on a section heading (§6.7) ─────────────────────────────
    The chip itself is styled with the rest of the row vocabulary further down —
    one block, because Style and Component Props are the same chip in two
    cascades. What is only needed here is the DOT form: a collapsed accordion
@@ -93,7 +93,7 @@
   border: none;
   cursor: default;
 }
-/* `mixed` (§6.5) — the multi-selection's own state. Neutral on purpose: unlike the other three it
+/* `mixed` (§6.7) — the multi-selection's own state. Neutral on purpose: unlike the other three it
    says nothing about WHERE the value came from, only that the selected elements disagree, so it
    must not borrow the accent that means "set here" or the amber that means "inherited". */
 .set-dot.provenance-chip--mixed {
@@ -146,7 +146,8 @@
 }
 
 /* ─── The Layout-element card ───────────────────────────────────────────────
-   What the inspector says when you click page chrome — §8.2's first click. */
+   What the inspector says when you click page chrome — the first click a new author makes
+   (docs/studio/design/properties.md, "Layout elements"). */
 .layout-origin {
   display: flex;
   align-items: center;

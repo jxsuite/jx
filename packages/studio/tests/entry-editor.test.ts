@@ -183,7 +183,7 @@ describe("the mode is registered where every reader looks", () => {
   test('"entry" resolves to the entry editor kind, never the silent canvas default', () => {
     expect(editorKindForMode(ENTRY_MODE)).toBe("entry");
     // The failure this guards: an unmapped mode answers "canvas", which put ⌘V's element paste on
-    // A configuration document in P6.
+    // A configuration document once settings became documents.
     expect(editorKindForMode("no-such-mode")).toBe("canvas");
   });
 });
@@ -223,9 +223,9 @@ describe("rendering", () => {
   });
 
   /**
-   * The screenshot pipeline addresses the editor by region rather than by selector (§13.2), and
-   * both ids are DERIVED from the pane — so a shot keeps working across a rename of anything
-   * inside.
+   * The screenshot pipeline addresses the editor by region rather than by selector (the region
+   * grammar, scripts/screenshots/README.md), and both ids are DERIVED from the pane — so a shot
+   * keeps working across a rename of anything inside.
    */
   test("the stage and its field list are addressable as regions", async () => {
     const host = await mount(await openAda());

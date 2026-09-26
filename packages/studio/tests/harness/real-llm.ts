@@ -11,12 +11,12 @@
  *
  * Config via env (per-run, so models swap freely): JX_AI_KEY — API key (required) JX_AI_BASE_URL —
  * OpenAI-compatible base URL (default OpenAI: https://api.openai.com/v1) JX_AI_MODEL — model id
- * (default gpt-5.4; baseline per the doc's §5.3 decision) JX_AI_TEMP — sampling temperature; omit
- * for reasoning models, set 0 for determinism
+ * (default gpt-5.4, the evals' baseline model) JX_AI_TEMP — sampling temperature; omit for
+ * reasoning models, set 0 for determinism
  */
 
 // Happy-dom shim: createTab/@vue reactivity expect a DOM global to exist. Tools only touch the
-// Plain `tab.doc.document` object, so the shim is all that's needed (doc §5.2).
+// Plain `tab.doc.document` object, so the shim is all that's needed.
 import "../with-dom.ts";
 
 import { createChatState, createToolRegistry, createOpenAIStreamingClient } from "@jxsuite/ai";

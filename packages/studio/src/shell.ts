@@ -56,14 +56,14 @@ export type LayoutSelection = LayoutHit;
  *
  * `"chat"` is not among them: the assistant is the Inspector's fourth TAB, not a dock, so it has no
  * column, no size, no collapse flag and no resize handle of its own — which is the whole claim of
- * plan §3.2 ⑨, that folding it in costs zero additional width. What selects it is
+ * §3.1's "no assistant column", that folding it in costs zero additional width. What selects it is
  * {@link INSPECTOR_TAB_IDS}, the same mechanism that selects Content, Style and Logic.
  *
- * `"bottom"` is the one that arrives with P4.2. It is a dock like the other two — a collapse flag,
- * a remembered size, a resize handle, a place in every {@link LayoutPreset} — and the reason
+ * `"bottom"` is the one the Bottom dock (§16.3) added. It is a dock like the other two — a collapse
+ * flag, a remembered size, a resize handle, a place in every {@link LayoutPreset} — and the reason
  * `view.toggleBottomDock` had no idempotent setter for two phases is that it was not on this
- * record. It sits under the PANE GRID rather than under the window (plan §3.2 ⑪), so opening it
- * never narrows the Navigator or the Inspector.
+ * record. It sits under the PANE GRID rather than under the window (§16.3), so opening it never
+ * narrows the Navigator or the Inspector.
  */
 export type DockId = "left" | "right" | "bottom";
 
@@ -72,10 +72,10 @@ export type DockId = "left" | "right" | "bottom";
  *
  * This is the DECLARATION `view.setActivity`'s `args` enum is built from, and it is the reason a
  * panel rename fails `scripts/check-shot-contract.ts` in the renaming PR naming both ids instead of
- * silently photographing the wrong panel (plan §13.5). `shell.leftTab` stays a `string` because it
- * is also read from persisted state written by an older build — the COMMAND is what refuses an
- * undeclared id, at the one door a caller comes through, and {@link migratePanelId} is what turns a
- * stale stored id into a current one before it gets there.
+ * silently photographing the wrong panel (Lane 1, `scripts/screenshots/README.md`). `shell.leftTab`
+ * stays a `string` because it is also read from persisted state written by an older build — the
+ * COMMAND is what refuses an undeclared id, at the one door a caller comes through, and
+ * {@link migratePanelId} is what turns a stale stored id into a current one before it gets there.
  *
  * **`"problems"` is not here, and it has no rail button either.** It is hosted in the Bottom dock,
  * so `view.setBottomTab { tab: "problems" }` is the verb that shows it and this enum would be a
@@ -119,7 +119,7 @@ const RENAMED_PANEL_IDS: Readonly<Record<string, NavigatorPanelId>> = {
   blocks: "insert",
   head: "page",
   imports: "packages",
-  /* Not a rename — a MERGE. The State editor is part of the Data panel now (plan §11.2), so a
+  /* Not a rename — a MERGE. The State editor is part of the Data panel now (§5.6), so a
      stored `leftTab: "state"` names a real place and lands on it, rather than returning `null` and
      booting into the default the way `problems` does. Defining a value and watching it resolve are
      one task; they were two panels. */
@@ -160,10 +160,11 @@ export function requireNavigatorPanelId(value: string, source: string): Navigato
  * {@link DEFAULT_PANEL_ID}, and a test can tell "I stored junk" from "I stored `layers`".
  *
  * `"problems"` is the one id that returns `null` because it MOVED rather than because it was junk:
- * a build before §7.2's correction could persist `leftTab: "problems"`, and the Navigator can no
- * longer show it. There is no alias to add — Problems is not a Navigator panel under any name — so
- * the shell boots into {@link DEFAULT_PANEL_ID} and the Bottom dock keeps its own `bottomTab`,
- * which already defaults to Problems. This is exactly the wedge this function exists to prevent.
+ * a build from before Problems moved to the Bottom dock (§16.3) could persist `leftTab:
+ * "problems"`, and the Navigator can no longer show it. There is no alias to add — Problems is not
+ * a Navigator panel under any name — so the shell boots into {@link DEFAULT_PANEL_ID} and the
+ * Bottom dock keeps its own `bottomTab`, which already defaults to Problems. This is exactly the
+ * wedge this function exists to prevent.
  */
 export function migratePanelId(stored: unknown): NavigatorPanelId | null {
   if (typeof stored !== "string") {
@@ -184,8 +185,8 @@ export function migratePanelId(stored: unknown): NavigatorPanelId | null {
  * (`view.setAssistant`) precisely because the assistant was somewhere else; it survives as the
  * dock-toggle spelling of "show me the assistant", but it now writes the same field as the others.
  *
- * The ORDER is §3.2 ⑨'s — Content · Style · Logic · Assistant — which is the order ⌘⇧1–4 follow.
- * The human titles live in `commands/defaults.ts`'s `INSPECTOR_TABS` (a module with no state and no
+ * The ORDER is §6's — Content · Style · Logic · Assistant — which is the order ⌘⇧1–4 follow. The
+ * human titles live in `commands/defaults.ts`'s `INSPECTOR_TABS` (a module with no state and no
  * DOM, so the CI checks can load it); `tests/right-panel.test.ts` asserts the two agree, the same
  * way `tests/panel-registry.test.ts` does for the rail.
  */
@@ -202,12 +203,12 @@ export function isInspectorTabId(value: unknown): value is InspectorTabId {
 }
 
 /**
- * The Bottom dock's tab ids, in strip order — plan §3.2 ⑪, at the documented cap of four.
+ * The Bottom dock's tab ids, in strip order — §16.3: three tabs, under the documented cap of four.
  *
- * **Four, not five.** `scripts/check-chrome-budget.ts` caps a dock at four tabs, and §12's P4 entry
- * resolves the fifth candidate explicitly: **Deploy folds into Activity**, because a deploy IS a
- * long operation with a log, and giving it its own tab would have bought a fifth strip item to say
- * what the fourth already says.
+ * **Deploy is not a tab.** `scripts/check-chrome-budget.ts` caps a dock at four tabs, and the shell
+ * redesign's feedback phase resolved that candidate explicitly: **Deploy folds into Activity**,
+ * because a deploy IS a long operation with a log, and giving it its own tab would have bought a
+ * strip item to say what Activity already says.
  *
  * Declared here, beside {@link NAVIGATOR_PANEL_IDS} and {@link INSPECTOR_TAB_IDS} and for the same
  * reason: `view.setBottomTab`'s `args` enum is built from it, and `commands/app-commands.ts` must
@@ -291,24 +292,25 @@ export interface ShellStylebook {
 }
 
 /**
- * A named arrangement of the shell — plan §3.2 ①b.
+ * A named arrangement of the shell — a layout tab (`docs/studio/interface.md`, "Command Bar").
  *
  * A layout is a TUPLE, not a mode: which Navigator panel is showing, whether each dock is open and
  * how wide, and which Inspector tab is selected. Picking one reconfigures; it never removes. Every
- * panel stays reachable by rail, chord and palette afterwards, because §13 rejects workspaces that
- * gate features — telling a copy editor the Style panel "is in ⌘K" hands the non-technical user the
- * one affordance they are least likely to reach for.
+ * panel stays reachable by rail, chord and palette afterwards, because workspaces that gate
+ * features are refused (`docs/studio/interface.md`, "Command Bar") — telling a copy editor the
+ * Style panel "is in ⌘K" hands the non-technical user the one affordance they are least likely to
+ * reach for.
  *
  * The field this replaces (`shell.layout`, a string with a declared default and NO writer) was the
  * exact failure `layoutSelection` had already been through: a record nothing sets, read by chrome
  * that therefore cannot change. Wiring it was the alternative to deleting it, and these are the
  * writers.
  *
- * **Editor kind is deliberately not in the tuple.** §3.2 ①b names it, but nothing in the shell can
- * apply it: switching a pane's editor is `studio.ts`'s `setCanvasMode`, which this module does not
- * have and cannot be handed without changing a bootstrap it does not own. A fourth field no writer
- * could honour would recreate the defect this type exists to close, so the tuple is three fields
- * and the fourth arrives with the pane record that can carry it.
+ * **Editor kind is deliberately not in the tuple.** The shell redesign's layout tuple named it, but
+ * nothing in the shell can apply it: switching a pane's editor is `studio.ts`'s `setCanvasMode`,
+ * which this module does not have and cannot be handed without changing a bootstrap it does not
+ * own. A fourth field no writer could honour would recreate the defect this type exists to close,
+ * so the tuple is three fields and the fourth arrives with the pane record that can carry it.
  */
 export interface LayoutPreset {
   /** Stable key. Built-ins use their own lowercase name; a saved layout gets a slug of its. */
@@ -362,7 +364,7 @@ export interface ShellState {
 const DOCK_STORAGE_KEY = "jx-studio-panel-widths";
 
 /**
- * The per-project record's key prefix — one namespaced record per project root (§4.4).
+ * The per-project record's key prefix — one namespaced record per project root (§14.8).
  *
  * Namespaced because a layout is an arrangement of THIS project's panels: "Ship" over a repo with
  * no git remote is not the same tuple as "Ship" over one that has one, and two projects sharing a
@@ -403,8 +405,8 @@ export const DOCK_IDS: DockId[] = ["left", "right", "bottom"];
  * The two side docks open, because the shell's whole point is that it says where you are. The
  * Bottom dock CLOSED, because it is the one dock whose contents are usually empty: a Problems list
  * with nothing in it and an Activity log with nothing running would spend 220px of the canvas — the
- * one region §3.2 says must never disappear — to say "nothing has gone wrong". ⌘J opens it, the
- * rail badge and the status bar say when it has something to show, and nothing opens it for you.
+ * one region §16.3 says must never disappear — to say "nothing has gone wrong". ⌘J opens it, the
+ * status bar says when it has something to show, and nothing opens it for you.
  */
 const DOCK_DEFAULTS: Record<DockId, DockState> = {
   bottom: { collapsed: true, size: 220 },
@@ -443,9 +445,10 @@ const DOCK_CLASS: Record<DockId, string> = {
  * The persisted shell record. Absent keys keep the declared default.
  *
  * `leftTab` rides in the same record as the dock geometry because it is remembered for the same
- * reason and by the same writer — one key, one shape, one `JSON.stringify`. P3.7 replaces the whole
- * thing with a per-project session record; until then, adding a second localStorage key would
- * recreate the two-writer bug this record was consolidated to fix.
+ * reason and by the same writer — one key, one shape, one `JSON.stringify`. The shell redesign
+ * planned to replace the whole thing with a per-project session record (§14.8 now holds the
+ * session); until then, adding a second localStorage key would recreate the two-writer bug this
+ * record was consolidated to fix.
  */
 interface PersistedDocks {
   left?: number;
@@ -523,7 +526,7 @@ function freshStylebook(): ShellStylebook {
 }
 
 /**
- * The four layouts every project starts with — §3.2 ①b's `Write · Design · Build · Ship`.
+ * The four layouts every project starts with — `Write · Design · Build · Ship`.
  *
  * Each is a real arrangement of surfaces that already exist, not a mode: Write puts the file set
  * beside the prose and the Inspector on Content; Design opens the Outline against the Style tab;
@@ -541,12 +544,12 @@ function builtInLayouts(): LayoutPreset[] {
       docks: {
         bottom: { collapsed: true, size: 220 },
         left: { collapsed: false, size: 240 },
-        /* WRITE COLLAPSES THE INSPECTOR. §3.1's arithmetic is the whole point of this preset:
-           1600px − 56 rail − 240 navigator ≈ **1284px of page, 80%**, against Design's 974. It
-           shipped with the Inspector open at 280px, which is Design's number and makes Write a
-           Design with a different panel selected.
+        /* WRITE COLLAPSES THE INSPECTOR. The shell redesign's layout arithmetic is the whole point
+           of this preset: 1600px − 56 rail − 240 navigator ≈ **1284px of page, 80%**, against
+           Design's 974. It shipped with the Inspector open at 280px, which is Design's number and
+           makes Write a Design with a different panel selected.
 
-           It does NOT re-open on selection. The plan's sentence reads "until something is
+           It does NOT re-open on selection. The shell redesign's sentence read "until something is
            selected", and clicking a paragraph to put a caret in it IS a selection — a dock that
            opened every time you clicked into prose would take the 80% back on the first keystroke.
            `⌘⇧1`–`⌘⇧4` expand it (`focusInspectorTab` sets `collapsed: false` before it focuses), so
@@ -584,7 +587,7 @@ function builtInLayouts(): LayoutPreset[] {
     },
     {
       // The one built-in that OPENS the Bottom dock, on Activity: shipping is a long operation
-      // With a log, which is exactly what that tab is (§12 P4 — Deploy folds into Activity).
+      // With a log, which is exactly what that tab is (§16.4 — Deploy folds into Activity).
       bottomTab: "activity",
       docks: {
         bottom: { collapsed: false, size: 240 },
@@ -686,13 +689,13 @@ export function persistDocks(): void {
   }
 }
 
-// ─── Named layouts (§3.2 ①b) ──────────────────────────────────────────────────
+// ─── Named layouts ────────────────────────────────────────────────────────────
 
 /** What a project's namespaced record holds: its named layouts, and the session it was left in. */
 interface PersistedProject {
   layouts?: unknown;
   activeLayout?: unknown;
-  /** §4.4's session — open documents per pane, the active one, and each one's view settings. */
+  /** §14.8's session — open documents per pane, the active one, and each one's view settings. */
   session?: unknown;
 }
 
@@ -954,7 +957,7 @@ export function deleteLayout(id: string): void {
 }
 
 /**
- * Re-apply the active layout as declared — `View: Reset Layout`, always one action away (§3.2 ①b).
+ * Re-apply the active layout as declared — `View: Reset Layout`, always one action away.
  *
  * This is the escape hatch that makes a layout safe to drift from: drag a dock, collapse the
  * Inspector, open a different panel, and one command puts the arrangement back.
@@ -1090,7 +1093,7 @@ export function mountShell(): void {
       syncProjectLayouts(workspace.projectRoot);
     });
     /*
-     * §4.4's session, written whenever its SHAPE changes.
+     * §14.8's session, written whenever its SHAPE changes.
      *
      * The reads below are the tracking list: which panes exist, what is in each strip and in what
      * order, which tab is active, and where the keyboard is. Every one of them is a deliberate act
@@ -1282,7 +1285,7 @@ const projectOpen = (ctx: { project: { open: boolean } }) => ctx.project.open;
 /**
  * The shell's view verbs: idempotent SETTERS, never toggles.
  *
- * Plan §13.3 clause 3 is the whole shape of this list. `view.toggleAssistant` names a _delta_
+ * §13.5's idempotence rule is the whole shape of this list. `view.toggleAssistant` names a _delta_
  * against state the caller cannot observe, so flipping the assistant's default silently inverted 18
  * screenshots and an agent calling it is guessing; `view.setAssistant { open: false }` means the
  * same thing whichever way the default points. The rail's own click handler keeps its
@@ -1291,7 +1294,7 @@ const projectOpen = (ctx: { project: { open: boolean } }) => ctx.project.open;
  *
  * The `args` enums are the highest-value declaration here: `view.setActivity`'s `tab` is exactly
  * {@link NAVIGATOR_PANEL_IDS}, so renaming a panel turns every stale manifest step red naming both
- * ids, in the PR that renamed it (plan §13.5).
+ * ids, in the PR that renamed it (Lane 1, `scripts/screenshots/README.md`).
  *
  * @param {ShellCommandDeps} deps
  * @returns {AnyCommand[]}
@@ -1310,7 +1313,8 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       requires: "an open project",
       when: projectOpen,
       /* No `aiTool`: application-level, which `register()` refuses to project — an application verb
-         acts on the editor, which the model cannot see (§12.4, chrome). */
+         acts on the editor, which the model cannot see (`studio-ui-guidelines.md` §12.4,
+         chrome). */
       run: (_ctx, args) => {
         const tab = enumArg("view.setActivity", args, "tab", NAVIGATOR_PANEL_IDS);
         // The record's own `when`, asked here because `enablement` cannot see an argument — the
@@ -1379,7 +1383,8 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       category: "View",
       // The idempotent half of `view.toggleBottomDock`, and the reason the toggle can exist at all:
       // `tests/app-commands.test.ts` fails any `toggle*` id with no `set*` beside it, and this one
-      // Has been listed as HANDOFF debt since P2 because the dock was not on the `shell` record.
+      // Has been listed as HANDOFF debt since the shell redesign's registry phase because the
+      // Dock was not on the `shell` record.
       // It is now, so this is a two-line `run` rather than the special case ⌘J used to need.
       id: "view.setBottomDock",
       level: "application",
@@ -1392,8 +1397,9 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
     },
     {
       // ⌘J. A gesture, not an API: a human presses it while looking at the dock, which is the
-      // Exemption §13.3 clause 3 grants a toggle whose state the presser can SEE. A script says
-      // `view.setBottomDock { open }` instead, and the test beside the registry enforces the pair.
+      // Exemption §13.5's idempotence rule grants a toggle whose state the presser can SEE. A
+      // Script says `view.setBottomDock { open }` instead, and the test beside the registry
+      // Enforces the pair.
       category: "View",
       id: "view.toggleBottomDock",
       keybinding: "mod+j",
@@ -1414,7 +1420,8 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       level: "application",
       menus: ["palette"],
       group: "4_docks",
-      /* No `aiTool`: application-level chrome, refused at registration (§12.4). */
+      /* No `aiTool`: application-level chrome, refused at registration
+         (`studio-ui-guidelines.md` §12.4). */
       run: (_ctx, args) => {
         const tab = enumArg("view.setBottomTab", args, "tab", BOTTOM_TAB_IDS);
         // The record's own `when`, asked here because `enablement` cannot see an argument — the
@@ -1477,7 +1484,8 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       group: "4_layouts",
       requires: "an open project",
       when: projectOpen,
-      /* No `aiTool`: application-level chrome, refused at registration (§12.4). */
+      /* No `aiTool`: application-level chrome, refused at registration
+         (`studio-ui-guidelines.md` §12.4). */
       run: (_ctx, args) => {
         applyLayout(stringArg("view.setLayout", args, "layout"), deps);
       },

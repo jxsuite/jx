@@ -8,7 +8,7 @@ Two rules govern everything below, and both are review-enforceable:
 
 > **R1. A shot may name inputs the app accepts. It may never name values the app derives.** Deltas, coordinates and rendered text are all derived.
 >
-> **R2. The pipeline may only ask the app to do sooner what the plan already commits to doing.** It may never ask for anything the plan does not already want.
+> **R2. The pipeline may only ask the app to do sooner what the design already commits to doing.** It may never ask for anything the design does not already want.
 
 ## Usage
 
@@ -162,7 +162,7 @@ Both run after boot, after every step, and before every capture.
 
 Also fixed, and each was a real source of churn: the animation freeze is installed via `evaluateOnNewDocument` + `frameattached` (so a canvas rebuilt by a later step is still frozen); one fresh `BrowserContext` per shot (the HTTP cache is context-scoped, so shot warmth used to depend on running order); `--force-color-profile=srgb --font-render-hinting=none --disable-lcd-text`; `TZ=UTC` and `LANG=C.UTF-8` in the browser's environment; pointer and focus reset before every capture.
 
-`DIFF_THRESHOLD = 0.01` decides whether committed bytes are rewritten. It is a COUNT of pixels whose channels moved more than `CHANNEL_TOLERANCE` (16), at native resolution. (It was a mean-absolute difference over 32×32 THUMBNAILS, at which size a 3840×2400 frame's whole status bar is a fraction of one pixel row; a rail that lost two buttons scored 0.07 % and the stale bytes were kept.) Per §13.4 it is for **review presentation** and is no longer load-bearing for identity.
+`DIFF_THRESHOLD = 0.01` decides whether committed bytes are rewritten. It is a COUNT of pixels whose channels moved more than `CHANNEL_TOLERANCE` (16), at native resolution. (It was a mean-absolute difference over 32×32 THUMBNAILS, at which size a 3840×2400 frame's whole status bar is a fraction of one pixel row; a rail that lost two buttons scored 0.07 % and the stale bytes were kept.) It is for **review presentation** and is no longer load-bearing for identity: the capture lock's `sha256` is.
 
 The number is sized against measurement, and it was re-sized once the measurement became honest. The first sample (21 rewrites across 24 `chore(screenshots)` commits) was taken while the lane still passed `--force`, so `writeIfChanged` never ran and the sample recorded Chromium's encoder rather than this threshold. `--force` left the lane in `7ce93986`; the ten days after it are 51 commits and 181 rewrites, every delta recomputed from the committed blobs.
 
@@ -212,7 +212,7 @@ A project directory carrying `fixture.json` is materialised as a **real git repo
 
 | budget                                                                              | what it counts                                                               |
 | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| inputSteps                                                                          | raw gestures. §13.6 lands this at ≤ 6; target 3                              |
+| inputSteps                                                                          | raw gestures. The migration aimed for ≤ 6; target 3                          |
 | nonDerivedRegions                                                                   | distinct region ids no registry stamps for free                              |
 | unstable                                                                            | {reason, until} escape hatches. CI fails once until has shipped              |
 | selectorActions · waitForSelectors · regionSelectors · clipSelectors · argSelectors | contract-0 debt. All zero since the conversion, and structurally unreachable |
@@ -230,12 +230,12 @@ Every number is a **ratchet**: it may fall, and raising one needs the same writt
 
 Whether the token is _allowed_ to approve runs on this repository is a settings fact no test can assert, so the step never fails the job. A refusal (a 403, a network fault) is logged as a `::warning::` and appended to the lane's PR comment as the one-line crank per held run, `gh api -X POST repos/jxsuite/jx/actions/runs/<id>/approve`, with the run ids filled in. If a PR reads BLOCKED after a re-capture and the comment carries that paragraph, that is the whole fix; if it carries nothing, the runs were approved and `ci` is simply still running.
 
-**CI never passes `--force`.** That flag is for a deliberate re-baseline (§13.4) and it works by skipping `writeIfChanged`, the pixel comparison that keeps committed screenshots from churning. In the lane it rewrote all 63 PNGs every run, and since Chromium does not re-encode a PNG byte-for-byte, ~28 files whose own report read `0.00% of pixels` were pushed as changes. Under `DIFF_THRESHOLD` those files are now kept, and `git diff` means what the lane needs it to mean.
+**CI never passes `--force`.** That flag is for a deliberate re-baseline (see [Usage](#usage)) and it works by skipping `writeIfChanged`, the pixel comparison that keeps committed screenshots from churning. In the lane it rewrote all 63 PNGs every run, and since Chromium does not re-encode a PNG byte-for-byte, ~28 files whose own report read `0.00% of pixels` were pushed as changes. Under `DIFF_THRESHOLD` those files are now kept, and `git diff` means what the lane needs it to mean.
 
 ## Authoring notes
 
-- **Deleting a shot is a first-class fix.** A screenshot of content the docs pipeline already generates is a bug. Every phase asks which shots it can delete before asking which it must re-author. 61 is not a target.
+- **Deleting a shot is a first-class fix.** A screenshot of content the docs pipeline already generates is a bug. Every change asks which shots it can delete before asking which it must re-author. 61 is not a target.
 - A shot may carry `"status": {"state": "quarantined", "reason": "…", "since": "<sha>"}`, marking a shot the repo **admits** is broken. The runner skips it and names it, Lane 1 reads past it (its ids are checked again the moment the quarantine is lifted, which is when someone is looking), and `docs:check` fails if any docs page still illustrates itself with its image. Quarantine keeps the definition, and therefore the diagnosis, instead of deleting the evidence.
 - Markdown pages show inline-edit placeholders in **design** view, so use `preview` for clean content shots, or a `.json` page for design-view shots with selections.
 - `--headed` keeps each page open 15s so you can see what the shot definition produced.
-- Every phase that renames a command id, a panel id or a region id fixes the manifest **in the same PR**, because Lane 1 is red until it does. Every phase that adds an async subsystem registers it with `probe.idle()`, because the reflex when a shot times out will be to re-add a sleep, and that is how this decays back to 73 seconds of them.
+- Every change that renames a command id, a panel id or a region id fixes the manifest **in the same PR**, because Lane 1 is red until it does. Every change that adds an async subsystem registers it with `probe.idle()`, because the reflex when a shot times out will be to re-add a sleep, and that is how this decays back to 73 seconds of them.

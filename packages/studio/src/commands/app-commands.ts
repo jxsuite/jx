@@ -8,12 +8,12 @@
  * process with no DOM and no bootstrap, and each looks for one export — `defaultCommandSet()`.
  *
  * Without this module those three checks see only `commands/defaults.ts`'s sixteen records, which
- * is why plan §13.5's headline promise was not yet true: a manifest step naming `view.setActivity`
- * with a panel id the registry does not declare sailed through Lane 1, because Lane 1 could not
- * load the record that declares the enum. Every module gathered below imports cleanly with no
- * `document` and no `localStorage` write, which is the ONLY property this file requires of them —
- * and the test beside it asserts exactly that, so a future DOM read at module scope fails here
- * rather than in CI.
+ * is why the screenshot gate's headline promise (`scripts/screenshots/README.md`, "The gate") was
+ * not yet true: a manifest step naming `view.setActivity` with a panel id the registry does not
+ * declare sailed through Lane 1, because Lane 1 could not load the record that declares the enum.
+ * Every module gathered below imports cleanly with no `document` and no `localStorage` write, which
+ * is the ONLY property this file requires of them — and the test beside it asserts exactly that, so
+ * a future DOM read at module scope fails here rather than in CI.
  *
  * **Deps are the no-op set.** Nothing here runs a command; the checks read `id`, `level`, `menus`
  * and `args`. Passing real implementations would mean importing the app.
@@ -136,7 +136,7 @@ export function appCommandSet(): AnyCommand[] {
     // And none reached the palette, because they were registered ONLY into the private registry
     // `editor/context-menu.ts` builds for its popover — a registry whose own docstring said it
     // Existed "until a bootstrap composes every contribution point into a single app-wide
-    // Registry". This is that bootstrap; it has existed since P2.
+    // Registry". This is that bootstrap; it has existed since the command registry landed.
     ...liveElementCommands(),
     ...dataExplorerCommands({ renderLeftPanel: NO_OP }),
     ...signalsCommands(),

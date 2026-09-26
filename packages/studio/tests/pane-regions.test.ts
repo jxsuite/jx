@@ -128,7 +128,7 @@ describe("the frame", () => {
 
 describe("uniqueness with two stages standing", () => {
   /*
-   * The highest-value assertion in the workstream, and until now it was true BY CONSTRUCTION.
+   * The highest-value assertion in the pane work, and until now it was true BY CONSTRUCTION.
    *
    * It stood up two divs and stamped them with ids it minted by calling `paneRegion(paneId, part)`
    * itself, so "every id resolves to one element" was a restatement of "`paneRegion` returns
@@ -138,9 +138,9 @@ describe("uniqueness with two stages standing", () => {
    * `inspector/field:${prop}/browse` on a control the Document Header card draws inside EVERY
    * pane's stage, and this file was green through all of it.
    *
-   * So the DOM comes from the app: the real pane grid builds the cells, the real context bar draws
-   * ⑦ and ⑩ into each, and the real Document Header card draws into each stage. Every id in the
-   * document is then one some renderer actually emitted.
+   * So the DOM comes from the app: the real pane grid builds the cells, the real pane chrome draws
+   * the context bar and the zoom pod into each, and the real Document Header card draws into each
+   * stage. Every id in the document is then one some renderer actually emitted.
    */
   const paneCtx = {
     exportFile: () => {},
@@ -344,7 +344,7 @@ describe("the singleton guard", () => {
   test("the third rule is the general one: stage geometry may not consult the focus", () => {
     /* `BANNED_VIEW_FIELDS` is a list of NAMES, and the pan/zoom scale was never one of them — it
        was injected into `canvas/canvas-utils.ts` as `getZoom`/`setZoomDirect`, both spelled
-       `activeTab.value`, so this checker was green through the whole of P8 while the unfocused
+       `activeTab.value`, so this checker was green through the pane work while the unfocused
        pane drew at the focused tab's scale. The rule that replaces the omission is "per-stage
        state is reached through a surface", and its mechanical form is that the geometry module
        does not read `activeTab`. The two allowed occurrences are the import and `requireTab`, in

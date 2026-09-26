@@ -41,7 +41,7 @@ import type { JxDocument } from "@jxsuite/schema/types";
 
 registerSurface("seo", seoDoc as unknown as JxDocument);
 
-/** How a field's provenance is drawn — §6.2's vocabulary, reduced to three shapes and an absence. */
+/** How a field's provenance is drawn — §6.7's vocabulary, reduced to three shapes and an absence. */
 export type SeoChipKind = "none" | "dot" | "static" | "link";
 
 /** One row of the resolved-field list: what reaches the browser, how long it is, where it came from. */
@@ -55,7 +55,7 @@ export interface SeoFieldView {
   unsetLabel: string;
   /** Whether anybody counts this field at all; `og:image` is a URL and nobody does. */
   counted: boolean;
-  /** The counter, already formatted: `61/60`. Never a total, and never a grade (§9.2, §14). */
+  /** The counter, already formatted: `61/60`. Never a total, and never a grade (§16.6). */
   count: string;
   /** Over its budget. Stated on the counter and named in the warning list — never summed. */
   over: boolean;

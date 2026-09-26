@@ -1,7 +1,7 @@
 /**
  * Boot with a panel id that MOVED DOCKS (src/shell.ts).
  *
- * The fourth boot case, and a different failure from `shell-boot-panel-migration`'s rename. §7.2
+ * The fourth boot case, and a different failure from `shell-boot-panel-migration`'s rename. §16.3
  * settled Problems into the Bottom dock, so `"problems"` is no longer a Navigator panel under any
  * name — there is nothing to alias it to. A build from before that correction can still have
  * written `leftTab: "problems"` to this machine, and the only honest outcome is the default panel:

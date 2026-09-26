@@ -17,7 +17,8 @@
  * - **Shadow** — the project has a real route the rule's source covers. On a host that serves static
  *   assets before consulting `_redirects` (Netlify, Cloudflare Pages) the page wins and the rule is
  *   dead config; in `dist/` the compiler's own meta-refresh file overwrites the page and warns
- *   (§11.1). Two hosts, two answers, and neither is what the author intended by writing both.
+ *   (site-architecture.md §11.1). Two hosts, two answers, and neither is what the author intended
+ *   by writing both.
  *
  * **What is deliberately NOT decided.** A destination containing `:param` or `*` is not followed:
  * its concrete target depends on the request, so calling it a chain would be a guess. Nothing is
@@ -67,7 +68,10 @@ export function normalizePath(path: string): string {
   return trimmed.length > 1 && trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
 }
 
-/** Whether a path is a URLPattern rather than a literal — `:param` or `*` (§11.2). */
+/**
+ * Whether a path is a URLPattern (site-architecture.md §11.2) rather than a literal — `:param` or
+ * `*`.
+ */
 export function isPattern(path: string): boolean {
   return path.includes(":") || path.includes("*");
 }
@@ -80,9 +84,10 @@ export function isExternal(path: string): boolean {
 /**
  * Whether `path` is covered by `pattern`.
  *
- * URLPattern-lite over pathname segments, which is all §11.2 uses: `:name` matches exactly one
- * non-empty segment and `*` matches the rest, including nothing. Enough to answer "does this rule
- * ever fire for that request", which is the only question chain, loop and shadow ask.
+ * URLPattern-lite over pathname segments, which is all site-architecture.md §11.2 uses: `:name`
+ * matches exactly one non-empty segment and `*` matches the rest, including nothing. Enough to
+ * answer "does this rule ever fire for that request", which is the only question chain, loop and
+ * shadow ask.
  */
 export function matchesPattern(pattern: string, path: string): boolean {
   const p = normalizePath(pattern).split("/");

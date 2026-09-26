@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The **Entry editor** — a content entry's fields, as a form, in a pane (§7.4, plan §9.2).
+ * The **Entry editor** (site-architecture.md §7.4): a content entry's fields, as a form, in a pane.
  *
  * Until now a markdown entry could be edited two ways and neither was its schema: the canvas edited
  * its BODY, and the Document Header card drew a field list from `panels/frontmatter-fields.ts`'s
@@ -179,7 +179,7 @@ function formContext(tab: Tab): SchemaFormContext {
  * Required fields this entry does not have.
  *
  * Deliberately keyed on ABSENCE, not emptiness. A seeded entry's `title: ""` is present and the
- * author has not done anything wrong yet, so §7.1 says not to paint it red; a required key that is
+ * author has not done anything wrong yet, so §16.5 says not to paint it red; a required key that is
  * missing from the file is a fact about the document, and saying so is the whole reason the form
  * knows the schema.
  */

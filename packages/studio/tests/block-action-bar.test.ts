@@ -384,8 +384,9 @@ describe("block action bar", () => {
   });
 
   test("the root selection keeps the bar's shape and disables what cannot act", async () => {
-    // §8.6 is normative: ONE shape. The bar used to drop the parent selector, the drag handle and
-    // Every verb at the root, so selecting the document rearranged the toolbar under the cursor.
+    // ONE shape is normative (studio-ui-guidelines.md §8.6). The bar used to drop the parent
+    // Selector, the drag handle and every verb at the root, so selecting the document rearranged
+    // The toolbar under the cursor.
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, []);
     await render();
     expect(printedOf(part("tag"))).toBe("div");
@@ -524,7 +525,7 @@ describe("block action bar", () => {
     expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "A"]);
   });
 
-  test("Delete on a multi-selection removes every one, in ONE undo step (§6.5)", async () => {
+  test("Delete on a multi-selection removes every one, in ONE undo step (§6.7)", async () => {
     const tab = setup(
       {
         children: [
@@ -849,11 +850,10 @@ describe("block action bar", () => {
     // Enabled buttons, so each hint is the text of the tip the button renders, not a title.
     const titles = [...group.querySelectorAll('[part="format-button"]')].map((b) => hintOf(b));
     /* The chord comes from the KEYMAP now, so it is formatted for the platform the test is running
-       on. This asserted the literal "Bold (Cmd+B)", which is the string
-       `data/elements-meta.json` hardcoded into every tooltip on every machine — the exact defect
-       plan §5.3 names ("one function formats chords, which kills the hardcoded ⌘P shown to Windows
-       and Linux users"). Asserting the formatter's own answer is what makes the tooltip provably
-       not a hardcoded one. */
+       on. This asserted the literal "Bold (Cmd+B)", which is the string `data/elements-meta.json`
+       hardcoded into every tooltip on every machine — the exact defect §13.3 names ("no template
+       may hardcode a glyph, or Windows and Linux users are shown shortcuts they do not have").
+       Asserting the formatter's own answer is what proves the tooltip is not a hardcoded one. */
     const chord = selectionCommandRegistry().keymap.formatBinding("format.bold");
     expect(titles).toContain(`Bold (${chord})`);
     // A verb with no chord prints its bare name — not an empty pair of brackets.
@@ -1114,7 +1114,7 @@ describe("block action bar", () => {
       ]);
     });
 
-    test("selection level, caret scope — the case §5.1 uses to justify two fields", async () => {
+    test("selection level, caret scope — the case §13.2 uses to justify two fields", async () => {
       for (const command of formatCommands()) {
         expect(command.level).toBe("selection");
         expect(command.keyScope).toBe("caret");

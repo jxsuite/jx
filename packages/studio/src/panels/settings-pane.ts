@@ -6,7 +6,7 @@
  * two-column shape the modal had, because the modal's IA was never the problem — its MODALITY was.
  * Moving the identical layout into `#canvas-wrap` is what makes the seven screenshot crops change
  * frame (`overlay.dialog:settings` → `pane.primary`) without one manifest STEP changing, which is
- * §13.7's proof that the command boundary was drawn in the right place.
+ * the proof that the command boundary was drawn in the right place.
  *
  * **This file is the FLOW; the markup is a document.** `surfaces/settings-pane.json` owns the two
  * columns, the list's ARIA and keyboard, and every value in their style;
@@ -74,8 +74,8 @@ interface ActiveSettingsPane {
    * section rendering into that same element throws on a part whose markers have left the document.
    * It fails the other way too: lit renders BESIDE foreign nodes rather than replacing them, so a
    * lit section drawn after a document one left both on screen at once. A fresh host per section is
-   * what makes the two kinds coexist, which is the whole of §9.3's surface-level rule applied to
-   * one dispatcher.
+   * what makes the two kinds coexist, which is the whole of `studio-ui-guidelines.md` §9.3's
+   * surface-level rule applied to one dispatcher.
    */
   sectionHost: HTMLElement | null;
   /** The section the body currently holds, so an idle re-render does not rebuild it. */

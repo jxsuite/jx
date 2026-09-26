@@ -194,7 +194,7 @@
       }
     },
     "& [part=\"chip\"]": {
-      "$description": "The provenance vocabulary of `panels/provenance.ts` §6.2, drawn by this document rather than borrowed as a class: `set` keeps the accent dot it has always been, `inherited` is an amber pill naming its donor, and a field nothing supplies gets no chip at all — because a ghost dot on every unset row says less than silence. The two chips that can go somewhere are `<button>`s; the ones with nowhere to go are not, which is §6.2's rule that a control which looks pressable and does nothing is a defect.",
+      "$description": "The provenance vocabulary of `panels/provenance.ts` (§6.7), drawn by this document rather than borrowed as a class: `set` keeps the accent dot it has always been, `inherited` is an amber pill naming its donor, and a field nothing supplies gets no chip at all — because a ghost dot on every unset row says less than silence. The two chips that can go somewhere are `<button>`s; the ones with nowhere to go are not, which is §6.7's rule that a control which looks pressable and does nothing is a defect.",
       "flexShrink": "0"
     },
     "& jx-dot[part=\"chip\"][data-state=\"set\"]": {

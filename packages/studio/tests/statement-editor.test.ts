@@ -1,6 +1,6 @@
-// oxlint-disable unicorn/no-thenable -- `then` is the JSON Schema conditional keyword (spec §20), not a promise
+// oxlint-disable unicorn/no-thenable -- `then` is the JSON Schema conditional keyword (spec.md §20), not a promise
 /**
- * Tests for the statement editor (spec §20): `src/panels/statement-editor.ts`, the flow, and
+ * Tests for the statement editor (spec.md §20): `src/panels/statement-editor.ts`, the flow, and
  * `src/surfaces/statements.json`, the document it mounts.
  *
  * Everything is addressed by `part`, by `data-prop`, by `data-stmt-*` and by region, because the
@@ -369,7 +369,8 @@ describe("the document draws the four kinds", () => {
     const m = await mount([{ operator: "=", target: { $ref: "#/state/count" }, value: 1 }]);
     const host = cards(m.host)[0]!.querySelector('[part="control-host"]') as HTMLElement;
     expect(host).toBeTruthy();
-    // The document renders the host node and NOTHING inside it; the flow fills it (§9.4).
+    // The document renders the host node and NOTHING inside it; the flow fills it
+    // (studio-ui-guidelines.md §9.4).
     expect(host.dataset.field).toBe("[]#0::expression");
     expect(host.querySelector('[part="expression"]')).toBeTruthy();
   });
@@ -467,7 +468,7 @@ describe("add statement", () => {
     ["if", { if: { operator: "===", target: { $ref: "" }, value: null }, then: [] }],
     ["switch", { $switch: { $ref: "" }, cases: {} }],
     ["dispatch", { dispatchEvent: "" }],
-  ])("appends the %s seed (spec §20 shape)", async (kind, seed) => {
+  ])("appends the %s seed (spec.md §20 shape)", async (kind, seed) => {
     const existing: JxStatement[] = [{ dispatchEvent: "first" }];
     const m = await mount(existing);
     addStatement(m, 0, kind as string);

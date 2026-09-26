@@ -789,7 +789,7 @@ export type CanvasMode = (typeof CANVAS_MODES)[number];
 /** The base modes the preview flag composes with — the two the Canvas view axis shows it beside. */
 const PREVIEWABLE_BASE_MODES = new Set(["edit", "design"]);
 
-// ─── §4.2 axis 2 — the Canvas view ───────────────────────────────────────────
+// ─── The Canvas view (§4.2) ──────────────────────────────────────────────────
 // `Edit │ Design` is a radio and `Preview` is a TOGGLE beside it, because that is what the storage
 // Has always been: `preview` is not a base mode, it is a flag that composes with one.
 //
@@ -826,8 +826,9 @@ interface ViewableTab {
 /**
  * The views this document supports, in axis order — the control's entries.
  *
- * Filtered by `capabilities.modes` for the same reason the editor-kind dropdown is (§4.2): a
- * permanently dead segment is a question the app refuses to answer.
+ * Filtered by `capabilities.modes` for the same reason the Editor control is (the pane context bar,
+ * `docs/studio/interface/tabs.md`): a permanently dead segment is a question the app refuses to
+ * answer.
  */
 export function canvasViewsFor(tab: ViewableTab): CanvasView[] {
   return CANVAS_VIEWS.filter((value) => tab.capabilities.modes.includes(value));
@@ -937,16 +938,16 @@ const PANZOOM_MODES = new Set(["design", "stylebook", "git-diff"]);
 
 const documentOpen = (ctx: { document: { open: boolean } }) => ctx.document.open;
 
-/** The three values `session.ui.previewColorScheme` may hold (spec §9.5). */
+/** The three values `session.ui.previewColorScheme` may hold (spec.md §9.5). */
 const COLOR_SCHEMES = ["auto", "light", "dark"] as const;
 
 /**
  * The canvas view verbs — `setMode`, `setZoom`, `setEditZoom`.
  *
- * **These are the setters that retire `canvas.togglePreview`** (plan §13.3 clause 3). A toggle
- * cannot say which state it ends in, so six screenshots taken through it photographed whichever way
- * the default happened to point that week; `canvas.setMode { mode: "preview" }` means the same
- * thing twice in a row and from any starting state.
+ * **These are the setters that retire `canvas.togglePreview`** (the idempotence rule, §13.5). A
+ * toggle cannot say which state it ends in, so six screenshots taken through it photographed
+ * whichever way the default happened to point that week; `canvas.setMode { mode: "preview" }` means
+ * the same thing twice in a row and from any starting state.
  *
  * Three refusals, each a wrong picture that used to be accepted silently:
  *
@@ -1025,13 +1026,14 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       requires: "an open document",
       when: documentOpen,
       /*
-       * Projected, and it was deleted once under §12.4's first rule (chrome). The rule is about a
-       * verb whose WHOLE effect is what the person is looking at, and this one's is not: the tree
-       * tools are gated on `editor.kind`, which is derived from the mode (`editorKindForMode`), so
-       * a document the person left in Code — or the model itself moved — refuses every tree write
-       * with "requires an open document whose element tree the canvas is editing", and without this
-       * verb the model had no way back to a state it can read. `run` acts on the active tab and
-       * the model reads the result: `after.editor.kind` is the same fact the gate reads.
+       * Projected, and it was deleted once under studio-ui-guidelines.md §12.4's first rule
+       * (chrome). The rule is about a verb whose WHOLE effect is what the person is looking at, and
+       * this one's is not: the tree tools are gated on `editor.kind`, which is derived from the
+       * mode (`editorKindForMode`), so a document the person left in Code — or the model itself
+       * moved — refuses every tree write with "requires an open document whose element tree the
+       * canvas is editing", and without this verb the model had no way back to a state it can
+       * read. `run` acts on the active tab and the model reads the result: `after.editor.kind` is
+       * the same fact the gate reads.
        */
       aiTool: {
         description:
@@ -1210,7 +1212,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Edit Width",
     },
     /*
-     * ── The rendering context (§4.2's control ③) ──────────────────────────────────────────────
+     * ── The rendering context (§6.2) ──────────────────────────────────────────────────────────
      *
      * Three setters for the three axes the Context popover offers. The popover wrote
      * `session.ui.activeMedia` / `previewColorScheme` / `showLayout` through `updateUi` directly, so
@@ -1218,11 +1220,11 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
      * assistant, and not bindable — in a design whose first principle is that a capability exists
      * as a `Command` record and every surface projects it.
      *
-     * SETTERS, not cycles. §5.3's keymap declares `⌘⌥↑`/`⌘⌥↓` and `⌘⌥⇧S` to cycle the size and
-     * scheme axes, and a chord carries no argument, so those chords need `next`/`prev` records of
-     * their own — a delta each, which is what §13's R1 forbids a screenshot from naming. Naming the
-     * state you end in works from every surface; the chords are a separate decision and are not
-     * made here.
+     * SETTERS, not cycles. The cycle chords once proposed for the size and scheme axes
+     * (`⌘⌥↑`/`⌘⌥↓`, `⌘⌥⇧S`) carry no argument, so they would need `next`/`prev` records of their
+     * own — a delta each, which the shot contract's R1 (`scripts/screenshots/README.md`) forbids a
+     * screenshot from naming. Naming the state you end in works from every surface; the chords are
+     * a separate decision and are not made here (§6.2).
      */
     {
       args: {
@@ -1302,12 +1304,13 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
      * The language a pane RENDERS AS — and only that.
      *
      * Jx has no message catalogue: a translation is a different file in a different directory
-     * (site-architecture §13.3), so "show this page in French" is a navigation and the locale
+     * (site-architecture.md §13.3), so "show this page in French" is a navigation and the locale
      * preset owns it. What is left over is genuinely a rendering context, and it is the half of
-     * §13.4 the canvas can show today: the artboard root's `lang` and `dir`. That is why this is a
-     * verb and not a label — an RTL locale mirrors the layout on screen. (§13.4's other half,
-     * `$page.locale` in the rendered state, is injected by the compiler and not by the canvas's
-     * `substitutePreviewParams`; previewing it is a separate change to the render path.)
+     * site-architecture.md §13.4 the canvas can show today: the artboard root's `lang` and `dir`.
+     * That is why this is a verb and not a label — an RTL locale mirrors the layout on screen.
+     * (That section's other half, `$page.locale` in the rendered state, is injected by the
+     * compiler and not by the canvas's `substitutePreviewParams`; previewing it is a separate
+     * change to the render path.)
      *
      * It lives in this file rather than in `i18n/i18n-commands.ts` because `contextTab`, `paneArg`
      * and `repaint` are local closures here, and every rendering-context verb needs all three: the
@@ -1514,9 +1517,10 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       when: documentOpen,
       /*
        * The route params and component test props live in a popover now, and a transient surface
-       * opens by COMMAND rather than by clicking (plan §13.2) — otherwise the one shot that types a
-       * test value would need a CSS selector to reach it, which §13's contract forbids outright.
-       * The pointer and the camera use the same door.
+       * opens by COMMAND rather than by clicking (§6.2) — otherwise the one shot that types a test
+       * value would need a CSS selector to reach it, which the shot contract
+       * (`scripts/screenshots/README.md`) forbids outright. The pointer and the camera use the same
+       * door.
        */
       run: (_commandCtx, args) => {
         // Resolve the tab first, so a pane with no document refuses before anything opens.

@@ -2,7 +2,7 @@
  * Tab strip — disambiguated labels, the overflow chevron, and the drill-in relationship marker.
  *
  * The plain tab-strip behaviours (activation, dirty dot, close flow, wheel scrolling) live in
- * tab-strip.test.ts; this file covers what P2 added.
+ * tab-strip.test.ts; this file covers the rest (§14.2, §14.4).
  */
 import { flush } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -225,7 +225,7 @@ describe("overflow chevron", () => {
     await flush();
     const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     expect(chevron).not.toBeNull();
-    // ONE accessible name: `title` alone, with the glyph aria-hidden (guidelines §10).
+    // ONE accessible name: `title` alone, with the glyph aria-hidden (studio-ui-guidelines.md §10).
     expect(chevron.getAttribute("title")).toBe("Show hidden tabs");
     expect(chevron.getAttribute("aria-label")).toBeNull();
     expect(chevron.querySelector("[aria-hidden]")!.textContent!.trim()).toBe("⌄");

@@ -148,7 +148,8 @@ export function mountElementsSurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all there is to wait for: the DOCUMENT is
      what this surface renders, and the kit elements inside it settle their own templates one
-     `connectedCallback` later without anybody asking them to (§1.1, "await the element"). */
+     `connectedCallback` later without anybody asking them to (studio-ui-guidelines.md §1.1,
+     "await the element"). */
   const ready = mountSurface("panel-elements", scope, container).then((surface) => {
     if (disposed) {
       surface.dispose();

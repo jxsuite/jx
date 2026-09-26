@@ -1,12 +1,12 @@
 /**
  * `canvas.setMode`'s projection, `set_canvas_mode` (issue 334, item 4).
  *
- * The record was deleted from the projection under §12.4's first rule (chrome), which left the
- * model with no way back to the canvas once a document sat in Code view — the tree tools are gated
- * on `editor.kind`, and the mode is what `editor.kind` is derived from. So the rule's premise did
- * not hold: the verb's effect is not only what the person is looking at. `run` acts on the active
- * tab, and the report names the mode and whether the tree tools reach it, from `after.editor.kind`
- * — the same read the gate makes, so the two cannot disagree.
+ * The record was deleted from the projection under studio-ui-guidelines.md §12.4's first rule
+ * (chrome), which left the model with no way back to the canvas once a document sat in Code view —
+ * the tree tools are gated on `editor.kind`, and the mode is what `editor.kind` is derived from. So
+ * the rule's premise did not hold: the verb's effect is not only what the person is looking at.
+ * `run` acts on the active tab, and the report names the mode and whether the tree tools reach it,
+ * from `after.editor.kind` — the same read the gate makes, so the two cannot disagree.
  */
 import { resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";

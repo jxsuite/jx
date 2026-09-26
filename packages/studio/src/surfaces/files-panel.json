@@ -17,7 +17,7 @@
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
     "& [part=\"empty\"]": {
-      "$description": "The two states that are not a tree. They are two states and not one sentence: a window with no project at all and a monorepo root that has not been pointed at a site are different situations, and only the second has anything to offer (§11).",
+      "$description": "The two states that are not a tree. They are two states and not one sentence: a window with no project at all and a monorepo root that has not been pointed at a site are different situations, and only the second has anything to offer (studio-ui-guidelines.md §11).",
       "padding": "var(--jx-space-6)",
       "textAlign": "center",
       "color": "var(--fg-dim)",
@@ -166,7 +166,7 @@
                     "value": []
                   }
                 ],
-                "description": "The declared `project.open` command, run through the registry — not a second opener of this surface's own. It is the one the chord, the palette and the status bar's PROJECT field already run, so a window that opens a project from here reports the outcome the same way they do (§12.5)."
+                "description": "The declared `project.open` command, run through the registry — not a second opener of this surface's own. It is the one the chord, the palette and the status bar's PROJECT field already run, so a window that opens a project from here reports the outcome the same way they do (studio-ui-guidelines.md §12.5)."
               },
               "children": [
                 {

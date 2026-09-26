@@ -185,7 +185,7 @@ describe("a JSON tab carries its file's layout", () => {
    * THE COLLAB PARSER. `src/studio.ts` hands `parseCollabSource` to the source reconciler, which
    * feeds it a peer's shared text and puts the document it returns into the structure tree. For a
    * JSON file the text a peer typed is also the layout this client will save in, so the parser
-   * writes the record onto the tab as it parses — spec §9.4's "a collaborator's shared text".
+   * writes the record onto the tab as it parses — studio.md §9.4's "a collaborator's shared text".
    */
   test("the collab parser records a peer's JSON text's layout on the tab", async () => {
     installPlatform({});

@@ -1,11 +1,11 @@
 /**
  * Reference.ts — the registry, projected into the two generated documentation pages.
  *
- * Plan §12 P3 lists `docs/studio/interface/shortcuts.md` and a new
- * `docs/studio/interface/commands.md` as **generated from the registry at build time**, which is
- * the last of §5.5's seven derivations: with the chrome, the keymap, the palette, the menus and the
- * automation surface all rendering the same records, a hand-maintained shortcut sheet is the only
- * place left for the app's keyboard and its documentation to disagree.
+ * `docs/studio/interface/shortcuts.md` and `docs/studio/interface/commands.md` are **generated from
+ * the registry at build time**, the last of the renderings §13 derives from it: with the chrome,
+ * the keymap, the palette, the menus and the automation surface all rendering the same records, a
+ * hand-maintained shortcut sheet is the only place left for the app's keyboard and its
+ * documentation to disagree.
  *
  * This module is the projection, not the generator. It takes a command set — `appCommandSet()`, the
  * one bare-Bun-importable export the three CI checks already load — and returns ROWS plus the

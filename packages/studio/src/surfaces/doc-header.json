@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioDocHeader",
-  "$description": "The Document Header card (§3.2 ⑧) — the artefact's own header, drawn IN the stage, once per pane. A bar naming the collection and the page's route, a column of rows, the door to Search appearance and a disclosure listing the raw head tags. ONE row vocabulary: Title, the Layout picker and every schema-driven frontmatter field are the same `row`, discriminated by `kind`, because they differ in what they COMMIT rather than in what they look like — and what they commit is `panels/frontmatter-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a content collection is, which document it is drawing, or that a page has a route: the flow hands over rows whose every field is already a string and this draws them.",
+  "$description": "The Document Header card (`docs/studio/editing/frontmatter.md`) — the artefact's own header, drawn IN the stage, once per pane. A bar naming the collection and the page's route, a column of rows, the door to Search appearance and a disclosure listing the raw head tags. ONE row vocabulary: Title, the Layout picker and every schema-driven frontmatter field are the same `row`, discriminated by `kind`, because they differ in what they COMMIT rather than in what they look like — and what they commit is `panels/frontmatter-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a content collection is, which document it is drawing, or that a page has a route: the flow hands over rows whose every field is already a string and this draws them.",
   "tagName": "section",
   "attributes": {
     "part": "card",
@@ -48,7 +48,7 @@
       "gap": "2px"
     },
     "& [part=\"row\"]": {
-      "$description": "§4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest at a narrow stage (§4.6) — a field refuses to shrink below its own min-content without it, and the card is drawn inside a pane that can be half a window wide.",
+      "$description": "studio-ui-guidelines.md §4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest at a narrow stage (studio-ui-guidelines.md §4.6) — a field refuses to shrink below its own min-content without it, and the card is drawn inside a pane that can be half a window wide.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "stretch",
@@ -64,7 +64,7 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"chip\"]": {
-      "$description": "§4.2's set dot: a 6px accent dot, drawn only where the value is set here, that clears the value when it is pressed. It is a real `button` — it is pressable, and it is the row's only keyboard route to clearing — stripped of the chrome a button brings with it so the row still reads as a label with a dot beside it.",
+      "$description": "studio-ui-guidelines.md §4.2's set dot: a 6px accent dot, drawn only where the value is set here, that clears the value when it is pressed. It is a real `button` — it is pressable, and it is the row's only keyboard route to clearing — stripped of the chrome a button brings with it so the row still reads as a label with a dot beside it.",
       "width": "6px",
       "height": "6px",
       "padding": "0",

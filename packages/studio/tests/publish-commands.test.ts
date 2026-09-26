@@ -82,8 +82,9 @@ describe("the records", () => {
   });
 
   test("all three are hidden with no project, and all three appear with one", () => {
-    // §9.5's "always reachable": with a project open the family is VISIBLE even when it cannot
-    // Run, so the palette states the requirement instead of the row silently not existing.
+    // "Always listed" (docs/studio/publish.md): with a project open the family is VISIBLE even
+    // When it cannot run, so the palette states the requirement instead of the row silently not
+    // Existing.
     const open = makeContext({ project: { open: true } });
     for (const record of publishCommands()) {
       expect(record.when!(emptyContext())).toBe(false);

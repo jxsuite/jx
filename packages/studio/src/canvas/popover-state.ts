@@ -117,7 +117,7 @@ export function ensurePopoverRevealWatch(): () => void {
       const tab = activeTab.value;
       /* TRACKED: the selection, and the document its paths resolve against. Those are what the
          rule depends on, and a selection move is the only thing that should fire it. The whole
-         SET is read joined, for the reason §6.5 gives: a bare property read would not re-trigger
+         SET is read joined, for the reason §6.7 gives: a bare property read would not re-trigger
          when the selection changes within the array. */
       void tab?.session.selection.map((path) => path.join("/")).join("|");
       void tab?.doc.document;

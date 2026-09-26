@@ -113,7 +113,7 @@
       "overflowWrap": "anywhere"
     },
     "& [part=\"file-path\"]": {
-      "$description": "The path is a control, not a label: it opens the file the problem is about, which is the click-through §7.1 asks for. Underlined on hover only — a permanently underlined path in a dense list reads as a paragraph of links. A plain button rather than a `jx-button`, for the reason the status bar's items are: what it has to look like is a line of text, and every fill, border and control height the kit draws would have to be taken back off again. Named `file-path` and not `path` because `jx-icon` puts `part=\"path\"` on the `<path>` of every glyph it draws, so `[part=\"path\"]` inside a row selects this button and both SVG paths beside it — a styling rule that reaches into the kit's own drawing, and a test or a devtools query that cannot tell them apart.",
+      "$description": "The path is a control, not a label: it opens the file the problem is about, which is the click-through §16.1 asks for. Underlined on hover only — a permanently underlined path in a dense list reads as a paragraph of links. A plain button rather than a `jx-button`, for the reason the status bar's items are: what it has to look like is a line of text, and every fill, border and control height the kit draws would have to be taken back off again. Named `file-path` and not `path` because `jx-icon` puts `part=\"path\"` on the `<path>` of every glyph it draws, so `[part=\"path\"]` inside a row selects this button and both SVG paths beside it — a styling rule that reaches into the kit's own drawing, and a test or a devtools query that cannot tell them apart.",
       "alignSelf": "flex-start",
       "maxWidth": "100%",
       "overflow": "hidden",
@@ -171,7 +171,7 @@
       "flex": "none"
     },
     "& [part=\"empty\"]": {
-      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template, and a document cannot call one. What is kept is the pattern's rules (§11) — one sentence saying what the region is FOR, then where its content comes from. It offers no action, because the action that fills this region is a failure and nothing here should invite one.",
+      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template, and a document cannot call one. What is kept is the pattern's rules (studio-ui-guidelines.md §11) — one sentence saying what the region is FOR, then where its content comes from. It offers no action, because the action that fills this region is a failure and nothing here should invite one.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "center",

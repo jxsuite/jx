@@ -5,13 +5,13 @@
  * It used to take over the canvas: `renderFunctionEditor` cleared `canvasWrap`, dropped every
  * canvas panel and mounted Monaco over the stage, so the page whose handler you were writing was
  * the one thing you could not see while writing it. It is a surface of the Bottom dock's **Logic**
- * tab now (plan §12 P8.5); `panels/formula-workspace.ts` owns that tab's record and calls the two
- * exports below — {@link syncFunctionEditor} from the panel's `afterRender`, and
+ * tab now (§16.3); `panels/formula-workspace.ts` owns that tab's record and calls the two exports
+ * below — {@link syncFunctionEditor} from the panel's `afterRender`, and
  * {@link closeFunctionEditor} for its Close. The container is no longer one of them: the Logic tab
  * is a Jx document (`surfaces/logic-workspace.json`) and it draws the empty
- * {@link CODE_HOST_SELECTOR} node itself, which is what an island is (studio-ui-guidelines.md
- * §9.4). The canvas keeps rendering the page underneath the dock; `canvas/canvas-render.ts` no
- * longer knows this surface exists.
+ * {@link CODE_HOST_SELECTOR} node itself: an island, as studio-ui-guidelines.md §9.4 defines one.
+ * The canvas keeps rendering the page underneath the dock; `canvas/canvas-render.ts` no longer
+ * knows this surface exists.
  *
  * **The mount is driven by the DOM, not by a render call.** A dock tab's body is re-rendered
  * whenever anything it reads changes, and a repaint will happily replace the container element out
@@ -178,9 +178,9 @@ export function syncFunctionEditor(host: HTMLElement): void {
  *   work was the one that destroyed it.
  *
  * The takeover never saw this because it was torn down by exactly one thing (closing it, which
- * happened to be slower than the debounce). A dock tab is torn down by five, four of them new in
- * P8. Handling it here rather than guarding inside each callback is deliberate: a guard on "is this
- * still the current editor?" is passed by a timer that fires after a REMOUNT.
+ * happened to be slower than the debounce). A dock tab is torn down by five, four of them new with
+ * the pane grid (§18). Handling it here rather than guarding inside each callback is deliberate: a
+ * guard on "is this still the current editor?" is passed by a timer that fires after a REMOUNT.
  *
  * **But cancelling alone is the same loss with the alarm switched off.** The armed commit IS the
  * last half-second of typing; dropping it means the pre-typing body survives instead of an empty

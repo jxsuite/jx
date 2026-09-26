@@ -566,7 +566,7 @@ const LOOPT = inSuite("loopt", [
     },
   },
   {
-    name: "a run that hit the round cap AFTER applying changes is not an error (§7.4)",
+    name: "a run that hit the round cap AFTER applying changes is not an error (ai.md §3.2)",
     async run(rec) {
       const tab = makeTab();
       const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
@@ -1918,7 +1918,7 @@ const LOOPT_MIRRORED = [
   "records the provider's usage count on the chat state",
   "sends no empty assistant turn, and replays the reasoning it was given",
   "feeds schema errors back so the model can self-correct",
-  "a run that hit the round cap AFTER applying changes is not an error (§7.4)",
+  "a run that hit the round cap AFTER applying changes is not an error (ai.md §3.2)",
   "surfaces an upstream stream error and stops",
   "summarizes accumulated tool errors (and ignores unknown events) at the round cap",
   "reports a tool call whose arguments are malformed JSON",

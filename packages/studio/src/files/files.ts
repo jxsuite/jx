@@ -379,10 +379,10 @@ export async function openHomePage() {
 /**
  * Reopen the documents this project was last left with, or its home page if there are none.
  *
- * Plan §4.4, and P3's "Newly possible": **the session survives a relaunch.** Every one of the three
- * ways into a project — the `?project=` bootstrap, the PAL picker and a recent-project open — ended
- * at `openHomePage()`, so nine open documents, a split and the mode you were in were lost each
- * time. The per-project record's own interface said "session state grows into this shape".
+ * §14.8: **the session survives a relaunch.** Every one of the three ways into a project — the
+ * `?project=` bootstrap, the PAL picker and a recent-project open — ended at `openHomePage()`, so
+ * nine open documents, a split and the mode you were in were lost each time. The per-project
+ * record's own interface said "session state grows into this shape".
  *
  * ONE function for all three, because the three used to be three calls to `openHomePage` and this
  * is exactly the kind of behaviour that lands on two of them.
@@ -538,10 +538,10 @@ let _fileList: HTMLElement | null = null;
 /**
  * Every DRAWN row's element, by path.
  *
- * Held rather than queried, which is the §9.4 rule and, for a windowed list, the only correct
- * answer: the nodes are re-used for different files as the window slides, so a selector run a frame
- * later resolves to whichever file is standing there now. Entries whose element has left the
- * document are swept on the next projection.
+ * Held rather than queried, which is the studio-ui-guidelines.md §9.4 rule and, for a windowed
+ * list, the only correct answer: the nodes are re-used for different files as the window slides, so
+ * a selector run a frame later resolves to whichever file is standing there now. Entries whose
+ * element has left the document are swept on the next projection.
  */
 const _fileRowEls = new Map<string, HTMLElement>();
 /** The scroll watch that repaints the tree as its scroller moves. */
@@ -1668,9 +1668,9 @@ function fileMenuRows(entry: { name: string; path: string; type: string }): Menu
  *
  * The KIT menu, not a popover of this module's own: `openMenu()` owns the panel, the roving focus,
  * the typeahead, the light dismissal and Escape, and it is the answer this shell already settled on
- * (§8.4). What went with the `sp-popover` it replaces is the hand-written clamp — a `ref` that
- * measured the panel a frame after it opened and moved it back inside the viewport — because the
- * kit does that for every menu instead of this one doing it for itself.
+ * (studio-ui-guidelines.md §8.4). What went with the `sp-popover` it replaces is the hand-written
+ * clamp — a `ref` that measured the panel a frame after it opened and moved it back inside the
+ * viewport — because the kit does that for every menu instead of this one doing it for itself.
  */
 function showFileContextMenu(path: string, x: number, y: number): void {
   const row = fileRowAt(path);
@@ -2235,7 +2235,10 @@ async function deleteFile(
 export interface OpenFileOpts {
   /** Which pane. Defaults to the focused one. */
   paneId?: string;
-  /** Open as a disposable preview tab (§4.3) — browsing rather than committing. */
+  /**
+   * Open as a disposable preview tab — browsing rather than committing
+   * (`docs/studio/interface/tabs.md#preview-and-pinned-documents`).
+   */
   preview?: boolean;
   /** False leaves the keyboard where it is. Defaults to true. */
   focus?: boolean;
@@ -2489,7 +2492,7 @@ export async function reloadFileInTab(path: string) {
  * Contribute the Files panel.
  *
  * `level: "project"` because it WRITES project files — create, rename, delete, move. It reads the
- * focused document only to highlight a row, and principle 3 files a surface by what it writes.
+ * focused document only to highlight a row, and §13.2 files a surface by what it writes.
  */
 export function registerFilesPanel(): void {
   registerPanel({
@@ -2520,8 +2523,9 @@ const FILE_ACTIONS: FilesPanelActions = {
   },
   openProject: () => {
     /* The DECLARED command, run through the registry — never a second opener of this surface's own
-       (§12.5). It is the one the ⌘O chord, the palette and the status bar's PROJECT field already
-       run, and it is the only one that knows about the picker modal and the "new window" target. */
+       (studio-ui-guidelines.md §12.5). It is the one the ⌘O chord, the palette and the status
+       bar's PROJECT field already run, and it is the only one that knows about the picker modal
+       and the "new window" target. */
     void runActiveReported("project.open", undefined, "Files");
   },
   refresh: () => {

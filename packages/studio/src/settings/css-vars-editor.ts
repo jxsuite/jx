@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The design-token editor — the token half of **Project Styles** (plan §9.4).
+ * The design-token editor — the token half of **Project Styles** (§7.1).
  *
  * Every token in the project's root `style` block, grouped by what it names, each editable in place
  * and each able to carry a different value in any **rendering context** the project declares. The
@@ -17,8 +17,8 @@
  * Three things it does NOT do, each on purpose:
  *
  * - **It does not define a context.** Breakpoints and colour schemes are declared once, in Project
- *   Settings › Contexts, and this level only overrides against them (§2 principle 5). Where nothing
- *   is declared it says so and routes there.
+ *   Settings › Contexts, and this level only overrides against them (§6.2). Where nothing is
+ *   declared it says so and routes there.
  * - **It does not change the file format.** Overrides are the same `"@--ctx": { "--token": … }`
  *   blocks the compiler already reads, and an emptied block is removed rather than left behind.
  * - **It does not re-render the canvas.** An edit is pushed to every live canvas in place through
@@ -272,8 +272,9 @@ function view(container: HTMLElement): CssVarsView {
   const hasScheme = declared.some((context) => context.kind === "scheme");
   const groups: GroupView[] = [];
   for (const { group, tokens } of groupTokens(rootStyle)) {
-    /* A bucket named "Other" over an empty list teaches nothing (§2 principle 6). Every other
-       group keeps its heading and its add row, because an empty one is where a palette starts. */
+    /* A bucket named "Other" over an empty list teaches nothing (`studio-ui-guidelines.md` §11.1).
+       Every other group keeps its heading and its add row, because an empty one is where a palette
+       starts. */
     if (group.id === "other" && tokens.length === 0) {
       continue;
     }

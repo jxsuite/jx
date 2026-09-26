@@ -1,5 +1,5 @@
 /**
- * The block action bar as a RENDERING of the command registry (plan §3.2 ⑩, §5.5).
+ * The block action bar as a RENDERING of the command registry (§4.4, §13).
  *
  * `tests/block-action-bar.test.ts` covers the bar's own machinery — positioning, the format group,
  * the link popover, the bridge. This file covers what the registry decides for it: which verbs are
@@ -296,9 +296,9 @@ describe("the verb cluster", () => {
     press(bar().querySelector('[part="overflow"]'));
     await flush(3);
 
-    /* The kit menu, not a second list of this surface's own (§12.5): the rows are `jx-menu-item`s
-       and every fact on one — the chord, the refusal, the danger colour — is drawn by the element
-       from the record's own projection. */
+    /* The kit menu, not a second list of this surface's own (studio-ui-guidelines.md §12.5): the
+       rows are `jx-menu-item`s and every fact on one — the chord, the refusal, the danger colour —
+       is drawn by the element from the record's own projection. */
     const rows = menuRows();
     expect(rows.map((r) => r.dataset.commandId)).toEqual(["test.six", "test.seven"]);
     // Whatever the keymap formats — the surface prints it and does not restyle it.

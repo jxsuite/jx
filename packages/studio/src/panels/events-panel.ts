@@ -3,11 +3,11 @@
  * The Logic tab — everything about how this element BEHAVES. The FLOW behind the `logic-panel`
  * surface.
  *
- * Plan §6.5 re-split the inspector by task rather than by data type, and this is the tab that
- * gained by it. Wiring a `$switch`, wiring a repeater to a collection and wiring a click handler
- * are one job; they were three, split across two tabs, because a `$switch` is stored as a property
- * and a click handler is stored as a property-shaped function, and the old split followed the
- * storage. So Logic is now:
+ * The inspector is split by task rather than by data type (§6), and this is the tab that gained by
+ * it. Wiring a `$switch`, wiring a repeater to a collection and wiring a click handler are one job;
+ * they were three, split across two tabs, because a `$switch` is stored as a property and a click
+ * handler is stored as a property-shaped function, and the old split followed the storage. So Logic
+ * is now:
  *
  * - **Repeating list** — the `$prototype: "Array"` node's items / filter / sort, and its template.
  * - **Condition** — the `$switch` expression and its cases.
@@ -28,8 +28,9 @@
  * Three things the conversion settled, and each was a defect rather than a translation:
  *
  * - **A binding had two controls that did the same thing.** The provenance chip cleared the key and
- *   the trash button beside it cleared the same key. §12.5 calls a second list of actions a defect;
- *   there is one control now, and it carries the dot that says whether the selection agrees.
+ *   the trash button beside it cleared the same key. studio-ui-guidelines.md §12.5 calls a second
+ *   list of actions a defect; there is one control now, and it carries the dot that says whether
+ *   the selection agrees.
  * - **The sections would not stay shut.** Repeating list, Condition and Events were rendered with a
  *   hard-coded `open`, so collapsing one lasted until the next repaint. They persist through
  *   `inspectorSections` like every other section in the dock.
@@ -114,9 +115,9 @@ import type {
  * The events worth SUGGESTING — not the events an element may have.
  *
  * These ten were a closed `sp-picker`, so `ondragover`, `onpointerdown`, `onwheel`, `onpaste` and
- * every custom event a component emits were unbindable from the Inspector: the plan's §6.5 asks for
- * "a free-form combobox instead of a hard-coded list of ten". The list is still ten, and it is a
- * list of SUGGESTIONS now — the menu's last row asks for any other name.
+ * every custom event a component emits were unbindable from the Inspector. An event name is typed,
+ * not picked (§6.1): the list is still ten, and it is a list of SUGGESTIONS now — the menu's last
+ * row asks for any other name.
  */
 export const EVENT_NAMES = [
   "onclick",
@@ -159,7 +160,7 @@ function seedForHandlerMode(mode: SlotMode, functionDefs: [string, unknown][]): 
 // ─── The Mixed contract ──────────────────────────────────────────────────────
 
 /**
- * The Logic tab's Mixed contract (§6.5), stated once because it is a judgement, not a mechanism.
+ * The Logic tab's Mixed contract (§6.7), stated once because it is a judgement, not a mechanism.
  *
  * Wiring splits in two, and a multi-selection treats the halves differently:
  *
@@ -917,7 +918,7 @@ function watch(): void {
 
 // ─── The menus ───────────────────────────────────────────────────────────────
 
-/** The rung picker for a bindable row: every source this position permits, one action away (§6.3). */
+/** The rung picker for a bindable row: every source this position permits, one action away (§6.6). */
 function openSourceMenu(key: string, anchor: HTMLElement): void {
   const plan = plans.fields.get(key);
   if (!plan || !canMove(plan.mode, plan.offered)) {

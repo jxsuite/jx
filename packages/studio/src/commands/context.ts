@@ -185,7 +185,7 @@ export interface CommandContext {
   selection: {
     count: number;
     /**
-     * The selected document paths, in selection order — `[]` when nothing is selected (§6.5).
+     * The selected document paths, in selection order — `[]` when nothing is selected (§6.7).
      *
      * The context is what `probe.state()` answers with, so this is how a script, a screenshot step
      * or the assistant READS a multi-selection back. `count` is its length; the last entry is the
@@ -368,8 +368,8 @@ const GLOBAL_STACK: readonly KeyScope[] = ["global"];
 /**
  * The scope stack for the current context, narrowest scope first.
  *
- * The ladder is `caret > grid/code engine > focused dock > global` (plan §5.3), and the whole point
- * is that a scope which is not on the stack cannot fire AT ALL. Three hand-written guards collapse
+ * The ladder is `caret > grid/code engine > focused dock > global` (§13.3), and the whole point is
+ * that a scope which is not on the stack cannot fire AT ALL. Three hand-written guards collapse
  * into it:
  *
  * - The blanket modal return → the `palette`-only stack;

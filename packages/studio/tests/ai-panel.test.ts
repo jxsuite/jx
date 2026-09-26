@@ -44,11 +44,11 @@ const chatState = reactive({
   messages: [] as Message[],
   status: "idle" as "idle" | "streaming" | "error",
   /* Both have been computed by `services/context-manager.ts` on every turn since it was written
-     and stored by `chat-state.ts` with no reader anywhere; the header is the first (§11.6). */
+     and stored by `chat-state.ts` with no reader anywhere; the header is the first. */
   tokenCount: 0,
   /* The real one pops the failed assistant turn AND the user message that caused it, on the
      contract that the caller re-sends. It has been exported with zero callers since it was
-     written (§7.4); the panel's Retry is the first. */
+     written (ai.md §3.2); the panel's Retry is the first. */
   retryLast() {
     while (chatState.messages.length > 0 && chatState.messages.at(-1)!.role !== "user") {
       chatState.messages.pop();
@@ -143,7 +143,7 @@ const { closePreferences } = await import("../src/settings/preferences-dialog");
 const { initLayers } = await import("../src/ui/layers");
 
 /*
- * The `Assistant:` family, in a real registry (§11.1).
+ * The `Assistant:` family, in a real registry (ai.md §3.0).
  *
  * The chat header's two buttons and the error row's Retry are RENDERED FROM the registry now, so a
  * panel with no registry draws none of them — which is the contract, and which means these tests
@@ -630,7 +630,7 @@ describe("ai-panel", () => {
   });
 });
 
-// ─── §7.4: Retry and Restore to here ─────────────────────────────────────────
+// ─── ai.md §3.2: Retry and Restore to here ───────────────────────────────────
 
 const { fileTurn, resetAiWrites } = await import("../src/services/ai-writes");
 const { problems, resetNotifications, toasts } = await import("../src/services/notify");
@@ -764,7 +764,7 @@ describe("restore to here", () => {
   });
 });
 
-// ─── §11.1: the `Assistant:` command family ──────────────────────────────────
+// ─── ai.md §3.0: the `Assistant:` command family ─────────────────────────────
 
 const { shell } = await import("../src/shell");
 const { inspectorTab } = await import("../src/panels/right-panel");
@@ -789,7 +789,7 @@ describe("the Assistant command family", () => {
   });
 
   test("six records, every one Assistant + application + palette", () => {
-    /* Application by principle 3 — a record is filed by the level of the state it WRITES. The chat
+    /* Application by §13.2 — a record is filed by the level of the state it WRITES. The chat
        session outlives the open document and survives project close, and `attachSelection` is the
        case that proves it: it READS the canvas selection and writes a chip into the composer. */
     const all = assistantCommands();

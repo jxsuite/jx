@@ -149,7 +149,8 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "overlay-presence-group",
   "overlay-presence-tag",
   /* Owner: collab/presence-chips.ts — jx-presence, -chip, -status and the two new flags now have
-     rules in styles/shell.css. The flagship co-editing affordance shipped unstyled (§7.4). */
+     rules in styles/shell.css. The flagship co-editing affordance shipped unstyled
+     (collab.md §4). */
   // Owner: panels/drag-ghost.ts
   "jx-drag-ghost",
   // Owner: panels/events-panel.ts
@@ -159,7 +160,7 @@ export const ALLOWED_ORPHANS = new Set<string>([
      are Spectrum action buttons the surface only needs a HANDLE on, and neither carries a rule. */
   // Owner: panels/layers-panel.ts
   /* Owner: panels/properties-panel.ts — the breakpoint form these three belonged to is gone.
-     $media is defined in Project Settings › Contexts and nowhere else (plan §4.2). */
+     $media is defined in Project Settings › Contexts and nowhere else (studio.md §6.2). */
   /* Owner: panels/statement-editor.ts — the whole surface (twenty names, including the two
      drag-feedback classes that had no rule anywhere) is styled in styles/inspector.css now. It
      held itself together with inline `style=` attributes, and an attribute cannot carry the
@@ -167,7 +168,7 @@ export const ALLOWED_ORPHANS = new Set<string>([
      right edge of the window at Inspector width. */
   // Owner: settings/css-vars-editor.ts
   /* "css-vars-enable-dark" retired with the button: this section overrides tokens per scheme, it
-     no longer DEFINES a scheme — that is Settings › Contexts (§2 principle 5). */
+     no longer DEFINES a scheme — that is Settings › Contexts (studio.md §6.2). */
   /* Owner: ui/expression-editor.ts — styled in styles/inspector.css beside the statement editor it
      is drawn inside. `array-object-*` and `expr-live-badge` are shared with ui/schema-form.ts and
      ui/formula-chips.ts, which still pass their own inline copies; the rule they now inherit is
@@ -1459,7 +1460,7 @@ export function guidelineTokenFindings(specMd: string, css: string): Finding[] {
     findings.push({
       file: "specs/studio-ui-guidelines.md",
       line: 0,
-      text: "§1.1's token table parsed to zero rows — the table moved, and this rule stopped checking anything.",
+      text: "studio-ui-guidelines.md §1.1's token table parsed to zero rows — the table moved, and this rule stopped checking anything.",
     });
   }
   return findings;

@@ -232,7 +232,7 @@
   color: var(--danger);
 }
 
-/* ─── ④ The toast host — the fourth overlay layer ─────────────────────────── */
+/* ─── The toast host — the fourth overlay layer ───────────────────────────── */
 /* The consequence line inside a destructive confirmation — what this delete or rename breaks, and
    what survives it. Set apart from the question above it, because the question is a sentence the
    user already wrote in their head and this is the part they have not thought about. */

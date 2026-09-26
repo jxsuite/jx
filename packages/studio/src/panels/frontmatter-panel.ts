@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The Document Header card (§3.2 ⑧) — the artefact's own header, drawn IN the stage.
+ * The Document Header card — the artefact's own header, drawn IN the stage.
  *
  * It replaces the old "Properties" bar, which was a fourth full-width band that **appeared and
  * vanished as a side effect of the canvas mode** with no control to summon it, and which showed
@@ -55,7 +55,7 @@
  * ids behind a `#/content/<type>` reference are a read (`ui/form-controls.ts`), so the card draws
  * its own control for each and calls the owner for the part that is not markup. Neither module's
  * lit template is interpolated here — a document and a lit template cannot share a container, and
- * §9.4 forbids the mix outright.
+ * studio-ui-guidelines.md §9.4 forbids the mix outright.
  *
  * @docs studio/editing/frontmatter
  */

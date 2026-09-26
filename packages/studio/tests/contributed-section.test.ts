@@ -626,7 +626,7 @@ describe("the section's mount", () => {
   });
 });
 
-// ─── §7.1/§7.2: validation and write failures ────────────────────────────────
+// ─── §16.1/§16.3: validation and write failures ──────────────────────────────
 /* `jx-validate` was wired to exactly one caller — the AI's `write_project_config` — so the model's
    edits to project.json were schema-checked and a human's edits through this very form were not.
    And the write itself was `void saveProjectConfig()`: a read-only file or a dead RPC was dropped
@@ -699,7 +699,7 @@ describe("persistence failures", () => {
     await settle();
     tick(part(field(container, "enabled"), "checkbox"), true);
     await settle();
-    /* §7.1: a message that names a field belongs on that field, and nowhere else — so it is under
+    /* §16.1: a message that names a field belongs on that field, and nowhere else — so it is under
        the control it is about, and nothing about it reaches the Problems panel. */
     expect(fieldError(container, "id")).toContain("must be string");
     expect(problems.some((p) => p.message.includes("must be string"))).toBe(false);
