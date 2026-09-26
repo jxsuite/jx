@@ -1,5 +1,5 @@
 /**
- * Structural batches — `mutateRemoveNodes` / `mutateDuplicateNodes` (§6.5, P5 item 3).
+ * Structural batches — `mutateRemoveNodes` / `mutateDuplicateNodes` (§6.7).
  *
  * Two properties, and a wrong answer to either corrupts a document:
  *

@@ -245,10 +245,11 @@ describe("mountIframeCanvas", () => {
   });
 
   /*
-   * The P8 fan-out. A design canvas draws one artboard per breakpoint and every one of them renders
-   * the SAME document; resolving it per artboard cost N layout merges, 2N whole-document JSON round
-   * trips, and — on a dynamic route — N POSTs to `/__jx_resolve__`. A render pass is one generation,
-   * so the generation is what says "these mounts are the same render".
+   * The render fan-out (§18.2). A design canvas draws one artboard per breakpoint and every one of
+   * them renders the SAME document; resolving it per artboard cost N layout merges, 2N
+   * whole-document JSON round trips, and — on a dynamic route — N POSTs to `/__jx_resolve__`. A
+   * render pass is one generation, so the generation is what says "these mounts are the same
+   * render".
    */
   describe("render fan-out across the hosts of one pass", () => {
     /** Three artboards of one pass, mounted the way canvas-render mounts them. */
@@ -892,7 +893,7 @@ describe("iframe canvas interaction", () => {
     expect(fired).toBe(2);
   });
 
-  test("a ctrl/cmd-click ACCUMULATES instead of replacing (§6.5)", async () => {
+  test("a ctrl/cmd-click ACCUMULATES instead of replacing (studio-ui-guidelines.md §8.1)", async () => {
     await mountReady();
     channels[0]!.deliver({
       hit: { path: ["children", 0], rect: { height: 20, width: 100, x: 10, y: 5 } },

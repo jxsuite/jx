@@ -104,7 +104,7 @@ export interface ContentRowView {
   tokens: ContentTokenView[];
   hasTokens: boolean;
   /**
-   * The provenance chip's shape: `""` draws nothing (§6.2's `default` state, where absence IS the
+   * The provenance chip's shape: `""` draws nothing (§6.7's `default` state, where absence IS the
    * ghost), `dot` is the 6px accent dot that clears the value, `text` states a donor without
    * offering to go there, and `press` states one and opens it.
    */
@@ -145,7 +145,7 @@ export interface ContentSectionView {
   key: string;
   label: string;
   open: boolean;
-  /** Whether anything in this section is set, so a closed section still says so (§6.2). */
+  /** Whether anything in this section is set, so a closed section still says so (§6.7). */
   hasDot: boolean;
   dotTitle: string;
   rows: ContentRowView[];

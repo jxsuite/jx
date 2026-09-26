@@ -1,10 +1,11 @@
 /**
  * Command-args — the runtime half of every command's `args` JSON Schema.
  *
- * The assertions that matter are the MESSAGES, not the throws: plan §13.5's headline failure
- * ("names panel 'head'; the registry declares 'page'") is only a sentence a reader can act on
- * because {@link enumArg} prints the declared set. A test that only asserted `toThrow()` would let
- * that regress silently, so every refusal here is matched against its text.
+ * The assertions that matter are the MESSAGES, not the throws: Lane 1's headline failure ("names
+ * panel 'head'; the registry declares 'page'", scripts/screenshots/README.md, "The gate") is only a
+ * sentence a reader can act on because {@link enumArg} prints the declared set. A test that only
+ * asserted `toThrow()` would let that regress silently, so every refusal here is matched against
+ * its text.
  *
  * The second half is {@link coerceArgs}, the pass `registry.run` makes over every received record
  * before `run`. Its cases are one per row of the dispatch table, each asserting the sentence is the
@@ -131,7 +132,7 @@ describe("enumArg", () => {
     expect(enumArg("view.setActivity", { tab: "layers" }, "tab", panels)).toBe("layers");
   });
 
-  test("the refusal prints the declared set — this is §13.5's headline message", () => {
+  test("the refusal prints the declared set — this is Lane 1's headline message", () => {
     expect(() => enumArg("view.setActivity", { tab: "head" }, "tab", panels)).toThrow(
       'command "view.setActivity" argument "tab": "head" is not declared — declared: ' +
         "files, layers, page",

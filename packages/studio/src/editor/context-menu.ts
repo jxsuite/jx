@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 // ─── Clipboard & Context Menu ─────────────────────────────────────────────────
 /**
- * The element context menu is a RENDERING of the command registry (UX-REDESIGN-PLAN §5.5).
+ * The element context menu is a RENDERING of the command registry (studio-ui-guidelines.md §12).
  *
  * This file used to hold an 18-item literal of `{ label, action, danger }` records — a fourth
  * hand-maintained copy of verbs that also exist in the toolbar, the block action bar and the
@@ -283,7 +283,7 @@ export function pasteStyles() {
     return;
   }
   const style = jsonClone(workspace.styleClipboard);
-  // Pasting one style onto six cards is the §6.5 example, and it is one undo step: `transactDoc`
+  // Pasting one style onto six cards is one decision and one undo step (§6.7): `transactDoc`
   // Records everything its callback mutates as a single history entry.
   transactDoc(tab, (t) => {
     for (const sel of targets) {
@@ -754,8 +754,8 @@ let _registry: CommandRegistry | null = null;
  */
 export function contextMenuRegistry(): CommandRegistry {
   /*
-   * THE APP'S REGISTRY, when there is one — §5.5's "the file keeps positioning and popover
-   * rendering only".
+   * THE APP'S REGISTRY, when there is one — a menu is a rendering of the records (§13), so this
+   * file keeps positioning and popover rendering only.
    *
    * The private registry below existed because the menu's context had to describe the RIGHT-CLICKED
    * node while the app's described the ambient selection. Those are the same node now:

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
- * Redirects as a {@link GridSource} — the editor §11.4 asks for, over the table the grid already
- * is.
+ * Redirects as a {@link GridSource} — the editor site-architecture.md §11.4 asks for, over the
+ * table the grid already is.
  *
  * `project.json`'s `redirects` map is tabular, so it does not need a bespoke editor: it needs the
  * one Studio already has. Columns, inline editing, add/delete rows, undo, the dirty dot, ⌘S,
@@ -13,8 +13,8 @@
  *
  * **Every write goes through the one door.** Rows commit with {@link commitProjectConfig}, so a
  * redirect edit is a transaction on the `project.json` document with the same undo, the same
- * serialisation and the same refusal-with-a-Problem as every other configuration write (P6.1). This
- * module never touches `platform.writeFile`.
+ * serialisation and the same refusal-with-a-Problem as every other configuration write (§17.1).
+ * This module never touches `platform.writeFile`.
  *
  * **Row keys are positions.** A redirect's identity in `project.json` IS its source string, and the
  * source is the cell an author most often edits — so keying rows by it would turn every rename into
@@ -403,9 +403,10 @@ export async function openRedirectsGrid(): Promise<GridController> {
  * The paste box.
  *
  * It is `showPromptDialog` with a multiline field, not a dialog of its own. An import is one value
- * the author pastes and one answer they give, which is what that flow already is (§12.5); what it
- * needed was a field tall enough to read the value back in, and a monospaced one, because both
- * formats are column-aligned in the file they were copied out of.
+ * the author pastes and one answer they give, which is what that flow already is
+ * (studio-ui-guidelines.md §12.5); what it needed was a field tall enough to read the value back
+ * in, and a monospaced one, because both formats are column-aligned in the file they were copied
+ * out of.
  */
 export function promptRedirectImport(): Promise<string | null> {
   return showPromptDialog("Import Redirects", {
@@ -503,8 +504,9 @@ export function redirectsCommands(): AnyCommand[] {
       group: "5_data",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person, and the
-         check it runs on the way is `validate_redirects`, which is projected. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: this opens a surface
+         for a person, and the check it runs on the way is `validate_redirects`, which is
+         projected. */
       run: async () => {
         await openRedirectsGrid();
         reportRedirectProblems(rulesFromConfig(currentConfig()), await projectRoutes());
@@ -568,8 +570,9 @@ export function redirectsCommands(): AnyCommand[] {
       group: "5_data",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's second deletion rule: without `text`, `run` awaits a paste dialog
-         the person answers, and the staged rows are a surface for that person to review. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: without `text`, `run`
+         awaits a paste dialog the person answers, and the staged rows are a surface for that person
+         to review. */
       run: async (_ctx, args) => {
         const given = optionalStringArg("redirects.import", args, "text");
         const text = given ?? (await promptRedirectImport());

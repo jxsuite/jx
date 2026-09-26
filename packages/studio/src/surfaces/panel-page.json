@@ -42,7 +42,7 @@
       "padding": "0 var(--jx-space-2)"
     },
     "& [part=\"row\"]": {
-      "$description": "§4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest in a 240px dock (§4.6) — a field refuses to shrink below its own min-content without it.",
+      "$description": "studio-ui-guidelines.md §4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest in a 240px dock (studio-ui-guidelines.md §4.6) — a field refuses to shrink below its own min-content without it.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "stretch",
@@ -58,7 +58,7 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"chip\"]": {
-      "$description": "§4.2's set dot: a 6px accent dot, drawn only where the value is set on this document, that clears it when pressed. A real `button` — it is pressable, and it is the row's only keyboard route to clearing — stripped of the chrome a button brings so the row still reads as a label with a dot beside it.",
+      "$description": "studio-ui-guidelines.md §4.2's set dot: a 6px accent dot, drawn only where the value is set on this document, that clears it when pressed. A real `button` — it is pressable, and it is the row's only keyboard route to clearing — stripped of the chrome a button brings so the row still reads as a label with a dot beside it.",
       "width": "6px",
       "height": "6px",
       "padding": "0",

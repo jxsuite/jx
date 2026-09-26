@@ -13,9 +13,9 @@ import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
  *
  * `"detached"` used to mean three different things at once and say none of them: this build has no
  * collaboration at all, this project has collaboration but this tab is solo, and the attach was
- * tried and it FAILED. §7.4: a freeze is currently indistinguishable from a bug, and so was a
- * broken connection. `"unavailable"` and `"failed"` split the third and first cases out, so the
- * chip can say which one it is.
+ * tried and it FAILED. A freeze was indistinguishable from a bug, and so was a broken connection
+ * (collab.md §4). `"unavailable"` and `"failed"` split the third and first cases out, so the chip
+ * can say which one it is.
  */
 export type CollabTabStatus =
   | "unavailable"
@@ -42,7 +42,7 @@ export interface TabCollabState {
    * surfaces soft-freeze and the canvas previews the source reconciler's parses.
    *
    * The freeze is real and it is brief, and until now its only rendering was a grey line for three
-   * seconds — which is exactly what a bug looks like. It gets an indicator (§7.4).
+   * seconds — which is exactly what a bug looks like. It gets an indicator (collab.md §4).
    */
   sourceCanonical: boolean;
   /**

@@ -65,7 +65,7 @@ export type { ElementsEntry } from "../files/elements";
 /* `componentSpecifier` and `isComponentEnabled` are `files/elements.ts`'s `npmSpecifier` and
    `hasElement`. They lived here and answered only for the two checkboxes in this file; the picker
    below and the canvas drop each asked the question their own way and got different answers
-   (plan §11.2). One rule, four call sites. */
+   (§9.1.3). One rule, four call sites. */
 
 // ─── The panel's own state ───────────────────────────────────────────────────
 

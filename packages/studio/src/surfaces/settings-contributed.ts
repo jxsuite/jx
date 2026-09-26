@@ -145,7 +145,8 @@ export function mountContributedSurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all there is to wait for: the islands
      announce themselves through `onNodeCreated` as they are created, which is one
-     `connectedCallback` earlier than awaiting the element would be (§1.1, "await the element"). */
+     `connectedCallback` earlier than awaiting the element would be (studio-ui-guidelines.md §1.1,
+     "await the element"). */
   const ready = mountSurface("settings-contributed", scope, host, {
     onNodeCreated: (element, _path, def) => {
       if (!(element instanceof HTMLElement)) {

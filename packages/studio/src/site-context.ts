@@ -292,7 +292,7 @@ function fillSlots(
  * file that defines the project with no history behind them.
  *
  * **It still rejects.** `settings/general-settings.ts` and `settings/contexts-section.ts` catch the
- * rejection and park it on the control that caused it (§7.1's inline tier), and that is the right
+ * rejection and park it on the control that caused it (§16.1's inline tier), and that is the right
  * treatment for a field the author is looking at. The chokepoint ALSO files the failure as a
  * Problem, because the eight other sites reach this through `void updateSiteConfig(...)` and used
  * to drop it on the floor.

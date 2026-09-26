@@ -332,7 +332,7 @@ export function diffCommands(): AnyCommand[] {
       title: "Set Diff View",
       undo: "none",
       when: (ctx) => ctx.editor.kind === "diff",
-      /* No `aiTool`, by §12.4's first deletion rule: chrome. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome. */
       run: (_ctx, args) => {
         // An idempotent SETTER, never a toggle: the screenshot contract refuses a `toggle*` id, and
         // A verb whose result depends on the state it is called in cannot be photographed honestly.

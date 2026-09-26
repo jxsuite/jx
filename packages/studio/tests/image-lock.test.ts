@@ -1,6 +1,6 @@
 /**
- * The capture lock and `docs:images:check` (UX-REDESIGN-PLAN §13.5), plus the PNG reader the lane's
- * report is built on.
+ * The capture lock and `docs:images:check` (scripts/screenshots/README.md, "The gate"), plus the
+ * PNG reader the lane's report is built on.
  *
  * These live under `packages/studio/tests` for the same reason `shot-contract-check.test.ts` does:
  * the CI matrix runs `bun test` per workspace, so a test at the repo root runs nowhere. The rules
@@ -321,9 +321,9 @@ describe("manifest reading", () => {
         variants: [{ suffix: "-dark" }],
       }),
     ]).toEqual(["hero", "hero-crop", "hero-dark"]);
-    // `then` replaces `variants` in the §13.2 contract. Parsed rather than written as a literal
-    // Because `unicorn/no-thenable` (rightly) refuses a `then` key in object-literal SOURCE — a
-    // Manifest is JSON, so the rule never applies to the real thing.
+    // `then` replaces `variants` in the shot contract (scripts/screenshots/README.md). Parsed
+    // Rather than written as a literal because `unicorn/no-thenable` (rightly) refuses a `then` key
+    // In object-literal SOURCE — a manifest is JSON, so the rule never applies to the real thing.
     const contract2: Record<string, unknown> = JSON.parse(
       '{"name":"git","capture":[{"image":"git-panel","of":"navigator/panel:git"}],' +
         '"then":[{"suffix":"-open","capture":[{"image":"git-open"}]}]}',

@@ -199,13 +199,13 @@ describe("the Navigator's panel set", () => {
   test("a declared-but-unbuilt panel refuses to render, rather than drawing a stub", () => {
     // `when` is the guard, so deleting the predicate without building the surface fails loudly
     // Instead of shipping an empty panel with a real header. Search is the one left: Problems was
-    // The other, and P4.2 deleted its predicate in the same commit that gave it a body.
+    // The other, and its predicate went in the same commit that gave it a body.
     const panel = navigatorPanelSet().find((p) => p.id === "search");
     expect(panel?.when?.(emptyContext())).toBe(false);
     expect(() => panel!.render({} as never)).toThrow(/declared but not built/);
   });
 
-  test("Problems is built, and it is the Bottom dock's — one record, one host (§7.2)", () => {
+  test("Problems is built, and it is the Bottom dock's — one record, one host (§16.3)", () => {
     registerNavigatorPanels();
     const panel = getPanel("problems");
     expect(panel?.dock).toBe("bottom");
@@ -236,7 +236,7 @@ describe("the Navigator's panel set", () => {
   });
 });
 
-// ─── principle 3's corollary ──────────────────────────────────────────────────
+// ─── The level rule's corollary (§13.2) ───────────────────────────────────────
 
 /**
  * The deps a PROJECT-level panel may touch, and a tripwire for everything else.
@@ -262,13 +262,14 @@ function projectPanelDeps(): NavigatorPanelDeps {
 }
 
 /**
- * Principle 3's corollary, asserted as the loop `panel-registry.ts` says it is.
+ * The corollary of filing a panel by the state it writes (§13.2; studio-ui-guidelines.md §12.1),
+ * asserted as the loop `panel-registry.ts` says it is.
  *
- * The docstring on {@link import("../src/panels/panel-registry").NavigatorDocument} has claimed
- * since P3 that this file "renders every project-level panel with `doc: null`". It rendered exactly
- * one — Problems — so the claim was a promise rather than a check, and the defect it names (the
- * Source Control badge vanishing when the last tab closed) could have come back through any of the
- * others without a test moving.
+ * The docstring on {@link import("../src/panels/panel-registry").NavigatorDocument} has long claimed
+ * that this file "renders every project-level panel with `doc: null`". It rendered exactly one —
+ * Problems — so the claim was a promise rather than a check, and the defect it names (the Source
+ * Control badge vanishing when the last tab closed) could have come back through any of the others
+ * without a test moving.
  *
  * Three paints, because "renders" is not one body. The first is what kicks off `refreshGitStatus()`
  * and `loadDirectory(".")`; the second is the empty state those resolve into; the third is the full
@@ -397,9 +398,9 @@ describe("railGroups", () => {
   });
 
   test("State is not a record at all — its editor is part of Data", () => {
-    // It used to be registered `rail: false` pending plan §11.2's merge, which left the ONE way to
-    // Declare a state variable behind a palette search. Data renders that editor now, so there is
-    // No second record to find, and a stored `state` id migrates rather than 404s.
+    // It used to be registered `rail: false` pending its merge into Data (§5.6), which left the
+    // ONE way to declare a state variable behind a palette search. Data renders that editor now, so
+    // There is no second record to find, and a stored `state` id migrates rather than 404s.
     registerNavigatorPanels();
     expect(getPanel("state")).toBeUndefined();
     expect(getPanel("data")).toBeDefined();
@@ -559,8 +560,8 @@ describe("migratePanelId", () => {
   });
 
   test('a persisted leftTab of "problems" lands on the default, not in a wedged shell', () => {
-    // §7.2 moved Problems to the Bottom dock, so a build from before it could have persisted an id
-    // The Navigator can no longer show. There is no alias to add — it is not a Navigator panel
+    // Problems moved to the Bottom dock (§16.3), so a build from before it could have persisted an
+    // Id the Navigator can no longer show. There is no alias to add — it is not a Navigator panel
     // Under any name — so it migrates to nothing and the boot path's `?? DEFAULT_PANEL_ID` runs.
     expect(migratePanelId("problems")).toBeNull();
     expect(migratePanelId("problems") ?? DEFAULT_PANEL_ID).toBe(DEFAULT_PANEL_ID);

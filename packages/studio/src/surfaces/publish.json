@@ -53,7 +53,7 @@
       "gap": "var(--jx-space-3)"
     },
     "& [part=\"actions\"]": {
-      "$description": "Wraps rather than overflows (§4.6): two buttons whose labels are whole phrases — \"Verify & Connect\", \"Preferences › Accounts\" — are wider than a narrow dialog at the sizes a reader may have set.",
+      "$description": "Wraps rather than overflows (studio-ui-guidelines.md §4.6): two buttons whose labels are whole phrases — \"Verify & Connect\", \"Preferences › Accounts\" — are wider than a narrow dialog at the sizes a reader may have set.",
       "display": "flex",
       "flexWrap": "wrap",
       "gap": "var(--jx-space-2)"

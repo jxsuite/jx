@@ -129,9 +129,9 @@ export function resetContributedSectionState(): void {
  * Select an entry of a map-layout section by key — the addressable form of clicking an entry row.
  *
  * Five screenshot steps used to reach these rows by typing an empty string into a hand-stamped
- * region id, carrying `unstable: { reason: "\"settings.selectEntry\" has no command record", until:
- * "P6.2" }`. This is P6.2 and the record is `settings.open {section, entry}`: an entry is a KEY in
- * the section's own map, so naming it is naming state rather than reproducing a gesture.
+ * region id, carrying an `unstable` hatch whose reason was `"settings.selectEntry" has no command
+ * record`. The record is `settings.open {section, entry}`: an entry is a KEY in the section's own
+ * map, so naming it is naming state rather than reproducing a gesture.
  *
  * @param {string} sectionKey
  * @param {string} entryKey
@@ -153,7 +153,7 @@ export function selectContributedEntry(sectionKey: string, entryKey: string): st
   return null;
 }
 
-// ─── Validation (§7.1 inline tier, §7.2 Problems) ─────────────────────────────
+// ─── Validation (§16.1 inline tier, §16.3 Problems) ───────────────────────────
 
 /**
  * The last validator run's messages, keyed by the JSON-pointer base they were rendered under.
@@ -215,8 +215,8 @@ export function routeDiagnostics(
  * The write itself now belongs to `tabs/project-config.ts` — one serialisation, one error path, and
  * a transaction the author can undo. This module used to own a second writer, at
  * `JSON.stringify(config, null, "\t")`, which re-indented the whole file on any edit; and before
- * that it was `void saveProjectConfig()` at five call sites with no validation at all. §7.2 files a
- * failed config write as a Problem, because it must be fixed and it is about a named file; the
+ * that it was `void saveProjectConfig()` at five call sites with no validation at all. §17.1 files
+ * a failed config write as a Problem, because it must be fixed and it is about a named file; the
  * chokepoint files it, so a failure here only has to stop.
  *
  * **The write comes first, and the order is the honest one.** This form mutates

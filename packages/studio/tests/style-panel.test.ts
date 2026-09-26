@@ -348,7 +348,7 @@ describe("base style rows", () => {
   });
 });
 
-// ─── The Value Source ladder (§6.3) ──────────────────────────────────────────
+// ─── The Value Source ladder (§6.6) ──────────────────────────────────────────
 
 describe("the Value Source ladder", () => {
   test("style rows offer literal and template only — JxStyle admits no $ref", async () => {
@@ -419,7 +419,7 @@ describe("the Value Source ladder", () => {
   });
 });
 
-// ─── The Target Line (§6.1) ──────────────────────────────────────────────────
+// ─── The Target Line (§6.2) ──────────────────────────────────────────────────
 
 describe("the Target Line", () => {
   test("states the element and the base breakpoint, and scopes to the element", async () => {
@@ -501,7 +501,7 @@ describe("the Target Line", () => {
   });
 });
 
-// ─── Color-scheme layer routing (spec §9.5) ──────────────────────────────────
+// ─── Color-scheme layer routing (spec.md §9.5) ───────────────────────────────
 
 describe("color-scheme layer routing", () => {
   const SCHEME_MEDIA = { "--dark": "(prefers-color-scheme: dark)", ...MEDIA };
@@ -576,7 +576,7 @@ describe("color-scheme layer routing", () => {
   });
 });
 
-// ─── Provenance chips (§6.2) ─────────────────────────────────────────────────
+// ─── Provenance chips (§6.7) ─────────────────────────────────────────────────
 
 describe("provenance chips", () => {
   test("an inherited value names its donor breakpoint and jumps there", async () => {

@@ -1,7 +1,8 @@
 /**
  * Ai-writes.ts — what the assistant changed, per turn, and whether you can take it back.
  *
- * §7.4 (AI honesty). Two facts about an assistant turn were legible only to the model:
+ * `ai.md` §3.2 (the accountable turn). Two facts about an assistant turn were legible only to the
+ * model:
  *
  * 1. **Which files it changed.** The loop collected `result.summary` strings and fed them back into
  *    the conversation; the human got a paragraph of prose in which "I updated the hero" and "I

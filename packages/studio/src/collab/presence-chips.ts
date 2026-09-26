@@ -1,6 +1,6 @@
 /**
  * Presence chips — who else is in this co-editing session, the sync-status pill that replaces the
- * dirty dot for collab tabs, and the two states co-editing had no way to announce (§7.4).
+ * dirty dot for collab tabs, and the two states co-editing had no way to announce (collab.md §4).
  *
  * Pure projections of `collabState(tab)`: the Command Bar surface draws the cluster and the pane's
  * own chrome draws the banner, and both are documents, so nothing here renders.
@@ -22,8 +22,8 @@
  *
  * **Undo says what it does.** The Y.UndoManager is constructed with `trackedOrigins:
  * {LOCAL_ORIGIN}`, so ⌘Z reaches your own actions and never a peer's. That is the correct behaviour
- * and it is also surprising, so the status pill's title states it — §13 lists this as adopted
- * precisely because silently undoing someone else's work is worse than not undoing.
+ * and it is also surprising, so the status pill's title states it (collab.md §4). The scoping is
+ * deliberate: silently undoing someone else's work is worse than not undoing.
  */
 
 import { collabState } from "./collab-state";

@@ -162,7 +162,7 @@ describe("the set as a whole", () => {
   });
 
   test("every gated record carries the sentence that explains the gate", () => {
-    // Principle 4: no control may render permanently dead with no explanation.
+    // No control may render permanently dead with no explanation (`requires`, §13.1).
     for (const command of defaultCommandSet()) {
       if (command.when || command.enablement) {
         expect(command.requires).toBeTruthy();
@@ -276,10 +276,11 @@ describe("the records that settle an existing argument", () => {
   test("repeat is a context-menu row AND a palette entry, and NOT an assistant tool", () => {
     const repeat = defaultCommandSet().find((c) => c.id === "selection.repeat");
     expect(repeat?.menus).toEqual(["context/element", "palette"]);
-    /* §12.4's second deletion rule: "a projected `run` may not await a dialog". `run` starts the
-       collection picker and is not awaited — "a command nothing automated can call" by its own
-       comment — so a declaration would advertise a tool whose every call hangs the turn on a
-       person. A declaration MAKES a tool now, which is why its absence is asserted. */
+    /* The second deletion rule of studio-ui-guidelines.md §12.4: "a projected `run` may not
+       await a dialog". `run` starts the collection picker and is not awaited — "a command nothing
+       automated can call" by its own comment — so a declaration would advertise a tool whose every
+       call hangs the turn on a person. A declaration MAKES a tool now, which is why its absence is
+       asserted. */
     expect(repeat?.aiTool).toBeUndefined();
     expect(repeat?.undo).toBe("document");
     expect(repeat?.group).toBe("3_structure");
@@ -493,7 +494,7 @@ describe("the implementations", () => {
   });
 });
 
-describe("the direct keys (plan §5.3)", () => {
+describe("the direct keys (§5.1, §6)", () => {
   /** The default set built over the stand-in rail, in a context where everything is live. */
   function registryWithRail() {
     const registry = createCommandRegistry({ getContext: everythingContext, mac: true });
@@ -509,7 +510,8 @@ describe("the direct keys (plan §5.3)", () => {
   });
 
   test("a rail-less panel keeps its name and its palette row, and spends no chord", () => {
-    // Principle 9's price for losing chrome, paid exactly: a name, a palette row, no number.
+    /* The price studio-ui-guidelines.md §12.2 sets for losing chrome, paid exactly: a name, a
+       palette row, no number. */
     const registry = registryWithRail();
     expect(registry.get("panel.focus.insert")?.title).toBe("Show Insert");
     expect(registry.keymap.bindingsFor("panel.focus.insert")).toEqual([]);
@@ -580,7 +582,7 @@ describe("the direct keys (plan §5.3)", () => {
     expect(registry.get("panel.focus.files")?.requires).toBe("an open project");
   });
 
-  test("⌘⇧1–4 are the four Inspector tabs, in the order §3.2 ⑨ names them", () => {
+  test("⌘⇧1–4 are the four Inspector tabs, in the order §6 names them", () => {
     const registry = registryWithRail();
     expect(INSPECTOR_TABS.map((tab) => tab.title)).toEqual([
       "Content",

@@ -1,5 +1,6 @@
 /**
- * The draft axis (§7.6) — what a draft IS, and whether drafts are listed. One place, every list.
+ * The draft axis (site-architecture.md §7.6) — what a draft IS, and whether drafts are listed. One
+ * place, every list.
  *
  * It is deliberately its own module rather than a field on a pane's state and rather than a section
  * of `entry-model.ts`. Two reasons, and the second is why the definitions live here beside the
@@ -20,17 +21,17 @@
 import { reactive } from "../reactivity";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 
-/** The conventional boolean frontmatter field that marks an entry a draft (§7.6). */
+/** The conventional frontmatter boolean that marks an entry a draft (site-architecture.md §7.6). */
 export const DRAFT_FIELD = "draft";
 
 /**
  * What a draft IS, in one sentence, for every surface that shows the pill.
  *
- * Deliberately does not say "excluded from production builds" — the spec's §7.6 bullet describes an
- * intent the build does not implement yet (`packages/compiler`'s `site/site-build.ts` says so
- * beside `$sitemap`), and a badge that promises a file will not ship when it will is the exact
- * class of confident-wrong statement §16 exists to end. When the compiler learns to drop drafts,
- * this constant changes and every surface changes with it.
+ * Deliberately does not say "excluded from production builds" — site-architecture.md §7.6's bullet
+ * describes an intent the build does not implement yet (`packages/compiler`'s `site/site-build.ts`
+ * says so beside `$sitemap`), and a badge that promises a file will not ship when it will is the
+ * exact class of confident-wrong statement §16 exists to end. When the compiler learns to drop
+ * drafts, this constant changes and every surface changes with it.
  */
 export const DRAFT_MEANING =
   "Marked a draft. Studio filters drafts out of its own lists; the build does not exclude them yet.";
@@ -82,7 +83,7 @@ export function includingDrafts(): boolean {
  *
  * A setter, never a toggle: `content.setIncludeDrafts` names the STATE it reaches, so a manifest
  * step, an assistant call and a checkbox all land on the same value however many times they run
- * (plan §13.1, and the rule `tests/app-commands.test.ts` enforces).
+ * (§13.5's idempotence rule, which `tests/app-commands.test.ts` enforces).
  *
  * Setting the flag is all this does. Repainting the lists that read it belongs to the command — see
  * `content/entry-commands.ts` — because a data module may not reach into the workspace.

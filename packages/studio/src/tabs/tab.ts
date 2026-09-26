@@ -70,13 +70,13 @@ export interface TabUi {
   featureToggles: Record<string, boolean>;
   /**
    * Canvas color-scheme preview: follow the OS ("auto") or force a scheme. Drives the
-   * data-color-scheme attribute on the canvas iframe root (spec §9.5) and, in the style sidebar,
+   * data-color-scheme attribute on the canvas iframe root (spec.md §9.5) and, in the style sidebar,
    * which scheme layer edits target.
    */
   previewColorScheme: "auto" | "light" | "dark";
   /**
-   * The locale this pane renders AS — the artboard's `lang` and `dir` (§13.4), never which file is
-   * open.
+   * The locale this pane renders AS — the artboard's `lang` and `dir` (site-architecture.md §13.4),
+   * never which file is open.
    *
    * Jx has no message catalogue: a translation is a different file in a different directory, so
    * "show this page in French" is a navigation and belongs to the locale preset. This axis is the
@@ -201,7 +201,7 @@ export interface Tab {
   };
   session: {
     /**
-     * The selected document paths, in the order the user built them (§6.5).
+     * The selected document paths, in the order the user built them (§6.7).
      *
      * `[]` is "nothing selected" — there is no `null` state, because "no selection" and "a
      * selection of nothing" were never two different things. `selection[0]` is the anchor a
@@ -419,11 +419,9 @@ function inferDocumentMode(documentPath: string | null | undefined, sourceFormat
 }
 
 // ─── Editor kinds ─────────────────────────────────────────────────────────────
-// §4.2's first axis. `canvasMode` conflates two orthogonal questions — WHICH EDITOR is open, and
-// (for the Canvas editor only) WHICH VIEW of it. The pane context bar labels them separately, and
-// The pane model needs the first one on its own: the second pane is capped to non-Canvas kinds
-// Until P8's `canvas-patcher` fan-out lands, because a second live `@jxsuite/runtime` host is the
-// Expensive part.
+// The pane context bar's Editor axis (docs/studio/interface/tabs.md). `canvasMode` conflates two
+// Orthogonal questions — WHICH EDITOR is open, and (for the Canvas editor only) WHICH VIEW of it.
+// The pane context bar labels them separately, so the first is answered here on its own.
 //
 // The mode → kind map itself is `commands/context.ts`'s `editorKindForMode`. It was duplicated
 // Here, and the copy that drifted is what let a settings document resolve into the canvas key
@@ -442,7 +440,8 @@ export function editorKindOf(tab: Tab): EditorKind {
 
 /**
  * Every editor kind this document supports, in the format's own mode order and deduplicated — the
- * dropdown's entries, so it can never contain a permanently dead one (§4.2).
+ * dropdown's entries, so it can never contain a permanently dead one
+ * (docs/studio/interface/tabs.md, "The pane context bar").
  *
  * `preview` contributes nothing: it is a Canvas VIEW, and the kind it would add is already there.
  *
@@ -482,7 +481,7 @@ export function modeForEditorKind(tab: Tab, kind: EditorKind): string | undefine
 // ─── There is no sub-document stack ───────────────────────────────────────────
 // A tab held one, and it was scaffolding for a navigation model the tab model replaced. `studio.md`
 // §14.3 justified it for exactly two cases and both moved: a function body opens in the Bottom
-// Dock's Logic tab (P8), and a `$map` template is a subtree of its parent document, selected in
+// Dock's Logic tab (§16.3), and a `$map` template is a subtree of its parent document, selected in
 // Place on the canvas rather than loaded as a document of its own. Everything with a file of its
 // Own — a component, a layout — opens a REAL TAB with an `openedFrom` relationship (§14.1–2):
 // {@link TabOrigin}, above, which nothing pops and nothing restores from.

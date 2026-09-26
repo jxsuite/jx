@@ -9,7 +9,8 @@
  * restoration after a toast or a Problems jump, and the screenshot pipeline, which today addresses
  * the shell through sixteen CSS selectors, seven of which name nodes the shell redesign deletes.
  *
- * **The grammar** (UX-REDESIGN-PLAN §13.2) is `<surface>[.<instance>][/<part>]`:
+ * **The grammar** (scripts/screenshots/README.md, "The region grammar") is
+ * `<surface>[.<instance>][/<part>]`:
  *
  * ```text
  * navigator                     the Navigator dock
@@ -38,7 +39,10 @@ import type { FocusRegion } from "../shell";
 /** The attribute every region carries. One attribute, one grammar, one resolver. */
 export const REGION_ATTR = "data-jx-region";
 
-/** The eight surfaces §13.2 declares. A region id always begins with one of these. */
+/**
+ * The eight surfaces the region grammar declares (`scripts/screenshots/README.md`). A region id
+ * always begins with one of these.
+ */
 export const REGION_SURFACES = [
   "rail",
   "navigator",
@@ -377,12 +381,12 @@ export function inspectorStatementsRegion(eventKey: string): string {
  * Region id for a Bottom dock tab, derived from the panel's own id.
  *
  * The third member of the derived-region family, and the one that shows the grammar was worth
- * specifying before the surface existed: `dock.bottom` has parsed since P3 (it is the only surface
- * whose NAME contains the instance separator, which is why {@link DOTTED_SURFACES} exists) and
- * resolved to nothing, because nothing hosted it. `panels/bottom-dock.ts` stamps this once, from
- * the same id `view.setBottomTab` accepts, so the dock's four tabs are addressable without anyone
- * authoring an id — and the host itself carries the bare `dock.bottom` only while it is open, so a
- * closed dock resolves to nothing rather than to an invisible box.
+ * specifying before the surface existed: `dock.bottom` parsed before the dock was built (it is the
+ * only surface whose NAME contains the instance separator, which is why {@link DOTTED_SURFACES}
+ * exists) and resolved to nothing, because nothing hosted it. `panels/bottom-dock.ts` stamps this
+ * once, from the same id `view.setBottomTab` accepts, so every tab the dock hosts is addressable
+ * without anyone authoring an id — and the host itself carries the bare `dock.bottom` only while it
+ * is open, so a closed dock resolves to nothing rather than to an invisible box.
  */
 export function bottomPanelRegion(panelId: string): string {
   return `dock.bottom/panel:${panelId}`;
@@ -419,7 +423,8 @@ export function overlayRegion(
 }
 
 /**
- * `regions` — the namespace §13.3 names, gathered so a consumer imports one thing.
+ * `regions` — the resolver behind the region grammar (`scripts/screenshots/README.md`), gathered so
+ * a consumer imports one thing.
  *
  * `probe.regions` is a projection of this; nothing here knows the camera exists.
  */

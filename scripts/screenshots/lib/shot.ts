@@ -1,5 +1,5 @@
 /**
- * One shot, executed against the contract (UX-REDESIGN-PLAN §13.2–§13.4).
+ * One shot, executed against the contract (scripts/screenshots/README.md).
  *
  * Boot the app into a stated world, drive it through named capabilities, assert, photograph region
  * ids. Nothing in this file names a CSS selector, and nothing in it sleeps.
@@ -13,10 +13,11 @@
  * exist and both are cheap.
  *
  * **What was deleted here, and why it is not coming back.** `waitForCanvasReady`, `runWait`,
- * `hook(page, "setX")`, `canvasFrame()`'s "Studio's only child frame" (a coin flip the moment P8
- * adds a second host) and the `Math.abs(scale - 1) < 0.001` branch that guessed whether a fit
- * transform was in play. `probe.pointAt()` answers in TOP-DOCUMENT coordinates, per host, because
- * the app composes its own transforms and the runner never should have been re-deriving them.
+ * `hook(page, "setX")`, `canvasFrame()`'s "Studio's only child frame" (a coin flip the moment a
+ * second pane adds a second host) and the `Math.abs(scale - 1) < 0.001` branch that guessed whether
+ * a fit transform was in play. `probe.pointAt()` answers in TOP-DOCUMENT coordinates, per host,
+ * because the app composes its own transforms and the runner never should have been re-deriving
+ * them.
  */
 
 import { basename, join } from "node:path";
@@ -42,8 +43,9 @@ import type {
 
 /**
  * A re-render that's visually indistinguishable from the committed PNG keeps the old bytes, so the
- * checked-in screenshots don't churn in git on every run. Per §13.4 this is for REVIEW PRESENTATION
- * and is no longer load-bearing for identity — the capture lock's `sha256` is.
+ * checked-in screenshots don't churn in git on every run. This is for REVIEW PRESENTATION and is no
+ * longer load-bearing for identity — the capture lock's `sha256` is (scripts/screenshots/README.md,
+ * "Determinism").
  *
  * Sized against MEASUREMENT, not intuition — and RE-sized against a second one, because the first
  * measured the wrong thing. That sample was 21 rewrites across 24 `chore(screenshots)` commits, and
@@ -162,7 +164,7 @@ declare global {
  * `services/profile.ts`), so they are genuinely part of the world the app wakes up in. `view`,
  * `fit` and `theme` are per-tab state a user changes, so they are COMMANDS — which means a shot
  * that states one and finds no such command fails loudly, naming the id. That is the intended
- * outcome: §13.4's rule is reject, never clamp.
+ * outcome: reject loudly, never clamp (scripts/screenshots/README.md, "The five verbs").
  *
  * One table, so when a command id lands or moves there is exactly one line to change.
  */
@@ -567,8 +569,9 @@ async function restoreScrollState(page: Page): Promise<void> {
  * Run one registry command in the page.
  *
  * `run()` throws on an unknown id, on a `toggle*` id and when the command's own `enablement`
- * refuses — and every one of those failures becomes the shot's failure. §13.4: a step that asks for
- * a state the app refuses should fail, because that step is lying.
+ * refuses — and every one of those failures becomes the shot's failure. Reject loudly, never clamp
+ * (scripts/screenshots/README.md, "The five verbs"): a step that asks for a state the app refuses
+ * should fail, because that step is lying.
  */
 async function runCommand(page: Page, id: string, args: Record<string, unknown>): Promise<void> {
   await page.evaluate(
@@ -600,7 +603,7 @@ async function regionPoint(page: Page, id: string, at: string): Promise<{ x: num
  * `caret` is the one that used to be a coordinate: the manifest named a screen point, so the runner
  * grew a `Math.abs(scale - 1) < 0.001` branch guessing whether a fit transform was in play.
  * `probe.pointAt` answers in top-document coordinates with the app's own transforms already
- * composed, per host, so there is nothing left to guess and nothing that P8's second canvas
+ * composed, per host, so there is nothing left to guess and nothing that a second pane's canvas
  * breaks.
  */
 async function runInput(page: Page, step: InputStep, at: string): Promise<void> {
@@ -759,9 +762,10 @@ export interface ShotContext {
 }
 
 /**
- * Normalized visual difference in [0,1] between two PNG buffers. Both are decoded and downscaled to
- * a 32×32 thumbnail in the (already-running) browser — no native image deps, since Sharp is
- * unavailable on some hosts — and compared as mean per-channel absolute difference.
+ * Visual difference in [0,1] between two PNG buffers: the fraction of pixels, at native resolution,
+ * whose channels moved more than `CHANNEL_TOLERANCE`, and 1 for a change of size. Both are decoded
+ * in the (already-running) browser — no native image deps, since Sharp is unavailable on some
+ * hosts.
  */
 async function visualDiff(page: Page, a: Buffer, b: Buffer): Promise<number> {
   return page.evaluate(
@@ -937,8 +941,8 @@ export function bootUrl(ctx: ShotContext, open: ResolvedOpen): string {
  *
  * No shot legitimately boots with a modal: every dialog shot in the manifest — `new-project`,
  * `seo-modal`, `publish-panel`, `repeat-dialog`, `convert-to-component` — raises its own from a
- * STEP. So this needs no opt-out, and `modal.open` is an existing §13.4 context key rather than
- * anything added for the pipeline.
+ * STEP. So this needs no opt-out, and `modal.open` is an existing studio.md §13.4 context key
+ * rather than anything added for the pipeline.
  */
 async function assertNoUninvitedModal(page: Page, shotName: string): Promise<void> {
   const uninvited = await page.evaluate(() => {

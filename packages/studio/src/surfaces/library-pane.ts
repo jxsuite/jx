@@ -315,7 +315,8 @@ export function mountLibrarySurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all there is to wait for: the two islands
      announce themselves through `onNodeCreated` as they are created, which is one `connectedCallback`
-     EARLIER than awaiting the element would be (§1.1, "await the element"). */
+     EARLIER than awaiting the element would be (studio-ui-guidelines.md §1.1, "await the
+     element"). */
   const ready = mountSurface("library-pane", scope, host, {
     onNodeCreated: (element, _path, def, state) => {
       const part = partOf(def);

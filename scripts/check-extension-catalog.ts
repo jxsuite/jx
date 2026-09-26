@@ -234,8 +234,8 @@ export function buildCatalog(root = "."): ExtensionCatalogMeta[] {
     catalog.push(entry);
   }
 
-  // Two extensions claiming one section key is a registry error at load time (§3.1). Catching it
-  // Here turns "the user's project fails to open" into "the pull request is red".
+  // Two extensions claiming one section key is a registry error at load time (extensions.md §3.1).
+  // Catching it here turns "the user's project fails to open" into "the pull request is red".
   const owner = new Map<string, string>();
   for (const entry of catalog) {
     for (const { key } of entry.sections) {

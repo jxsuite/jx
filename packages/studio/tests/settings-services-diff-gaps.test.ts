@@ -316,8 +316,8 @@ describe("ai-project-tools — write_file when the disk refuses", () => {
     expect(res.success).toBe(false);
     expect(res.error).toBe('Failed to write "data/notes.txt": EACCES: permission denied');
     expect(res.summary).toBeUndefined();
-    /* §7.4: the panel renders the ledger, not the model-facing prose — so a write that failed is a
-       listed attempt that changed nothing, with the reason attached. */
+    /* The panel renders the ledger, not the model-facing prose (ai.md §3.2) — so a write that
+       failed is a listed attempt that changed nothing, with the reason attached. */
     expect(recorded).toEqual([
       {
         disk: true,

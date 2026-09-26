@@ -95,8 +95,8 @@ async function applyAndValidate(
     };
   }
   /* One ledger entry per mutation, so the panel's "Changed N files" counts documents the model
-     touched rather than sentences it wrote (§7.4). `disk: false` is the load-bearing half: this
-     went through transactDoc, so the tab's history — and "Restore to here" — can reach it. */
+     touched rather than sentences it wrote (`ai.md` §3.2). `disk: false` is the load-bearing half:
+     this went through transactDoc, so the tab's history — and "Restore to here" — can reach it. */
   ledger.record({ disk: false, ok: true, path: tab.documentPath ?? "(untitled)", tool: summary });
 
   return reportDocumentWrite(tab, before, summary, deps);
@@ -229,7 +229,7 @@ export function registerAiTools(
         },
         /*
          * "value" omitted from required: passing null / omitting it means "remove the property",
-         * but the registry rejects null on required args (tools.js:181). See §14.
+         * but the registry rejects null on required args (tools.js:181). See `ai.md` §3.6.
          */
         required: ["path", "key"],
       },
@@ -363,7 +363,7 @@ export function registerAiTools(
         },
         /*
          * "value" omitted from required so null / omitted = remove (registry rejects null on
-         * required args, tools.js:181). See §14.
+         * required args, tools.js:181). See `ai.md` §3.6.
          */
         required: ["path", "property"],
       },
@@ -509,7 +509,7 @@ export function registerAiTools(
         },
         /*
          * "value" omitted from required so null = remove (registry rejects null on required
-         * args, tools.js:181). See §14.
+         * args, tools.js:181). See `ai.md` §3.6.
          */
         required: ["key"],
       },
@@ -773,9 +773,10 @@ export function registerAiTools(
   /*
    * `open_document` is NOT here any more. It is the projection of the `document.open` record
    * (`workspace/workspace.ts`'s `tabCommands`), so the person's palette row and the model's tool
-   * are one `run` and one gate (§12.4). The hand tool read `getTab()` after the open and called
-   * whatever it found a success — a missing file left the previous document active and reported
-   * "Switched to" — and it re-anchored the undo batch itself, which `tool-executor.ts` has done
-   * after EVERY tool since project adoption started replacing tabs mid-loop.
+   * are one `run` and one gate (`studio-ui-guidelines.md` §12.4). The hand tool read `getTab()`
+   * after the open and called whatever it found a success — a missing file left the previous
+   * document active and reported "Switched to" — and it re-anchored the undo batch itself, which
+   * `tool-executor.ts` has done after EVERY tool since project adoption started replacing tabs
+   * mid-loop.
    */
 }

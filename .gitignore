@@ -55,3 +55,7 @@ docs/studio/projects/starters.md
 # submodule path", and every local run of the server suite deleted a tracked path.
 packages/server/tests/_git_new_endpoints_fixture/
 packages/server/tests/_git_remote_fixture/
+
+# Session plans a Claude Code run writes for itself. Program plans live in plans/ (plans/README.md),
+# where `bun run plans:check` can see them; six of these were once committed and went stale unseen.
+.claude/plans/

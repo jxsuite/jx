@@ -203,7 +203,7 @@ interface HostState {
    * The frame's own last quiescence report (`{kind: "idle"}`), or null before the first one.
    *
    * Held PER HOST from the start. `shot.ts`'s "Studio's only child frame" is a coin flip the moment
-   * P8 adds a second pane, and a global would have to be unpicked exactly then.
+   * a second pane exists, and a global would have to be unpicked exactly then.
    */
   idle: Omit<Extract<IframeToParent, { kind: "idle" }>, "kind"> | null;
   /**
@@ -607,7 +607,7 @@ function hostLabel(host: HostState): string {
  * Empty means every live frame's DOM reflects what this host told it, its fonts have loaded, no
  * animation is running and no image retry is in flight. Naming the blockers is the whole point:
  * `probe.idle()` rejects with this list, so a slow subsystem identifies itself instead of being
- * answered with `+500 ms` and a wrong capture (plan §13.4).
+ * answered with `+500 ms` and a wrong capture ("Determinism", `scripts/screenshots/README.md`).
  */
 export function canvasIdleBlockers(): string[] {
   const blockers: string[] = [];
@@ -660,8 +660,8 @@ export function canvasIdleBlockers(): string[] {
  *
  * The caller gets a point it can act on directly — click it, scroll to it, anchor a popover to it —
  * without knowing that a canvas iframe, a panzoom transform and an edit-zoom scale sit between the
- * document and the screen. P4.6's find-references jump, P8.4's jump bar and collab follow-peer all
- * want exactly this, and so does anything driving Studio from outside.
+ * document and the screen. The find-references jump, the jump bar and collab follow-peer all want
+ * exactly this, and so does anything driving Studio from outside.
  */
 export interface CanvasPoint {
   x: number;
@@ -1551,7 +1551,7 @@ function requestPresence(host: HostState): void {
     if (!structuralSelection || peer.state.focusedPath !== tab?.documentPath) {
       continue;
     }
-    // A peer publishes their whole selection SET (§6.5). Every path gets its own box under the
+    // A peer publishes their whole selection SET (§6.7). Every path gets its own box under the
     // Same name and colour — the meta map is keyed by path, so a peer selecting six nodes draws
     // Six boxes and a peer selecting one draws exactly the one box it always did.
     for (const path of structuralSelection) {

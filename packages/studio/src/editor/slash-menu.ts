@@ -7,16 +7,17 @@
  * its markup, its ARIA and every value in its style — and this module is the decisions: what is on
  * offer, what the filter matches, which row is active, and what a pick does.
  *
- * **Why this is not `surfaces/menu.json`.** Every other Studio menu is that surface, and §12.5 says
- * a second list of actions is a defect — but a `jx-menu` owns DOM focus by contract: showing one
- * moves the caret onto its first row. This panel exists to filter a caret that is somewhere else,
- * inside the canvas's `contenteditable` and usually inside the canvas IFRAME, and every character
- * typed after the `/` has to keep landing there. A panel that takes the keyboard ends the
- * interaction it exists to serve. So the panel is a listbox that marks its active row and never
- * takes focus, and the keys are taken where they actually land — a document-level capturing
- * listener for this realm, and {@link handleSlashMenuKey} called straight across the bridge for the
- * other one. That listener is not a focus trap and cannot become one: it forwards four keys to the
- * same driver the bridge uses, and everything else keeps going to the caret.
+ * **Why this is not `surfaces/menu.json`.** Every other Studio menu is that surface, and
+ * studio-ui-guidelines.md §12.5 says a second list of actions is a defect — but a `jx-menu` owns
+ * DOM focus by contract: showing one moves the caret onto its first row. This panel exists to
+ * filter a caret that is somewhere else, inside the canvas's `contenteditable` and usually inside
+ * the canvas IFRAME, and every character typed after the `/` has to keep landing there. A panel
+ * that takes the keyboard ends the interaction it exists to serve. So the panel is a listbox that
+ * marks its active row and never takes focus, and the keys are taken where they actually land — a
+ * document-level capturing listener for this realm, and {@link handleSlashMenuKey} called straight
+ * across the bridge for the other one. That listener is not a focus trap and cannot become one: it
+ * forwards four keys to the same driver the bridge uses, and everything else keeps going to the
+ * caret.
  *
  * Light dismissal, the top layer and Escape-on-the-topmost-popover are the platform's, through the
  * `jx-popover` the document is rooted in; the `mousedown` capture listener that used to hand-roll

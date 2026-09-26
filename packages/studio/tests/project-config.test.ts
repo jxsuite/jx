@@ -174,7 +174,7 @@ describe("commitProjectConfig", () => {
 // ─── A no-op edit writes nothing ─────────────────────────────────────────────
 
 /*
- * The plan's required assertion, run against real bytes. Both calling shapes are exercised for
+ * §17.2's required assertion, run against real bytes. Both calling shapes are exercised for
  * every committed file, which between them is every former writer: `site-context.ts`'s patch door
  * (`updateSiteConfig`, ten sites) and the in-place door the two settings editors use
  * (`contributed-section.ts`, five sites; `defs-editor.ts`, fourteen).

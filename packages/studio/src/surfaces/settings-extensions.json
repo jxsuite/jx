@@ -22,7 +22,7 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"error\"]": {
-      "$description": "The last operation that failed, said under the section title. Not a second announcement: `updateSiteConfig` already files a Problem for a rejected write and `activity.fail` files one for a rejected install. §13.1 makes INLINE the tier for \"the value is on screen, and nothing else is the right place\" — the Problem is about the file, and this line is about the switch the reader is looking at.",
+      "$description": "The last operation that failed, said under the section title. Not a second announcement: `updateSiteConfig` already files a Problem for a rejected write and `activity.fail` files one for a rejected install. studio-ui-guidelines.md §13.1 makes INLINE the tier for \"the value is on screen, and nothing else is the right place\" — the Problem is about the file, and this line is about the switch the reader is looking at.",
       "margin": "6px 0 0",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
@@ -39,7 +39,7 @@
       "color": "var(--fg)"
     },
     "& [part=\"row\"]": {
-      "$description": "A wrapping row, never an overflowing one (guidelines §4.6): the package name is author-supplied and unbounded, and Project Settings renders at two very different widths.",
+      "$description": "A wrapping row, never an overflowing one (studio-ui-guidelines.md §4.6): the package name is author-supplied and unbounded, and Project Settings renders at two very different widths.",
       "display": "flex",
       "flexWrap": "wrap",
       "alignItems": "flex-start",
@@ -115,7 +115,7 @@
       "flexShrink": "0"
     },
     "& [part=\"empty\"]": {
-      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template, and a document cannot call one. What is kept is the pattern's rules (§11) — one sentence saying what the region is FOR, never \"no extensions\", then where its content comes from — in the compact shape, which reads as a note inside an otherwise populated pane rather than as a whole empty region. It offers no action because there is nothing here to act on: a backend that lists no catalogue is not a project waiting to be filled in.",
+      "$description": "The teaching empty state, drawn here rather than borrowed from `panels/empty-state.ts`: that helper is a lit template, and a document cannot call one. What is kept is the pattern's rules (studio-ui-guidelines.md §11) — one sentence saying what the region is FOR, never \"no extensions\", then where its content comes from — in the compact shape, which reads as a note inside an otherwise populated pane rather than as a whole empty region. It offers no action because there is nothing here to act on: a backend that lists no catalogue is not a project waiting to be filled in.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "flex-start",

@@ -51,9 +51,10 @@ const selected = manifest.shots.filter((shot) => only.size === 0 || only.has(sho
 if (selected.length === 0) {
   throw new Error(`no shots matched --only ${[...only].join(",")}`);
 }
-// A quarantined shot is one the repo ADMITS is broken (§13.5). Running it is a guaranteed failure
-// That says nothing new, so it is skipped and NAMED — `docs:check` is what fails if a page still
-// Illustrates itself with one, and Lane 1 re-checks its ids the moment the quarantine is lifted.
+// A quarantined shot is one the repo ADMITS is broken (README, "Authoring notes"). Running it is a
+// Guaranteed failure that says nothing new, so it is skipped and NAMED — `docs:check` is what fails
+// If a page still illustrates itself with one, and Lane 1 re-checks its ids the moment the
+// Quarantine is lifted.
 const shots = selected.filter((shot) => shot.status?.state !== "quarantined");
 for (const shot of selected) {
   if (shot.status?.state === "quarantined") {
@@ -73,7 +74,7 @@ const server = await ensureDevServer({
 });
 
 /**
- * The capture lock, updated in place (§13.5).
+ * The capture lock, updated in place (docs/extending/contributing/docs.md#screenshots).
  *
  * Read-modify-write rather than rebuild, because `--only hero` is a legitimate way to run this and
  * a lock that forgot the other sixty images would fail `docs:images:check` on every partial run.

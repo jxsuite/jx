@@ -6,9 +6,9 @@
  * exactly three members (spec studio.md §13.5):
  *
  * - `run(id, args)` — **is** `registry.run(id, args)`, behind {@link isScriptable}. There is no
- *   second action table. A hand-maintained parallel list of what the app can do is what plan §2
- *   principle 1 defines as a defect, and this module used to be 39 entries of exactly that, 16 of
- *   them holding raw XPath into the shell and three of them matching RENDERED TEXT.
+ *   second action table. A hand-maintained parallel list of what the app can do is what §13 defines
+ *   as a defect, and this module used to be 39 entries of exactly that, 16 of them holding raw
+ *   XPath into the shell and three of them matching RENDERED TEXT.
  * - `seed(id, args)` — the {@link SEEDS} registry, under the **Remote Rule**: a seed may only write
  *   state whose real writer is a network or IPC boundary. It stands in for a remote, never for a
  *   user. {@link REFUSED_SEEDS} names what that excludes and why.
@@ -16,7 +16,7 @@
  *   `state()` (the full `CommandContext`), `commands()`, `seeds()`, and `pointAt`/`revealPath`,
  *   which compose the app's own transforms and answer in top-document coordinates.
  *
- * **What is deliberately absent**, each a normative refusal in spec §13.5:
+ * **What is deliberately absent**, each a normative refusal in studio.md §13.5:
  *
  * 1. No method that takes a selector. If a script cannot say it in command ids and `JxPath`s, it
  *    cannot say it here.
@@ -97,7 +97,7 @@ export function isScriptable(command: AnyCommand): boolean {
  *
  * - `command` — a thing a user does, so it becomes a registry record. The value names who lands it.
  * - `seed` — a remote's state, addressed through {@link AutomationApi.seed}.
- * - `refused` — §13.3 says the app will never provide it; the manifest step is deleted.
+ * - `refused` — §13.5 says the app will never provide it; the manifest step is deleted.
  */
 export type GapDisposition = "command" | "seed" | "refused";
 
@@ -118,8 +118,8 @@ export interface ManifestId {
  * — only to explain, when the registry refuses an id, which of the three fates that id has.
  *
  * This is a countdown, in the idiom of the checker's own `TOGGLE_DEBT`: it may only shrink. It went
- * 39 → 8 when the manifest converted (S2), and 8 → 7 when `element.insertData` became `insert.data`
- * (P5, `canvas/canvas-render.ts`). What left: every `seed` entry, now read off {@link seedIds} and
+ * 39 → 8 when the manifest converted, and 8 → 7 when `element.insertData` became `insert.data`
+ * (`canvas/canvas-render.ts`). What left: every `seed` entry, now read off {@link seedIds} and
  * answered from the live registry rather than from a hand-kept list; every `toggle*` entry, which
  * {@link TOGGLE_ID} refuses before this map is ever consulted; and every `command` entry whose
  * record has since landed.
@@ -127,7 +127,7 @@ export interface ManifestId {
  * What is left is two kinds. Two `command` entries are the manifest's real registry gaps — each
  * reached today by an `input` step clicking a hand-stamped region, and each of those steps carries
  * an `unstable` hatch naming the phase that lands the record, so this map and that hatch count are
- * the same debt. Five `refused` entries are NOT a countdown: they are §13.3's normative refusals,
+ * the same debt. Five `refused` entries are NOT a countdown: they are §13.5's normative refusals,
  * and they stay so that a caller reaching for one gets the reason instead of "unknown command".
  */
 export const AUTOMATION_COMMANDS: Readonly<Record<string, ManifestId>> = {
@@ -137,9 +137,9 @@ export const AUTOMATION_COMMANDS: Readonly<Record<string, ManifestId>> = {
   },
   "layers.contextMenu": {
     disposition: "refused",
-    note: "matched RENDERED TEXT, which §13's R1 forbids; P5.5 stamps data-jx-path on rows",
+    note: "matched RENDERED TEXT, which R1 of scripts/screenshots/README.md forbids; a row is addressed by its data-jx-path",
   },
-  "media.browse": { disposition: "command", note: "P7.5 — media.browse" },
+  "media.browse": { disposition: "command", note: "media.browse, site-architecture.md §9.4" },
   "project.showWelcome": {
     disposition: "refused",
     note: "cold start is a startup profile (?profile=fresh), not an action",
@@ -176,7 +176,7 @@ export const REFUSED_SEEDS: Readonly<Record<string, string>> = {
   setActivity: 'a user picks a Navigator panel — run("navigator.showPanel", { panel })',
   setRightTab: 'a user picks an Inspector tab — run("inspector.setTab", { tab })',
   setStatus:
-    "the status bar reports what the app just did; staging it is the one lie §13.3 names outright",
+    "the status bar reports what the app just did; staging it is the one lie the Remote Rule (studio.md §13.5) names outright",
   setZoom: 'a user zooms — run("canvas.setZoom", { zoom })',
 };
 
@@ -315,7 +315,7 @@ export interface ScriptableCommand {
   args?: object;
 }
 
-/** What `pointAt` can address. Region ids join `path` when P3.8's region registry lands. */
+/** What `pointAt` can address. Region ids join `path` when a region registry lands. */
 export interface AutomationTarget {
   path: JxPath;
 }

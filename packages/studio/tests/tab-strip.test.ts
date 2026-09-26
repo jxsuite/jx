@@ -210,8 +210,9 @@ describe("tab strip interactions", () => {
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute("headline")).toBe("Unsaved Changes");
     expect(dialog.textContent).toContain("a.json");
-    // §8.7 assigns unsaved-work decisions to the three-way dialog. The two-way confirm this
-    // Replaced said "Close without saving?" — the work-keeping answer was not on offer at all.
+    // Unsaved-work decisions belong to the three-way dialog (studio-ui-guidelines.md §8.7). The
+    // Two-way confirm this replaced said "Close without saving?" — the work-keeping answer was not
+    // On offer at all.
     expect(dialog.getAttribute("confirm-label")).toBe("Save");
     expect(dialog.getAttribute("secondary-label")).toBe("Close Without Saving");
     expect(dialog.getAttribute("cancel-label")).toBe("Cancel");

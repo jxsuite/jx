@@ -2,13 +2,14 @@
 /**
  * The pane grid — `workspace.panes`, given a visual counterpart.
  *
- * `workspace.panes` has been a real data model since P3: an ordered list, a focused id, a split, an
- * unsplit. Nothing drew it. `index.html` declared ONE each of `#tab-strip`, `#jump-bar`,
- * `#pane-chrome` and `#canvas-wrap` as flat siblings in `#app`'s grid — four surfaces that belong
- * to a PANE, laid out as rows and columns of the APPLICATION — so the shell could model two panes
- * and had somewhere to put exactly one. §18.3's stage handover was the workaround: one stage, taken
- * by whichever pane had focus, releasing the loser's artboards on the way past. This module is what
- * that scaffolding was standing in for, and the handover is deleted with it.
+ * `workspace.panes` has been a real data model since the shell redesign's chrome phase: an ordered
+ * list, a focused id, a split, an unsplit. Nothing drew it. `index.html` declared ONE each of
+ * `#tab-strip`, `#jump-bar`, `#pane-chrome` and `#canvas-wrap` as flat siblings in `#app`'s grid —
+ * four surfaces that belong to a PANE, laid out as rows and columns of the APPLICATION — so the
+ * shell could model two panes and had somewhere to put exactly one. §18.3's stage handover was the
+ * workaround: one stage, taken by whichever pane had focus, releasing the loser's artboards on the
+ * way past. This module is what that scaffolding was standing in for, and the handover is deleted
+ * with it.
  *
  * **The document owns the frame; this module owns the decisions.** `surfaces/pane-grid.json` is the
  * cells, the five boxes inside each one, the splitter between two of them and every rule that lays
@@ -50,7 +51,7 @@
  * `scale`, `min` and `max` closures that read `clientWidth` on every `pointermove` are gone, along
  * with the window-resize staleness they were paying for.
  *
- * The fourth rule of §18.1 — _a pane with nothing in it is a hole in the grid_ — is enforced in
+ * The third rule of §18.1 — _a pane with nothing in it is a hole in the grid_ — is enforced in
  * `workspace/workspace.ts`, where the tabs are. This module never repairs: repairing inside a
  * reactive effect that writes `workspace.panes` is an effect that triggers itself.
  */

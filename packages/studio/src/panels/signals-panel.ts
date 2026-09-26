@@ -147,8 +147,8 @@ export interface SignalDef {
  * The rename that was refused, and why — cleared by the next accepted one.
  *
  * A collision used to be a silent no-op: the field kept the typed name, the document kept the old
- * one, and nothing said which had won. Plan §11.2 asks for "collision-checked rename with a visible
- * error", and half of that had shipped.
+ * one, and nothing said which had won. The shell redesign asked for "collision-checked rename with
+ * a visible error", and half of that had shipped.
  */
 let renameError: { name: string; message: string } | null = null;
 
@@ -1139,7 +1139,7 @@ function emitsField(name: string, def: SignalDef): SignalFieldView {
 /**
  * A function: what it is for, what it takes, what it emits, and its body.
  *
- * Structured bodies (spec §20) are a body MODE rather than a new entity: "Statements" is the
+ * Structured bodies (`spec.md` §20) are a body MODE rather than a new entity: "Statements" is the
  * statement-card editor over `body: JxStatement[]`, "Code" is the text path over `body: string`.
  * Switching modes replaces the body with the other representation's empty seed — an explicit mode
  * change, nothing is converted.
@@ -1850,9 +1850,10 @@ function definedSignalNames(): string[] {
 /**
  * Open a state entry's formula in the Bottom dock.
  *
- * It used to be an XPath press matching the row's RENDERED NAME, which plan §13's R1 forbids
- * outright: a panel that starts eliding long names, or grouping differently, breaks a shot by
- * improving the app. The document defines these names, so the document is what validates them.
+ * It used to be an XPath press matching the row's RENDERED NAME, which R1
+ * (`scripts/screenshots/README.md`) forbids outright: a panel that starts eliding long names, or
+ * grouping differently, breaks a shot by improving the app. The document defines these names, so
+ * the document is what validates them.
  *
  * It defaults its target to the one open Data row — the button it replaces is rendered inside that
  * entry's own editor, so "the one that is open" is what a reader means, and with several open it
@@ -1943,7 +1944,7 @@ export function registerSignalsCommands(registry: CommandRegistry): void {
 }
 
 /* THE STATE PANEL IS GONE, AND ITS EDITOR IS IN DATA — `panels/data-explorer.ts`.
-   It was registered here `rail: false`, waiting for plan §11.2's merge into Data, and the merge did
+   It was registered here `rail: false`, waiting for its merge into Data (§5.6), and the merge did
    not follow: the button was removed and the editor was left reachable only by typing "State" into
    the palette. Declaring a state variable — or a component property, which is a state entry with a
    default — is not an advanced move to hide behind a search box, so the entry list is now the Data

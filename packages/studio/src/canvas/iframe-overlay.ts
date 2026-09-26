@@ -71,7 +71,7 @@ export interface OverlayLayer {
    */
   setPresence: (items: { placement: OverlayPlacement; color: string; label: string }[]) => void;
   /**
-   * Draw the NON-primary members of a multi-selection (§6.5). Replaces the whole set each call;
+   * Draw the NON-primary members of a multi-selection (§6.7). Replaces the whole set each call;
    * pass [] to clear, which is what a selection of one always does — one selected node draws the
    * selection box and nothing else, exactly as it did before the selection became a list.
    */

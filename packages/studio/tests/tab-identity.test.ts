@@ -1,5 +1,5 @@
 /**
- * Tab identity — the model half of P2 workstream 7.
+ * Tab identity — the model half (§14.1).
  *
  * Covers the three things that used to be wrong at once: an id could be opened twice (leaking the
  * previous tab's effect scope and duplicating the id in `tabOrder`), activation told the file tree

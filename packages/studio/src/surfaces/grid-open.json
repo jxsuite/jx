@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioGridOpen",
-  "$description": "Every grid-able source a project has, grouped by where it comes from: the project's own pages and content collections first, then each connection's tables. It is the ISLAND of a confirm dialog rather than a dialog of its own — `ui/layers.ts`'s dialog owns the headline, the cancel button, modality and focus, and this document is only the list — because a second answer to \"what is a dialog\" is a defect (§12.5). Group headings are why it is not the kit menu: a menu row can carry a divider above it and cannot carry a name for the run it opens.",
+  "$description": "Every grid-able source a project has, grouped by where it comes from: the project's own pages and content collections first, then each connection's tables. It is the ISLAND of a confirm dialog rather than a dialog of its own — `ui/layers.ts`'s dialog owns the headline, the cancel button, modality and focus, and this document is only the list — because a second answer to \"what is a dialog\" is a defect (studio-ui-guidelines.md §12.5). Group headings are why it is not the kit menu: a menu row can carry a divider above it and cannot carry a name for the run it opens.",
   "tagName": "div",
   "attributes": {
     "part": "sources"

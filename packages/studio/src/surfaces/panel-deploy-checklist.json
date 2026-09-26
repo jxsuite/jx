@@ -239,7 +239,7 @@
                       "cases": {
                         "true": {
                           "tagName": "jx-button",
-                          "$description": "The recovery button wears the command's own title, so it reads as a verb rather than as a decoration, and a refused command is dimmed with the reason it names in its tooltip. A command the registry does not have, or whose `when` is false, draws NOTHING rather than a dead label — a surface may choose whether to show a command, never whether it exists (§12.4).",
+                          "$description": "The recovery button wears the command's own title, so it reads as a verb rather than as a decoration, and a refused command is dimmed with the reason it names in its tooltip. A command the registry does not have, or whose `when` is false, draws NOTHING rather than a dead label — a surface may choose whether to show a command, never whether it exists (§13).",
                           "$props": {
                             "size": "sm",
                             "disabled": {

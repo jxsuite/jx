@@ -773,7 +773,7 @@ export function mutateDuplicateNode(tab: Tab, path: JxPath) {
 }
 
 /**
- * Remove every selected node, in ONE transaction and therefore ONE undo step (§6.5).
+ * Remove every selected node, in ONE transaction and therefore ONE undo step (§6.7).
  *
  * Three things make a batch different from a loop. `structuralBatch` drops paths contained by
  * another selected path — deleting a `<section>` and a paragraph inside it is one deletion — drops

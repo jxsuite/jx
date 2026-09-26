@@ -373,7 +373,7 @@ describe("wheel handler", () => {
 
   /* The grid could not be wheel-scrolled at all: the pan branch preventDefaulted over a Tabulator
      viewport that owns its own virtual scroller. Only the mode string "manage" was exempt, and it
-     is reachable from nowhere else in the codebase (plan §5.3).
+     is reachable from nowhere else in the codebase (the scope is `grid`, §13.3).
 
      `settings` and `entry` are the same defect over the two PANE FORMS: Project Settings scrolls
      its section column (and the Raw JSON `<pre>` inside it) and the Entry editor scrolls its
@@ -656,7 +656,7 @@ describe("the old dispatch — twelve modifier chords", () => {
   });
 
   /* ⌘0 is `pane.focusPrimary` now, pairing with `pane.focusSecondary`'s ⌘⌥0 — the re-bind
-     `workspace/workspace.ts` deferred to this workstream by name. `canvas.zoomReset` keeps the verb
+     `workspace/workspace.ts` deferred to the pane work by name. `canvas.zoomReset` keeps the verb
      and its button in the floating zoom pod; what it gives up is a chord that was the second way to
      reach a control already on screen, while focusing a pane had no way at all. */
   test("⌘0 no longer resets the zoom — the chord belongs to the pane", () => {
@@ -1151,7 +1151,7 @@ describe("deliberate divergences", () => {
     expect([shell.docks.left, shell.docks.right].map((d) => d.collapsed)).toEqual([false, true]);
   });
 
-  /* 8. Focus outside the pane grid takes the canvas scope off the stack entirely (plan §5.3's
+  /* 8. Focus outside the pane grid takes the canvas scope off the stack entirely (§13.3's
         `caret > engine > focused dock > global`). Nothing sets `focusRegion` away from "pane" yet,
         so this is inert in the running app — it is the rung being put in place. */
   test("with focus in a dock the canvas chords are not live", () => {
@@ -1183,7 +1183,7 @@ describe("dispatcher", () => {
   });
 });
 
-// ─── The direct keys (plan §5.3) ──────────────────────────────────────────────
+// ─── The direct keys (§5.1, §6) ───────────────────────────────────────────────
 
 describe("direct keys", () => {
   beforeEach(() => {
@@ -1264,7 +1264,8 @@ describe("direct keys", () => {
     expect(focused()).toBe("pane");
     pressDoc("F6");
     expect(focused()).toBe("inspector");
-    // `dock.bottom` does not exist until P4, so the ring steps over it rather than stranding focus.
+    // `dock.bottom` resolves only while the dock is open (§16.3), so the ring steps over it here
+    // Rather than stranding focus.
     pressDoc("F6");
     expect(focused()).toBe("status");
     pressDoc("F6");

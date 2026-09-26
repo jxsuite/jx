@@ -171,10 +171,10 @@ export const PRESET_LABELS: Readonly<Record<DerivePreset, string>> = {
   diff: "Diff vs HEAD",
   layout: "Layout",
   /* An UNFINISHED sentence, like `breakpoint`'s, because the row and the chip both finish it with
-     the locale's own autonym — "Same page in français". Jx has no message catalogue (§13.3): a
-     translation is a different file in a different directory, so this preset opens that file
-     rather than re-rendering this one, and the label says "the same page" about the document
-     rather than about the text on screen. */
+     the locale's own autonym — "Same page in français". Jx has no message catalogue
+     (site-architecture.md §13.3): a translation is a different file in a different directory, so
+     this preset opens that file rather than re-rendering this one, and the label says "the same
+     page" about the document rather than about the text on screen. */
   locale: "Same page in",
 };
 
@@ -1029,9 +1029,9 @@ export function presetRefusal(
     if (i18n === null || i18n.locales.length < 2) {
       return "a project that declares more than one locale — see Project Settings › Locales";
     }
-    /* A PATH, because a translation is a FILE (§13.3) rather than a rendering: an unsaved document
-       has nowhere for its sibling to be, and `translationPathFor` would answer null for it one
-       frame later with a sentence about locales instead of about saving. */
+    /* A PATH, because a translation is a FILE (site-architecture.md §13.3) rather than a rendering:
+       an unsaved document has nowhere for its sibling to be, and `translationPathFor` would answer
+       null for it one frame later with a sentence about locales instead of about saving. */
     if (source.documentPath === null) {
       return "a document that has been saved";
     }
@@ -1082,10 +1082,11 @@ function derivationFor(
   media: string | null,
   locale: string | null = null,
 ): PaneDerivation {
-  /* A COMPANION, because the French copy of this page is a different FILE — §13.3 has no message
-     catalogue, so there is no rendering of this document that is the French one. A lens here would
-     be a second copy of the same page under a chip naming another language, which is the defect
-     this module's own header warns about: a projection that changes only the chip. */
+  /* A COMPANION, because the French copy of this page is a different FILE — Jx has no message
+     catalogue (site-architecture.md §13.3), so there is no rendering of this document that is the
+     French one. A lens here would be a second copy of the same page under a chip naming another
+     language, which is the defect this module's own header warns about: a projection that changes
+     only the chip. */
   if (preset === "locale") {
     return {
       kind: "companion",
@@ -1213,8 +1214,8 @@ export function derivationCommands(deps: DerivationDeps): AnyCommand[] {
       enablement: () => deriveRefusal(activePane().id) === null,
       requires: DERIVE_REQUIRES,
       undo: "none",
-      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
-         looking at. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome — it arranges
+         what the person is looking at. */
       run: (_ctx, args) => {
         const preset = enumArg("pane.derive", args, "preset", DERIVE_PRESETS);
         /* `??`, not `||`. `optionalStringArg` answers `undefined` or a non-empty string — it is

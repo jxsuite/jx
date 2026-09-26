@@ -1,5 +1,6 @@
 /**
- * The v1 transcript corpus: every conversation shape `toMessagesArray` serializes, frozen (J1.2).
+ * The v1 transcript corpus: every conversation shape `toMessagesArray` serializes, frozen before
+ * the harness refactor.
  *
  * Each file under `fixtures/v1/transcripts/` is one transcript and claims the shapes it exhibits by
  * name. Two kinds exist:
@@ -323,9 +324,10 @@ function scriptCalls(fx: TranscriptFixture): string[] {
 
 const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
   /**
-   * A stream error recorded in the order the loop made the calls before J1.4 (finishStream, then
-   * setError): the partial assistant turn is NOT removed, so it reaches the wire. The loop now
-   * calls setError alone, which removes it, but sessions saved by earlier builds carry this shape.
+   * A stream error recorded in the order the loop made the calls (finishStream, then setError)
+   * before the turn became accountable (specs/ai.md §3.2): the partial assistant turn is NOT
+   * removed, so it reaches the wire. The loop now calls setError alone, which removes it, but
+   * sessions saved by earlier builds carry this shape.
    */
   "stream-error-partial-kept": (fx) =>
     scriptCalls(fx).join(",").includes("finishStream,setError") &&
@@ -362,9 +364,10 @@ const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
   "tool-result-message": (fx) =>
     wireOf(fx).some((e) => e.role === "tool" && typeof e.tool_call_id === "string"),
   /**
-   * A record with no result: a call a Stop left unrun. Until J1.4 Studio's loop left EVERY record
-   * like this (its `appendToolResult` looked for the record after `finishStream` had let go of it),
-   * so sessions saved by earlier builds carry it on calls that did run.
+   * A record with no result: a call a Stop left unrun. Until the turn became accountable
+   * (specs/ai.md §3.2), Studio's loop left EVERY record like this (its `appendToolResult` looked
+   * for the record after `finishStream` had let go of it), so sessions saved by earlier builds
+   * carry it on calls that did run.
    */
   "tool-record-result-null": (fx) => calls(fx).some((c) => c.result === null),
   /** A record that does carry its result, which never reaches the wire. */

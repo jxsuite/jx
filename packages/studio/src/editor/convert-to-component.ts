@@ -6,9 +6,10 @@
  * The naming question is `showPromptDialog` — one headline, one sentence, one field, one refusal —
  * which is exactly the shape this used to hand-render as an `sp-dialog-wrapper` of its own, down to
  * the Enter binding, the focus move and the select-all. That helper is already a document over the
- * kit (`src/surfaces/dialog.json`, studio-ui-guidelines §8.7), so the conversion here is a DELETION
- * rather than a second surface: a prompt authored beside the prompt would be a second answer to a
- * question Studio has settled once, and the two would drift the first time one of them was fixed.
+ * kit (`src/surfaces/dialog.json`, studio-ui-guidelines.md §8.7), so the conversion here is a
+ * DELETION rather than a second surface: a prompt authored beside the prompt would be a second
+ * answer to a question Studio has settled once, and the two would drift the first time one of them
+ * was fixed.
  *
  * What is left is the flow, which is all this module ever owned that mattered: what the default
  * name is, what makes a name usable, whether the document actually took the reference, and what is

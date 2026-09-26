@@ -2,7 +2,7 @@
 /**
  * Block action bar — the floating toolbar above the selected element.
  *
- * The bar is a RENDERING of the command registry (plan §3.2 region ⑩, §5.5): its verb cluster is
+ * The bar is a RENDERING of the command registry (§4.4, §13): its verb cluster is
  * `registry.forPlacement("blockbar")`, sliced at {@link BLOCKBAR_MAX_ITEMS} with the remainder
  * behind a `⋮` overflow menu. Every button's accessible name is its record's `title` and its
  * tooltip carries `keymap.formatBinding(id)`, so no action is named twice.
@@ -19,8 +19,8 @@
  * whether each can act, where the bar belongs against the selection rect, when it steps aside, and
  * what a press does. The toolbar role, the roving caret and the ←/→/Home/End contract are
  * `jx-action-group`'s, so the hand-written `[data-toolbar-item]` ring is gone with the template
- * that needed it; the `⋮` menu is the kit menu every other Studio surface opens (§12.5), so there
- * is no second list of actions.
+ * that needed it; the `⋮` menu is the kit menu every other Studio surface opens
+ * (studio-ui-guidelines.md §12.5), so there is no second list of actions.
  *
  * This module is also the single definition site for the structural selection verbs — move
  * up/down/in/out and the component pair — because their implementations live here.
@@ -276,16 +276,16 @@ function clampBarToWindow(bar: HTMLElement): void {
  * `formatBold` because Jx owns its markup. So ⌘B in the canvas did nothing at all, in an app whose
  * toolbar advertised it.
  *
- * They are the case UX-REDESIGN-PLAN §5.1 uses to justify two fields, so they are written the way
- * it says: `level: "selection"` — a range inside the selected node is still the selection, and a
- * fifth `range` level would demand a fifth region — with `keyScope: "caret"`, which is what makes
- * the chord live only where a caret is. They were, until this change, the only capability in Studio
- * with a chord and no record.
+ * They are the case that justifies the record's two fields (specs/studio.md §13.2–§13.3), so they
+ * are written the way it says: `level: "selection"` — a range inside the selected node is still the
+ * selection, and a fifth `range` level would demand a fifth region — with `keyScope: "caret"`,
+ * which is what makes the chord live only where a caret is. They were, until this change, the only
+ * capability in Studio with a chord and no record.
  *
  * **The set is the schema's, the verbs are the registry's.** `data/elements-meta.json` says which
  * of the eight a given tag accepts (`$inlineActions`), so the bar draws four on an `<h1>` and eight
  * on a `<p>`; what each one is CALLED, which chord it holds and what it does are on the record.
- * That is the same division P5.3 made for value sources — caps derive from the schema, behaviour
+ * That is the same division §6.6 makes for value sources — caps derive from the schema, behaviour
  * does not.
  *
  * `when` is {@link CommandContext.caret.inCanvas} and not `caret.active`: the caret stack is live
@@ -654,9 +654,9 @@ const hasTarget = (ctx: CommandContext) => ctx.selection.count > 0;
  * (Duplicate, from `commands/defaults.ts`) and `9_danger` (Delete, likewise), which is the order
  * the bar and the Outline rows both render in.
  *
- * No `keybinding` is claimed here on purpose. The chord table is `editor/shortcuts.ts`'s port (plan
- * P2 workstream 4); claiming chords from a panel would decide that port's outcome by accident. The
- * buttons still print the chords of the records that DO carry them.
+ * No `keybinding` is claimed here on purpose. The chord table belongs to `editor/shortcuts.ts`'s
+ * scope-stack dispatcher (§13.3); claiming chords from a panel would decide its contents by
+ * accident. The buttons still print the chords of the records that DO carry them.
  */
 export function registerSelectionCommands(
   registry: CommandRegistry,
@@ -828,7 +828,7 @@ export function selectionCommandRegistry(): CommandRegistry {
   return registry;
 }
 
-/** How many verb buttons the bar renders before the rest fold into `⋮` (plan §3.2 ⑩). */
+/** How many verb buttons render before the rest fold into `⋮` (studio-ui-guidelines.md §12.1). */
 export const BLOCKBAR_MAX_ITEMS = 5;
 
 /**
@@ -996,10 +996,10 @@ export function dismissBlockBarOverflow(): void {
  * Show the `⋮` menu under `anchor`. Rows carry the same names, chords and refusals as the buttons.
  *
  * Shared by the block action bar and the Outline rows, and it is the KIT menu
- * (`surfaces/menu.json`, §12.5) rather than a list of this surface's own: one popover, one roving
- * caret, one typeahead, one Escape. `target` (the Outline row's node) is captured per row and
- * re-applied when a row is chosen, because a row action acts on the row's node and the hovered row
- * is not the selected one.
+ * (`surfaces/menu.json`, studio-ui-guidelines.md §12.5) rather than a list of this surface's own:
+ * one popover, one roving caret, one typeahead, one Escape. `target` (the Outline row's node) is
+ * captured per row and re-applied when a row is chosen, because a row action acts on the row's node
+ * and the hovered row is not the selected one.
  */
 export function showCommandOverflow(
   anchor: HTMLElement,
@@ -1192,10 +1192,10 @@ export function isLinkPopoverOpen(): boolean {
  * snapshot; Apply/Remove post `applyFormat` link intents the iframe applies.
  *
  * By RECORD ID, not by rendered text. This queried `sp-action-button[title^="Link"]`, which is the
- * addressing §13's first rule bans in the screenshot manifest — a match on a title the app DERIVES
- * (it now reads "Link… (⌘K)", and on Windows it reads something else again). The id is the input
- * the app accepts, and the button is one the surface ANNOUNCED as it drew it rather than one this
- * module re-finds.
+ * addressing the shot contract's R1 (`scripts/screenshots/README.md`) bans in the screenshot
+ * manifest — a match on a title the app DERIVES (it now reads "Link… (⌘K)", and on Windows it reads
+ * something else again). The id is the input the app accepts, and the button is one the surface
+ * ANNOUNCED as it drew it rather than one this module re-finds.
  */
 export function openLinkPopoverFromShortcut(): void {
   const surface = _surface;
@@ -1413,7 +1413,7 @@ function projectBar(): BlockBarView | null {
     (editingProp ? ` · ${editingProp}` : "");
   // The handle is chrome, not a verb, so it renders on every selection; only a node that actually
   // Sits at a child index can be dragged, and at the root it is a disabled affordance rather than a
-  // Missing one (§8.6: ONE shape).
+  // Missing one (studio-ui-guidelines.md §8.6: ONE shape).
   const canDrag = structuralTarget(selection) !== null;
 
   return {

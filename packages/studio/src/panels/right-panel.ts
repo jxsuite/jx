@@ -4,8 +4,9 @@
  *
  * **Content · Style · Logic · Assistant**, text-labelled. Three of those are renames of what was
  * here (Properties→Content, Events→Logic) and the fourth is the assistant, folded in from the fifth
- * grid column it used to own — which is the point of plan §3.2 ⑨: an inspector tab costs zero
- * additional width, so the canvas gets the ~300px back and the assistant is still one key away.
+ * grid column it used to own — which is the point of §3.1's "no assistant column": an inspector tab
+ * costs zero additional width, so the canvas gets the ~300px back and the assistant is still one
+ * key away.
  *
  * **This file no longer draws anything.** The dock's markup, its ARIA and its style are
  * `surfaces/inspector-dock.json`, mounted through `surfaces/inspector-dock.ts`; what is left here
@@ -176,7 +177,7 @@ export function mount(ctx: RightPanelCtx) {
         // Track properties the right panel reads
         void tab.doc.document;
         // The whole SET, joined — a bare property read would not re-trigger when the selection
-        // Changes WITHIN the array, and §6.5's helpers always replace it but nothing enforces that.
+        // Changes WITHIN the array, and §6.7's helpers always replace it but nothing enforces that.
         void tab.session.selection.map((path) => path.join("/")).join("|");
         void tab.session.ui.rightTab;
       }

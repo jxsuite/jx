@@ -4,13 +4,13 @@
  *
  * Everything renders into one of the four fixed hosts declared in index.html (#layer-popover,
  * #layer-modal, #layer-dialog, #layer-toast), bound once at boot by initLayers(). Native browser
- * dialogs (`prompt`, `confirm`, `alert`) are not permitted anywhere in Studio — use
- * `showPromptDialog`, `showConfirmDialog`, or `showSaveDiscardDialog`. See studio-ui-guidelines.md
- * §8.7.
+ * dialogs (`prompt`, `confirm`, `alert`) are not permitted anywhere in Studio
+ * (studio-ui-guidelines.md §8.7) — use `showPromptDialog`, `showConfirmDialog`, or
+ * `showSaveDiscardDialog`.
  *
- * The toast host is the fourth layer (plan §3.2 ④, §7.1). It is a rendering of
- * `services/notify.ts`'s `toasts` array and owns exactly two things that array does not: the timer
- * that retires a resting toast, and the transition account {@link overlayIdleBlockers} publishes.
+ * The toast host is the fourth layer (§16.1). It is a rendering of `services/notify.ts`'s `toasts`
+ * array and owns exactly two things that array does not: the timer that retires a resting toast,
+ * and the transition account {@link overlayIdleBlockers} publishes.
  */
 import { render as litRender, nothing } from "lit-html";
 import { overlayRegion, REGION_ATTR } from "./regions";
@@ -117,7 +117,8 @@ export function isModalOpen(): boolean {
  * `showPromptDialog` below are the three named questions, and they go through the same document.
  *
  * A body that is genuinely richer than a sentence is an ISLAND, not a new dialog: `message` accepts
- * a lit template and `messageOptions` renders it into the document's `[part="island"]` (§9.4).
+ * a lit template and `messageOptions` renders it into the document's `[part="island"]`
+ * (studio-ui-guidelines.md §9.4).
  */
 
 /**
@@ -208,7 +209,7 @@ export function showSaveDiscardDialog(
 
 /**
  * A message as the surface takes it: a sentence, or a lit template rendered into the document's
- * island once the element is ready — the island rule of studio-ui-guidelines §9.4.
+ * island once the element is ready — the island rule of studio-ui-guidelines.md §9.4.
  */
 function messageOptions(
   message: string | TemplateResult,
@@ -485,19 +486,20 @@ const _toastEntering = new Set<string>();
 /**
  * Whether the reader has asked for less movement.
  *
- * Read per call rather than cached: §13.3 clause 6 says the app must HONOUR this rather than have
- * the runner inject a freeze stylesheet, which means the answer has to be able to change.
+ * Read per call rather than cached: motion is not among the three things §13.5 lets `?automation=1`
+ * change, so the app must HONOUR this rather than have the runner inject a freeze stylesheet, which
+ * means the answer has to be able to change.
  */
 function reducedMotion(): boolean {
   return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
 /**
- * **One of the three listed exceptions to §13.3 clause 6** — behaviour that differs under
- * `?automation=1` beyond installing the hook, pinning the clock and selecting a profile. The other
- * Two are both refusals to touch the project on disk: `packages/ensure-deps.ts` declines to run
- * `bun install`, and `packages/jxsuite-update.ts` declines to prompt for a dependency update. This
- * One is the only exception that changes what a picture SHOWS rather than what it avoids doing.
+ * **One of the three exceptions §13.5 lists** — behaviour that differs under `?automation=1` beyond
+ * installing the hook, pinning the clock and selecting a profile. The other two are both refusals
+ * to touch the project on disk: `packages/ensure-deps.ts` declines to run `bun install`, and
+ * `packages/jxsuite-update.ts` declines to prompt for a dependency update. This one is the only
+ * exception that changes what a picture SHOWS rather than what it avoids doing.
  *
  * A toast is the single surface in the app whose lifetime is a TIMER rather than a state. Every
  * other surface a shot can photograph is there because the app is in a state, and it stays there
@@ -507,9 +509,9 @@ function reducedMotion(): boolean {
  * as long as they cared to look, instead of showing the toast that happened to still be there.
  *
  * The gate is re-derived from `location.search` rather than imported from `services/automation.ts`
- * deliberately: §13.3 requires the scripting surface to be absent from the desktop and cloud
- * bundles (`check-bundle-budget.ts`'s next assertion), and importing it from a module every layer
- * pulls in would ship it everywhere. One line of duplication, on purpose.
+ * deliberately: the scripting surface must stay out of the desktop and cloud bundles (no spec
+ * states it and `check-bundle-budget.ts` does not assert it yet), and importing it from a module
+ * every layer pulls in would ship it everywhere. One line of duplication, on purpose.
  */
 export function toastsAreHeld(): boolean {
   try {

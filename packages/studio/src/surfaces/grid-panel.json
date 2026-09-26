@@ -7,7 +7,7 @@
     "part": "grid"
   },
   "style": {
-    "$description": "The frame's own layout and the engine's theme, and nothing that was a class. The toolbar is a single row that never wraps: the chrome budget (§12.2) caps what may stand in it, and the count is the only thing pinned to the far end.",
+    "$description": "The frame's own layout and the engine's theme, and nothing that was a class. The toolbar is a single row that never wraps: the chrome budget (studio-ui-guidelines.md §12.2) caps what may stand in it, and the count is the only thing pinned to the far end.",
     "display": "flex",
     "flexDirection": "column",
     "height": "100%",
@@ -459,7 +459,7 @@
                       "textContent": "${state.viewLabel}"
                     }
                   ],
-                  "$description": "One control for the four facets a saved view is made of, because they are only ever adjusted together (§12.2). Its label is the applied view's name, so the toolbar says what is on screen before the panel is opened."
+                  "$description": "One control for the four facets a saved view is made of, because they are only ever adjusted together (studio-ui-guidelines.md §12.2). Its label is the applied view's name, so the toolbar says what is on screen before the panel is opened."
                 },
                 {
                   "tagName": "jx-textfield",

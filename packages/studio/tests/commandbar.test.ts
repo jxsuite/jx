@@ -1,5 +1,5 @@
 /**
- * The Command Bar (region ①) — a rendering of the registry, and nothing else.
+ * The Command Bar — a rendering of the registry, and nothing else.
  *
  * The assertions are grouped by the claim each one defends:
  *
@@ -283,7 +283,7 @@ describe("the primary cluster", () => {
   });
 });
 
-// ─── ①a The Command Center pill ──────────────────────────────────────────────
+// ─── The Command Center pill ─────────────────────────────────────────────────
 
 describe("the Command Center pill", () => {
   test("names the project, the document and the selection, and prints ⌘K", async () => {
@@ -368,7 +368,7 @@ describe("the Command Center pill", () => {
     expect(toolbar.selectionSegmentLabel(tab)).toBe("div — Hi");
   });
 
-  test("a batch is not a place, so the address bar names its size (§6.5)", () => {
+  test("a batch is not a place, so the address bar names its size (§6.7)", () => {
     const tab = openTestTab();
     tab.session.selection = [["children", 0], []];
     expect(toolbar.selectionSegmentLabel(tab)).toBe("2 elements");

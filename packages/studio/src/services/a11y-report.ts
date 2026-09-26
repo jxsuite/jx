@@ -29,7 +29,7 @@
  * alt, an aria reference to an id nothing has, a tab, menu item or option outside its container, a
  * tablist with no selected tab, an unnamed dialog, aria-activedescendant on an element that cannot
  * take focus — so `jx validate`, the kit's conformance tests and this report judge a document alike
- * (spec §8.8). What stays here is what needs the whole page rather than a node: the heading
+ * (`spec.md` §8.8). What stays here is what needs the whole page rather than a node: the heading
  * outline, duplicate ids, the document language, link wording, autocomplete purposes and media.
  *
  * @docs studio/interface/problems-and-progress

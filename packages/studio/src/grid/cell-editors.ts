@@ -40,13 +40,14 @@
  * registry keyed to nodes the engine has already thrown away — and would repaint asynchronously
  * while the reader scrolls.
  *
- * So the boundary is the cell, and it is the same boundary §9.4 already draws around Tabulator: the
- * engine is an island, and this file is the inside of it. The two kinds whose picker is bigger than
- * a cell escaped it by leaving the cell entirely, and that is the shape any future conversion has
- * to take — a document ANCHORED at the cell, not mounted in it. What would actually unblock the
- * rest is a synchronous mount path in the runtime (a document rendered into a detached host with
- * the kit already registered, no awaits), at which point 1 and 2 dissolve and only the formatter's
- * lifetime problem is left, which needs a teardown hook Tabulator does not have.
+ * So the boundary is the cell, and it is the same boundary studio-ui-guidelines.md §9.4 already
+ * draws around Tabulator: the engine is an island, and this file is the inside of it. The two kinds
+ * whose picker is bigger than a cell escaped it by leaving the cell entirely, and that is the shape
+ * any future conversion has to take — a document ANCHORED at the cell, not mounted in it. What
+ * would actually unblock the rest is a synchronous mount path in the runtime (a document rendered
+ * into a detached host with the kit already registered, no awaits), at which point 1 and 2 dissolve
+ * and only the formatter's lifetime problem is left, which needs a teardown hook Tabulator does not
+ * have.
  */
 import { html, render } from "lit-html";
 /* The two cell editors below are re-rendered while they are open — the pill editor calls its own

@@ -432,7 +432,7 @@ describe("refresh and fs staleness", () => {
   });
 });
 
-// ─── Row order: sort and grouping (plan §12 P7.2's saved-view facets) ─────────
+// ─── Row order: sort and grouping (the saved-view facets, site-architecture.md §7.2) ───
 
 /** Four rows whose titles and counts disagree about order, plus a blank, plus a group column. */
 function orderedSource(remoteSort = false): GridSource {

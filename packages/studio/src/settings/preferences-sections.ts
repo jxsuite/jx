@@ -25,7 +25,7 @@ export interface PreferencesSection {
 /**
  * The sections, in sheet order.
  *
- * §9.3 lists six for the finished surface (Editor behaviour and Updates/About are the other two).
+ * §15 lists six for the finished surface (Editor behaviour and Updates/About are the other two).
  * Four are built; a section is added here when it has something to configure, never before — an
  * empty pane is the "declared but unbuilt" state the rail already refuses to render.
  */

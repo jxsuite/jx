@@ -3,8 +3,8 @@
  *
  * The defect this file pins was reproducible with every gate green. `tabs/tab.ts` and
  * `commands/live-context.ts` each held their OWN copy of the mode → editor-kind map, and neither
- * had learned about `settings` when Project Settings became a document (P6.2). Both fell through to
- * `?? "canvas"`, so with the `project.json` tab on screen in its settings editor the command
+ * had learned about `settings` when Project Settings became a document (§17.1). Both fell through
+ * to `?? "canvas"`, so with the `project.json` tab on screen in its settings editor the command
  * context reported `editor.kind === "canvas"` and `keyScopeStack` returned the CANVAS stack.
  * `edit.paste` — `keyScope: "canvas"`, `when: ctx.document.open` — was therefore both live to the
  * chord and enabled to the palette, and `pasteNode()` with nothing selected pastes into

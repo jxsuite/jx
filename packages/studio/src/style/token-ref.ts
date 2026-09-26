@@ -5,8 +5,8 @@
  * text says so only to a reader who already knows CSS: `var(--color-brand)` is eleven characters of
  * syntax around a name, and the thing the author actually wants to know — _which_ token, and what
  * it currently resolves to — is the part that is not shown. So a bound value renders as a **chip**
- * (plan §9.4), in the same vocabulary as the provenance chips shipped in P5: the token's friendly
- * name, and for a colour, its resolved swatch.
+ * in the same vocabulary as the provenance chips (§6.7): the token's friendly name, and for a
+ * colour, its resolved swatch.
  *
  * The resolver follows a chain of references, because an alias token (`--color-accent:
  * var(--color-brand)`) is the normal way a palette is built and a chip that stopped at the first

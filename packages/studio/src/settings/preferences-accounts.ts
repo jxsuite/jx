@@ -10,9 +10,9 @@
  *   blank key into a dialog that did not say that is what a blank key means;
  * - The Cloudflare publish token and account id (`services/cf-settings.ts`) — not clearable at all.
  *
- * Plan §9.3 puts them under Preferences › Accounts, "listed, revocable". This module is that list.
- * It is deliberately UI-free — a record per account with a `revoke` — so the disconnect path is
- * testable without a dialog, and so the same records can back a future Problems entry or an
+ * §15 puts them under Preferences › Accounts, "listed with a Disconnect each". This module is that
+ * list. It is deliberately UI-free — a record per account with a `revoke` — so the disconnect path
+ * is testable without a dialog, and so the same records can back a future Problems entry or an
  * `accounts.revoke` command without being re-derived from a template.
  *
  * **No secret is ever returned.** A record says whether something is stored and what it is for;

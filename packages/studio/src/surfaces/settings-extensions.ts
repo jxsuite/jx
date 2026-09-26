@@ -63,7 +63,10 @@ export interface ExtensionRowView {
   note: string;
   /** Whether Remove is offered at all — it is not for a package the project never installed. */
   canRemove: boolean;
-  /** Offered but refused, which is how §10 wants a control that cannot act right now. */
+  /**
+   * Offered but refused, which is how studio-ui-guidelines.md §10 wants a control that cannot act
+   * right now.
+   */
   removeDisabled: boolean;
   removeLabel: string;
   removeHint: string;
@@ -159,7 +162,8 @@ export function mountExtensionsSurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all this has to wait for: the DOCUMENT is
      what this surface renders, and the kit elements inside it settle their own templates one
-     `connectedCallback` later without anybody asking them to (§1.1, "await the element"). */
+     `connectedCallback` later without anybody asking them to (studio-ui-guidelines.md §1.1,
+     "await the element"). */
   void mountSurface("settings-extensions", scope, container).then((surface) => {
     if (disposed) {
       surface.dispose();

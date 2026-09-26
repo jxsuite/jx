@@ -388,7 +388,7 @@ export function registerProjectTools(
           await getPlatform().writeFile(relPath, content);
           /* Disk, not transaction: there is no undo behind this and there never was. Recorded as
              `disk: true` so the panel can say so to the person holding ⌘Z — the caveat used to be
-             appended to the model-facing summary only (§7.4). */
+             appended to the model-facing summary only (`ai.md` §3.2). */
           ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "write_file" });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

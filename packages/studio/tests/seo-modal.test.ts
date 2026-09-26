@@ -1,5 +1,5 @@
 /**
- * Search appearance — the surface (plan §9.2, §14).
+ * Search appearance — the surface (site-architecture.md §8.6; no score, §16.6).
  *
  * It was a `<details>` inside the Document Header card, then a lit modal, and it is a Jx document
  * over the kit now. Everything asserted here was asserted through both: two previews of the MERGED
@@ -13,7 +13,7 @@
  * and the row's clear affordance is `jx-textfield`'s own.
  *
  * The merge itself is asserted in `head-panel.test.ts`; these are about what the surface SHOWS, and
- * about the one property the plan states as a prohibition — nothing here renders a score.
+ * about the one property §16.6 states as a prohibition — nothing here renders a score.
  */
 import {
   flush,
@@ -255,7 +255,8 @@ describe("document.openSeo", () => {
     expect(command!.id).toBe("document.openSeo");
     expect(command!.level).toBe("document");
     expect(command!.menus).toContain("palette");
-    // It opens a modal for a person — §12.4's first deletion rule; a declaration would MAKE a tool.
+    // It opens a modal for a person — the first deletion rule of studio-ui-guidelines.md §12.4; a
+    // Declaration would MAKE a tool.
     expect(command!.aiTool).toBeUndefined();
   });
 

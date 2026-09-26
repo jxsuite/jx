@@ -1,5 +1,5 @@
 /**
- * The Command Bar's layout tabs — region ①b.
+ * The Command Bar's layout tabs — the named layouts.
  *
  * A separate file from `toolbar.test.ts` because the tabs need two things that suite deliberately
  * does without: the shell's own `view.*` records (its registry is built from `defaults.ts` alone),

@@ -19,7 +19,7 @@
 }
 
 /* ─── Document Header card ─────────────────────
-   Region ⑧: the artefact's own header, drawn IN the stage. `#frontmatter-panel` — a fourth
+   The artefact's own header, drawn IN the stage. `#frontmatter-panel` — a fourth
    full-width band up to 40vh that appeared and vanished as a side effect of the canvas mode — is
    gone, grid row and all.
 
@@ -201,7 +201,7 @@
 .overlay-coselection-group {
   display: contents;
 }
-/* The other members of a multi-selection (§6.5). Same accent, thinner: one box is the primary —
+/* The other members of a multi-selection (§6.7). Same accent, thinner: one box is the primary —
    what the Inspector, the block action bar and the status bar address — and the rest are along for
    the batch. A selection of one draws no co-selection boxes at all. */
 .overlay-coselection {

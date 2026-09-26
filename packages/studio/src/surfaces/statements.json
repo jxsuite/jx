@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioStatements",
-  "$description": "The statement editor (spec §20): a Function entry's `body: JxStatement[]` edited as STRUCTURE rather than as text. The rows arrive FLAT. A statement tree nests to any depth — an `if` holds two lanes, a `$switch` holds one per case plus a default, and either may hold another of both — while a document's one repeater is `$prototype: \"Array\"` over a list, so `panels/statement-editor.ts` walks the tree once and hands over rows that already carry their own indent; recursion is a property of the walk, exactly as it is for the Data panel's value tree. Four kinds of row come out of that walk: a statement CARD (its header, and the fields that statement is made of), a LANE header naming a branch, the ADD control that ends every lane, and an ACTION that grows the statement itself (`+ Add else`, `+ Add case`). Two hosts draw this — the Navigator's State panel and the Inspector's Logic tab — and neither is named here: the region is stamped on the host, because a shared control cannot know where it is. An operand is an ISLAND: the document renders `[part=\"control-host\"]` and nothing inside it, and the flow fills it with the expression editor (studio-ui-guidelines.md §9.4).",
+  "$description": "The statement editor (spec.md §20): a Function entry's `body: JxStatement[]` edited as STRUCTURE rather than as text. The rows arrive FLAT. A statement tree nests to any depth — an `if` holds two lanes, a `$switch` holds one per case plus a default, and either may hold another of both — while a document's one repeater is `$prototype: \"Array\"` over a list, so `panels/statement-editor.ts` walks the tree once and hands over rows that already carry their own indent; recursion is a property of the walk, exactly as it is for the Data panel's value tree. Four kinds of row come out of that walk: a statement CARD (its header, and the fields that statement is made of), a LANE header naming a branch, the ADD control that ends every lane, and an ACTION that grows the statement itself (`+ Add else`, `+ Add case`). Two hosts draw this — the Navigator's State panel and the Inspector's Logic tab — and neither is named here: the region is stamped on the host, because a shared control cannot know where it is. An operand is an ISLAND: the document renders `[part=\"control-host\"]` and nothing inside it, and the flow fills it with the expression editor (studio-ui-guidelines.md §9.4).",
   "tagName": "div",
   "attributes": {
     "part": "statements"
@@ -218,7 +218,7 @@
                       "$ref": "$map/item/key"
                     },
                     "map": {
-                      "$description": "One operand of the statement. Every field is `span` — the Inspector is 280px and the guidelines' standard row is vertically stacked (§4.1) — and every field carries `data-prop`, which is what `inspector/field:<prop>` addresses. The key is `<row>::<prop>`, self-contained because this `$map` shadows the row's own `$map.item`.",
+                      "$description": "One operand of the statement. Every field is `span` — the Inspector is 280px and the standard row is vertically stacked (studio-ui-guidelines.md §4.1) — and every field carries `data-prop`, which is what `inspector/field:<prop>` addresses. The key is `<row>::<prop>`, self-contained because this `$map` shadows the row's own `$map.item`.",
                       "tagName": "jx-field",
                       "attributes": {
                         "part": "field",
@@ -500,7 +500,7 @@
             ]
           },
           "add": {
-            "$description": "The end of every lane. It opens the kit's menu rather than being a picker of its own: a select that has to snap back to its placeholder after each pick is a control fighting the runtime's skip-an-equal-write, and §12.5 asks for one list of actions rather than a second.",
+            "$description": "The end of every lane. It opens the kit's menu rather than being a picker of its own: a select that has to snap back to its placeholder after each pick is a control fighting the runtime's skip-an-equal-write, and studio-ui-guidelines.md §12.5 asks for one list of actions rather than a second.",
             "tagName": "div",
             "attributes": {
               "part": "add",

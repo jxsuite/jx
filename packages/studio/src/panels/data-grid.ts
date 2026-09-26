@@ -205,7 +205,7 @@ let actionsState: ActionsState = { pushing: false, testResult: null, testing: nu
 /**
  * The row mounted in each host the settings machinery has handed us.
  *
- * Keyed by the host node, because one settings pane per stage means one host per stage (§4.1) and a
+ * Keyed by the host node, because one settings pane per stage means one host per stage (§18) and a
  * module-level single would make the second pane's row replace the first's.
  */
 const mounted = new Map<HTMLElement, DataActionsSurfaceHandle>();

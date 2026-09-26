@@ -209,7 +209,7 @@ export function patchDisturbsActiveEdit(forwardOps: JxDocOp[]): boolean {
   return false;
 }
 
-/** Consecutive quiet animation frames before the frame declares itself settled (§13.4). */
+/** Consecutive quiet animation frames before the frame declares itself settled (§13.5). */
 export const IDLE_QUIET_FRAMES = 2;
 
 /**
@@ -466,7 +466,7 @@ export function startCanvasIframe(opts: {
   const heightObserver = ResizeObs ? new ResizeObs(() => postContentHeight()) : null;
 
   // ─── Cross-realm quiescence ─────────────────────────────────────────────────
-  // The frame answers "have I settled?" instead of being polled (§13.4 condition 5). Nothing in the
+  // The frame answers "have I settled?" instead of being polled (§13.5). Nothing in the
   // Parent realm can look inside a cross-origin frame, so the alternative was `wait: {ms}` — and 115
   // Of those were 115 places a slow subsystem got answered with +500 ms and the wrong picture was
   // Accepted. Sampling lives HERE, next to the render that changes the answer.

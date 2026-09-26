@@ -8,8 +8,8 @@
  * **RFC 9457 reconciles cleanly with this, because a problem's `type` IS the code.** A backend
  * answering `type: "https://jxsuite.com/problems/needs-installation-access"` is saying exactly what
  * `code: "needs_installation_access"` said; `problemSlug` derives the one from the other, and
- * `installUrl` is the extension member (§3.2) that type documents. So this module reads both, and
- * every surface above it keeps branching on `code` without knowing which shape arrived.
+ * `installUrl` is the extension member (RFC 9457 §3.2) that type documents. So this module reads
+ * both, and every surface above it keeps branching on `code` without knowing which shape arrived.
  */
 
 import { problemSlug } from "@jxsuite/protocol";

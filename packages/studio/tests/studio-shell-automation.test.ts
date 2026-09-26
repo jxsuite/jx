@@ -2,10 +2,10 @@
  * Studio shell (C7): `window.__jxAutomation` as a PROJECTION of the composed registry.
  *
  * The four files beside this one boot studio to assert what a URL does. This one boots it with
- * `?automation=1` to assert the thing plan §13.3 actually promises — that `run(id, args)` reaches
- * the records defined in the modules that implement them, not a parallel action table. Every other
- * test in this workstream builds its own registry; only this one proves the BOOTSTRAP wires them,
- * which is the failure mode a per-module test cannot see.
+ * `?automation=1` to assert the thing §13.5's projection rule actually promises — that `run(id,
+ * args)` reaches the records defined in the modules that implement them, not a parallel action
+ * table. Every other test in this workstream builds its own registry; only this one proves the
+ * BOOTSTRAP wires them, which is the failure mode a per-module test cannot see.
  *
  * It is also the test that catches a duplicate id or a chord conflict introduced by a later
  * contribution point: `register()` throws at composition time, so a broken wiring fails here as a

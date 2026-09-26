@@ -58,11 +58,11 @@ import type { SplitModifiers } from "@jxsuite/ui/behaviors/split";
  *
  * **There is no pointer path left in this module**, and it is worth recording why rather than
  * quietly dropping it: a handle driven by pointer events alone is unreachable from a keyboard,
- * which is an SC 2.1.1 failure however it is drawn. The pane split moved to `jx-split` first (ui.md
- * §5.5), the three docks followed, and the Edit column was last because its handle SNAPS — and the
- * element had no way to tell a host which modifiers a step carried. It has now: every `input`
- * carries them, so a snap lives in {@link bindSplit} rather than in a pointer handler of this
- * module's own.
+ * which is an SC 2.1.1 failure however it is drawn. The pane split moved to `jx-split` first
+ * (`ui.md` §5.5), the three docks followed, and the Edit column was last because its handle SNAPS —
+ * and the element had no way to tell a host which modifiers a step carried. It has now: every
+ * `input` carries them, so a snap lives in {@link bindSplit} rather than in a pointer handler of
+ * this module's own.
  */
 export interface ResizeTarget {
   /** Which coordinate the drag reads. */

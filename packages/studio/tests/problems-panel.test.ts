@@ -4,7 +4,7 @@
  * Four things are worth pinning: that the list is a RENDERING of `services/notify.ts`'s store
  * (nobody pushes rows at it), that the recovery button is a projection of a command record — its
  * label, its disabled state and its refusal sentence all come off the registry — that there is
- * exactly ONE record, hosted in the Bottom dock (§7.2), whose badge the rail borrows, and that the
+ * exactly ONE record, hosted in the Bottom dock (§16.3), whose badge the rail borrows, and that the
  * document it mounts leaves the host the moment the dock paints another tab into it.
  *
  * The body is a Jx document, so every assertion below is against `part` names and every render is
@@ -421,7 +421,7 @@ describe("the panel record", () => {
     expect(panel.rail).toBe(false);
     expect(panel.level).toBe("project");
     expect(panel.title).toBe("Problems");
-    // P3 registered this id with `when: () => false`. The predicate is what P4.2 deleted.
+    // It was first registered with `when: () => false`, a predicate the Bottom dock later deleted.
     expect(panel.when).toBeUndefined();
 
     const pctx = panelContext();

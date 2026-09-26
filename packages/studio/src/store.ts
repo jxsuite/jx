@@ -133,7 +133,7 @@ const _renderers = new Map<string, () => void>();
 /**
  * How many registered renderers are mid-paint right now.
  *
- * Condition 1 of the `probe.idle()` predicate (`services/idle.ts`, spec §13.5). A renderer is
+ * Condition 1 of the `probe.idle()` predicate (`services/idle.ts`, studio.md §13.5). A renderer is
  * declared `() => void`, but TypeScript happily assigns an `async` function to that type, so a
  * renderer that awaits keeps repainting long after `render()` returned. Counting the returned
  * thenable is what makes "no queued lit render" an answerable question instead of an assumption —
@@ -228,7 +228,7 @@ export function renderOnly(...names: string[]) {
 export function updateSession(
   tab: Tab | null,
   patch: {
-    /** The whole selection SET — `[]` clears it. Widened with `session.selection` itself (§6.5). */
+    /** The whole selection SET — `[]` clears it. Widened with `session.selection` itself (§6.7). */
     selection?: JxPath[];
     hover?: JxPath | null;
     clipboard?: JxMutableNode | null;

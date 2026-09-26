@@ -1,19 +1,20 @@
 /// <reference lib="dom" />
 /**
- * The Palette — one omnibox, several modes (UX-REDESIGN-PLAN §5.4).
+ * The Palette — one omnibox, several modes (specs/studio.md §13; its rendering rules are
+ * specs/studio-ui-guidelines.md §12).
  *
  * This file used to be a filename-substring finder with one hidden domain swap in it: with no
  * project open the same trigger, the same chrome and the same placeholder silently listed recent
  * PROJECTS instead. It is now the surface the whole shell shrinks into — the place a capability
- * goes when it is retired from the chrome (§2 principle 9), which only works if everything is
- * reachable here by name, with its chord printed beside it.
+ * goes when it is retired from the chrome (the chrome budget, specs/studio-ui-guidelines.md §12.2),
+ * which only works if everything is reachable here by name, with its chord printed beside it.
  *
  * Four properties earn that:
  *
  * 1. **Modes are named, prefixed and enumerable.** `>` commands, `@` document nodes, plain text files,
  *    and `?` lists them. The mode is echoed as a REMOVABLE CHIP, so the no-project case is a stated
  *    `Recent Projects` mode rather than a swap you have to infer. `PALETTE_MODES` is the namespace:
- *    P4's Problems and P7's content search are new members, not a new widget.
+ *    a Problems mode or a content search is a new member, not a new widget.
  * 2. **Files are matched by fuzzy subsequence over the FULL PATH.** `pgblog` finds
  *    `pages/blog/index.md`. The backend glob (`**\/*q*.{json,md}`) can only do a basename
  *    substring, so the palette asks it once for the document set and ranks locally — which is also
@@ -22,11 +23,11 @@
  * 3. **Every row prints its binding.** That is how a large surface stays discoverable without adding
  *    chrome, and it is the mechanism by which the palette teaches the keyboard it replaced.
  * 4. **An unavailable command is GREYED, not hidden**, with its `requires` sentence as the subtitle
- *    (§2 principle 4). "Why can't I" is the question a palette is uniquely good at answering, and a
- *    row that vanishes answers it with silence.
+ *    (`studio-ui-guidelines.md` §12.3). "Why can't I" is the question a palette is uniquely good at
+ *    answering, and a row that vanishes answers it with silence.
  *
  * The exported names still read `…QuickSearch` because `src/studio.ts` and `src/panels/empty-state.
- * ts` import them and neither is this workstream's file. They are the palette's; the rename is one
+ * ts` import them and neither was this change's file. They are the palette's; the rename is one
  * find-replace in those two call sites.
  */
 
@@ -60,7 +61,10 @@ export interface PaletteModeSpec {
   /** The removable chip's text, and the row label in `?`. */
   chip: string;
   placeholder: string;
-  /** What `?` prints under the mode's name. One sentence, no noun phrases (§2 principle 6). */
+  /**
+   * What `?` prints under the mode's name. One sentence, no noun phrases (`studio-ui-guidelines.md`
+   * §11.1).
+   */
   description: string;
 }
 
@@ -341,7 +345,7 @@ interface ProjectRow {
 interface CommandRow {
   kind: "command";
   id: string;
-  /** `"View: Zen Mode"` — the palette's own naming convention (§5.1). */
+  /** `"View: Zen Mode"` — the palette's own naming convention (§13.1). */
   name: string;
   /** The `requires` sentence when disabled; otherwise empty. */
   detail: string;
@@ -519,8 +523,8 @@ function projectRows(query: string): ProjectRow[] {
 /**
  * Every command the registry holds, ranked — including the ones that cannot run right now.
  *
- * Visibility (`when`) still hides; enablement does not. That split is the whole of §2 principle 4:
- * a command that does not apply to this app at all is absent, and one that does not apply to this
+ * Visibility (`when`) still hides; enablement does not. That split is the whole of §13.1's pair: a
+ * command that does not apply to this app at all is absent, and one that does not apply to this
  * MOMENT is greyed and says why.
  */
 function commandRows(registry: CommandRegistry, query: string): CommandRow[] {

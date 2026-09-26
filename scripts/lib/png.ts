@@ -215,7 +215,8 @@ function toRgba(scanlines: Uint8Array, pixels: number, channels: number): Uint8A
  *
  * Null is a supported answer all the way up: the report prints a byte-level line instead of a
  * percentage, and nothing fails. A decoder that threw would turn an unusual image into a red lane,
- * which is precisely the failure mode §13.5 exists to remove.
+ * which is precisely the failure mode the screenshots lane is designed to avoid: it goes red only
+ * on a shot error (scripts/screenshots/README.md, "The gate").
  */
 export function decodePng(bytes: Uint8Array): PngImage | null {
   const chunks = readChunks(bytes);
@@ -255,8 +256,9 @@ export function decodePng(bytes: Uint8Array): PngImage | null {
  *
  * Different dimensions are NOT 100% changed — they are a different question, and the report says
  * `1920×1000 → 1600×900` instead, because "100%" would read as a repaint when it is a resize.
- * `tolerance` is a per-channel absolute delta; the captures are deterministic by S0's construction,
- * so the default is exact equality and any softening would be hiding drift.
+ * `tolerance` is a per-channel absolute delta; the captures are deterministic by construction
+ * (scripts/screenshots/README.md, "Determinism"), so the default is exact equality and any
+ * softening would be hiding drift.
  */
 export function changedPixelRatio(a: PngImage, b: PngImage, tolerance = 0): number | null {
   if (a.width !== b.width || a.height !== b.height) {

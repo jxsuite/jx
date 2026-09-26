@@ -122,7 +122,7 @@ export type ParentToIframe =
       assets?: AssetContext | null;
       mapperCtx: WireMapperCtx;
       siteStyle: Record<string, unknown> | null;
-      // Forced color-scheme preview (spec §9.5): "light"/"dark" sets data-color-scheme on the
+      // Forced color-scheme preview (spec.md §9.5): "light"/"dark" sets data-color-scheme on the
       // Iframe root, null clears it (auto — follow the OS).
       colorScheme: "light" | "dark" | null;
       /**
@@ -478,13 +478,13 @@ export type IframeToParent =
   // Not the parent, now resolves the scope). `gen` lets the parent drop a snapshot from a superseded
   // Render. Posted right after `renderComplete`; values are JSON-safe deep clones (see serialize-scope).
   | { kind: "dataScope"; gen: number; scope: Record<string, unknown> }
-  // The frame's own quiescence, ANSWERED rather than polled (spec §13.5, plan §13.4 condition 5).
+  // The frame's own quiescence, ANSWERED rather than polled (studio.md §13.5).
   // Nothing in the parent realm can see inside a cross-origin frame, so a parent that wanted to
   // Know whether the canvas had settled could only sleep. The frame samples itself at its own rAF
   // And posts whenever the tuple changes, ending with the quiet one; the host holds the latest.
   //
   // `fonts` is `document.fonts.status === "loaded"` and is NOT sufficient alone — in a blank canvas
-  // Frame it reports "loaded" against an EMPTY font set (measured in S0: `hero` drifted 0.150 RMSE
+  // Frame it reports "loaded" against an EMPTY font set (measured: `hero` drifted 0.150 RMSE
   // Because the first capture measured fallback metrics while Plus Jakarta Sans was still in
   // Flight). It is honest only together with `gen` (a frame that has not acked a render has not
   // Loaded its fonts either) and the runner's per-frame network count.
@@ -496,8 +496,9 @@ export type IframeToParent =
   // Pending retry is the one image fact only the app knows.
   | { kind: "idle"; gen: number; fonts: boolean; animations: number; images: number }
   // `additive` is Ctrl/Cmd being held at the moment of the click — the ACCUMULATE gesture, which
-  // The parent turns into a toggle against `session.selection` (studio §6.5). Absent/false is a
-  // Plain replace, which is what every canvas click was before the selection became a set.
+  // The parent turns into a toggle against `session.selection` (studio-ui-guidelines.md §8.1).
+  // Absent/false is a plain replace, which is what every canvas click was before the selection
+  // Became a set.
   | { kind: "hit"; hit: NodeHit; additive?: boolean }
   // A click on layout chrome (see {@link LayoutHit}). Distinct from `hit` because the target is not
   // In the page document at all: the parent adopts it as `view.layoutSelection` (which shows the

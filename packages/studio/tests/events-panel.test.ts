@@ -3,8 +3,8 @@
  * `src/surfaces/logic-panel.json`, the document it mounts.
  *
  * Events were always here. Repeating list, Condition, Observed Attributes, CSS Properties and CSS
- * Parts arrived from the Content tab in P5 (§6.5): wiring a `$switch` and wiring a click handler
- * are the same task, and they were two tabs apart.
+ * Parts arrived from the Content tab when the Inspector was re-split by task (§6): wiring a
+ * `$switch` and wiring a click handler are the same task, and they were two tabs apart.
  *
  * Everything is addressed by `part`, by `data-prop`, by `data-section` and by role, because the tab
  * is a document: there is no `sp-picker.event-mode`, no `.provenance-chip` and no `.style-row` to
@@ -28,8 +28,8 @@ type AnyRec = Record<string, any>;
 
 /**
  * The rung picker, the event-name list and the add-statement list are all the kit's MENU now — one
- * list of actions rather than three private popovers (§12.5). It is a settled surface, so what is
- * asserted here is what it is OFFERED and what a pick commits.
+ * list of actions rather than three private popovers (studio-ui-guidelines.md §12.5). It is a
+ * settled surface, so what is asserted here is what it is OFFERED and what a pick commits.
  */
 const menus: AnyRec[] = [];
 void mock.module("../src/surfaces/menu", () => ({
@@ -319,7 +319,7 @@ describe("Logic tab — editing bindings", () => {
 
   test("an event NOT in the suggestion list can still be bound — the point of the field", async () => {
     /* Ten names in a closed picker meant `ondragover`, `onpointerdown`, `onwheel` and every custom
-       event a component emits were unbindable from the Inspector. §6.5 asks for a free-form field
+       event a component emits were unbindable from the Inspector. §6.1 asks for a free-form field
        instead of a hard-coded list of ten; the list is a list of SUGGESTIONS, and its last row asks
        for any other name. */
     const c = await logic(makeDoc());
@@ -403,7 +403,7 @@ describe("Logic tab — editing bindings", () => {
 
   test("ONE control clears a binding, and it carries the dot", async () => {
     /* The provenance chip cleared the key and the trash button beside it cleared the same key —
-       two controls for one act, which §12.5 calls a defect. */
+       two controls for one act, which studio-ui-guidelines.md §12.5 calls a defect. */
     const c = await logic(makeDoc());
     const clear = binding(c, "onchange")!.querySelector('[part="event-clear"]')!;
     expect(clear.querySelector('[part="dot"]')).toBeTruthy();
@@ -470,9 +470,9 @@ describe("Logic tab — editing bindings", () => {
   });
 });
 
-// ─── Inline body modes (spec §20) ────────────────────────────────────────────
+// ─── Inline body modes (spec.md §20) ─────────────────────────────────────────
 
-describe("Logic tab — inline body modes (spec §20)", () => {
+describe("Logic tab — inline body modes (spec.md §20)", () => {
   function structuredDoc(body: unknown, extra: Record<string, unknown> = {}): JxMutableNode {
     return {
       children: [
@@ -591,7 +591,7 @@ describe("Logic tab — add event", () => {
   });
 });
 
-// ─── Repeating list (arrived from Content, §6.5) ─────────────────────────────
+// ─── Repeating list (arrived from Content, §6) ───────────────────────────────
 
 function repeaterDoc(extra: Record<string, unknown> = {}) {
   return {
@@ -714,8 +714,9 @@ describe("Logic tab — a repeater field holding $expression is an island, like 
     const c = await logic(repeaterDoc({ items: { $expression: { operator: "!", target: null } } }));
     const island = row(c, "items")!.querySelector('[part="control-host"]') as HTMLElement;
     expect(island).toBeTruthy();
-    // Same island contract the event bindings use (§9.4): the document renders the host and
-    // Nothing inside it, and the flow mounts its own expression-editor document into it.
+    // Same island contract the event bindings use (studio-ui-guidelines.md §9.4): the document
+    // Renders the host and nothing inside it, and the flow mounts its own expression-editor
+    // Document into it.
     expect(island.querySelector('[part="expression"]')).toBeTruthy();
   });
 
