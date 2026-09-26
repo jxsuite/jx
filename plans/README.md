@@ -188,18 +188,18 @@ A spec that proves to have no open item graduates in its census pull request, be
 
 Re-derive it after each detailing pull request with `bun run plans:status`, which orders specs by the `requires` edges between their plans.
 
-| #   | Spec                                                            | Why here                                                                                          |
-| --- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 0   | collab                                                          | The pilot: two items and no dependents, so it shakes out the template.                            |
-| 1   | spec                                                            | The core format, cited by ten specs.                                                              |
-| 2   | schema, extensions, relationships, imports, parser, jx-markdown | Only those still draft after the census. extensions is cited nineteen times by site-architecture. |
-| 3   | compiler                                                        | Cites spec and extensions.                                                                        |
-| 4   | site-architecture                                               | Cites extensions and spec.                                                                        |
-| 5   | ai                                                              | `plan:ai/harness-phase-1` covers most of it.                                                      |
-| 6   | ui and studio-ui-guidelines                                     | One pull request: they cite each other throughout and share accessibility gaps.                   |
-| 7   | studio                                                          | Cites studio-ui-guidelines, site-architecture and ui.                                             |
-| 8   | desktop                                                         | Cites studio and server.                                                                          |
-| 9   | standards                                                       | Only if still draft.                                                                              |
+| #   | Spec                                                            | Why here                                                                             |
+| --- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 0   | collab                                                          | The pilot: seven items in five plans, self-contained, so it shakes out the template. |
+| 1   | spec                                                            | The core format, cited by ten specs.                                                 |
+| 2   | schema, extensions, relationships, imports, parser, jx-markdown | None graduated at census. extensions is cited nineteen times by site-architecture.   |
+| 3   | compiler                                                        | Cites spec and extensions.                                                           |
+| 4   | site-architecture                                               | Cites extensions and spec.                                                           |
+| 5   | ai                                                              | `plan:ai/harness-phase-1` covers most of it.                                         |
+| 6   | ui and studio-ui-guidelines                                     | One pull request: they cite each other throughout and share accessibility gaps.      |
+| 7   | studio                                                          | Cites studio-ui-guidelines, site-architecture and ui.                                |
+| 8   | desktop                                                         | Cites studio and server.                                                             |
+| 9   | standards                                                       | Only if still draft.                                                                 |
 
 ### Release levels for the program's spec edits
 

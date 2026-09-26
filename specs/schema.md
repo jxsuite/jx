@@ -44,6 +44,8 @@ Two subpaths let any host edit and write a Jx document the way Studio does, with
 
 ### 3.1 Component Schema (`schema.json`)
 
+> **Status: Partial.** The shapes below validate, but four statements outrun `generateSchema` (`packages/schema/src/schema.ts`). `computeWebData` takes only the `EventHandler` names from `@webref/idl`, so no DOM property set is derived (`ElementDef` hand-declares its common properties and admits the rest through `additionalProperties`), and the `@webref/elements` names are `examples` on the pattern-typed `TagName`, not an enumeration. `ExternalClassDef` declares none of Request `urlParams`, FormData `fields` or Blob `parts` and `type`, and a computed `state` entry is admitted by `StateEntry`'s plain string branch, not a pattern match.
+
 **`$id`:** `https://jxsuite.com/schema/v1`
 
 Root-level fields: `$schema`, `$id`, `$defs`, `state`, `tagName`, `children`, `$media`, `$elements`, `$head`, `$layout`, `$paths`, `$lang`, `$dir`, `$sitemap`, `title`, `imports`, `observedAttributes`, `cases`, `style`, `attributes`.
@@ -110,7 +112,7 @@ All 13 built-in prototypes with their specific configuration properties:
 
 ### 3.2 Project Schema (`project-schema.json`)
 
-> **Status: Implemented.** Every declared key is described, and the language-tag keys carry a pattern, so `jx validate` and the build no longer disagree about the same value. See §7 for exactly how much of BCP 47 a `pattern` can carry.
+> **Status: Partial.** The top-level keys of `projectConfigSchema` (`packages/schema/defs/project-config.schema.ts`) are described and the three language-tag keys carry `LANGUAGE_TAG_PATTERN`, but the list below names a `collections` key the core schema does not declare (content collections are the parser extension's `content` section, `extensions/parser/schemas/project.fragment.schema.json`) and omits the declared `$defs`, `$schema`, `extensions`, `manifest`, `serviceWorker`, `securityTxt`, `images` and `copy`. The pattern does not accept every tag the build accepts: `canonicalizeLocale` (`packages/schema/src/locale.ts`) trims a tag before `Intl.Locale` parses it, so a padded `"en "` builds as `en` and fails `jx validate`. The compiler checks redirect statuses against its own `REDIRECT_HTML_POLICY` (`packages/compiler/src/site/site-build.ts`) rather than importing `REDIRECT_STATUSES`, as §7's RFC 9110 row says it does.
 
 **`$id`:** `https://jxsuite.com/schema/project/v1`
 
@@ -152,7 +154,7 @@ Validates `.class.json` files with:
 
 ### 3.4 I-JSON at the Parse Boundary
 
-> **Status: Implemented.** `ijson.ts`, enforced by `parse.ts` for every document, project config and class definition.
+> **Status: Partial.** `parse.ts` enforces `ijson.ts` wherever the compiler, `packages/site` and the server's class resolution call `parseJxDocument`, `parseProjectConfig` or `parseClassDef`, but `isSafeJsonNumber` exempts every literal with an exponent as well as every fraction, so an integer written `1e400` passes as `Infinity` and is written back as `null`. Other readers bypass the boundary with a bare `JSON.parse`: Studio's tab-open path (`parseJsonDocument`, `packages/schema/src/json-layout.ts`), its layout resolver (`packages/studio/src/site-context.ts`) and its `project.json` reads; `jx validate` (`packages/compiler/src/site/validate-command.ts`, `packages/schema/src/validate-project.ts`) for `project.json`, pages, components, layouts and class definitions; and `packages/site`'s `project.json` read. On those paths a repeated name is dropped silently and an unsafe integer is rounded.
 
 `JSON.parse` accepts documents that mean something other than what they say, and RFC 7493 names the two that matter here:
 
@@ -167,7 +169,7 @@ Detection is a scan of the source text rather than a `JSON.parse` reviver, becau
 
 ### 3.5 Unicode Normalization at the Parse Boundary
 
-> **Status: Implemented.** `parse.ts` puts every key and every string value into NFC, for documents, project configs and class definitions alike.
+> **Status: Partial.** `parse.ts` puts every key and every string value into NFC for its callers (the compiler, `packages/site`'s documents, the server's class resolution). The readers §3.4's marker names as bypassing it apply no normalization, Studio's `parseJsonDocument` and layout resolver and `jx validate` among them, so a declaration and a reference typed in different forms still resolve to nothing in Studio's canvas and collab room, although the build joins them.
 
 A state name is an **identifier**: declared as a key in `state`, referenced as `${state.état}` in a template and as `#/state/état` in a `$ref`. Typed on macOS it arrives decomposed (`e` + U+0301); typed on Windows, or pasted from most of the web, it arrives precomposed (U+00E9).
 
@@ -183,6 +185,8 @@ NFC composes; it does not fold or strip. Scripts with no composed forms, CJK and
 ---
 
 ## 4. Generation Pipeline
+
+> **Status: Partial.** `computeWebData` (`packages/schema/src/schema.ts`) extracts the non-obsolete tag names, the CSSOM camelCase names and the `EventHandler` names, but no per-element property set, so step 2 is half done. `runSchemaCli` composes and writes seven artifacts, not the three steps 5 and 6 name: `extension-manifest.schema.json` and `schemas/project.core.schema.json`, `project.fields.schema.json` and `document.paths.schema.json` as well.
 
 1. Load web standards data from `@webref/css`, `@webref/elements`, `@webref/idl`
 2. Extract HTML tag names and their valid properties

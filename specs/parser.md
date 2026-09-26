@@ -40,7 +40,7 @@ Built on the `unified` / `remark` pipeline (markdown) and a minimal RFC 4180 par
 
 ## 3. `Markdown` — the markdown format class
 
-> **Status: Partial.** The class and every capability ship. Two derived values are **correct only for Latin script**: `slugifyHeading` strips on an ASCII-only character class, so a heading in any other script slugifies to the empty string and falls back to `section`, `section-2`, … — which means the deep-linkable anchors this section promises are not delivered for those documents; and `$wordCount`/`$readingTime` split on whitespace, which reports a CJK article as one word. See §10.
+> **Status: Partial.** The class and every capability ship, and `$wordCount`/`$readingTime` segment words with `Intl.Segmenter` (`extensions/parser/src/md.ts`). Heading anchors are still wrong for scripts written with combining marks: `slugifyHeading` (`extensions/parser/src/transpile.ts`) keeps only letters, numbers, `_`, whitespace and `-`, so the Unicode mark category (`\p{M}`) is stripped as if it were punctuation. Devanagari, Bengali, Tamil and Thai vowel signs and viramas, and Arabic or Hebrew points, disappear from the slug, which then spells a different word than the heading: `नमस्ते दुनिया` slugifies to `नमसत-दनय`. The anchors stay unique and still agree with `$toc`.
 
 A single class carrying every capability (`Markdown.class.json`):
 
@@ -162,6 +162,8 @@ Runtime glob collection (node-only):
 
 ## 7. `MarkdownDirective` — `::directive{attrs}` syntax
 
+> **Status: Partial.** The directive-to-element mapping ships in `mdastNodeToJx` (`extensions/parser/src/transpile.ts`): text, leaf and container directives, dot-path expansion, `$`-keyword mapping, pseudo-class and media style keys, and the `--title`/`--description` annotations. The `allowedNames` restriction does not: `loadContentType` (`extensions/parser/src/content-loader.ts`) derives it from the content type's `$elements` and passes it through `Markdown.load`, but `processMarkdown` (`extensions/parser/src/md.ts`) only treats `directiveOptions` as a switch for an unconfigured `remark-directive`, and no `MarkdownDirective` plugin exists. So `$elements` works only as an on/off switch: the loader never passes `directives`, a collection that declares any `$elements` accepts every directive name, and one that declares none parses no directives at all, leaving them as literal paragraph text.
+
 Directives map to custom element tags in the Jx tree (text/leaf/container, nesting via colon count). Directive attributes use dot-path expansion (`style.backgroundColor="blue"`), `$`-keyword mapping (`prototype=` → `$prototype`), pseudo-class/media style keys, and `--title`/`--description` annotations. Content-type `$elements` become the plugin's `allowedNames`. See `specs/jx-markdown.md` for the full dialect.
 
 ---
@@ -178,6 +180,8 @@ All classes satisfy the Jx external class contract: constructor receives the con
 
 ### 9.1 `assets` — collection asset mounts
 
+> **Status: Partial.** Mounts ship for plain and `{locale}` directory sources (`contentAssetMounts` in `extensions/parser/src/content-loader.ts`), and a plain source whose content type name is not URL-safe is skipped with the warning. A `{locale}` source is not: its branch tests the name inside the mount condition and moves on, so such a type gets no mounts and no warning, and its entries' content-relative references (§9.2) stay unrewritten without a word.
+
 `Content.assets(sectionValue, { root })` returns one mount per content type whose `source` is a local **directory**: `{ urlPrefix: "/content/<type>", dir: <resolved source> }`. Single-file, remote, and missing sources get no mount — a lone file's siblings are not its collection — and a content type whose name is not URL-safe is skipped with a warning.
 
 ### 9.2 Content-relative asset references
@@ -193,7 +197,7 @@ Because the rewrite happens in the loader, every consumer of `projectData` — s
 
 ### 9.3 Date coercion
 
-> **Status: Implemented.** `coerceEntryDates` runs in the content loader between a format class's `load` and `validateEntries` — the one point that holds both the entries and the schema, since `Csv.load` receives a schema and `Markdown.load` does not.
+> **Status: Partial.** `coerceEntryDates` (`extensions/parser/src/dates.ts`) runs in `loadContentType` between a format class's `load` and `validateEntries`, but only on the local format-class branch: native JSON collections and remote http(s) sources reach `validateEntries` uncoerced, so a declared date there is left as authored. An offset, fractional-second or zone-less date-time passes silently and is never normalized to UTC, because `isCoercedDate` accepts every RFC 3339 form; only a value that is not RFC 3339 at all draws the "was not coerced" warning. `_meta.mtime` is stamped by `Markdown.load` alone; `Csv.load` and `loadJSONEntries` set no `_meta`, so CSV and JSON entries carry no modification time.
 
 A field the content-type schema declares as `format: "date"` or `format: "date-time"` is normalized to RFC 3339:
 

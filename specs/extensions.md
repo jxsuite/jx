@@ -60,6 +60,8 @@ Rules:
 
 ## 3. Declaration model
 
+> **Status: Partial.** Declaration, project-first resolution (`createNodeFormatIO`, `packages/compiler/src/site/format-host.ts`), manifest-class visibility and the duplicate-name error ship (`buildExtensionRegistry`, `packages/schema/src/extension-registry.ts`). A project-local `imports` entry wins only where the compiler resolves a def to a `$src` (`packages/compiler/src/site/prototype-resolver.ts`): a state def whose `timing` is not `"compiler"` is lowered through `registry.byName($prototype)` before `imports` is consulted, so a project-local class named like a lowering manifest class (`TableQuery`, `Search`) is shadowed by it.
+
 A project declares its extensions in `project.json`:
 
 ```json
@@ -189,6 +191,8 @@ Standalone validation registers the shipped defaults (`@jxsuite/schema/schemas/p
 
 ### 5.4 Validation
 
+> **Status: Partial.** Offline resolution of the committed entry documents, host-first resolution of first-party refs and whole-tree `jx validate` ship (`packages/compiler/src/site/schema-command.ts`, `packages/compiler/src/site/validate-command.ts`). The canonical URLs are not all served: the `copy` map in `sites/jxsuite.com/project.json` publishes `schema/v1`, `schema/project/v1`, `schema/class/v1` and `schema/document/paths/v2`, but not `https://jxsuite.com/schema/project/core/v2` or the `https://jxsuite.com/schema/project/fields/v2` default union, so a client fetching either gets a 404 rather than the shipped default.
+
 - Every consumer resolves the committed entry documents **offline with no file access at all**: they are self-contained single-resource schemas (§5.2), so every `$ref` is a root-relative JSON Pointer into the same document. No `node_modules`, no network, no editor configuration.
 
   **Why root pointers and not a `$id`-keyed compound document.** VS Code's JSON language service — which Monaco embeds, so this covers the studio too — implements neither half of compound-document resolution. It resolves a `#/pointer` ref against the DOCUMENT ROOT, never re-based on an enclosing `$id`, so an embedded fragment's own `#/$defs/StyleObject` reports `$ref '/$defs/StyleObject' ... can not be resolved`; and it treats any ref with a non-empty part before `#` as external, fetching `https://jxsuite.com/schema/...` over the network rather than matching the embedded resource sitting in the same file. Offline that fails outright; online it silently substitutes the shipped defaults for the project's effective unions, which is the §5.3 override quietly not applying. Only the first resolve error surfaces as a diagnostic, so one visible complaint can hide many. Root pointers avoid both paths, and cost nothing under ajv.
@@ -236,6 +240,8 @@ Classes with no admission block are plain external classes (state `$prototype` t
 
 ### 6.1 Host introspection contract
 
+> **Status: Partial.** Steps 2 to 4 ship in `buildExtensionRegistry` (`packages/schema/src/extension-registry.ts`) and `FormatEntry` (`packages/schema/src/format-registry.ts`). Step 1 diverges: hosts resolve `<specifier>/jx-extension.json` through the package's exports map, the rule §9.2 states, and never locate a manifest through the `"jx"` field, which only the catalogue reads, as the §9.2 hint (`declaresJxField`, `packages/server/src/extension-catalog.ts`). Step 5 is not built: no host reads a capability's `timing` (§8.1).
+
 Hosts **introspect JSON only** and import code only to invoke:
 
 1. Resolve each `extensions` entry to a package root; read the manifest named by its `"jx"` field; read each listed `.class.json`.
@@ -249,6 +255,8 @@ The registry implementing this contract lives at `@jxsuite/schema/extension-regi
 ---
 
 ## 7. The `format` block
+
+> **Status: Partial.** The block, `mediaType` validation (`mediaTypeProblem`, `packages/schema/src/media-type.ts`) and `(extension, capability)` exclusivity ship (`packages/schema/src/format-registry.ts`). The declared `mediaType` reaches only the studio's file-picker `accept` map and editor language id (`packages/studio/src/files/file-ops.ts`, `packages/studio/src/canvas/canvas-render.ts`): no icon or label reads it, and the dev server and `jx preview` set `Content-Type` from a fixed core table (`MEDIA_TYPE_BY_EXTENSION`) that knows only `.md`, `.markdown`, `.yaml` and `.yml`, so a format's declared type is never served.
 
 Unchanged from v1. A class participates in format dispatch iff it has a top-level `format` object:
 
@@ -279,6 +287,8 @@ Parameters are part of the value and carry meaning: `@jxsuite/parser` declares `
 ---
 
 ## 8. Capability methods
+
+> **Status: Partial.** Every role below is declared in `EXTENSION_CAPABILITIES` (`packages/schema/src/format-registry.ts`) and by a first-party descriptor under `extensions/*/src/`. `resolvePaths` dispatches by discriminator in the site build only (`packages/compiler/src/site/pages-discovery.ts`); the studio preview's parameter picker hard-codes `contentType` and offers nothing for any other discriminator (`resolveParamValues`, `packages/studio/src/page-params.ts`). The connector `table` discriminator is not built: no connector descriptor declares `resolvePaths`, so `contentType` is the only registered discriminator. Two Consumers cells name callers that do not exist: only `jx db push` calls `bindings`, and only the studio's data grid reaches `testConnection`.
 
 Capabilities are declared in `$defs.methods` using well-known `role` values. All capability methods are `scope: "static"` — hosts call them on the implementation class without constructing an instance. The instance `resolve()` method remains the runtime's on-demand access path.
 
@@ -318,6 +328,8 @@ Declaring both capabilities is therefore the whole of what a third-party format 
 
 ### 8.1 `timing`
 
+> **Status: Partial.** `timing` is parsed with its default (`DEFAULT_TIMING`, `packages/schema/src/format-registry.ts`) and forwarded to the studio (`packages/server/src/studio-api.ts`), but no host acts on it: the compiler and server import the implementation whatever a capability declares, and the studio round-trips every call through `formatAction` (`packages/studio/src/format/format-host.ts`), including the `"client"` capabilities `Markdown` and `Csv` declare.
+
 Each capability method may declare a `timing` array — the environments allowed to invoke it directly:
 
 - Values: `"compiler"`, `"server"`, `"client"`. Default when omitted: `["compiler", "server"]` (assume node-only).
@@ -335,6 +347,8 @@ Capability options are declared as ordinary `parameters` with JSON-Schema types.
 A lowered def may carry a `$bundle: string[]` key naming client modules it depends on (typically `npm:` specifiers, e.g. a browser client the def dynamic-imports). The compiler registers each specifier with the sidecar bundler (spec.md §5.3 "Compiled-site delivery") and strips `$bundle` from the def — it is host metadata, never part of the emitted core shape. The def obtains its bundle URL from the shared deterministic mapping (`@jxsuite/schema/asset-paths` `sidecarAssetPath`), so extension and compiler agree on the path without coordination at lower time.
 
 ### 8.4 `emit`
+
+> **Status: Partial.** Contribution, host-written files, error collection, ordering and the non-empty gate on `emit` itself ship (`packages/compiler/src/site/site-build.ts`). The gating bullet's comparison does not hold: section loading (`loadProjectSections`, `packages/compiler/src/site/project-sections.ts`, which the dev server also uses) runs whenever the key is present, and the dev server activates every mount whatever its section holds (`buildRuntime`, `packages/server/src/jx-mounts.ts`); only the site build's mount activation matches `emit`.
 
 `emit` lets a section-owner class contribute derived build artifacts — search indexes, feeds, export manifests — to the compiled site:
 
@@ -388,7 +402,7 @@ Statically referenced assets are the contract. A `src` a page computes at runtim
 
 ### 8.6 `head`
 
-> **Status: Implemented.**
+> **Status: Partial.** Contribution, placement below the project's `$head` and warning on failure ship (`collectExtensionHead`, `packages/compiler/src/site/site-build.ts`). Gating does not match `emit` and `assets`: `collectExtensionHead` skips only an absent or `null` section, so an empty object still contributes where those two skip it.
 
 `head` lets a section-owner class contribute `<head>` entries to every compiled page:
 
@@ -406,6 +420,8 @@ head(sectionValue, { projectConfig, root }) → JxHeadEntry[]
 It is deliberately narrow: the context carries `projectConfig` and `root` and **not** the loaded sections, because a contribution that depends on content is a contribution that cannot run early enough to be used.
 
 ## 9. The `project` block
+
+> **Status: Partial.** Section ownership, key exclusivity, `projectData` into `_project[<key>]`, discriminator dispatch and the fragment-read entry shape ship (`packages/schema/src/extension-registry.ts`, `packages/compiler/src/site/project-sections.ts`). `referenceable` is validated and declared by `Content` and `Data` but read by no host: `parseRefPointer` (`extensions/connector/src/columns.ts`) accepts a pointer into any section, and the studio's reference control hard-codes `#/content/<type>` (`packages/studio/src/ui/schema-form.ts`).
 
 A class owns a project.json section iff it has a top-level `project` object:
 
@@ -430,6 +446,8 @@ The section's **value schema is not duplicated here** — it lives in the packag
 Behavior attaches through capabilities on the same class: `projectData` loads the section into `_project[<key>]`; `resolvePaths` expands `$paths` values carrying its discriminator.
 
 ### 9.1 `$studio.settings`
+
+> **Status: Partial.** `label`, `order`, both layouts, `entry.ui`, `entry.newEntry`, the `schema-builder` and `secret` controls and `#/$context/` enum pointers ship (`packages/studio/src/settings/extension-sections.ts`, `packages/studio/src/settings/contributed-section.ts`, `packages/studio/src/ui/form-controls.ts`). `icon` is carried but not drawn (`section-registry.ts` reserves it), no `renderer` escape hatch exists, and the built-in controls differ from the list: `"binding"` was replaced by the value-source ladder and a `"reference"` control ships unlisted.
 
 The `project` class's `$studio` block may declare a settings section, rendered generically by the studio:
 
@@ -461,6 +479,8 @@ The `project` class's `$studio` block may declare a settings section, rendered g
 Built-in controls: `"schema-builder"` (visual JSON-Schema field editor), `"secret"` (value committed via the platform's secret store, **never** project.json), `"binding"` (signal/route-param binding), plus implicit defaults per type/enum/format. Enum choices may be dynamic via `{ "$ref": "#/$context/<pointer>" }` — a JSON-pointer walk over the project config (with `{@param}` segment substitution and the `$formats` virtual root), e.g. `#/$context/connections`, `#/$context/auth/roles`.
 
 ### 9.2 The extension catalogue
+
+> **Status: Partial.** The dev server and desktop answer the full contract (`packages/server/src/extension-catalog.ts`, `probeExtension` in `packages/compiler/src/site/format-host.ts`). No host populates `specifier`, and the cloud host declares rather than probes: `listExtensionCatalog` in `packages/studio/src/platforms/cloud.ts` sets `bundled: true` on every gateway entry and derives `installed` from `package.json` declarations.
 
 §3 says a project opts in with one line, and that line is only half the truth: the package must also be a dependency, or the registry cannot resolve it. Nothing in the model connects the two, so a host that lets a person type a package name into `extensions` produces a project that fails to build.
 
@@ -494,6 +514,8 @@ Three rules make it correct rather than merely convenient.
 
 ## 10. Studio format hints
 
+> **Status: Partial.** `modes`, `documentMode`, `newFileTemplate`, `elements` and `stateDefaults` ship (`packages/studio/src/tabs/tab.ts`, `packages/studio/src/files/files.ts`, `packages/studio/src/format/constraints.ts`, `packages/studio/src/panels/signals-panel.ts`). `icon` is carried to the studio (`StudioFormatHints`, `packages/studio/src/format/format-host.ts`) and drawn nowhere: the file tree (`fileIconName`, `packages/studio/src/files/files.ts`) and quick search (`fileIcon`, `packages/studio/src/panels/quick-search.ts`) choose glyphs by extension, so the `markdown` and `table` icons `Markdown` and `Csv` declare never appear.
+
 Unchanged from v1: format classes describe their studio control surface declaratively in `$studio` — `icon`, `modes`, `documentMode`, `newFileTemplate`, and the `elements` allowlist/nesting constraints gating structural editing. The studio interprets this data generically; it never hard-codes per-format element sets.
 
 Additional generic hint: `$studio.stateDefaults` — an object merged into state defs the studio creates for this prototype (e.g. `{ "timing": "client" }` for browser-only classes).
@@ -501,6 +523,8 @@ Additional generic hint: `$studio.stateDefaults` — an object merged into state
 ---
 
 ## 11. The `server` block
+
+> **Status: Partial.** The block ships as specified except `module`'s fallback: the site build throws when `server.module` is absent (`buildMountSpecs`, `packages/compiler/src/site/site-build.ts`) rather than falling back to `$implementation`, which only the dev server dispatches through.
 
 A class contributes routes to the deployed-site worker (and the dev server) iff it has a top-level `server` object plus a `mount` capability:
 
@@ -544,6 +568,8 @@ DELETE /_jx/data/:table/:id
 
 ### 11.1 Section-owner `deploySchema` (push contributions)
 
+> **Status: Partial.** The studio push composes section-owner steps after the connector plan (`pushDataSchema`, `packages/server/src/data-api.ts`). `jx db push` (`packages/compiler/src/site/db-push.ts`) runs only each connection's connector `deploySchema`, so it never pushes a section owner's steps, the auth extension's Better Auth tables included.
+
 A **non-connector** `project` class may also declare a `deploySchema` capability, letting its section contribute steps to the schema push (`jx db push`, the studio push button). The signature differs from the connector variant — there is no single connection def to hand over:
 
 ```
@@ -556,6 +582,8 @@ deploySchema(sectionValue, projectConfig, { env, dryRun?, connection?, connector
 ---
 
 ## 12. The `connector` block
+
+> **Status: Partial.** `provider`, `kind`, `local` and `module` ship (`packages/server/src/data-api.ts`, `resolveConnectorStandins` in `packages/server/src/jx-mounts.ts`, `buildMountSpecs` in `packages/compiler/src/site/site-build.ts`). `serve` is declared by `D1`, `Sqlite` and `Supabase` and read by no host: the data mount is found through `Data.class.json`'s own `server` block.
 
 A class provides database connections iff it has a top-level `connector` object plus the connector capabilities (§8):
 

@@ -1,0 +1,20 @@
+# parser.md audit
+
+Audited against b900b326 on 2026-09-26.
+
+## Verified
+
+- §2 (exports): extensions/parser/package.json, extensions/parser/src/csv.ts, extensions/parser/src/serialize.ts. Every listed export ships; the table is incomplete rather than wrong (it omits `./Content.class.json`, `./content-loader`, `./md-html`, `./types`, `./jx-extension.json`, the `schemas/*.fragment.schema.json` files, and `rewriteCSV` from the `./csv` row).
+- §3.1–§3.2 (runtime usage, `MarkdownFileResult`, heading anchors apart from the combining-mark loss §3's marker records): extensions/parser/src/markdown.ts, extensions/parser/src/md.ts, extensions/parser/src/transpile.ts, extensions/parser/tests/markdown.test.ts, extensions/parser/tests/transpile.test.ts, extensions/parser/tests/md-units.test.ts, packages/runtime/src/runtime.ts
+- §4 (the `Csv` format class): extensions/parser/src/csv.ts, extensions/parser/src/Csv.class.json, extensions/parser/tests/csv.test.ts. The capability table leaves out the static `rewrite` capability (extensions.md specifies it); the claim that the loader coerces a CSV's dates fails for a remote CSV, which §9.3's marker records.
+- §5 (`serializeJxMarkdown`): extensions/parser/src/serialize.ts, extensions/parser/tests/serialize-export.test.ts, extensions/parser/tests/serialize-tagname-expression.test.ts. One roundtrip loss is known: an `:::Array` whose `map` template is an element that markdown writes only inside a parent (an `li`) serializes as a bare `- …` and re-parses as `ul > li > p`. It is recorded and owned under jx-markdown.md §6.5, the most specific section, so §5 carries no marker of its own.
+- §6 (`MarkdownCollection`): extensions/parser/src/md.ts, extensions/parser/src/MarkdownCollection.class.json, extensions/parser/tests/markdown.test.ts
+- §8 (external class contract): extensions/parser/src/content.ts, extensions/parser/tests/capability-introspection.test.ts, packages/runtime/src/runtime.ts
+- §9 and §9.2 (the `Content` class, content-relative references): extensions/parser/src/content-loader.ts, extensions/parser/src/Content.class.json, extensions/parser/tests/content-loader.test.ts. §9.1's asset mounts hold for a plain source; the silent skip on a `{locale}` source is on §9.1's marker.
+- Informative: §1 (Overview), §10 (Standards Alignment; `**Subset**` and `**Adopted**` are conformance classes and every evidence path exists). The CommonMark row's note says the mdast-to-Jx mapping is "the constructs §8 maps"; that mapping lives in extensions/parser/src/transpile.ts and jx-markdown.md §9, so the cross-reference is stale editorial text, not an open item.
+
+## Dispositioned without a plan
+
+- §3's marker narrowed rather than removed. It said `slugifyHeading` and `$wordCount`/`$readingTime` were correct only for Latin script. 0.2.9 closed the word-count half entirely (`Intl.Segmenter` in extensions/parser/src/md.ts, pinned by extensions/parser/tests/md-units.test.ts; §10's UAX #29 row) and most of the slug half (NFC plus a Unicode letter/number class in extensions/parser/src/transpile.ts, pinned by extensions/parser/tests/transpile.test.ts; §10's UAX #15 row). What remains is the stripped combining marks, and the new marker says only that.
+- Every other marker this census changed (§9.3 from Implemented to Partial; §7 and §9.1 newly led with Partial) leaves its section open, so each correction is recorded in the owning stub's `## Context`, which quotes the new marker and says what the section read before.
+- The whole-spec header stays `Partial`; there is no preamble marker, so it is not an item of its own. No roadmap, status ledger or stale status cell.
