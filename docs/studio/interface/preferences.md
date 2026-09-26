@@ -10,11 +10,12 @@ code:
   - packages/studio/src/panels/settings-menu.ts
   - packages/studio/src/settings/preferences-accounts.ts
   - packages/studio/src/settings/preferences-keymap.ts
+  - packages/studio/src/ui/ai-credentials-form.ts
 ---
 
 # Preferences
 
-Preferences holds the settings that belong to **Studio**, not to a project: how the editor looks, which AI provider it talks to, which accounts it has signed you into, and what every keyboard shortcut does. Open it with :kbd[Cmd+,] on macOS or :kbd[Ctrl+,] elsewhere, find **Preferences…** in the command palette, or pick it from the **Settings** menu at the foot of the rail, whose submenu takes you straight to Appearance, Assistant, Accounts or Keyboard.
+Preferences holds the settings that belong to **Studio**, not to a project: how the editor looks, which AI provider it talks to, which accounts it has signed you into, and what every keyboard shortcut does. Open it with :kbd[Cmd+,] on macOS or :kbd[Ctrl+,] elsewhere, find **Preferences…** in the command palette, or pick it from the **Settings** menu at the foot of the rail, whose submenu takes you straight to Appearance, Assistant, Accounts or Keyboard. However you arrive, the keyboard starts on that section's own item in the list rather than on the first one, so exactly one item reads as the current section.
 
 :::doc-note
 **Preferences is not Project Settings.** Preferences is a dialog, it follows you between projects, and it works with no project open at all. Project Settings (contexts, definitions, packages, deploy) belongs to one project, and it is a **document**: the project's own `project.json`, open in a pane with undo and :kbd[Cmd+S] like any other file. See **[Project settings](/docs/studio/projects/settings)**. They share the rail's **Settings** menu, which is the one place both are named side by side, with a divider between what belongs to the app and what belongs to the project.
@@ -22,7 +23,7 @@ Preferences holds the settings that belong to **Studio**, not to a project: how 
 
 Preferences opens over the workspace rather than replacing it, and :kbd[Escape] closes it. Nothing you do behind it is suspended.
 
-Every change here is saved as you make it, with no Apply, and saved for the whole app rather than for this window, so a second window sees it. If a setting cannot be written (a full disk, a configuration folder that is not writable), Studio says so in **Problems** rather than letting it look like it took.
+Apart from the Assistant key form, which has its own **Save**, every change here is saved as you make it, with no Apply, and saved for the whole app rather than for this window, so a second window sees it. If a setting cannot be written (a full disk, a configuration folder that is not writable), Studio says so in **Problems** rather than letting it look like it took.
 
 ## Appearance
 
@@ -34,7 +35,7 @@ This is the editor's own theme. It has no effect on the site you're building, wh
 
 Connect the AI provider the [assistant](/docs/studio/ai) talks to: a key from any OpenAI-compatible service, the model to use, and an optional endpoint if you're running a local or self-hosted model. On platforms that broker it, a keyless **Connect Cloudflare** option sits above the key form.
 
-Everything you enter is stored locally, on this machine, and sent only to the endpoint you chose. Saving leaves Preferences open, so you can check the result in **Accounts** without reopening anything.
+Everything you enter is stored locally, on this machine, and sent only to the endpoint you chose. The key form's **Save** and **Cancel** appear only once you change the key, model or endpoint, and **Cancel** puts the stored values back. If you disconnect the provider in **Accounts**, the form empties rather than holding on to the old key. Saving leaves Preferences open, so you can check the result in **Accounts** without reopening anything.
 
 ## Accounts
 
@@ -42,7 +43,7 @@ Every credential Studio is holding, in one list: **GitHub**, the **AI provider**
 
 A connected GitHub account also says **where** the credential is kept, because that differs by build: the desktop app holds it in a file in its own configuration folder that only your user account can read; a browser keeps it in that browser's storage. A connected account offers **Disconnect**, which forgets it on this machine immediately and takes its row back to the disconnected wording. Nothing else is touched (disconnecting the AI provider leaves GitHub signed in), and anything that was waiting on that credential notices at once, so the assistant's setup notice appears or disappears without you reopening anything.
 
-The list never shows the credential itself, only that one is stored.
+The list never shows the credential itself, only that one is stored. A long endpoint address or account id wraps inside its row rather than being cut off, because it is often the part that tells two connections apart.
 
 On Jx Cloud the Cloudflare row is different in one way that matters: the connection is held for you by the platform rather than stored on this machine, so the row reports what the platform says about it. It names the connected account, or tells you the authorization has expired and offers **Reconnect**, or offers to pick an account when your Cloudflare login covers several and none has been chosen yet. **Disconnect** there reaches the platform and drops the authorization itself, not just a local copy of it.
 

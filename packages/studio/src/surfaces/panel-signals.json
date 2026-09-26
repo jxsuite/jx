@@ -163,7 +163,11 @@
       "fontSize": "var(--jx-text-xs)",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"bar-segments\"], & [part=\"bar-buttons\"]": {
+    "& [part=\"bar-segments\"]": {
+      "$description": "The Body switch is the kit's segmented control, which draws its own row, frame and selected segment; all the bar asks of it is not to shrink.",
+      "flex": "none"
+    },
+    "& [part=\"bar-buttons\"]": {
       "display": "flex",
       "flex": "none",
       "alignItems": "center"
@@ -1172,11 +1176,17 @@
                                         "textContent": "${$map.item.label}"
                                       },
                                       {
-                                        "tagName": "span",
+                                        "$description": "The mode switch is the kit's radiogroup, as the Logic panel's Handler body is. It was a `span` with `role=group` over buttons that carried `selected` alone: the one Spectrum `compact` group the conversion never reached, so it drew as two loose words and announced neither which mode was on nor that the two exclude each other. `checked` makes each segment a radio, so the caret roves and `aria-checked` is the element's own.",
+                                        "tagName": "jx-action-group",
                                         "attributes": {
-                                          "part": "bar-segments",
-                                          "role": "group",
-                                          "aria-label": "${$map.item.label}"
+                                          "part": "bar-segments"
+                                        },
+                                        "$props": {
+                                          "selects": "single",
+                                          "compact": true,
+                                          "label": {
+                                            "$ref": "$map/item/label"
+                                          }
                                         },
                                         "children": [
                                           {
@@ -1198,11 +1208,16 @@
                                                 "label": {
                                                   "$ref": "$map/item/label"
                                                 },
-                                                "selected": {
-                                                  "$ref": "$map/item/selected"
+                                                "checked": {
+                                                  "$ref": "$map/item/checked"
                                                 }
                                               },
-                                              "textContent": "${$map.item.label}",
+                                              "children": [
+                                                {
+                                                  "tagName": "span",
+                                                  "textContent": "${$map.item.label}"
+                                                }
+                                              ],
                                               "onclick": {
                                                 "$prototype": "Function",
                                                 "body": [

@@ -170,7 +170,9 @@
       "background": "transparent",
       "color": "var(--jx-fg-muted)",
       "cursor": "pointer",
+      "contain": "layout",
       "::before": {
+        "$description": "The hit area, and the technique every `sm` control in the kit borrows (ui.md §4.3): an empty pseudo-element, absolutely positioned and inset 4px past a borderless 16px box, so the region that accepts the pointer is the 24px SC 2.5.8 asks for while the × stays 16px. The containment above is the other half of it, and it was missing while §4.3 claimed every outset hit area had it: an absolutely positioned box counts toward the SCROLLABLE overflow of the nearest ancestor whose overflow is not visible, painted or not, so a scrolling tab strip counted 4px it could not see. Nothing here pays the containment's price — the tab is a centred flex row, so no baseline is asked of the ×, and the 4px reaches only the tab's own inline padding.",
         "content": "\"\"",
         "position": "absolute",
         "insetBlock": "-4px",

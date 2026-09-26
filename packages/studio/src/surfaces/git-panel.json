@@ -37,18 +37,30 @@
       "gap": "var(--jx-space-2)"
     },
     "& [part=\"sync-bar\"]": {
+      "$description": "A wrapping row (studio-ui-guidelines §4.6), and it has exactly two items: `sync-head` (Refresh and the status, which never split) and what answers the status (the Fetch/Pull/Push group, or Create GitHub repository with no remote). It was a single line whose only shrinkable item was the status text, so a narrow Navigator never moved a button: it broke \"3 behind / Last updated 09:04 AM\" into a column one word wide (25px at the 160px floor) and painted \"(no\" under Create GitHub repository at the default 240px. Now the second item drops to a line of its own when the two no longer fit, and where that happens is decided by the status text's own width (a count, a locale's clock), never by a breakpoint. The row gap is the smaller step so a wrapped bar reads as one block.",
       "display": "flex",
+      "flexWrap": "wrap",
       "alignItems": "center",
-      "gap": "var(--jx-space-4)",
+      "gap": "var(--jx-space-3) var(--jx-space-4)",
       "padding": "var(--jx-space-4)",
       "borderBottom": "1px solid var(--border)"
     },
-    "& [part=\"sync-bar\"][data-remote=\"none\"]": {
+    "& [part=\"sync-bar\"][data-remote=\"none\"], & [part=\"sync-bar\"][data-remote=\"none\"] > [part=\"sync-head\"]": {
+      "$description": "The no-remote bar keeps its tighter 8px between Refresh and the sentence, and on both axes: the head carries that gap now that Refresh and the text sit in it rather than in the bar.",
       "gap": "var(--jx-space-3)"
     },
-    "& [part=\"sync-text\"]": {
+    "& [part=\"sync-head\"]": {
+      "$description": "Refresh and the status, as one item of the bar, so wrapping never leaves the icon alone on a line above its text. `flex: 1 1 auto` makes its basis the status text's own width, which is the wrap threshold; with `min-width: 0` it can then shrink below that when it is alone on a line, and the status wraps as a sentence rather than word by word.",
       "display": "flex",
-      "flex": "1",
+      "flex": "1 1 auto",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "minWidth": "0"
+    },
+    "& [part=\"sync-text\"]": {
+      "$description": "`1 1 auto` rather than `1`: the head's basis decides whether the verbs fit beside it, and it should be the status text's own width. An auto basis says that directly; the `0%` basis of `flex: 1` only reaches the same answer through how an engine treats a percentage while it measures.",
+      "display": "flex",
+      "flex": "1 1 auto",
       "flexDirection": "column",
       "gap": "1px",
       "minWidth": "0"
@@ -63,16 +75,27 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"sync-actions\"]": {
+      "$description": "The verbs never shrink: they are what moves. `margin-left: auto` keeps them at the inline end whether they share the status's line or sit on one of their own.",
       "display": "flex",
       "flex": "none",
       "marginLeft": "auto"
     },
     "& [part=\"branch-row\"]": {
+      "$description": "A wrapping row (studio-ui-guidelines §4.6) of two items, `branch-head` and the picker. It was a single line with the picker capped at 40% of it, so a long branch name was cut twice (\"chor…\" beside \"cho…\") and a narrow Navigator word-stacked \"Active / branch\". Now the picker drops below the name when the two no longer fit, at a width the name decides.",
       "display": "flex",
+      "flexWrap": "wrap",
       "alignItems": "center",
-      "gap": "var(--jx-space-4)",
+      "gap": "var(--jx-space-3) var(--jx-space-4)",
       "padding": "10px var(--jx-space-4)",
       "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"branch-head\"]": {
+      "$description": "The branch icon and the name, as one item so the icon is never alone on a line. The 999:1 grow ratio against the picker gives nearly all spare room to the name while the two share a line, so the picker stays the width of the branch it shows; once the picker wraps, it is alone and takes the whole line. A third item in this row needs its own flex decision.",
+      "display": "flex",
+      "flex": "999 1 auto",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "minWidth": "0"
     },
     "& [part=\"branch-icon\"]": {
       "$description": "The hand-drawn 18px branch SVG this panel carried is the kit's `git-branch` glyph — the same key `PanelRecord.icon` already names for this panel's rail button, so the two drawings cannot drift.",
@@ -82,7 +105,7 @@
     },
     "& [part=\"branch-text\"]": {
       "display": "flex",
-      "flex": "1",
+      "flex": "1 1 auto",
       "flexDirection": "column",
       "gap": "1px",
       "minWidth": "0"
@@ -100,8 +123,17 @@
       "whiteSpace": "nowrap"
     },
     "& [part=\"branch-picker\"]": {
-      "flex": "none",
-      "maxWidth": "40%"
+      "$description": "Sized by the branch it shows while it shares the name's line, and the full width of the row once it wraps below it, which is where a long branch name finally reads whole. `min-width: 0` is the kit's own default, restated because §4.6 asks it of every flex child: when even a line of its own is narrower than the name, the picker shrinks and the kit's preview ellipsizes.",
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"tab\"]": {
+      "$description": "The sub-tabs may shrink below their labels. A flex item's automatic minimum is its content, and a tab's label is nowrap, so \"Local Changes (3)\" and \"History\" held 179px against the 159px the Navigator has at its 160px floor and scrolled the whole panel sideways; the kit's label ellipsis could never engage. `inspector-dock.json` makes the same call for its tabs. It is a surface decision and not a kit default because the document tab strip deliberately scrolls instead.",
+      "minWidth": "0"
+    },
+    "& [part=\"create-repository\"] > [part=\"control\"], & [part=\"init\"] > [part=\"control\"], & [part=\"clone\"] > [part=\"control\"], & [part=\"commit-button\"] > [part=\"control\"]": {
+      "$description": "The panel's labelled buttons wrap their words at the Navigator's floor instead of overflowing it. The kit's control is nowrap, which is right for a toolbar and made each label a floor of its own: \"Create GitHub repository\" held 165px in a 135px sync bar, \"Clone Git Repository\" and \"Initialize Repository\" held 141px and 135px in the empty state's 127px, and \"Commit and sync\" beside its menu had about a pixel to spare in the commit form's 135px. Nothing changes where the label fits, because a nowrap label and a wrapping one have the same max-content width. This reaches into the kit's `control` part as `commandbar.json` does for its primary button.",
+      "whiteSpace": "normal"
     },
     "& [part=\"commit\"]": {
       "display": "flex",
@@ -270,7 +302,8 @@
       "fontSize": "var(--jx-text-sm)",
       "textAlign": "center"
     },
-    "& [part=\"error\"]": {
+    "& [part=\"failure\"]": {
+      "$description": "The panel's own refusal banner. It is `failure` rather than `error` because the branch picker and the commit field each draw a permanent, empty `[part=\"error\"]` of their own inside this same light-DOM tree: under that name this padding, rule and wash drew a 16×13 box over both fields' top-left corners that took the click, and dressed either field's real refusal sentence as a banner.",
       "margin": "0",
       "padding": "6px var(--jx-space-3)",
       "borderBottom": "1px solid var(--border)",
@@ -279,7 +312,7 @@
       "fontSize": "var(--jx-text-sm)"
     },
     "@(forced-colors: active)": {
-      "& [part=\"error\"]": {
+      "& [part=\"failure\"]": {
         "$description": "The wash behind the banner collapses into the page when every author colour is replaced, so the border is what is left to mark it.",
         "border": "1px solid CanvasText",
         "color": "CanvasText"
@@ -511,79 +544,88 @@
                   },
                   "children": [
                     {
-                      "tagName": "jx-action-button",
-                      "attributes": {
-                        "part": "refresh",
-                        "data-action": "refresh"
-                      },
-                      "$props": {
-                        "icon": "arrows-clockwise",
-                        "size": "sm",
-                        "quiet": true,
-                        "label": "Refresh",
-                        "hint": "Refresh",
-                        "disabled": {
-                          "$ref": "#/state/busy"
-                        }
-                      },
-                      "onclick": {
-                        "$prototype": "Function",
-                        "body": [
-                          {
-                            "operator": "call",
-                            "target": {
-                              "$ref": "#/state/refresh"
-                            },
-                            "value": []
-                          }
-                        ]
-                      }
-                    },
-                    {
                       "tagName": "div",
                       "attributes": {
-                        "part": "sync-text"
+                        "part": "sync-head"
                       },
                       "children": [
                         {
-                          "tagName": "span",
+                          "tagName": "jx-action-button",
                           "attributes": {
-                            "part": "sync-label"
+                            "part": "refresh",
+                            "data-action": "refresh"
                           },
-                          "textContent": "${state.syncLabel}"
+                          "$props": {
+                            "icon": "arrows-clockwise",
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Refresh",
+                            "hint": "Refresh",
+                            "disabled": {
+                              "$ref": "#/state/busy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/refresh"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
                         },
                         {
-                          "tagName": "span",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "updated-slot",
-                            "role": "none"
+                            "part": "sync-text"
                           },
-                          "style": {
-                            "display": "contents"
-                          },
-                          "$switch": {
-                            "$ref": "#/state/hasLastUpdated"
-                          },
-                          "cases": {
-                            "true": {
+                          "children": [
+                            {
                               "tagName": "span",
                               "attributes": {
-                                "part": "sync-time"
+                                "part": "sync-label"
                               },
-                              "textContent": "${state.lastUpdated}"
+                              "textContent": "${state.syncLabel}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "updated-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/hasLastUpdated"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "sync-time"
+                                  },
+                                  "textContent": "${state.lastUpdated}"
+                                }
+                              }
                             }
-                          }
+                          ]
                         }
                       ]
                     },
                     {
+                      "$description": "Three quiet tools, so NOT compact. A compact group draws every member's frame and fill whatever its quiet says, so the `quiet: true` each verb below writes would have been silently framed into a segmented control; Spectrum's group here was quiet and never compact, which is what compact=false and the 2px gap between the verbs restore.",
                       "tagName": "jx-action-group",
                       "attributes": {
                         "part": "sync-actions"
                       },
                       "$props": {
                         "label": "Remote actions",
-                        "compact": true
+                        "compact": false
                       },
                       "children": [
                         {
@@ -693,46 +735,54 @@
                   },
                   "children": [
                     {
-                      "tagName": "jx-action-button",
-                      "attributes": {
-                        "part": "refresh",
-                        "data-action": "refresh"
-                      },
-                      "$props": {
-                        "icon": "arrows-clockwise",
-                        "size": "sm",
-                        "quiet": true,
-                        "label": "Refresh",
-                        "hint": "Refresh",
-                        "disabled": {
-                          "$ref": "#/state/busy"
-                        }
-                      },
-                      "onclick": {
-                        "$prototype": "Function",
-                        "body": [
-                          {
-                            "operator": "call",
-                            "target": {
-                              "$ref": "#/state/refresh"
-                            },
-                            "value": []
-                          }
-                        ]
-                      }
-                    },
-                    {
                       "tagName": "div",
                       "attributes": {
-                        "part": "sync-text"
+                        "part": "sync-head"
                       },
                       "children": [
                         {
-                          "tagName": "span",
+                          "tagName": "jx-action-button",
                           "attributes": {
-                            "part": "sync-label"
+                            "part": "refresh",
+                            "data-action": "refresh"
                           },
-                          "textContent": "Local only (no remote)"
+                          "$props": {
+                            "icon": "arrows-clockwise",
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Refresh",
+                            "hint": "Refresh",
+                            "disabled": {
+                              "$ref": "#/state/busy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/refresh"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "sync-text"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "sync-label"
+                              },
+                              "textContent": "Local only (no remote)"
+                            }
+                          ]
                         }
                       ]
                     },
@@ -784,33 +834,41 @@
               },
               "children": [
                 {
-                  "tagName": "jx-icon",
-                  "attributes": {
-                    "part": "branch-icon"
-                  },
-                  "$props": {
-                    "name": "git-branch"
-                  }
-                },
-                {
                   "tagName": "div",
                   "attributes": {
-                    "part": "branch-text"
+                    "part": "branch-head"
                   },
                   "children": [
                     {
-                      "tagName": "span",
+                      "tagName": "jx-icon",
                       "attributes": {
-                        "part": "branch-label"
+                        "part": "branch-icon"
                       },
-                      "textContent": "Active branch"
+                      "$props": {
+                        "name": "git-branch"
+                      }
                     },
                     {
-                      "tagName": "span",
+                      "tagName": "div",
                       "attributes": {
-                        "part": "branch-name"
+                        "part": "branch-text"
                       },
-                      "textContent": "${state.branchName}"
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "branch-label"
+                          },
+                          "textContent": "Active branch"
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "branch-name"
+                          },
+                          "textContent": "${state.branchName}"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -1794,7 +1852,7 @@
             {
               "tagName": "div",
               "attributes": {
-                "part": "error-slot",
+                "part": "failure-slot",
                 "role": "none"
               },
               "style": {
@@ -1807,7 +1865,7 @@
                 "true": {
                   "tagName": "p",
                   "attributes": {
-                    "part": "error",
+                    "part": "failure",
                     "role": "alert"
                   },
                   "textContent": "${state.error}"

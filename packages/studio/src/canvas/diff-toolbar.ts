@@ -80,8 +80,26 @@ export function setDiffRepaint(repaint: (paneId: string) => void): void {
 }
 
 /**
+ * How this module asks the pane CHROME to redraw, injected by `studio.ts`.
+ *
+ * The zoom pod is not drawn over the Code half (`panels/pane-context.ts`, `podFor`), and the half
+ * lives in `diff-view.ts`, which is deliberately not reactive — so nothing would tell the pod the
+ * half had changed, and it would go on floating over Monaco until something unrelated repainted the
+ * bar. Injected rather than imported for {@link setDiffRepaint}'s reason: the chrome module is far
+ * outside this one's graph, and `studio.ts` is the one place that already holds both. Null until
+ * then, which is only ever a test that drives the toolbar without the shell.
+ */
+let _chromeRepaint: (() => void) | null = null;
+
+/** Register the chrome repaint. Called once, from `studio.ts`. */
+export function setDiffChromeRepaint(repaint: () => void): void {
+  _chromeRepaint = repaint;
+}
+
+/**
  * Rebuild the whole stage, because Visual and Code are different renders rather than different
- * styling: one draws two artboards on a pan/zoom surface, the other one Monaco.
+ * styling: one draws two artboards on a pan/zoom surface, the other one Monaco. And redraw the
+ * pane's chrome after it, because whether the zoom pod is drawn at all depends on the half.
  *
  * `prevCanvasMode` is nulled first — the documented "this stage's structure is stale" signal, the
  * same one `resetCanvasView` ends on. Without it the repaint sees `modeChanged === false` (the
@@ -90,6 +108,7 @@ export function setDiffRepaint(repaint: (paneId: string) => void): void {
 function repaintDiffStage(paneId: string): void {
   surfaceForPane(paneId).prevCanvasMode = null;
   _repaint(paneId);
+  _chromeRepaint?.();
 }
 
 /** Redraw one pane's toolbar in place, without touching its artboards. */

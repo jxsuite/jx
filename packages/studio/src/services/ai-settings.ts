@@ -20,9 +20,11 @@
  */
 
 import { SETTINGS } from "./settings/definitions";
+import type { SettingDefinition } from "./settings/definitions";
 import {
   clearSettings,
   hasSetting,
+  normalizeSetting,
   readStoredSetting,
   setSetting,
   setSettings,
@@ -82,6 +84,13 @@ export function setModel(modelId: string) {
   setSetting(SETTINGS.aiModel, modelId || "");
 }
 
+/** The provider's three values together — what a credentials form drafts and what Save stores. */
+export interface AiProvider {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
 /**
  * Store the provider's key, endpoint and model as ONE change.
  *
@@ -89,14 +98,58 @@ export function setModel(modelId: string) {
  * anyway, but they announce three times, and each intermediate announcement describes a provider
  * the user never asked for — a new key against the old endpoint, then against no model.
  *
- * @param {{ apiKey: string; baseUrl: string; model: string }} provider
+ * @param {AiProvider} provider
  */
-export function saveAiProvider(provider: { apiKey: string; baseUrl: string; model: string }) {
+export function saveAiProvider(provider: AiProvider) {
   setSettings([
     [SETTINGS.aiOpenAiKey, provider.apiKey],
     [SETTINGS.aiBaseUrl, provider.baseUrl],
     [SETTINGS.aiModel, provider.model],
   ]);
+}
+
+/**
+ * Whether {@link saveAiProvider} with these values would change what is stored.
+ *
+ * What a credentials form's Save and Cancel are drawn from: at rest there is nothing to keep and
+ * nothing to abandon. Each value is compared as the store WOULD hold it — through its definition's
+ * own `normalize` — so a pasted key's whitespace or an endpoint's trailing slash is not an edit,
+ * because Save would store exactly what is already there. An absent setting reads as `""`, as every
+ * getter here does, so a blank draft over nothing is no change either.
+ *
+ * **BOTH sides are normalised, not just the draft.** Only the setters normalise on the way in;
+ * `hydrateSettings` and `adoptRemoteSettings` put a backend's or another window's values into the
+ * cache as they found them, and a hand-edited `settings.json` carries whatever was typed. So the
+ * store legitimately holds `http://localhost:11434/v1/` with the trailing slash the docs print, and
+ * comparing a normalised draft against that raw value reported an edit nobody had made: Save and
+ * Cancel appeared on a form at rest, and Cancel could not clear them, because reloading the drafts
+ * loaded the same unnormalised value again. Normalising the stored side is the comparison the
+ * sentence above always claimed to be making.
+ *
+ * @param {AiProvider} provider The drafts.
+ * @returns {boolean} `true` when at least one of the three would move.
+ */
+export function aiProviderDiffers(provider: AiProvider): boolean {
+  return (
+    !storedEquals(SETTINGS.aiOpenAiKey, provider.apiKey, getOpenAiKey()) ||
+    !storedEquals(SETTINGS.aiBaseUrl, provider.baseUrl, getBaseUrl()) ||
+    !storedEquals(SETTINGS.aiModel, provider.model, storedModel())
+  );
+}
+
+/**
+ * Whether a draft and a stored value are the same setting, judged as the store would hold each.
+ *
+ * Exported because a form's "has the user touched this field?" has to ask the same question as
+ * {@link aiProviderDiffers}, or the two disagree about a whitespace-only draft — which is how a
+ * revoked key survived a Disconnect (`ui/ai-credentials-form.ts`).
+ */
+export function storedEquals(
+  definition: SettingDefinition,
+  draft: string,
+  stored: string,
+): boolean {
+  return normalizeSetting(definition, draft) === normalizeSetting(definition, stored);
 }
 
 /**

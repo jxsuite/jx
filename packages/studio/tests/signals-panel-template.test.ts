@@ -828,6 +828,30 @@ describe("the function body's two modes", () => {
     expect(island(editor, "statements")).toBeNull();
   });
 
+  test("the switch is the kit's radiogroup, so it is a segmented control and says which mode is on", async () => {
+    /* It was a `span[role=group]` over buttons that carried `selected` alone: no frame, since a
+       quiet member draws none outside a compact group, and nothing announced which of two
+       mutually exclusive modes was on. The one Spectrum `compact` group the conversion never
+       reached, now what the Logic panel's Handler body already was. */
+    const { panel } = await drawSignals({
+      fn: { $prototype: "Function", body: "doIt()", parameters: [] },
+    });
+    const editor = await openEntry(panel, "fn");
+    const group = editor.querySelector<HTMLElement>('[part="bar-segments"]')!;
+    expect(group.localName).toBe("jx-action-group");
+    expect(group.getAttribute("role")).toBe("radiogroup");
+    expect(group.getAttribute("aria-label")).toBe("Body");
+    expect(group.dataset["compact"]).toBe("");
+    const radio = (mode: string) =>
+      editor.querySelector(`[part="segment"][data-segment="${mode}"] > [part="control"]`)!;
+    expect(radio("code").getAttribute("role")).toBe("radio");
+    expect(radio("code").getAttribute("aria-checked")).toBe("true");
+    expect(radio("statements").getAttribute("aria-checked")).toBe("false");
+    // The words are the segment's own, beside the accessible name the kit writes on the control.
+    expect(radio("statements").textContent?.trim()).toBe("Statements");
+    expect(radio("statements").getAttribute("aria-label")).toBe("Statements");
+  });
+
   test("an array body is the Statements mode, and the card editor lands in its host", async () => {
     const { panel } = await drawSignals({
       fn: { $prototype: "Function", body: [{ dispatchEvent: "ping" }], parameters: [] },

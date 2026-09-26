@@ -303,6 +303,13 @@ export function openPreferencesSurface(
     const box = element.querySelector<HTMLElement>('dialog[part="dialog"]') ?? element;
     box.setAttribute(REGION_ATTR, overlayRegion("dialog", "preferences"));
     showModal(element);
+    /* The nav item the sheet OPENED on, not the first one the dialog finds. `showModal()` focuses
+       the first focusable descendant, which is always Appearance, so `app.preferences` with a
+       section put the ring on one row while `aria-current` and the selected fill were on another:
+       two rows looked active at once, and the keyboard was in the wrong place to move between
+       them. Read off `aria-current` rather than from the view, because that attribute is the one
+       record of which section is showing (`preferences.json` says so on the rule that draws it). */
+    element.querySelector<HTMLElement>('[part="nav-item"][aria-current="true"]')?.focus();
     return element;
   });
 

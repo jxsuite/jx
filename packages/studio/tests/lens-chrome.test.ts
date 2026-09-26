@@ -45,6 +45,8 @@ const { derivationCommands } = await import("../src/workspace/pane-derive");
 const { paneCommands } = await import("../src/workspace/workspace");
 const { collabState } = await import("../src/collab/collab-state");
 const { activateTab, moveTabToPane } = await import("../src/workspace/workspace");
+const { shell } = await import("../src/shell");
+const { resetDiffViews, setDiffView } = await import("../src/canvas/diff-view");
 
 type Ctx = Parameters<typeof paneContext.mount>[1];
 
@@ -1194,6 +1196,49 @@ describe("what a lens's chrome reads about ITS pane", () => {
     await flush();
 
     expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(1);
+  });
+
+  /* A DIFF LENS CARRIES ITS OWN COMPARISON, and the pod asks about that one — the resolution
+     `canvas-render.ts`'s git-diff branch makes. Asked of `shell.git.diffState` instead, a lens
+     comparing a page beside a Source Control diff of a stylesheet would lose its pod over two
+     artboards it can zoom. Its Code half has nothing to zoom, exactly as the primary's does. */
+  test("a Diff lens's pod follows ITS comparison and ITS half", async () => {
+    lensGrid();
+    const derived = derivationOfPane(SECONDARY_PANE)!;
+    const comparison = (filePath: string) => ({
+      currentContent: "{}",
+      filePath,
+      fileStatus: "M",
+      originalContent: "{}",
+    });
+    // The app-level slot holds a file with no visual half; the lens compares a page.
+    shell.git.diffState = comparison("styles/site.css");
+    Object.assign(derived, {
+      diff: comparison("pages/index.json"),
+      mode: "git-diff",
+      preset: "diff",
+    });
+    try {
+      paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
+      paneContext.mount(primaryHost, makeCtx());
+      await flush(8);
+      expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(1);
+
+      // The lens's own half, keyed by ITS pane.
+      setDiffView(SECONDARY_PANE, "code");
+      paneContext.render();
+      await flush();
+      expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
+
+      // And its own file: back to Visual, but now comparing a stylesheet.
+      setDiffView(SECONDARY_PANE, "visual");
+      Object.assign(derived, { diff: comparison("styles/other.css") });
+      await flush();
+      expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
+    } finally {
+      shell.git.diffState = null;
+      resetDiffViews();
+    }
   });
 
   /* THE BUTTONS TAKE A SURFACE, not just the readout. Every zoom verb defaults its `surface`

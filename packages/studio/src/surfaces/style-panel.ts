@@ -104,9 +104,9 @@ export interface StyleButtonView extends Record<string, unknown> {
   value: string;
   /** The accessible name and tooltip. */
   title: string;
-  /** A kit glyph name, or the empty string where the kit has none for this value. */
+  /** A kit manifest name, css-meta's `$icons` entry verbatim, or `""` where the value has none. */
   icon: string;
-  /** The abbreviation drawn when there is no glyph. Empty when there is one. */
+  /** The abbreviation drawn when there is no glyph. Empty when there is one, and its span hidden. */
   text: string;
   selected: boolean;
 }

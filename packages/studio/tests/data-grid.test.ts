@@ -348,8 +348,8 @@ describe("push dialog", () => {
     await startPush(undefined, () => {});
     await flush(4);
     expect(document.querySelectorAll("#layer-dialog jx-dialog")).toHaveLength(1);
-    expect(textOf(pushDialog(), "error")).toBe("remote: unreachable");
-    expect(part(pushDialog(), "error")?.getAttribute("role")).toBe("alert");
+    expect(textOf(pushDialog(), "failure")).toBe("remote: unreachable");
+    expect(part(pushDialog(), "failure")?.getAttribute("role")).toBe("alert");
     await answer("cancel");
   });
 
@@ -372,7 +372,7 @@ describe("push dialog", () => {
     await flush(4);
     await answer("confirm");
     expect(textOf(pushDialog(), "message")).toBe("Push failed.");
-    expect(textOf(pushDialog(), "error")).toBe("permission denied");
+    expect(textOf(pushDialog(), "failure")).toBe("permission denied");
     expect(done).toBe(1);
     await answer("cancel");
   });

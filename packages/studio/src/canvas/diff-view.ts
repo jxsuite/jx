@@ -3,10 +3,11 @@
  *
  * **The store is a module-local `Map` keyed by pane**, the shape `_editWidths` in `edit-width.ts`
  * and `_fits` in `canvas-utils.ts` already use. The value is transient — it is rebuilt by the
- * render pass that computes the comparison — and its only readers are that pass, the stepper and
- * the diff header, so a field on `CanvasSurface` would buy nothing and a field on `shell` would be
- * an app-level slot for a per-pane fact, which is exactly the defect the Diff LENS was built to
- * avoid (`workspace/pane-derive.ts`, finding 4: one app-level `diffState` meant two panes drew one
+ * render pass that computes the comparison — and its only readers are that pass, the stepper, the
+ * diff header and the zoom pod (which asks only which half is showing), so a field on
+ * `CanvasSurface` would buy nothing and a field on `shell` would be an app-level slot for a
+ * per-pane fact, which is exactly the defect the Diff LENS was built to avoid
+ * (`workspace/pane-derive.ts`, finding 4: one app-level `diffState` meant two panes drew one
  * comparison).
  *
  * **Keyed by PANE, because two panes can compare two different files at once** — the Source Control
@@ -14,8 +15,8 @@
  * source tab's `session.ui`. `canvasModeOfPane` and `derivationOfPane` are keyed the same way for
  * the same reason.
  *
- * **This file is a LEAF.** It imports one type and nothing else, so the render pass, the stepper
- * and the header can all reach it without any of them reaching each other.
+ * **This file is a LEAF.** It imports one type and nothing else, so the render pass, the stepper,
+ * the header and the pane chrome can all reach it without any of them reaching each other.
  */
 
 import type { ChangeMap } from "./diff-marks";
@@ -103,10 +104,33 @@ export function diffViewOf(paneId: string): DiffView {
 }
 
 /**
+ * Whether this pane draws its comparison as TEXT: the file has no visual half, or the author chose
+ * Code.
+ *
+ * One definition, because three callers must never disagree about it. `canvas-render.ts`'s branch
+ * chooses which half to build and its mount's post-await guard re-asks whether that half is still
+ * wanted; they were two spellings — the branch said "not renderable OR the author chose Code", the
+ * guard said only "the author chose Code" — so for a file with no visual half the branch built the
+ * Code container and the guard then refused to mount into it. An empty stage, no error, and a
+ * toolbar correctly describing an editor that was never there. The third is the zoom pod
+ * (`panels/pane-context.ts`), which is not drawn over the Code half: nothing there zooms, and it
+ * sat on Monaco's own scrollbar.
+ *
+ * **Renderability is an ARGUMENT** — `canRenderComparison(path)` from `panels/git-diff-open.ts` —
+ * so this file stays the leaf its header promises. Taking the path would have pulled the opener
+ * (and the media pane behind it) into everything that reads a pane's review state.
+ */
+export function diffShowsCode(paneId: string, renderable: boolean): boolean {
+  return !renderable || diffViewOf(paneId) === "code";
+}
+
+/**
  * Show the visual comparison or the code one.
  *
  * The caller pairs this with a repaint: the store is deliberately not reactive (its writers are a
  * render pass and a toolbar click, both of which already know to redraw), so nothing observes it.
+ * That repaint is the stage AND the pane chrome, because the zoom pod reads this through
+ * {@link diffShowsCode} — see `repaintDiffStage` in `diff-toolbar.ts`.
  */
 export function setDiffView(paneId: string, view: DiffView): void {
   recordFor(paneId).view = view;

@@ -3,8 +3,8 @@
  * The AI provider credentials form as a mounted document.
  *
  * `ui/ai-credentials-form.ts` is the flow — it holds the three drafts, decides which credentials a
- * listing is made with, what Save persists and re-reads, and whether Cancel is on offer — and this
- * is the surface it draws into.
+ * listing is made with, what Save persists and re-reads, and whether there is anything to commit —
+ * and this is the surface it draws into.
  *
  * **The host element belongs to this module, not to the gate.** Every credentials gate is still a
  * lit template that interpolates the form beside the keyless offer, so there is no container in the
@@ -58,8 +58,12 @@ export interface AiCredentialsView {
   fetchLabel: string;
   /** Why the last listing did not finish. Empty draws nothing. */
   modelsError: string;
-  /** A key is already stored, so abandoning the drafts means something. */
-  haveKey: boolean;
+  /**
+   * The drafts differ from what is stored — there is something to Save and something to Cancel. The
+   * flow compares them as the store would hold them, so whitespace a Save would trim is not a
+   * difference. False at rest, which is when the document draws neither button.
+   */
+  dirty: boolean;
 }
 
 /** Everything the reader can do here. */
@@ -134,7 +138,17 @@ export function createAiCredentialsSurface(
   return {
     host,
     update(next) {
+      /* Save and Cancel exist only while the form is dirty, so answering either takes away the
+         button the reader just pressed — and a removed element's focus falls to `<body>`, which in
+         a modal sheet leaves a keyboard or screen-reader user nowhere. The key field is where it
+         lands instead: the top of the form that now shows what is stored. Only when focus WAS on
+         the pair and the update actually lost it, so a repaint never takes the caret from a field. */
+      const answering =
+        !next.dirty && host.querySelector('[part="actions"]')?.contains(document.activeElement);
       Object.assign(scope, derive(next));
+      if (answering && !host.contains(document.activeElement)) {
+        host.querySelector<HTMLElement>('[part="key"] [part="input"]')?.focus();
+      }
       /* A standing mount is only ASSIGNED to: rebuilding it on every repaint of the gate around it
          would empty the field the reader is typing in. The remount below answers the one case
          assignment cannot — a host the document has been taken out of — and it cannot fire while a

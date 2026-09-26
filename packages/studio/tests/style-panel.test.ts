@@ -1224,6 +1224,86 @@ describe("the button group", () => {
     expect(selectedNode().style?.display).toBeUndefined();
   });
 
+  test("each Display value draws its kit glyph and no abbreviation", async () => {
+    /* The regression: this row drew `flex grid block inl none` as text, because the glyph names
+       went through a table that had only the arrows and text-align in it. */
+    setupTab({ display: "flex" });
+    const c = await renderPanel();
+    const buttons = [
+      ...row(c, "display")!.querySelectorAll<HTMLElement & { icon: string; label: string }>(
+        '[part="button"]',
+      ),
+    ];
+    expect(buttons.map((b) => b.icon)).toEqual([
+      "columns",
+      "grid-four",
+      "rectangle",
+      "text-t",
+      "eye-slash",
+    ]);
+    for (const b of buttons) {
+      const text = b.querySelector<HTMLElement>('[part="label"] > span')!;
+      expect(text.hidden, b.dataset.value).toBe(true);
+      expect(text.textContent).toBe("");
+      // The glyph is the picture; the value is still the name and the tooltip.
+      expect(b.label).toBe(b.dataset.value!);
+      expect((b as unknown as { hint: string }).hint).toBe(b.dataset.value!);
+    }
+  });
+
+  test("a value with no glyph shows its CSS keyword in full, not an abbreviation", async () => {
+    /* `no-wr` and `wr-rev` were undecodable beside a wrap arrow that read perfectly, which taught
+       a reader that the row's buttons could not be read at all. Written out, `wrap-reverse` is 76px
+       and the three-button row overran a 190px Inspector, drawing a clipped frame and a word cut
+       mid-letter, so it is an overflow row now: a word is never abbreviated and never truncated
+       either. `nowrap` stays, being short and the row's own default. */
+    setupTab({ display: "flex" });
+    const c = await renderPanel();
+    const wrapRow = row(c, "flexWrap")!;
+    const button = (value: string) =>
+      wrapRow.querySelector<HTMLElement & { icon: string }>(
+        `[part="button"][data-value="${value}"]`,
+      );
+    const text = (value: string) =>
+      button(value)!.querySelector<HTMLElement>('[part="label"] > span')!;
+    expect(button("wrap")!.icon).toBe("arrow-u-down-left");
+    expect(text("wrap").hidden).toBe(true);
+    expect(button("nowrap")!.icon).toBe("");
+    expect(text("nowrap").hidden).toBe(false);
+    expect(text("nowrap").textContent).toBe("nowrap");
+    expect(button("wrap-reverse")).toBeNull();
+    const overflow = await openList(chooser(wrapRow));
+    expect(overflow.map((el) => el.dataset.commandId)).toEqual(["wrap-reverse"]);
+  });
+
+  test("Align content draws the cross axis, the same one Align items draws", async () => {
+    /* Both act on the cross axis, so both take the object-alignment family for it. The horizontal
+       glyphs they used to carry made the two neighbouring rows describe opposite axes, and made
+       four of Align content's buttons pixel-identical to Justify content's two rows up. */
+    setupTab({ display: "flex" });
+    const c = await renderPanel();
+    const glyphs = (prop: string) =>
+      [...row(c, prop)!.querySelectorAll<HTMLElement & { icon: string }>('[part="button"]')].map(
+        (b) => [b.dataset.value, b.icon],
+      );
+    expect(glyphs("alignContent")).toEqual([
+      ["normal", ""],
+      ["flex-start", "align-top"],
+      ["flex-end", "align-bottom"],
+      ["center", "align-center-vertical"],
+      ["space-between", "arrows-vertical"],
+      ["stretch", "arrows-out-line-vertical"],
+    ]);
+    // The row above it, for the axis the two now share.
+    expect(glyphs("alignItems")).toEqual([
+      ["stretch", "arrows-out-line-vertical"],
+      ["flex-start", "align-top"],
+      ["flex-end", "align-bottom"],
+      ["center", "align-center-vertical"],
+      ["baseline", "text-a-underline"],
+    ]);
+  });
+
   test("values that do not fit are the overflow list, and it commits like any other", async () => {
     setupTab({ display: "flex" });
     const c = await renderPanel();

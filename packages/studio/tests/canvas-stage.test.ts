@@ -28,7 +28,6 @@ function board(key: string, over: Partial<CanvasStagePanelItem> = {}): CanvasSta
 /** A pan/zoom stage over the given boards. */
 function boardsView(keys: string[], over: Partial<CanvasStageView> = {}): CanvasStageView {
   return {
-    columnHeader: "hidden",
     frame: "boards",
     framePart: "panzoom",
     frameVars: "",
@@ -99,10 +98,37 @@ describe("the frame's bound parts", () => {
     stage.dispose();
   });
 
-  test("the Document Header host is announced with its placement", async () => {
-    const stage = mountCanvasStage(host(), boardsView(["base"], { lead: "header" }), actions);
+  /*
+   * ONE place, so nothing to tell apart. The host used to be announced with a placement — `pinned`
+   * from the lead slot, `in-column` from a slot inside Edit's column — and the card read it back
+   * before the runtime had written it. The card is Edit's alone now and leads the frame, so it is a
+   * sibling of the scroller rather than a block of the column the breakpoint sizes.
+   */
+  test("the Document Header host is announced from the lead slot, ahead of Edit's scroller", async () => {
+    const el = host();
+    const stage = mountCanvasStage(
+      el,
+      boardsView(["base"], {
+        framePart: "edit-canvas",
+        handles: "shown",
+        innerPart: "edit-column",
+        lead: "header",
+      }),
+      actions,
+    );
     await stage.ready;
-    expect(announced.find((a) => a.part === "doc-header")?.detail).toBe("pinned");
+    expect(announced.filter((a) => a.part === "doc-header")).toEqual([
+      { detail: "", part: "doc-header" },
+    ]);
+    const card = el.querySelector<HTMLElement>('[part="doc-header"]')!;
+    expect(card.dataset.placement).toBeUndefined();
+    expect(card.closest('[part="edit-canvas"]')).toBeNull();
+    // Document order: the band first, the scroller after it — which is what "docked above" means
+    // To a column flex container.
+    const order = [...el.querySelectorAll('[part="doc-header"], [part="edit-canvas"]')].map(
+      (node) => node.getAttribute("part"),
+    );
+    expect(order).toEqual(["doc-header", "edit-canvas"]);
     stage.dispose();
   });
 

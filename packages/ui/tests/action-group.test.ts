@@ -1,6 +1,6 @@
 import "./with-dom.ts";
 
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -546,5 +546,288 @@ describe("jx-action-group", () => {
     expect(findPopoverDefects(doc, scope)).toEqual([]);
     expect(findA11yDefects(page)).toEqual([]);
     expect(findPopoverDefects(page, scope)).toEqual([]);
+  });
+});
+
+describe("a compact group draws the segmented control itself", () => {
+  /* Every seam rule acts on a member's border, and a member is quiet by default: a transparent
+     border and fill. So a compact group of default members drew as a gap-less row of bare words,
+     the kit's own first stylebook specimen included, and every Studio switch converted from
+     Spectrum (whose action button was not quiet by default) lost its frame. The group now draws
+     each member's frame, fill and selected state whatever its quiet says.
+
+     happy-dom leaves a `var()` it cannot resolve EMPTY, and the theme's colours are `light-dark()`
+     and `color-mix()`, which it cannot parse, so the theme alone would make every colour below
+     read as the member's `transparent`. Each token the rules read is therefore stood in by a
+     sentinel of its own for the length of this block: the cascade still decides which rule wins,
+     and the sentinel says which token it drew. */
+  const TOKENS = {
+    "--jx-bg-input": "rgb(1, 1, 1)",
+    "--jx-border-strong": "rgb(2, 2, 2)",
+    "--jx-fg": "rgb(3, 3, 3)",
+    "--jx-fg-dim": "rgb(4, 4, 4)",
+    "--jx-accent": "rgb(5, 5, 5)",
+    "--jx-accent-15": "rgb(6, 6, 6)",
+    "--jx-accent-20": "rgb(7, 7, 7)",
+    "--jx-accent-solid": "rgb(8, 8, 8)",
+    "--jx-accent-fg": "rgb(9, 9, 9)",
+    "--jx-space-1": "2px",
+    "--jx-space-2": "4px",
+  } as const;
+  let stand: HTMLStyleElement;
+
+  beforeAll(() => {
+    stand = document.createElement("style");
+    stand.textContent = `:root { ${Object.entries(TOKENS)
+      .map(([name, value]) => `${name}: ${value}`)
+      .join("; ")} }`;
+    document.head.append(stand);
+  });
+
+  afterAll(() => {
+    stand.remove();
+  });
+
+  /** A small TEXT member, the shape Studio's switches take: no glyph, a span for the words. */
+  function textItem(label: string, attrs: Record<string, string> = {}): JxActionButton {
+    const button = document.createElement("jx-action-button") as JxActionButton;
+    button.setAttribute("label", label);
+    button.setAttribute("size", "sm");
+    for (const [k, v] of Object.entries(attrs)) {
+      button.setAttribute(k, v);
+    }
+    const words = document.createElement("span");
+    words.textContent = label;
+    button.append(words);
+    return button;
+  }
+
+  async function mount(el: JxActionGroup, members: JxActionButton[]): Promise<JxActionGroup> {
+    el.append(...members);
+    document.body.append(el);
+    await settle();
+    return el;
+  }
+
+  const freshGroup = (attrs: Record<string, string>): JxActionGroup => {
+    const el = document.createElement("jx-action-group") as JxActionGroup;
+    for (const [k, v] of Object.entries(attrs)) {
+      el.setAttribute(k, v);
+    }
+    return el;
+  };
+
+  const look = (b: Element) => {
+    const style = getComputedStyle(controlOf(b));
+    return {
+      background: style.backgroundColor,
+      border: style.borderTopColor,
+      color: style.color,
+    };
+  };
+
+  test("whatever the members' quiet says, the frame and the fill are the group's", async () => {
+    const el = await group({ label: "Align" }, ["A", "B*"]);
+    const [plain] = buttons(el);
+    // The members ARE quiet: nothing about them asked for a frame.
+    expect(buttons(el).every((b) => b.dataset.quiet === "")).toBe(true);
+    expect(look(plain!)).toEqual({
+      background: TOKENS["--jx-bg-input"],
+      border: TOKENS["--jx-border-strong"],
+      color: TOKENS["--jx-fg-dim"],
+    });
+    expect(sheet()).toContain(
+      'S[data-compact] > jx-action-button:not([data-selected]) > [part="control"] { border-color: var(--jx-border-strong); background: var(--jx-bg-input); color: var(--jx-fg-dim) }',
+    );
+  });
+
+  test("compact=false leaves quiet members frameless, which is how a row of quiet tools is spelled", async () => {
+    const el = await group({ compact: "false", label: "Tools" }, ["A", "B"]);
+    for (const member of buttons(el)) {
+      expect(look(member).background).toBe("transparent");
+      expect(look(member).border).toBe("transparent");
+    }
+  });
+
+  test("the selected segment outranks the member's own quiet and selected rules, and emphasized keeps its solid", async () => {
+    /* The member's selected state is a 15% tint and nothing else; the group's is a stronger tint
+       with an accent EDGE, raised over both neighbours so the edge shows through the -1px overlap.
+       The two rules and the unselected one are mutually exclusive, so none of them leans on sheet
+       order against the member's own. */
+    const el = await group({ label: "Align" }, ["A", "B*"]);
+    const [plain, chosen] = buttons(el);
+    expect(look(chosen!)).toEqual({
+      background: TOKENS["--jx-accent-20"],
+      border: TOKENS["--jx-accent"],
+      color: TOKENS["--jx-fg"],
+    });
+    expect(getComputedStyle(controlOf(chosen!)).zIndex).toBe("1");
+    expect(getComputedStyle(controlOf(plain!)).zIndex).toBe("");
+
+    chosen!.setAttribute("emphasized", "");
+    await settle();
+    expect(look(chosen!)).toEqual({
+      background: TOKENS["--jx-accent-solid"],
+      border: TOKENS["--jx-accent-solid"],
+      color: TOKENS["--jx-accent-fg"],
+    });
+
+    // A radio segment is selected by `checked` alone, and draws the same.
+    const radios = await group({ label: "Mode", selects: "single" }, ["Edit#", "Design"]);
+    expect(look(buttons(radios)[0]!).border).toBe(TOKENS["--jx-accent"]);
+    expect(look(buttons(radios)[1]!).border).toBe(TOKENS["--jx-border-strong"]);
+  });
+
+  test("the hover wash is layered over the fill, and a disabled segment takes none", () => {
+    /* `:hover` cannot be driven in happy-dom, so this reads the rule; the declarations are the
+       claim. The wash is an IMAGE over the input fill, because `--jx-hover-bg` alone is 6% over
+       transparent and on the zoom pod's darkest background came out a shade from the resting
+       fill. `:not(:disabled)` is the other half of the resting rule's ink: the member's own hover
+       is not gated, and it may not brighten a segment that cannot act. */
+    expect(sheet()).toContain(
+      'S[data-compact] > jx-action-button:not([data-selected]) > [part="control"]:hover:not(:disabled) { background-color: var(--jx-bg-input); background-image: linear-gradient(var(--jx-hover-bg), var(--jx-hover-bg)); color: var(--jx-fg) }',
+    );
+  });
+
+  test("a text-only small segment gets 6px of inline padding, and a glyph segment does not", async () => {
+    /* The DOM double does not map `padding-inline` onto the physical sides, so the logical
+       property is read directly: set on a text segment, absent on a glyph one, which keeps the
+       small size's own 2px (`padding: 0 var(--jx-space-1)`). 6px is one step between --jx-space-2
+       and --jx-space-3, the widest Style panel row having overflowed its 256px column at the
+       latter, so it is a literal rather than a token and the number is the claim. */
+    const el = freshGroup({ label: "Display" });
+    const glyph = document.createElement("jx-action-button") as JxActionButton;
+    glyph.setAttribute("label", "Row");
+    glyph.setAttribute("icon", "plus");
+    glyph.setAttribute("size", "sm");
+    await mount(el, [textItem("flex"), textItem("grid", { selected: "" }), glyph]);
+    const [flex, grid, row] = buttons(el).map((b) => getComputedStyle(controlOf(b)));
+    expect(flex!.getPropertyValue("padding-inline")).toBe("6px");
+    expect(grid!.getPropertyValue("padding-inline")).toBe("6px");
+    expect(row!.getPropertyValue("padding-inline")).toBe("");
+    expect(row!.paddingLeft).toBe("2px");
+    // The padding is the group's: the same text member outside a compact group keeps 2px.
+    const loose = await mount(freshGroup({ compact: "false", label: "Loose" }), [textItem("flex")]);
+    const [alone] = buttons(loose);
+    expect(getComputedStyle(controlOf(alone!)).getPropertyValue("padding-inline")).toBe("");
+  });
+
+  test("a glyph segment keeps its square shape while it LOADS, though its icon part is hidden", async () => {
+    /* `loading` puts a spinner where the glyph was, so `iconHidden` is `noIcon || loading` and the
+       icon part is hidden for both. Keyed on that part, the text-segment padding fired on a busy
+       icon segment: 22px to 26px and back for the length of the verb, moving every segment after
+       it. The host reflects data-no-icon from `icon` instead, which says what the rule means. */
+    const el = freshGroup({ label: "Verbs" });
+    const glyph = document.createElement("jx-action-button") as JxActionButton;
+    glyph.setAttribute("label", "Fetch");
+    glyph.setAttribute("icon", "plus");
+    glyph.setAttribute("size", "sm");
+    await mount(el, [glyph, textItem("Pull")]);
+    const words = buttons(el)[1]!;
+    expect(glyph.dataset["noIcon"]).toBeUndefined();
+    expect(words.dataset["noIcon"]).toBe("");
+
+    glyph.setAttribute("loading", "");
+    await settle();
+    const icon = glyph.querySelector('[part="icon"]')!;
+    expect(icon.hasAttribute("hidden")).toBe(true);
+    expect(glyph.dataset["noIcon"]).toBeUndefined();
+    expect(getComputedStyle(controlOf(glyph)).getPropertyValue("padding-inline")).toBe("");
+  });
+
+  test("a disabled segment dims its ink and keeps its share of the group's frame", async () => {
+    /* The member's own `:disabled` is `opacity: 0.5`, which faded its borders with its label: the
+       frame is drawn across every member, so half of the group's outer rectangle went faint while
+       the other half stayed bright. `:disabled` cannot be computed in the DOM double, so the rule
+       is the claim — including its POSITION, since it ties with the selected rules at (0,4,1) and
+       only wins the ink by coming after them. */
+    const el = await group({ label: "Align" }, ["A", "B!"]);
+    expect(controlOf(buttons(el)[1]!).disabled).toBe(true);
+    const rules = sheet();
+    expect(rules).toContain(
+      'S[data-compact] > jx-action-button > [part="control"]:disabled { opacity: 1; color: var(--jx-fg-muted) }',
+    );
+    const at = (selector: string) => rules.findIndex((rule) => rule.startsWith(`${selector} {`));
+    expect(at('S[data-compact] > jx-action-button > [part="control"]:disabled')).toBeGreaterThan(
+      at('S[data-compact] > jx-action-button[data-selected][data-emphasized] > [part="control"]'),
+    );
+    // And the hover wash still passes a disabled segment by, which is the other half of the ink.
+    expect(rules.some((rule) => rule.includes(":hover:not(:disabled)"))).toBe(true);
+  });
+
+  test("a compact group refuses to wrap, because no selector can find the end of a line", async () => {
+    /* The seam is written in tree order: the -1px overlap on `+ jx-action-button` and the rounded
+       ends on `:first-of-type`/`:last-of-type`. Wrapped, that put the overlap on a line-start
+       member (1px outside the group's own edge), squared both line ends and abutted the rows into
+       a doubled border. A row of choices that has to wrap is compact=false. */
+    expect(sheet()).toContain("S[data-compact] { gap: 0; flex-wrap: nowrap }");
+    const el = await group({ label: "Size" }, ["Base", "Sm", "Md"]);
+    expect(getComputedStyle(el).flexWrap).toBe("nowrap");
+  });
+
+  test("a vertical compact group's segments fill the host the group stretched", async () => {
+    /* `align-items: stretch` stretches each member HOST to the widest one, and the host is a row
+       whose control sits inside it at content width: the segments' end edges stepped in and out
+       down the column, one frame per label length. */
+    expect(sheet()).toContain(
+      'S[data-compact][data-orientation="vertical"] > jx-action-button > [part="control"] { flex: 1 }',
+    );
+    const el = await group({ label: "Panels", orientation: "vertical" }, ["Files", "Outline"]);
+    expect(getComputedStyle(el).alignItems).toBe("stretch");
+    const first = buttons(el)[0]!;
+    expect(getComputedStyle(controlOf(first)).flexGrow).toBe("1");
+  });
+
+  test("a focus ring paints over the selected segment's raised edge", () => {
+    const rules = sheet();
+    const z = (selector: string) => {
+      const found = rules.find((rule) => rule.startsWith(`${selector} {`)) ?? "";
+      return Number(/z-index: (\d+)/u.exec(found)?.[1]);
+    };
+    expect(z('S[data-compact] > jx-action-button[data-selected] > [part="control"]')).toBe(1);
+    expect(z('S[data-compact] > jx-action-button > [part="control"]:focus-visible')).toBe(2);
+  });
+
+  test("in forced colours the chosen segment is the system's selection pair", () => {
+    /* Forced colours replace the accent tint and the accent edge alike, so without this the
+       segmented control would say nothing about which segment is on. */
+    const forced = sheet().find((rule) => rule.startsWith("@media (forced-colors: active)"));
+    expect(forced).toBeDefined();
+    expect(forced).toContain(
+      'S[data-compact] > jx-action-button[data-selected] > [part="control"]',
+    );
+    /* The emphasized selector is spelled out beside it because a media condition adds no
+       specificity: at (0,4,1) this block took `forced-color-adjust: none` and then lost the three
+       colours to the emphasized rule at (0,5,1), so an emphasized chosen segment painted the
+       author's blue over the user's palette with adjustment off. */
+    expect(forced).toContain(
+      'S[data-compact] > jx-action-button[data-selected][data-emphasized] > [part="control"]',
+    );
+    expect(forced).toContain("forced-color-adjust: none");
+    expect(forced).toContain("background: Highlight");
+    expect(forced).toContain("border-color: Highlight");
+    expect(forced).toContain("color: HighlightText");
+  });
+
+  test("the stylebook's compact specimens lean on the group, and its quiet row is compact=false", () => {
+    /* The page used to pass `quiet: false` to every member of a compact group, which is what made
+       it the only place a segmented control ever looked segmented. The specimens now take the
+       member default, so the page draws what a consumer gets, and the one row of quiet tools says
+       compact=false. */
+    const groups = walk(page).filter((node) => node.tagName === "jx-action-group");
+    for (const node of groups) {
+      if (node.$props?.["compact"] === false) {
+        continue;
+      }
+      for (const member of walk(node).filter((child) => child.tagName === "jx-action-button")) {
+        expect(member.$props?.["quiet"], JSON.stringify(member.$props)).toBeUndefined();
+      }
+    }
+    const quietRow = groups.find((node) => node.$props?.["label"] === "File actions");
+    expect(quietRow?.$props?.["compact"]).toBe(false);
+    const textRow = groups.find((node) => node.$props?.["label"] === "Canvas mode");
+    const words = walk(textRow!).filter((child) => child.tagName === "jx-action-button");
+    expect(words.map((member) => member.$props?.["size"])).toEqual(["sm", "sm", "sm"]);
+    expect(words.every((member) => member.$props?.["icon"] === undefined)).toBe(true);
   });
 });

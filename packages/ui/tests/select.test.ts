@@ -53,6 +53,7 @@ import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import { mountSelect, syncSelect } from "../src/behaviors/select.ts";
+import { expectInertWhileEmpty } from "./error-region.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -703,6 +704,9 @@ describe("jx-select", () => {
     expect(region.getAttribute("aria-live")).toBe("polite");
     expect(region.textContent).toBe("");
     expect(control(el).hasAttribute("aria-describedby")).toBe(false);
+    /* Permanent means it is there while empty, so while empty it must draw nothing and take no
+       click: Source Control's banner rule once gave it a 16x13 box over this picker's corner. */
+    expectInertWhileEmpty(ruleFor(el, '[part="error"]:empty'));
 
     el.error = "Pick a font this project ships.";
     el.invalid = true;

@@ -154,7 +154,8 @@
       }
     },
     "& [part=\"log\"]": {
-      "$description": "The captured output the progress modal used to show once and then lose. It scrolls inside the row rather than growing it, so one 400-line `bun install` failure does not become the whole panel.",
+      "$description": "The captured output the progress modal used to show once and then lose. It scrolls inside the row rather than growing it, so one 400-line `bun install` failure does not become the whole panel. It is selectable against the root's `user-select: none`, the one part of an activity row that is: the output is what a reader pastes into a bug report, and the row offers no copy action.",
+      "userSelect": "text",
       "maxHeight": "180px",
       "margin": "2px 0 0",
       "padding": "6px",

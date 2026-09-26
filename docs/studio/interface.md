@@ -36,6 +36,8 @@ The Jx Studio window is one workspace with a fixed set of regions: the **Command
 
 ![The Jx Studio workspace with the canvas in the center, panels on both sides, and the Command Bar across the top](../images/hero.png)
 
+Studio's own labels, buttons and headings can't be selected, so dragging across the window never highlights the interface. Text you may need to copy still can be: a dialog's message, the sign-in code GitHub gives you, anything in a text field or the code editor, your conversation with the assistant, the logs in Problems and Activity, and your page on the canvas.
+
 ## Command Bar
 
 The bar across the top of the window. Everything in it is a command, so what you see here, what the [command palette](/docs/studio/interface/quick-access) offers and what a keyboard shortcut does can never disagree.
@@ -71,7 +73,7 @@ The vertical strip on the far left. Every button carries a **text label under it
 **Project**
 
 - **Files** (:kbd[⌘1]): the project file tree. Open, rename, convert and organize the files in your project folder. **New File…** (from the panel's toolbar, or from a folder's right-click menu) opens the [creation dialog](#creating-a-file), which asks for a name and offers a **Format** picker beside it. Studio picks the starting content from the format you choose. The tree leaves out whatever your project ignores; see [Files the tree hides](#files-the-tree-hides). Drag files in from your desktop and they upload into whichever folder you drop them on; see [Media](/docs/studio/projects/media). Drag a file onto the other pane's strip, or right-click it and choose **Open to the Side**, to open it in a [second pane](/docs/studio/interface/tabs#two-panes) instead of the one you are in. On a [multilingual project](/docs/studio/interface/languages), a file under a language's directory carries that language's name beside it: _français_, not _French_.
-- **Source Control** (:kbd[⌘3]): the built-in git client. A badge counts changed files. See [Publish](/docs/studio/publish).
+- **Source Control** (:kbd[⌘3]), labelled **Source** on the rail: the built-in git client. A badge counts changed files. See [Publish](/docs/studio/publish).
 
 **Document**
 
@@ -165,7 +167,7 @@ The middle of the window is the **pane grid**: one editor pane, or two side by s
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 
-A Canvas pane renders the open file live. Panning, zooming, selection and direct manipulation are covered in **[The canvas](/docs/studio/interface/canvas)**. A page's **Document Header** (title, route, layout picker and the way in to Search appearance) is drawn at the top of the artefact itself, inside the stage, because it is part of the document rather than a view of it.
+A Canvas pane renders the open file live. Panning, zooming, selection and direct manipulation are covered in **[The canvas](/docs/studio/interface/canvas)**. A page's **Document Header** (title, route, layout picker and the way in to Search appearance) is docked at the top of the stage in Edit view, above the page and as wide as the pane; Design view leaves it out.
 
 ## The jump bar
 

@@ -80,6 +80,35 @@ describe("openCfAccountPicker", () => {
     expect(dialog()).toBeNull();
   });
 
+  /**
+   * A real id is 32 hex digits with no break opportunity, and Cloudflare names a new account after
+   * the email that opened it: at `sm` both were wider than the row's text column, and ran under the
+   * row's own button. They reflow rather than ellipsize, because the id is what tells two
+   * same-named accounts apart. happy-dom does not lay out, so this asserts the rule that does.
+   */
+  test("an account id reflows under its name rather than running under its button", async () => {
+    const id = "0123456789abcdef0123456789abcdef";
+    const name = "someone.with.a.long.address@example-company.com's Account";
+    installMockPlatform({
+      cfAccounts: async () => [{ id, name }],
+      cfSelectAccount: async () => {},
+    });
+    const choice = openCfAccountPicker();
+    await flush(3);
+    // Shown whole: nothing truncates either half.
+    expect(row(id)?.textContent).toContain(id);
+    expect(row(id)?.textContent).toContain(name);
+    for (const half of ["name", "detail"]) {
+      const el = row(id)!.querySelector<HTMLElement>(`[part="${half}"]`)!;
+      expect(getComputedStyle(el).overflowWrap).toBe("anywhere");
+    }
+    expect(getComputedStyle(row(id)!.querySelector<HTMLElement>('[part="text"]')!).minWidth).toBe(
+      "0",
+    );
+    dismiss();
+    expect(await choice).toBeNull();
+  });
+
   test("the dialog is the kit's, headline and all — nothing here draws a box", async () => {
     installMockPlatform({ cfAccounts: async () => ACCOUNTS, cfSelectAccount: async () => {} });
     const choice = openCfAccountPicker();
@@ -159,7 +188,7 @@ describe("openCfAccountPicker", () => {
     await flush(3);
     click(row("acc-1")!.querySelector('[part="choose"]')!);
     await flush(3);
-    expect(d('[part="error"]')?.textContent).toContain("account is suspended");
+    expect(d('[part="failure"]')?.textContent).toContain("account is suspended");
     // The list survives: listing again is not what would fix a refused commit.
     expect(row("acc-2")).not.toBeNull();
     dismiss();

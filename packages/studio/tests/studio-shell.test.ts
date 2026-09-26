@@ -1359,6 +1359,25 @@ describe("wiring arrows", () => {
     toolbarCtx.setCanvasMode(tab, "content");
     expect(blockBarCtx.getCanvasMode()).toBe("content");
   });
+
+  test("the diff's Visual/Code switch repaints the pane chrome, where the zoom pod is decided", async () => {
+    /* The half lives in `diff-view.ts`, which is not reactive, and the pod is not drawn over the
+       Code half — so without this arrow the pod would float over a Monaco it cannot zoom until
+       something unrelated repainted the bar. */
+    const chrome = (await import("../src/panels/pane-context.ts")) as unknown as {
+      render: ReturnType<typeof mock>;
+    };
+    const { diffCommands } = await import("../src/canvas/diff-toolbar");
+    const { resetDiffViews } = await import("../src/canvas/diff-view");
+    const setView = diffCommands().find((command) => command.id === "diff.setView")!;
+    chrome.render.mockClear();
+    try {
+      await setView.run({} as never, { pane: "primary", view: "code" } as never);
+      expect(chrome.render).toHaveBeenCalledTimes(1);
+    } finally {
+      resetDiffViews();
+    }
+  });
 });
 
 describe("shortcuts context", () => {

@@ -131,8 +131,23 @@ export type PanelBody = TemplateResult | typeof nothing;
 export interface PanelRecord {
   /** Lowercase, stable, and the value `view.setActivity` accepts — renaming one is a shot break. */
   id: string;
-  /** The human name. The rail label AND the panel header, so there is one place it is spelled. */
+  /**
+   * The human name, spelled once: the panel header, the rail button's accessible name and tooltip,
+   * the `Show …` command and the chrome-budget row. The rail prints it under the glyph too, unless
+   * {@link PanelRecord.railLabel} says otherwise.
+   */
   title: string;
+  /**
+   * The rail button's visible text, for a title too long to sit under the glyph.
+   *
+   * The stacked label box is 48px at `--jx-text-xs` (10px), and "Source Control" is 71px, so the
+   * kit's ellipsis drew it as "Source …". Absent: the rail prints `title`. It must be a LEADING
+   * part of `title`, because the button's accessible name stays the title and the words on screen
+   * must be inside it (WCAG 2.5.3 Label in Name; best practice is that they lead it).
+   * {@link registerPanel} throws otherwise. Not derived from the title's first word, which would
+   * turn "Project Styles" into "Project": a record that needs a short name says which one.
+   */
+  railLabel?: string;
   /** REQUIRED. The level of the state this panel WRITES. Checked against the panel matrix. */
   level: Level;
   dock: PanelDock;
@@ -209,7 +224,8 @@ const PANEL_ID_PATTERN = /^[a-z][\w-]*$/;
 const panelRegistry = new Map<string, PanelRecord>();
 
 /**
- * Define a panel. Throws on a duplicate id, a malformed id, or a matrix violation.
+ * Define a panel. Throws on a duplicate id, a malformed id, a matrix violation, or a `railLabel`
+ * that is not a leading part of the title.
  *
  * Failing at registration is the same bet `createCommandRegistry.register` makes: a misplaced
  * surface is a design error, and a design error that only shows up as a wrong-looking rail is a
@@ -239,6 +255,16 @@ export function registerPanel(panel: PanelRecord): void {
   if (violations.length > 0) {
     const detail = violations.map((violation) => `  ✗ ${panel.id} ${violation.message}`).join("\n");
     throw new Error(`Panel "${panel.id}" violates the level × placement matrix:\n${detail}`);
+  }
+  if (
+    panel.railLabel !== undefined &&
+    (panel.railLabel.trim() === "" || !panel.title.startsWith(panel.railLabel))
+  ) {
+    throw new Error(
+      `Panel "${panel.id}" declares railLabel "${panel.railLabel}", which is not a leading part ` +
+        `of its title "${panel.title}": the rail button's accessible name is the title, and the ` +
+        `words on screen must be inside it (WCAG 2.5.3, Label in Name).`,
+    );
   }
   panelRegistry.set(panel.id, panel);
 }

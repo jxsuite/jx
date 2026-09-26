@@ -7,10 +7,12 @@
  * call in the module that owns it, and it appears here; there is nothing to update in step.
  *
  * **Every rail button opens the Navigator, and the grouping is by LEVEL.** Every button is a
- * `jx-action-button` in its stacked form, so it carries an 11px text label under its icon — an icon
+ * `jx-action-button` in its stacked form, so it carries a 10px text label under its icon — an icon
  * whose only name is a hover tooltip is the accessibility failure §2 principle 6 names — and
  * `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel collapses
- * its dock, which is a two-state control, not a one-way selection.
+ * its dock, which is a two-state control, not a one-way selection. The label is the record's
+ * `railLabel` when it declares one (Source Control's is "Source", because the full title ellipsed
+ * in the 48px label box), and the full `title` stays the accessible name and the tooltip.
  *
  * The foot is the ⚙ **Settings** menu, a menu button rendered from the `settings/menu` placement: a
  * record joins the gear by declaring the placement and there is nothing here to update in step.
@@ -48,7 +50,10 @@ registerSurface("rail", railDoc as unknown as JxDocument);
 /** One rail button, as the surface reads it. */
 interface RailButton {
   id: string;
+  /** The full name: the control's accessible name and its tooltip. */
   title: string;
+  /** The text under the glyph: the record's `railLabel`, else its title. */
+  railLabel: string;
   icon: string;
   selected: boolean;
   /** The badge text; empty for none. */
@@ -109,6 +114,7 @@ function project(): { groups: RailGroupProjection[]; settingsVisible: boolean } 
       badge: String(panel.badge?.(ctx) ?? ""),
       icon: panel.icon,
       id: panel.id,
+      railLabel: panel.railLabel ?? panel.title,
       selected: isRailPanelShowing(panel),
       title: panel.title,
     })),

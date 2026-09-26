@@ -47,10 +47,15 @@
       "letterSpacing": "0.3px"
     },
     "& [part=\"section-header\"]": {
+      "$description": "`center`, not `baseline`: `Clear all` is a small kit button, and a small kit control is layout-contained so its outset hit area adds nothing to a scrolling ancestor's overflow, which leaves it with no baseline to export. A baseline row synthesised one from the button's bottom edge, which stood the header 33px tall with the title 10px under the button's label. The gap under the header is the HEADER's, because centring aligns MARGIN boxes: while the h2 kept its own 8px block-end margin its margin box was 26px, exactly the header's height, so `center` had nothing to move and left the h2 flush at the top with the button centred 3.6px below its baseline — a fix that measured right and still looked wrong. With the margin moved out, the two boxes are the only things in the line and they centre on each other.",
       "display": "flex",
-      "alignItems": "baseline",
+      "alignItems": "center",
       "justifyContent": "space-between",
-      "gap": "var(--jx-space-4)"
+      "gap": "var(--jx-space-4)",
+      "marginBottom": "var(--jx-space-3)"
+    },
+    "& [part=\"section-header\"] [part=\"section-title\"]": {
+      "marginBlockEnd": "0"
     },
     "& [part=\"actions\"]": {
       "display": "flex",
