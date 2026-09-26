@@ -13,6 +13,11 @@
 //   - every spec has a `## Changelog` whose newest entry matches the header version and **Updated:**
 //   - changelog entries run newest-first: strictly descending versions, non-increasing dates
 //   - the `-draft` suffix is carried exactly by the specs whose status is not Implemented
+//   - a spec whose header says Implemented has no open item: no Partial or Pending anywhere in it
+//     (A section's leading marker, a later marker, a second status on a marker line, a table cell,
+//     Or a whole-spec marker above the first numbered section)
+//   - markers are written `> **Status: X.**`, not `> **Status:** X`, which nothing reads
+//   - every marker after the first numbered heading sits under a numbered section
 //   - if any spec uses an all-capitals BCP 14 keyword, standards.md still declares them (§12)
 //
 // Usage: bun scripts/docs/check-spec-status.ts
@@ -22,15 +27,14 @@ import { resolve } from "node:path";
 import {
   compareSpecVersion,
   isStatus,
+  openItems,
   parseSpecStatuses,
   splitVersion,
 } from "./lib/spec-status.ts";
+import type { SpecStatus } from "./lib/spec-status.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SPECS_DIR = resolve(ROOT, "specs");
-
-const violations: string[] = [];
-const fail = (file: string, message: string) => violations.push(`specs/${file}: ${message}`);
 
 /** True for a real calendar date written as YYYY-MM-DD. */
 function isIsoDate(value: string): boolean {
@@ -41,9 +45,11 @@ function isIsoDate(value: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
-const specs = parseSpecStatuses(SPECS_DIR);
+/** Every per-spec rule, as `specs/<file>: <message>` lines. Pure: the CLI and the tests share it. */
+export function specStatusViolations(spec: SpecStatus): string[] {
+  const violations: string[] = [];
+  const fail = (file: string, message: string) => violations.push(`specs/${file}: ${message}`);
 
-for (const spec of specs) {
   // ─── Header block ──────────────────────────────────────────────────────────
   if (!spec.headerVersion) {
     fail(spec.file, "missing a header **Version:** line");
@@ -146,9 +152,28 @@ for (const spec of specs) {
     }
   }
 
+  /*
+   * ─── An Implemented spec admits nothing unbuilt ──────────────────────────
+   *
+   * The header is the one word a reader takes away, and `-draft` is derived from it. A section that
+   * still says Partial or Pending (in a leading marker, a later one, or a status cell) under an
+   * Implemented header is the spec contradicting itself, and graduation would have hidden it.
+   */
+  if (spec.headerStatus === "Implemented") {
+    for (const item of openItems(spec)) {
+      const where = item.anchor ? `§${item.anchor}` : "the preamble above §1";
+      fail(
+        spec.file,
+        `${item.line}: header **Status:** is Implemented, but ${where} is ${item.status} (${item.form}) — ` +
+          `a spec is Implemented only when none of its items is Partial or Pending`,
+      );
+    }
+  }
+
   for (const bad of spec.badForms) {
     fail(spec.file, `${bad.line}: ${bad.reason} — "${bad.text.slice(0, 80)}"`);
   }
+  return violations;
 }
 
 // ─── BCP 14 normative keywords ────────────────────────────────────────────────
@@ -181,48 +206,68 @@ const KEYWORD_PATTERN = new RegExp(`\\b(${BCP14_KEYWORDS.join("|")})\\b`, "g");
 const DECLARING_SPEC = "standards.md";
 const DECLARING_HEADING = "## 12. Normative Keywords";
 
-const keywordUsers: string[] = [];
-let declaration = "";
-for (const file of readdirSync(SPECS_DIR).filter((f) => f.endsWith(".md"))) {
-  const text = readFileSync(resolve(SPECS_DIR, file), "utf8");
-  if (file === DECLARING_SPEC) {
-    declaration = text;
-    continue; // The declaration necessarily contains every keyword it defines.
+function keywordViolations(specsDir: string): string[] {
+  const violations: string[] = [];
+  const fail = (file: string, message: string) => violations.push(`specs/${file}: ${message}`);
+  const keywordUsers: string[] = [];
+  let declaration = "";
+  for (const file of readdirSync(specsDir).filter((f) => f.endsWith(".md"))) {
+    const text = readFileSync(resolve(specsDir, file), "utf8");
+    if (file === DECLARING_SPEC) {
+      declaration = text;
+      continue; // The declaration necessarily contains every keyword it defines.
+    }
+    if (KEYWORD_PATTERN.test(text)) {
+      keywordUsers.push(file);
+    }
+    KEYWORD_PATTERN.lastIndex = 0;
   }
-  if (KEYWORD_PATTERN.test(text)) {
-    keywordUsers.push(file);
-  }
-  KEYWORD_PATTERN.lastIndex = 0;
-}
 
-if (keywordUsers.length > 0) {
-  if (!declaration.includes(DECLARING_HEADING)) {
-    fail(
-      DECLARING_SPEC,
-      `${keywordUsers.join(", ")} use all-capitals BCP 14 keywords, but "${DECLARING_HEADING}" is ` +
-        `missing — those requirements are now undefined`,
-    );
-  } else {
-    // The declared set must be the whole set: a section that quietly dropped SHALL would leave a
-    // Future use of it undefined while still looking like a declaration.
-    const missing = BCP14_KEYWORDS.filter((word) => !declaration.includes(`**${word}**`));
-    if (missing.length > 0) {
+  if (keywordUsers.length > 0) {
+    if (!declaration.includes(DECLARING_HEADING)) {
       fail(
         DECLARING_SPEC,
-        `${DECLARING_HEADING} does not declare ${missing.join(", ")} — declare the full BCP 14 set ` +
-          `or stop using the missing keyword(s)`,
+        `${keywordUsers.join(", ")} use all-capitals BCP 14 keywords, but "${DECLARING_HEADING}" is ` +
+          `missing — those requirements are now undefined`,
       );
+    } else {
+      // The declared set must be the whole set: a section that quietly dropped SHALL would leave a
+      // Future use of it undefined while still looking like a declaration.
+      const missing = BCP14_KEYWORDS.filter((word) => !declaration.includes(`**${word}**`));
+      if (missing.length > 0) {
+        fail(
+          DECLARING_SPEC,
+          `${DECLARING_HEADING} does not declare ${missing.join(", ")} — declare the full BCP 14 set ` +
+            `or stop using the missing keyword(s)`,
+        );
+      }
     }
   }
+  return violations;
 }
 
-if (violations.length > 0) {
-  console.error(`\nspec status: ${violations.length} violation(s):`);
-  for (const v of violations) {
-    console.error(`  ${v}`);
-  }
-  process.exit(1);
+/** Every violation across `specsDir`: the per-spec rules, then the BCP 14 declaration. */
+export function checkSpecStatus(specsDir: string): { specs: number; violations: string[] } {
+  const specs = parseSpecStatuses(specsDir);
+  return {
+    specs: specs.length,
+    violations: [
+      ...specs.flatMap((spec) => specStatusViolations(spec)),
+      ...keywordViolations(specsDir),
+    ],
+  };
 }
-console.log(
-  `spec status: ${specs.length} spec(s) — headers, vocabulary, footer versions, and changelogs all agree.`,
-);
+
+if (import.meta.main) {
+  const { specs, violations } = checkSpecStatus(SPECS_DIR);
+  if (violations.length > 0) {
+    console.error(`\nspec status: ${violations.length} violation(s):`);
+    for (const v of violations) {
+      console.error(`  ${v}`);
+    }
+    process.exit(1);
+  }
+  console.log(
+    `spec status: ${specs} spec(s) — headers, vocabulary, footer versions, changelogs, and open items all agree.`,
+  );
+}

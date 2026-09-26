@@ -587,7 +587,7 @@ Module-local state (Sets, variables) persists across renders and does not need t
 
 ### 9.4 Template Conventions
 
-> **Status:** Implemented
+> **Status: Implemented.**
 
 The template is the only writer of what it renders. Both halves of that have been broken in shipped code, so both are gated by `packages/studio/scripts/check-lit-conventions.ts`, which carries a ratcheting backlog per rule and fails both ways — a new occurrence fails, and an entry left behind after its site is fixed fails too.
 
@@ -662,7 +662,7 @@ When building new UI in Studio, verify:
 
 ## 11. Empty States and Copy
 
-**Status:** Implemented
+> **Status: Implemented.**
 
 Every region of the shell that can be empty says its piece through **one** vocabulary — `EmptyStateSpec` in `src/panels/empty-state.ts`, which owns the copy rules below and nothing about how they look. A region with no object to show never paints a bare container, and it never re-decides the rules per panel.
 
@@ -699,7 +699,7 @@ The empty state is where a new author meets the vocabulary, so it uses the plain
 
 ## 12. Command and Menu Rendering Rules
 
-**Status:** Partial — the registry and the CI checks ship; the surfaces are being ported onto them.
+> **Status: Partial.** The registry and the CI checks ship; the surfaces are being ported onto them.
 
 Every capability Studio has is a **command record** (`specs/studio.md` §13). This section governs how those records are _rendered_: where a record may appear, how many may appear at once, and what every appearance must print.
 
@@ -824,7 +824,7 @@ If a surface maintains its own array of `{ label, action }` records for capabili
 
 ## 13. Notification Tiers
 
-**Status:** Partial — the three tiers and their surfaces ship; the Diff and Logic tabs of the Bottom dock are declared and empty.
+> **Status: Partial.** The three tiers and their surfaces ship; the Diff and Logic tabs of the Bottom dock are declared and empty.
 
 The normative contract is `specs/studio.md` §16. This section governs how those records are _rendered_ — what each tier looks like, and the rules a reviewer applies when someone proposes a fourth one.
 
