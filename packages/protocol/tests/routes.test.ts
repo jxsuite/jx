@@ -165,6 +165,16 @@ describe("STUDIO_ROUTES", () => {
     expect(STUDIO_ROUTES.fileUpload.summary).toContain("UploadResult");
   });
 
+  /* `fileBytes` and `fileRead` answer the same file and must never be confused for each other:
+     one decodes UTF-8 and one does not, and reaching for the wrong one destroys an image. */
+  test("the bytes route is its own path, optional, and says what it is for", () => {
+    expect(STUDIO_ROUTES.fileBytes.path).toBe("/__studio/file/bytes");
+    expect(STUDIO_ROUTES.fileBytes.method).toBe("GET");
+    expect(STUDIO_ROUTES.fileBytes.path).not.toBe(STUDIO_ROUTES.fileRead.path);
+    expect(STUDIO_ROUTES.fileBytes.optional).toBe(true);
+    expect(STUDIO_ROUTES.fileBytes.summary).toContain("undecoded");
+  });
+
   test("file routes share one path across GET/PUT/DELETE", () => {
     expect(STUDIO_ROUTES.fileRead.path).toBe(STUDIO_ROUTES.fileWrite.path);
     expect(STUDIO_ROUTES.fileRead.path).toBe(STUDIO_ROUTES.fileDelete.path);
