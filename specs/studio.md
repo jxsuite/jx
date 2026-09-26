@@ -1251,7 +1251,7 @@ Two facts the list cannot state about itself, both measured rather than reasoned
 
 ### 11.2 Hosting the Studio
 
-> **Status:** Implemented
+> **Status: Implemented.**
 
 **The shell requires `'unsafe-eval'`.** Its chrome mounts Jx documents through the interpreter, which compiles templates and inline bodies with `new Function` (`spec.md` §21.3, `embedding.md` §8), so a host's Content Security Policy for the Studio page must allow it for as long as the shell interprets. This is a property of the shell, stated rather than worked around; the canvas iframe already carried it.
 

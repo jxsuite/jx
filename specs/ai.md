@@ -160,7 +160,7 @@ The assistant's tools are two kinds, and the difference is who wrote the tool.
 
 ### 3.7 A tool call carries its context
 
-> **Status:** Implemented
+> **Status: Implemented.**
 
 A tool is handed everything it needs to know about the call it serves as its second argument, a `ToolContext` (`@jxsuite/ai/tools`), rather than reaching for it through module state. The same tool can then run in a Studio window, a Worker or an MCP server, and two turns cannot share a slot that belongs to one of them. Four properties are normative.
 
