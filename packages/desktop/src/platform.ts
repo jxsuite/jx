@@ -3,7 +3,7 @@
 import { Electroview } from "electrobun/view";
 import { html, render as litRender } from "lit-html";
 import { streamImport } from "@jxsuite/studio/import-client";
-import { toBase64 } from "@jxsuite/studio/base64";
+import { base64ToBytes, toBase64 } from "@jxsuite/studio/base64";
 import type { RecentProjectEntry, StudioRPC } from "./rpc-schema";
 import type {
   DataRowDelete,
@@ -389,6 +389,15 @@ export function createDesktopPlatform() {
 
     async readFile(path: string) {
       return rpc.request.readFile({ path });
+    },
+
+    /* Base64 in, bytes out — the mirror of `uploadFile` below, and the ONLY way the shell can read
+       a project image. Its own origin is `views://`; the loopback that serves project files is
+       cross-origin, so an `<img>` from there taints a canvas and a `fetch` is refused (no CORS, by
+       `server.md` §4.2). A Blob built from these bytes is same-origin by construction. */
+    async readFileBytes(path: string) {
+      const { data } = await rpc.request.readFileBytes({ path });
+      return base64ToBytes(data).buffer as ArrayBuffer;
     },
 
     async writeFile(path: string, content: string) {

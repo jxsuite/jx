@@ -496,6 +496,16 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       return data.content;
     },
 
+    /* Raw bytes. The session origin serves this route, so no CORS question arises — the shell and
+       the API are the same origin on cloud, which is exactly what `assetSpace: "repo"` is about. */
+    async readFileBytes(path: string) {
+      const res = await api(`/file/bytes?path=${encodeURIComponent(path)}`);
+      if (!res.ok) {
+        throw new Error(await errorMessage(res, `Failed to read file bytes: ${path}`));
+      }
+      return res.arrayBuffer();
+    },
+
     async writeFile(path: string, content: string) {
       const res = await api("/file", {
         method: "PUT",

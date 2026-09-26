@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { streamImport } from "@jxsuite/studio/import-client";
-import { toBase64 } from "@jxsuite/studio/base64";
+import { base64ToBytes, toBase64 } from "@jxsuite/studio/base64";
 import { setPreviewNavigateHandler } from "@jxsuite/studio/preview-navigate";
 import type {
   AppInfo,
@@ -421,6 +421,14 @@ export function createDesktopPlatform() {
 
     async readFile(path: string) {
       return request("readFile", { path }) as Promise<string>;
+    },
+
+    /* Bytes, base64 across the socket. Chromium serves the shell same-origin, so this could have
+       been a fetch — but two decode paths is two behaviours, and the one CI never exercises is the
+       one that breaks. Both launchers take the same route. */
+    async readFileBytes(path: string) {
+      const { data } = (await request("readFileBytes", { path })) as { data: string };
+      return base64ToBytes(data).buffer as ArrayBuffer;
     },
 
     async writeFile(path: string, content: string) {
