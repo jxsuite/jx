@@ -393,6 +393,11 @@ jobs:
       # evidence, and joins its Pending rows to sections the status markers agree are unbuilt.
       # See scripts/docs/check-standards.ts and specs/standards.md.
       - run: bun run docs:standards
+      # Plans: every open item in an audited spec is claimed by exactly one plan, a plan claiming
+      # something already built is stale and must be deleted, `requires` edges resolve and form no
+      # cycle, and nothing outside plans/ cites a plan, so deleting one never leaves a dangling
+      # reference. See plans/README.md and scripts/docs/check-plans.ts.
+      - run: bun run plans:check
       # Specs: a spec whose body changed must also be released — version advanced,
       # **Updated:** restamped, and a new changelog entry (`bun run spec:bump`).
       # See scripts/docs/check-spec-release.ts.

@@ -181,6 +181,9 @@ const NO_TESTS = [
   "bun.nix",
   "docs/**",
   "specs/**",
+  // Transient implementation plans (plans/README.md). Prose no suite reads; `plans:check` runs in
+  // The ungated `checks` job, and `scripts/docs/**` above already keeps its own source off the matrix.
+  "plans/**",
   "scripts/docs/**",
   "sites/**",
   ".github/**",

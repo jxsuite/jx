@@ -42,6 +42,8 @@
     "docs:status": "bun scripts/docs/check-spec-status.ts",
     "docs:spec-release": "bun scripts/docs/check-spec-release.ts",
     "docs:standards": "bun scripts/docs/check-standards.ts",
+    "plans:check": "bun scripts/docs/check-plans.ts",
+    "plans:status": "bun scripts/docs/plans-status.ts",
     "docs:generate": "bun scripts/docs/generate-reference.ts",
     "docs:sync": "bun run docs:generate && bun scripts/docs/check-doc-sync.ts",
     "docs:verify": "bun run docs:check && bun run docs:images:check",
