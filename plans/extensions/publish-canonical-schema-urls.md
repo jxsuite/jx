@@ -75,7 +75,7 @@ Two editorial riders from the census belong to this plan:
    Drop the first line if the Open decision is declined. `buildSite` needs no change: step 8 already `mkdirSync`s and `cpSync`s each entry.
 
 2. **New `scripts/docs/schema-publication.test.ts`.** The header comment cites `specs/extensions.md` §5.4 and explains why the file sits in `scripts/docs/`, following the header of `scripts/dependabot-config.test.ts`. Reuse:
-   - `candidatePaths()` and `classifySchema()` from `scripts/check-schema-freshness.ts`, which is importable because `main()` sits behind `import.meta.main`. They give every tracked `*schema.json` and its kind (`core` = under `packages/schema/`, `fragment` = `extensions/*/schemas/*`; `entry` documents are skipped because they carry no canonical refs, and `jx validate`'s self-containment check already covers them).
+   - `candidatePaths()` and `classifySchema()` from `scripts/check-schema-freshness.ts`, which is importable because `main()` sits behind `import.meta.main`. They give every tracked `*schema.json` and its kind: `core` is under `packages/schema/`, `entry` is a `project.schema.json` or `document.schema.json`, and `fragment` is everything else, today the six `extensions/*/schemas/*` fragments (a later generated schema elsewhere, such as an `ai` wire schema, lands there too and is walked for references, which is harmless). `entry` documents are skipped because they carry no canonical refs, and `jx validate`'s self-containment check already covers them.
    - Paths relative to the repository root, as the neighbouring script tests use, since the step runs from the root.
 
    Helpers defined in the file, exported for the unit case:
@@ -83,18 +83,16 @@ Two editorial riders from the census belong to this plan:
    - `publishedSchemas(copy: Record<string, string>): Map<string, string>` maps each canonical URL to its repo-relative source. It covers every `copy` entry whose destination matches `/^schema\/(.+)\/index\.json$/` and joins the source with `sites/jxsuite.com` through `node:path`'s `join`.
    - `canonicalRefs(node: unknown): string[]` is a recursive walk over objects and arrays. It collects every `$ref` string value starting with `CANONICAL`, strips anything from `#` on, and returns the sorted unique set.
 
-3. **Housekeeping in the landing pull request.** Delete this plan. In `plans/extensions/README.md`, delete two sentences:
-   - In the §4 "Verified" bullet: "The key table omits `schemas.fields`, … rides with `plan:extensions/publish-canonical-schema-urls`."
-   - In the §5.1–§5.3 bullet: "§5.3's fields row example … beside the §4 `schemas.fields` row."
-
-   Both are closed by the edits below, and `plans:check` would otherwise report dangling citations. No plan requires this one.
+3. **Housekeeping in the landing pull request.** Delete this plan. No plan requires it, but two cite it, and `plans:check` reports each citation left in a plan that has not landed as `citation-unknown` (`grep -rn 'plan:extensions/publish-canonical-schema-urls' plans/`):
+   - `plans/extensions/connector-table-paths.md` ("rewrites the adjacent §5.3 row") and `plans/extensions/referenceable-sections.md` (its §5.3 fields-cell step): cite extensions.md §5.3 instead, and in referenceable-sections state the cell as this plan leaves it, so its "if already rewritten" branch becomes the only one.
+   - `plans/extensions/README.md`: delete the §4 "Verified" bullet's "The key table omits `schemas.fields`, … rides with `plan:extensions/publish-canonical-schema-urls`." and the §5.1–§5.3 bullet's "§5.3's fields row example … beside the §4 `schemas.fields` row.", both closed by the edits below.
 
 **Integration contract.** No plan requires this one. Once it lands:
 
 - Every `packages/schema` artifact's `$id` is served at `https://jxsuite.com/schema/<path>/`, from the released tree.
 - A plan that adds a core artifact, or a first-party fragment that references a canonical URL, has to add the copy entry in the same pull request, or `scripts/docs/schema-publication.test.ts` fails. This applies to `plan:extensions/connector-table-paths`'s `TablePathsSource` document fragment, which the walk picks up automatically.
 - §4 lists `schemas.fields`. §5.3's fields row says no first-party extension ships a fields fragment, so a plan that ships the first one updates that clause.
-- `plan:extensions/connector-table-paths` rewrites the adjacent paths row of the same §5.3 table. Whichever lands second resolves that one-table adjacency, and oxfmt re-pads the table.
+- `plan:extensions/connector-table-paths` rewrites the adjacent paths row of the same §5.3 table, and `plan:extensions/referenceable-sections` appends a clause to the same fields cell this plan rewrites (its text already keeps this plan's wording when this lands first). Whichever lands second resolves the one-table adjacency, and oxfmt re-pads the table.
 
 ## Tests
 
@@ -130,13 +128,13 @@ The single quotes keep the shell from expanding `$id`.
 
 **Docs** (docs pages ban em dashes). `bun run docs:sync` names `machine-readable.md`, whose `code:` lists `sites/jxsuite.com/project.json`. The pages whose `spec:` cites a touched anchor are `schema-composition.md` (§5.3, §5.4), `anatomy.md` (§4) and `cli.md` (§5.4).
 
-- **`docs/framework/agents/machine-readable.md`**, "The schemas". The table gains three rows after `document/paths/v2`, each linked like the existing rows (drop the manifest row if the Open decision is declined):
+- **`docs/framework/agents/machine-readable.md`**, "The schemas". The table gains these three rows after `document/paths/v2`, verbatim (drop the manifest row if the Open decision is declined; `bun run format` re-pads the table):
 
-  | URL                                                | Validates                                                                                                                    |
-  | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-  | `https://jxsuite.com/schema/project/core/v2`       | "The core `project.json` properties, and the `JxFieldSchema` and `RelationshipRef` definitions extension fragments build on" |
-  | `https://jxsuite.com/schema/project/fields/v2`     | "A field schema (content frontmatter fields, table columns), referenced by extension fragments and overridden per project"   |
-  | `https://jxsuite.com/schema/extension-manifest/v1` | "`jx-extension.json` extension manifests"                                                                                    |
+  ```markdown
+  | [`https://jxsuite.com/schema/project/core/v2`](https://jxsuite.com/schema/project/core/v2) | The core `project.json` properties, and the `JxFieldSchema` and `RelationshipRef` definitions extension fragments build on |
+  | [`https://jxsuite.com/schema/project/fields/v2`](https://jxsuite.com/schema/project/fields/v2) | A field schema (content frontmatter fields, table columns), referenced by extension fragments and overridden per project |
+  | [`https://jxsuite.com/schema/extension-manifest/v1`](https://jxsuite.com/schema/extension-manifest/v1) | `jx-extension.json` extension manifests |
+  ```
 
   After "The hosted `$paths` union accepts any extension source shape it cannot see, where your project's generated copy checks the exact set your extensions provide.", add: "The hosted field union likewise holds only the core field shapes and relationship references."
 

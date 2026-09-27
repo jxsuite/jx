@@ -35,7 +35,7 @@ Everything else in §9.3 holds as the census recorded: the open path and Media m
 ## Outcome
 
 - studio.md §9.3 → Implemented. The marker returns to its two opening sentences under `Implemented`; the Surfaces table names the Library in place of the Manage view, every media field that offers **Upload**, and the folder-only **Upload Files…** item.
-- §9.4's overlay citation reads §10.1 (unmarked, editorial).
+- §9.4's overlay citation reads §10.1 (an editorial fix; its Implemented marker is unchanged).
 - `files/media-upload.ts`'s comments describe the five callers it has. No behaviour changes.
 
 ## Decisions
@@ -62,7 +62,7 @@ One pull request. Paths under `packages/studio/` unless they start with `specs/`
 
 No other plan's code is touched. `browse/library-pane.ts` and `browse/library-model.ts` do not change.
 
-**Integration contract.** Once this lands, `plan:site-architecture/library-collection-views` (which requires this plan) finds studio.md §9.3's Library row reading exactly as quoted under Specs & docs, a category-to-folder list it extends with a chosen collection's folder and a localized collection's prompt, and `media-upload.ts`'s header naming `resolveUploadDir` as the Library's destination chooser; a change that renames or moves that function updates the header in the same pull request. The All prompt's pre-fill is `public`, pinned by the new pane case.
+**Integration contract.** Once this lands, `plan:site-architecture/library-collection-views` (which requires this plan) finds studio.md §9.3's Library row reading exactly as quoted under Specs & docs, a category-to-folder list it extends with a chosen collection's media folder (a localized collection's languages share one, so nothing asks), and `media-upload.ts`'s header naming `resolveUploadDir` as the Library's destination chooser; a change that renames or moves that function updates the header in the same pull request. The All prompt's pre-fill is `public`, pinned by the new pane case.
 
 ## Tests
 
@@ -79,7 +79,7 @@ No source file is added and none gains or loses a statement (the `media-upload.t
 
 - **§9.3 marker** becomes: `> **Status: Implemented.** Adding media to a project is a direct gesture from wherever the author already is. Every surface funnels through one upload core (`packages/studio/src/files/media-upload.ts`); they differ only in how the destination directory is chosen.`
 - **Surfaces table**, three rows rewritten (the Canvas row is unchanged; reformat the table with `bun run format:md` or oxfmt so the columns align):
-  - Row 1: Surface "A media field: an image prop (`format: "image"` or `"uri-reference"`), a `$input: "media"` attribute, and Search appearance's Icon and Image"; Gesture "**Upload** button beside the field"; Destination "Context-aware (below); the field takes the new ref".
+  - Row 1: Surface "A media field: an image prop (`format: "image"` or `"uri-reference"`) or `$input: "media"` attribute, a media frontmatter or head row, a state's image default, a grid image cell, and Search appearance's Icon and Image"; Gesture "**Upload** button beside the field"; Destination "Context-aware (below); the field takes the new ref". Every one of those draws `ui/media-picker`'s field or calls `uploadAssets` with no `dir`, so the row lists the triggers the census found, not a sample of them.
   - Row 3: Gesture "Drop on a row, or **Upload Files…** in a folder's menu"; Surface and Destination unchanged.
   - Row 4: Surface "Library (§9.1.2)"; Gesture "Drop anywhere on it, or its **Upload** control"; Destination "The active category's folder (`pages/`, `layouts/`, `components/`, `content/`, and `public/` for Media), named on the **Upload** control before the drop. All has none, so it asks, with `public` pre-filled; cancelling uploads nothing".
 - **§9.4**, "One serialization, every reader.": "the live-preview overlay (§9.2)" becomes "the live-preview overlay (§10.1)".

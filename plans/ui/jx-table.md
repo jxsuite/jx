@@ -34,22 +34,22 @@ size: M
 
 ## Outcome
 
-- ui.md §5.4 → Implemented. `jx-table`, `jx-tr`, `jx-th` and `jx-td` ship under `packages/ui/components/`, each with a stylebook page, under the conformance test and a new `tests/table.test.ts`. They share one catalogue row, and Studio's three tables are drawn with them.
+- ui.md §5.4 → Implemented. `jx-table`, `jx-tr`, `jx-th` and `jx-td` ship under `packages/ui/components/`, each with a stylebook page, under the conformance test and a new `tests/table.test.ts`. They share one catalogue row, and Studio's three tables are drawn with them (two if the Open decision's guard keeps the Languages panel native, which the marker then says).
 - Ride-alongs in ui.md: the §3.5 bullet names `rowheader`; the §5 and §10 markers stop listing §5.4; the §11 WAI-ARIA row lists **table** as built. `gap:ui-aria` stays open for the select-only combobox, so this plan closes no gap.
 
 ## Decisions
 
 - **Decided:** exactly the four elements §3.5 names. Each has one default `slot`, and none has parts, named slots, events or a behaviour sidecar. The unwrapping slot is what makes a row its table's direct child. No consumer needs a row-group element (`jx-thead`/`jx-tbody`): the head row is the first `jx-tr`, and ARIA's `table` owns `row` directly.
-- **Decided:** `jx-th` takes `scope`, `"col"` by default or `"row"`, and writes `columnheader` or `rowheader`. The Languages panel heads each row with its key, and dropping that would lose the header a screen reader announces when moving along a row. The name is the native `th` attribute's.
+- **Decided:** `jx-th` takes `scope`, `"col"` by default or `"row"`, and writes `columnheader` or `rowheader`. The Languages panel heads each row with its key, and dropping that would lose the header a screen reader announces when moving along a row. The name is the native `th` attribute's, and it is an observed attribute as well as a prop, so `scope="row"` written as an attribute works too (the runtime reads an attribute into state only when the definition observes it).
 - **Decided:** a windowed table states the set it slices. `jx-table` takes `rowcount` and `jx-tr` takes `rowindex`, both numbers where 0 writes nothing, and they become `aria-rowcount` and `aria-rowindex`. WAI-ARIA answers a partly rendered table with exactly these two, as the tree answers a partly rendered tree with `aria-posinset`/`aria-setsize` (ui.md §5.5). The element prints what it is given (§2 principle 4), and the host does the counting, header row included. Only the Library sets them. The Languages panel caps its rows and says so in its `truncated` line; it does not window them.
 - **Decided:** `jx-table` takes `label` and writes it as `aria-label`, writing nothing when the label is empty. Each Studio table is given a name.
 - **Decided:** no spanning and no keyboard. A CSS table cell cannot span, so a table that needs `colspan` or `rowspan` takes §3.5's second shape: a native `<table>` with kit elements inside its cells. `jx-table` is the static table pattern, not the APG grid, so it has no tab stop and no sidecar. A row a host makes clickable (the Library's) keeps its handlers at the usage site, as it does today.
 - **Decided:** each element owns the look of its own box (§3.1):
-  - `jx-table`: `border-collapse: collapse`, `width: 100%`, and the sans font, `--jx-text-md` and `--jx-fg`.
+  - `jx-table`: `border-collapse: separate` with `border-spacing: 0`, `width: 100%`, and the sans font, `--jx-text-md` and `--jx-fg`. Separate rather than collapsed because every cell draws only its block-end hairline, so nothing is doubled and the two models look the same, while a collapsed border is painted as part of the table's grid and is not guaranteed to travel with a sticky cell (WebKit and Gecko), which the Library's pinned header needs.
   - `jx-th` and `jx-td`: padding `var(--jx-space-2) var(--jx-space-3)` (4px 8px), `vertical-align: middle`, and a `1px solid var(--jx-border)` hairline on the block end.
   - `jx-th` also: `text-align: start`, weight 600, `--jx-fg-dim`, `nowrap`.
   - Consumers keep row hover, cursor, stickiness and column widths. Only the consumer knows whether a row responds, and widths belong to columns, not to the kit.
-- **Open:** do the two native tables adopt the kit too, or only the Library? Recommendation: all three, taking the kit's header and cell look. Packages loses its weight-500 header, and Languages loses its uppercase `2px 6px` header. §3.1 decides the kind by how many definitions draw the box, and a panel that kept its own header would bring back the three-way drift the element exists to end. The screenshots lane records the visible change. One guard, because the Languages panel draws up to 200 rows times every locale as cells, about a thousand element instances where a native table drew none: the pull request logs the panel's first render at `PARITY_ROW_LIMIT` rows and four locales, before and after, in `library-perf.test.ts`'s style. If the kit table is more than twice as slow, that panel keeps its native table under §3.5's second shape, and the §5.4 marker names it as the one consumer that does and says why.
+- **Open:** do the two native tables adopt the kit too, or only the Library? Recommendation: all three, taking the kit's header and cell look. Packages loses its weight-500 header. Languages loses its uppercase `2px 6px` header, and its body cells go from `2px 6px` with no rule between rows to the kit's `4px 8px` and hairline, so the Navigator's grid grows by about 5px a row. §3.1 decides the kind by how many definitions draw the box, and a panel that kept its own header would bring back the three-way drift the element exists to end. The screenshots lane records the visible change. One guard, because the Languages panel draws up to 200 rows times every locale as cells, about a thousand element instances where a native table drew none: the pull request logs the panel's first render at `PARITY_ROW_LIMIT` rows and four locales, before and after (Tests says how). If the kit table is more than twice as slow, that panel keeps its native `<table>`, which §3.5 does not forbid (it forbids only a kit element wrapping one), and the §5.4 marker names it as the one consumer that does and says why.
 
 ## Implementation
 
@@ -59,15 +59,15 @@ size: M
    - `observedAttributes`: `["label", "rowcount"]`.
    - State `label`: string, default `""`, `attribute: "label"`.
    - State `rowcount`: number, default `0`, `attribute: "rowcount"`. Its description says it counts the whole set including the header row, and that 0 writes nothing.
-   - Attributes: `"role": "table"`, `"aria-label": "${state.label ? state.label : null}"`, `"aria-rowcount": "${state.rowcount > 0 ? state.rowcount : null}"` (the null-writing form `jx-accordion.json` uses).
-   - Style: `display: table`, `"&[hidden]": { "display": "none" }`, `boxSizing: border-box`, `width: 100%`, `borderCollapse: collapse`, `fontFamily: var(--jx-font-sans)`, `fontSize: var(--jx-text-md)`, `lineHeight: var(--jx-leading-md)`, `color: var(--jx-fg)`.
+   - Attributes: `"role": "table"`, `"aria-label": "${state.label || null}"` (the kit's label idiom), `"aria-rowcount": "${state.rowcount > 0 ? state.rowcount : null}"` (the form `jx-tree-item.json` writes `aria-posinset` in).
+   - Style: `display: table`, `"&[hidden]": { "display": "none" }`, `boxSizing: border-box`, `width: 100%`, `borderCollapse: separate`, `borderSpacing: 0`, `fontFamily: var(--jx-font-sans)`, `fontSize: var(--jx-text-md)`, `lineHeight: var(--jx-leading-md)`, `color: var(--jx-fg)`.
    - Children: `[{ "tagName": "slot" }]`.
 2. `components/jx-tr.json` (`JxTr`):
-   - State `rowindex`: number, default `0`, with an `attribute`.
+   - `observedAttributes`: `["rowindex"]`. State `rowindex`: number, default `0`, `attribute: "rowindex"`.
    - Attributes: `role: "row"` and `aria-rowindex`, written in the same null-writing form.
    - Style: `display: table-row` and the hidden rule. One slot.
 3. `components/jx-th.json` (`JxTh`):
-   - State `scope`: string, default `"col"`.
+   - `observedAttributes`: `["scope"]`. State `scope`: string, default `"col"`, `attribute: "scope"`.
    - Attributes: `"role": "${state.scope === 'row' ? 'rowheader' : 'columnheader'}"`.
    - Style: `display: table-cell`, the hidden rule, and the cell and header declarations in Decisions. One slot.
 4. `components/jx-td.json` (`JxTd`): `role: "cell"`; `display: table-cell`, the hidden rule, and the cell declarations. One slot.
@@ -85,13 +85,13 @@ size: M
    - Rewrite the style `$description`'s table sentence: the table is the kit's `jx-table`, so columns are announced as columns and a row as a row.
 9. `surfaces/panel-i18n.json`:
    - The grid's `true` case becomes `div part="parity-scroll"` around `jx-table part="parity"`, with `$props.label` `"Translations by page"`. The `& [part="parity"]` rule becomes `& [part="parity-scroll"] { overflowX: auto }` and keeps its `$description`.
-   - The rows move out of `thead`/`tbody`. The locale and key column heads become `jx-th`. The key cell becomes `jx-th scope="row" part="key"`. Each `td part="cell"` becomes `jx-td part="cell"`.
+   - The rows move out of `thead`/`tbody`. The locale and key column heads become `jx-th`. The key cell becomes `jx-th part="key"` with `$props.scope` `"row"`, keeping its `title`. Each `td part="cell"` becomes `jx-td part="cell"`.
    - Style: delete the `key-head`/`locale-head` rule. Drop the `textTransform` and `letterSpacing` resets from `default-mark`, because they undid an uppercase that is gone. `key` keeps its width, ellipsis and monospace, keeps `fontWeight: 400` and `color: var(--fg)` (a row header drawn as data), and drops its padding and `textAlign`. `cell` keeps `textAlign: center` and drops its padding. `row:hover` stays.
 10. `surfaces/library-pane.json`, the `table` case:
     - Structure:
       - `div part="table-window"` with `"style": "${state.pad}"`, the inline padding the Cards and Media grids already use, holding `jx-table part="table"`. The table's `$props` are `label: "Files"` and `rowcount: { "$ref": "#/state/rowCount" }`.
       - The head row is `jx-tr part="table-head"` with `rowindex: 1`, holding mapped `jx-th part="cell" data-field` cells.
-      - The body is the mapped `jx-tr part="table-row"`, with `rowindex: { "$ref": "$map/item/rowIndex" }` and its `onclick`/`oncontextmenu` unchanged, holding `jx-td part="cell" data-field` cells.
+      - The body is the mapped `jx-tr part="table-row"`, with `rowindex: { "$ref": "$map/item/rowIndex" }` and its `data-path`, `onclick` and `oncontextmenu` unchanged, holding `jx-td part="cell" data-field` cells.
       - Both `pad` divs go, so nothing stands between the table and its rows.
     - Style, the table and its rows:
       - `& [part="table-window"]` takes the old gutter as `padding-inline: var(--jx-space-5)` and `marginBlockEnd: var(--jx-space-5)`, because the inline pad owns the block padding.
@@ -101,16 +101,17 @@ size: M
     - Style, the cells:
       - `cell` drops `flex` and `minWidth` and keeps the ellipsis.
       - Widths go on `data-field`: `name` and `path` 26%, `size` and `modified` 10%, `locale` 9%. `category` and `type` share the remaining 19%. These percentages give today's pixel widths at a 968px table and, like flex, never overflow. The `locale` `$description` is reworded to match.
-11. `surfaces/library-pane.ts`: `LibraryView` drops `padTop` and `padBottom` and gains `rowCount: number`. `LibraryRow` gains `rowIndex: number`. The scope patch and the defaults (`rowCount: 0`) follow.
+    - If `plan:site-architecture/library-collection-views` has landed first, the head and body cells already carry its bound `style` width. Keep the binding on the head cells, drop it from the body cells (fixed layout reads only the first row), and let the `data-field` percentages stand as the rule the binding overrides.
+11. `surfaces/library-pane.ts`: `LibraryView` drops `padTop` and `padBottom` and gains `rowCount: number`. `LibraryRow` gains `rowIndex: number`, and its doc comment's "Every field already a string" makes that one exception. The scope patch and the defaults (`rowCount: 0`) follow.
 12. `browse/library-layouts.ts`: `libraryRow(file, columns, live, rowIndex = 0)` writes `rowIndex`, and `nameRow` writes `rowIndex: 0`.
 13. `browse/library-pane.ts`, the projection at about line 900:
     - `rowCount: kind === "table" ? files.length + 1 : 0`.
-    - Table rows are `slice.map((file, n) => libraryRow(file, libraryColumns(), false, range.start + n + 2))`. Index 1 is the head row, and `range.start` is an index into the filtered list, so a row keeps its index while the window scrolls.
+    - Table rows are `slice.map((file, n) => libraryRow(file, libraryColumns(), false, range.start + n + 2))`; Cards and Media keep calling it without an index. Index 1 is the head row, and `range.start` is an index into the filtered list, so a row keeps its index while the window scrolls. If the collection-scoped Table of `plan:site-architecture/library-collection-views` exists by then, its rows take the same index.
     - Delete `padTop` and `padBottom`.
 
 **Integration contract.** Once this lands, a plan may rely on the following:
 
-- `@jxsuite/ui` defines `jx-table` (`label`, `rowcount`), `jx-tr` (`rowindex`), `jx-th` (`scope`) and `jx-td`, all in `KIT_TAGS`, with no parts, events or named slots.
+- `@jxsuite/ui` defines `jx-table` (`label`, `rowcount`), `jx-tr` (`rowindex`), `jx-th` (`scope`) and `jx-td`, all in `KIT_TAGS`, with no parts, events or named slots. Each prop is also an observed attribute. The table draws separate borders at zero spacing, so a consumer may make head cells sticky and their hairline moves with them.
 - A surface draws a table by writing `jx-tr` rows directly inside `jx-table`. Anything it puts between them must be `display: contents` with `role="none"`.
 - The Library's Table is `div part="table-window"` > `jx-table part="table"`, whose first row is `jx-tr part="table-head"` of `jx-th part="cell" data-field` and whose other rows are `jx-tr part="table-row"` of `jx-td part="cell" data-field`, under `table-layout: fixed`, with `LibraryView.rowCount` and `LibraryRow.rowIndex`.
 - A width `style` bound on the head cells overrides the part rule, and under fixed layout only the head row's widths count. This is where `plan:site-architecture/library-collection-views` binds its per-column widths.
@@ -119,21 +120,22 @@ size: M
 
 **`packages/ui`**: `bun test --isolate --coverage` from `packages/ui`, then `bun scripts/check-coverage-manifest.ts packages/ui`. The thresholds are `lines = 0.99, functions = 1.0`. The plan adds no `.ts` source; `src/documents.ts` gains imports only. `tests/conformance.test.ts` needs no edit: its "components/\*.json and documents name the same tags" and "exist for every element" cases fail until all four documents and pages are in place, and then hold them to every contract clause.
 
-New `tests/table.test.ts`. It imports `./with-dom.ts` first, runs `registerUi()` in `beforeAll`, and reads declaration text with the `rulesOf` helper from `divider.test.ts` for token-valued declarations:
+New `tests/table.test.ts`. It imports `./with-dom.ts` first, runs `registerUi()` in `beforeAll`, and reads declaration text for token-valued declarations with its own copy of the `rulesOf` helper that `divider.test.ts` and five other suites each define (happy-dom leaves a `var()` value empty in `getComputedStyle`):
 
 - "jx-table is a CSS table with the table role, named by its label": `role="table"`; computed `display` is `table`; `aria-label="Files"` is written for that label, and no `aria-label` is written for an empty one.
 - "rows, header cells and cells take their roles and table displays": `jx-tr` is `row` and `table-row`, `jx-td` is `cell` and `table-cell`, and `jx-th` is `columnheader` and `table-cell`.
-- "a jx-th with scope=row is a row header, and changing scope moves the role".
-- "rowcount and rowindex are written only when given": 0 writes no attribute; `41` writes `aria-rowcount="41"`; `rowindex` 3 writes `aria-rowindex="3"`.
+- "a jx-th with scope=row is a row header, and changing scope moves the role": once through the `scope` attribute set before connection, once through the prop after it.
+- "rowcount and rowindex are written only when given": 0 writes no attribute; `41` writes `aria-rowcount="41"`; `rowindex` 3 writes `aria-rowindex="3"`, as a prop and as an attribute.
 - "a mapped list of rows leaves nothing but rows between the table and them": it `mount`s a document with a `jx-table` holding the head row and a `$prototype: "Array"` of three `jx-tr`/`jx-td` rows. Every element child of the table is `JX-TR` and every element child of a row is `JX-TD` or `JX-TH`, with no slot and no wrapper. This is §3.5's hazard, held.
 - "the cells draw the kit's hairline and padding, and the header its tone": declaration text of each element's own rule.
 
 **`packages/studio`**: `bun test --isolate --coverage` from `packages/studio`, then `bun scripts/check-coverage-manifest.ts packages/studio`. The thresholds are `lines = 0.958, functions = 0.941`, per file. There is no new source file. Ratchet if `library-pane.ts` or `library-layouts.ts` becomes the workspace minimum and rises. The existing part-addressed cases pass unchanged, which proves the adoption kept every hook.
 
-- `tests/dependencies-editor.test.ts`: "the package list is the kit's table: four column headers and a row per package". The `[part="table"]` is `JX-TABLE` with `role="table"` and `aria-label="Packages"`; it has four `[role="columnheader"]`; every `[part="row"]` has `role="row"`.
-- `tests/i18n-panel.test.ts`: "each page's row is headed by its key as a row header". Every `[part="key"]` is `rowheader`, every `locale-head` is `columnheader`, and `parity` is a `JX-TABLE` inside `parity-scroll`. The timing log the Open decision asks for goes in the same file. It logs and asserts nothing, like `library-perf.test.ts`.
+- `tests/dependencies-editor.test.ts`: "the package list is the kit's table: four column headers and a row per package". The `[part="table"]` is `JX-TABLE` with `role="table"` and `aria-label="Packages"`; it has four `[role="columnheader"]`; every `[part="row"]` has `role="row"`. The file header's "A row is a `<tr>`" becomes "a `jx-tr`".
+- `tests/i18n-panel.test.ts`: "each page's row is headed by its key as a row header". Every `[part="key"]` is `rowheader`, every `locale-head` is `columnheader`, and `parity` is a `JX-TABLE` inside `parity-scroll`. The repaint-identity case at lines 709 to 716 also holds `parity-scroll` to the same node, because its comment's reason, the reader's scroll position, now lives there.
+- The timing the Open decision asks for is a case in the same file: 200 rows at four locales, first paint timed and printed with `console.error`, asserting only the rendered cell count, the way `library-perf.test.ts` prints timings and asserts counts and never a wall-clock figure. The case is written and run before the conversion, against the native table, then again after it; both figures go in the pull request description.
 - `tests/library-pane.test.ts`: "the Table is a jx-table that states the whole set it windows". With N files, `[part="table"]` has `aria-rowcount` N+1, `table-head` has `aria-rowindex="1"`, and the first `table-row` has `aria-rowindex="2"`.
-- `tests/library-perf.test.ts`, "the Table layout windows too, at its own row height": after `layOutPane()` and a scroll, the first rendered row's `aria-rowindex` is the window's start plus 2, and the table's `aria-rowcount` is `PAGE_COUNT + 1`. The 26-row count is unchanged.
+- `tests/library-perf.test.ts`, "the Table layout windows too, at its own row height": after `layOutPane()` and a scroll past row 100, the table's `aria-rowcount` is `PAGE_COUNT + 1`, and every rendered `table-row`'s `aria-rowindex` is its file's number plus 2 (the fixture's `pages/page-NNN.json` files sort by path, so `data-path` gives each row's place in the list), the first of them past 2. The 26-row count is unchanged.
 
 ## Specs & docs
 
@@ -142,7 +144,7 @@ New `tests/table.test.ts`. It imports `./with-dom.ts` first, runs `registerUi()`
 - **§3.5, the first bullet (line 92):** after "`role="columnheader"` and `role="cell"`", add "(`role="rowheader"` for a `jx-th` with `scope="row"`)".
 - **§5 marker (line 144):**
   - "Thirty-eight elements" becomes "Forty-two elements".
-  - Drop "`jx-table` (§5.4)" from what remains. If another plan has already removed its own clause, keep the grammar of whatever list is left.
+  - Drop "`jx-table` (§5.4)" from what remains. If another plan has already removed its own clause, keep the grammar of whatever list is left, and if nothing is left, delete the "What remains" sentence.
 - **§5.4 marker (line 255)** becomes:
 
   > **Status: Implemented.** `jx-tabs`, `jx-tab`, `jx-tab-panel`, `jx-accordion`, `jx-accordion-item`, `jx-action-group` and the four table elements `jx-table`, `jx-tr`, `jx-th` and `jx-td` are built, with the tab keyboard in `src/behaviors/tabs.ts` and the group's roving caret in `src/behaviors/action-group.ts`. The table elements take §3.5's first shape and are held by `packages/ui/tests/table.test.ts`; Studio's three tables are drawn with them (`packages/studio/src/surfaces/panel-i18n.json`, `settings-packages.json`, and `library-pane.json`, whose windowed rows state their place in the whole set).
@@ -155,12 +157,12 @@ New `tests/table.test.ts`. It imports `./with-dom.ts` first, runs `registerUi()`
   - Element: `jx-table`, `jx-tr`, `jx-th`, `jx-td`.
   - Owns: "§3.5's first shape: `table`/`table-row`/`table-cell` displays with the `table`, `row`, `columnheader` or `rowheader` (`scope`) and `cell` roles; `label`; `rowcount` and `rowindex` for a windowed table; no spanning, no row groups, no keyboard".
   - Replaces: "`sp-table`, and the three tables Studio drew for itself".
-- **§10 marker (line 410):** "(§5.1, §5.2, §5.4, §6)" loses "§5.4".
+- **§10 marker (line 410):** "(§5.1, §5.2, §5.4, §6)" loses "§5.4", keeping whatever entries are still open; if none is, the sentence goes.
 - **§11, the WAI-ARIA row:**
   - The evidence gains `packages/ui/tests/table.test.ts`.
   - "Built and exercised" gains "**table** (`jx-table`, `jx-tr`, `jx-th` and `jx-td`: `columnheader` and `rowheader` cells, and `aria-rowcount` and `aria-rowindex` describing the whole set while a windowed table draws a slice of it)".
   - The `gap:ui-aria` note is otherwise unchanged.
-- **Fragment:** `bun run spec:change ui.md minor -m "jx-table, jx-tr, jx-th and jx-td ship in the CSS table shape with table, row, header and cell roles, a row-header scope and row counts for a windowed table, and Studio's three tables are drawn with them."`
+- **Fragment:** `bun run spec:change ui.md minor -m "jx-table, jx-tr, jx-th and jx-td ship in the CSS table shape with table, row, header and cell roles, a row-header scope and row counts for a windowed table, and Studio's three tables are drawn with them."`. If the Open decision's guard keeps the Languages panel native, the last clause becomes "and Studio's Library and Packages tables are drawn with them".
 - **Graduation:** the spec graduates only if this closes ui.md's last open item. At landing, run `bun run plans:status --spec ui`. If §5.4 is the last, set the header to `**Status:** Implemented`, run `bun run spec:bump ui.md patch -m "…"` in place, and delete `plans/ui/`. Otherwise delete only this file.
 
 **Docs** (no em dashes):
@@ -172,7 +174,7 @@ New `tests/table.test.ts`. It imports `./with-dom.ts` first, runs `registerUi()`
   - No spanning: write a native `<table>` with kit elements in its cells, and never wrap a native table in a kit element.
   - No focus or keyboard. Hover, cursor, sticky headers and column widths are yours, through `part`. The elements have no parts.
 - `docs/studio/projects/browse.md` (its `code:` lists `browse/library-pane.ts` and `surfaces/library-pane.ts`): the "renders what fits the window" paragraph gains a sentence saying that a screen reader hears the Table's full row count and each row's place in it, so a windowed table still reads as the whole list.
-- `docs/studio/interface/languages.md` and `docs/studio/projects/settings.md` list `panel-i18n.json` and `settings-packages.json` in `code:`, so `docs:sync` names them. Neither changes: the words "grid" and "table" there describe what the reader sees, and that holds. The pull request says so. The screenshots lane recaptures any image of the two panels, and the reviewer re-reads the paragraphs beside a changed one.
+- `docs:sync` will not name the pages for the other two tables. No page's `code:` lists `panel-i18n.json` or `settings-packages.json`: `docs/studio/interface/languages.md` and `docs/studio/projects/settings.md` carry those paths in a stray list at the end of the page body (left by 829c6957, which did the same to three other pages), a defect outside this claim. So the reviewer reads them by hand: `languages.md` ("It is a grid: one row per page, one column per language"), and `settings.md` and `docs/studio/projects/dependencies.md` (line 60, the Packages section's columns). None changes, because the words describe what the reader sees and that holds. The pull request says so. The screenshots lane recaptures any image of the two panels, and the reviewer re-reads the paragraphs beside a changed one.
 
 ## Acceptance
 

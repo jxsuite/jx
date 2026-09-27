@@ -107,7 +107,7 @@ Gates for the paper half, all in `checks`:
 
    > **Status: Implemented.** The root schema requires no field (`generateSchema` in `packages/schema/src/schema.ts`), and `ElementDef` requires `tagName`. A missing root tag renders as `div` in the interpreter (`resolveTagName` in `packages/runtime/src/runtime.ts`) and in the static and client targets (`resolveStaticTagName` in `packages/compiler/src/shared.ts`, `compile-client.ts`). `defineElement` and `compileElement` refuse a definition whose `tagName` has no hyphen. The build, the live preview and the Studio canvas all compose a wrapped page without reading its root `tagName` (`resolveLayout` in `packages/site/src/layout.ts`, `distributePageIntoLayout` in `packages/studio/src/site-context.ts`).
 
-   Keeping a leading marker, rather than deleting the census's, matches §3.2 below it and records where the three rules live.
+   Keeping a marker, rather than deleting the census's, records where the three rules live (§3.2 below it carries one too).
 
 2. In the table, the `tagName` row becomes ``| `tagName` | Optional | Tag name of the root element, a literal name (§19.6); `div` when absent. See below. |``. Every other row is unchanged.
 
@@ -139,9 +139,9 @@ Gates for the paper half, all in `checks`:
 
 ## Acceptance
 
-- `sed -n '/^### 3.1 /,/^### 3.2 /p' specs/spec.md | grep -c 'Status: Partial'` prints `0`. The same range's first `Status:` line is the Implemented marker, and `grep -c '| Required'` over the range prints `0`.
+- `sed -n '/^### 3.1 /,/^### 3.2 /p' specs/spec.md | grep -c 'Status: Partial'` prints `0`. The same range's first `Status:` line is the Implemented marker, and ``grep -c '`tagName` *| Required'`` over the range prints `0` (the header row's `Required` stays).
 - `git grep -n 'tagName.*| Required\|Only `tagName` is required\|only required root field' -- docs specs` prints nothing.
-- `git grep -n '"tagName": "main",' -- docs/framework/agents/authoring-rules.md .claude/commands/jx.md` prints nothing.
+- `git grep -n '^  "tagName": "main",$' -- docs/framework/agents/authoring-rules.md .claude/commands/jx.md` prints nothing. The pattern is anchored because both files' layout examples keep a `{ "tagName": "main", "children": [{ "tagName": "slot" }] }` child, which is right and stays.
 - `cd packages/compiler && bun test --isolate --coverage tests/compiler.test.ts` and `cd packages/site && bun test --isolate --coverage tests/layout.test.ts` pass, including the two new cases. The full workspace runs pass their `coverageThreshold`.
 - `bun run plans:status --who-claims spec.md#3.1` names no plan, and `ls specs/changes/spec-*.md` includes the new fragment.
 - `bun run docs:status`, `bun run plans:check`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:markdown` and `bun run schema:validate-all` pass.

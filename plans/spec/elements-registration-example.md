@@ -52,7 +52,7 @@ A paper plan. One pull request makes the edits under Specs & docs, adds the frag
 3. `bun run spec:change spec.md minor -m "…"` with the sentence under Specs & docs.
 4. Delete `plans/spec/elements-registration-example.md`.
 
-**Integration contract.** No plan requires this one. Once it lands, §13.1 states that `$elements` is an array whose `{ "$ref" }` entries name documents and that the instance tag is the referenced definition's own `tagName`; §16.3 stays the section that specifies registration order. `plan:spec/one-way-prop-forwarding` and `plan:_shared/compiled-prop-bridge` also edit `props-and-scope.md`, in its "Signal forwarding" section and a new section after "Static and bound props"; this plan edits only "Component instances", so whichever lands second rebases an adjacent hunk at most.
+**Integration contract.** No plan requires this one. Once it lands, §13.1 states that `$elements` is an array whose `{ "$ref" }` entries name documents and that the instance tag is the referenced definition's own `tagName`; §16.3 stays the section that specifies registration order. `plan:spec/one-way-prop-forwarding` and `plan:_shared/compiled-prop-bridge` also edit `props-and-scope.md`: the first its frontmatter, "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules", the second its frontmatter and a new section after "Static and bound props". This plan edits only "Component instances", so whichever lands second rebases an adjacent hunk at most.
 
 ## Tests
 
@@ -73,7 +73,7 @@ The gates that prove it, all in the `checks` job:
 
 1. Replace the Partial marker (line 1499) with:
 
-   > **Status: Implemented.** `registerElements` (`packages/runtime/src/runtime.ts`) resolves each `{ "$ref" }` entry, registers the referenced document's own `$elements` first and defines the element under that document's `tagName`; an element node with the tag instantiates it. `compileElement` (`packages/compiler/src/targets/compile-element.ts`) imports a definition's entries as modules, and the static emitter expands an instance from the definition its tag names (`renderComponentInstance` in `packages/compiler/src/shared.ts`). Which components a site build compiles for a page's entries is imports.md §1.3's rule. Verified in `packages/runtime/tests/runtime-gaps-elements.test.ts`.
+   > **Status: Implemented.** `registerElements` (`packages/runtime/src/runtime.ts`) resolves each `{ "$ref" }` entry, registers the referenced document's own `$elements` first and defines the element under that document's `tagName`; an element node with the tag instantiates it. `compileElement` (`packages/compiler/src/targets/compile-element.ts`) imports a definition's `{ "$ref" }` entries as modules, and the static emitter expands an instance from the definition its tag names (`renderComponentInstance` in `packages/compiler/src/shared.ts`). Which components a site build compiles for a page's entries is imports.md §1.3's rule. Verified in `packages/runtime/tests/runtime-gaps-elements.test.ts`.
 
 2. Replace the paragraph under it with: "A component instance is created by **registering** the component document in the top-level `$elements` array (§16.3) and then placing an element node with its **custom-element `tagName`**, passing data through `$props`. An entry names a document, not a tag: the tag is the one the referenced definition declares as its root `tagName` (§16.1), so `card.json` below is a definition whose `tagName` is `my-card`, and a document registers under the same name wherever it is listed:"
 

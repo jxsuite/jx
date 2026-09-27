@@ -40,12 +40,13 @@ The child upgrades with `state.count` set to the object `{ "$ref": … }`.
 
 The interpreter needs nothing: `renderCustomElementWithProps` in `packages/runtime/src/runtime.ts` resolves and re-writes every bound prop.
 
-**Outside this plan.** A page binding inside the slot content of a page-level instance is dead in built output. `expandComponents` serialises slot children with `renderStaticNode(c, {}, null)` before the page compile runs, so the same scratch site's `<my-box><span>${state.n}</span></my-box>` emitted `<span id="s"></span>` with no `data-bind`. A live prop on an instance inside that slot content is baked the same way. That is the slot path's gap (spec.md §8.5, `plan:spec/compiled-slot-distribution` rewrites that serialisation), not this plan's.
+**Outside this plan.** A page binding inside the slot content of a page-level instance is dead in built output. `expandComponents` serialises slot children with `renderStaticNode(c, {}, null)` before the page compile runs, so the same scratch site's `<my-box><span>${state.n}</span></my-box>` emitted `<span id="s"></span>` with no `data-bind`. A live prop on an instance inside that slot content is lost the same way: after this plan the payload leaves it out and the serialised slot content carries no directive for it. That is the slot path's gap (spec.md §8.5, `plan:spec/compiled-slot-distribution` rewrites that serialisation), not this plan's.
 
 **Related, no edge**
 
-- `plan:_shared/compiled-prop-bridge`: its acceptance check (a built page-level instance bound to `$ref` state updates on click) holds only once this plan has landed as well. Its reviewer may add this plan to its `requires`, which creates no cycle.
-- `plan:_shared/compiled-element-lifecycle` edits `expandComponents` (an observed-attribute merge, with `data-jx-props` from `node.$props`) and `isComponentFullyStatic`. `plan:spec/compiled-slot-distribution` threads a slot-id counter through `expandComponents`. `plan:spec/style-handle-assignment` touches its `resolvedStyle` merge. Whichever lands second merges.
+- `plan:_shared/compiled-prop-bridge` gives a compiled child the accessors that turn a later property write into a re-render; this plan gives a page-level instance the writes. Neither needs the other to land: the bridge's browser check binds its child inside a component for exactly that reason, and this plan's tests read `el.count` rather than the child's text. `plan:spec/one-way-prop-forwarding` requires both.
+- `plan:_shared/compiled-element-lifecycle` builds its `data-jx-props` merge from `node.$props`; once this plan lands the payload comes from `settled`.
+- `plan:_shared/compiled-element-lifecycle` also edits `expandComponents` (an observed-attribute merge) and `isComponentFullyStatic`. `plan:spec/compiled-slot-distribution` threads a slot-id counter through `expandComponents`. `plan:spec/style-handle-assignment` touches its `resolvedStyle` merge. Whichever lands second merges.
 - `plan:spec/function-entry-tier-parity` changes how `compile-client.ts` classifies `$src` entries. This plan delivers only body-declared handler entries (below).
 
 ## Outcome
@@ -61,13 +62,14 @@ No claim closes here. Once it lands:
 
 - **Decided:** a prop is **live** exactly when the build cannot settle it, by compiler.md §8.1's existing runtime-only rule. That means a template that `resolveDocTemplates` left unresolved, or a `$ref` whose head entry the scope builder marks runtime-only. A `window#/` or `document#/` pointer is live too, since it has no build-time value. Every other prop is **settled**: resolved at build time into the prerender and the payload, with no module cost. The rule already decides which templates bake. Settling constants keeps static components static: starter pages pass constant props (`"${state.entry.data.title}"`), and they keep shipping no script.
 - **Decided:** the page module delivers a live prop through a new hydration directive, `:prop.<bindKey>="<name>"`, written as a property by an effect. The existing `:<kebab-name>` form cannot carry a name containing `-` or `.`, and `:render` is taken. HTML lowercases attribute names, so the case-sensitive prop name goes in the value and a counter key (`_pN`) in the name.
-- **Decided:** on the non-site route (`compile()` route 3, no expansion), every `$props` entry of a hyphenated tag is delivered by the same directive, literals as constant thunks. There is no payload there, and one mechanism is simpler to hold than two. A non-hyphenated tag's `$props` keeps its current (ignored) handling; the interpreter merges those into scope instead, and that is not a component instance.
+- **Decided:** on the non-site route (`compile()` route 3, no expansion), every `$props` entry of a hyphenated tag is delivered by the same directive, literals as constant thunks. There is no payload there, and one mechanism is simpler to hold than two. A non-hyphenated tag's `$props` keeps its current (ignored) handling; the interpreter merges those into scope instead, and that is not a component instance. The same branch serves a hyphenated tag the site build did not expand (an npm element, which `renderCustomElementWithProps` also feeds in the interpreter), so on a dynamic page its `$props` arrive too.
 - **Decided:** the prerender and the `data-jx-props` payload carry settled props only. A live prop renders the definition's default until hydration. For a runtime-only entry the build scope holds either a placeholder (a bodyless `$src` function, nothing for a `Request`) or an initial value, and does not say which, which is why §8.1 declines to bake them. The page module runs before the component module (`injectComponentScripts` appends component scripts after it), so the first upgrade already sees the live value.
 - **Decided:** an instance with a live prop is stamped `data-jx-prerendered` whatever its definition, and its tag's module ships on that route. Only the module can re-render it. Every other instance keeps the per-definition rule, so this is the one per-instance exception to "static-ness is decided per definition".
-- **Decided:** the payload writes `${` as `${`. It is still valid JSON that parses back to `${`, and neither emitter can read it as a template.
+- **Decided:** `isDynamic` (`shared.ts`) counts a `$props` value that is a `$ref` or a template string. compiler.md §2.1 already lists both as dynamic ("`$ref` bindings on element properties", "`${}` template strings in any property value"), but the walk skips `$props` as a reserved key. After expansion only live props remain, so a site page takes the client route exactly when one of its instances needs the page module. Without it, a page with no state whose only live prop reads `window#/` or `document#/` takes the static route and ships no module to deliver it. A literal prop still leaves a page static.
+- **Decided:** the payload writes `${` as `\u0024{`. It is still valid JSON that parses back to `${`, and neither emitter can read it as a template.
 - **Decided:** a `$map/` pointer in a statically unrolled row resolves against its row in `expandMapTemplate`, like the row's templates. The row exists only at build time.
 - **Decided:** `mapRefToClientExpr` gains `parent#/` (read from `state`, as a prop reaches the scope), `window#/` and `document#/`, copied from `refToExpr`. A page binding and a row binding then lower every scheme as the element target does.
-- **Decided:** a `$ref` prop naming a body-declared handler entry delivers that entry as a `(state, event)` function on `state`, the element target's shape. It is emitted only for handler entries some `$props` names, so no other page's output changes. This matches the interpreter and the element target, and it is the recommendation of `plan:spec/one-way-prop-forwarding`'s Open on function props. If that Open resolves to "bound", this step becomes a wrapper over the `on` entry and the other two tiers change in that plan.
+- **Decided:** a `$ref` prop naming a body-declared handler entry delivers that entry as a function on `state`, so `state.<handler>` is defined wherever a `$props` value names it (today it is `undefined`). It is emitted only for handler entries some `$props` names, so no other page's output changes. Its call shape is the Open on function props in `plan:spec/one-way-prop-forwarding`: under that plan's recommendation it is the element target's unbound `(state, event)` shape, which the interpreter matches; if the Open resolves to "bound", it becomes a wrapper over the `on` entry and the other two tiers change in that plan. Review resolves that Open before this plan moves to `ready`, so the two land one contract.
 - **Decided:** a `#`-prefixed key is not bound (spec.md §5.6), as `refusePrivateProp` refuses it in the interpreter.
 
 ## Implementation
@@ -80,18 +82,19 @@ No claim closes here. Once it lands:
      - `#/state/`, `parent#/` and a bare path test their first segment (`refSegments` from `@jxsuite/runtime/pointer`) with `isRuntimeOnlyKey`.
      - Anything else returns false.
      - Its JSDoc cites compiler.md §8.1.
+   - `isDynamic`: return true when `def.$props` is an object with a non-`#` key whose value is a `$ref` object (`isRefObject`) or a template string (`isTemplateString`).
 2. **`packages/compiler/src/site/site-build.ts`**
    - `expandMapTemplate`, `$props` branch: a `$ref` object whose pointer starts with `$map/` becomes `cloneValue(resolveRefValue(pv.$ref, scope))`, or `null` when that is `undefined`, beside the existing template case.
    - `expandComponents` gains a `scope: Record<string, unknown>` parameter and a `liveTags: Set<string>` parameter, threaded through its recursion. After `liftPropsAttributes`, it partitions `node.$props`:
      - `live`: a template string (`isTemplateString`), or a `$ref` for which `refReadsRuntimeOnlyState` is true.
      - `settled`: every other entry. A `$ref` becomes `cloneValue(resolveStaticValue(v, scope))`, dropped when `undefined`. A literal is kept as written.
      - `#` keys are dropped from both.
-   - `settled` replaces `props` everywhere `expandComponents` uses it: the context's first path frame, `preRenderComponentHtml`, `buildInstanceScope` for `resolveHostStyle`, and the payload. The payload becomes `JSON.stringify(settled).replaceAll("${", "\\u0024{")`, written only when `settled` is non-empty and the instance is not static.
+   - `settled` replaces `props` everywhere `expandComponents` uses it: the context's first path frame, `preRenderComponentHtml`, `buildInstanceScope` for `resolveHostStyle`, and the payload. The payload becomes `JSON.stringify(settled).replaceAll("${", "\\u0024{")`, written only when `settled` is non-empty and the instance is stamped `$prerendered` (below). That includes an instance of a fully static definition that has a live prop: its module re-renders it on upgrade, so its settled props must survive as data.
    - When `live` is non-empty: set `node.$props = live`, stamp `$prerendered` (never `$static`), and `liveTags.add(tag)`. Otherwise delete `$props` as today.
    - `compilePage` passes its `scope` (the `buildInitialScope` result above `resolveDocTemplates`) and a new `liveTags` set to `expandComponents`, and returns `liveInstanceTags: [...liveTags]` beside `unregisteredRelations`.
    - `buildSite`'s per-route loop adds a tag to `staticTags` only when `isComponentFullyStatic(def)` and it is not in `result.liveInstanceTags`.
 3. **`packages/compiler/src/targets/compile-client.ts`**
-   - Add `p: 0` to `compileClient`'s `counter` and the `p: number` field to the three counter types.
+   - Add `p: 0` to `compileClient`'s `counter` and the `p: number` field to the two counter parameter types (`buildClientNode`'s and `emitClientModule`'s) and their JSDoc.
    - `mapRefToClientExpr`: add `parent#/` → `refAccessor("state", …)`, `window#/` → `refAccessor("window", …)` and `document#/` → `refAccessor("document", …)`, ahead of the bare-path fallback. The comment names `refToExpr` in `compile-element.ts` as the twin.
    - `buildClientNode`: when the tag contains `-` and `def.$props` is a non-empty object, take each non-`#` entry in order, with `key = _p${counter.p++}`:
      - `$ref`: the binding returns `mapRefToClientExpr(ref)`, so `#/state/n` binds `() => state.n`.
@@ -124,6 +127,10 @@ Run `bun test --isolate --coverage` from `packages/compiler`. No new source file
 - "window and document pointers are runtime-only, a row pointer is not": `window#/innerWidth` and `document#/title` are true; `$map/item/v` is false.
 - "readsRuntimeOnlyState is unchanged": a template reading `state.n` is still marked and one reading `state.k` is not.
 
+`packages/compiler/tests/compiler.test.ts`, beside the existing `isDynamic` cases:
+
+- "a $ref or template in $props makes a node dynamic, a literal does not": `isDynamic` is true for `{ tagName: "my-card", $props: { w: { $ref: "window#/innerWidth" } } }` and for `$props: { label: "${state.n}" }`, and false for `$props: { size: 3 }` and for `$props: { "#x": { $ref: "#/state/n" } }`.
+
 `packages/compiler/tests/compile-client.test.ts`, `describe("compileClient — a page-level instance's $props (spec.md §13.3)")`:
 
 - "a $ref prop becomes a property directive": `<my-card>` with `count: { $ref: "#/state/n" }`emits`data-bind`and`:prop._p0="count"`, and the module has `_p0: () => state.n`.
@@ -143,6 +150,7 @@ Run `bun test --isolate --coverage` from `packages/compiler`. No new source file
 - "a prop bound to written state is delivered by the page module": the page-level `my-count` carries `:prop._p0="count"`, and `app.js` has `() => state.n`.
 - "an instance with a live prop loads its module though its component is static": `<my-count data-jx-prerendered` and `/components/my-count.js` are both in the HTML.
 - "a static component with constant props still ships no module": a second route whose `my-count` passes only `fixed` keeps `data-jx-static` and has no `my-count.js` script.
+- "a stateless page whose only live prop reads window still gets a page module": a third route with no `state` and `my-count` bound to `count: { $ref: "window#/innerWidth" }` carries `:prop._p0="count"`, and its HTML loads a page module with `() => window.innerWidth`.
 - "a payload is never read as a template": `note: { $ref: "#/state/doc/text" }` over `doc: { default: { text: "use ${x}" } }` emits no `:attr.data-jx-props`, and the decoded payload parses to `"use ${x}"`.
 
 `packages/compiler/tests/client-page-props.test.ts` (new). It executes `compileClient` output in happy-dom, installing globals before any import as `compile-element-render.test.ts` does, with the module written under a `TMP` directory beside it so `@vue/reactivity` resolves. The page is a button bound to `inc` plus `<my-count>` with `count: { $ref: "#/state/n" }`, and no child module is loaded.
@@ -155,8 +163,10 @@ Run `bun test --isolate --coverage` from `packages/compiler`. No new source file
 **`specs/compiler.md` §8.1**, the "A component instance is expanded wherever it is written" paragraph (line 642), in place:
 
 - "A `$props` value that is a template resolves against the parent's scope;" becomes: "A `$props` value that is a template or a `$ref` resolves against the parent's scope (a `$map/` pointer in an expanded row, against its row), unless it reads runtime-only state as defined above. Such a prop is kept out of the prerender and the payload, which render the definition's default for it, and the page's module delivers it (§9.1);"
-- "a stamp — `data-jx-static` when the definition is fully static, `data-jx-prerendered` with a `data-jx-props` payload (§4.4) when it is not" gains after it: "The payload carries the settled props only, with `${` written as `${` so that no emitter reads it as a template."
+- "a stamp — `data-jx-static` when the definition is fully static, `data-jx-prerendered` with a `data-jx-props` payload (§4.4) when it is not" gains after it: "The payload carries the settled props only, with `${` written as `\u0024{` so that no emitter reads it as a template."
 - The closing sentence gains: "One exception is per instance: a page-level instance with a prop the page's module delivers is stamped `data-jx-prerendered` and its module ships, whatever its definition, since only the module can re-render it."
+
+**`specs/compiler.md` §2.1**: after the list, add "A component instance's `$props` values are property values: a `$ref` or a template among them makes the node dynamic, a literal does not." The marker stays `Implemented`.
 
 **`specs/compiler.md` §9.1**: add a fourth bullet, "Property bindings for a component instance's `$props`", and after the list the paragraph: "Each prop the site build could not settle (§8.1), or every prop when no site build expanded the page, is written onto the element as a property, when the module hydrates and again on every change, through a `:prop.<key>` directive whose value is the property name. A `$ref` lowers as in the element target (`#/state/`, `parent#/`, `window#/`, `document#/`), a template to its string, and a `$ref` naming a handler entry to that entry as a `(state, event)` function. A private key is never bound (spec.md §5.6)." The marker stays `Implemented`.
 
@@ -166,6 +176,7 @@ Run `bun test --isolate --coverage` from `packages/compiler`. No new source file
 
 - "**Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state" becomes "…written as a template (`"icon": "${state.icon}"`) or a `$ref` resolves against the parent's state".
 - New third bullet: "**A prop bound to changing state stays bound.** A `$props` value reading an entry a handler writes is not baked. The page's script writes it onto the component whenever the entry changes, so that instance loads its component's script even when the component is otherwise static. A prop reading a constant bakes, as a template does."
+- "Why is my page shipping JavaScript?", the "Interactive components" bullet gains: "So does a component whose prop is bound to changing state, on the page that binds it."
 
 `docs/framework/concepts/functions.md` and `docs/framework/concepts/elements.md` list `compile-client.ts` or `shared.ts` in `code:` but describe neither prop delivery nor runtime-only marks, so they do not change. `props-and-scope.md` is `plan:spec/one-way-prop-forwarding`'s. No spec.md edit and no marker change: this plan claims nothing.
 
