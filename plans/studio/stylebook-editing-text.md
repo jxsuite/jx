@@ -87,7 +87,7 @@ One pull request.
 5. **`docs/studio/design/stylebook.md`.** Make the two edits under Specs & docs.
 6. **Plan housekeeping.**
    - Delete this file.
-   - In `plans/studio/README.md`, the last "Spec-wide decisions" bullet cites this plan, so rewrite it to: "The shape of a Stylebook tag rule is stated in studio.md §7.4 (bare nested tag keys, one per path segment), and `plan:studio/stylebook-layers-tag-keys` makes the layers tree read it." That plan requires this one, so it is still open here; it deletes the bullet when it lands.
+   - In `plans/studio/README.md`, the "Spec-wide decisions" bullet on the shape of a Stylebook tag rule cites this plan, so rewrite it to: "The shape of a Stylebook tag rule is stated in studio.md §7.4 (bare nested tag keys, one per path segment), and `plan:studio/stylebook-layers-tag-keys` makes the layers tree read it." That plan requires this one, so it is still open here; it deletes the bullet when it lands.
    - Remove `studio/stylebook-editing-text` from `plan:studio/stylebook-layers-tag-keys`'s `requires`, leaving `requires: []`, and re-read that plan's Specs & docs against the §7.4 text as landed.
 
 **Integration contract.** Once this lands, studio.md §7.4 states that:

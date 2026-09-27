@@ -3,6 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - imports.md#4.2
+requires: []
 workspaces:
   - packages/server
   - packages/protocol
@@ -89,16 +90,17 @@ The body under it still says the route "Lists CEM-bearing npm dependencies from 
    - Replace everything after the parse (the merged `deps` object, the typed `packages` array, the per-dependency `node_modules` resolution and its inner `catch {}`) with `return Response.json(declaredPackages(pkg))`.
    - Add `declaredPackages` to the existing `./packages.ts` import.
    - The comment above the handler becomes "The dependencies package.json declares, installed or not (imports.md §4.2)".
-   - `PackageJson.customElements` stays: the components scan and the cem route read it today, and the plans that retire those readers own the field.
+   - `PackageJson.customElements` stays while the components scan or the cem route reads it. If `plan:imports/cem-discovery-on-every-backend` and `plan:imports/cem-route-payload` have both landed, this handler was its last reader and this plan deletes the field (the imports audit record's spec-wide decisions).
 4. Comments that state the old divergence:
    - `packages/server/src/extension-catalog.ts` header: the `installed` paragraph becomes "**`installed` is answered here rather than by the client**, because `listPackages` reports what `package.json` declares, not what resolves under `node_modules` (imports.md §4.2). A surface deciding "do I need to install this first?" from a declaration would call a declared but uninstalled package installed."
-   - `packages/protocol/src/types.ts`, `ExtensionCatalogEntry.installed`: "Answered here rather than derived from `listPackages`, because that member lists what `package.json` declares, installed or not (imports.md §4.2)." Keep the sentence about a host with no module resolution.
+   - `packages/protocol/src/types.ts`, `ExtensionCatalogEntry.installed`: "Answered here rather than derived from `listPackages`, because that member lists what `package.json` declares, installed or not (imports.md §4.2)." Keep the paragraph's last sentence, about a host with no module resolution, in whatever form it stands: `plan:extensions/catalogue-host-answers` rewrites that sentence ("A host whose project is built elsewhere reports the package.json declaration…") and keeps the paragraph around it, so the two edits compose in either landing order.
    - `packages/studio/src/types.ts`: in the `listExtensionCatalog` JSDoc, "the latter because `listPackages` does not mean one thing across backends" becomes "the latter because `listPackages` lists declarations, not what resolves (imports.md §4.2)". Give the `listPackages` member a one-line JSDoc: "The dependencies and devDependencies `package.json` declares, installed or not (imports.md §4.2)."
    - `packages/protocol/src/routes.ts`: the `packages` summary becomes `"List declared dependencies, installed or not (PackageInfo[])"`.
 5. If the second Open is accepted, in `packages/studio/src/settings/extension-rows.ts`, `buildRows`'s configured-row loop:
    - Set `broken: info === undefined`.
    - Keep `installed: installed.has(specifier)`.
    - Rename the local `installed` set to `declared`, and update the `@param` line to "The project's declared dependencies, when they have been read", so the name says what it holds.
+   - `plan:extensions/catalogue-host-answers` edits the same function: the catalogue loop's `specifier`, and the configured loop's `info` lookup (a `bySpecifier` map in place of `resolved.get(specifier)`). The edits compose in either order: `broken: info === undefined` reads whichever lookup is there, and the rename reaches the catalogue loop's `installed.has(entry.name)` too. Whichever plan lands second rebases over the other.
 
 **Integration contract.** Once this lands:
 
@@ -172,7 +174,7 @@ Docs pages (`bun run docs:sync` names them through `code:`; none cites `imports.
 - `docs/studio/projects/settings.md` (`code:` lists `extension-rows.ts`, touched only if the second Open is accepted): no change. Line 127 ("If a row warns that an extension is named but not installed, turning it off and on again installs it") stays true, now on every backend.
 - `docs/extending/extensions/first-party.md` (the `@docs` target of `extension-catalog.ts`): no change. It does not mention the package list.
 
-imports.md keeps its Partial header. This plan does not graduate it.
+imports.md keeps its Partial header while another item is open, and today nine are. If this pull request closes the last one (`bun run plans:status --spec imports` lists only §4.2), it sets the header's `**Status:**` to `Implemented`, runs `bun run spec:bump imports.md minor -m "<the fragment's sentence>"` in place instead of the fragment, and deletes `plans/imports/`.
 
 ## Acceptance
 

@@ -85,7 +85,7 @@ So a streamed body is a `Request` option, not a prototype of its own.
 - `BUILT_IN_PROTOTYPES` holds `Function`, `Request`, `URLSearchParams`, `FormData`, `LocalStorage`, `SessionStorage`, `Cookie`, `IndexedDB`, `Array`, `Set`, `Map` and `Blob`.
 - spec.md §11.2's marker names neither `ReadableStream` nor a stub, and the row is closed.
 - `plan:spec/web-api-prototype-parity` may flip §11.2 once its own rows are built. Its "lowers every built-in" test iterates this list.
-- `plan:schema/generator-inventory`'s Built-in Prototypes rewrite has no `ReadableStream` line to keep. Its integration contract says that plan "implements `ReadableStream`"; whichever lands second corrects that sentence.
+- `plan:schema/generator-inventory`'s Built-in Prototypes rewrite has no `ReadableStream` line to keep. Its integration contract already covers both landing orders: landing first, this plan leaves it no line; landing second, this plan deletes the line from that plan's list, and this plan's "All 12 built-in prototypes" edit is moot because that plan replaces the lead sentence.
 - `plan:spec/reconcile-built-in-prototypes`'s §12.1 table does not list the name.
 - Under `plan:compiler/client-external-class-hydration`, `isExternalClassDef` holds for a `ReadableStream` entry, so a `timing: "compiler"` one fails the build as naming no class. That is the right answer for an unknown name.
 

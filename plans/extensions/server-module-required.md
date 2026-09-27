@@ -3,7 +3,8 @@ status: drafted
 disposition: reconcile
 claims:
   - extensions.md#11
-requires: []
+requires:
+  - extensions/empty-section-gating
 workspaces:
   - packages/compiler
   - packages/schema
@@ -43,7 +44,7 @@ The row at line 539 reads "Bare specifier the generated worker imports (robust u
 
 - extensions.md §11 → Implemented. The `module` row says what ships: an import specifier, resolved from the project root, that the site build requires, with no fallback. The dev server's mount runtime's use of `$implementation` is stated, and so is the fact that `jx dev` runs the same build first. The build checks it before it writes anything.
 - Not a paper plan: the disposition is `reconcile` because the requirement stays, but the preflight move and the error text are code, so it lands with tests rather than in the detailing pull request.
-- extensions.md stays Partial (§3, §5.4, §6.1, §7, §8, §8.1, §8.4, §8.6, §9, §9.1, §9.2, §10, §11.1 and §12 remain open), so nothing graduates.
+- extensions.md stays Partial (§3, §5.4, §6.1, §7, §8, §8.1, §9, §9.1, §9.2, §10, §11.1 and §12 remain open; §8.4 and §8.6 have closed with the prerequisite), so nothing graduates.
 
 ## Decisions
 
@@ -60,6 +61,7 @@ The row at line 539 reads "Bare specifier the generated worker imports (robust u
 - **Decided:** the site build checks at preflight. `buildMountSpecs` moves from step 6c to step 1c, directly after the static-adapter error, and step 6c reuses its result. This follows the step 1c precedent and leaves a previous `dist/` intact. `buildMountSpecs` is pure over the registry and `projectConfig`, and nothing between the two steps writes to `projectConfig`, so the specs are identical. The `connector.module` check in the same function moves with it. That changes when §12's error fires, not its contract.
 - **Decided:** the row and the error name the resolution base instead of requiring "bare", because the build resolves `module` from the project root and a local extension has no package name to give. The example stays a package export. §12's "Bare import specifier" wording and the connector error's text are left to that row's owner (`plan:extensions/connector-serve-key` leaves them as written).
 - **Decided:** rewrite the class schema's `module` description, because the schema is where an author meets the key while writing a descriptor. The regenerated artifacts are mechanical (`bun run schema:sync`), and `schemas.yml` would push the same bytes.
+- **Decided:** this plan requires `plan:extensions/empty-section-gating`. Flipping §11 to Implemented asserts its first sentence, "A class contributes routes to the deployed-site worker (and the dev server) iff it has a top-level `server` object plus a `mount` capability", and today the two hosts it names disagree about it: the site build activates a section owner's mount only for a non-empty section (step 1c), so the sentence is false for the worker, while the dev server activates every mount ungated. The prerequisite makes both hosts apply one gate and adds it to that sentence ("…and, when it owns a project section, the project declares a non-empty value for it (§8.4)"), and it owns that sentence; this plan owns the marker and the `module` row. The two touch neighbouring lines of step 1c, so the order also removes a rebase.
 
 ## Implementation
 
@@ -68,7 +70,7 @@ The row at line 539 reads "Bare specifier the generated worker imports (robust u
    ```ts
    // The worker's imports, resolved here rather than at step 6c so a mount or connector with no
    // import specifier (specs/extensions.md §11, §12) fails before dist/ is cleaned. Mount options
-   // inline the project's section manifest: identifiers only, never secrets (§13).
+   // inline the project's section manifest, never a secret value (§13).
    const workerImports = buildMountSpecs(activeMounts, registry, projectConfig);
    ```
 
@@ -81,12 +83,14 @@ The row at line 539 reads "Bare specifier the generated worker imports (robust u
 4. **`packages/schema/defs/class-def.schema.ts`, `serverBlockDefSchema.properties.module.description`.** New text: `"Import specifier the generated site worker imports this class from, by its title, resolved from the project root (e.g. @jxsuite/auth/worker). Required for a deployable build; the dev server imports $implementation instead."`. Then run `bun run schema:sync`. It moves one pointer per file: `/$defs/ServerBlockDef/properties/module/description` in `packages/schema/class-schema.json` and `schema.json`, and `/$defs/v1/$defs/ServerBlockDef/properties/module/description` in the 28 `document.schema.json` files under `examples/`, `packages/starters/sites/*`, `packages/studio`, `packages/ui`, `scripts/screenshots/fixtures/*`, `sites/jxsuite.com` and `sites/test-blank`.
 5. **`packages/schema/src/format-registry.ts`, `ServerBlock.module`.** Add the doc comment `/** Import specifier the generated site worker imports the class from (extensions.md §11). The dev server never reads it. */`.
 6. **Tests, spec and docs** as below.
+7. **Plan housekeeping in the landing pull request.** Delete this file, then reword every remaining `plan:extensions/server-module-required` citation in a plan that has not landed to cite extensions.md §11 (`grep -rn 'plan:extensions/server-module-required' plans/`; `plans:check` reports each as `citation-unknown`). Today they are the §11 ownership notes in `plan:_shared/db-push-section-owners` (its §11.1 marker sentence), `plan:relationships/cross-domain-references` (its §11 `options` bullet) and `plan:extensions/connector-serve-key` (its integration contract).
 
 **Integration contract.** No plan requires this one. Once it lands:
 
 - `buildSite` calls `buildMountSpecs` at step 1c. Any refusal added inside it fires before `dist/` is cleaned. That includes the `mount` timing check `plan:extensions/capability-timing-dispatch` inserts after the `server.module` check.
 - extensions.md §11's `module` row states the requirement, the resolution base and the dev server's `$implementation` path. A plan that changes how the worker imports a mount edits that row.
-- Merge adjacency only, with no ordering: `plan:extensions/empty-section-gating` rewrites the `activeMounts` filter and `plan:_shared/no-adapter-server-tier` rewords the static-adapter error, both just above the new call. `plan:extensions/connector-serve-key` regenerates the same schema artifacts at a different pointer. Whichever lands second rebases.
+- `plan:extensions/empty-section-gating` lands first (Decisions), so the new call sits directly below its `sectionOwnerActive` filter of `activeMounts`, and §11's first sentence already names the §8.4 gate when this plan flips the marker.
+- Merge adjacency only, with no ordering: `plan:_shared/no-adapter-server-tier` rewords the static-adapter error just above the new call; `plan:relationships/cross-domain-references` attaches its reference views to the specs step 6c now reads from `workerImports` (its "after `buildMountSpecs` returns" becomes "after `workerImports` is destructured") and rewrites §11's `options` bullet, which is why the new step-1c comment says only "never a secret value" and not "identifiers only"; `plan:extensions/connector-serve-key` regenerates the same schema artifacts at a different pointer. Whichever lands second rebases.
 
 ## Tests
 
@@ -126,6 +130,6 @@ No spec graduates. extensions.md keeps its `Partial` header.
 
 - `bun run plans:status --spec extensions` no longer lists `extensions.md#11`. `bun run plans:check`, `docs:status`, `docs:spec-release`, `docs:check`, `docs:links`, `docs:prose` and `docs:markdown` pass.
 - `sed -n '/^## 11\./,/^### 11\.1/p' specs/extensions.md` shows `> **Status: Implemented.**` as the first blockquote. `git grep -n "falls back to" -- specs/extensions.md docs/extending/extensions/server.md` prints only the unrelated `_meta` sentence of §8.2.
-- `bun run schema:verify` is green, and `git grep -n "Module specifier exporting the mount handler" -- '*.json' '*.ts'` prints nothing. The pathspec skips `packages/schema/--cwd`, a stray copy of `schema.json` committed in 288fb73a that no generator writes and no gate reads; it keeps the old text, and removing it is not this plan's job.
+- `bun run schema:verify` is green, and `git grep -n "Module specifier exporting the mount handler" -- '*.json' '*.ts'` prints nothing. The pathspec skips `packages/schema/--cwd`, a stray copy of `schema.json` committed in 288fb73a that no generator writes and no gate reads; it keeps the old text, and `plan:extensions/connector-serve-key` deletes it.
 - `bun test --isolate --coverage` from `packages/compiler` passes with the three cases above and no per-file threshold failure.
 - By hand: in a project whose local extension declares a `server` block with no `module`, and with a previous `dist/` present, `jx build` exits non-zero. The message names the class and its `basePath`, and `dist/` is unchanged.

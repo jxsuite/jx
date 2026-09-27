@@ -7,6 +7,8 @@ requires: []
 workspaces:
   - extensions/parser
   - packages/compiler
+  - specs
+  - docs
 size: S
 ---
 
@@ -63,9 +65,15 @@ Before the census the section led with `Implemented`. Both gaps have one cause, 
    - `validateEntries`: delete the `isDateFormat(def.format) && … !isCoercedDate(value)` branch; the `else if` chain starts at the `string` type check.
 3. **`extensions/parser/src/markdown.ts`**, `Markdown.load`: drop `statSync` from the method's dynamic `node:fs` import and delete the comment and `try` block (~95–106); `_meta` still starts as `{}` and gets excerpt, toc, readingTime and wordCount.
 
-Two plans edit the same code, and neither is a prerequisite either way; whichever lands second rebases. `plan:_shared/collection-directive-elements` gives every entry of all three branches its type's `$elements` and changes the format branch's `load` calls: that per-entry step belongs in `finishEntries`. `plan:relationships/reference-validation` adds reference checks to `validateEntries`, placed "before the date branch" this plan deletes: they go first in the per-field loop, after the `value == null` skip. (`plan:site-architecture/build-excludes-drafts` filters in `Content.projectData` and does not touch `loadContentType`.)
+**Neighbours in the same code.** None is a prerequisite either way, and whichever lands second rebases; `plans/parser/README.md` (Spec-wide decisions) records that this plan owns the loader's tail.
 
-**Integration contract.** Every entry `loadContentSection` (so `Content.projectData`) returns has each schema-declared `date` field as `YYYY-MM-DD` and each `date-time` field as `YYYY-MM-DDTHH:MM:SSZ`, or unchanged with exactly one `Content dates:` warning; the authored text of a rewritten value is at `_meta.rawDates[field]`. Every entry loaded from a local regular file has `_meta.mtime` in the `YYYY-MM-DDTHH:MM:SSZ` form, the format class's own value winning; a remote entry has none. `dates.ts` exports `toInstant`; `isCoercedDate` no longer exists. parser.md §9.3 states all of this.
+- `plan:_shared/collection-directive-elements` changes the load calls in CDE1.1 (a trailing `ctx` parameter on `loadContentType`, `{ allowedNames, onDisallowed }` on each `load`, a warning per finding after it) and in CDE1.2 stamps every entry of all three branches with its type's `$elements`. That stamp is a step every branch shares, so it goes in `finishEntries`, which gains the `ContentTypeDef` as a parameter; if CDE1.2 lands first, this plan folds its per-branch stamps into `finishEntries`. Both plans edit `Markdown.load`: CDE1.1 its `directives` default, this plan its `statSync` block.
+- `plan:relationships/reference-validation` adds reference checks to `validateEntries`, placed "before the date branch" this plan deletes: they go first in the per-field loop, after the `value == null` skip, in either order of landing.
+- `plan:site-architecture/entry-editor-widgets` widens `rewriteEntryAssets` (called unchanged here by the JSON and format branches), copies `DATE_ONLY` and `RFC_3339` into Studio (both stay) and writes a `date-time` in the `toInstant` form (exported here, body unchanged).
+- `plan:site-architecture/build-excludes-drafts` filters in `Content.projectData` and does not touch `loadContentType`.
+- `plan:site-architecture/collection-pagination` dates a paged route by the newest item's `_meta.mtime`; once this lands JSON and CSV items contribute too, which its rule already covers.
+
+**Integration contract.** Every entry `loadContentSection` (so `Content.projectData`) returns has each schema-declared `date` field as `YYYY-MM-DD` and each `date-time` field as `YYYY-MM-DDTHH:MM:SSZ`, or unchanged with exactly one `Content dates:` warning; the authored text of a rewritten value is at `_meta.rawDates[field]`. Every entry loaded from a local regular file has `_meta.mtime` in the `YYYY-MM-DDTHH:MM:SSZ` form, the format class's own value winning; a remote entry has none. `finishEntries` is the one tail of every `loadContentType` branch: a per-entry step every branch shares goes there, never into the branches, and `validateEntries` no longer has a date branch. `dates.ts` exports `toInstant`; `isCoercedDate` no longer exists. parser.md §9.3 states all of this.
 
 ## Tests
 

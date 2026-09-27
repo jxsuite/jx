@@ -84,7 +84,7 @@ Two editorial riders from the census belong to this plan:
    - `canonicalRefs(node: unknown): string[]` is a recursive walk over objects and arrays. It collects every `$ref` string value starting with `CANONICAL`, strips anything from `#` on, and returns the sorted unique set.
 
 3. **Housekeeping in the landing pull request.** Delete this plan. No plan requires it, but two cite it, and `plans:check` reports each citation left in a plan that has not landed as `citation-unknown` (`grep -rn 'plan:extensions/publish-canonical-schema-urls' plans/`):
-   - `plans/extensions/connector-table-paths.md` ("rewrites the adjacent §5.3 row") and `plans/extensions/referenceable-sections.md` (its §5.3 fields-cell step): cite extensions.md §5.3 instead, and in referenceable-sections state the cell as this plan leaves it, so its "if already rewritten" branch becomes the only one.
+   - `plans/extensions/connector-table-paths.md` ("rewrites the adjacent §5.3 row") and `plans/extensions/referenceable-sections.md` (its §5.3 fields-cell and `schema-composition.md` steps): cite extensions.md §5.3 instead. Neither plan's edit depends on this one's wording.
    - `plans/extensions/README.md`: delete the §4 "Verified" bullet's "The key table omits `schemas.fields`, … rides with `plan:extensions/publish-canonical-schema-urls`." and the §5.1–§5.3 bullet's "§5.3's fields row example … beside the §4 `schemas.fields` row.", both closed by the edits below.
 
 **Integration contract.** No plan requires this one. Once it lands:
@@ -92,7 +92,7 @@ Two editorial riders from the census belong to this plan:
 - Every `packages/schema` artifact's `$id` is served at `https://jxsuite.com/schema/<path>/`, from the released tree.
 - A plan that adds a core artifact, or a first-party fragment that references a canonical URL, has to add the copy entry in the same pull request, or `scripts/docs/schema-publication.test.ts` fails. This applies to `plan:extensions/connector-table-paths`'s `TablePathsSource` document fragment, which the walk picks up automatically.
 - §4 lists `schemas.fields`. §5.3's fields row says no first-party extension ships a fields fragment, so a plan that ships the first one updates that clause.
-- `plan:extensions/connector-table-paths` rewrites the adjacent paths row of the same §5.3 table, and `plan:extensions/referenceable-sections` appends a clause to the same fields cell this plan rewrites (its text already keeps this plan's wording when this lands first). Whichever lands second resolves the one-table adjacency, and oxfmt re-pads the table.
+- `plan:extensions/connector-table-paths` rewrites the adjacent paths row of the same §5.3 table, and `plan:extensions/referenceable-sections` appends a separate closing sentence to the same fields cell (and to the fields row of `docs/extending/extensions/schema-composition.md`) without touching the extras sentence this plan rewrites, which this plan owns. Whichever lands second resolves the one-table adjacency, and oxfmt re-pads the table.
 
 ## Tests
 

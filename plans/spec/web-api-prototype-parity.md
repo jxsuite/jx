@@ -185,7 +185,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 - `lowerBuiltInPrototype` is the one place a built-in other than `Request` is lowered, for both targets. A name added to `BUILT_IN_PROTOTYPES` fails a test until it gets a case there.
 - The dispatcher lowers a built-in name whatever its `$src` or the document's `imports` say, so an external-class predicate that excludes `BUILT_IN_PROTOTYPES` leaves no entry unlowered. A plan that makes `$src` or `imports` win over a built-in name adds its decline at the top of this one function.
-- It ignores `timing`. `plan:spec/timing-values-in-built-sites` changes that in this one function if §11.3 decides a built-in's `timing` matters.
+- It ignores `timing`. §11.3's rule on a built-in's `timing` is `plan:spec/timing-values-in-built-sites`', and that plan enforces it above this function, not in it: each target refuses a built-in marked `"compiler"` at the top of its `isPrototypeDef` block, before the dispatcher runs, in either landing order. So the dispatcher never sees one.
 - A compiled element binds storage and cookies in its constructor with uncollected effects, so a plan restructuring `connectedCallback` or `#effects` has nothing of these to preserve.
 - spec.md §11.2 reads Implemented and states when a component reads and persists storage.
 
@@ -196,7 +196,7 @@ Run `bun test --isolate --coverage` from `packages/compiler` and from `packages/
 **`packages/compiler/tests/builtin-prototypes.test.ts`** (new, emitted text):
 
 - "declines Request, Array, Function and an unknown name": each returns `null`.
-- "lowers by name": a `Set` entry with a `$src` and a `timing` yields the same output as one without.
+- "lowers by name": a `Set` entry with a `$src` and `timing: "client"` yields the same output as one without. (Not `"compiler"`: the dispatcher never sees one once `plan:spec/timing-values-in-built-sites` lands, and a unit test of it should not pin behaviour the targets refuse.)
 - "lowers every built-in but Function, Array and Request": loops over `BUILT_IN_PROTOTYPES` from `@jxsuite/schema/defs`, with a minimal config per name. If `plan:spec/web-api-prototype-parity-readable-stream` was signed as `defer`, `ReadableStream` joins the exclusions.
 - "a hostile key and storage key are data":
   - for `user.name` with `key: 'a"b c'`, the output contains `state["user.name"]`;
@@ -306,7 +306,7 @@ It renders each into a `p`. The file's `beforeAll` copies a fixed list of happy-
 **Docs.**
 
 - `docs/framework/concepts/data-prototypes.md` (`spec: spec.md#11`):
-  - add `code:` with `packages/compiler/src/targets/builtin-prototypes.ts`;
+  - add `packages/compiler/src/targets/builtin-prototypes.ts` to its `code:` list, creating the list if `plan:spec/request-url-params` has not already;
   - after the storage example, add "In a component, a stored value is read once per instance, before its props arrive, so a value its parent passes in for the same entry replaces it and is stored." Drop or invert this sentence with the Open. No em dashes.
   - The list of built-ins is otherwise already true of built sites.
 - `bun run docs:sync` also names:

@@ -122,7 +122,7 @@ Paths under `packages/studio/`. Comments cite `studio-ui-guidelines.md §4.4` qu
 - `src/ui/timing.ts` exports `INPUT_DEBOUNCE` (400) and `CODE_DEBOUNCE` (500) as the form delays; `LIVE_PREVIEW` does not exist.
 - `src/ui/field-input.ts` exports `fieldCommits()` and `FieldCommits` as above.
 - `tests/timing.test.ts` fails on a new local form-delay constant or a literal delay.
-- §4.4 is Implemented with the text in Specs & docs. `plan:studio-ui-guidelines/conventions-checklist` may rewrite §10's "Text inputs are debounced (400ms standard)" to "A text field that writes as it is typed waits out `INPUT_DEBOUNCE` (`CODE_DEBOUNCE` for code) and writes at once on `onchange`; a name or key writes on `onchange` alone (§4.4)", "Pickers commit on `@change`" to `onchange`, and drop §4.4's clause from §10's marker.
+- §4.4 is Implemented with the text in Specs & docs, and §10's marker no longer names §4.4 (this plan's rider). `plan:studio-ui-guidelines/conventions-checklist`, which owns every §10 item's wording, rewrites "Text inputs are debounced (400ms standard)" to "A text field that writes as it is typed waits out `INPUT_DEBOUNCE` (`CODE_DEBOUNCE` for code) and writes at once on `change`; a field whose half-typed value means nothing (a name, a key) writes on `change` alone" (§4.4, `tests/timing.test.ts`), and "Pickers commit on `@change`" to `change` (§4.5).
 - A plan that adds a form field (`plan:site-architecture/seo-structured-data-editor`, `plan:site-architecture/entry-editor-widgets`) takes its delay from `timing.ts` and binds `onchange`.
 
 ## Tests
@@ -189,6 +189,8 @@ and a closing paragraph:
 > **Not form writes.** Other delays pace other things and keep their own names beside the code they pace: the canvas caret's typing-pause commit (§8.3), a Monaco buffer's commit (`studio.md` §4.2, §16.3), an expression's live value on the canvas, a preview publish, and the collaboration mirror.
 
 **§4.5, in place** (unmarked). The table becomes `oninput` ("The text is changing (a keystroke)"; "The pause of §4.4, or no write when the field only feeds a local draft: a filter, an add form, a dialog's answer") and `onchange` ("The value is settled: blur, Enter, a pick, the clear button"; "Immediate; cancels a pending `oninput` write"). The paragraph becomes: "A picker (`jx-select`, a menu) binds `onchange` only. A text field (`jx-textfield`, single-line or `multiline`) binds both, or `onchange` alone when it does not write as it is typed (§4.4)."
+
+**§10's marker, in place** (a rider; §10 stays Partial under `plan:studio-ui-guidelines/conventions-checklist`): delete the sentence ""Text inputs are debounced (400ms standard)" inherits §4.4's." and lower the count in "Five inherit a section's open item." by one (recount: other owners delete their clauses as they land). The checklist items themselves are that plan's.
 
 **Fragment:** `bun run spec:change studio-ui-guidelines.md minor -m "§4.4 states the form text-field pattern as it ships: a write when typing pauses and an immediate write on change, the text and code delays named once in the timing module, change-only fields and the draft layer; §4.5 states the two events as a document binds them"`. Minor: an `implement`.
 

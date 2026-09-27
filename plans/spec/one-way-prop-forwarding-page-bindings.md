@@ -40,14 +40,15 @@ The child upgrades with `state.count` set to the object `{ "$ref": … }`.
 
 The interpreter needs nothing: `renderCustomElementWithProps` in `packages/runtime/src/runtime.ts` resolves and re-writes every bound prop.
 
-**Outside this plan.** A page binding inside the slot content of a page-level instance is dead in built output. `expandComponents` serialises slot children with `renderStaticNode(c, {}, null)` before the page compile runs, so the same scratch site's `<my-box><span>${state.n}</span></my-box>` emitted `<span id="s"></span>` with no `data-bind`. A live prop on an instance inside that slot content is lost the same way: after this plan the payload leaves it out and the serialised slot content carries no directive for it. That is the slot path's gap (spec.md §8.5, `plan:spec/compiled-slot-distribution` rewrites that serialisation), not this plan's.
+**Outside this plan.** A page binding inside the slot content of a page-level instance is dead in built output. `expandComponents` serialises slot children with `renderStaticNode(c, {}, null)` before the page compile runs, so the same scratch site's `<my-box><span>${state.n}</span></my-box>` emitted `<span id="s"></span>` with no `data-bind`. A live prop on an instance inside that slot content is lost the same way: after this plan the payload leaves it out and the serialised slot content carries no directive for it. That is the slot path's gap, not this plan's, and no plan claims it yet: `plan:spec/compiled-slot-distribution` changes how that content is grouped into slots (`createSlotFill`), but still renders it with an empty scope and no hydration (its CSD1.2 keeps `renderStaticNode(c, {}, null)` as the render callback). It needs its own marker in spec.md (under §8.5 or §6) and an owner before spec.md can graduate.
 
 **Related, no edge**
 
 - `plan:_shared/compiled-prop-bridge` gives a compiled child the accessors that turn a later property write into a re-render; this plan gives a page-level instance the writes. Neither needs the other to land: the bridge's browser check binds its child inside a component for exactly that reason, and this plan's tests read `el.count` rather than the child's text. `plan:spec/one-way-prop-forwarding` requires both.
 - `plan:_shared/compiled-element-lifecycle` builds its `data-jx-props` merge from `node.$props`; once this plan lands the payload comes from `settled`.
 - `plan:_shared/compiled-element-lifecycle` also edits `expandComponents` (an observed-attribute merge) and `isComponentFullyStatic`. `plan:spec/compiled-slot-distribution` threads a slot-id counter through `expandComponents`. `plan:spec/style-handle-assignment` touches its `resolvedStyle` merge. Whichever lands second merges.
-- `plan:spec/function-entry-tier-parity` changes how `compile-client.ts` classifies `$src` entries. This plan delivers only body-declared handler entries (below).
+- `plan:spec/callable-classifier` changes how `compile-client.ts` classifies `$src` entries, and `plan:spec/function-entry-tier-parity` how it builds a handler's parameter list. This plan delivers only body-declared handler entries (below), built with whatever parameter list has landed.
+- `plan:spec/computed-function-classification` puts every callable string-body entry on `state` in `compile-client.ts`. It owns that rule; this plan's prop-named delivery is the narrower case and skips any key that rule already assigns (Implementation step 3).
 
 ## Outcome
 
@@ -103,6 +104,7 @@ No claim closes here. Once it lands:
      - then push `:prop.${key}="${escapeHtml(name)}"` and set `needsBind`.
    - The hydrate emitted by `emitClientModule`: ahead of the generic property branch, add `else if (parts[0] === 'prop' && parts.length > 1) { const name = key; const k = parts[1]; effect(() => { el[name] = bind[k](); }); }`.
    - Function delivery: a new `collectPropRefKeys(raw)` walks the document (`children`, a mapped array's `map`, `$switch` `cases`). It returns the head key of every `#/state/`, `parent#/` or bare `$ref` found in a `$props` value. After the inline handlers are merged, each `onEntries` entry whose key is in that set adds an init block of the element target's shape: `state["<key>"] = (state, e) => { const fn = (<args>) => { <body> }; return fn(<callArgs>); };`. That makes `state.<key>` a function for the page binding and for a `$map` row's `.onAction=` alike.
+   - Two plans own neighbouring rules, and either may land first. `plan:spec/computed-function-classification` puts **every** callable string-body entry on `state` (its `stateCallables`), which is the general rule; so when it has landed, this block skips each key in `stateCallables` and delivers only the handler kinds it leaves out (a structured body, a mutating `$expression` entry). When it lands after this plan, its own step 3 adds the same skip. `plan:spec/function-entry-tier-parity#FET1.2` replaces the `callArgs` mapping with `handlerParamNames(def)` and a `fn(state, e)` call; when it has landed, this block is built that way, and when it lands after, its step 6 rewrites this block with the rest of `emitClientModule`.
 4. Spec and docs edits under Specs & docs.
 
 **Integration contract.** Once this lands, other plans may rely on the following:
@@ -112,7 +114,7 @@ No claim closes here. Once it lands:
 - The page module writes each such entry onto the element as a property when it hydrates and again on every change of what it reads.
 - `data-jx-props` holds only settled, JSON-safe values with `${` escaped.
 - `mapRefToClientExpr` lowers `#/state/`, `$map/`, `parent#/`, `window#/`, `document#/` and bare paths.
-- A `$ref` prop naming a handler entry is a `(state, event)` function in every target.
+- A `$ref` prop naming a handler entry is a `(state, event)` function in every target. Each key is assigned to `state` once, by `plan:spec/computed-function-classification`'s rule when that plan covers the entry and by this plan's block otherwise.
 
 `plan:spec/one-way-prop-forwarding` relies on the post-connection writes: with `plan:_shared/compiled-prop-bridge`'s accessors they re-render the child, and its tests extend `client-page-props.test.ts` below.
 
@@ -140,7 +142,7 @@ Run `bun test --isolate --coverage` from `packages/compiler`. No new source file
 - "a non-hyphenated tag's $props emits no directive".
 - "hydrate writes a prop directive as a property": the module contains the `parts[0] === 'prop'` branch.
 - "every ref scheme lowers in a prop and in a row": `parent#/a`, `window#/x/y` and `document#/title` lower to `state.a`, `window.x.y` and `document.title`. The existing "lowers every $ref form to a real expression" gains the same three rows for the `$map` path.
-- "a handler named by a prop is on state as a (state, event) function": `pick` (body `"state.n++"`) with `onPick: { $ref: "#/state/pick" }` emits `state["pick"] = (state, e) =>`. The same document without the prop does not.
+- "a handler named by a prop is on state as a (state, event) function": `pick` (body `"state.n++"`) with `onPick: { $ref: "#/state/pick" }` emits `state["pick"] = (state, e) =>`. The same document without the prop does not. Once `plan:spec/computed-function-classification` has landed, a string-body `pick` is on `state` either way, so this case uses a structured-body `pick` (`[{ operator: "+=", target: { $ref: "#/state/n" }, value: 1 }]`) instead, and a second case asserts a string-body `pick` named by a prop is assigned exactly once.
 
 `packages/compiler/tests/site-build-instance-props.test.ts` (new, the `writeJSON` and `TMP` pattern of `site-build-component-loading.test.ts`). The fixture is the Context's site: `my-count` is fully static; `my-live` has a handler.
 

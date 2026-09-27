@@ -38,7 +38,7 @@ size: S
 - **A restored tag the project no longer declares is drawn and reported.** `postLocaleToLiveHosts` posts it verbatim, and `localeOf` reports it as the pane's language, although `readUi`'s comment promises the render falls back.
 - **A restored value can miss a host that is already booting.** `restoreSession` writes the view settings only after every file has opened ("applied AFTER every tab exists", `src/workspace/session.ts`), so a pane may already have posted its render by then. The render effect in `studio.ts` (lines 745–782) does not track `previewLocale`, and `postLocaleToLiveHosts` skips a host that is not `ready`, so that host boots from a `pending` render carrying the old value and nothing re-renders it. Carrying the value on `render` alone does not close the restore case the marker names.
 - **The frame writes `dir="ltr"`** for a left-to-right tag. `site-architecture.md` §13.4 says the build never does ("`dir="ltr"` is never written").
-- Out of this item: neither the segment nor the artboard reads a page's `$lang` or `$dir`, or `defaults.lang` (`site-architecture.md` §13.4's other rows). `plan:studio/canvas-injects-context` asks whether `$page.locale` follows the route or this pane language, and it shares no code with this plan.
+- Out of this item: neither the segment nor the artboard reads a page's `$lang` or `$dir`, or `defaults.lang` (`site-architecture.md` §13.4's other rows). `plan:studio/canvas-injects-context` has decided that `$page.locale` and `$page.dir` follow the page's route and not this pane language, because §20.2 says the pane's language changes `lang` and `dir` "and nothing else"; so the two plans answer different questions and share no code, and neither requires the other.
 
 ## Outcome
 
@@ -86,7 +86,7 @@ Paths under `packages/studio/`.
 - `getEffectiveRenderLocale(previewLocale, documentPath)` in `src/site-context.ts` is the one answer to "what language does this pane render in": `null` without an `i18n` block, otherwise a declared canonical tag.
 - Every `render` message carries `locale` and `dir`, and one still pending on a booting host carries the current value when it is delivered.
 - The frame's `applyPreviewLocale` is the only writer of the canvas root's `lang` and `dir`.
-- `plan:studio/canvas-injects-context` may read the helper if it decides `$page.locale` follows the pane.
+- The helper answers the artboard's `lang` and `dir` only. `$page.locale` is not read from it: `plan:studio/canvas-injects-context` takes it from the page's route, so a French page in an English pane formats its dates in French while its artboard draws `lang="en"`, and a later plan that wants the pane's language inside the page's context reads this helper rather than `previewLocale`.
 
 ## Tests
 

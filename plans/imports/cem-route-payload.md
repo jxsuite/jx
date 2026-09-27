@@ -37,7 +37,7 @@ The body under it still says the route "Returns the full Custom Elements Manifes
 - imports.md §4.3 → Removed. The heading stays, and the marker says that no platform called the route and where dependency metadata comes from instead.
 - `GET /__studio/cem` is neither served by `handleStudioApi` nor declared in `STUDIO_ROUTES`. The generated route reference loses its row.
 - server.md §4.1's family list no longer names a CEM extraction route.
-- imports.md stays Partial, with §1.1–§1.4, §2, §4.2, §5, §5.1 and §6 still open, so nothing graduates.
+- imports.md stays Partial, with §1.1–§1.4, §2, §4.2, §5, §5.1 and §6 still open today; nothing graduates unless this closes the last of them (Specs & docs).
 
 ## Decisions
 
@@ -47,11 +47,11 @@ The body under it still says the route "Returns the full Custom Elements Manifes
 
 ## Implementation
 
-1. **`packages/server/src/studio-api.ts`**: delete the `// Read CEM from a specific package` block (lines 1044–1076). `PackageJson.customElements` stays for the components scan, and the `dirname` import for its dozen other call sites. The `Cem`, `CemModule` and `CemDeclaration` interfaces stay while the components scan (lines 810–879) still uses them; `plan:imports/cem-discovery-on-every-backend` deletes them with that scan. If that plan lands first, this handler's cast reads `as CemManifest` by then, and the `CemManifest` type import it leaves unused goes with the handler. Leave the `/__studio/packages` block and its `// List CEM-bearing npm packages` comment alone: they belong to `plan:imports/packages-route-payload`.
+1. **`packages/server/src/studio-api.ts`**: delete the `// Read CEM from a specific package` block (lines 1044–1076). `PackageJson.customElements` stays while the components scan or the `/packages` list still reads it; if `plan:imports/cem-discovery-on-every-backend` and `plan:imports/packages-route-payload` have both landed, this handler is its last reader and the field goes with it (the imports audit record's spec-wide decisions). The `dirname` import stays for its dozen other call sites. The `Cem`, `CemModule` and `CemDeclaration` interfaces stay while the components scan (lines 810–879) still uses them; `plan:imports/cem-discovery-on-every-backend` deletes them with that scan. If that plan lands first, this handler's cast reads `as CemManifest` by then, and the `CemManifest` type import it leaves unused goes with the handler. Leave the `/__studio/packages` block and its `// List CEM-bearing npm packages` comment alone: they belong to `plan:imports/packages-route-payload`.
 2. **`packages/protocol/src/routes.ts`**: delete the `cem` entry (lines 203–208) from `STUDIO_ROUTES`. `STUDIO_PROTOCOL_VERSION` and the section banners stay. No other file names `STUDIO_ROUTES.cem`, and `bun run typecheck` confirms it.
 3. **Tests**, as in Tests.
 4. **`specs/imports.md` §4.3, `specs/server.md` §4.1** and the two fragments, as in Specs & docs.
-5. **Plan housekeeping in the landing pull request**: delete this file, and rewrite every open plan's citation of it to name imports.md §4.3 instead, or `plans:check` fails with `citation-unknown`: today `plan:imports/packages-route-payload` (its first Open's reasons) and `plan:imports/cem-discovery-on-every-backend` (Context, and its step 3's conditional about this handler, which then drops). `grep -rn "imports/cem-route-payload" plans` finds them. The two plans may land in one pull request, since both edit the package-management block of `studio-api.ts`, the fixtures of `studio-api-gaps.test.ts` and imports.md §4. Landed separately, the second one rebases over adjacent hunks with no semantic conflict.
+5. **Plan housekeeping in the landing pull request**: delete this file, and rewrite every open plan's citation of it to name imports.md §4.3 instead, or `plans:check` fails with `citation-unknown`: today `plan:imports/packages-route-payload` (its first Open's reasons) and `plan:imports/cem-discovery-on-every-backend` (Context, and its step 3's conditional about this handler, which then drops). `grep -rn "imports/cem-route-payload" plans` finds them. This plan and `plan:imports/packages-route-payload` may land in one pull request, since both edit the package-management block of `studio-api.ts`, the fixtures of `studio-api-gaps.test.ts` and imports.md §4; neither requires the other. Landed separately, the second one rebases over adjacent hunks with no semantic conflict.
 
 **Integration contract.** No plan requires this one. Once it lands:
 
@@ -82,7 +82,7 @@ The body under it still says the route "Returns the full Custom Elements Manifes
 
 **Docs.** No page's `spec:` cites `imports.md#4.3`. `bun run docs:sync` names three pages through their `code:` lists: `docs/extending/embedding/dev-server.md` (`studio-api.ts`), and `docs/extending/embedding/backend-protocol.md` and `docs/extending/embedding.md` (`routes.ts`). None of them mentions the route or CEM extraction, so none changes. The generated `studio-routes.md` and `implementation-status.md` drop their rows on the next `bun run docs:generate`, and nothing commits them.
 
-No spec graduates.
+No spec graduates while imports.md has another open item. If this pull request closes the last one (`bun run plans:status --spec imports` lists only §4.3), it sets the header's `**Status:**` to `Implemented`, runs `bun run spec:bump imports.md major -m "<the imports.md sentence above>"` in place instead of the imports.md fragment, and deletes `plans/imports/`.
 
 ## Acceptance
 

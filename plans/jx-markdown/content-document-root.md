@@ -41,7 +41,7 @@ The section was unmarked before the census. Its last prose sentence (line 77) sa
 
 - jx-markdown.md §3.1 → Implemented. It states the component rule on the parsed frontmatter `tagName`, names the `Markdown` class's `documentMode` hint as where Studio reads it and `isJxMarkdown` as the standalone form, and describes the tagName-less content root Studio edits. The wrapper sentence is gone.
 - `isJxMarkdown(source)` returns exactly what the hint decides for `Markdown.parse(source)`, and a test fails if the two ever diverge.
-- jx-markdown.md stays Partial (§6.5, §6.6, §7.3, §9 and §12.8 remain open), so nothing graduates.
+- Nothing requires this plan and it requires nothing, so it may be the last of the spec's plans to land. If §3.1 is then the spec's last open item, this pull request graduates jx-markdown.md (Specs & docs); otherwise the spec stays Partial.
 
 ## Decisions
 
@@ -83,7 +83,7 @@ The section was unmarked before the census. Its last prose sentence (line 77) sa
 2. **Tests**, as in Tests.
 3. **`specs/jx-markdown.md` §3.1 and §12.2** and the fragment, as in Specs & docs.
 
-**Integration contract.** No plan requires this one. Once it lands, `isJxMarkdown(source)` is `true` exactly when `Markdown.parse(source).tagName` is a string matching `.+-.+`, and `false` when `parse` throws, guarded by a test that reads the pattern and key from `Markdown.class.json`; a change to either side goes red there. jx-markdown.md §3.1 describes a content document as a tagName-less root with its non-machinery frontmatter held apart and merged back on save, which `plan:jx-markdown/roundtrip-lossless` may cite for the save path it tests. `plan:jx-markdown/directive-attribute-routing` edits `directiveToJx` in the same file, a different function, so either can land first.
+**Integration contract.** No plan requires this one. Once it lands, `isJxMarkdown(source)` is `true` exactly when `Markdown.parse(source).tagName` is a string matching `.+-.+`, and `false` when `parse` throws, guarded by a test that reads the pattern and key from `Markdown.class.json`; a change to either side goes red there. jx-markdown.md §3.1 describes a content document as a tagName-less root with its non-machinery frontmatter held apart and merged back on save, which `plan:jx-markdown/roundtrip-lossless` may cite for the save path it tests. The sentence "which serializes to nothing" and its pinned string-level test stay true after that plan lands: it drops an empty paragraph carrying nothing rather than writing it as a directive (`plans/jx-markdown/README.md`, spec-wide decisions), and lists this case among its normalizations. `plan:jx-markdown/directive-attribute-routing` edits `directiveToJx` in the same file, a different function, so either can land first.
 
 ## Tests
 
@@ -118,7 +118,7 @@ Workspace: `extensions/parser` (`bun test --isolate --coverage` from `extensions
 
 **Docs.** No page cites `jx-markdown.md#3.1` or `#12.2`. `bun run docs:sync` names `docs/framework/site/jx-markdown.md` (its `code:` lists `transpile.ts`, its `spec:` the whole spec): no change, because its line "A `.md` file whose frontmatter has a `tagName` containing a hyphen is a component; a file without one is a content document … that produces a plain element tree" stays true and never mentioned the wrapper. `docs/extending/extensions/formats.md` describes `documentMode` accurately and its `code:` names only `Markdown.class.json`, which does not change. `extensions/parser/README.md`'s export table is unchanged.
 
-No spec graduates: the header stays `Partial`.
+**Graduation.** If `bun run plans:status --spec jx-markdown` shows §3.1 as the spec's last open item when this lands, this pull request sets the header `**Status:**` to `Implemented`, runs `bun run spec:bump jx-markdown.md minor -m "…"` in place with the fragment's sentence instead of the fragment (minor, because graduation rides on an execution), and deletes `plans/jx-markdown/`. Otherwise no spec graduates and the header stays `Partial`.
 
 ## Acceptance
 

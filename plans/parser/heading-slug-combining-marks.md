@@ -6,6 +6,8 @@ claims:
 requires: []
 workspaces:
   - extensions/parser
+  - specs
+  - docs
 size: S
 ---
 
@@ -62,6 +64,8 @@ return text
 ```
 
 The two alternatives of the second pattern must stay in one pass: stripping punctuation first and orphaned marks second would let `a!` + U+0301 re-attach the accent to `a`. Rewrite the doc comment: repair the NFC paragraph (`e` + U+0301 on one line), add a **Combining marks are part of the letter** paragraph (a Devanagari vowel sign or virama, a Thai vowel, an Arabic or Hebrew point; NFC folds the marks that have a precomposed form, and the rest stay), a **Presentation is not spelling** paragraph (the emoji examples above), and one sentence in the `toLowerCase` paragraph on the `İ` fold (the only default case mapping that adds a mark). Keep the `_` paragraph and cite parser.md §3.2, not a plan. No signature change; `assignHeadingIds` is untouched.
+
+**Neighbours, none a prerequisite.** `plan:jx-markdown/commonmark-coverage` replaces `processMarkdown`'s root walk with `mdastRootToJx` but still runs `assignHeadingIds` over the result, so rendered ids and `$toc` stay one walk and the `md-units.test.ts` case below holds either side of it (the two plans add cases to that file and conflict only textually). `plan:extensions/declared-media-type-responses` rewrites §3's `variant` and YAML paragraphs and leaves the §3 marker to this plan. §10 is shared with four other plans, each owning its own rows or its preamble (`plans/parser/README.md`, Spec-wide decisions).
 
 **Integration contract.** `slugifyHeading(text: string): string` keeps its signature and its guarantees: NFC before `toLowerCase`, ASCII output byte-identical to the `\w` implementation, `""` only when no letter or number survives (so `assignHeadingIds` still falls back to `section`). Added: a combining mark written on a kept letter or number is in the slug; variation selectors, enclosing marks, format controls, orphaned marks and the U+0307 that casing would add to `İ` never are. Any tool that needs a site's anchor imports this function; none restates it.
 

@@ -157,11 +157,11 @@ New `tests/table.test.ts`. It imports `./with-dom.ts` first, runs `registerUi()`
   - Element: `jx-table`, `jx-tr`, `jx-th`, `jx-td`.
   - Owns: "§3.5's first shape: `table`/`table-row`/`table-cell` displays with the `table`, `row`, `columnheader` or `rowheader` (`scope`) and `cell` roles; `label`; `rowcount` and `rowindex` for a windowed table; no spanning, no row groups, no keyboard".
   - Replaces: "`sp-table`, and the three tables Studio drew for itself".
-- **§10 marker (line 410):** "(§5.1, §5.2, §5.4, §6)" loses "§5.4", keeping whatever entries are still open; if none is, the sentence goes.
+- **§10 marker (line 410):** "(§5.1, §5.2, §5.4, §6)" loses "§5.4", keeping whatever entries are still open; if none is, the sentence goes. `plan:ui/menu-radio-rows`, `plan:ui/studio-toast-host` and `plan:ui/overlay-transitions-and-slot` each drop their own entry.
 - **§11, the WAI-ARIA row:**
   - The evidence gains `packages/ui/tests/table.test.ts`.
   - "Built and exercised" gains "**table** (`jx-table`, `jx-tr`, `jx-th` and `jx-td`: `columnheader` and `rowheader` cells, and `aria-rowcount` and `aria-rowindex` describing the whole set while a windowed table draws a slice of it)".
-  - The `gap:ui-aria` note is otherwise unchanged.
+  - The `gap:ui-aria` note is otherwise unchanged. `plan:ui/menu-radio-rows` adds ", checkbox and radio rows" to the same row's **menu** clause; the edits are independent.
 - **Fragment:** `bun run spec:change ui.md minor -m "jx-table, jx-tr, jx-th and jx-td ship in the CSS table shape with table, row, header and cell roles, a row-header scope and row counts for a windowed table, and Studio's three tables are drawn with them."`. If the Open decision's guard keeps the Languages panel native, the last clause becomes "and Studio's Library and Packages tables are drawn with them".
 - **Graduation:** the spec graduates only if this closes ui.md's last open item. At landing, run `bun run plans:status --spec ui`. If §5.4 is the last, set the header to `**Status:** Implemented`, run `bun run spec:bump ui.md patch -m "…"` in place, and delete `plans/ui/`. Otherwise delete only this file.
 
