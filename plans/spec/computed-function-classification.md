@@ -1,18 +1,20 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - spec.md#4b
 requires:
   - spec/callable-classifier
-size: S
 workspaces:
+  - packages/schema
   - packages/runtime
   - packages/compiler
-  - packages/schema
+  - specs
+  - docs
+size: S
 ---
 
-# An inline Function body is classified as computed or callable by one rule, in every tier
+# An inline Function body is a computed value only when nothing calls it, and every tier agrees
 
 ## Context
 
@@ -20,20 +22,131 @@ workspaces:
 
 > **Status: Partial.** The bare-`return;` rule ships in every tier through `bodyReturnsValue` (`packages/schema/src/guards.ts`). The "no `arguments`" condition holds only in the interpreter (`resolveFunction` in `packages/runtime/src/runtime.ts`): `compile-element.ts`, `compile-client.ts` and the build-time scope in `packages/compiler/src/shared.ts` classify a string body by `bodyReturnsValue` alone, so a body with declared `parameters` that returns a value compiles to a `computed()` with its parameter unbound. No tier classifies by reactive use, as the first paragraph below describes; classification reads the declaration and the body text.
 
-**What exists**
+The paragraph it refers to (line 405): "A function with only `body` (no `arguments`) and no event binding acts as a computed value — the framework automatically wraps it in `computed()` when it detects it is referenced reactively." §5.3 4d's "Classifying an external Function" defines a callable use (an `on*` binding, a `call` node's target, `state.key(…)` in a template or body, a lifecycle key) and ends "matching the inline-body rule in 4b".
 
-- `bodyReturnsValue` in `packages/schema/src/guards.ts`, shared by every tier, implements the bare-`return;` and ASI rules.
-- `resolveFunction` in `packages/runtime/src/runtime.ts` computes `hasParams` from `parameters ?? arguments` and never makes a parameterised entry computed.
-- `packages/compiler/src/targets/compile-element.ts` (the `typeof d.body === "string" && bodyReturnsValue(d.body)` branch), `packages/compiler/src/targets/compile-client.ts` (the "Body contains return → computed" branch) and the build-time scope in `packages/compiler/src/shared.ts` test the body only.
+**The marker has two halves, and the prerequisite closes the first.** `plan:spec/callable-classifier` builds one document-level classifier beside `bodyReturnsValue` that every tier reads (`resolveFunction`, `emitElementModule`, `compileClient`, `buildInitialScope`), with declared `parameters`/`arguments` making an entry callable. Its inline-body branch is "computed exactly when `bodyReturnsValue` holds" until this plan decides the usage half. It also computes the use set this plan needs: `collectCallableRefs` (`compile-element.ts:285`) lifted, plus `LIFECYCLE_KEYS` (line 270), plus the root's own `on*` keys.
 
-**What is missing**
+Verified at the working tree on 2026-09-26:
 
-- The compiled tiers ignore `parameters`/`arguments`: a helper such as `{ "parameters": ["x"], "body": "return x * 2" }` is callable in Studio and becomes a value on the built site, with `x` unbound.
-- The spec's "detects it is referenced reactively" and "no event binding" conditions are not implemented anywhere; classification is by body text. Either the rule is implemented (usage-based, as `collectCallableRefs` in `compile-element.ts` already does for `$src` entries, §5.3 4d) or the sentence is reconciled to the body-text rule. The detail phase decides; the parameter half is a bug in any case.
+- **The body-text rule kills bound handlers.** Compiling a page and an element whose button binds `onclick` to `toggle` (`"state.open = !state.open; return state.open"`) or `prune` (`"state.items = state.items.filter(i => { return !i.done })"`) emits `state.toggle = computed(…)` and `state.prune = computed(…)` in both targets. `bodyReturnsValue` is textual (`/\breturn\b[^\S\n]*(?![;}\s]|$)/`), so a `return` inside a callback counts. The consequence differs per tier and is never a working handler:
+  - the interpreter's `bindHandler` (`runtime.ts:1521`) resolves the `$ref` to the computed's value, finds no function and attaches nothing;
+  - `compile-element.ts` emits `@click="${(e) => s.toggle(s, e)}"`, which throws `TypeError` on each click;
+  - `compile-client.ts` wires `on.toggle`, which does not exist, so `addEventListener` gets `undefined`;
+  - `buildInitialScope` stores a lazy getter (`defineLazyScopeValue`), never a callable.
 
-**Enabled by `plan:spec/callable-classifier`**, which this plan requires. That plan builds the one document-level classifier every tier calls, with the "no `arguments`" condition in it, so the parameter half above is closed there. What stays here is the usage-half decision and the §5.3 4b text. If detail chooses the usage-based rule, it changes that classifier's inline-body branch, one place rather than four tiers. The size is `S` for that reason.
+  The same happens to an `onMount` whose body returns a value: `mount()` (`runtime.ts:248`) and the element's connect path (line 4445) test `typeof onMount === "function"` and skip it.
 
-**Related**
+- **`compile-client.ts` never puts a string-body handler on `state`.** `emitClientModule` (line 859) writes each one into `const on = {…}` (line 946) only. So `state.key(…)` from a template or from another body fails on a client-compiled page even for a plain handler. Probe: `go` with body `state.bump(state)` compiles to `go: (e) => { … state.bump(state) … }` with no `state.bump` anywhere in the module. The interpreter (`state[key]`), the element target (`this.state[key]`) and the build-time scope (`setOwnScopeValue`) all expose it. After `plan:spec/callable-classifier`, a parameterised body there becomes an `on` entry, which is still unreachable from its `state.dbl(…)` call site.
+- **The corpus does not move.** The tracked JSON documents hold 40 string-body Function entries in 13 files: `examples/components/*` (9), `packages/starters/sites/{real-estate,shop}/components/*` (2) and `sites/jxsuite.com/components/{site-search,theme-toggle}.json`. Taking the use set with root `on*` keys and lifecycle keys, 18 return a value and none is used as a callable, and 22 do not return a value and every one is used as a callable. The body-text rule and the usage rule give all 40 the same verdict.
+- Tests that pin today's inline verdicts: `runtime.test.ts` "Shape 4: Function with return in body → computed" (line 392) and the two parameter cases after it; `compile-element.test.ts` "signal functions become computed" (line 205); `compile-client.test.ts` "includes computed import when computed entries present" (line 597); `custom-elements.test.ts` line 548 (`onPick` read as `${state.onPick}`, never bound). None binds or calls a value-returning body, so none changes.
 
-- §5.3 4d (the external-Function classification rule, same machinery: `plan:spec/function-entry-tier-parity`), §19.4c (a parameterised entry is callable), §20.3 (the structured-body equivalent).
-- `compiler.md` §4 (custom element compilation).
+**Related.** §5.3 4d (`plan:spec/function-entry-tier-parity`, the external half of the same rule), §16.4 (lifecycle keys), §19.4c (`call` nodes; `parameters` make an entry callable), §20.3 (the structured-body equivalent, `plan:spec/compiled-element-parameterised-bodies`), `compiler.md` §4.
+
+## Outcome
+
+- spec.md §5.3 4b → Implemented. A string-body Function entry is a computed value exactly when it declares no parameters, the document never uses it as a callable, and its body returns a value. Every tier applies that one rule through the classifier.
+- A callable string-body entry is reachable as `state.key(…)` on a client-compiled page, as it already is in the other three tiers.
+- spec.md stays draft (it has other open items), so no graduation.
+
+## Decisions
+
+- **Open:** does use decide an inline body's role, as §5.3 4b's first paragraph and 4d's "matching the inline-body rule in 4b" say, or is 4b rewritten to the body-text rule? Recommendation: use decides (implement). Reasons:
+  - It fixes a silent class of dead handlers in every tier (a `return fetch(…)`, a `return` after an assignment, a `return` inside a `filter` callback).
+  - It gives inline and external entries one rule.
+  - It is one branch of a classifier that already computes the use set.
+  - It changes none of the 40 shipped entries.
+
+  The cost a maintainer signs: an entry's role is no longer readable from the entry alone. Binding a computed to an event elsewhere in the document turns it into a function, and its `${}` reads then render function text, exactly as a `$src` entry does today. If rejected, the disposition becomes `reconcile` and the workspaces shrink to `specs` and `docs`:
+  - 4b's paragraph at line 405 becomes "A Function entry with a string `body` is a computed value when it declares no `parameters` or `arguments` and its body returns a value; otherwise it is a function. Use does not enter into it: binding such an entry to an event attaches no handler."
+  - 4d's "matching the inline-body rule in 4b" is struck, coordinated with its owner.
+  - The compile-client step below moves to whichever plan owns `state.key(…)` reachability.
+
+- **Decided:** the order is declared parameters, then callable use, then body text. A string-body entry is callable when it declares a non-empty `parameters` or `arguments`; otherwise it is callable when the document uses it as one; otherwise it is computed when `bodyReturnsValue(body)` holds; otherwise it is a handler. The reason is that a callable use wins over a value read for `$src` entries (4d) and `collectCallableRefs` already defaults that way ("Defaulting the other way round would turn a called helper into a value and break its call site"), so one precedence serves both kinds of entry. There is no diagnostic for an entry that is both called and read as a value, as for `$src` today.
+- **Decided:** the use set is the classifier's own, unchanged, including its answer on root `on*` keys and on project-state entries (§19.4c's merge). The reason is that a second walker for inline bodies would be exactly the drift this program removes.
+- **Decided:** `bodyReturnsValue` stays textual. There is no parse to skip nested functions, because the usage rule makes its known false positive (a `return` in a callback) harmless for every bound or called handler. An entry nothing calls is exactly where the body text should decide, and a JavaScript parser in `@jxsuite/schema` would be a new dependency for an edge case.
+- **Decided:** `compile-client.ts` assigns every callable string-body state entry to `state`, and `on[key]` delegates to it. The reason is that the rewritten 4b counts `state.key(…)` as a callable use, and a verdict whose function is unreachable from that call site is not implemented in that tier. The emitted shape copies the element target's (`(state, e)`, declared names bound by name), so the two compiled targets call a string body alike. `$src` entries are left to the classifier and 4d.
+- **Decided:** the corpus agreement is an acceptance check, not a committed test. A committed test would need `EXTRA_EDGES` entries for `examples/`, `sites/` and `packages/starters/`, and a future document may legitimately get a different verdict than the body-text rule, which is the point of the change. The committed tests pin the rule.
+
+## Implementation
+
+1. **The classifier's inline-body branch** (`packages/schema/src/guards.ts`, the function `plan:spec/callable-classifier` exports beside `bodyReturnsValue`; use its landed name). For an entry with `typeof body === "string"`, the verdict becomes `declaresParameters || usesAsCallable.has(key) ? "callable" : bodyReturnsValue(body) ? "computed" : "callable"`, where `usesAsCallable` is the set the classifier already builds for bodyless `$src` entries. The doc comment states the four-step order and cites spec.md §5.3 4b and 4d. `bodyReturnsValue` is untouched; its comment gains one sentence: the test is textual, and a callable use decides first.
+2. **No per-tier classification edits.** `resolveFunction`, `emitElementModule`, `compileClient` and `buildInitialScope` already read the verdict once the prerequisite lands. Confirm in review that none of them still calls `bodyReturnsValue` directly (`git grep -n bodyReturnsValue packages/*/src` lists only `guards.ts`).
+3. **`packages/compiler/src/targets/compile-client.ts`, callable reachability.**
+   - `compileClient`: in the `isFunctionDef` branch, where a string body the verdict calls callable is pushed to `onEntries`, also add its key to a new `stateCallables: Set<string>`, and pass the set to `emitClientModule` as a new parameter (after `onEntries`). Synthetic `_h*` keys from inline `on*` definitions, mutating `$expression` entries and structured bodies are not added. Those are §19 and §20 lowerings with their own shapes.
+   - `emitClientModule`, where the `on` object is emitted (line 945): for a key in `stateCallables`, emit before `const on` the line `` `${refAccessor("state", escapeToken(key))} = (state, e) => { const fn = (${argNames.join(", ")}) => { ${body} }; return fn(${callArgs}); };` ``. Here `argNames` is `def.args ?? ["state"]` and `callArgs` maps `state` to `state` and any other name to `e`, which is today's `on` construction plus `return`. The `on` entry for that key becomes `` `${objectKey(key)}: (e) => ${refAccessor("state", escapeToken(key))}(state, e),` ``. Every other `on` entry is emitted as today.
+   - The module's JSDoc for `emitClientModule` gains the parameter. No `new Function` or `eval` is introduced (spec.md §21.1; `no-eval.test.ts` stays green unchanged).
+4. Spec and docs edits, as listed below.
+5. In the landing PR, delete this file. No plan requires it, so no dependent's `requires` changes.
+
+**Integration contract.** Once this lands:
+
+- For a string-body Function entry, the classifier's verdict follows the four-step order above: declared parameters, callable use (the classifier's own root-aware use set), `bodyReturnsValue`, handler. Every tier reads it.
+- On a client-compiled page, every callable string-body state entry is `state[key]` with signature `(state, e)`, and `on[key]` calls it.
+- spec.md §5.3 4b states the rule, defines "used as a callable" by pointing at §5.3 4d's list, and carries `Implemented`. 4d's "matching the inline-body rule in 4b" is true as written, so `plan:spec/function-entry-tier-parity` may rely on it without editing 4b.
+
+## Tests
+
+**`packages/schema`** (`bun test --isolate --coverage` from `packages/schema`). Extend the classifier's verdict-table test (the file `plan:spec/callable-classifier` adds) with an inline-body block:
+
+- "a value-returning body bound to an `on*` event is callable": `toggle` bound from a child button.
+- "a handler whose only `return` sits in a callback is callable when bound": `prune`.
+- "a value-returning body bound on the document root is callable": the root's own `onclick`.
+- "a value-returning body named as a lifecycle hook is callable": `onMount` with `"state.ran = true; return state.ran"`.
+- "a value-returning body called as `state.key(…)` from a template is callable": `fmt` read as `${state.fmt(state)}`.
+- "a value-returning body that is a `call` node's target is callable".
+- "a value-returning body that is only read stays computed": `label` read as `${state.label}`.
+- "callable use wins over a value read": `fmt` both called and read.
+- "a body with no value-returning `return` is a handler whether or not anything binds it".
+
+**`packages/runtime`** (`bun test --isolate --coverage` from `packages/runtime`):
+
+- `tests/runtime.test.ts`, beside "Shape 4: Function with return in body → computed":
+  - "Shape 4: a value-returning body bound to an event stays a handler". `buildScope` of a document whose child button binds `onclick` to `toggle`; `renderNode` the child; `click()`. Assert `typeof state.toggle === "function"` and `state.open === true`.
+  - "Shape 4: a value-returning body called from a template stays a function". `${state.fmt(state)}` renders the returned text, not an error.
+- `tests/mount.test.ts`, "mount — render, dispose, lifecycle": "an onMount whose body returns a value still runs". Mount a document whose `state.onMount` is `{ "$prototype": "Function", "body": "state.ran = true; return state.ran" }` and assert `m.scope.ran === true`.
+
+**`packages/compiler`** (`bun test --isolate --coverage` from `packages/compiler`):
+
+- `tests/compile-client.test.ts`:
+  - "a value-returning body bound to an event compiles to a handler". The module has no `state.toggle = computed(`, has `state.toggle = (state, e) =>` and `toggle: (e) => state.toggle(state, e)`.
+  - "a string-body handler is reachable as state.key(…)". The `bump`/`go` page: the module assigns `state.bump`, and `go`'s body is unchanged.
+  - "an inline on* handler is not put on state". No `state._h0`.
+- `tests/compile-element-render.test.ts`, new `describe("compiled element — a value-returning handler")` with its own document compiled into the same `TMP` dir. It binds `toggle` to a button and renders `${state.open}`. Clicking flips the text, and no error is thrown.
+- `tests/compile-element.test.ts`, "a value-returning onMount compiles to a function": the content contains `this.state.onMount = (state) => {` and not `this.state.onMount = computed(`.
+- `tests/prerender-runtime-state.test.ts`, through whatever input the prerequisite gives `buildInitialScope`:
+  - "a value-returning body the document calls is a scope function": the property descriptor of `fmt` has `value`, not `get`.
+  - "a template calling it prerenders the result": `evaluateStaticTemplate("${state.fmt(state)}", scope)` is the returned text.
+
+**Coverage.** No source file is added, so no manifest check moves. `guards.ts` gains one condition, and each outcome has a case. `compile-client.ts` gains one parameter and one branch, covered by the three client cases. Thresholds are `lines = 0.99, functions = 0.99` (`packages/schema`), `lines = 0.963, functions = 0.98` (`packages/runtime`) and `lines = 0.982, functions = 0.98` (`packages/compiler`). Ratchet only if the run shows a workspace's worst file rose.
+
+## Specs & docs
+
+**`specs/spec.md` §5.3 4b**, in place:
+
+- The marker (line 396) becomes the following, naming the export as landed:
+
+  > **Status: Implemented.** The interpreter (`resolveFunction`), both compiled targets and the build-time scope read one verdict per entry from the classifier beside `bodyReturnsValue` in `packages/schema/src/guards.ts`.
+
+- The paragraph at line 405 is replaced by: "A Function entry with a string `body` is a **computed value** when all three hold: it declares no `parameters` or `arguments`; the document never uses it as a callable (bound to an `on*` event, the target of a `call` node, called as `state.key(…)`, or named as a lifecycle hook, as §5.3 4d lists); and its body returns a value. The framework wraps it in `computed()`, so it is read like any other state entry and re-evaluates when the state it reads changes. Otherwise the entry is a function. A callable use decides before the body does, so a handler whose body returns a value still handles its event, and an entry that is both called and read is a function in both places."
+- The bare-`return;` paragraph (line 407) gains a closing sentence: "The test is textual, so a `return` inside a nested callback also counts; that matters only for an entry nothing calls or binds."
+- §5.3 4d: no edit. Its "matching the inline-body rule in 4b" becomes true.
+
+**Fragment:** `bun run spec:change spec.md minor -m "§5.3 4b: an inline Function body is a computed value only when it declares no parameters, nothing uses it as a callable, and it returns a value, in every tier; a bound handler whose body returns a value now handles its event."` It is minor because this is an implement, and the only behaviour it changes was broken in every tier.
+
+**Docs** (no em dashes). `bun run docs:sync` names `docs/framework/concepts/functions.md` (`code:` lists `compile-client.ts`; `spec:` cites `spec.md#5.3`) and `docs/framework/build.md` (`code:` lists `compile-client.ts`).
+
+- `functions.md`, "Inline computed values":
+  - The first paragraph becomes "A function with only a `body` that returns a value, declares no `arguments` or `parameters`, and is never called or bound is a computed value: the framework wraps it in `computed()`, and you read it like any other state entry:".
+  - After the guard-clause example, add "Use decides first. An entry you bind to an event, call as `state.helper(state)`, invoke through a `call` expression, or name as a lifecycle hook stays a function even when its body returns a value, so a handler ending in `return state.open` or with a `return` inside a callback still runs when clicked. Sidecar entries follow the same rule, below."
+- `functions.md`, "How it works": "A body-only function referenced from a reactive position is wrapped in `computed()` instead" becomes "A body that returns a value, declares no parameters and is never called or bound is wrapped in `computed()` instead".
+- `build.md`, line 155: "A `$prototype: "Function"` whose body returns is evaluated at build time" becomes "A computed `$prototype: "Function"` (one whose body returns a value and that nothing calls or binds) is evaluated at build time". The rest of the bullet is unchanged.
+- No other page cites §5.3 4b or lists a file this plan changes. `docs/extending/reference/implementation-status.md` is generated and picks up the marker.
+
+## Acceptance
+
+- From `packages/schema`, `packages/runtime` and `packages/compiler`, `bun test --isolate --coverage` is green with the new cases. `bun scripts/check-coverage-manifest.ts packages/schema` (and the same for `packages/runtime` and `packages/compiler`) passes from the root.
+- `git grep -n bodyReturnsValue -- 'packages/*/src'` lists only `packages/schema/src/guards.ts`.
+- Compiling the `toggle`/`prune` page from Context with `compileClient`, and the same document as an element with `compileElement`, emits no `computed(` for either key. The client module assigns `state.toggle` and `state.prune`.
+- Run the classifier over every tracked JSON document with a `state` object (`git ls-files '*.json'`). Each of the 40 string-body Function entries in 13 files gets the verdict `hasParams || !bodyReturnsValue(body) ? "callable" : "computed"` gives it: zero differences, 18 computed and 22 callable.
+- `bun run docs:status` shows spec.md §5.3 4b `Implemented`. `bun run plans:status --who-claims spec.md#4b` names no plan.
+- `bun run docs:spec-release` finds the fragment. `bun run plans:check`, `bun run docs:check`, `bun run docs:links` and `bun run docs:prose` are green.

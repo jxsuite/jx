@@ -1,38 +1,156 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - site-architecture.md#8.6
-size: M
+requires: []
 workspaces:
   - packages/studio
+size: M
 ---
 
-# The Search appearance modal edits a page's structured data as a form
+# Search appearance edits a page's Schema.org structured data as a form, and §8.6 states the command and the counters that ship
 
 ## Context
 
-`specs/site-architecture.md` §8.6, line 1069:
+`specs/site-architecture.md` §8.6, line 1071:
 
 > **Status: Partial.** The `Search appearance` modal ships the merged-`$head` previews with provenance, the counters, the warnings and the grouped live fields (`packages/studio/src/panels/seo-modal.ts`, `packages/studio/src/panels/head-panel.ts`). The Schema.org editor does not exist anywhere in `packages/studio`, and `document.openSeo` deliberately declares no `aiTool` (`studio-ui-guidelines.md` §12.4), where this section says it has one.
 
-Before the census the section led with `Implemented`; its rationale paragraph about the modal is kept below the new marker. The retired roadmap's "SEO panel" row was unchecked for the same missing editor.
+Before the census the section led with `Implemented`; the rationale paragraph about the modal (line 1073) stays as the marker's continuation. The retired roadmap's "SEO panel" row was unchecked for the same missing editor. The anchor holds three things: an unbuilt editor (implement), a command sentence the code contradicts on purpose (reconcile), and a counter figure the code and docs disagree with (reconcile). They rewrite the same list and paragraph, so one plan holds them.
 
-Two parts with different natures share the anchor, so one plan holds both: the Schema.org editor is an `implement`; the `aiTool` sentence is a reconcile, because the command omits the projection on purpose (the comment in `seoCommands` cites studio-ui-guidelines.md §12.4's rule that a command which only opens a modal for a person has no tool projection). The description counter's limit is also 160 (`SEO_LIMITS` in `head-panel.ts`) where the list says about 155; the detail phase picks one.
+**What exists** (verified against the working tree, 2026-09-27)
 
-**What exists**
+- `packages/studio/src/panels/seo-modal.ts`: `buildView` draws two groups (`page`, `og`) of `SeoEditRowView` rows; `writeField` commits a meta row through `upsertMeta` and the icon through `upsertLink`, an empty value removing the entry; `commitField` plus a per-key 300 ms debounce; `browseFor` and `uploadInto` serve media rows; `seoContextFor` picks the realm (a JSON document through `transact`, a markdown one through `applyContentMutation` into frontmatter `$head`). `seoCommands` declares no `aiTool`, with the comment "No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a modal for a person", and `packages/studio/tests/seo-modal.test.ts` asserts it.
+- `packages/studio/src/surfaces/seo.ts` and `seo.json`: the scope (`SeoView`, `SeoGroupView`, `SeoEditRowView`, `derive`) and ONE row template (`jx-field part="row"` over `jx-textfield part="entry"`, Upload and Browse on media rows) that every group renders.
+- `packages/studio/src/panels/head-panel.ts`: `buildSeoPreview`, `seoWarnings` (eight ids, each a consequence, decided on the merged value), `reportSeoProblems`, `SEO_LIMITS` (`title` 60, `description` 160, `og:title` 60, `og:description` 200), and `entryLabel`/`entryValue`, which the Page panel's Custom Tags (`customEntries`) and the Document Header card's Raw head tags (`rawEntries` in `frontmatter-panel.ts`) print.
+- The build side of JSON-LD ships: `renderHeadEntry` (`packages/site/src/head-merger.ts`) serializes an object `textContent` under `attributes: { "type": "application/ld+json" }`, `resolveHeadTemplates` (`packages/compiler/src/site/site-build.ts`) resolves templates inside it at any depth, and `headEntryKey` keys a script without `src` by its whole serialization, so a site-level and a page-level block both reach the page.
+- `docs/studio/editing/frontmatter.md` already says descriptions "are cut near 160".
+- `packages/studio/data/*.json` is where Studio keeps catalogs a reviewer edits without reading code (`stylebook-meta.json`, `elements-meta.json`).
 
-- `openSeoModal` and `seoCommands` in `packages/studio/src/panels/seo-modal.ts`, the surfaces `packages/studio/src/surfaces/seo.json`, `doc-header.json` and `panel-page.json`, and `packages/studio/tests/seo-modal.test.ts`.
-- `seoWarnings`, `SEO_LIMITS` and the merged-head preview in `packages/studio/src/panels/head-panel.ts`.
-- The build side of JSON-LD, which ships: an object `textContent` on a head entry with `attributes: { "type": "application/ld+json" }` is serialized with templates resolved. §8.5's example puts `type` at the top level, which the build drops; that example is the head-shape reconcile's, not this plan's.
+**What is missing, or wrong**
 
-**What is missing**
+- No structured-data editor: nothing under `packages/studio/src` mentions `ld+json`, JSON-LD or Schema.org.
+- Found while detailing: a hand-authored JSON-LD block prints in Custom Tags and Raw head tags as `<script>` with the value `[object Object]`, because `entryLabel` has no case for a `type` attribute and `entryValue` stringifies an object `textContent`.
+- Line 1079 says `document.openSeo` has "an `aiTool` projection"; it has none, by `studio-ui-guidelines.md` §12.4 rule 1 (a verb whose whole effect is opening a surface is not a tool).
+- Line 1084 says the description truncates at "~155 chars"; `SEO_LIMITS` and the docs say 160.
+- Line 1087 lists four of the eight warnings `seoWarnings` computes.
 
-- A form-based JSON-LD editor in the modal: pick a Schema.org type, fill its common properties (bindable to state, as §8.5 allows), and write one head entry in the `attributes` shape `docs/framework/site/seo.md` documents and the build reads. Which types it offers, and how it shows an authored block it cannot model, are decisions.
-- Warnings for structured data (a missing required property for the chosen type), if the detail phase wants them.
-- §8.6's command sentence reconciled to "no `aiTool` projection", and the ~155 figure made to agree with `SEO_LIMITS`.
+## Outcome
 
-**Related**
+- site-architecture.md §8.6 → Implemented: Search appearance has a third group, `Structured data`, which edits one Schema.org JSON-LD block of the page's own `$head` as a form, keeps and names what it cannot model, lists inherited blocks with their donor, and feeds two structured-data warnings into the list and Problems. The command paragraph says `document.openSeo` has no `aiTool` projection and why; the description counter reads ~160; the warnings bullet names what ships.
+- site-architecture.md does not graduate: its other open items keep their plans (`bun run plans:status --spec site-architecture`).
 
-- site-architecture.md §8.5 (structured data) and site-architecture.md §8.3 (the merged head the previews show).
-- studio-ui-guidelines.md §12.4 (tool projections).
+## Decisions
+
+- **Open:** which types the form offers. Recommendation: eight, `Article`, `BlogPosting`, `NewsArticle`, `Event`, `LocalBusiness`, `Organization`, `Person`, `Product`, with the properties in the table under Implementation, because each is a flat set of scalar properties plus single nested objects, which one row grammar can draw. `FAQPage`, `HowTo`, `Recipe` and `BreadcrumbList` stay out: each is built from repeating lists (questions, steps, ingredients, crumbs), which would need a list editor inside the modal, and a breadcrumb trail is derivable from the route, so it belongs to the build if anywhere. A page that has one keeps it, listed read-only.
+- **Open:** whether structured data warns about a missing required property, and against whose rules. Recommendation: yes, from a `required` list per type that follows Google Search Central's documentation for that type's result (Event: `name`, `startDate`, `location`; LocalBusiness: `name`, `address`; Product: `name`; the Article family, Organization and Person: none), with the page URL and the date it was read recorded beside the list, as `link-relations.ts` names the date of its registry snapshot. Schema.org itself requires nothing, so the only requirements that exist are a consumer's, and the message names that consumer: "Event structured data has no start date, which Google's event results require." Declining it leaves only the invalid-JSON warning below.
+- **Decided:** the form is a third group of the existing modal, `Structured data` (`key: "ld"`), drawn by the same row template, because §8.6 places the editor in Search appearance and `seo.json`'s groups are data precisely so a row is written once. The type picker is a `jx-select` inside the surface document (a native `<select>`, whose picker the platform draws above a modal), so nothing new mounts into a layer; image properties reuse `browseFor` and `uploadInto`. The Page panel gets no structured-data form: its sections mirror the meta rows only.
+- **Decided:** the form edits one block, the first page `$head` entry that `isStructuredDataEntry` accepts whose `textContent` is a plain object with a string `@type` the table offers and no `@graph`. Everything else is kept and named, never rewritten: a property with no field (top level or nested, `sameAs`, `@id`, `author.sameAs`) is listed as kept as written; a modelled path whose authored shape differs (an `author` array, a string `offers`) loses its rows and is listed instead; every other JSON-LD block on the page (a second block, an unoffered type, an `@graph`, an array, text) is listed read-only; and each block in the site's or the layout's `$head` is listed with its donor ("Site head", the layout's name), the provenance rule the previews already follow. Removal of any block stays with Custom Tags.
+- **Decided:** writes are copy-on-write: `jsonClone` (`src/utils/studio-utils.ts`) the block's `textContent`, edit the clone, assign a new entry at the same index, as `upsertMeta` assigns a new entry. `applyContentMutation` hands the mutator a shallow copy of frontmatter `$head`, so an in-place edit would change the frontmatter object behind `mutateUpdateFrontmatter`'s back, and `structuredClone` refuses the `@vue/reactivity` proxy the JSON realm hands over.
+- **Decided:** every field is text and takes a template string as typed (dates and URLs included; only enumerations are a select), because §8.5 resolves templates inside the block and a date input cannot hold `${state.post.data.pubDate}`. Values are written as strings; an authored number is read with `String()` and kept until edited. No data picker: none exists in the modal, and a template is what the meta rows beside it accept already.
+- **Decided:** choosing a type on a page with no editable block appends `{ "tagName": "script", "attributes": { "type": "application/ld+json" }, "textContent": { "@context": "https://schema.org", "@type": <type> } }`; changing the type rewrites `@type` only and keeps every property (the unmodelled ones join the kept list); `None` removes the edited block and nothing else, in one undoable transaction, as clearing a meta row removes its entry. A nested object the form creates gets the `@type` the table names (`author` → `Person`); an authored nested `@type` is kept. Clearing a field deletes the leaf and prunes any object left holding only `@type`.
+- **Decided:** a `structured-data-invalid` warning, filed once, when a page JSON-LD entry's `textContent` is a string that is not valid JSON and holds no template, because Jx can check that itself and a search engine silently ignores such a block. No warning for a `type` written at the top level of an entry: whether that shape is honoured or warned about in the build is `plan:site-architecture/head-and-layout-shape`'s decision, and `isStructuredDataEntry` is the one predicate that plan widens if it honours it. No rich-result picture: §8.6 draws the SERP row and the social card, and a rich result's layout is each engine's and each type's.
+- **Decided:** 160 for the description, because `SEO_LIMITS` and `docs/studio/editing/frontmatter.md` already agree on it and either figure is an approximation (`visibleLength` counts graphemes, not pixels).
+- **Decided:** §8.6's command sentence is reconciled to the code, not the reverse, because `studio-ui-guidelines.md` §12.4 rule 1 excludes a verb whose whole effect is opening a surface; the form's writes are field commits like the meta rows', not command records, so no `aiTool` appears either.
+- **Decided:** no `requires`. The form writes and reads the `attributes` shape that ships today (pinned by `packages/site/tests/head-merger.test.ts`), and the §8.6 text below spells that shape out instead of pointing at §8.5's example, so it is right before and after `plan:site-architecture/head-and-layout-shape` rewrites that example. `plan:ui/overlay-transitions-and-slot` decides how `browseFor`'s menu mounts inside the modal; the type picker is a native select and needs none of it, and the image rows reuse `browseFor`, so whichever way that plan decides covers them.
+- **Decided:** no Standards Alignment row: Schema.org has no issuing body `standards.md` §2.1 recognizes, and §2.2 sends such a vocabulary to prose; the JSON-LD 1.1 row already binds §8.5, which does the serializing.
+
+## Implementation
+
+**`packages/studio/data/structured-data-meta.json`** (new). `$comment`, `context: "https://schema.org"`, and `types`, each `{ type, label, extends?, objects, properties, requirements }`: `properties` is an ordered list of `{ path, label, kind, options? }` with `kind` one of `text`, `multiline`, `url`, `date`, `media`, `choice`; `objects` maps a nested path to the `@type` written when the form creates it; `requirements` is `{ source, read, required }` (the second Open). `extends` copies another type's lists, so the Article family is declared once. Content, subject to the first Open:
+
+| Type (label)                                                               | Properties, in order                                                                                                                                                                                                                                                                      | `objects`                                                                                    |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Article` (Article); `BlogPosting` (Blog post) and `NewsArticle` extend it | `headline`, `description` (multiline), `image` (media), `datePublished`, `dateModified` (date), `author.name`, `author.url` (url), `publisher.name`, `publisher.logo` (media)                                                                                                             | `author` Person, `publisher` Organization                                                    |
+| `Event`                                                                    | `name`, `description`, `image`, `startDate`, `endDate`, `eventStatus` and `eventAttendanceMode` (choice), `location.name`, `location.address.streetAddress`, `.addressLocality`, `.postalCode`, `.addressCountry`, `offers.price`, `offers.priceCurrency`, `offers.url`, `organizer.name` | `location` Place, `location.address` PostalAddress, `offers` Offer, `organizer` Organization |
+| `LocalBusiness` (Local business)                                           | `name`, `description`, `image`, `url`, `telephone`, `priceRange`, `openingHours`, `address.streetAddress`, `.addressLocality`, `.postalCode`, `.addressCountry`                                                                                                                           | `address` PostalAddress                                                                      |
+| `Organization`                                                             | `name`, `url`, `logo` (media), `description`, `telephone`                                                                                                                                                                                                                                 | none                                                                                         |
+| `Person`                                                                   | `name`, `url`, `image`, `jobTitle`, `description`                                                                                                                                                                                                                                         | none                                                                                         |
+| `Product`                                                                  | `name`, `description`, `image`, `sku`, `brand.name`, `offers.price`, `offers.priceCurrency`, `offers.availability` (choice), `offers.url`                                                                                                                                                 | `brand` Brand, `offers` Offer                                                                |
+
+Choice options are full Schema.org URLs with a plain label and a leading "Not set": `eventStatus` EventScheduled, EventCancelled, EventPostponed, EventRescheduled, EventMovedOnline; `eventAttendanceMode` Offline/Online/MixedEventAttendanceMode; `availability` InStock, OutOfStock, PreOrder, BackOrder, Discontinued. An authored value outside the list is offered as an extra option labelled as written, so opening the modal never rewrites it.
+
+**`packages/studio/src/panels/structured-data.ts`** (new, pure, `@docs studio/editing/frontmatter`; imports the JSON, `jsonClone`, and `SeoWarning`/`JxHeadEntry`/`JxMutableNode` as types only, so no runtime cycle with `head-panel.ts`):
+
+- `LD_JSON = "application/ld+json"`; `isStructuredDataEntry(entry)`: `tagName === "script"` and `attributes.type`, trimmed and lowercased, equals `LD_JSON`. Only `attributes` is read, as the build does.
+- `STRUCTURED_DATA_TYPES: readonly StructuredDataType[]`, the table with `extends` resolved; `structuredDataType(type)` looks one up.
+- `structuredLabel(entry)`: the `@type` (joined when an array), `@graph` node types, or `JSON-LD` for text.
+- `readStructuredData(head): StructuredBlockRead` = `{ index: number | null, type: string, values: Record<string, string>, blocked: string[], kept: string[], others: string[] }`, per the block-selection decision: `values` for every drawable path (`""` when absent), `blocked` the modelled paths whose shape differs, `kept` the leaf paths the table does not model plus the blocked keys, `others` one label per JSON-LD entry not edited ("BreadcrumbList", "a second Event block", "@graph: WebSite, Organization", "JSON-LD text").
+- `inheritedStructuredData(site, layout, layoutName): { label: string; donor: string }[]`.
+- `setStructuredType(doc, type)` and `setStructuredValue(doc, path, value)`, per the write decisions. `setStructuredType` throws `RangeError` for a type the table does not offer; `setStructuredValue` is a no-op with no edited block (a pending keystroke landing after `None`) and throws `RangeError` for a path the block's type does not declare.
+- `structuredDataWarnings(head): SeoWarning[]`: `structured-data-invalid` (field `ld+json`) at most once, then one `structured-data-<path>-missing` (field `<Type>.<path>`) per empty `required` path of the edited block, where an object path counts as present when it holds any property besides `@type`.
+
+**`packages/studio/src/panels/head-panel.ts`**
+
+- `entryLabel`: a `script` with a `type` attribute and no `src` prints `<script type="…">`. `entryValue`: an object `textContent` prints `structuredLabel(entry)`. Both surfaces that list custom entries pick this up.
+- `SeoPreview` gains `structuredData: { page: StructuredBlockRead; inherited: { label; donor }[] }`, filled by `buildSeoPreview` from the layers it already has (`layers.layoutName` for the donor). `seoWarnings` appends `structuredDataWarnings(layers.page)` after `head-title-ignored`, so `reportSeoProblems` files them with no change.
+
+**`packages/studio/src/panels/seo-modal.ts`**
+
+- `buildView` adds the third group from `preview.structuredData`: `title: "Structured data"`, `note: "Schema.org facts, written as a JSON-LD block in this page's head."`, `typeChoice: { value, options }` ("None" first, then the table's labels), rows `editRow("ld:" + path, …)` for every drawable property (`media` → Upload and Browse, `multiline`, `choice` with its options), and `aside` lines: one "Kept as written: …" line when `kept` is non-empty, then each of `others` ("…, not edited here"), then each inherited block ("…, from Site head"). The existing groups get `typeChoice: null` and `aside: []`.
+- `writeField`: a key starting `ld:` routes to `setStructuredValue(doc, key.slice(3), trimmed)`; `placeholderFor` gives `date` rows `YYYY-MM-DD` and `url` rows `https://…`.
+- `setType(type)`: `applyMutation((doc) => setStructuredType(doc, type))`, then `renderSeoModal()`. Handed to the surface as `onSetType`. A text row has already committed on its `change` when focus reaches the select, so no pending handling is added.
+
+**`packages/studio/src/surfaces/seo.ts` and `seo.json`**
+
+- `SeoEditRowView` gains `control: "text" | "choice"` and `options: { value: string; label: string }[]`; `SeoGroupView` gains `typeChoice: { value: string; options: … } | null` and `aside: { key: string; text: string }[]`; `derive` adds `hasTypeChoice`, `hasAside`; `SeoSurfaceOptions` gains `onSetType`, the scope `setType`.
+- `seo.json`, group template: after `note-slot`, a `$switch` on `hasTypeChoice` drawing `jx-select part="ld-type"` (`label: "Type"`, `size: "sm"`, `onchange` calls `#/state/setType` with `event#/target/value`); after the rows, a `$switch` on `hasAside` drawing `ul part="aside"` of `li part="aside-item"`. Row template: the control becomes a `$switch` on `$map/item/control`, `text` keeping today's `jx-textfield part="entry"` unchanged and `choice` drawing `jx-select part="choice"` whose `onchange` calls `#/state/commit`. Each addition carries a `$description`; the group `$description` gains a sentence on the third group.
+
+**Integration contract.** Once this lands, a plan may rely on: `isStructuredDataEntry` as the single definition of a JSON-LD head entry in Studio (a plan that makes the build honour a top-level `type` widens it here); `readStructuredData`, `setStructuredType`, `setStructuredValue`, `structuredDataWarnings` and `STRUCTURED_DATA_TYPES` as pure functions over a `$head` array; `SeoPreview.structuredData`; warning ids `structured-data-invalid` and `structured-data-<path>-missing`; rows keyed `ld:<path>` in Search appearance, image rows served by `browseFor`; and §8.6 stating no `aiTool` for `document.openSeo`. It adds no renderer name, no `renderOnly` call and no command record, and keeps `EDIT_DEBOUNCE_MS` as the modal's one debounce.
+
+## Tests
+
+`bun test --isolate --coverage` from `packages/studio`.
+
+- **`packages/studio/tests/structured-data.test.ts`** (new, no DOM):
+  - `the type table is well formed`: every type has a label; every property a known kind; every `choice` options; every nested path's parent in `objects`; every `extends` and every `required` path resolves; `read` is an ISO date.
+  - `only attributes.type makes an entry JSON-LD`: case and whitespace tolerated; a top-level `type` is not read.
+  - `the first block of an offered type is edited, the rest are named`: a `BreadcrumbList` block then an `Article` gives `index` 1, its values, and `others` `["BreadcrumbList"]`; two `Event` blocks name the second.
+  - `what the form cannot model is kept and listed`: `sameAs`, `@id` and `author.sameAs` in `kept`; an `author` array blocks `author.name`/`author.url` and lists `author`; an `@graph`, an array and a text block land in `others`.
+  - `choosing a type appends one entry in the attributes shape`: exact equality with the entry in the decision; `@context` from the table.
+  - `a type change keeps every property; None removes only the edited block`.
+  - `nested objects are created with their type and pruned when emptied`: `location.address.postalCode` on an Event, then cleared; an authored `author` of `@type` Organization keeps its type.
+  - `writes never touch the input`: a deep-frozen head survives `setStructuredValue` and `setStructuredType`, and the new entry is a new object.
+  - `template strings and authored numbers`: `${state.post.data.title}` is written verbatim; an authored numeric `price` reads as `"10"`.
+  - `refusals`: an unoffered type and an undeclared path throw `RangeError`; a value with no block is a no-op.
+  - `structuredDataWarnings`: invalid JSON text warns once; text holding `${` does not; each required path warns when empty and not when set or templated; Article gives none.
+  - `inheritedStructuredData names the donor`: site → "Site head", layout → its display name.
+- **`packages/studio/tests/head-panel.test.ts`**: in `custom $head entries`, `a JSON-LD block is listed by its type` (`{ name: '<script type="application/ld+json">', value: "BlogPosting" }`); in `buildSeoPreview`, `the preview carries the page's structured data and the inherited blocks`; in `seoWarnings`, `structured-data warnings follow the head warnings` (the existing `full()` fixture still yields none).
+- **`packages/studio/tests/seo-modal.test.ts`**: `the form is grouped by the preview card each half feeds` becomes three titles and `["page", "og", "ld"]`; a new `describe("structured data")`: `picking a type writes one JSON-LD entry onto the document root`; `a markdown page keeps the block in frontmatter $head`; `typing debounces and change commits into the nested object` (`ld:author.name`); `a choice row commits the Schema.org URL` (`ld:offers.availability`); `None removes the block and leaves another JSON-LD block alone`; `the aside names kept properties, other blocks and inherited ones with their donor`; `an image property carries Upload and Browse`; `structured-data warnings are filed as Problems`.
+- **`packages/studio/tests/frontmatter-panel.test.ts`**, `route and disclosures`: the Raw head tags list a JSON-LD block by its type.
+- Stay green unchanged: `check-surface-purity.test.ts`, `surfaces-a11y.test.ts`, `seo-modal-media.test.ts`.
+
+Coverage: `packages/studio/bunfig.toml` gates every file at lines 0.958, functions 0.941. `structured-data.ts` is new and pure, so aim for 100%; the manifest check (`bun scripts/check-coverage-manifest.ts packages/studio`) needs it in `coverage/lcov.info`, which the new test file's static import guarantees. The floors belong to untouched files, so no ratchet is due. The JSON table is data, outside the manifest.
+
+## Specs & docs
+
+**site-architecture.md §8.6**, in place:
+
+- Line 1071: the marker becomes `> **Status: Implemented.** The `Search appearance` modal ships the merged-`$head` previews with provenance, the counters, the warnings, the grouped live fields and the structured-data form (`packages/studio/src/panels/seo-modal.ts`, `packages/studio/src/panels/head-panel.ts`, `packages/studio/src/panels/structured-data.ts`).` The continuation paragraph (line 1073) is unchanged.
+- Line 1079: "a document-level command in the palette, with an `aiTool` projection" becomes "a document-level command in the palette, with no `aiTool` projection, because a verb whose whole effect is opening a surface for a person is not a tool (`studio-ui-guidelines.md` §12.4)".
+- Line 1084: "~155 chars" becomes "~160 chars".
+- Line 1086: the bullet becomes "**Structured data:** a form over one Schema.org JSON-LD block (below)".
+- Line 1087: the bullet becomes "**Warnings:** missing title, description, Open Graph title, description or image; a counted field over its budget; no site URL; a `<title>` in `$head`; and structured data that is not valid JSON or lacks a property its type requires".
+- Line 1089: after "the Open Graph four)" add ", then `Structured data`".
+- Two paragraphs appended after line 1089:
+  - "**Structured data is a form over one block.** The `Structured data` group edits one entry of the page's own `$head`, written as `{ "tagName": "script", "attributes": { "type": "application/ld+json" }, "textContent": { "@context": "https://schema.org", "@type": … } }`, which §8.5 serializes. A type picker offers Article, BlogPosting, NewsArticle, Event, LocalBusiness, Organization, Person and Product, each drawing its common properties as fields; a nested property (`author`, `offers`, `location`, `address`) creates its object with the Schema.org type it needs. Every field takes a template string, resolved as §8.5 says. Changing the type keeps every property; `None` removes the block. The warnings judge this block: text that is not valid JSON, and a property the type's table marks required, where required means what the search engine the table cites requires, since Schema.org requires nothing. Schema.org has no issuing body `standards.md` §2.1 recognizes, so it is named here rather than in §16."
+  - "**What the form cannot model it keeps and names.** It edits the first block whose `@type` it offers. A property with no field is kept as written and listed; every other JSON-LD block on the page, and every block the page inherits from the site or its layout, is listed read-only with its donor, the provenance rule the previews follow. The Page panel's custom tags remain where a block is removed."
+  - Adjust both to the Open outcomes (the type list; drop the required clause if the second Open is declined).
+- Fragment: `bun run spec:change site-architecture.md minor -m "§8.6: Search appearance edits one Schema.org JSON-LD block of the page as a form, with a closed list of types, template strings accepted, and unmodelled properties and blocks kept and listed; structured data that is invalid or lacks a required property is warned about; the description is counted to 160; and document.openSeo is stated to have no assistant tool."`
+
+**Docs** (no em dashes):
+
+- `docs/studio/editing/frontmatter.md` (`spec: site-architecture.md#8.6`; `code:` lists `head-panel.ts` and `seo-modal.ts`): add `packages/studio/src/panels/structured-data.ts` to `code:`. In "The fields themselves", "in two groups named after the preview each one feeds" becomes "in three groups. The first two are named after the preview each one feeds", and a new `### Structured data` subsection follows it: what structured data is for, the **Type** picker and its eight types, nested fields built for you, template strings (`${state.post.data.title}` on a post template), **None** removes the block, what it keeps and lists (unmodelled properties, other blocks, inherited blocks with their source), and removal through Custom Tags. In "The warnings", two bullets: a structured-data block that is not valid JSON, which search engines ignore; and a required property left empty, naming the search engine that requires it. In "Custom Tags", one sentence: a structured-data block is listed by its Schema.org type, for example `BlogPosting`.
+- `docs/framework/site/seo.md` (`spec: site-architecture.md#8`), "Structured data": append "In Studio, the **Structured data** group of Search appearance writes this entry for you; see [Frontmatter and page metadata](/docs/studio/editing/frontmatter#structured-data)."
+- `docs/images/seo-modal.png`: the `screenshots` lane re-captures it (this plan touches `packages/studio/src/**`); re-read the page it lists when it does. No shot is re-authored.
+- No other page cites `site-architecture.md#8.6` or lists a changed file; `docs/studio/interface/commands.md` is generated. `plans/site-architecture/README.md` needs no edit.
+
+## Acceptance
+
+- `bun test --isolate --coverage` passes in `packages/studio` with no file under its threshold, and `bun scripts/check-coverage-manifest.ts packages/studio` passes.
+- `bun --cwd packages/studio scripts/check-surface-purity.ts` and `bun scripts/check-shot-contract.ts` are green.
+- In Studio (`packages/studio:verify`), open a page of a site project, run Search Appearance, pick **Blog post**, type a headline and an author; the page's `$head` gains one entry `{ tagName: "script", attributes: { type: "application/ld+json" }, textContent: { "@context": "https://schema.org", "@type": "BlogPosting", headline, author: { "@type": "Person", name } } }`, and `jx build` emits it inside `<script type="application/ld+json">`. Choosing **None** removes it; Undo restores it.
+- The Page panel's Custom Tags list that block as `<script type="application/ld+json">` with the value `BlogPosting`.
+- `grep -n "with an \`aiTool\` projection\|155 chars" specs/site-architecture.md` prints nothing.
+- `bun run docs:status`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:spec-release` and `bun run plans:check` are green; `bun run plans:status --spec site-architecture` no longer lists `site-architecture.md#8.6`.

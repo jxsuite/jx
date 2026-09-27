@@ -1,12 +1,13 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - spec.md#11.2a
-size: S
+requires: []
 workspaces:
   - packages/compiler
   - packages/runtime
+size: S
 ---
 
 # A compiled page reads and writes a `Cookie` by the same attribute rules as the runtime
@@ -17,18 +18,79 @@ workspaces:
 
 > **Status: Partial.** The runtime conforms (`serializeCookie` and `readCookie` in `packages/runtime/src/cookie.ts`). The compiled client target does not: `emitCookieInit` in `compile-client.ts` reads the cookie with a regular expression built from the author's name, and never writes the cookie back, so a compiled page neither persists a change nor applies any of the derived attributes.
 
-The marker was a bare `Implemented` before the census; the runtime half is what it described.
+The marker was a bare `Implemented` before the census; the runtime half is what it described. Verified against the code:
 
-**What exists**
+- `packages/runtime/src/cookie.ts` has no imports. `readCookie(header, name)` splits the header; `serializeCookie(name, value, options)` applies the `__Host-` (`Secure`, `Path=/`, no `Domain`), `__Secure-` (`Secure`) and `SameSite=None` (`Secure`, either case) derivations and emits no `HttpOnly` or `Expires`. The prefixes are module-private constants (`HOST_PREFIX`, `SECURE_PREFIX`). Neither function is exported from `@jxsuite/runtime`; only `runtime.ts` imports them. Covered by `packages/runtime/tests/cookie.test.ts`.
+- The runtime's `case "Cookie"` in `resolvePrototype` (`packages/runtime/src/runtime.ts`, line 2924) decodes the raw value in a local `read()` closure (`JSON.parse(decodeURIComponent(raw))`, falling back to the raw text), seeds `ref(read() ?? def.default ?? null)`, and registers an `effect` that assigns `serializeCookie(name, value, def)` to `document.cookie`. The effect's first run writes the cookie on creation, so the default reaches the cookie jar on first load. Covered by `packages/runtime/tests/runtime-gaps.test.ts` ("Cookie gaps") and `runtime.test.ts` ("Cookie: reads, writes cookie").
+- `emitCookieInit(key, cookieName, defaultVal)` in `packages/compiler/src/targets/compile-client.ts` (line 1043, called at line 224) emits `document.cookie.match(new RegExp("(?:^|; )<name>=([^;]*)"))` and no write. The name is pasted raw into a JS string literal, so a name containing `"` is a SyntaxError in a module the build reports as written, and one containing `.` or `(` matches the wrong cookie or throws at load: the exact failure `cookie.ts`'s header essay records for the old runtime reader. The state key is pasted raw too (`state.${key}`), where the rest of the module goes through `refAccessor`/`objectKey`.
+- The client target is what `compile()` (`packages/compiler/src/compiler.ts`, route 3) uses for a dynamic page, so this is the path every built page with a page-level `Cookie` entry takes. The element target (`compile-element.ts`) lowers no `Cookie` at all; `extractInitialValue` makes the entry its `default`. That is §11.2's `element target: default only` cell, owned by `plan:spec/web-api-prototype-parity`, which requires this plan and expects to call its emitter.
 
-- `packages/runtime/src/cookie.ts`: `serializeCookie` (the `__Host-`, `__Secure-` and `SameSite=None` derivations; no `HttpOnly`, no `Expires`) and `readCookie` (splits the header). `packages/runtime/tests/cookie.test.ts`.
-- `emitCookieInit` in `packages/compiler/src/targets/compile-client.ts` emits `document.cookie.match(new RegExp("(?:^|; )<name>=([^;]*)"))` and no write.
+**What is missing:** a compiled read that splits the header, a persisting write that applies §11.2a's derivations, and one definition of the rule shared by both tiers. The spec-wide decision in `plans/spec/README.md` fixes the mechanism: generated modules load without `@jxsuite/runtime`, so the rule is inlined from runtime exports with a drift test, as `attrHelperSource()` does for §8.3.
 
-**What is missing**
+## Outcome
 
-- The compiled client reads by splitting the header and writes through an effect that serializes with the §11.2a rules. The generated module loads without `@jxsuite/runtime`, so the rule is inlined from one source, the way `attrHelperSource()` serializes `booleanAttrValue` (§8.3), with a drift test.
-- The element target has no `Cookie` lowering at all; that is §11.2's (`plan:spec/web-api-prototype-parity`).
+- spec.md §11.2a → Implemented. A page built by the client target reads its `Cookie` entry by splitting the header, persists every change through an effect, and applies the three derived attributes, through an inlined helper a test holds equal to the runtime's `readCookieValue` and `serializeCookie` over every prefix, attribute and value combination.
+- The element target's `Cookie` lowering stays §11.2's, but is one call away: `emitCookieBinding` and `cookieHelperSource` are exported from `packages/compiler/src/shared.ts` with the option shape `emitRequestFetch` already uses for that target.
 
-**Related**
+## Decisions
 
-- §11.2, §8.3 (the inlined-helper precedent).
+- **Decided:** the helper's source lives in the compiler (`cookieHelperSource()` beside `attrHelperSource()` in `packages/compiler/src/shared.ts`), with the two prefixes serialized from new runtime exports and the logic held to the runtime's by a behavioural drift test, because a code string in the runtime would ship in `dist/runtime.js` to every interpreting host that never runs it, and `Function.prototype.toString()` of the runtime functions depends on whichever transpiler loaded `cookie.ts` (the compiler also runs under plain Node, per `packages/compiler/src/site/bundler.ts`) and cannot carry the module-level prefix constants. The drift test compares outputs rather than text, so it catches a changed branch as well as a changed prefix, which the §8.3 precedent's literal comparison could not.
+- **Decided:** the runtime's value decoding moves out of the `resolvePrototype` closure into `cookie.ts` as `readCookieValue(header, name)`, because otherwise the compiled decode (percent-decode, JSON parse, raw fallback, JSON `null` falling through to `default`) would be a second definition with nothing holding it to the first. The runtime's behaviour is unchanged.
+- **Decided:** the compiled binding reproduces the runtime exactly, including writing JSON `null` rather than deleting and reading a stored JSON `null` as absent, because §11.2a is a parity contract; changing either is a spec change for both tiers, not part of closing this item.
+- **Decided:** the emitter moves to `shared.ts` as `emitCookieBinding(key, def, { statePrefix, indent, collect })`, the `emitRequestFetch` signature, and the element target is not touched here, because its `LocalStorage`, `SessionStorage` and `Cookie` lowerings need one design for connect-time reads and effect teardown, which §11.2's plan owns; this plan gives it the emitter and helper to call.
+- **Decided:** the helper is emitted only into a module with a `Cookie` entry, and the emitted block carries no document-supplied text outside JSON string literals (no name or key in the `//` comment, the key through `refAccessor(statePrefix, escapeToken(key))`), because a comment ends at U+2028 and a raw key such as `user.name` is a SyntaxError, and a page with no cookie should not pay for the helper.
+- **Open:** does a compiled page write the cookie on load, before any change? Recommendation: yes, and §11.2a says so, because the runtime's effect already does (and so do both storage prototypes), an interpreted and a built page must send the server the same cookie, and write-on-change-only would be a contract change across §11.2's storage rows. The consequence to sign: built sites with a page-level `Cookie` entry start setting that cookie on first visit, which they silently did not before, and that matters to a site's cookie-consent posture.
+- **Open:** add an RFC 6265 row to spec.md §18 binding §11.2a? Recommendation: yes, as `**Subset**`, because §11.2a binds RFC 6265bis normatively and §18 has no row for it (extensions.md §16's RFC 6265 row already points here), and this pull request is when both tiers become evidence. `RFC 6265` is in `scripts/docs/standards.json`; 6265bis is a draft and is cited in the note, as extensions.md does.
+
+## Implementation
+
+1. **`packages/runtime/src/cookie.ts`**
+   - Rename `HOST_PREFIX`/`SECURE_PREFIX` to exported `COOKIE_HOST_PREFIX = "__Host-"` and `COOKIE_SECURE_PREFIX = "__Secure-"`; `serializeCookie` reads them.
+   - Add `readCookieValue(header: string, name: string): unknown`: `readCookie`, then `null` when absent, else `JSON.parse(decodeURIComponent(raw))`, falling back to `raw` when either throws. This is the body of the runtime's `read()` closure, moved.
+   - Extend the header essay with one paragraph: the compiled targets inline a copy (`cookieHelperSource` in the compiler) and a compiler test holds it to these functions, so an edit here that the copy does not follow goes red there.
+2. **`packages/runtime/src/runtime.ts`**: the `Cookie` case becomes `ref(readCookieValue(document.cookie, name) ?? def.default ?? null)` with the existing effect. Re-export `COOKIE_HOST_PREFIX`, `COOKIE_SECURE_PREFIX`, `readCookie`, `readCookieValue`, `serializeCookie` and `type CookieOptions` from `./cookie.ts` in a block beside the `./css.ts` re-exports, so the compiler reaches them through the `@jxsuite/runtime` entry it already imports (`enumeratedAttrNames` is the precedent) and the package `exports` map is unchanged.
+3. **`packages/compiler/src/shared.ts`**
+   - `export const COOKIE_READ_HELPER = "__jxCookieRead"` and `export const COOKIE_WRITE_HELPER = "__jxCookieText"`, prefixed like `ATTR_HELPER` because they share scope with the author's bindings.
+   - `export function cookieHelperSource(): string`: two `function` declarations in plain ES2020. `__jxCookieRead(h, n)` splits `h` on `;`, compares the trimmed name, and decodes as `readCookieValue` does. `__jxCookieText(n, v, o)` builds the parts in `serializeCookie`'s order (`Max-Age` when `o.maxAge !== undefined`, `Path`, `Domain`, `Secure`, `SameSite`), with the prefixes written as `JSON.stringify(COOKIE_HOST_PREFIX)` and `JSON.stringify(COOKIE_SECURE_PREFIX)` and the `SameSite` test as `o.sameSite?.toLowerCase() === "none"`. Its doc comment carries the "why inlined" paragraph, pointing at `attrHelperSource`.
+   - `export function emitCookieBinding(key, def: JxPrototypeDef, opts: { statePrefix?: string; indent?: string; collect?: string } = {})`: a block binding `const _n = <JSON name>` (`def.name ?? key`) and `const _o = <JSON of def's domain, maxAge, path, sameSite, secure, undefined ones omitted>`, then `<accessor> = __jxCookieRead(document.cookie, _n) ?? <JSON default ?? null>;`, then `effect(() => { document.cookie = __jxCookieText(_n, <accessor>, _o); })` wrapped in `<collect>.push(…)` when `collect` is given. `<accessor>` is `refAccessor(statePrefix, escapeToken(key))` (import both from `@jxsuite/runtime/pointer`, which `shared.ts` already imports `readPath` from). The comment line is `// Cookie entry`. Each line is prefixed with `indent`, as in `emitRequestFetch`.
+4. **`packages/compiler/src/targets/compile-client.ts`**: delete `emitCookieInit`. The `Cookie` branch keeps `stateEntries.push([key, null])`, pushes `emitCookieBinding(key, def)`, and sets a `needsCookie` flag that `compileClient` passes to `emitClientModule` (a new trailing parameter), which pushes `cookieHelperSource()` directly after `attrHelperSource()` when set. Update the "Prototype init emitters" comment to say the cookie binding lives in `shared.ts` for the element target too.
+5. **`packages/compiler/bunfig.toml`**: add `"**/jx-cookie-helper-*/**"` to `coveragePathIgnorePatterns`, with a comment in the style of the four temp-module entries already there: the drift test imports the emitted helper from a temp directory, and it is generated output, not compiler source.
+
+**Integration contract.** Once this lands, a plan may rely on: `@jxsuite/runtime` exporting `COOKIE_HOST_PREFIX`, `COOKIE_SECURE_PREFIX`, `readCookie`, `readCookieValue`, `serializeCookie` and `CookieOptions`; `packages/compiler/src/shared.ts` exporting `cookieHelperSource()`, `COOKIE_READ_HELPER`, `COOKIE_WRITE_HELPER` and `emitCookieBinding(key, def, { statePrefix, indent, collect })`, whose block reads on execution, writes on its effect's first run and on every change, and pushes the effect's runner onto `collect` for teardown. A target that lowers a `Cookie` entry calls `emitCookieBinding` and emits `cookieHelperSource()` once in its preamble (for the element target, beside `attrHelperSource()` in `emitElementModule`); the drift test then covers it without a new case. spec.md §11.2a reads Implemented, and §11.2's `Cookie` cell still reads `element target: default only`.
+
+## Tests
+
+Run from each workspace directory with `bun test --isolate --coverage`, then `bun scripts/check-coverage-manifest.ts packages/compiler` and `… packages/runtime`.
+
+- **`packages/runtime/tests/cookie.test.ts`**, new `describe("readCookieValue")`: "decodes a JSON value" (`{a:1}` round-trips); "returns a non-JSON value raw" (`theme=dark` gives `"dark"`); "returns null for an absent name and for a stored JSON null"; "falls back to the raw text when percent-decoding throws" (`%E0%A4%A`); "a name is data" (`a.b` does not match `axb`). One case pins `COOKIE_HOST_PREFIX === "__Host-"` and `COOKIE_SECURE_PREFIX === "__Secure-"`. The existing `serializeCookie` cases and `runtime-gaps.test.ts`'s "Cookie gaps" stay unchanged and green, which is the proof the runtime's behaviour did not move.
+- **`packages/compiler/tests/cookie-helper.test.ts`** (new). A `beforeAll` writes `cookieHelperSource()` plus `export { __jxCookieRead, __jxCookieText };` to `mkdtempSync(join(tmpdir(), "jx-cookie-helper-"))` and awaits one `import()` of it; `afterAll` removes the directory (the `client-runtime.test.ts` precedent).
+  - "the inlined writer agrees with serializeCookie": the product of names (`ck`, `COOKIE_HOST_PREFIX + "sid"`, `COOKIE_SECURE_PREFIX + "sid"`, `a.b`, `(unclosed`), `maxAge` (absent, `0`, `60`), `path` (absent, `/app`), `domain` (absent, `example.com`), `secure` (absent, `true`, `false`), `sameSite` (absent, `lax`, `none`, `None`, `strict`) and values (`"v"`, `{a:1}`, `null`, `42`): `__jxCookieText(n, v, o)` equals `serializeCookie(n, v, o)` for every one.
+  - "the inlined reader agrees with readCookieValue": headers covering a JSON value, a raw value, `token=a=b=c`, a pair with no `=`, `not_theme=no; theme=yes`, a malformed percent-escape and the empty header, each read with a present, an absent and a metacharacter name.
+  - "the prefixes are serialized from the runtime": the source contains `JSON.stringify(COOKIE_HOST_PREFIX)` and `JSON.stringify(COOKIE_SECURE_PREFIX)`.
+  - "a hostile name and key are data": `emitCookieBinding("user.name", { $prototype: "Cookie", name: 'a"b\\c.(*' })` contains the name only as its `JSON.stringify` form, contains `state["user.name"]`, contains no `RegExp`, and `new Bun.Transpiler({ loader: "js" }).transformSync(...)` of the block does not throw.
+  - "the element-target options": `{ statePrefix: "this.state", indent: "    ", collect: "this.#effects" }` yields `this.#effects.push(effect(`, reads and writes `this.state.k`, and indents every line.
+- **`packages/compiler/tests/compile-client.test.ts`**: replace "Cookie generates document.cookie read and parse" with "Cookie reads through the inlined helper and persists through an effect" (the module contains `cookieHelperSource()` exactly once, `__jxCookieRead(document.cookie, _n)`, `document.cookie = __jxCookieText(`, an `_o` literal with `"sameSite":"lax"` when declared, and no `new RegExp`), and add "a page without a Cookie entry carries no cookie helper".
+- **`packages/compiler/tests/no-eval.test.ts`**: add a `Cookie` entry to the fixture, so the inlined helper is under the §21.1 lock.
+
+Coverage: the compiler's per-file bar is `lines = 0.982, functions = 0.98` and the runtime's `lines = 0.963, functions = 0.98` (each workspace's `bunfig.toml`). Every new function is exercised by the cases above; `emitCookieInit`'s removal takes lines out of `compile-client.ts`. No new source file, so the manifest check sees nothing new. Raise a threshold only if `shared.ts`, `compile-client.ts`, `cookie.ts` or `runtime.ts` was its workspace's worst file and rises.
+
+## Specs & docs
+
+- spec.md §11.2a: replace the Partial marker with:
+
+  > **Status: Implemented.** Both tiers read and write through one rule. The runtime calls `readCookieValue` and `serializeCookie` (`packages/runtime/src/cookie.ts`); the client target (`compile-client.ts`) reads on load and persists through an effect, calling an inlined copy (`cookieHelperSource()` in `packages/compiler/src/shared.ts`) whose prefixes are serialized from the runtime's exports, and a test holds that copy to the runtime's output for every combination of prefix, attribute and value. The element target lowers no `Cookie` entry yet; that gap is §11.2's.
+
+- spec.md §11.2a body, if the write-on-load decision is signed as recommended: after the "name is data" paragraph, add "The binding writes the cookie when the entry is created and again on every change, so a declared `default` reaches the server from the first load, in the interpreter and in compiled output alike."
+- spec.md §18, if the standards decision is signed as recommended, a row: `[RFC 6265](https://www.rfc-editor.org/rfc/rfc6265)` · `**Subset**` · `§11.2a` · `packages/runtime/src/cookie.ts, packages/runtime/tests/cookie.test.ts, packages/compiler/tests/cookie-helper.test.ts` · a note naming what is written (`Max-Age`, `Path`, `Domain`, `Secure`, `SameSite`, with 6265bis §4.1.3's prefix rules and §5.4.7's `SameSite=None` rule applied in both tiers) and what is absent (`HttpOnly` and `Expires` by design, per §11.2a, and `Partitioned`), with no literal `|`.
+- §11.2's marker and its `Cookie` cell are unchanged: both describe the element target, which this plan does not touch.
+- Fragment: `bun run spec:change spec.md minor -m "A compiled page reads a Cookie entry by splitting the cookie header and persists every change with the runtime's derived Secure, Path and Domain attributes, through an inlined copy of the runtime's rule."`
+- Docs: `docs/framework/concepts/data-prototypes.md` (`spec: spec.md#11`) already states the derivations, `HttpOnly` and `Expires` without a tier qualifier, and becomes true for built pages; no change. `docs/studio/logic/data-sources.md` describes only the Studio fields; no change. `bun run docs:sync` also names the pages whose `code:` lists `runtime.ts`, `shared.ts` or `compile-client.ts` (among them `functions.md`, `styling.md`, `color-schemes.md`, `runtime-host.md`); none describes the cookie, so the pull request states that no update is needed. The implementation-status and spec-changelog pages are generated.
+- spec.md does not graduate: other open items remain. Delete `plans/spec/compiled-cookie-attributes.md` and remove `spec/compiled-cookie-attributes` from `plan:spec/web-api-prototype-parity`'s `requires`.
+
+## Acceptance
+
+- `bun run plans:check --audit spec` reports nothing for `spec.md#11.2a`, and `bun run plans:status --who-claims spec.md#11.2a` names no plan.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links` and (with the §18 row) `bun run docs:standards` pass.
+- `cd packages/compiler && bun test --isolate --coverage` and `cd packages/runtime && bun test --isolate --coverage` pass with their thresholds, and both manifest checks pass.
+- `grep -n "new RegExp\|emitCookieInit" packages/compiler/src/targets/compile-client.ts` prints nothing.
+- Build a page whose state is `{ "sid": { "$prototype": "Cookie", "name": "__Host-sid", "path": "/app", "domain": "example.com", "sameSite": "lax", "default": "x" } }` and open it over HTTPS (or `localhost`): `document.cookie` shows `__Host-sid` after load, the devtools cookie row reads `Path=/`, `Secure`, no `Domain`, and setting the bound state changes the stored value.

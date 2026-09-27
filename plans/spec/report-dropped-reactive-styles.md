@@ -1,16 +1,27 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - spec.md#9.3
-size: S
+requires: []
 workspaces:
+  - packages/runtime
   - packages/compiler
   - packages/site
   - packages/schema
+  - packages/studio
+  - examples
+  - packages/starters
+  - packages/ui
+  - scripts
+  - sites/jxsuite.com
+  - sites/test-blank
+  - specs
+  - docs
+size: M
 ---
 
-# A static build reports each reactive declaration it drops, and the project schema refuses one
+# `jx build` names each reactive style declaration a built page cannot carry, and the project schema refuses one in the project style block
 
 ## Context
 
@@ -18,18 +29,147 @@ workspaces:
 
 > **Status: Partial.** Extraction into one head `<style>` block ships (`compileStyles`, `pushStyleRules` in `packages/compiler/src/shared.ts`). The report does not: `takeDroppedReactiveStyles` has no production caller, so no build prints what it dropped, and where a build-time scope exists the compiler inlines the resolved template instead of dropping it (§9.1). And the project schema's `StyleObject` (`staticStyleObjectSchema` in `packages/schema/src/schema.ts`) accepts any string value, so it still admits a `${…}` template the paragraph below says it cannot carry.
 
-**What exists**
+**What exists** (verified 2026-09-27)
 
-- `recordDroppedReactive` and `takeDroppedReactiveStyles` in `packages/compiler/src/shared.ts`, unit-tested in `packages/compiler/tests/shared.test.ts` and `project-style-delegation.test.ts`.
-- `packages/site/src/site-style.ts` names the report in a comment only.
-- `staticStyleObjectSchema` admits `{ type: "string" }` for every declaration.
+- `pushStyleRules` in `packages/compiler/src/shared.ts` passes `recordDroppedReactive` as `buildStyleRules`' `resolveValue`, so every `${…}` or `{ $ref }` it drops from a rule is pushed onto the module-level `_droppedReactive` with the call's scope (`#box`, `.jx-3`, `x-card`) as its selector, never the nested rule. `compileStyles` hands the same recorder to `buildSiteStyleCSS` (`packages/site/src/site-style.ts`) for the project block, which closes over `:root`, `body` or the selector key. `takeDroppedReactiveStyles()` formats and clears the list. Only `tests/shared.test.ts` ("a static build says what it drops") and `tests/project-style-delegation.test.ts` import it. `site-style.ts` names it in a comment.
+- **Correction: wiring a caller to the recorder as it stands would print hundreds of false warnings.** It records every base-level `${…}` on an element, and those are exactly the declarations that reach a built page. The build resolves them against a build-time scope (`resolveDocTemplates` in `packages/compiler/src/site/site-build.ts`, `resolveHostStyle` and `inlineStyleDeclarations` in `shared.ts`), and the compiled element binds whatever is left: `buildClientNode` in `compile-client.ts` emits a `:style.<prop>` binding, `compile-element.ts` binds children through `emitStyleString` and the host through an `effect` writing `this.style[…]`. A scan of every tracked document under `packages/starters/sites`, `sites/` and `examples/` finds 468 reactive style values, all base-level `${…}`, none in a nested block and no `{ $ref }`. The recorder also sees each component's children twice (the `collectStyles` pass in `emitElementModule` and `buildComponentCSS` both walk them), and a layout's declaration once per page.
+- What is really absent from a built page: a reactive value inside a nested selector or at-rule block (no compiled target binds one), a `{ $ref }` value anywhere (`buildClientNode`, `emitStyleString` and `inlineStyleDeclarations` all skip objects), a template in content passed to a component's slot that the build could not resolve (`expandComponents` renders slotted children with `renderStaticNode(c, {}, null)` and nothing hydrates them), and any reactive value in the project block.
+- **Dropped and not recorded:** a `{ $ref }` at the top of the project block, or of one of its `@`-blocks. `buildSiteStyleCSS`'s split reads any non-array object as a block: under a property key it becomes a selector block keyed `color`, whose only key, `$ref`, `buildStyleRules` skips as metadata, and under a `--name` key it is skipped outright. Either way there is no rule, no declaration and no resolver call. A keyframe stop's reactive value is also never passed to the resolver (`declarationsOf(…, reactive = false)`); §9.2 drops it in every tier.
+- **Correction: the project schema admits `{ $ref }` as well.** `staticStyleObjectSchema`'s doc comment says it refuses one, but `{ "$ref": "#/state/x" }` passes as a nested block holding one string declaration, the vacuous match `packages/schema/defs/style-object.schema.ts` itself describes. Checked with Ajv 2020 against the committed `packages/schema/schemas/project.core.schema.json`: `${…}` and `{ $ref }` are both accepted at the top level, in a selector block and in a breakpoint. The top-level `style` property (`packages/schema/defs/project-config.schema.ts`) declares its own `oneOf: [string, number, StyleObject]`, so it needs the same change as the def. None of the 34 tracked `project.json` files carries a reactive style value.
+- Studio's Style panel derives its Value Source rungs (studio.md §6.6 rule 2) from the document schema's `StyleObject` in every document, `project.json` included (`styleCaps` in `packages/studio/src/panels/style-panel.ts`, `SLOT_POSITION_SCHEMAS.styleProperty` in `packages/studio/src/ui/value-source.ts`), so Project Styles offers **Mixed text**. `isFreeStringSchema` checks `pattern`, `enum` and `const` but not `not`, so a `not`-pattern string would still derive a template rung.
 
-**What is missing**
+**Found while detailing, outside §9.3.** Three defects in the compiled targets against §9.1, none of them a drop the report could name (see Decisions):
 
-- A caller: `buildSite` (and the single-page compile CLI) drains `takeDroppedReactiveStyles` and prints each dropped declaration by property, source and selector.
-- The project schema refuses a `${…}` value (a string `not` pattern on declarations), so `jx validate` catches it before a build does.
-- Agreement with §9.1: once resolved declarations become rules, the recorder's "only the stylesheet path" limitation is what remains to state or fix.
+1. `collectStyles` never walks a mapped array's `map` template, and `emitLitMapTemplate` in `compile-client.ts` writes its base declarations inline and drops its nested blocks, static or reactive. A repeater the build cannot expand has no `:hover` on its items.
+2. A base `{ $ref }` style value is bound by no compiled target, although §9.1 says a template and a `$ref` mean the same thing. The report will name it as dropped.
+3. A reactive custom property is kebab-cased on the way to the element (`camelToKebab("--rowFace")` is `--row-face`) and written with `el.style[name] = v` (compile-client) or `this.style[name] = v` (compile-element host), which does not set a custom property. The element keeps its prerendered value.
 
-**Related**
+**Related.** §9.1 (`plan:spec/static-style-rules-only`), §9.2 (`plan:_shared/static-style-handle-and-descriptions`, built on `plan:spec/style-handle-assignment`), whether `jx build` validates against the schema (`plan:spec/expression-build-checks`), studio.md §6.6.
 
-- §9.1 (`plan:spec/static-style-rules-only`), §9.5 (the project `style` block), `site-architecture.md` (the site stylesheet).
+## Outcome
+
+- spec.md §9.3 → Implemented. `jx build` and the single-document compile CLI print one warning per reactive declaration the built page lacks, giving property, source, selector, the authored block path and the files. A base-level `${…}` that the build resolves or the compiled element binds is never reported. The project schema refuses a `${…}` string and a `{ $ref }` object anywhere in `project.json#/style`, so `jx validate`, Studio's validator and the assistant's write gate refuse one, and Project Styles offers only **Fixed value**.
+- spec.md does not graduate: §9.1, §9.2 and other items stay open.
+
+## Decisions
+
+- **Decided:** the report names what the built page lacks, judged by position rather than outcome. A `${…}` in an element's or a component host's base style is carried and not recorded; every other reactive value the static emitters meet is recorded, a base `{ $ref }` included. Position is known where the recorder runs, while "did the prerender resolve it" is known only inside `inlineStyleDeclarations`, `resolveHostStyle` and three emitters. The one shape this misses is a base template that the build cannot resolve on a component or page with no compiled binding (a fully static component reading something outside its state and props), which is rare enough to accept. A keyframe stop's value stays unreported: §9.2 drops it in the interpreter too, so the editor and the build agree, and `docs/framework/concepts/styling.md` already says so.
+- **Decided:** `buildStyleRules`' `resolveValue` hook gains a fourth argument, `site: CssValueSite` with `path: readonly string[]`, the authored keys from the style object's root down to the block that holds the declaration. The hook sees a rule target today, and a `:hover` block shares `"self"` with the base, so the target cannot tell base from nested. The path is also the report's most useful locator: `.jx-3` is a generated handle the author never wrote, while `:hover` or `@--md` › `& .nav` is text they can find. Both copies of a scheme-query block carry the same path, so one declaration yields one entry.
+- **Decided:** entries are deduplicated when recorded, keyed by origin, property, source, selector and path. The `collectStyles` pass inside `emitElementModule` records nothing, because it only stamps classes and its rules are discarded, while `buildComponentCSS` writes, and reports, the sheet that ships. `buildSite` drains once before it compiles anything, then after each component and each page, and prints one `console.warn` per declaration naming up to three files and a count of the rest. A project-block entry is attributed to `project.json`. This follows the `warnedRelations` precedent (a layout's declaration is on every page) and bounds the list for a host that calls `compile()` without draining. A drop is a warning and never fails a build: §9.3 calls it correct, and says only that it must not be silent.
+- **Decided:** the refusal copies `expressionLiteralSchema` (`packages/schema/defs/expression-node.schema.ts`), which already spells "a string that is not a template" as `{ type: "string", not: { pattern: "\\$\\{" } }` and "an object that is not a pointer" as `not: { required: ["$ref"] }`. The pattern is `isTemplateString`'s own test (`value.includes("${")`), so the schema and the emitters agree about what is reactive. `staticStyleObjectSchema` moves from `src/schema.ts` to `defs/style-object.schema.ts`, so `project-config.schema.ts`, the generators and Studio read one definition.
+- **Decided:** Project Styles derives its rungs from the project schema, because studio.md §6.6 rule 2 says a ladder offers what the schema at that position permits, and at `project.json#/style` that schema is now the static one. Without this change the plan would ship a control that writes a document the project schema refuses.
+- **Decided:** no `requires`. `plan:spec/static-style-rules-only` changes where a carried base declaration lands (inline today, a rule after it), not whether it is carried, so this plan is right before and after it; both edit `pushStyleRules`, a textual overlap. `plan:spec/style-handle-assignment` changes the selector the report prints, not what it reports. `plan:_shared/static-style-handle-and-descriptions` edits `pushStyleRules` and `buildSiteStyleCSS`'s `push`, also textual. `plan:spec/expression-build-checks` owns whether `jx build` validates against the schema, and recommends that it does not. This plan assumes that answer and is right under either: if the build does validate, it refuses a reactive project declaration before the report can name it.
+- **Open:** should `jx build` fail on a reactive value in the project style block, rather than warn? Recommendation: warn, like every other drop, and leave refusal to `plan:spec/expression-build-checks`'s open question, because a one-off build error here would be a second, partial answer to whether the build enforces the schema. The value is harmless to the rest of the page, and `jx validate`, Studio and editors all refuse it. If a maintainer wants it refused anyway, the project-origin warning becomes a build error and §9.3's sentence "a drop is a warning, never a build failure" gains "except in the project block".
+- **Open:** who records the three §9.1 defects found above? Recommendation: `plan:spec/static-style-rules-only`, whose detailing adds them to §9.1's marker and to its scope, because each breaks a §9.1 promise (every declaration a rule, a `$ref` equal to a template, a custom property written under the author's own name) and each lives in the emitters that plan already rewrites. This plan does not touch §9.1. Until that lands, the report names defect 2 as a drop, which is the truth about the built page.
+
+## Implementation
+
+1. **`packages/runtime/src/css.ts`**
+   - Export `interface CssValueSite { readonly path: readonly string[] }`, documented as the authored keys from the root of the object `buildStyleRules` was given down to the block holding the declaration: empty for a base declaration, `[":hover"]`, `["@--md", "& .nav"]`, and one path for both copies of a scheme-query block.
+   - `CssBuildOptions.resolveValue` becomes `(property, value, target, site: CssValueSite) => string | null`. Merge its two stacked doc comments into one.
+   - Thread `path` through `walk(node, selector, conditions, target, path)`, `walkAt(…, path)`, `declarationsOf(…, path)` and `declarationValue(…, path)`: the root call passes `[]`, a nested key `[...path, key]`, `walkAt` `[...path, atKey]` for both scheme copies, a declaration at-rule `[...path, atKey]`. `emitKeyframes` passes `[...path, atKey]` for uniformity, though it never calls the hook.
+   - `runtime.ts`'s resolver (`applyStyleInto`) ignores the new argument and needs no edit.
+2. **`packages/compiler/src/shared.ts`**
+   - `export type DroppedStyleOrigin = "element" | "slot" | "project"` and `export interface DroppedReactiveStyle { origin; property; source; selector: string | null; path: readonly string[] }`, where `property` is as authored and `source` is the template text or the `$ref` pointer.
+   - `recordDroppedReactive(entry)` stores into a module-level `Map` keyed by `[origin, property, source, selector ?? "", ...path].join("\u0000")` and returns `null`. `takeDroppedReactiveStyles(): DroppedReactiveStyle[]` returns the values in insertion order and clears the map; its doc comment says who drains it.
+   - `pushStyleRules(rules, style, selector, mediaQueries, options: { origin?: "element" | "slot" | null; pathPrefix?: readonly string[] } = {})`, with `origin` defaulting to `"element"`. The resolver computes `path = [...pathPrefix, ...site.path]`, returns `null` without recording when `origin` is `null`, or when it is `"element"`, `path` is empty and `value` is a string (carried: comment names `resolveDocTemplates`, `inlineStyleDeclarations`, `resolveHostStyle`, the `:style.` binding and `emitStyleString`), and records otherwise. Rewrite the comment above the resolver, which says every reactive declaration is dropped.
+   - `collectStyles` gains a trailing `origin: "element" | "slot" | null = "element"`, passed to `pushStyleRules` and down the recursion.
+   - `buildComponentCSS`: the selector-block call passes `{ pathPrefix: [prop] }`, because its scope already includes the key and the block's own declarations would otherwise read as base. The `own` call and the `@`-block call (which wraps `{ [prop]: val }`) need nothing.
+   - `compileStyles`: the project resolver becomes `(property, value, selector, site) => recordDroppedReactive({ origin: "project", … , path: site.path })`.
+   - `export function droppedReactiveStyleMessage(entry, files: readonly string[]): string`, tagged `@docs framework/concepts/styling`. Every message gives the declaration (`` `color: ${state.h}` ``), the selector, the path when non-empty (``under `@--md` › `& .nav` ``), up to three files, then "and N more". The remedy depends on the origin. For `element`: a built page carries a reactive style value only as a `${…}` template in an element's own base style, so give this one a static value or move it there. For `slot`: content passed into a component's slot is rendered once, at build time, and this value could not be resolved then. For `project`: the project's style block becomes the site stylesheet with no state to read, so it takes static values only, and `jx validate` refuses this one.
+   - `export function createDroppedStyleReport(): { note(file: string): void; messages(): string[] }`. `note` drains `takeDroppedReactiveStyles()` and merges each entry under its key, recording `file` (or `project.json` for a project entry) once. `messages` formats in first-seen order.
+3. **`packages/compiler/src/targets/compile-element.ts`**: the `collectStyles` call in `emitElementModule` passes `null` as `origin`, with a one-line comment saying `buildComponentCSS` reports the sheet that ships.
+4. **`packages/compiler/src/site/site-build.ts`**
+   - `buildSite`: after `loadProjectConfig`, call `takeDroppedReactiveStyles()` to discard anything an earlier in-process compile left, and create the report. After each component's `try`/`catch` in the component loop, `report.note(<project-relative component path>)`. After each `compilePage` in the route loop (success or failure), `report.note(<project-relative route.sourcePath>)`. After the route loop, `console.warn` each of `report.messages()`. Paths use `/` separators.
+   - `expandComponents`: the slotted-children `collectStyles` call passes `"slot"`.
+5. **`packages/compiler/src/compiler.ts`**: `runCli` drains before compiling, then `note(src)` after `compile(src)` resolves, and `console.warn`s each message. `compile()` itself does not drain.
+6. **`packages/site/src/site-style.ts`**
+   - `SiteStyleValueResolver` gains `site: CssValueSite` (type import from `@jxsuite/runtime/css`), and `push` forwards it. Update the type's doc comment.
+   - In the top-level split and in each conditional block's split, an object for which `isRef` (from `@jxsuite/schema/guards`) is true is a declaration, routed to `rootProps`/`bodyProps` (or `condRoot`/`condBody`) like a scalar, never a selector block. A host with no resolver emits exactly what it emitted before.
+7. **`packages/schema/defs/style-object.schema.ts`**
+   - Export `staticStyleValueSchema = { description: "A static CSS value. The project's style block becomes the site stylesheet before any state exists, so a ${…} template is refused here (spec.md §9.3).", not: { pattern: "\\$\\{" }, type: "string" }`.
+   - Export `staticStyleObjectSchema`, moved from `src/schema.ts`: `styleObjectSchema` with `additionalProperties.anyOf` `[staticStyleValueSchema, { type: "number" }, { $ref: "#/$defs/StyleObject" }]` and `not: { required: ["$ref"] }`, whose doc comment states both refusals and why the second is needed (the vacuous block match). Re-export both from `defs/index.ts`.
+8. **`packages/schema/defs/project-config.schema.ts`**: `style.additionalProperties.oneOf[0]` becomes `staticStyleValueSchema`. The `StyleObject` branch refuses `{ $ref }` through the def.
+9. **`packages/schema/src/schema.ts`**: import `staticStyleObjectSchema` from the defs and delete the local copy. `generateProjectSchema` and `generateProjectCoreSchema` are otherwise unchanged. Run `bun run schema:sync`, then commit `packages/schema/project-schema.json`, `packages/schema/schemas/project.core.schema.json` and the 28 regenerated `project.schema.json` files. `schema.json` does not move.
+10. **`packages/studio/src/ui/value-source.ts`**: `isFreeStringSchema` also requires `node.not === undefined`, and its comment adds "or one that refuses a pattern". Add `SLOT_POSITION_SCHEMAS.projectStyleProperty: staticStyleObjectSchema.additionalProperties`, documented as a declaration in `project.json#/style`.
+11. **`packages/studio/src/panels/style-panel.ts`**: `styleCaps(tab: Tab)` picks `"projectStyleProperty"` when `isProjectStylesheet(tab.documentPath ?? "")` and `"styleProperty"` otherwise, then filters `ref` as today. `fieldRow` passes `ctx.tab`. Extend the doc comment: the project stylesheet derives to Fixed value alone (spec.md §9.3).
+
+**Integration contract.** Once this lands, a plan may rely on:
+
+- `buildStyleRules` passing `resolveValue` a fourth argument `{ path }` holding the authored block keys.
+- `pushStyleRules` recording only what no target writes, with a single "carried" test in its resolver: base, string, `origin === "element"`. A plan that makes the resolver return a value (a resolved template, or a `var()` indirection) stops that declaration being recorded by construction. A plan that makes a compiled target bind a new shape, such as a base `{ $ref }`, widens that test and the `element` remedy text in the same pull request.
+- `createDroppedStyleReport()` and `droppedReactiveStyleMessage()` as the one format, used by both `buildSite` and `runCli`.
+- `staticStyleObjectSchema` and `staticStyleValueSchema` exported from `@jxsuite/schema/defs`, and the `projectStyleProperty` slot position.
+- spec.md §9.3 stating which reactive declarations a built page carries and which it drops.
+
+## Tests
+
+Run `bun test --isolate --coverage` from `packages/runtime`, `packages/compiler`, `packages/site`, `packages/schema` and `packages/studio`, then `bun scripts/check-coverage-manifest.ts <workspace>` for each. No new source file.
+
+- **`packages/runtime/tests/css.test.ts`**, in "buildStyleRules on values":
+  - `the resolver is told where a value sits, as authored keys`. `{ color: "${a}", ":hover": { color: "${b}" }, "@--md": { "& .nav": { color: { $ref: "#/state/c" } } } }` with `--md` defined gives the paths `[]`, `[":hover"]` and `["@--md", "& .nav"]`.
+  - `both copies of a scheme-query block report one path`. A `--dark` scheme query around a template gives two calls, each with `["@--dark"]`.
+  - `a declaration at-rule reports its key`. `{ "@property --x": { "initial-value": "${a}" } }` gives `["@property --x"]`.
+- **`packages/compiler/tests/shared.test.ts`**: rewrite "a static build says what it drops" around the structured entries.
+  - `a base template on an element is carried, so nothing is recorded`: `compileStyles` of a `p` with `color: "${state.c}"`.
+  - `a template in a nested block is recorded with its path`: on `#box`, gives `{ origin: "element", property: "color", source: "${state.c}", selector: "#box", path: [":hover"] }`.
+  - `a $ref is recorded even in the base style`.
+  - `a scheme-query block is recorded once`.
+  - `a component host's base template is carried; its selector block and a $ref are recorded`: replaces the current `x-card` case, with `":host(.wide)"`'s path `[":host(.wide)"]`.
+  - `slotted content records a base template`: `collectStyles(…, "jxs", "slot")`.
+  - `the class-stamping pass records nothing`: `collectStyles(…, null)`.
+  - `compiling the same document twice records each declaration once`.
+  - Keep `draining clears` and `a wholly static style records nothing`.
+  - New describe `createDroppedStyleReport`, with four cases. `one message per declaration, naming every file it was noted under`. `a fourth file is counted, not listed`. `a project entry is attributed to project.json, whatever page noted it`. `each origin carries its own remedy`.
+- **`packages/compiler/tests/project-style-delegation.test.ts`**: update "a reactive project declaration is dropped AND reported" to entries with paths. Add `a $ref at the top of the project block is recorded, and emits nothing` and `a $ref inside a breakpoint is recorded with the breakpoint's key`.
+- **`packages/compiler/tests/site-build-reporting.test.ts`**, new describe "buildSite — a reactive style value the built page cannot carry". It scaffolds a layout whose element has a base `color: "${state.c}"` and a `":hover": { color: "${state.h}" }`, two pages using it, a component with a `{ $ref }` host value, and `project.json` `style: { "--tint": "${state.t}" }`, then asserts through `captured`:
+  - `each dropped declaration is warned once, naming the pages it was built into`: one warning for `:hover` naming both pages, and none for the base `color`.
+  - `a component's drop names the component file`.
+  - `a project declaration is attributed to project.json once`.
+  - `base templates alone print nothing`: a second scaffold with templates only in base styles, host and children.
+  - `a drop left by an earlier compile in the same process is not reported`.
+  - The build's `errors` are empty in every case.
+- **`packages/compiler/tests/compiler.test.ts`**, in `runCli`: `warns about each dropped declaration, naming the source file`, spying `console.warn`.
+- **`packages/site/tests/site-style.test.ts`**: extend "a reactive project declaration is dropped without a resolver…" to assert each call's `site.path`. Add `a $ref at the top level is a declaration, not a selector block` (no `color {` rule with or without a resolver, and the resolver sees `["color", "#/state/x", "body"]`) and `a $ref inside a breakpoint is a declaration too`. Site's functions bar is 1.0, so both new branches need these cases.
+- **`packages/schema/tests/project-style-static.test.ts`** (new test file): compile `generateProjectSchema()` with `Ajv2020({ strict: false })`.
+  - Accepted: `color: "red"`, a number, a nested block, `$description`, a `@font-face` array, and `content: "'$'"`.
+  - Refused: a top-level template, a custom property template, a template in `.card` and in `@--dark`, a template inside an `@font-face` array entry, a top-level `{ $ref }`, and a nested `{ $ref }`.
+  - `both project generators use the static def`: `generateProjectCoreSchema().$defs.StyleObject` is `staticStyleObjectSchema`.
+  - `style-value-ref.test.ts` already holds that the document schema still admits both forms.
+- **`packages/studio/tests/value-source.test.ts`**: `projectStyleProperty: ["literal"]` in the `capsForPosition` map, and `a string that refuses a pattern is not free text` (`deriveSlotCaps({ type: "string", not: { pattern: "x" } })` is `["literal"]`).
+- **`packages/studio/tests/style-panel.test.ts`**, in "the Value Source ladder": `in the project stylesheet, style rows offer Fixed value only`. With `tab.documentPath = "project.json"`, the chip lists `["literal"]`, and the existing case still lists `["literal", "template"]` for a page.
+
+Coverage: the bars are runtime 0.963 / 0.98, compiler 0.982 / 0.98, site 0.99 / 1.0, schema 0.99 / 0.99 and studio 0.958 / 0.941 (lines / functions, each workspace's `bunfig.toml`). Every new branch has a case above. Ratchet a workspace's threshold to just below its new minimum only if its worst file rises.
+
+## Specs & docs
+
+**spec.md §9.3**, in place:
+
+- Replace the line-998 Partial marker with: "> **Status: Implemented.** Extraction ships in `compileStyles` and `pushStyleRules` (`packages/compiler/src/shared.ts`). The report is `createDroppedStyleReport`, used by `buildSite` (`packages/compiler/src/site/site-build.ts`) and `runCli`. The refusal is `staticStyleObjectSchema` (`packages/schema/defs/style-object.schema.ts`)."
+- Replace the paragraph that begins "**A reactive declaration is a runtime declaration, and a static emitter drops it.**" with:
+
+  "**A reactive declaration reaches a built page only where something keeps it current.** One in an element's own base style is written onto the element: the build resolves it where a build-time scope exists, and otherwise the compiled element binds it (§9.1). Any other resolves against a live scope that no static stylesheet has, so a static emitter drops it. That covers a value inside a nested selector or at-rule block, one in content passed to a component's slot that the build cannot resolve, and any in the project's `style` block. The drop used to be silent, so a document was right in the editor and simply unstyled in the built page. `jx build` and the compiler's single-document CLI report each dropped declaration once, by property, source, selector and the style-object keys that lead to it, with the files it was found in. A drop is a warning, never a build failure. A value in a `@keyframes` stop is not reported, because §9.2 drops it in every tier. A project's own `style` block cannot carry a reactive value at all: it becomes the site stylesheet at build time, with no scope to resolve against, so the project schema does not admit one where the document schema does. It refuses a string containing `${` and an object carrying `$ref`, so `jx validate` and Studio report one before a build does."
+
+- No other section changes. §9.1's "see … §9.3 for the compiler" still points at the right place. schema.md needs no edit: §3.1's "the project-level `style` shares the same contract" is about nesting, which still holds, and spec.md §9.3 states the refusal.
+
+Fragment: `bun run spec:change spec.md minor -m "§9.3: jx build and the single-document compile CLI report each reactive style declaration a built page cannot carry, by property, source, selector and block path, and the project schema refuses a reactive value anywhere in the project style block."`
+
+**Docs** (no em dashes):
+
+- `docs/framework/concepts/styling.md` (`spec: spec.md#9`; `code:` lists `css.ts` and `shared.ts`), "Values that come from your data". Replace the paragraph that begins "A built page is the exception." with: "A built page keeps a reactive value when it sits in an element's own top-level style as a `${...}` template. The build fills it in when it can, and otherwise the page's script keeps it current. Anywhere else the built page leaves it out: inside `:hover` or a breakpoint, or written as a `{ "$ref": ... }`. `jx build` prints a warning for each one it leaves out, naming the property, the value, the selector, the keys that lead to it and the files it came from. Give such a value a fixed value, or move it to the element's top-level style. A project's own `style` block cannot use reactive values at all, because it becomes the site stylesheet before there is any state to read: `jx validate` and the editor reject one, and a build leaves it out with a warning."
+- `docs/framework/build.md` (`code:` lists `shared.ts`, `site-build.ts`), "CSS extraction", after its first paragraph: "A style value that follows your data reaches the built page only from an element's own top-level style, written as a `${...}` template. Anywhere else it is left out, and `jx build` warns once per declaration with the files it appears in. See [Values that come from your data](/docs/framework/concepts/styling#values-that-come-from-your-data)."
+- `docs/framework/build/cli.md`, `jx build`: after "Prints a summary …", add "Warnings, such as a style value the built page cannot carry, print as the build runs and never fail it."
+- `docs/studio/design/style-inspector.md` (`code:` lists `value-source.ts` and `style-panel.ts`), "The value source", after the two-rung list: "In `project.json`, which **[Project Styles](/docs/studio/design/stylebook)** edits, only **Fixed value** is offered. The project's styles become the site stylesheet before there is any data to read, so a placeholder there could never fill in."
+- No change: `docs/studio/design/stylebook.md` and `states-and-selectors.md` (they list `style-panel.ts` but describe nothing the rung change touches), `docs/studio/interface/canvas.md` (lists `site-style.ts`; the canvas sheet is byte-identical), `color-schemes.md`, `overlays.md` and `elements.md` under `docs/framework/concepts/` (they cite §9 or list `css.ts`/`shared.ts`, and nothing they say moves), and `docs/studio/design/properties.md` and `docs/studio/logic/formulas.md` (they list `value-source.ts`; no position they document changes).
+
+Landing deletes this file, and rewrites the lines that name it in `plans/spec/expression-build-checks.md`, `plans/spec/static-style-rules-only.md`, `plans/spec/style-handle-assignment.md` and `plans/_shared/static-style-handle-and-descriptions.md` to cite spec.md §9.3.
+
+## Acceptance
+
+- `bun run plans:check --audit spec` reports nothing for this file, and `bun run plans:status --who-claims spec.md#9.3` shows §9.3 closed.
+- `bun run schema:verify` is green after `bun run schema:sync`, and `bun run schema:validate-all` still passes over every project root.
+- `bun run docs:status`, `bun run docs:spec-release` (fragment present), `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:markdown` and `bun run docs:section-refs` are green.
+- The five workspace suites and their manifest checks pass at their thresholds.
+- In a scratch project whose layout has an element with `color: "${state.c}"` and `":hover": { color: "${state.h}" }`, used by two pages, `jx build` exits 0 and prints exactly one warning containing `color: ${state.h}` and `:hover` and naming both page files, and none for the base `color`. With `"style": { "--tint": "${state.t}" }` added to `project.json`, `jx schema` then `jx validate` exits 1 with an error at `/style/--tint`, and `jx build` warns once naming `project.json`.
+- `jx build` of `sites/jxsuite.com`, whose components hold only base-level templates, prints no dropped-declaration warning.
+- In Studio, the value source chip on a Project Styles row lists **Fixed value** alone. On a page element it still lists **Fixed value** and **Mixed text**.
