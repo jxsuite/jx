@@ -30,7 +30,7 @@ The body under it still says the route "Returns the full Custom Elements Manifes
 **Related**
 
 - imports.md §2 and §4.1: the manifest scan that does carry the metadata. `plan:imports/cem-discovery-on-every-backend` extracts that scan and `plan:_shared/collection-directive-elements` reads it in-process, and neither goes through this route.
-- `plan:imports/packages-route-payload`, the sibling §4.2 reconcile. Its route has the same missing `assertAccessible` on `dir`, which is that plan's to judge.
+- `plan:imports/packages-route-payload`, the sibling §4.2 plan. Its route has the same missing `assertAccessible` on `dir`, and that plan adds it to every `/__studio/packages*` route.
 
 ## Outcome
 
@@ -47,16 +47,16 @@ The body under it still says the route "Returns the full Custom Elements Manifes
 
 ## Implementation
 
-1. **`packages/server/src/studio-api.ts`**: delete the `// Read CEM from a specific package` block (lines 1044–1076). Keep the `Cem`, `CemModule` and `CemDeclaration` interfaces, `PackageJson.customElements` and the `dirname` import, because the components scan (lines 810–879) and the packages route still use them. Leave the `/__studio/packages` block and its `// List CEM-bearing npm packages` comment alone: they belong to `plan:imports/packages-route-payload`.
+1. **`packages/server/src/studio-api.ts`**: delete the `// Read CEM from a specific package` block (lines 1044–1076). `PackageJson.customElements` stays for the components scan, and the `dirname` import for its dozen other call sites. The `Cem`, `CemModule` and `CemDeclaration` interfaces stay while the components scan (lines 810–879) still uses them; `plan:imports/cem-discovery-on-every-backend` deletes them with that scan. If that plan lands first, this handler's cast reads `as CemManifest` by then, and the `CemManifest` type import it leaves unused goes with the handler. Leave the `/__studio/packages` block and its `// List CEM-bearing npm packages` comment alone: they belong to `plan:imports/packages-route-payload`.
 2. **`packages/protocol/src/routes.ts`**: delete the `cem` entry (lines 203–208) from `STUDIO_ROUTES`. `STUDIO_PROTOCOL_VERSION` and the section banners stay. No other file names `STUDIO_ROUTES.cem`, and `bun run typecheck` confirms it.
 3. **Tests**, as in Tests.
 4. **`specs/imports.md` §4.3, `specs/server.md` §4.1** and the two fragments, as in Specs & docs.
-5. **Plan housekeeping in the landing pull request**: delete this file. If `plan:imports/packages-route-payload` has not landed, drop its Related bullet naming this plan, or `plans:check` reports the dangling citation. The two plans may land in one pull request, since both edit the package-management block of `studio-api.ts`, the fixtures of `studio-api-gaps.test.ts` and imports.md §4. Landed separately, the second one rebases over adjacent hunks with no semantic conflict.
+5. **Plan housekeeping in the landing pull request**: delete this file, and rewrite every open plan's citation of it to name imports.md §4.3 instead, or `plans:check` fails with `citation-unknown`: today `plan:imports/packages-route-payload` (its first Open's reasons) and `plan:imports/cem-discovery-on-every-backend` (Context, and its step 3's conditional about this handler, which then drops). `grep -rn "imports/cem-route-payload" plans` finds them. The two plans may land in one pull request, since both edit the package-management block of `studio-api.ts`, the fixtures of `studio-api-gaps.test.ts` and imports.md §4. Landed separately, the second one rebases over adjacent hunks with no semantic conflict.
 
 **Integration contract.** No plan requires this one. Once it lands:
 
 - `handleStudioApi` answers `null` for `/__studio/cem`, and `STUDIO_ROUTES` has no `cem` key.
-- The only code in the repository that reads a dependency's `customElements` manifest is the components scan in `studio-api.ts`. `plan:imports/cem-discovery-on-every-backend` therefore extracts one copy of manifest resolution, not two.
+- The only code in the repository that reads a dependency's `customElements` manifest is the components scan in `studio-api.ts` (or, once `plan:imports/cem-discovery-on-every-backend` lands, the shared scan it extracts). That plan therefore extracts one copy of manifest resolution, not two.
 - imports.md §4.3 is Removed. A later need for one package's manifest over the wire is a new route, and it must back a `StudioPlatform` member, carry a true degradation and contain its paths as `/__studio/components` does.
 
 ## Tests
@@ -86,8 +86,8 @@ No spec graduates.
 
 ## Acceptance
 
-- `git grep -n "studio/cem" -- packages scripts` prints nothing. `git grep -n "CEM extraction" -- specs` prints nothing.
-- `sed -n '/^### 4.3/,/^### 4.4/p' specs/imports.md` prints the heading, the `> **Status: Removed.**` blockquote and nothing else. `bun run plans:status --spec imports` lists no §4.3 row.
+- `git grep -n "studio/cem" -- packages scripts` prints nothing. `git grep -n "CEM extraction" -- specs/server.md` prints nothing (spec.md §5.6's two uses name the Studio export, not this route, and stay).
+- `sed -n '/^### 4.3/,/^### 4.4/p' specs/imports.md` prints the §4.3 heading, the `> **Status: Removed.**` blockquote and the §4.4 heading, with no body sentence between them. `bun run plans:status --spec imports` lists no §4.3 row.
 - After `bun run docs:generate`, `grep -c "__studio/cem" docs/extending/reference/studio-routes.md` prints `0`.
 - `bun run typecheck`, `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links` and `bun run docs:markdown` pass.
 - `bun test --isolate --coverage` passes from `packages/server` and from `packages/protocol` with the two new cases listed and no per-file threshold failure, and both manifest checks pass.

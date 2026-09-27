@@ -7,6 +7,7 @@ claims:
 requires:
   - spec/request-url-params
   - extensions/local-imports-precedence
+  - spec/web-api-prototype-parity-readable-stream
 workspaces:
   - packages/schema
   - packages/runtime
@@ -47,7 +48,7 @@ The census missed two things, and both change what the rewrite can say.
 
    No tracked document maps a built-in name in `imports` or gives one a `$src` (checked over every tracked `*.json` and `*.md`).
 
-2. **Only the site build resolves an extension class by bare name.** `buildScope` pass 0 reads `doc.imports` alone. `handleResolve` (`packages/server/src/resolve.ts`) refuses a body with no `$src`. Studio's canvas feeds the runtime `getEffectiveImports` (`packages/studio/src/canvas/canvas-live-render.ts`), which merges project and page `imports` only. So a bare `MarkdownCollection` warns `unknown $prototype` in the canvas. Every starter names its parser class with `$src` (`packages/starters/sites/blog/pages/[slug].json`), and `examples/pages/advanced/markdown-blog.json` maps it in `imports`. Studio's add-state picker writes bare `ext:` names (`addSignalOfType` in `packages/studio/src/panels/signals-panel.ts`).
+2. **Only the site build resolves an extension class by bare name.** `buildScope` pass 0 reads `doc.imports` alone. `handleResolve` (`packages/server/src/resolve.ts`) refuses a body with no `$src`. Studio's canvas feeds the runtime `getEffectiveImports` (`packages/studio/src/canvas/canvas-live-render.ts`), which merges project and page `imports` only. So a bare `MarkdownCollection` warns `unknown $prototype` in the canvas, and the canvas's param-bound preview (`resolveParamBoundState` in `packages/studio/src/page-params.ts`) sends the entry to `handleResolve` through `platform.resolveClass`, which refuses it. Every starter names its parser class with `$src` (`packages/starters/sites/blog/pages/[slug].json`), and `examples/pages/advanced/markdown-blog.json` maps it in `imports`. The repository's own docs site does neither: `sites/jxsuite.com/layouts/docs.json` and `sites/jxsuite.com/pages/docs/[...slug].json` name `ContentEntry` bare, relying on `project.json`'s `extensions`, so they resolve in the build only. Studio's add-state picker writes bare `ext:` names (`addSignalOfType` in `packages/studio/src/panels/signals-panel.ts`).
 
 **Tests and docs.** `packages/compiler/tests/prototype-resolver.test.ts` has "explicit imports override built-in prototype mappings", which maps `MarkdownFile`, a name nothing else defines, so it asserts no override. No test resolves a parser class by bare name through a registry; `connector-mounts.test.ts` pins that path for `TableQuery`. `docs/framework/concepts/data-prototypes.md` repeats `MarkdownFile`, "built in too", "shipped with Jx", `site.json` and "may even override a built-in". `docs/framework/concepts/timing.md` line 82 names `MarkdownFile`. `examples/content/posts/building-a-blog.md` and two comments in `extensions/parser/src` name it as well. They are example content and code comments, not the contract, and are left alone.
 
@@ -55,6 +56,7 @@ The census missed two things, and both change what the rewrite can say.
 
 - `plan:spec/request-url-params` owns the `Request` row's phrase "HTTP fetch with reactive URL params" and removes "except `Request`'s URL params (§11.1)" from §12.1's marker. This plan keeps that row's description exactly as that plan leaves it.
 - `plan:extensions/local-imports-precedence` makes `$src`, then `imports`, then the manifest class hold at every `timing`, lowering included. Until it lands, the order §12.5 states is false on `resolvePrototypes`' lowering branch.
+- `plan:spec/web-api-prototype-parity-readable-stream` decides whether `ReadableStream` is a built-in at all (its recommendation: remove it from `BUILT_IN_PROTOTYPES`, the runtime and §11.2). §12.1's list cannot be written until that is settled, and its integration contract already says this plan's table does not list the name. It also edits `BUILT_IN_PROTOTYPES` in `defs/external-class-def.schema.ts`, which this plan moves, and §12.1's marker, which this plan replaces, and it adds the runtime test "every built-in prototype but Function and Array resolves without the unknown-prototype warning", which this plan reuses as its drift test instead of writing a second one.
 
 ## Outcome
 
@@ -80,21 +82,22 @@ The census missed two things, and both change what the rewrite can say.
 - **Open:** does §12.5 promise the extension-class step in an interpreting host? Recommendation: no. The text names the site build as the one host that consults extension classes by name, and tells authors to name the descriptor with `$src` for an entry that must also resolve in Studio's canvas, which is what every starter does.
   - The canvas half is extensions.md §3's name-visibility rule applied to Studio, not a spec.md reconcile. A later plan would give the canvas each enabled extension's class path (`getExtensions()`, `packages/studio/src/format/format-host.ts`) under the effective `imports` in `canvas-live-render.ts`, the way `contentCollectionSrc` in `packages/studio/src/page-params.ts` already does for `ContentCollection`.
   - If review wants that path, it becomes an extensions.md open item with its own plan, and §12.5's host sentence gains Studio's canvas when that lands.
+  - The cost of "no" is visible in this repository: the jxsuite.com docs pages name `ContentEntry` bare (Context item 2), so they preview without data in Studio. That is today's behaviour, and this plan neither fixes nor worsens it.
 - **Decided:** disposition `reconcile`, although three small guards change code. Both claims close by rewriting the sections to the architecture that ships, and the guards enforce what §12.5 already says of the Web API built-ins ("unaffected"). They live here because the rows cannot be written true without them.
-- **Decided:** one pull request after both prerequisites land, with no early slice. Both prerequisites are `S`. An early slice would release §12.1 and §12.5 twice, each time with an interim marker that the next release rewrites.
-- **Decided:** fragment level `minor`, not `major`. `MarkdownFile` never resolved and `site.json` was never read. Shadowing a built-in was documented only in `data-prototypes.md`, and it never worked for the compiled `Request`, storage or `Cookie` at client timing. No tracked document uses it.
+- **Decided:** one pull request after all three prerequisites land, with no early slice. An early slice would release §12.1 and §12.5 twice, each time with an interim marker that the next release rewrites, and no other plan needs `isBuiltInPrototype` before the rows it enforces are written.
+- **Decided:** fragment level `minor`, not `major`. `MarkdownFile` never resolved and `site.json` was never read. Shadowing a built-in was documented, by §12.5's "Import overrides built-ins" row, its resolution order and `data-prototypes.md`, but §12.5's "Built-in prototypes unchanged" row said the opposite in the same table, so neither reading was a contract an author could rely on. It worked only in the interpreter, never for the compiled `Request`, storage or `Cookie` at client timing, and no tracked document uses it.
 
 ## Implementation
 
-One pull request, after `plan:spec/request-url-params` and `plan:extensions/local-imports-precedence` have landed.
+One pull request, after `plan:spec/request-url-params`, `plan:extensions/local-imports-precedence` and `plan:spec/web-api-prototype-parity-readable-stream` have landed.
 
-1. **`packages/schema/src/guards.ts`.** Move `BUILT_IN_PROTOTYPES` here from `defs/external-class-def.schema.ts`, unchanged (13 names, `as const`), next to `isPrototypeDef`. Add `export function isBuiltInPrototype(name: unknown): boolean` returning `typeof name === "string" && (BUILT_IN_PROTOTYPES as readonly string[]).includes(name)`. Its doc comment says the list is spec.md §12.1's, and that `Array` is reserved although it names the §10 children node. In `defs/external-class-def.schema.ts`, replace the declaration with `export { BUILT_IN_PROTOTYPES } from "../src/guards.ts";`, following `defs/expression-node.schema.ts`, which imports from `../src/intl.ts`. `defs/index.ts` is unchanged. The constant moves because `guards.ts` is what the runtime already imports, and the defs module would bring a schema object into the browser runtime for one array.
+1. **`packages/schema/src/guards.ts`.** Move `BUILT_IN_PROTOTYPES` here from `defs/external-class-def.schema.ts`, with the members `plan:spec/web-api-prototype-parity-readable-stream` leaves it (12 names under its recommended remove, 13 if it keeps `ReadableStream`), `as const`, next to `isPrototypeDef`. Add `export function isBuiltInPrototype(name: unknown): boolean` returning `typeof name === "string" && (BUILT_IN_PROTOTYPES as readonly string[]).includes(name)`. Its doc comment says the list is spec.md §12.1's, and that `Array` is reserved although it names the §10 children node. In `defs/external-class-def.schema.ts`, replace the declaration with `export { BUILT_IN_PROTOTYPES } from "../src/guards.ts";`, following `defs/expression-node.schema.ts`, which imports from `../src/intl.ts`. `defs/index.ts` is unchanged. The constant moves because `guards.ts` is what the runtime already imports, and the defs module would bring a schema object into the browser runtime for one array.
 2. **`packages/runtime/src/runtime.ts`.** Import `isBuiltInPrototype` from `@jxsuite/schema/guards`, beside the guards already imported.
    - `buildScope`, pass 0: inside `if (mapped)`, before the `.class.json` check, add ``if (isBuiltInPrototype(def.$prototype)) { console.warn(`Jx: import "${def.$prototype}" is ignored: "${def.$prototype}" is a built-in $prototype`); continue; }``. The comment above the pass says built-in names are never mapped (spec §12.5).
    - `resolvePrototype`: `if (def.$src)` becomes `if (def.$src && !isBuiltInPrototype(def.$prototype))`. When `def.$src` is set on a built-in name, warn `Jx: $src on "${key}" is ignored: "${def.$prototype}" is a built-in $prototype` and fall through to the switch. `Function` never reaches here, because `isPrototypeDef` excludes it.
-3. **`packages/compiler/src/site/prototype-resolver.ts`.** Delete `SKIP_PROTOTYPES`. Its test in the loop becomes `if (isBuiltInPrototype(def.$prototype)) continue;`, imported from `@jxsuite/schema/guards` beside `isPrototypeDef`. This covers both branches, so neither the lowering lookup nor `imports ?? registryClassPath` ever sees a built-in name. The module header, which still says "Any state entry with a $prototype that maps to a .class.json via doc.imports", and the `resolvePrototypes` doc comment, which says "builtins + legacy content system", both become: a non-built-in entry resolves through its `$src`, the merged `imports`, then an enabled extension's class (spec.md §12.5).
+3. **`packages/compiler/src/site/prototype-resolver.ts`.** Delete `SKIP_PROTOTYPES`. Its test in the loop becomes `if (isBuiltInPrototype(def.$prototype)) continue;`, imported from `@jxsuite/schema/guards` beside `isPrototypeDef`. This covers both branches, so neither the lowering lookup nor `imports ?? registryClassPath` ever sees a built-in name. If `plan:spec/timing-values-in-built-sites` has landed first, its build-time `Request` branch stays ahead of this test. The module header, which still says "Any state entry with a $prototype that maps to a .class.json via doc.imports", and the `resolvePrototypes` doc comment, which says "builtins + legacy content system", both become: a non-built-in entry resolves through its `$src`, the merged `imports`, then an enabled extension's class (spec.md §12.5).
 4. **Spec and docs.** Make the edits under Specs & docs, then run `bunx oxfmt specs/spec.md` to re-pad the tables.
-5. **Landing.** Delete this file. No plan requires it. Where they still exist, reword the citations `plans:check` would report as `citation-unknown` to "spec.md §12.1": in `plans/spec/web-api-prototype-parity.md` (Related) and `plans/schema/generator-inventory.md` (What closes by code, elsewhere).
+5. **Landing.** Delete this file. No plan requires it. Every plan that cites it and could outlive it is reworded to cite "spec.md §12.1": today that is `plans/schema/generator-inventory.md` ("What closes by code, elsewhere"), if it has not landed; the other citing plans are this plan's prerequisites and are gone by then. `bun run plans:check` names any `citation-unknown` left.
 
 **Integration contract.**
 
@@ -104,7 +107,7 @@ One pull request, after `plan:spec/request-url-params` and `plan:extensions/loca
 - Consequences for other plans:
   - `plan:compiler/client-external-class-hydration` may define `isExternalClassDef` through `isBuiltInPrototype` and cite §12.1.
   - `plan:spec/timing-values-in-built-sites` adds a build-time `Request` branch ahead of the built-in skip in `resolvePrototypes`.
-  - A plan that adds or removes a Web API prototype, such as `plan:spec/web-api-prototype-parity` for `ReadableStream`, changes `BUILT_IN_PROTOTYPES`, `resolvePrototype`'s case and §12.1's row together. The drift test below catches the first two disagreeing.
+  - A later plan that adds or removes a Web API prototype changes `BUILT_IN_PROTOTYPES` (now in `guards.ts`), `resolvePrototype`'s case and §12.1's row together. The runtime test "every built-in prototype but Function and Array resolves without the unknown-prototype warning" catches the first two disagreeing.
 
 ## Tests
 
@@ -120,22 +123,22 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
 
 **`packages/runtime/tests/runtime.test.ts`** (describe `resolvePrototype`)
 
-- `a $src on a built-in name is ignored with a warning`: `{ $prototype: "Map", $src: "./x.class.json", default: { a: 1 } }` resolves to a `Map` whose `get("a")` is `1`. The warning names the entry's key and contains `is a built-in $prototype`, and `fetch` is never called.
-- `every built-in but Function and Array has a resolvePrototype case`: for each other `BUILT_IN_PROTOTYPES` name, call `resolvePrototype` with a minimal config, spying on `console.warn`. `Request` gets `{ url: "/x", manual: true }`. `IndexedDB` gets `{ database: "d", store: "s" }` with the file's fake `global.indexedDB`. `LocalStorage`, `SessionStorage` and `Cookie` get `{ key: "k" }` or `{ name: "k" }`. No warning contains `unknown $prototype`.
+- `a $src on a built-in name is ignored with a warning`: `{ $prototype: "Map", $src: "./x.class.json", default: { a: 1 } }` resolves to a `Map` whose `get("a")` is `1`. The warning names the entry's key and contains `is a built-in $prototype`, and a spy on `global.fetch` is never called. Before the change the entry goes to `resolveExternalPrototype`, so the case fails.
+- No new drift test. "every built-in prototype but Function and Array resolves without the unknown-prototype warning", which `plan:spec/web-api-prototype-parity-readable-stream` adds here, already iterates `BUILT_IN_PROTOTYPES` from `@jxsuite/schema/defs`, and still does through the re-export. It must stay green unchanged.
 
 **`packages/compiler/tests/prototype-resolver.test.ts`**
 
 - Replace `explicit imports override built-in prototype mappings`, whose `MarkdownFile` names nothing, with `an imports entry or an extension class named like a built-in is not consulted`:
   - `imports: { Set: "./Multiplier.class.json" }`, and `state: { s: { $prototype: "Set", a: 4, b: 9 }, r: { $prototype: "Request", url: "/x", timing: "client" } }`.
-  - `projectContext.registry` is a stub whose `byName` returns `{ classPath: <Multiplier>, capabilities: { lower: true }, call: mock() }` for any name.
-  - After the call, both entries equal their pre-call copies, and `call` was not invoked.
+  - `projectContext.registry` is a stub, cast `as never` as `connector-mounts.test.ts` casts its config, whose `byName` returns `{ classPath: <Multiplier>, capabilities: { lower: true }, call: mock() }` for any name. The route is `{ sourcePath: join(FIXTURES, "page.json") }`.
+  - After the call, both entries equal their pre-call copies, and `call` was not invoked. Before the change `s` resolves through `imports` to `36`, and `r` is lowered (with `plan:extensions/local-imports-precedence` landed, an entry declaring no class still lowers), so the case fails.
 - `a bare MarkdownCollection resolves through the enabled @jxsuite/parser extension`: reuse the two-post fixture of "resolves MarkdownCollection via explicit imports", with no `imports`.
-  - With `registry: await buildProjectExtensionRegistry(dir, { extensions: ["@jxsuite/parser"] })` (from `../src/site/format-host`), `posts` becomes an array of 2.
+  - With `registry: await buildProjectExtensionRegistry(dir, { extensions: ["@jxsuite/parser"] } as never)` (from `../src/site/format-host`), `posts` becomes an array of 2.
   - With a registry built from `{ extensions: [] }`, `posts` still has `$prototype: "MarkdownCollection"`.
-  - This pins §12.1's example and §5.3 4e's sentence.
+  - This passes before the change too: it pins, for the first time, the path §12.1's example, §5.3 4e's sentence and the jxsuite.com docs pages rely on.
 - `skips builtin prototypes (Function, Array, etc.)` stays as it is, and still passes through the new predicate.
 
-**Coverage.** No source file is added, so the manifest checks are unaffected. `guards.ts` gains one function, and the guards test covers it. The runtime's two new branches and the compiler's replaced test are each covered by a case above. The per-file thresholds are `lines = 0.99, functions = 0.99` (`packages/schema/bunfig.toml`), `lines = 0.963, functions = 0.98` (`packages/runtime/bunfig.toml`) and `lines = 0.982, functions = 0.98` (`packages/compiler/bunfig.toml`). Ratchet a workspace only if its worst file rises.
+**Coverage.** No source file is added, so the manifest checks are unaffected. `guards.ts` gains one function, and the guards test covers it. The runtime's two new branches and the compiler's replaced test are each covered by a case above, and `defs/` is not a `src/**` file the manifest check globs. The per-file thresholds are `lines = 0.99, functions = 0.99` (`packages/schema/bunfig.toml`), `lines = 0.963, functions = 0.98` (`packages/runtime/bunfig.toml`) and `lines = 0.982, functions = 0.98` (`packages/compiler/bunfig.toml`). Ratchet a workspace only if its worst file rises.
 
 **Paper gates** (all in `checks`): `bun run docs:status`, `bun run plans:check`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose` and `bun run docs:markdown`.
 
@@ -145,17 +148,17 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
 
 1. Replace the Partial marker with:
 
-   > **Status: Implemented.** The built-in names are `BUILT_IN_PROTOTYPES`, and `isBuiltInPrototype` (`packages/schema/src/guards.ts`) is the one test every tier applies. The interpreter's `resolvePrototype` (`packages/runtime/src/runtime.ts`) has a case for each Web API name, and neither `buildScope`'s import-map pass nor the site build's `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) maps a built-in name to a class. What each prototype does in each tier, and its status there, is §11.2's. The content classes resolve through the extension registry (`registryClassPath` in `prototype-resolver.ts`).
+   > **Status: Implemented.** The built-in names are `BUILT_IN_PROTOTYPES`, and `isBuiltInPrototype` (`packages/schema/src/guards.ts`) is the one test the interpreter and the site build apply; the compiled targets lower each name as §11.2 says, whatever its `$src` or `imports`. The interpreter's `resolvePrototype` (`packages/runtime/src/runtime.ts`) has a case for each Web API name, and neither `buildScope`'s import-map pass nor the site build's `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) maps a built-in name to a class. What each prototype does in each tier, and its status there, is §11.2's. The content classes resolve through the extension registry (`registryClassPath` in `prototype-resolver.ts`).
 
 2. Replace the lead sentence and the table with the following lead sentence and table:
 
    "Jx provides these `$prototype` names as built-ins. Each resolves by name with no `imports` entry or `$src`, and a built-in name always means the built-in. An `imports` entry or an extension class with the same name is not consulted (§12.5), and a `$src` on any built-in but `Function` is ignored (§12.2)."
 
-   The new table, whose `Request` description is whatever `plan:spec/request-url-params` leaves, verbatim (today "HTTP fetch with reactive URL params"):
+   The new table has one row per `BUILT_IN_PROTOTYPES` name but `Array`. Its `Request` description is whatever `plan:spec/request-url-params` leaves, verbatim (today "HTTP fetch with reactive URL params"). It has no `ReadableStream` row under `plan:spec/web-api-prototype-parity-readable-stream`'s recommended remove. If that plan keeps the name (defer or implement), a `ReadableStream` row follows `Blob`, specified in §11.2, its description saying Future under defer.
 
    | Prototype         | Description                                                | Specified in       |
    | ----------------- | ---------------------------------------------------------- | ------------------ |
-   | `Function`        | Inline or external function: handler, computed or callable | §5.3 4b to 4d, §20 |
+   | `Function`        | Inline or external function: handler, computed or callable | §5.3 4a to 4d, §20 |
    | `Request`         | HTTP fetch with reactive URL params                        | §11.1, §11.2       |
    | `URLSearchParams` | Query string built from the entry's keys                   | §11.2              |
    | `FormData`        | Form fields for submission                                 | §11.2              |
@@ -166,7 +169,6 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
    | `Set`             | A `Set` of `default`'s items                               | §11.2              |
    | `Map`             | A `Map` of `default`'s entries                             | §11.2              |
    | `Blob`            | Binary data from parts and a type                          | §11.2              |
-   | `ReadableStream`  | A stream                                                   | §11.2              |
 
 3. After the table: "`Array` is reserved too, but it is not a `state` prototype: `$prototype: "Array"` marks the mapped-array node a `children` array holds (§10). Where each prototype resolves is its `timing` (§11.3)."
 
@@ -182,7 +184,7 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
 
 1. Replace the leading Partial marker with:
 
-   > **Status: Implemented.** The interpreter maps `doc.imports` in `buildScope`'s first pass (`packages/runtime/src/runtime.ts`). The site build merges `project.json` `imports` under each page's in `injectContext` (`packages/site/src/context.ts`). `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) then reads an entry's `$src`, the merged `imports`, and the enabled extensions' classes, in that order, at every `timing`. Both skip the built-in names (`isBuiltInPrototype`, `packages/schema/src/guards.ts`).
+   > **Status: Implemented.** The interpreter maps `doc.imports` in `buildScope`'s first pass (`packages/runtime/src/runtime.ts`). The site build merges `project.json` `imports` under each page's in `injectContext` (`packages/site/src/context.ts`). `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) then reads an entry's `$src`, the merged `imports`, and the enabled extensions' classes, in that order, at every `timing`. The interpreter's pass and `resolvePrototypes` both skip the built-in names (`isBuiltInPrototype`, `packages/schema/src/guards.ts`).
 
 2. In the rules table, the first three rows are unchanged. The last three become:
    - "Built-in names are reserved": "An `imports` entry named like a built-in (§12.1) is not consulted; the interpreter warns"
@@ -198,10 +200,10 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
 
 **Fragment** (single quotes keep the shell off `$src`): `bun run spec:change spec.md minor -m '§12.1, §12.2 and §12.5: the built-in prototypes are Function and the Web API prototypes of §11.2, and a built-in name always means the built-in, so no imports entry, extension class or $src replaces one; Markdown, MarkdownCollection, ContentCollection and ContentEntry are classes of the @jxsuite/parser extension, which a site build resolves by name once project.json enables it; imports cascade from project.json; and the resolution order ends with the classes of the enabled extensions, not built-in mappings. Both sections are Implemented.'`
 
-**Docs** (no em dashes; `docs:sync` names these through the changed spec anchors and `code:` lists):
+**Docs** (no em dashes). `docs:sync` names `data-prototypes.md` through `spec.md#12`; `timing.md` is edited because it names `MarkdownFile`, not because the sync names it:
 
 - **`docs/framework/concepts/data-prototypes.md`** (`spec:` `spec.md#11`, `spec.md#12`):
-  - Add `code:` with `packages/schema/src/guards.ts` and `packages/compiler/src/site/prototype-resolver.ts`.
+  - Add `packages/schema/src/guards.ts` and `packages/compiler/src/site/prototype-resolver.ts` to the `code:` list `plan:spec/request-url-params` creates.
   - "Built-in Web-API prototypes": after "each maps to a genuine Web API:" add "A built-in name always means the built-in: an import or an extension class with the same name is ignored." Delete the `Array` bullet. After the list, add "`Array` is not a data source: `$prototype: "Array"` marks a [mapped list](/docs/framework/concepts/lists) inside `children`."
   - Rename "Content prototypes" to "Content classes". No page links to the old anchor. Its lead becomes "Content loaders come from the `@jxsuite/parser` extension and resolve at build time (`timing: "compiler"`; see [Timing](/docs/framework/concepts/timing)):". The bullet `MarkdownFile` becomes `Markdown`.
   - Replace "These names map internally to `.class.json` implementations shipped with Jx, with no configuration needed." with "List `@jxsuite/parser` in your project's `extensions` and a build resolves these names with no `imports` entry. Studio's canvas does not look extension classes up by name, so give an entry that should also preview there its class file: `"$src": "@jxsuite/parser/MarkdownCollection.class.json"`."
@@ -209,7 +211,12 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
   - "How it works": the resolution-order sentence becomes "A built-in name is always the built-in. Any other name resolves through its own `$src`, then the page's `imports`, then the project's, then (in a build) an enabled extension's class, and otherwise gets an unknown-prototype warning." The `urlParams` sentence stays as `plan:spec/request-url-params` leaves it.
   - "Rules": the last bullet becomes "Built-in prototypes need no `imports` entry, and neither an import nor a `$src` replaces one."
 - **`docs/framework/concepts/timing.md`** (`spec:` `spec.md#11.3`), line 82: "and the content prototypes (`MarkdownFile`, `MarkdownCollection`, `ContentCollection`) use it by design:" becomes "and the content classes of the `@jxsuite/parser` extension (`Markdown`, `MarkdownCollection`, `ContentCollection`) are built for it. With that extension in your project's `extensions`, a build resolves them by name:".
-- **No change** to the nine pages whose `code:` lists `runtime.ts` (`runtime-host.md`, `docs.md`, `overlays.md`, `props-and-scope.md`, `reactivity.md`, `styling.md`, `components.md`, `color-schemes.md`, `elements.md`). None of them describes prototype resolution, and the pull request says so. `docs/framework/concepts/functions.md` (`spec.md#5.3`) documents `Function` only, and `docs/extending/extensions/first-party.md` already lists the parser's classes as extension classes.
+- **No change**, and the pull request says so, to the other pages `docs:sync` names:
+  - the nine pages whose `code:` lists `runtime.ts` (`runtime-host.md`, `docs.md`, `overlays.md`, `props-and-scope.md`, `reactivity.md`, `styling.md`, `components.md`, `color-schemes.md`, `elements.md`), none of which describes prototype resolution;
+  - `docs/extending/extensions/anatomy.md` and `capabilities.md`, whose `code:` gains `prototype-resolver.ts` from `plan:extensions/local-imports-precedence`, and whose name-visibility and `lower` text stays true;
+  - `docs/framework/concepts/state.md` (`spec.md#5`) and `functions.md` (`spec.md#5.3`), which name no content class.
+
+  `docs/extending/extensions/first-party.md` already lists the parser's classes as extension classes.
 
 **Graduation:** not here. spec.md keeps many open items, so its header stays `Partial` and `plans/spec/` stays.
 

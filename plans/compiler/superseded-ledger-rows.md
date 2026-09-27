@@ -17,11 +17,11 @@ size: S
 
 > **Status: Partial.** None of the three remaining rows ships. A `$prototype: "Request"` with `timing: "compiler"` is never fetched at build time: `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) has no class mapping for it and skips it, and the site build then strips it as a resolved compiler entry, so nothing is baked and the page gets no fetch either; the row belongs to `spec.md` §11.3's compiler row and stays here until that section marks it. Nothing emits a `<script type="application/Jx+json">` island: […] No dependency-manifest file is written, and nothing in the build collects imports (`collectSrcImports` in `packages/compiler/src/shared.ts` has no caller outside its tests). […]
 
-| Feature              | Status                                                           |
-| -------------------- | ---------------------------------------------------------------- |
-| `timing: "compiler"` | **Pending**                                                      |
-| Island serialization | **Pending**                                                      |
-| Bundle manifest      | **Pending** (nothing in the build collects imports; no manifest) |
+| Feature              | Description                                             | Status                                                           |
+| -------------------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| `timing: "compiler"` | Bake fetch responses into HTML at build time            | **Pending**                                                      |
+| Island serialization | `<script type="application/Jx+json">` hydration islands | **Pending**                                                      |
+| Bundle manifest      | Exact dependency manifest from JSON analysis            | **Pending** (nothing in the build collects imports; no manifest) |
 
 Re-read against the tree on 2026-09-27. Each row leaves for its own reason:
 
@@ -43,7 +43,7 @@ Re-read against the tree on 2026-09-27. Each row leaves for its own reason:
 
 Elsewhere "island" is the architecture's word for a component or page module hydrating in place: site-architecture.md §1.1 principle 3 and §12.4, compiler.md §4.4 and its subtitle, `spec.md` §21.1, `injectComponentScripts`'s live `islandSource` parameter (the page's emitted modules), and `site-build-component-loading.test.ts`, which calls a dynamic page's `app.js` "the island module". That usage describes behaviour that ships.
 
-**Plans that name this code.** `plan:spec/timing-values-in-built-sites` cites this plan at lines 29 and 47. `plan:_shared/compiled-server-call` (step 5, and its Context's emitter list) threads `serverBaseUrl` through `compileStaticPage` "to its islands".
+**Plans that name this code.** Three cite this plan: `plan:spec/timing-values-in-built-sites` (line 31), `plan:spec/style-handle-assignment` (line 37) and `plan:_shared/compiled-server-call` (line 49, which already leaves the static route alone). Six more edit, rely on or annotate the branch, with no edge in either direction, so whichever lands second adapts: `plan:spec/compiled-keyed-lists` step 2 threads `runtimeImports` into `compileStaticPage`'s islands map, with a `compile-static.test.ts` islands case; `plan:spec/static-dom-property-emission` step 4 edits `buildInnerWithIslands`, which step 1 below renames; `plan:spec/compiled-element-parameterised-bodies` and `plan:spec/named-formula-recursion` count the island modules among the element target's callers; and `plan:spec/static-style-rules-only` and `plan:compiler/client-external-class-hydration` note island defects this deletion makes moot.
 
 ## Outcome
 
@@ -73,7 +73,8 @@ Elsewhere "island" is the architecture's word for a component or page module hyd
 2. **`packages/compiler/src/compiler.ts`**, route 1: call `compileStaticPage(raw, { projectStyle, title, ...(opts.prePaintScheme === false ? { prePaintScheme: false } : {}) })`. `litHtmlSrc` and `reactivitySrc` stay destructured for routes 2 and 3.
 3. **`packages/compiler/src/shared.ts`**: delete `isNodeDynamic`, `hasAnyIsland`, `collectSrcImports` and `_walkSrc`. `isMappedArray` and `childrenContainArray` stay (`isDynamic` uses them).
 4. **`packages/compiler/src/site/headers-emitter.ts`**, `writeNoJekyll`'s JSDoc: "GitHub Pages runs Jekyll, which leaves every `_`-prefixed path out of the published site, at any depth. The one the build writes that a page needs is `images/_optimized/`, and a project may ship its own from `public/`. One empty file closes the whole class of "works locally, half-broken on Pages", so it is unconditional rather than an adapter option."
-5. **Plans, in the landing pull request.** Delete this file. In `plans/spec/timing-values-in-built-sites.md`, reword lines 29 and 47 to cite `compiler.md` §10 (Removed) instead of this plan, or `plans:check` fails with `citation-unknown`. If `plan:_shared/compiled-server-call` is still open, remove `compileStaticPage` from its step 5 and its emitter list, since the static route emits no module.
+5. **`packages/compiler/src/site/site-build.ts`**, the comment above the `compile()` call's runtime options: "a page that reached compile-static/compile-client" becomes "a page that reached the client or custom-element target", since the static target no longer writes a map.
+6. **Plans, in the landing pull request.** Delete this file. Reword every citation `grep -rn "plan:compiler/superseded-ledger-rows" plans/` finds (the three under Context) to cite `compiler.md` §10 (Removed), or `plans:check` fails with `citation-unknown`. For each of the other plans named there that is still open, drop the island half of its step (`compiled-keyed-lists`: the static target leaves its tier list and its test list) or follow the rename (`static-dom-property-emission`: `buildStaticInner`), and delete its island notes.
 
 **Integration contract.** Once this lands: `compileStaticPage(raw, { title?, projectStyle?, prePaintScheme? })` returns `{ html, files: [] }`, and its HTML holds no import map and no module script. The modules `compile()` emits come only from route 0 (class), route 2 (`emitElementModule`) and route 3 (`compileClient`), so a plan threading an option into emitted modules touches those two emitters and `compileElement`, never the static target. `shared.ts` no longer exports `isNodeDynamic`, `hasAnyIsland` or `collectSrcImports`. compiler.md §10 is Removed and names `spec.md` §11.3 as the home of compiler timing. site-architecture.md §14.4 lists `images/_optimized/` and no `_islands/`.
 
@@ -110,18 +111,18 @@ Neither spec graduates: compiler.md keeps §2, §2.2, §3 and more open, and sit
 
 - `docs/framework/build.md` (`compile-static.ts`, `shared.ts`) changes.
   - Replace "### Islands in a static shell" (heading, both paragraphs and the example) with "### Components on a static page": "A page whose own document is static stays static when it uses interactive components. Each instance is prerendered where it is written, and a component that needs JavaScript (a hyphenated `tagName`, say `site-counter`) loads `dist/components/site-counter.js` only on the pages that use it. The module upgrades the prerendered element in place, taking the props it was rendered with from its `data-jx-props` attribute:" then an `html` example of `<site-counter data-jx-props="{&quot;start&quot;:3}" data-jx-prerendered>…</site-counter>` and its `<script type="module" src="/components/site-counter.js"></script>`, then: "The import map added to those pages resolves `@vue/reactivity` and `lit-html` for the component modules, and a fully static component ships no module at all. Anything dynamic in the page document itself, at any depth, makes the whole page a [dynamic page](#dynamic-pages) instead: the compiler does not cut a dynamic subtree out of a static page. To keep a page static with one live part, make that part a component."
-  - Move "### Dynamic pages" (with its two trailing paragraphs) up from under "## Where the runtime comes from" to follow the new section, so the three tiers sit under "## The output tiers". The text is unchanged and so is the `#dynamic-pages` anchor.
+  - Move "### Dynamic pages" (with its two trailing paragraphs) up from under "## Where the runtime comes from" to follow the new section, so the three tiers sit under "## The output tiers". The text is unchanged and so is the `#dynamic-pages` anchor. "## Where the runtime comes from" then no longer follows a paragraph naming the two modules, so its opening "Those two modules are bundled" becomes "`@vue/reactivity` and `lit-html` are bundled".
   - "What prerendering will and won't bake": "the array ships with the island" becomes "the array ships to the browser".
   - "Related": "the component model behind islands" becomes "the component model behind interactive regions".
   - Frontmatter `spec:` gains `compiler.md#4.4 # property bridge: the data-jx-props payload`.
-- `docs/framework/site/deployment.md` (`headers-emitter.ts`): no change. Its `dist/` tree already lists `images/_optimized/`, and ".nojekyll: So GitHub Pages doesn't eat the _-prefixed files above" stays true.
-- `docs/framework/concepts/elements.md`, `styling.md` and `color-schemes.md` (`shared.ts`): no change; they describe nothing deleted.
+- `docs/framework/site/deployment.md` (`headers-emitter.ts`; `spec:` cites §14 and §14.7): no change. Its `dist/` tree already lists `images/_optimized/`, and ".nojekyll: So GitHub Pages doesn't eat the _-prefixed files above" stays true.
+- `docs/framework/concepts/elements.md`, `styling.md` and `color-schemes.md` (`shared.ts`), `docs/studio/publish/other-hosts.md` (cites §14) and `docs/framework/site/search.md` (cites §12): no change; they describe nothing deleted or edited.
 
 ## Acceptance
 
 - `cd packages/compiler && bun test --isolate --coverage`: green, every file at or above lines 0.982 and functions 0.98.
 - `bun scripts/check-coverage-manifest.ts packages/compiler`, `bun run typecheck`, `bun run lint`: green.
-- `grep -rnE "_islands|jx-island|JxIsland|isNodeDynamic|hasAnyIsland|collectSrcImports" packages specs docs --include=*.ts --include=*.md` prints nothing.
+- `grep -rnE "_islands|jx-island|JxIsland|isNodeDynamic|hasAnyIsland|collectSrcImports" packages/compiler/src specs docs --include=*.ts --include=*.md` prints nothing (the tests are left out: the new cases name `jx-island` and `_islands/` in order to assert their absence, as `compiler.test.ts` already does for `data-jx-island`).
 - `awk '/^## 10\./,/^## 11\./' specs/compiler.md` shows the heading and the Removed marker, and no table.
 - `bun run plans:status --spec compiler` no longer lists §10; `bun run plans:status --who-claims spec.md#11.3` still names `spec/timing-values-in-built-sites`.
 - `bun run docs:status`, `bun run docs:spec-release` (both fragments present), `bun run plans:check`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:markdown`: green.

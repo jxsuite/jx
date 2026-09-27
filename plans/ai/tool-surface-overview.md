@@ -24,7 +24,7 @@ The paragraph under it (line 91) is the whole of §3's own text, and it is the s
 - 11 command tools: the records declaring `aiTool` (`check_popovers`, `check_accessibility`, `open_document`, `enable_extension`, `disable_extension`, `select_node`, `set_canvas_mode`, `validate_redirects`, `add_project_locale`, `duplicate_node`, `delete_node`), projected by `packages/studio/src/services/ai-command-tools.ts`. The generated Commands reference (`docs/studio/interface/commands.md`, via `packages/studio/src/commands/reference.ts`) prints them in its Assistant column.
 - The two lists are already held together: `packages/studio/tests/ai-system-prompt.test.ts:250` ("hand tools are the tier table, projected tools are the declarations, and the two are disjoint") asserts both directions, disjointness and the counts 18 and 11; `CHROME_BUDGET.assistantTools` (`packages/studio/src/commands/budget.ts`, 30) caps their sum in `packages/studio/tests/ai-command-tools.test.ts:923`.
 - Edit application: `applyAndValidate` in `ai-tools.ts` runs each tree write through `transactDoc` (`packages/studio/src/tabs/transact.ts`), which puts it on the tab's undo history.
-- No docs page anchors `ai.md#3`; `docs/extending/embedding/assistant-harness.md` anchors only `ai.md#3.7`. No test or source comment cites §3's own paragraph.
+- No docs page anchors `ai.md#3`; `docs/extending/embedding/assistant-harness.md` anchors only `ai.md#3.7`. The one source comment citing §3 as a whole (`document-assistant.ts:7`, "See specs/ai.md §3.") stays true, and nothing cites §3's own paragraph.
 
 **What the harness program will move.** `plan:ai/harness-phase-1#J1.16` moves the document tools' definitions into a new `@jxsuite/ai/jx-tools` export and adds a new ai.md section for them; `plan:ai/harness-phase-1#J1.25` does the same for the project tools; `plan:ai/harness-phase-1#J1.20` edits §3.6 in place. Studio still registers every hand tool after those slices (`registerAiTools` stays as a wrapper), `@jxsuite/ai/tools` still defines no concrete tool, and the new `applyDocOpsAsUser` that the Studio document host calls lands in `tabs/transact.ts`. The rewrite below is worded so each of those statements holds before and after.
 
@@ -32,7 +32,7 @@ The paragraph under it (line 91) is the whole of §3's own text, and it is the s
 
 - ai.md §3 → Implemented: the line-89 marker is deleted, so §3 reads unmarked like §3.0 to §3.6, and the line-91 paragraph is replaced by a scope sentence, a placement paragraph and a pointer to the list.
 - No code, test or docs page changes.
-- ai.md does not graduate: its whole-spec marker and §2.2 (`plan:ai/harness-phase-1`), §2 (`plan:ai/model-listing-failure-shown`) and §4 (`plan:ai/link-local-guard`) stay open.
+- ai.md does not graduate: `plan:ai/harness-phase-1` owns its whole-spec marker and §2.2, and other sections stay open (`bun run plans:status --spec ai`).
 
 ## Decisions
 
@@ -49,7 +49,7 @@ A paper plan: the whole change is the spec edit under Specs & docs, the fragment
 
 1. `specs/ai.md` §3: delete line 89 (the marker) and replace line 91 (the paragraph) with the three paragraphs quoted under Specs & docs. The heading `## 3. Tool Surface` and every subsection are untouched.
 2. Run `bun run spec:change ai.md minor -m "…"` with the sentence under Specs & docs.
-3. Delete `plans/ai/tool-surface-overview.md`. No other plan names it in `requires`.
+3. Delete `plans/ai/tool-surface-overview.md`. No other plan names it in `requires` or cites it, and `bun run plans:check` (`citation-unknown`) would name one that did.
 
 If review declines the recommendation and wants the enumeration, the third paragraph becomes a two-column table (tool, kind) under §3 plus a test in `packages/studio` that reads it against `AI_TOOL_TIERS` and the `aiTool` declarations; that reads a file outside the workspace, so it needs an `EXTRA_EDGES` entry in `scripts/ci/affected.ts`, and the plan's disposition becomes `implement` with `workspaces: [packages/studio, scripts]`.
 
@@ -71,7 +71,7 @@ The gates that prove it, all run by the `checks` job:
 
 **ai.md**, in place. Delete the line-89 marker. Replace the line-91 paragraph with these three paragraphs, one line each:
 
-> The assistant works a Jx project through tools. It reads and edits the open document, its element tree and its state, with each edit rendered live on the canvas and reachable by undo (§3.2); it lists, reads, searches and writes project files; it creates or imports a project when none is open (§3.5); it puts a question to the author (§3.4); and it runs the Studio commands that declare themselves tools (§3.6).
+> The assistant works a Jx project through tools. It reads and edits the open document, its element tree and its state, with each edit rendered live on the canvas and reachable by undo (§3.2); it lists, reads, searches and writes project files, and creates pages and components; it creates or imports a project when none is open (§3.5); it puts a question to the author (§3.4); and it runs the Studio commands that declare themselves tools (§3.6).
 >
 > **Where a tool lives follows who wrote it (§3.6).** `@jxsuite/ai/tools` is the generic layer: the registry, the `ToolDefinition` shape, `ToolContext` and the turn's write ledger (§3.7). It defines no concrete tool. The hand tools are registered by Studio (`packages/studio/src/services/ai-*.ts`), and their document edits apply through Studio's transaction path (`packages/studio/src/tabs/transact.ts`), which is what puts each one on the tab's undo history. The command tools are Studio's command records, projected from the window's registry.
 >
@@ -90,4 +90,4 @@ The spec does not graduate (see Outcome), so there is no `spec:bump` and `plans/
 - `bun run plans:status --spec ai` no longer lists §3 as open; `bun run plans:status --who-claims ai.md#3` names no plan.
 - `ls specs/changes/ai-*.md` includes the new fragment, and `bun run spec:release --dry` shows it minting an ai.md minor.
 - `bun run docs:status`, `bun run plans:check`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links` and `bun run docs:markdown` pass.
-- The facts the text asserts still hold: `grep -rln 'name: "' packages/ai/src` prints nothing (no concrete tool is defined there), and `grep -n "hand tools are the tier table" packages/studio/tests/ai-system-prompt.test.ts` finds the parity test.
+- The facts the text asserts still hold: `grep -c 'name: "' packages/ai/src/tools.ts` prints `0` (`@jxsuite/ai/tools` defines no concrete tool; scoped to that file because a harness slice may add another subpath that does), and `grep -n "hand tools are the tier table" packages/studio/tests/ai-system-prompt.test.ts` finds the parity test.

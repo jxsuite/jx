@@ -26,7 +26,7 @@ The table (lines 1196–1207): ten `**Partial**` cells naming a compiled gap, `R
 The stub held four pieces of work. Two now belong to enabling plans this plan requires, and each narrows the marker when it lands:
 
 - `plan:spec/compiled-request-fetch`: the marker's last clause and the `Request` cell (debounce and abort in `emitRequestFetch`).
-- `plan:spec/web-api-prototype-parity-readable-stream`: the `ReadableStream` clause and row, split out because its disposition (recommended: remove) differs from this plan's and it touches `packages/runtime` and `packages/schema` only.
+- `plan:spec/web-api-prototype-parity-readable-stream`: the `ReadableStream` clause and row, split out because its disposition (recommended: remove) differs from this plan's and it touches no compiler code.
 
 This plan closes the rest: the element target's storage and cookie lowering, and compiled lowering for `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` in both targets. The final flip of the section stays here.
 
@@ -44,7 +44,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 - **`Map`** (2990): `new Map(Object.entries(isJsonObject(def.default) ? def.default : {}))`.
 - **`FormData`** (2994): `append(k, v)` for each entry of `def.fields ?? {}`.
 - **`Blob`** (3002): `new Blob(def.parts ?? [], { type })`, where `type` is `def.type` when it is a string and `"text/plain"` otherwise.
-- **Precedence and timing.** An entry with `$src` goes to the external-class path first (line 2816). `buildScope`'s pass 0 turns a bare `$prototype` that the document's `imports` maps into a `$src` (line 805), so a mapped built-in name is an external class too. `timing` is not read.
+- **Precedence and timing.** An entry with `$src` goes to the external-class path first (line 2818). `buildScope`'s pass 0 (line 802) turns a bare `$prototype` that the document's `imports` maps to a `.class.json` into a `$src`, so a mapped built-in name is an external class too; a mapping to anything else warns and is skipped. `timing` is not read. The compiled targets already disagree with the interpreter here: both lower `Request`, and the client target storage and `Cookie`, by name whatever `$src` or `imports` say. Which reading §12.5 keeps is `plan:spec/reconcile-built-in-prototypes`'s Open (recommended: a built-in name is always the built-in).
 - **The interpreted element** builds its scope once (`_jxInitialized`) inside `connectedCallback`, before the `data-jx-props`, `props.*` and property merges. So a supplied prop overwrites a storage or cookie value, and the persisting effect writes it back. `disconnectedCallback` stops nothing, so those effects live as long as the instance.
 
 **The compiled side today** (re-verified, with corrections to the marker's wording):
@@ -59,14 +59,14 @@ This plan closes the rest: the element target's storage and cookie lowering, and
   - The file contains no `localStorage`, `sessionStorage` or `document.cookie` token.
 - **Prerender.** `buildInitialScope` (`shared.ts:513`) seeds an entry that has a `default`, and every storage entry, with its default. A binding over any of these entries is still emitted, so hydration corrects the text. This plan does not change it.
 - **Tests that pin today's output.**
-  - `compile-client.test.ts` ("compileClient — prototypes", line 272).
-  - `compile-element.test.ts` ("compileElement — extractInitialValue prototypes", line 676, which asserts `theme: "dark"` in the state literal).
+  - `compile-client.test.ts` ("compileClient — prototypes", line 273).
+  - `compile-element.test.ts` ("compileElement — extractInitialValue prototypes", line 677, which asserts `theme: "dark"` in the state literal).
   - `no-eval.test.ts` compiles no built-in.
 
 **Related, no edge.** These plans edit the same functions:
 
 - `plan:_shared/compiled-prop-bridge`, `plan:_shared/compiled-element-lifecycle` and `plan:compiler/client-external-class-hydration` edit the element's `connectedCallback`. This plan leaves it untouched (see Decisions).
-- `plan:compiler/client-external-class-hydration` decides which `$prototype` entries are external classes (`isExternalClassDef`), and `plan:extensions/local-imports-precedence` makes `imports` win on every path. This plan's dispatcher declines exactly the entries those paths own.
+- `plan:compiler/client-external-class-hydration` defines `isExternalClassDef` as "not in `BUILT_IN_PROTOTYPES`", and `plan:spec/reconcile-built-in-prototypes` recommends that a built-in name always means the built-in, in every tier. This plan's dispatcher lowers by name, which is the compiled half of both, so the three agree without an edge. If review signs the reconcile Open the other way, the plan that work needs adds a decline at the top of `lowerBuiltInPrototype`.
 - `plan:spec/request-url-params` edits `emitRequestFetch`, which this plan does not touch.
 - `plan:spec/timing-values-in-built-sites` owns what `timing` means on a built-in (§11.3).
 - `plan:schema/prototype-property-declarations` narrows what `FormData` and `Blob` accept. Nothing here depends on that, because the lowering mirrors the runtime for any value.
@@ -79,7 +79,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
   - Every cell reads `**Implemented**`, apart from `ReadableStream`'s, which `plan:spec/web-api-prototype-parity-readable-stream` settles (recommended: `**Removed**`).
 - A built component reads and persists its `LocalStorage`, `SessionStorage` and `Cookie` entries. A built page and component hold a real `Set`, `Map`, `FormData` and `Blob`, a live `URLSearchParams` string, and an opened `IndexedDB` handle.
 - In both tiers, storage the browser refuses leaves an entry at its `default`.
-- compiler.md §4.1 and §9.1 describe the lowering. Their markers are untouched.
+- §11.2a's Implemented marker names both compiled targets. compiler.md §4.1 and §9.1 describe the lowering. Those markers' statuses are untouched.
 - spec.md does not graduate.
 
 ## Decisions
@@ -87,7 +87,10 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 - **Decided:** one dispatcher, `lowerBuiltInPrototype`, lowers every built-in except `Request` in both targets. It lives in a new `packages/compiler/src/targets/builtin-prototypes.ts`.
   - Two targets with one list of cases cannot drift the way `compile-client.ts` and `extractInitialValue` did.
   - `Request` keeps its own call sites, because `plan:spec/compiled-request-fetch` and `plan:spec/request-url-params` both edit them.
-- **Decided:** the dispatcher declines an entry that carries `$src`, or whose `$prototype` the document's `imports` maps, and it ignores `timing`. Both are `resolvePrototype`'s rules. The declined entry is left to the external-class path, and a `timing` on a built-in is §11.3's question, not this section's.
+- **Decided:** the dispatcher lowers by `$prototype` name alone. It reads neither `$src`, the document's `imports` nor `timing`.
+  - Whether `$src` or `imports` can replace a built-in name is §12.5's question, which `plan:spec/reconcile-built-in-prototypes` owns. Its recommendation (a built-in name is always the built-in) is what today's compiled `Request`, storage and `Cookie` lowerings and `isExternalClassDef` already assume, and its integration contract says the compiled targets lower what §11.2 says.
+  - Declining such an entry here would ship it as its literal definition object, which is worse than either reading: the only compiled path that instantiates a class in the browser (`isClientExternalClass`, `plan:compiler/client-external-class-hydration`) excludes every built-in name.
+  - A `timing` on a built-in is §11.3's question, not this section's.
 - **Decided:** the element target binds every lowered entry in its constructor, once per instance. The entry starts as `null` in the state literal, and its effect is not added to `#effects`, so `disconnectedCallback` does not stop it. Four reasons:
   - The interpreted element builds its scope once and never stops these effects.
   - The constructor runs before any prop is absorbed, so a supplied prop overwrites and is persisted, as in the interpreter.
@@ -102,7 +105,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
   - `Set`, `Map`, `FormData` and `Blob` are built from JSON literals, so there is no helper to drift.
   - `URLSearchParams` is a `computed` over every key but `$prototype`, because any name (`name`, `description`) is a legitimate query parameter. This is also schema.md §3.1's wording after `plan:schema/generator-inventory`.
   - `IndexedDB`, the one lowering with logic, calls an inlined helper (`__jxIdbOpen`).
-  - Following `plan:spec/compiled-cookie-attributes`, the helper's source is written in the compiler, not serialized from a runtime function. A behavioural agreement test holds it to `resolvePrototype`, per the spec-wide inlining decision in `plans/spec/README.md`.
+  - Following `plan:spec/compiled-cookie-attributes`, the helper's source is written in the compiler, not serialized from a runtime function, and a behavioural agreement test holds it to `resolvePrototype`. That is the behavioural form of the spec-wide inlining decision in `plans/spec/README.md`, which the cookie plan also uses.
 - **Decided:** an `IndexedDB` entry without `database` or `store` is a compile error carrying the runtime's message. The interpreter already refuses that entry wherever it runs, Studio's canvas included, so no working page depends on it. Emitting the throw instead would stop the page module at load.
 
 ## Implementation
@@ -113,9 +116,9 @@ This plan closes the rest: the element target's storage and cookie lowering, and
      - `setup` holds statements that give it its value once state exists.
      - `computed` is a `() => …` source that the target assigns as `computed(…)`.
      - `helpers` are module-level sources that `setup` calls.
-   - `export function lowerBuiltInPrototype(key: string, def: JxPrototypeDef, opts: { statePrefix?: string; indent?: string; imports?: Record<string, string> } = {}): LoweredBuiltIn | null`.
+   - `export function lowerBuiltInPrototype(key: string, def: JxPrototypeDef, opts: { statePrefix?: string; indent?: string } = {}): LoweredBuiltIn | null`.
      - Defaults: `statePrefix` is `"state"` and `indent` is `""`.
-     - Returns `null` when `def.$src` is set, when `opts.imports?.[def.$prototype]` exists, and for `Request`, `Array`, `Function` and any other name.
+     - Returns `null` for `Request`, `Array`, `Function` and any name without a case below. It never reads `def.$src` or `def.timing` (see Decisions).
      - `acc` is `refAccessor(statePrefix, escapeToken(key))` (from `@jxsuite/runtime/pointer`). Every document string reaches the output through `JSON.stringify`, and no document text goes into a `//` comment.
      - The cases:
        - `LocalStorage` / `SessionStorage`: `setup` is `emitStorageBinding(key, def, opts)`.
@@ -152,7 +155,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
      `<store>` is `localStorage` or `sessionStorage`, chosen from `$prototype`, never from document text.
 
    - `export const IDB_HELPER = "__jxIdbOpen"` and `export function idbHelperSource(): string`. It returns one plain-ES2020 function `__jxIdbOpen(o, set)` that restates the runtime's case line for line:
-     - `indexedDB.open(o.database, o.version)`;
+     - `indexedDB.open(o.database, o.version)`, listening through `addEventListener` and reading `e.target.result`, as the runtime does (the existing test stubs fire listeners with exactly that shape);
      - the `upgradeneeded` store and index creation, with `unique: i.unique ?? false`;
      - `success` → `set({ database, getStore: (mode = "readwrite") => Promise.resolve(db.transaction(o.store, mode).objectStore(o.store)), isReady: true, store, version })`;
      - `error` → `set({ error: r.error?.message })`.
@@ -160,17 +163,17 @@ This plan closes the rest: the element target's storage and cookie lowering, and
      Its JSDoc carries the "why inlined" paragraph, pointing at `attrHelperSource()`.
 2. **`packages/compiler/src/shared.ts`**: export `withStatePrefix` (today module-private, line 222) unchanged.
 3. **`packages/compiler/src/targets/compile-client.ts`**, in `compileClient`'s `isPrototypeDef` block:
-   - Call `lowerBuiltInPrototype(key, def, { imports: raw.imports })` first. On a result:
+   - Call `lowerBuiltInPrototype(key, def)` first. On a result:
      - push `[key, null]` onto `stateEntries`;
      - push `[key, computed]` onto `computedEntries` when present (so `computed` is imported);
      - push `setup` onto `initBlocks`;
-     - add `helpers` to a module-level `Set`;
+     - add `helpers` to a `Set` declared inside `compileClient` beside `initBlocks`, so each emitted module gets its own (never a compiler-module global, which would leak helpers across compilations);
      - `continue`.
    - The `Request` branch stays. Delete the storage and `Cookie` branches and `emitStorageInit`.
    - `emitClientModule`'s trailing options object (built by the cookie and request plans) replaces `needsCookie` with `helpers: string[]`, emitted in insertion order directly after `attrHelperSource()`.
    - Update the "Prototype init emitters" comment to point at `builtin-prototypes.ts`.
 4. **`packages/compiler/src/targets/compile-element.ts`**, `emitElementModule`:
-   - Before the import lines, compute `lowered = new Map(key → LoweredBuiltIn)` over `isPrototypeDef` entries, with `{ statePrefix: "this.state", indent: "    ", imports: doc.imports }`. This is the same pre-pass pattern `requestEntries` uses.
+   - Before the import lines, compute `lowered = new Map(key → LoweredBuiltIn)` over `isPrototypeDef` entries, with `{ statePrefix: "this.state", indent: "    " }`. This is the same pre-pass pattern `requestEntries` uses.
    - Push the distinct helpers after `attrHelperSource()` (line 415).
    - In the state loop, a key in `lowered` pushes `[key, "null"]` ahead of the `extractInitialValue` fallback.
    - Before the constructor's closing line (638), emit `<acc> = computed(<computed>);` and then `setup` for each lowered entry, in document order.
@@ -181,7 +184,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 **Integration contract.** No plan requires this one. Once it lands:
 
 - `lowerBuiltInPrototype` is the one place a built-in other than `Request` is lowered, for both targets. A name added to `BUILT_IN_PROTOTYPES` fails a test until it gets a case there.
-- The dispatcher declines `$src`-carrying and `imports`-mapped entries, so an external-class predicate may treat them as classes.
+- The dispatcher lowers a built-in name whatever its `$src` or the document's `imports` say, so an external-class predicate that excludes `BUILT_IN_PROTOTYPES` leaves no entry unlowered. A plan that makes `$src` or `imports` win over a built-in name adds its decline at the top of this one function.
 - It ignores `timing`. `plan:spec/timing-values-in-built-sites` changes that in this one function if §11.3 decides a built-in's `timing` matters.
 - A compiled element binds storage and cookies in its constructor with uncollected effects, so a plan restructuring `connectedCallback` or `#effects` has nothing of these to preserve.
 - spec.md §11.2 reads Implemented and states when a component reads and persists storage.
@@ -192,7 +195,8 @@ Run `bun test --isolate --coverage` from `packages/compiler` and from `packages/
 
 **`packages/compiler/tests/builtin-prototypes.test.ts`** (new, emitted text):
 
-- "declines Request, Array, an unknown name, an entry with $src and an imports-mapped name": each returns `null`.
+- "declines Request, Array, Function and an unknown name": each returns `null`.
+- "lowers by name": a `Set` entry with a `$src` and a `timing` yields the same output as one without.
 - "lowers every built-in but Function, Array and Request": loops over `BUILT_IN_PROTOTYPES` from `@jxsuite/schema/defs`, with a minimal config per name. If `plan:spec/web-api-prototype-parity-readable-stream` was signed as `defer`, `ReadableStream` joins the exclusions.
 - "a hostile key and storage key are data":
   - for `user.name` with `key: 'a"b c'`, the output contains `state["user.name"]`;
@@ -214,7 +218,7 @@ Setup:
 - Both tiers get `effect` and `computed` from the workspace's single `@vue/reactivity`.
 - Storage is cleared in `afterEach`, and an `indexedDB` stub (the `runtime-gaps.test.ts` shape: a request whose listeners the test fires, recording `open`, `createObjectStore`, `createIndex` and `transaction` calls) is installed per case.
 
-Each case asserts that the compiled result deep-equals the runtime result:
+Each case asserts that the compiled result deep-equals the runtime result. A `FormData` is compared through `[...fd.entries()]` and a `Blob` through `type` and `await text()`, because neither has enumerable state for a deep equality to see. The `IndexedDB` ready value is compared with `getStore` omitted, because two closures are never equal, and each tier's `getStore()` is then awaited and its recorded `transaction` call compared.
 
 - "storage: a stored JSON value, a missing key, a corrupt value and no default", for both stores.
 - "storage: an assignment persists, null removes the item, a nested mutation persists", comparing the store contents after each step.
@@ -222,7 +226,7 @@ Each case asserts that the compiled result deep-equals the runtime result:
 - "URLSearchParams: literal, $ref and template params, recomputed when referenced state changes".
 - "Set and Map: contents for a default, no default and a mistyped default, and a mutation through state triggers an effect".
 - "FormData: entries for string, number, boolean, null, object and array fields".
-- "Blob: text and type with parts and type present, absent and mistyped".
+- "Blob: text and type with parts present and absent, and type present, absent and not a string".
 - "IndexedDB: the same open, upgrade and index calls, the same ready value, getStore opening the same transaction mode, and the same error value".
 
 `Cookie` is not repeated here. The cookie plan's `cookie-helper.test.ts` already covers the helper.
@@ -235,7 +239,7 @@ Each case asserts that the compiled result deep-equals the runtime result:
 - `tags` (`Set`, `default: ["a"]`);
 - `qs` (`URLSearchParams`, `q: { $ref: "#/state/theme" }`).
 
-It renders each into a `p`. The cases:
+It renders each into a `p`. The file's `beforeAll` copies a fixed list of happy-dom globals (`window`, `document`, `HTMLElement`, …) that has no `localStorage` or `sessionStorage`, so this `describe` installs both from the same `Window` before it imports its module, and clears their contents in `afterEach`. The cases:
 
 - "reads stored values on construction": seed `ls-theme` with `"dark"`, and the page renders `dark` and `q=dark`.
 - "an assignment persists and re-renders".
@@ -258,7 +262,7 @@ It renders each into a `p`. The cases:
 - Add "URLSearchParams is a computed".
 - Add "IndexedDB emits its helper once for two entries".
 - Add "Set, Map, FormData and Blob are constructed".
-- Add "an imports-mapped built-in name is not lowered".
+- Add "a built-in name is lowered whatever imports maps it to" (`imports: { Set: "./x.class.json" }` still emits `new Set(`).
 
 **`packages/compiler/tests/no-eval.test.ts`**: the fixture gains `LocalStorage`, `IndexedDB` and a template-param `URLSearchParams` entry, so the inlined helper is under the §21.1 lock.
 
@@ -277,14 +281,16 @@ It renders each into a `p`. The cases:
 
 - Replace the marker with:
 
-  > **Status: Implemented.** The interpreter resolves each entry in `resolvePrototype` (`packages/runtime/src/runtime.ts`). Both compiled targets lower every row but `Array`, which is the §10 children node rather than a state prototype: `Request` through `emitRequestFetch` (`packages/compiler/src/shared.ts`), the rest through `lowerBuiltInPrototype` (`packages/compiler/src/targets/builtin-prototypes.ts`), and `packages/compiler/tests/builtin-prototype-agreement.test.ts` holds each lowering to the interpreter's result.
+  > **Status: Implemented.** Every row but `Array`, which is the §10 children node rather than a state prototype, and `ReadableStream` (see its row) resolves in the interpreter, through `resolvePrototype` (`packages/runtime/src/runtime.ts`), and in both compiled targets: `Request` through `emitRequestFetch` (`packages/compiler/src/shared.ts`), the rest through `lowerBuiltInPrototype` (`packages/compiler/src/targets/builtin-prototypes.ts`). Agreement tests in `packages/compiler/tests` hold each lowering to the interpreter's result: `builtin-prototype-agreement.test.ts`, with `request-fetch-agreement.test.ts` for `Request` and `cookie-helper.test.ts` for `Cookie`.
 
 - Flip the cells to `**Implemented** — …`, dropping each `; compiled: …` or `; element target: …` tail: `URLSearchParams`, `FormData`, `LocalStorage`, `SessionStorage`, `Cookie`, `IndexedDB`, `Set`, `Map`, `Blob`. Re-pad the table with the formatter.
 - After the table (below the `Request` paragraph that `plan:spec/compiled-request-fetch` adds), add:
 
-  > An entry that names a built-in but carries `$src`, or whose name the document's `imports` maps, is an external class (§12.5) in both tiers. A component reads its `LocalStorage`, `SessionStorage` and `Cookie` entries once, when the instance is created and before it takes its props, and persists every later change for as long as the instance exists, so a prop supplied for such an entry replaces the stored value and is stored. Storage the browser refuses to open (a sandboxed frame, blocked site data) leaves the entry at its `default`.
+  > A component reads its `LocalStorage`, `SessionStorage` and `Cookie` entries once per instance, before it takes its props, and persists every later change for as long as the instance exists, so a prop supplied for such an entry replaces the stored value and is stored. Storage the browser refuses to open (a sandboxed frame, blocked site data) leaves the entry at its `default`.
 
-  If the Open is signed the other way, the middle sentence says the stored value wins.
+  If the Open is signed the other way, the first sentence says the stored value wins. The paragraph says nothing about `$src` or `imports` on a built-in name: that rule is §12.5's (`plan:spec/reconcile-built-in-prototypes`).
+
+- **§11.2a's marker** (Implemented since `plan:spec/compiled-cookie-attributes`) ends "The element target lowers no `Cookie` entry yet; that gap is §11.2's.", which this plan makes false. Delete that sentence, and change "the client target (`compile-client.ts`) reads on load" to "both compiled targets read when the entry is created (§11.2)". The marker stays Implemented.
 
 **compiler.md §4.1**, after the `Request` paragraph:
 
@@ -301,20 +307,20 @@ It renders each into a `p`. The cases:
 
 - `docs/framework/concepts/data-prototypes.md` (`spec: spec.md#11`):
   - add `code:` with `packages/compiler/src/targets/builtin-prototypes.ts`;
-  - after the storage example, add "In a component, a stored value is read when the component is created, and a value its parent passes in for the same entry replaces it and is stored." Drop or invert this sentence with the Open. No em dashes.
+  - after the storage example, add "In a component, a stored value is read once per instance, before its props arrive, so a value its parent passes in for the same entry replaces it and is stored." Drop or invert this sentence with the Open. No em dashes.
   - The list of built-ins is otherwise already true of built sites.
 - `bun run docs:sync` also names:
-  - the pages whose `code:` lists `runtime.ts`, `shared.ts`, `compile-client.ts` or `compile-element.ts` (`reactivity.md`, `functions.md`, `lists.md`, `styling.md`, `components.md`, `elements.md`, `color-schemes.md`, `build.md`, `runtime-host.md`);
+  - the pages whose `code:` lists `runtime.ts`, `shared.ts`, `compile-client.ts` or `compile-element.ts` (`reactivity.md`, `functions.md`, `lists.md`, `styling.md`, `components.md`, `elements.md`, `color-schemes.md`, `overlays.md`, `props-and-scope.md`, `build.md`, `runtime-host.md`);
   - `timing.md` (`spec.md#11.3`).
 
   None describes how a built-in lowers, so the pull request states that no update is needed. The implementation-status and spec-changelog pages are generated.
 
-**Landing.** spec.md does not graduate: other open items remain. The pull request deletes this file.
+**Landing.** spec.md does not graduate: other open items remain. The pull request deletes this file and rewrites every `plan:spec/web-api-prototype-parity` citation still in `plans/` to cite spec.md §11.2 (today `plans/schema/generator-inventory.md`, `plans/schema/prototype-property-declarations.md`, `plans/spec/request-url-params.md`, `plans/spec/timing-values-in-built-sites.md` and `plans/compiler/client-external-class-hydration.md`, whichever have not landed); `bun run plans:check` names each `citation-unknown` left.
 
 ## Acceptance
 
 - `bun run plans:check --audit spec` reports nothing for this plan, and `bun run plans:status --who-claims spec.md#11.2` names no plan.
-- `grep -n "compiled: not lowered\|element target: default only\|emitStorageInit" specs/spec.md packages/compiler/src/targets/compile-client.ts` prints nothing.
+- `grep -n "compiled: not lowered\|element target: default only\|lowers no .Cookie. entry yet\|emitStorageInit" specs/spec.md packages/compiler/src/targets/compile-client.ts` prints nothing.
 - These pass: `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`.
 - `cd packages/compiler && bun test --isolate --coverage` and `cd packages/runtime && bun test --isolate --coverage` pass at their thresholds, and both manifest checks pass.
 - **By hand.** Build a site whose component holds `{ "theme": { "$prototype": "LocalStorage", "default": "light" }, "tags": { "$prototype": "Set", "default": ["a"] } }`, renders `${state.theme}` and `${state.tags.size}`, and has a button that sets `theme` to `dark`.

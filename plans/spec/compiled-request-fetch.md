@@ -93,7 +93,7 @@ So in practice the interpreter aborts on a re-run only. The Decisions section ta
 
   The pull request that makes the text false is the one whose reviewer can confirm it; `plan:schema/prototype-property-declarations` sets the same precedent. The paragraph describes re-run behaviour only, because that is what both tiers do.
 
-- **Decided:** the behaviour is tested by an agreement test. It drives `resolvePrototype` and the emitted block through the same scenarios and compares what each does, following the spec-wide drift-test rule (`plans/spec/README.md`) and the `ref-build-time-agreement.test.ts` precedent. Asserting on emitted text alone is what let the two tiers diverge.
+- **Decided:** the behaviour is tested by an agreement test. It drives `resolvePrototype` and the emitted block through the same scenarios and compares what each does, following the `ref-build-time-agreement.test.ts` precedent. Asserting on emitted text alone is what let the two tiers diverge. The spec-wide rule in `plans/spec/README.md` ("inlined into generated modules from one runtime export, with a drift test") is met by its drift-test half only, on purpose: its precedent, `attrHelperSource()`, serializes a data table (`enumeratedAttrNames()`) and retypes the logic, and a `Request` has no table to serialize. The logic is written in each tier's idiom (a `ref` and `evaluateTemplate` in the runtime, a state write and a template literal in the module), so the agreement test is the drift test.
 - **Open:** does `debounce` delay the first fetch as well as re-fetches? Recommendation: yes. The interpreter does, and Studio's preview is the interpreter, so a leading-edge compiled fetch would make a built page load its data at a different time than its preview. A leading edge in both tiers would be a runtime change outside this plan. If signed the other way, `packages/runtime` joins `workspaces`, and the §11.2 paragraph says "every re-fetch".
 - **Open:** the interpreter's `Request` effect is never stopped (see the Context correction). An interpreted element that is removed, or a disposed `mount()`, keeps fetching whenever its URL's state changes. Recommendation: this plan leaves it alone, and it becomes an issue against embedding.md §2.2, whose disposer "stops every effect the render created". Reasons:
   - It is interpreter teardown in `packages/runtime`.
@@ -226,7 +226,7 @@ This is the only case that executes the real import line.
 - **spec.md §11.2 `Request` cell.** It becomes `**Implemented** — reactive URL, debounce, manual mode, abort controller`. Re-pad the table with the formatter.
 - **spec.md §11.2, new paragraph** between the table and §11.2a:
 
-  > A `Request` entry that is not `manual` fetches inside an effect, so a `${…}` template in its `url` re-fetches when the state it reads changes, and an `url` that still interpolates to `undefined` is not fetched. `debounce` (milliseconds, default `0`) delays every fetch, the first included, and a change inside the delay restarts it. A change also aborts the fetch the previous value started, whether it is still waiting out its delay or in flight; an aborted fetch leaves the entry as it was, and any other failure sets the entry to an object whose `error` is the failure's reason as a string.
+  > A `Request` entry that is not `manual` fetches inside an effect, so a `${…}` template in its `url` re-fetches when the state it reads changes, and a `url` that still interpolates to `undefined` is not fetched. `debounce` (milliseconds, default `0`) delays every fetch, the first included, and a change inside the delay restarts it. A change also aborts the fetch the previous value started, whether it is still waiting out its delay or in flight; an aborted fetch leaves the entry as it was, and any other failure sets the entry to an object whose `error` is the failure's reason as a string.
 
 - **compiler.md §4.1.** After "…is stopped on `disconnectedCallback` (§4.4).", insert:
 
@@ -243,7 +243,7 @@ This is the only case that executes the real import line.
 - **No graduation.** spec.md does not graduate. The landing pull request also:
   - deletes this file;
   - removes `spec/compiled-request-fetch` from the `requires` of `plans/spec/request-url-params.md` and `plans/spec/web-api-prototype-parity.md`;
-  - rewrites the `plan:spec/compiled-request-fetch` mentions in those two files and in `plans/schema/generator-inventory.md`, `plans/schema/prototype-property-declarations.md` and `plans/_shared/compiled-server-call.md` (a citation of a deleted plan fails the gate);
+  - rewrites every other `plan:spec/compiled-request-fetch` citation to cite spec.md §11.2 instead, since a citation of a deleted plan fails the gate (`citation-unknown`). Take the list from `grep -rln "plan:spec/compiled-request-fetch" plans/` at landing time; today it is those two files plus `plans/spec/web-api-prototype-parity-readable-stream.md`, `plans/spec/timing-values-in-built-sites.md`, `plans/schema/generator-inventory.md`, `plans/schema/prototype-property-declarations.md` and `plans/_shared/compiled-server-call.md`;
   - re-reads `plan:spec/request-url-params`'s design against the integration contract above.
 
 ## Acceptance

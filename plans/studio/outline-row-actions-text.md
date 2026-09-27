@@ -1,32 +1,119 @@
 ---
-status: stub
+status: drafted
 disposition: reconcile
 claims:
   - studio.md#5.2
+workspaces:
+  - specs
+  - docs
 size: S
 ---
 
-# The Layers Panel section describes the registry-rendered row actions the Outline draws
+# The Layers Panel section describes the Outline's row actions as the registry renders them, and says the rows are windowed
 
 ## Context
 
-`specs/studio.md` §5.2, line 342 (the section was unmarked before the census):
+`specs/studio.md` §5.2, line 344 (the section was unmarked before the census):
 
 > **Status: Partial.** The drag-and-drop rows, the text rows and the single-walk collapse ship (`packages/studio/src/panels/layers-panel.ts`). The row actions diverge from the text: they are `registry.forPlacement("outline/row")`, shown on the selected and the hovered row, the four move verbs always drawn and disabled with their `requires` sentence when they cannot act, and Delete folded with Duplicate into a ⋮ overflow; the rows are also windowed.
 
-Disposition `reconcile`. The code follows two rules the section predates: §13's "every capability is one command record", which is why the row renders `outline/row` placements instead of five hand-built buttons, and `studio-ui-guidelines.md` §12.3's "disabled with its reason, never hidden", which is why a move that cannot act is drawn disabled rather than omitted. The section's reason for selection-only actions ("the buttons are Spectrum custom elements") went with Spectrum.
+The code follows two rules the section predates: §13's "every capability is one command record", which is why a row renders `outline/row` placements instead of five hand-built buttons, and `studio-ui-guidelines.md` §12.3's "a control that cannot act renders disabled with `requires` in its tooltip, never absent", which is why a move that cannot act is drawn disabled. The section's reason for selection-only actions ("the buttons are Spectrum custom elements") went with Spectrum.
 
-**What exists**
+Verified against the tree (paths under `packages/studio/src/`):
 
-- `packages/studio/src/panels/layers-panel.ts`: `OUTLINE_ROW_MAX_ITEMS = 4`, `showActions = grabbable && !editing && (selected || key === _hoveredKey)`, `buildOutlineRows` (the pre-order walk with the running-depth collapse), the windowed row list, `TEXT_PREVIEW_MAX`.
-- The records placed on `outline/row`: `selection.moveUp`, `moveDown`, `moveIn`, `moveOut` (`panels/block-action-bar.ts`), `selection.duplicate` and `selection.delete` (`commands/defaults.ts`).
-- Tests: `packages/studio/tests/layers-panel-window.test.ts`.
+- **The cluster.** `outlineRowView` in `panels/layers-panel.ts`: `showActions = grabbable && !editing && (selected || key === _hoveredKey)`, where `grabbable` is an element or repeater row at a numeric child index that is not the root. Every other row is projected with `commands: []`, not a hidden cluster. `rowCommandViews` evaluates `registry.forPlacement("outline/row")` under `withCommandTarget(path)`, draws the first `OUTLINE_ROW_MAX_ITEMS = 4` inline with `disabled` and `commandTooltip` (the chord, or "Title — requires …"), and hands the rest to `showCommandOverflow` behind a `dots-three-vertical` **More actions** button (`surfaces/panel-outline.json`), which prints each row's chord and `requires` and sets a divider above the destructive row.
+- **The records.** `selection.moveUp`, `moveDown`, `moveIn`, `moveOut` (`registerSelectionCommands` in `panels/block-action-bar.ts`, groups `1_move_1`…`1_move_4`, gated by `canMoveUp`/`canMoveDown`/`canMoveIn`/`canMoveOut`); `selection.duplicate` (`3_structure`, ⌘D) and `selection.delete` (`9_danger`, `destructive`, Delete/Backspace) in `commands/defaults.ts`. `forPlacement` sorts by `group` then `title`, so the four moves are the inline four. Move Up and Move Down also declare `blockbar`; Move Into Previous and Move Out of Parent declare only `outline/row`.
+- **The target.** `commandTargetPaths()` returns exactly the explicit target, so under a multiple selection a row's Duplicate and Delete act on that row alone. A move selects the node at its new path, `mutateDuplicateNodes` selects the copies, `deleteTarget` selects the target's parent; each is one `transactDoc`.
+- **The window.** `buildOutlineRows` builds the whole model; `outlineValues` draws `listWindow(...)`'s slice (`ui/virtual-window.ts`, `DEFAULT_OVERSCAN_ROWS = 3`) with `padTop`/`padBottom` spacers; the shift-range, arrows, Home/End, ←, typeahead and reveal read `_outlineRows`; `numberOutlineSets` writes document-wide `aria-posinset`/`aria-setsize`; `outlineWindowChanged` skips the repaint while a row carries `data-dragging`.
+- **Text rows.** `textRowView`: badge "text", preview cut at `TEXT_PREVIEW_MAX = 40`, `item: false`, so the arrows and typeahead skip them.
+- **The grip.** `jx-tree-item` (`packages/ui/components/jx-tree-item.json`) shows it on a hovered, selected or focus-within row, not only on hover as the Drag and Drop paragraph says, and not "on every row" as the Move Action Buttons paragraph says.
+- **Tests** that already assert all of this: `tests/outline-rows.test.ts` (`describe("row actions")`, and "a click in a row's verb cluster does not also move the selection"), `tests/layers-panel-gaps.test.ts` ("first child cannot move up, last cannot move down — disabled, not removed", "move-in is unavailable when the previous sibling is not a container", "the row's inline cluster is the four moves; Duplicate and Delete ride in ⋮", "delete removes the node, from the ⋮ menu", "the root row has no cluster and no grab handle", "the cluster stands aside while the row is being renamed"), and `tests/layers-panel-window.test.ts` (the window, the model-wide shift-range, the ARIA counts, the drag).
+- **Docs.** `docs/studio/design/layers.md` ("Rearrange the page") already describes the hover rule, the greyed moves and the More actions menu. Its `spec:` names only `studio.md#6.7`.
+- Drift noticed in passing: the `OUTLINE_ROW_MAX_ITEMS` doc comment says the four moves are on none of the block action bar, the context menu or the chords, but Move Up and Move Down are on the block action bar.
 
-**What is missing**
+Related: `plan:studio-ui-guidelines/unrendered-placements` retires `context/layer` and makes the outline's right-click the element menu; the text below says "the element menu", which is true before and after it lands.
 
-- The Move Action Buttons paragraph and its table rewritten: registry-rendered, primary selection or hover, four inline verbs disabled with `requires`, the rest in the overflow; the Spectrum rationale removed.
-- A sentence on windowing beside "Rendering cost".
+## Outcome
 
-**Related**
+`studio.md` §5.2 → Implemented (marker deleted): the Row Actions text and table describe the `outline/row` records drawn on the selected and the hovered row, the four moves inline and disabled with their reason, Duplicate and Delete in More actions, and a sentence set beside "Rendering cost" states the window. The Spectrum rationale is gone.
 
-- studio.md §13.1 (the record), studio-ui-guidelines.md §12.3 (disabled with its reason), studio.md §6.7 (why the move verbs stay single-target).
+## Decisions
+
+- **Open:** keep the hovered row's cluster, which the section explicitly rejected in favour of the selected row alone? Recommendation: keep it and write it down, because the section's only reason was Spectrum's per-button cost, which left with Spectrum, and the empty projection bounds the cost at two clusters however long the document is; a verb on the row under the pointer is the rule `studio-ui-guidelines.md` §12.1's `outline/row` row already states ("row actions act on the row's node"); and `docs/studio/design/layers.md` already teaches it. Reverting would be an implement plan in the other direction (`outlineRowView` and three test files).
+- **Decided:** the moves are drawn disabled, not omitted, because `studio-ui-guidelines.md` §12.3 makes "disabled with `requires`, never absent" normative for every invoking surface. "Only applicable buttons render" contradicted a rule that outranks it, so it is not a revert option.
+- **Decided:** the table states each record's gate in words and does not quote its `requires` string, because §13.1 makes `requires` the one copy of that sentence (the tooltip, the palette subtitle and the assistant's refusal all read it). A quoted copy would drift the first time a record's sentence is sharpened, as Duplicate's and Delete's `SPLICEABLE_SELECTION` was.
+- **Decided:** the text states that a row's Duplicate and Delete act on that row alone under a multiple selection, because that is what `commandTargetPaths` does and what the `outline/row` matrix row says, while the chords and the block action bar act on the whole selection (§6.7). Leaving it unstated would let a reader apply §6.7's batch rule to the row.
+- **Decided:** the heading stays "5.2 Layers Panel" and the first sentence names the Outline, because the panel id is still `layers`, §7.3's heading uses the same name for the panel's other body, and the anchor is the number.
+- **Decided:** no code change, including the stale `OUTLINE_ROW_MAX_ITEMS` comment, which is left for whoever next edits `layers-panel.ts`, because a comment-only edit would put `packages/studio`'s whole matrix leg on a paper pull request.
+
+## Implementation
+
+A paper plan: the steps are the spec and docs rewrite in **Specs & docs**. Nothing under `packages/` changes.
+
+1. `specs/studio.md` §5.2: replace everything from the marker through the paragraph before **Text Node Rows** as quoted below, and append one clause to **Text Node Rows**.
+2. `docs/studio/design/layers.md`: frontmatter and "Rearrange the page", as below.
+3. The fragment, then delete this plan file. Nothing requires this plan, so no dependent's `requires` changes.
+
+**Integration contract.** Once this lands, `studio.md` §5.2 is Implemented and normative for: row actions are `forPlacement("outline/row")` evaluated against the row's node; the selected and the hovered row carry them, other rows project none; the first four by `group` draw inline and the rest go in More actions; a verb that cannot act is disabled with its `requires`; a row verb acts on that row alone; the rows are a model drawn through a window with document-wide ARIA counts. `plan:studio/canvas-block-keyboard-access` and `plan:studio/insert-palette-categories` cite "the Outline (§5.2)" and may rely on that text. A later change to the row verbs (a new `outline/row` record, a different budget) is a §5.2 edit.
+
+## Tests
+
+No workspace suite changes, and no source file is added or edited, so no `coverageThreshold` moves and the manifest check is unaffected. The behaviour the new text states is already asserted by the cases listed in Context (`packages/studio/tests/outline-rows.test.ts`, `tests/layers-panel-gaps.test.ts`, `tests/layers-panel-window.test.ts`); a reviewer checks each sentence against them rather than against a new test.
+
+The gates that prove the plan: `bun run docs:status` (no open item left in §5.2), `bun run docs:spec-release` (the body change carries a fragment), `bun run plans:check` (the claim is gone with the plan), `bun run docs:check` (the new `spec:` anchor resolves), `bun run docs:links`, `bun run docs:markdown` and `bun run docs:prose` (the docs page edit).
+
+## Specs & docs
+
+**`specs/studio.md` §5.2**, in place, heading unchanged. Delete the Partial marker. Replace the intro sentence, the **Drag and Drop** paragraph, the **Move Action Buttons** paragraph, its table and the "Only applicable buttons render…" paragraph with:
+
+> The Outline (`layers`, §5.1): a flattened tree of all elements in the document, with indentation representing nesting depth. Each row shows a badge (the tag, or the mark of a repeater, condition, case or slot), a label, a grab handle on every row that can move, and, on the selected row and the hovered one, the row's actions.
+>
+> **Drag and Drop** — The entire layer row is draggable via Atlassian Pragmatic Drag and Drop. Users can grab any part of the row to drag; a grip glyph on the hovered, selected or focused row advertises it. Drop indicators show reorder (above/below) and reparent (make-child) targets.
+>
+> **Row Actions** — A row's actions are `registry.forPlacement("outline/row")` (§13.1), each evaluated against the row's own node, because a row action acts on the row's node (`studio-ui-guidelines.md` §12.1): the hovered row is acted on although it is not selected, and under a multiple selection a row's verbs act on that row alone, where the chords and the block action bar act on the selection (§6.7). The moves would stay single-target regardless, for §6.7's reason: moving several non-sibling nodes one slot has no single meaning, and each step is arithmetic against a parent the previous step renumbered. The panel decides only which rows carry the records; each button's name, glyph, chord and availability are its record's.
+>
+> **The actions are drawn on two rows: the row carrying the primary selection and the row under the pointer.** Every other row is projected with an empty command list rather than a hidden cluster, because a hidden kit button is still an upgraded custom element, so the panel's cost does not grow with the number of rows. A row with no sibling position (the document root, a repeater's template, a `$switch` case) has no actions, and neither does a row being renamed, whose input takes the row's width. A click on a verb runs it without first selecting the row.
+>
+> The records sort by `group`. The first four draw inline (`OUTLINE_ROW_MAX_ITEMS`, what a 240px column holds) and the rest fold into a ⋮ **More actions** menu that prints each row's title and chord, with a divider above the destructive row:
+>
+> | Record                | Title              | Icon          | Drawn  | Enabled when                                                                                                                   |
+> | --------------------- | ------------------ | ------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------ |
+> | `selection.moveUp`    | Move Up            | `arrow-up`    | inline | the node has a sibling above it                                                                                                |
+> | `selection.moveDown`  | Move Down          | `arrow-down`  | inline | the node has a sibling below it                                                                                                |
+> | `selection.moveIn`    | Move Into Previous | `arrow-right` | inline | the sibling above is a container (a repeater, or a child list that is empty or holds a block); the node becomes its last child |
+> | `selection.moveOut`   | Move Out of Parent | `arrow-left`  | inline | the parent is not the document root and has a sibling position; the node lands directly after its parent                       |
+> | `selection.duplicate` | Duplicate          | —             | ⋮      | the node has a sibling position, as every row with actions does                                                                |
+> | `selection.delete`    | Delete             | —             | ⋮      | the node has a sibling position, as every row with actions does                                                                |
+>
+> **A verb that cannot act is drawn disabled, never omitted** (`studio-ui-guidelines.md` §12.3). Its tooltip is the record's `requires` sentence and its accessible name stays the record's `title`, so the four moves are always four buttons in the same places and the cluster keeps its shape as the pointer crosses rows. The moves take the inline slots because they are what an outline exists to offer, and Move Into Previous and Move Out of Parent are drawn nowhere else; Duplicate and Delete also have chords (⌘D, Delete), the block action bar and the element menu.
+>
+> Each verb is one transaction and so one undo step. A move selects the node at its new position, a duplicate selects the copy, and a delete selects the row's parent.
+
+Keep **Rendering cost** verbatim and add, as the paragraph after it:
+
+> **The rows are a model, and the tree draws a window onto it.** The walk yields every row the panel would draw; the tree draws only the rows in its scroller's viewport plus three rows of overscan either side (`listWindow` in `packages/studio/src/ui/virtual-window.ts`), and spacers reserve the height of the rest. Every question about which rows exist and in what order (a Shift range, the arrow walk, Home and End, ← to the parent, typeahead, the reveal that follows a selection made on the canvas) is answered from the model, never from the drawn rows, and each row's `aria-posinset` and `aria-setsize` count its place in the document rather than in the window (`ui.md` §5.5). A scroll during a drag does not repaint the window, because the drag holds the rows it registered.
+
+**Text Node Rows**: append ", and they are not tree items, so the arrow keys and typeahead step over them" to its last sentence.
+
+**Fragment:** `bun run spec:change studio.md minor -m "§5.2 describes the Outline's row actions as the outline/row command records drawn on the selected and the hovered row, the four moves inline and disabled with their reason when they cannot act, Duplicate and Delete in a More actions menu, each acting on the row's own node, and states that the rows are a model drawn through a window."` Minor: a reconcile that no Jx author's documents depend on.
+
+**Docs.** No page's `spec:` cites `studio.md#5.2`, and no file in any page's `code:` changes, so `bun run docs:sync` names nothing. `docs/studio/design/layers.md` is §5.2's page and changes (no em dash in any line):
+
+- Frontmatter `spec:` gains `- studio.md#5.2` beside `studio.md#6.7`, so a later §5.2 release flags the page.
+- "Rearrange the page", the list becomes the records' own names:
+  - "**Move Up** / **Move Down** (the up and down arrows) swap the element with its neighbors."
+  - "**Move Into Previous** (the right arrow) moves the element inside the sibling above it, as its last child."
+  - "**Move Out of Parent** (the left arrow) moves the element out of its parent, to sit just after it."
+  - "**More actions** (⋮) holds **Duplicate** and **Delete**, each with its shortcut."
+- After "…which is not always the one you selected." insert: "That holds with several rows selected too: a row's **Delete** removes that row alone, while :kbd[Delete] and :kbd[⌘D] act on the whole selection."
+
+No image changes, so the screenshots lane has nothing to recapture. studio.md does not graduate: other studio.md items stay open, so `plans/studio/` stays.
+
+## Acceptance
+
+- `sed -n '/^### 5.2 Layers Panel/,/^### 5.3/p' specs/studio.md | grep -c "Status: Partial\|Only applicable buttons\|Spectrum custom elements\|Shown when"` prints 0; the same range contains `outline/row`, `OUTLINE_ROW_MAX_ITEMS` and `listWindow`.
+- The table's six records are exactly `grep -n '"outline/row"' packages/studio/src/panels/block-action-bar.ts packages/studio/src/commands/defaults.ts`'s six records, and its Title column matches their `title`s.
+- `bun run plans:status --who-claims studio.md#5.2` names no plan; `bun run plans:check --audit studio` reports nothing; `plans/studio/outline-row-actions-text.md` is deleted.
+- `ls specs/changes/` holds the fragment; `bun run spec:release --dry` mints a studio.md release carrying its sentence.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:markdown` and `bun run docs:prose` pass.
+- In Studio, with a page open: hovering an unselected row draws four arrows and ⋮ on it and on the selected row only; on a first child, Move Up is greyed with the tooltip "Move Up — requires an element with a sibling above it"; ⋮ lists Duplicate (⌘D) and Delete below a divider; with three rows selected, a row's ⋮ → Delete removes only that row.

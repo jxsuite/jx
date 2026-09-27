@@ -62,16 +62,16 @@ Related: desktop.md §10.1 (the adapter), desktop.md §3.1 (`documentBaseUrl`, `
     * Cloud omissions (Studio degrades per @jxsuite/protocol's route table): pickDirectory, package
     * install/outdated/set-versions (package ops are manifest-only edits), newWindow and pickProject,
     * gitClone, resolveClass, code services. Component discovery is not omitted: `discoverComponents`
-    * walks the session's tree (desktop.md §10.2).
+    * walks the session's tree for the project's JSON components (desktop.md §10.2).
    ```
 
-   No other source change.
+   No other source change. `plan:imports/cem-discovery-on-every-backend` edits the same three lines (its step 7 turns "component discovery" into "npm component discovery (imports.md §2)"), so whichever lands second merges the two: if it has landed first, keep its "npm component discovery (imports.md §2)" entry in the list above, between `resolveClass` and code services; if it lands second, it adds that entry to this text rather than looking for the old phrase.
 
 3. `packages/studio/tests/cloud-platform.test.ts`:
    - `describe("discoverComponents")`: make the `session()` helper record every requested URL and return the array (`const urls: string[] = []; … urls.push(url); … return urls;`). Existing callers ignore the return value.
    - Add the three cases under Tests.
 
-**Integration contract.** Once this lands, desktop.md §10.2 is Implemented and states the git-backed mapping: `project.json` is the branch's root file served as `projectConfig`, listings and file operations run against the session's working tree, a commit lands on the remote at once and `git/push` is a sync check, discovery is an adapter-side walk that never calls `components`, files are served under `raw/`, and a branch is its own session. The MUST-declare subsection is byte-identical. §10's marker names no open part. `plan:collab/attach-failure-state` edits §10.3 and `collab()` in `cloud.ts`, both disjoint from this text; `plan:desktop/app-structure-tree` owns no §10 rider. The `session()` helper in the `discoverComponents` block returns its URL log for later cases.
+**Integration contract.** Once this lands, desktop.md §10.2 is Implemented and states the git-backed mapping: `project.json` is the branch's root file served as `projectConfig`, listings and file operations run against the session's working tree, a commit lands on the remote at once and `git/push` is a sync check, discovery is an adapter-side walk that never calls `components`, files are served under `raw/`, and a branch is its own session. The MUST-declare subsection is byte-identical. §10's marker names no open part. `plan:collab/attach-failure-state` edits §10.3 and `collab()` in `cloud.ts`, both disjoint from this text. `plan:imports/cem-discovery-on-every-backend` adds a sentence to §10.1 (the cloud discovers no dependency components), which the Component discovery row agrees with; if its Open decision goes the other way and the cloud adapter learns to discover them, that plan rewrites the row. The `session()` helper in the `discoverComponents` block returns its URL log for later cases.
 
 ## Tests
 
@@ -83,7 +83,7 @@ New cases in `packages/studio/tests/cloud-platform.test.ts`:
 - `describe("file operations")`, `uploadFile answers the path the gateway reports, not the one it asked for`: `mockFetch({ "path=public%2Fhero.png": { body: { path: "public/hero-1.png", size: 3 } }, "path=public%2Flogo.png": { body: { ok: true } } })`; uploading three bytes to `public/hero.png` resolves `{ path: "public/hero-1.png", size: 3 }`, and to `public/logo.png` resolves `{ path: "public/logo.png" }` (the fallback, with no `size` key).
 - `describe("discoverComponents")`, `the walk reads the tree through files and file, never the components route`: the same tree as `finds a component nested in the tree`; after `discoverComponents()`, `urls` is non-empty and every entry starts with `${BASE}/files?dir=` or `${BASE}/file?path=`.
 
-Coverage: test-only plus a comment, so the per-file thresholds in `packages/studio/bunfig.toml` (lines 0.958, functions 0.941) and the manifest are unaffected, and `cloud.ts` is not the workspace's worst file; no ratchet.
+All three pin behaviour that already ships, so they pass before the comment edit too: a `reconcile` adds tests for what the rewritten section states, not red-to-green cases. Coverage: test-only plus a comment, so the per-file thresholds in `packages/studio/bunfig.toml` (lines 0.958, functions 0.941) and the manifest are unaffected, and `cloud.ts` is not the workspace's worst file; no ratchet.
 
 ## Specs & docs
 

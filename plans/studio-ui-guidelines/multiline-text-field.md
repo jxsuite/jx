@@ -43,7 +43,7 @@ Other native text controls exist in `src/surfaces/`: the listbox-overlay filters
 - **Decided:** `reconcile`, because every multi-line form field already is the kit's `multiline` text field, and the row's `[part="field-input"]` was a rename that never had an emitter.
 - **Open:** does the CSS Variables colour well stay a native well beside a free-text field, recorded in §4.3 as the one form-row exception? The alternative is for the kit's colour field to learn to commit a typed colour expression verbatim, after which the well is ported to `jx-color-field`. Recommendation: record the exception. The port needs `ui.md` §5.6's commit-time refusal changed first. That change also reaches the Style and Content tabs, where a mistyped colour would become a written declaration instead of a refusal, so it is a kit design question for its own plan. It is not a row of this table. If maintainers choose the port, this plan becomes `implement`, and it requires a new enabling plan in `plans/ui/` for the kit change.
 - **Decided:** state that the table covers form rows, and name the non-form native controls by kind in one sentence, without an allow-list gate. Deciding whether a field is "a combobox filter" or "a form field" is a judgement, not a tag test, and an allow-list of six controls would restate an enumeration that goes stale. The composer is named, with the reason its own document gives. Adding a height ceiling to `jx-textfield` would be a `ui.md` §5.1 addition, and that is for whoever wants the port.
-- **Decided:** rename §4.5's clause here and leave the rest of §4.5 to `plan:studio-ui-guidelines/debounce-draft-layer`. The clause states the same fact this plan corrects. Whichever of the two lands second rebases a one-line change.
+- **Decided:** rename §4.5's clause here and leave the rest of §4.5 to `plan:studio-ui-guidelines/debounce-draft-layer`. The clause states the same fact this plan corrects. That plan rewrites all of §4.5, and its new paragraph already names the kit field "single-line or `multiline`", so if it lands first this step is skipped; if this lands first, it overwrites the clause.
 - **Decided:** fix the stale reason in `settings-css-vars.ts`, although a comment edit under `packages/studio/src/` runs the studio and desktop legs and `lens-mutants`. The spec sentence this plan writes gives the opposite reason. A contributor who read the source first would port the well into the regression the spec warns against.
 
 ## Implementation
@@ -62,12 +62,9 @@ Other native text controls exist in `src/surfaces/`: the listbox-overlay filters
    Keep the citations qualified: in `packages/studio` a bare `§` means `studio.md`, and `bun run docs:section-refs` checks both.
 
 3. **Fragment**, as given in Specs & docs.
-4. **Plan housekeeping in the landing pull request.** Delete this file. No plan requires it, and no other plan cites it.
+4. **Plan housekeeping in the landing pull request.** Delete this file. No plan requires it, but `plan:studio-ui-guidelines/debounce-draft-layer` cites it (its paragraph on this plan's §4.5 clause); if that plan is still open, reword the sentence to cite §4.3 and §4.5 instead, or `plans:check` fails with `citation-unknown`.
 
-**Integration contract.** No plan requires this one. Once it lands, §4.3 names `jx-textfield` with `multiline` as the multi-line form control, and the CSS Variables well as the only native control in a form row. The following plans may rely on that:
-
-- `plan:studio-ui-guidelines/form-row-part-vocabulary` drops the `textarea` selector from §4.1's CSS, because a row holds a `jx-textfield`.
-- `plan:studio-ui-guidelines/debounce-draft-layer` says "code and expression fields" in §4.4 where it now says "textareas".
+**Integration contract.** No plan requires this one. Once it lands, §4.3 names `jx-textfield` with `multiline` as the multi-line form control, and the CSS Variables well as the only native control in a form row. The two plans that also remove a `textarea` from this spec do not wait for it: `plan:studio-ui-guidelines/form-row-part-vocabulary` replaces §4.1's body (and its `.style-row > textarea` selector) whole, and `plan:studio-ui-guidelines/debounce-draft-layer` replaces §4.4's body and §4.5 whole, with no `textarea` in either.
 
 A future change that lets `jx-color-field` commit a typed colour expression, or that ports any control §4.3 names as outside the kit, deletes that control's sentence in the same pull request.
 
@@ -85,13 +82,13 @@ A future change that lets `jx-color-field` commit a typed colour expression, or 
 
 **The intro paragraph** ("The catalogue is `ui.md` §5; … answered by composition instead.") becomes:
 
-> The catalogue is `ui.md` §5; this is which of it answers which question in a form row. Every row is a kit element or a composition of kit elements. The mapping from the Spectrum-era table was not a rename: its hybrid row had no kit counterpart and is composed instead, and its multi-line row, a bare `textarea`, is the kit text field's `multiline` branch.
+> The catalogue is `ui.md` §5; this is which of it answers which question in a form row. Every row is a kit element or a composition of kit elements. The mapping from the Spectrum-era table was not a rename: its hybrid row had no kit counterpart and is composed instead, and its multi-line row, a styled native `textarea`, is the kit text field's `multiline` branch.
 
 **The table's last row** becomes the following. Re-pad the table columns afterwards.
 
-| Component                       | When to Use                                                                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `jx-textfield` with `multiline` | Multi-line text. Code, JSON and expressions add `mono`; `rows` sets the height it opens at, and `grows` lets the text set it |
+| Component                       | When to Use                                                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `jx-textfield` with `multiline` | Multi-line text. Code, JSON and expressions add `mono`; `rows` sets the height, and with `grows` the text sets it, never below `rows` |
 
 **After the hybrid paragraph**, append two paragraphs:
 
@@ -99,7 +96,7 @@ A future change that lets `jx-color-field` commit a typed colour expression, or 
 >
 > **The table is for form rows.** A field that is part of another control belongs to its surface: a listbox overlay's filter (the command palette, the slash menu, the formula palette), a tree row's inline rename, a data grid's cell editor and a file picker are native controls. So is the Assistant's composer (`surfaces/ai-chat.json`), a `textarea` because it needs a height ceiling the kit field has no token for.
 
-**§4.5**, line 300: "For `jx-textfield` and `textarea`, always debounce `@input`." becomes "For `jx-textfield`, single-line or `multiline`, always debounce `@input`."
+**§4.5**, line 300: "For `jx-textfield` and `textarea`, always debounce `@input`." becomes "For `jx-textfield`, single-line or `multiline`, always debounce `@input`." Skip this when `plan:studio-ui-guidelines/debounce-draft-layer` has landed: its §4.5 already says it.
 
 **Fragment:** `bun run spec:change studio-ui-guidelines.md minor -m "§4.3 answers multi-line text with the kit's multiline text field, scopes the input table to form rows, and records the CSS Variables colour well as the one form row that reaches past the kit and why; §4.5 names the kit field only"`. The level is minor: a reconcile that changes a contributor guideline and nothing an author builds on. If the Open decision goes to the port, this fragment moves to that plan's landing pull request, without the colour-well clause.
 
@@ -111,6 +108,6 @@ No spec graduates. `studio-ui-guidelines.md` keeps its other open items.
 
 - `bun run plans:status --spec studio-ui-guidelines` no longer lists `studio-ui-guidelines.md#4.3`. `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:markdown` and `bun run docs:section-refs` pass.
 - `sed -n '/^### 4.3/,/^### 4.4/p' specs/studio-ui-guidelines.md | grep -n 'field-input'` prints nothing. `sed -n '/^### 4.5/,/^### 4.6/p' specs/studio-ui-guidelines.md | grep -n 'textarea'` prints nothing.
-- The section's exceptions match the tree. `grep -rl '"tagName": "textarea"' packages/studio/src/surfaces` prints only `ai-chat.json`. `grep -rl '"type": "color"' packages/studio/src/surfaces` prints only `settings-css-vars.json`. `grep -rn 'field-input' packages/studio/src` prints nothing.
+- The section's exceptions match the tree. `grep -rl '"tagName": "textarea"' packages/studio/src/surfaces` prints only `ai-chat.json`. `grep -rl '"type": "color"' packages/studio/src/surfaces` prints only `settings-css-vars.json`. `grep -rnE 'part="field-input"|"part": "field-input"' packages/studio/src` prints nothing (a bare `field-input` also matches the draft-layer module `src/ui/field-input.ts`).
 - `grep -n 'kit has no colour control' packages/studio/src/surfaces/settings-css-vars.ts` prints nothing.
 - The `packages/studio` and `packages/desktop` legs and `lens-mutants` are green with unchanged coverage. The screenshots lane pushes no commit.
