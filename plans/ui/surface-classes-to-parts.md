@@ -110,7 +110,7 @@ One pull request. Paths are under `packages/studio/`.
 **The Insert palette**
 
 8. `src/surfaces/panel-elements.json`:
-   - Replace the seven `class` attributes with `part` of the same name.
+   - Replace every `class` attribute (seven at the audited tree) with `part` of the same name.
    - Add to the root `style`, with camel-cased properties as the file uses:
      - `& [part="components-section"]`: `padding: 0 0 2px`.
      - `& [part="element-card"]`: `cursor: grab`, `display: flex`, `flexDirection: column`, `width: 100%`, `border: 1px solid var(--border)`, `borderRadius: var(--radius)`, `overflow: hidden`, `marginBottom: 6px`.
@@ -123,9 +123,9 @@ One pull request. Paths are under `packages/studio/`.
      - `& [part="element-card-label"]`: `padding: 2px 6px`, `fontSize: var(--jx-text-xs)`, `color: var(--fg-dim)`, `background: var(--bg-input)`, `textAlign: center`, `fontFamily: var(--font-mono)`.
    - `--jx-text-xs` is the 10px the sheet wrote; `check-styles.ts` warns on the literal (`TOKENIZABLE_FONT_PX`). The runtime splits a selector list only at depth 0 (`splitSelectorList` in `packages/runtime/src/css.ts`), so the commas inside `:not()` and `:is()` are safe.
    - Rewrite both `$description`s: the root's "that seam is why three class names survive" and the style block's `.element-card…` paragraph go. The sentence about the preview being drawn EMPTY for `dnd.ts` to fill stays.
-   - If `plan:desktop/component-scope-sections` has landed first, the one `components-section` container has become a mapped `div.components-section` inside each section's `jx-accordion-item`. Convert that template's class to `part` the same way, and keep its `querySelectorAll` over every section in step 10. That plan's integration contract expects exactly this of whichever lands second.
+   - If `plan:desktop/component-scope-sections` has landed first, the one `components-section` container has become a mapped `div.components-section` inside each section's `jx-accordion-item` (one per section drawn). Convert that template's class to `part` the same way; step 10 then keeps its `querySelectorAll`. That plan's integration contract expects exactly this of whichever lands second.
 9. `styles/panels.css`: delete lines 111 to 163, from `.components-section` through `.element-card-label`.
-10. `src/panels/dnd.ts`: `registerComponentsDnD` queries `'[part="components-section"]'` (line 262), and both preview lookups use `'[part="element-card-preview"]'` (lines 280 and 312).
+10. `src/panels/dnd.ts`: `registerComponentsDnD` finds its sections by `'[part="components-section"]'`: today through `querySelector` (one section), or, if `plan:desktop/component-scope-sections` has landed, through the `querySelectorAll` over every section that plan wrote, which stays. Both preview lookups use `'[part="element-card-preview"]'`.
 11. `src/canvas/iframe-render.ts`: in the `STYLEBOOK_CSS` doc comment (line 589), "the parent's `.element-card-preview { pointer-events: none }`" becomes "the Insert palette's `pointer-events: none` on `[part="element-card-preview"]` (`surfaces/panel-elements.json`)". The CSS is unchanged.
 
 **The gate**
@@ -154,7 +154,7 @@ One pull request. Paths are under `packages/studio/`.
 **Integration contract.** Once this lands, a plan may rely on the following:
 
 - The Insert palette's parts are `components-section`, `element-card`, `element-card-preview` and `element-card-label`. `dnd.ts` finds cards only through them, and their look lives in `panel-elements.json`.
-  - `plan:desktop/component-scope-sections` writes `part="components-section"` on each section's container and iterates `querySelectorAll('[part="components-section"]')`, where its step 3 says `div.components-section` and its step 5 says `.components-section`.
+  - Landing after this plan, `plan:desktop/component-scope-sections` writes `part="components-section"` on each section's container and iterates `querySelectorAll('[part="components-section"]')`, where its step 3 says `div.components-section` and its step 5 says `.components-section`. Landing before it, that plan leaves the class on its mapped section template, `querySelectorAll('.components-section')` in `registerComponentsDnD`, and `.components-section` assertions in `elements-panel.test.ts` and `dnd-gaps.test.ts`; this plan converts all three (steps 8 and 10, Tests) and keeps the `querySelectorAll`.
   - `plan:studio/insert-palette-categories`'s count test reads `[part="element-card"]`.
 - The dock handles are `#app > [part="dock-handle"]`, rest at (1,1,0) and lit at (1,2,0). `plan:ui/principles-text` may cite that rule as the frame's instance of §5.5's weight rule.
 - ui.md §3.1's body says a surface's box is addressed by `part`, or by the id a host adopts it by, and never through a class. `plan:ui/principles-text`'s principle 1 defers to that sentence and is true in either landing order: before this plan lands, §3.1's marker names what a surface still owes.
@@ -194,9 +194,9 @@ Changed assertions:
 
 - `tests/shell.test.ts` (lines 55 to 100), `tests/rail.test.ts` (lines 138, 279 and 291) and `tests/panel-resize.test.ts` (lines 102 and 103) read `hasAttribute("data-left-collapsed")` and its siblings, and `rail.test.ts`'s reset removes the attributes. Test names saying "#app classes" or "no #app to classify" say attributes.
 - `tests/edit-width.test.ts` lines 226, 324, 326 and 389 read `hasAttribute("data-resizing")`.
-- `tests/dnd-gaps.test.ts` (lines 484 to 567) and `tests/panels-coverage-gaps.test.ts` (lines 428 and 429): the fixtures write `part="components-section"` and `part="element-card-preview"`, and "no .components-section is a no-op" becomes "no components-section part is a no-op".
+- `tests/dnd-gaps.test.ts` (`describe("registerComponentsDnD")`) and `tests/panels-coverage-gaps.test.ts` (`describe("dnd drag previews")`): the fixtures write `part="components-section"` and `part="element-card-preview"`, and "no .components-section is a no-op" becomes "no components-section part is a no-op". If `plan:desktop/component-scope-sections` has landed, its "rows in every .components-section become drag sources" case writes the part on both sections and says "every components-section part".
 - For fidelity only, the frame fixtures in `tests/studio-shell.test.ts` (lines 71 and 72), `tests/studio-shell-boot-gaps.test.ts` (lines 51 to 53) and `tests/shell-misc-diff-gaps.test.ts` (lines 367 to 369) write `part="dock-handle"` for `class="resize-handle"`. `panel-resize.ts` finds the handles by id either way.
-- Unchanged on purpose: `tests/stylebook-doc.test.ts`, `iframe-render.test.ts`, `iframe-entry.test.ts` and `iframe-host.test.ts` name the stylebook's `element-card*` scope, which stays.
+- Unchanged on purpose: `tests/stylebook-doc.test.ts`, `iframe-render.test.ts`, `iframe-entry.test.ts`, `iframe-host.test.ts` and `panels-coverage-gaps.test.ts`'s `transposeStylebookStyle` cases name the stylebook's `element-card*` scope, which stays.
 
 Coverage:
 

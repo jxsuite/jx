@@ -58,7 +58,7 @@ Re-verified against `84735a9f` on 2026-09-27.
 
 - §11.2: the compiled `Request`'s debounce and abort (`plan:spec/compiled-request-fetch`); the `URLSearchParams` row and its compiled lowering (`plan:spec/web-api-prototype-parity`).
 - §12.1: this plan owns the `Request` row's phrase, and `plan:spec/reconcile-built-in-prototypes` owns the section. That plan requires this one and leaves the row's wording as this plan leaves it.
-- `schema.md` §3.1: `plan:schema/generator-inventory` requires this plan and keeps or drops `urlParams` on the `Request` line accordingly. `plan:schema/prototype-property-declarations` narrows the same marker for other names; the two plans have no edge, and the marker edit below is written for either landing order.
+- `schema.md` §3.1: `plan:schema/generator-inventory` requires this plan and takes the `Request` line as this plan leaves it (`urlParams` kept under the implement, struck under the fallback). `plan:schema/prototype-property-declarations` narrows the same marker for other names; the two plans have no edge, and the marker edit below is written for either landing order.
 
 ## Outcome
 
@@ -76,7 +76,7 @@ Re-verified against `84735a9f` on 2026-09-27.
   - A template does not encode. `?q=${state.q}` sends a typed `&`, `#` or `=` raw and splits the query, and a template cannot drop an optional parameter: it sends `sort=null`.
   - `urlParams` encodes by construction (`URLSearchParams`) and leaves out a `null`. It costs one small pure function and its inlined copy.
   - Five places document it, and §12.1's row advertises it.
-  - Fallback if signed the other way: this becomes a `reconcile` with a `major` fragment, because authors were told the field works. §11.1 and §5.3 4e use `"url": "/api/users?id=${state.userId}"`. The field is struck from schema.md §3.1's `Request` line, data-prototypes.md and §12.1's row ("HTTP fetch with a reactive URL"). No code changes, and `workspaces` shrinks to `specs` and `docs`.
+  - Fallback if signed the other way: this becomes a `reconcile` with a `major` fragment, because authors were told the field works. §11.1 and §5.3 4e use `"url": "/api/users?id=${state.userId}"`. The field is struck from schema.md §3.1's `Request` line, data-prototypes.md and §12.1's row ("HTTP fetch with a reactive URL"). No code changes, and `workspaces` shrinks to `specs` and `docs`. In schema.md §3.1, the marker loses its `urlParams` clause by the either-order wording under Specs & docs (so "four statements" becomes "three" once `plan:schema/prototype-property-declarations` has landed), the flat-set bullet gains no `urlParams` sentence, and the schema.md fragment becomes `bun run spec:change schema.md patch -m "The Request prototype's configuration no longer lists urlParams, which no tier reads."`
 - **Open:** what does a missing value do? Recommendation: `undefined` holds the fetch, `null` leaves the parameter out, and every other value is sent.
   - `undefined` is Jx's existing "not ready" signal: a `url` that interpolates `undefined` is not fetched in either tier today. It is what a `$ref` to an entry or a prop not yet set resolves to, and a path through a `Request` entry still at its initial `null`. §8.3 drops an attribute for both, but an attribute has no fetch to hold.
   - `null` is a value an author writes on purpose. Dropping it is §8.3's rule that nothing is an attribute the element does not have, applied to the query, and it is what makes an optional filter expressible.
@@ -315,9 +315,9 @@ If that file does not exist yet, create it with the same module-scope `Ajv2020` 
 - **If `plan:schema/prototype-property-declarations` has not landed**, "declares none of Request `urlParams`, FormData `fields` or Blob `parts` and `type`" becomes "declares none of FormData `fields` or Blob `parts` and `type`".
 - **If it has landed**, delete the clause "`ExternalClassDef` does not declare Request `urlParams`, and"; the sentence opens "A computed `state` entry…", and "four statements outrun" becomes "three statements outrun".
 - The marker stays Partial.
-- **The flat-set bullet.** If it carries that plan's exception sentence, add "and `Request`'s `urlParams`" to the list of names it gives. If it does not, append: "`Request`'s `urlParams` is the exception: only `Request` reads it, so it is declared under an `if`/`then` on `$prototype` and binds no other prototype's parameter of that name."
-- The Built-in Prototypes `Request` line already lists `urlParams` and does not change.
-- **Fragment:** `bun run spec:change schema.md minor -m "ExternalClassDef declares a Request's urlParams, a map of parameters or one reference, bound to the Request prototype alone."`
+- **The flat-set bullet** (implement only; the fallback declares nothing, so it adds nothing here). If it carries that plan's exception sentence, add "and `Request`'s `urlParams`" to the list of names it gives. If it does not, append: "`Request`'s `urlParams` is the exception: only `Request` reads it, so it is declared under an `if`/`then` on `$prototype` and binds no other prototype's parameter of that name."
+- The Built-in Prototypes `Request` line already lists `urlParams` and does not change (the fallback strikes it).
+- **Fragment** (implement; the fallback's is under Decisions): `bun run spec:change schema.md minor -m "ExternalClassDef declares a Request's urlParams, a map of parameters or one reference, bound to the Request prototype alone."`
 
 **Unchanged specs.** compiler.md is unchanged: §4.1's "a reactive URL re-fetches when its inputs change" already covers the query, and the rule lives in spec.md §11.1.
 

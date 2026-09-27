@@ -64,6 +64,8 @@ Written for both Opens' recommendations; the alternatives change only the steps 
 
 No signature changes. `packages/desktop` and the dev server's route pick up step 2 through the shared builder.
 
+`plan:imports/packages-route-payload` edits the lines beside steps 1 and 4: the rest of `ExtensionCatalogEntry.installed`'s JSDoc, and `buildRows`' configured loop (`broken: info === undefined`, the `installed` set renamed `declared`). The edits compose in either order; whichever plan lands second rebases over the other. No edge.
+
 **Integration contract.** Once this lands: every `ExtensionCatalogEntry` a host in this repository returns enables under `name`; `bundled` is set only when `installed` is not; the cloud adapter returns `bundled: false` and `installed` as declared; `buildRows` resolves a configured row's description by its `project.json` string, and the install note is shown only on a row that is off. `extensions.md` §9.2 is unmarked and states the host rules below.
 
 ## Tests

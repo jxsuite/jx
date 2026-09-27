@@ -66,7 +66,7 @@ All three sections were unmarked before the census, and none of their parents (i
 - site-architecture.md §6.5 → Implemented: marker deleted, the `format` key rule rewritten; the rest of the list stands.
 - studio.md §8.1 → Implemented: marker deleted, the registry-source clause rewritten; §8.3's two sentences follow as an unclaimed ride-along.
 - Every message, doc comment, schema description and schema example under `packages/` that sends a user to `imports` for a format names `extensions` instead, and so do the two agent-facing project.json examples. No behaviour changes.
-- No spec graduates: imports.md, site-architecture.md and studio.md keep other open items.
+- No spec graduates unless one of imports.md, site-architecture.md and studio.md has no other open item when this lands (Specs & docs). Nothing requires this plan, so it can be the last.
 
 ## Decisions
 
@@ -152,7 +152,9 @@ Coverage: no source file and no function is added or removed, and every changed 
 - Named by `bun run docs:sync`, already correct, no change: `docs/studio/interface.md` (`format-host.ts`), `docs/studio/interface/tabs.md` (`studio.ts`), `docs/extending/embedding/platform-adapter.md` (`types.ts`, `devserver.ts`), `docs/extending/extensions/formats.md` (`format-registry.ts`), `docs/framework/site/project-json.md` (`project.core.schema.json`), `docs/framework/agents/machine-readable.md` and `docs/framework/agents.md` (`schema.json`).
 - No docs page anchors the three claimed sections; `docs/framework/site/content-collections.md` (`site-architecture.md#6`) already states the rule.
 
-No spec graduates. Landing deletes this file and rewords every `plan:_shared/formats-from-extensions` citation left in a plan that still exists, or `plans:check` reports `citation-unknown`: today `plans/extensions/capability-timing-dispatch.md` (lines 71 and 154), `plans/extensions/declared-media-type-responses.md` (line 91) and `plans/imports/canvas-project-context.md` (line 154). No audit record cites it.
+**Graduation.** A reconcile's graduation rides on its execution, so it is `minor`. Before landing, run `bun run plans:status --spec imports`, `--spec site-architecture` and `--spec studio`. For each spec whose only open item left is this plan's (imports.md §1.2, site-architecture.md §6.5, studio.md §8.1), set its header to `**Status:** Implemented`, run `bun run spec:bump <spec>.md minor -m "<that spec's fragment sentence above>"` in place of its fragment, and delete `plans/<stem>/`. Otherwise no spec graduates.
+
+Landing deletes this file and rewords every `plan:_shared/formats-from-extensions` citation left in a plan that still exists, or `plans:check` reports `citation-unknown`: today `plans/extensions/capability-timing-dispatch.md` (lines 71 and 154), `plans/extensions/declared-media-type-responses.md` (line 91) and `plans/imports/canvas-project-context.md` (line 154). No audit record cites it.
 
 ## Acceptance
 
