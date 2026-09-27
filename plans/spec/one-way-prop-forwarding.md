@@ -47,9 +47,9 @@ The body (line 1547) promises the opposite: "the child receives the same reactiv
    - "Resolution order", which lists `$props` after `state` and `window`/`document` as fallbacks, where §15.4 merges props into the component scope and excludes globals.
    - "Static and bound props", which says a function prop lets "a child trigger behavior the parent owns".
 
-**Related, no edge**
+**Related**
 
-- `plan:_shared/compiled-prop-bridge` rewrites this section's marker to a narrower Partial when it lands. This plan replaces that marker. Its integration contract says this plan "may state that a `$ref` prop re-delivers the parent's value in both tiers". That holds only once the enabling plan has landed too (correction 1).
+- `plan:_shared/compiled-prop-bridge` (required) rewrites this section's marker to a narrower Partial when it lands. This plan replaces that marker. Its integration contract says this plan "may state that a `$ref` prop re-delivers the parent's value in both tiers". That holds only once the enabling plan has landed too (correction 1).
 - `plan:_shared/compiled-prop-bridge` and `plan:spec/elements-registration-example` also edit `props-and-scope.md`: a new "Setting props from script" section and the "Component instances" section. The hunks here are "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules", so whichever lands second rebases adjacent hunks at most.
 
 ## Outcome
@@ -133,9 +133,9 @@ The gates, all in the `checks` job: `bun run docs:status` (§13.3's first marker
 
    "Nothing flows back. A child that writes a prop changes its own value and leaves the parent's state untouched, and the parent's next change replaces what the child wrote. An object or array prop is shared by reference, not forwarded. Both scopes hold the same reactive object, so a mutation of its contents (`state.items.push(x)`, `state.filter.q = "a"`) triggers effects in both, while assigning a new object to the prop in the child replaces only the child's value."
 
-   "A child changes its parent's state by dispatching an event (§20.2) that reaches its host, from a root-level handler (§16.1) or with `bubbles: true` from inside. The parent handles it with an `on*` handler written on the instance, which runs in the parent's scope. The dispatching function declares the event in its `emits` (§16.8) for editors and the manifest. A function passed through `$props` (§13.2's `onAction`) is a value like any other: an `on*` binding in the child calls it with the child's scope as `state`, so it cannot write the parent's."
+   "A child changes its parent's state by dispatching an event (§20.2) that reaches its host: one dispatched at the host, or one dispatched inside the child with `bubbles: true` (and `composed: true` to leave a shadow root, §16.6). The parent handles it with an `on*` handler written on the instance, which runs in the parent's scope. The dispatching function declares the event in its `emits` (§16.8) for editors and the manifest. A function passed through `$props` (§13.2's `onAction`) is a value like any other: an `on*` binding in the child calls it with the child's scope as `state`, so it cannot write the parent's."
 
-   Adjust the third paragraph's last sentence if the Open resolves the other way. Adjust the first paragraph's reflected-name sentence if the bridge's Open on reflected names does.
+   Adjust the third paragraph's last sentence if the Open resolves the other way. Adjust the first paragraph's reflected-name sentence if the bridge's Open on reflected names does. The third paragraph does not name a root-level handler (§16.1) as the way to dispatch at the host: the compiled element binds none until `plan:spec/compiled-host-handlers` lands, and §20.2 already says where a dispatch starts in each tier (a compiled `state` handler dispatches from the instance), so the sentence holds without that edge.
 
 **Fragment:** `bun run spec:change spec.md minor -m "Signal forwarding is one way in every tier: a bound prop is re-delivered from parent to child, a child's write stays in the child except through a shared object, and a child reaches its parent by dispatching an event"`
 

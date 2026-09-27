@@ -35,13 +35,13 @@ The body (lines 770 to 776) still says a child row sets `activeSelector` to `& c
 
 **Found while detailing, not §7.3's**
 
-- For a part, the Target Line's scope chip names the path's first segment (`stylebookTagOf` in `style-panel.ts`), so `ul li` reads "all <ul> in this document", and `projectScope` counts `<ul>`s. That is §6.2's chip and §7.4's last paragraph.
-- The Customized toggle filters against the effective (site-merged) style (`customizedOnly` over `effectiveStyle` in `buildStylebookDoc`), while its hint says "the elements this file has already styled".
-- `docs/studio/design/stylebook.md` ends with two stray `code:` entries (`surfaces/panel-stylebook-layers.ts`, `surfaces/stylebook-chrome.ts`) that render as list items under "Next".
+- For a part, the Target Line's scope chip names the path's first segment (`stylebookTagOf` in `style-panel.ts`), so `ul li` reads "all <ul> in this document", and `projectScope` counts `<ul>`s. §6.2 says the chip "states the blast radius", so this is §6.2's defect; §6.2 is claimed by `plan:studio/style-sections-table`.
+- The Customized toggle filters against the effective (site-merged) style (`customizedOnly` over `effectiveStyle` in `buildStylebookDoc`), while its hint (`customizedHint` in `panels/stylebook-panel.ts`) says "the elements this file has already styled". No spec section describes the toggle, so this is a code-and-copy defect with no open item.
+- `docs/studio/design/stylebook.md`'s two stray `code:` entries under "Next" are moved into its frontmatter by `plan:studio/stylebook-editing-text`, which lands first.
 
 ## Outcome
 
-studio.md §7.3 → Implemented. A part has one tag path, the element's tag and then its own (`table td`), whether it is chosen from an Outline row or on the canvas. The Outline lists each part once, one level under its element. It marks only the row equal to the selection, and dots a row by the bare nested key a Stylebook edit writes. Selecting a part pans to its element's card and highlights the part.
+studio.md §7.3 → Implemented, its census marker deleted. §7.4's readers paragraph (as `plan:studio/stylebook-editing-text` lands it) names the Outline's dot. A part has one tag path, the element's tag and then its own (`table td`), whether it is chosen from an Outline row or on the canvas. The Outline lists each part once, one level under its element. It marks only the row equal to the selection, and dots a row by the bare nested key a Stylebook edit writes. Selecting a part pans to its element's card and highlights the part.
 
 ## Decisions
 
@@ -53,11 +53,12 @@ studio.md §7.3 → Implemented. A part has one tag path, the element's tag and 
   - If declined: `specimenCompound` takes the chain (`registerSpecimenPaths` threads its parent's path), the Outline keeps its recursive walk keyed by that chain, and §7.3 says a part is styled where the specimen puts it.
 - **Decided:** the dot is the exported `hasTagStyle` in `stylebook-doc.ts`, called with the row's key over the open file's own style (`tab.doc.document.style`), not the effective style. The row's label says "Styled in this file", and the editor writes into this file.
 - **Decided:** an `& tag` key lights nothing. The editor never writes one, and clicking a row whose dot came from `& h1` would open the empty bare `h1` rule. The shape is `plan:studio/stylebook-editing-text`'s, and this plan requires it.
-- **Decided:** an element's dot also lights when only one of its parts is styled (`hasTagStyle` counts any non-empty object at the key). That is what the Customized filter already counts for the element's card, so the dot and the filter agree.
+- **Decided:** an element's dot also lights when only one of its parts is styled (`hasTagStyle` counts any non-empty object at the key). That is the rule the Customized filter already applies to the element's card, so over the file's own rules the dot and the filter agree. They still differ on rules only the site style contributes, which the filter counts and the dot does not (Context).
 - **Decided:** a component row carries the dot for a rule at its tag, for the same reason.
 - **Decided:** a row is current when its key equals `shell.stylebook.selection`, and a path that is no row (`h1 :hover`, `ul li a` from Relative Styling) marks none. The rows and the canvas now produce the same set of paths, and the leaf rule marks wrong rows.
 - **Decided:** a part's selection box outlines its first specimen node, and only an Outline click pans. The stylebook geometry branch draws one box, and the old `findStylebookEl` returned the first match. A canvas click lands on something already on screen, so `studio.ts`'s hit handler keeps calling `selectStylebookTag` without `panCanvas`.
-- **Decided:** the scope chip and the Customized filter's style source (Context, "Found while detailing") stay out of scope, because neither is §7.3's. The pull request description records both for the owners of §6.2 and §7.4.
+- **Decided:** the scope chip and the Customized filter's style source (Context, "Found while detailing") stay out of scope, because neither is §7.3's, and fixing the chip needs its own design (how a part is named, and what the project band counts when `findReferences` can only match one `tagName`). The chip goes to §6.2's owner: before this plan moves to `ready`, the finding is recorded in `plan:studio/style-sections-table`'s Context. The filter's style source has no spec item, so the landing pull request's description records it.
+- **Decided:** §7.3's census marker is deleted, not rewritten as `Implemented`, matching `plan:studio/stylebook-editing-text`'s treatment of §7.4: §7.3 was unmarked before the census and §7.1 and §7.2 read as closed the same way. The code pointers move into the body.
 
 ## Implementation
 
@@ -81,6 +82,7 @@ studio.md §7.3 → Implemented. A part has one tag path, the element's tag and 
    - `panToStylebookTag`: code unchanged. Its docblock adds that a part pans to its element's card.
 4. `packages/studio/src/surfaces/panel-stylebook-layers.json` `$description`: "or knows what a `& tag` style key is" becomes "or knows how a tag's style key is spelled". In `surfaces/panel-stylebook-layers.ts`, `StylebookRowView.key`'s docblock example becomes "for a part its tag path (`"ul li"`, `"table td"`)".
 5. Unchanged: `selectStylebookTag` (`src/panels/stylebook-panel.ts`), the hit handler in `src/studio.ts`, `src/panels/style-panel.ts`.
+6. Plan housekeeping: delete this file, and delete the last "Spec-wide decisions" bullet of `plans/studio/README.md` (the Stylebook tag-rule shape, which `plan:studio/stylebook-editing-text` left citing this plan).
 
 **Integration contract.** `stylebook-doc.ts` exports `specimenCompound`, `specimenParts` and `hasTagStyle`. `StylebookDocResult` carries `partToNodePath`, and `tagToCardPath` answers for a part with its element's card. `shell.stylebook.selection` is a tag path that the Outline compares by equality. §7.3 states all of it. No plan requires this one. `plan:studio-ui-guidelines/canvas-highlight-facts` says the stylebook box is labelled with its tag, and after this plan the label can be a path (`<table td>`), so whichever lands second checks that sentence. `plan:studio-ui-guidelines/empty-state-copy` edits `tests/stylebook-layers-panel.test.ts` (the variables case), so the second to land rebases.
 
@@ -116,10 +118,7 @@ Coverage: the per-file thresholds in `packages/studio/bunfig.toml` (`lines = 0.9
 ## Specs & docs
 
 - **studio.md §7.3** (lines 768 to 776), in place, heading unchanged.
-  - The marker becomes:
-
-    > **Status: Implemented.** `packages/studio/src/panels/stylebook-layers-panel.ts` draws the rows; `panels/stylebook-doc.ts` spells every path and says which are styled (`specimenCompound`, `specimenParts`, `hasTagStyle`); `selectStylebookTag` in `panels/stylebook-panel.ts` selects, and `panToStylebookTag` in `canvas/iframe-host.ts` pans.
-
+  - Delete the line-768 marker.
   - The body becomes:
 
     > While the pane shows Project Styles, the Outline lists the element catalogue and then the project's components. An element whose specimen has children (e.g. `ul > li`, `table > thead > tr > td`) lists each tag inside it once, one level in, in the order the specimen first uses it: a table's parts are `thead`, `tr`, `th`, `tbody` and `td`. A row selects a **tag path**. For an element or a component, that is its own tag. For a part, it is the element's tag and then the part's (`ul li`, `table td`), which is the bare nested key a Stylebook edit writes (§7.4). A part is therefore styled wherever it sits inside its element, and not only where the specimen puts it.
@@ -132,12 +131,15 @@ Coverage: the per-file thresholds in `packages/studio/bunfig.toml` (`lines = 0.9
     >
     > The specimen document records the tag path of every node it generates (`pathToTag` in `buildStylebookDoc`), so a canvas hit decodes to the path its row selects, and a hit on an unmapped node resolves to its nearest mapped ancestor. The row whose path equals the selection is marked current. A path that is no row, such as a rule Relative Styling nests under one (`h1 :hover`), marks none.
     >
-    > A row carries a dot when the open file's own style has a non-empty rule at its tag path, either directly or inside any `@` block (a breakpoint or a colour scheme). An element's dot also lights when only one of its parts is styled, as the canvas's Customized filter counts it.
+    > A row carries a dot when the open file's own style has a non-empty rule at its tag path, either directly or inside any `@` block (a breakpoint or a colour scheme). An element's dot also lights when only one of its parts is styled, as the canvas's Customized filter counts it. The rows are drawn by `packages/studio/src/panels/stylebook-layers-panel.ts`; every path is spelled, and every dot decided, in `panels/stylebook-doc.ts` (`specimenCompound`, `specimenParts`, `hasTagStyle`).
 
   - If the Open decision is declined, the first paragraph instead says the Outline follows the specimen's nesting and a part's path is its chain (`table tbody tr td`), styled only where that structure occurs.
-- **Fragment:** `bun run spec:change studio.md minor -m "§7.3 a Project Styles part has one tag path, its element's tag then its own (table td), from the Outline and the canvas alike; the Outline lists each part once one level in, marks only the row equal to the selection and dots a row by the bare nested key Stylebook writes; a part's selection pans to its element's card and outlines the part."`
-- **`docs/studio/design/stylebook.md`** (its `spec:` cites `studio.md#7.4`, and its `code:` lists `stylebook-layers-panel.ts` and `stylebook-doc.ts`). No em dashes.
-  - `spec:` gains `studio.md#7.3`. `code:` gains `packages/studio/src/surfaces/panel-stylebook-layers.ts` and `packages/studio/src/surfaces/stylebook-chrome.ts`, and the two stray lines at the page's foot are deleted.
+- **studio.md §7.4**, second paragraph (as `plan:studio/stylebook-editing-text` lands it), in place:
+  - The bold lead becomes "**The specimen canvas, its Customized filter, the Outline's dot and the site stylesheet read that shape.**"
+  - "and the Customized filter asks whether a tag's path resolves to a non-empty block" becomes "and the Customized filter and the Outline's dot (§7.3) ask whether a tag's path resolves to a non-empty block". The rest of the paragraph is unchanged.
+- **Fragment:** `bun run spec:change studio.md minor -m "§7.3 a Project Styles part has one tag path, its element's tag then its own (table td), from the Outline and the canvas alike; the Outline lists each part once one level in, marks only the row equal to the selection and dots a row by the bare nested key Stylebook writes; a part's selection pans to its element's card and outlines the part; §7.4 names the Outline's dot among the readers of that key."`
+- **`docs/studio/design/stylebook.md`** (its `spec:` cites `studio.md#7.4`; its `code:` lists `stylebook-layers-panel.ts`, `stylebook-doc.ts` and, once the prerequisite has moved it there, `surfaces/panel-stylebook-layers.ts`). No em dashes.
+  - `spec:` gains `studio.md#7.3`.
   - "Read the catalog", last sentence: "The **Outline** panel mirrors the catalog as a tree and marks customized entries with a dot: elements with their nested parts (a table with its rows and cells), then your components." becomes "The **Outline** panel lists the catalog: each element, with the parts inside it one step in (a table's header, rows and cells), then your components. A dot marks every entry this file has styled."
   - "Style an element type", the sentence "Nested parts style as compound selections, like the header cells inside tables." becomes "A part styles as a compound selection. Clicking a table's header cell, on the canvas or in the Outline, selects `table th`, which styles every header cell inside a table whatever sits between them. The canvas outlines the first one and the Outline marks its row."
 - No other page cites `studio.md#7.3` or lists a changed file. `docs/studio/design/layers.md` only links to this page. `iframe-host.ts` is in no page's `code:`.
@@ -147,6 +149,7 @@ Coverage: the per-file thresholds in `packages/studio/bunfig.toml` (`lines = 0.9
 
 - `cd packages/studio && bun test --isolate --coverage` is green with the new cases, and no file is below its threshold. `bun scripts/check-coverage-manifest.ts packages/studio` passes.
 - `bun run typecheck` and `bun run lint` are clean. `grep -n 'selectedLeaf\|& \${tag}' packages/studio/src/panels/stylebook-layers-panel.ts` finds nothing.
+- `sed -n '/^### 7.3 /,/^### 7.4 /p' specs/studio.md` shows no `> **Status:` line, and `grep -c "the Outline's dot and the site stylesheet read that shape" specs/studio.md` prints `1` (§7.4's readers paragraph). `grep -n "stylebook-layers-tag-keys" plans/studio/README.md` prints nothing.
 - `bun run plans:status --spec studio` no longer lists §7.3. `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:prose`, `bun run docs:links` and `bun run docs:markdown` pass. `bun run docs:sync` names `stylebook.md`, which is in the diff.
 - By hand, under `bun run dev`, open Project Styles on a project's `project.json`:
   1. Click the `li` row under `ul`. The canvas pans to the list card and outlines the first `<li>`, labelled `<ul li>`. Only that row is current.
