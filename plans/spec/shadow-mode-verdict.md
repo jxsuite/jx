@@ -17,7 +17,7 @@ size: S
 This plan claims nothing. It is the first bullet of `plan:spec/shadow-dom-parity#SDP1.2`, split out under `plans/README.md`'s rule that a plan is split when a dependent needs only part of it. Two plans need the verdict where a browser can import it:
 
 - `plan:spec/shadow-dom-parity` (spec.md §16.6) reads it in the interpreter: SDP1.3 resolves a component's mode at connection with `resolveShadowMode(def, { shadow: _shadowDefault })`, and SDP1.4's `composePage` reads it in `packages/site`. That plan requires this one.
-- `plan:studio/cem-contract-editors` (studio.md §6.5) offers CSS parts only to a component whose `resolveShadowMode(doc, projectConfig.defaults)` is not `null`, and Studio does not depend on `@jxsuite/compiler`. Its own Decisions say that only this move is needed, and that the whole of `plan:spec/shadow-dom-parity` (four slices behind `plan:spec/compiled-slot-distribution` and `plan:compiler/element-binding-table`) is otherwise what it waits for.
+- `plan:studio/cem-contract-editors` (studio.md §6.5) offers CSS parts only to a component whose `resolveShadowMode(doc, projectConfig.defaults)` is not `null`, and Studio does not depend on `@jxsuite/compiler`. It requires this plan and nothing else of `plan:spec/shadow-dom-parity`.
 
 **What exists** (verified against the working tree on 2026-09-27):
 
@@ -58,7 +58,7 @@ Run `bun test --isolate --coverage` from `packages/runtime` and from `packages/c
 - `docs/framework/concepts/components.md` (`spec: spec.md#16.6`): add `packages/runtime/src/css.ts` to `code:`, since the moved function carries the page's `@docs` tag. No text change: the page describes `$shadow` and `defaults.shadow`, which behave as before.
 - `bun run docs:sync` also names the pages whose `code:` lists `css.ts` or `runtime.ts` (`styling.md`, `overlays.md`, `color-schemes.md`, `reactivity.md`, `elements.md` and the others). None describes where the shadow verdict is computed, so the pull request states that no update is needed.
 
-Landing deletes this file and removes `spec/shadow-mode-verdict` from `plan:spec/shadow-dom-parity`'s `requires` (and from `plan:studio/cem-contract-editors`' if it was repointed here).
+Landing deletes this file and removes `spec/shadow-mode-verdict` from `plan:spec/shadow-dom-parity`'s `requires` and from `plan:studio/cem-contract-editors`' `requires`.
 
 ## Acceptance
 

@@ -80,7 +80,7 @@ Every clause holds at 84735a9f. §16.8's body only lists the four annotations; i
    - `src/studio.ts`: delete the `_exportCemManifest` import (line 140).
    - `tests/reachability.test.ts`: delete the `"services/cem-export.ts"` entry.
    - `signals-panel.ts`'s `collectCssParts` and the Logic tab's lists are untouched; they are `plan:studio/cem-contract-editors`'s surface.
-6. `plans/`: delete this file and remove `spec/cem-manifest-export` from `plan:studio/cem-contract-editors`'s `requires`, re-reading its steps 1 and 2 (which extend `guards.ts` and `cem-manifest.ts`) against what landed, and trimming its spec.md §16.5 addition to the sentence this plan did not add.
+6. `plans/`: delete this file and remove `spec/cem-manifest-export` from `plan:studio/cem-contract-editors`'s `requires`, re-reading its steps 1 and 2 (which extend `guards.ts` and `cem-manifest.ts`) against what landed; its spec.md §16.5 addition is already only the sentence this plan does not add.
 
 **Integration contract.** Once this lands:
 
@@ -145,7 +145,7 @@ Replace the marker with:
 
 > An observed attribute writes the state entry whose key is its name in camel case: each hyphen followed by a lowercase letter is dropped and the letter uppercased, so `user-name` writes `userName` (`attributeStateKey` in `@jxsuite/schema/guards`).
 
-This is the first sentence of the §16.5 addition `plan:studio/cem-contract-editors` drafts, verbatim, so that plan adds only its second.
+`plan:studio/cem-contract-editors`, which requires this plan, adds one sentence after it (a key with no such spelling cannot be set from markup).
 
 **spec.md §5.6** (marker only, stays Implemented): "(`componentPropEntries`) and from CEM extraction (`cem-export`), and both tiers" becomes "(`componentPropEntries`), the build's Custom Elements Manifest leaves them out (`cemManifest` in `packages/schema/src/cem-manifest.ts`, §16.8), and both tiers".
 
