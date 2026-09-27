@@ -1,15 +1,17 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - desktop.md#3.3
-size: M
+requires: []
 workspaces:
   - packages/desktop
   - .github/workflows
+  - scripts
+size: M
 ---
 
-# CI boots a packaged window on each OS and proves the desktop adapter registered
+# CI boots a packaged Jx Studio window on Linux, macOS and Windows and fails unless the desktop adapter registers and Studio runs on it
 
 ## Context
 
@@ -17,23 +19,107 @@ workspaces:
 
 > **Status: Partial.** Registration and all three rules below ship: `registerPlatform` in `packages/studio/src/platform.ts`, the launcher signal in `packages/desktop/src/boot.ts`, the build's refusal in `packages/desktop/scripts/init-bundle.ts` and `verify-bundle.ts`, and `resolveDefaultPlatform` with `PlatformUnavailableError` in `packages/studio/src/platforms/default-platform.ts`. Nothing boots a packaged window in CI on any OS to observe the desktop adapter register: the `bundle-desktop-*.yml` lanes are release-only and stop at a static check of the bundle's content.
 
-This was the retired §11 roadmap's row "Boot a packaged window in CI on each OS and assert the desktop adapter registered". The section was unmarked before the census; its last paragraph admits the gap. Disposition `implement`: desktop 5.0.0 through 5.1.3 shipped an `init.js` that threw on import, and every check that now holds the line is static or a unit test, so a regression of a kind nobody has thought of yet still reaches a release.
+The section's last paragraph (line 184) says the same: "Nothing yet boots a packaged window in CI … so these rules are held by the build refusal, the resolver's unit tests, each shim's tests, and an end-to-end test". This is the retired §11 roadmap row. Desktop 5.0.0 through 5.1.3 shipped an `init.js` that threw on import, and every check that now holds the line is static or runs in happy-dom, so the next failure of a kind nobody has written a rule for still reaches a release. Re-read against the tree at `1127bfbe`.
 
 **What exists**
 
-- `packages/desktop/scripts/init-bundle.ts`, run by `pre-build.ts` and `verify-bundle.ts`: judges the bundle's content (no `node_modules/electrobun` stub, the inlined `Electroview`, the launcher signal).
-- `packages/desktop/tests/boot.test.ts`, `init-shim.test.ts`, `init-shim-success.test.ts`, `chromium-init-shim.test.ts`, `init-bundle.test.ts`, and `packages/studio/tests/studio-boot-refusal.test.ts`, which boots the studio entry under an announced launcher in happy-dom.
-- `.github/workflows/bundle-desktop-linux.yml`, `bundle-desktop-macos.yml`, `bundle-desktop-windows.yml`: `workflow_call` only, from the release pipeline; they build and attach artifacts and launch nothing.
-- `scripts/desktop-build-lanes.test.ts`, which fails a lane that builds without `check-electrobun-vendor.ts --init` in front of it.
+- The boot sequence. `src/init.ts` imports `./boot` first (`announceLauncher()` publishes `globalThis.__jxLauncher`, `watchBootErrors` records the first page error), then `bootLauncher({ create: createDesktopPlatform, … })` constructs the adapter, which constructs `Electroview` (`src/platform.ts`), calls `registerPlatform` synchronously, then asks `platform.githubAuth.status()`, i.e. the `githubToken` request. `src/chromium/init.ts` is the same over a WebSocket (`src/chromium/platform.ts`, `request()`).
+- Studio's entry (`packages/studio/src/studio.ts`) refuses the fallback at the gate (~line 465) and otherwise, at module level and unconditionally, calls `platform.activate()` (`getCanvasUrl` on Electrobun, a no-op on chromium) and `void hydrateSettings()` (line 1195), which calls `platform.getSettings()` (`services/settings/kernel.ts`). Both desktop adapters answer `getSettings` over their transport.
+- The Bun side of each window: `buildWindowRpc` in `src/window-manager.ts` hands `BrowserView.defineRPC<StudioRPC>` one `requests` object; the chromium launcher's `defaultSession.handlers` (`src/chromium/index.ts`) is the exported `handlers` map the project server's WS-RPC dispatches into. `src/index.ts` `main()` opens the first window with `openProjectWindow(initialRoot)`.
+- Electrobun: `process.exit` is overridden to quit natively (`vendor/electrobun/package/src/sdks/main/core/Utils.ts`). All three platforms use CEF (`electrobun.config.ts`); Electrobun turns CEF remote debugging on automatically for dev builds and off for stable and canary ones unless `chromiumFlags` bakes a port in (`ElectrobunConfig.ts`).
+- CI: `bundle-desktop-{linux,macos,windows}.yml` are `workflow_call` from `release-please.yml`, run after the tag exists, build with `bun run desktop:stable`, and launch nothing; "Attach to release" runs `if: !cancelled()`. test.yml already has a release-PR-only job: `nix`, `if: startsWith(github.head_ref, 'release-please--')`, required through `ci`. `scripts/desktop-build-lanes.test.ts` fails any workflow step matching `desktop:(stable|msix|release|build)|electrobun (build|dev)|…` whose job did not run `check-electrobun-vendor.ts --init` first. `scripts/ci/affected.test.ts` pins `ci`'s `needs:` line verbatim.
+- Tests: `packages/desktop/tests/boot.test.ts`, `init-shim.test.ts`, `init-shim-success.test.ts`, `chromium-init-shim.test.ts`, `init-bundle.test.ts`, `verify-bundle.test.ts`, `window-manager.test.ts`, `index.test.ts`, `chromium-index.test.ts`; `packages/studio/tests/studio-boot-refusal.test.ts`.
 
-**What is missing**
+**What is missing**: a launched packaged window anywhere in CI, a way to read its boot outcome out of a process CI does not control, and a decision on which pipeline stage runs it.
 
-- A job per OS that starts the packaged app (a display on Linux, such as Xvfb), waits for the studio window, and reads back whether `globalThis.__jxLauncher` recorded an error and whether `__jxPlatform` is the RPC-backed desktop adapter, failing on the §3.4 boot-failure state.
-- A way to read that state out of the webview: a launcher-side boot report the Bun process writes when the RPC first answers, or a debugging protocol on the renderer.
-- A decision on where it runs: the bundle lanes are release-only (CLAUDE.md names release-only workflows as the unexercised part of the pipeline), so either a pull-request leg gated on `packages/desktop/**`, or the release lanes gaining a boot step before they attach anything.
-- Whether the chromium launcher (§9) gets the same check, since its `init` shim has the same failure shape.
+## Outcome
 
-**Related**
+With the recommendations below taken:
 
-- desktop.md §3.4 (the boot-failure state the check must detect), desktop.md §7.2 (construction needs the preload and the vendored SDK), desktop.md §9.2 (the chromium launcher).
-- studio.md §11.2 (`studioShellHtml` and its boot slot).
+- desktop.md §3.3 → Implemented: the release pull request builds the Electrobun app with Hutch on Linux x64, macOS arm64 and Windows x64, launches it, and fails `ci` unless the window's adapter registered and Studio's entry called it; the chromium launcher gets the same check on Linux.
+- Any pull request can opt in with the `desktop-boot` label, and `desktop-boot.yml` can be dispatched on `main`.
+- `JX_STUDIO_BOOT_PROBE` is a stated launcher contract, usable locally and in support.
+
+## Decisions
+
+- **Open:** where the check runs. Recommendation: on the **release pull request** (a `desktop-boot` job in test.yml, same gate as `nix`, required through `ci`), plus any pull request labelled `desktop-boot`; the release lanes gain no boot step. Because: the release PR is the last point before the tag, so a red boot stops the release rather than shipping a pre-release with missing installers; gating on a diff would fire on nearly every PR (desktop's dependency closure is almost the whole graph, and Studio's entry is in scope) at three OS runners each, which is the trade CLAUDE.md already refused for Nix; and a step inside a release-only lane is first executed at a release, can only act after the tag, and would have to launch the stable build's compressed payload (`build-msi.ts` unpacks it on Windows). The price: the signed and notarized artifact is not what gets booted. Alternative if a maintainer wants the shipped bytes covered too: add the same step to each `bundle-desktop-*` lane before "Attach to release" and gate that step's `if:` on the boot's outcome; it composes with this plan and changes nothing below.
+- **Open:** whether the chromium launcher (§9.2) gets the check. Recommendation: yes, on the Linux leg, launched from the source tree (`pre-build-rpc.ts`, then `bun src/chromium/index.ts` with `CHROMIUM_BIN` set to the runner's Chrome), because that is exactly what `package.nix` wraps (`makeWrapper … run …/src/chromium/index.ts`), its init shim has the same import-time failure shape, the probe seam is shared, and it costs one step on a runner that already has a display.
+- **Decided:** the oracle is the request log the launcher's Bun side records, and it settles on `getSettings`, because that one name proves both halves: any request at all means the adapter was constructed and its transport answers (a bundle that throws on import, or an `Electroview` that cannot construct, sends nothing), and `getSettings` comes only from Studio's own entry, after its platform gate, on whatever adapter is registered, so it means Studio is running on the launcher's adapter and not refusing. Rejected: reading the webview over CDP (only a dev build has a debugging port, so the oracle could never move to a stable artifact or a user's machine, and baking a port into a shipped build to allow it would be the less safe binary); a report the webview pushes (a failed boot has no transport to push on); Electroview's built-in `evaluateJavascriptWithResponse` (it answers only when the transport already works, so it adds nothing the log does not prove).
+- **Decided:** the pull-request leg builds with `bun run desktop:build` (Hutch's dev environment) from a bare `actions/checkout` followed by `check-electrobun-vendor.ts --init`, exactly as the lanes prepare, because a dev build directory is directly runnable, needs no signing secrets, and runs the same `preBuild`/`postBuild` hooks, init bundle, staging and `views://` shell as the stable build; it differs in channel, signing and compression only.
+- **Decided:** the probe is honoured in every build, switched only by the environment, and boots a welcome window (no project), because one code path is what makes the tested binary the shipped one, whoever controls a process's environment can already do more than make it quit, and §3.3 is about registration, not project loading (§4).
+- **Decided:** the runner owns the deadline and the launcher rewrites its report on every new request name, because on a timeout the partial report (for example `["githubToken"]`) is the diagnosis, and a launcher-side timer would have to quit before CI could photograph the boot-failure screen, which prints the recorded error.
+
+## Implementation
+
+**1. Launcher seam: `packages/desktop/src/boot-probe.ts` (new; imports only `node:fs`/`node:path`, so both launchers load it).**
+
+- `BOOT_PROBE_ENV = "JX_STUDIO_BOOT_PROBE"`; `BOOT_SETTLE_REQUEST = "getSettings"`.
+- `interface BootReport { launcher: "electrobun" | "chromium"; requests: string[]; settled: boolean; firstRequestMs: number | null; settledMs: number | null }`: `requests` holds distinct names in first-seen order.
+- `interface BootProbe { note(name: string): void; readonly report: BootReport }`.
+- `createBootProbe({ launcher, path, now, write, quit })`: `note` appends an unseen name and rewrites the report (write `path + ".tmp"`, then `renameSync`, so a reader never sees a torn file); on `BOOT_SETTLE_REQUEST` it sets `settled`, writes, and calls `quit()` once; after settling it is inert.
+- `bootProbeFromEnv(env, launcher, deps = { proc: process, now: Date.now })`: `null` when the variable is unset or empty. Default `quit` per launcher: electrobun `proc.exit(0)` (Electrobun turns it into a native quit); chromium `proc.kill(proc.pid, "SIGTERM")`, which the launcher's existing SIGTERM handler turns into `chrome.kill()` and `process.exit(0)`. Keeping the quit table here keeps closures out of the two entry files.
+- `recordBootRequests<H extends Record<string, (...args: never[]) => unknown>>(probe: BootProbe | null, handlers: H): H`: returns `handlers` itself when `probe` is null; otherwise a map with the same keys whose functions call `probe.note(name)` and then delegate with the same arguments, returning (or throwing) exactly what the handler does.
+- `judgeBootReport(report: BootReport | null): { ok: boolean; summary: string }`, pure, one sentence per state: no report ("the launcher never started a probe; is `JX_STUDIO_BOOT_PROBE` reaching it?"); no requests ("the window's adapter never called its backend: the init bundle threw or never constructed the adapter; the boot-failure screen names the error"); requests without `getSettings` ("the adapter answered (…names…) but Studio's entry never called it"); settled (pass, with the two timings). Header comment cites desktop.md §3.3; `@docs extending/contributing/monorepo`.
+
+**2. Wiring (straight-line calls only, so existing suites cover them).**
+
+- `src/window-manager.ts`: `let bootProbe: BootProbe | null = null; export function setBootProbe(probe: BootProbe | null)`, beside `setAiChatUrl`. In `buildWindowRpc`, `requests: recordBootRequests(bootProbe, { …the existing literal… })`. The `requests` property's contextual type is the call's inference site, so the handlers keep their `StudioRPC` parameter types; if `bun run --cwd packages/desktop typecheck` disagrees, hoist the literal into a `const` typed from `BrowserView.defineRPC<StudioRPC>`'s config.
+- `src/index.ts` `main()`: `setBootProbe(bootProbeFromEnv(process.env, "electrobun"))` immediately before `openProjectWindow(initialRoot)`.
+- `src/chromium/index.ts`: `const bootProbe = bootProbeFromEnv(process.env, "chromium")` near `defaultSession`, and `handlers: recordBootRequests(bootProbe, handlers)` inside it. The exported `handlers` stays raw for `_rpc-parity.ts`.
+- The only launcher request before Studio's is `githubToken` (from `bootLauncher`); nothing here names it. `plan:desktop/github-token-stays-in-launcher` changes `githubSignIn`'s answer, and `plan:desktop/settings-patch-cross-process-lock` changes the settings store behind `getSettings`, not the request name; neither is an edge in either direction.
+
+**3. Runner: `packages/desktop/scripts/boot-probe.ts` (library, tested) and `scripts/run-boot-probe.ts` (thin CLI, untested, like `post-build.ts` over `verify-bundle.ts`).**
+
+- `locateLauncher(buildDir, platform = process.platform): { path: string | null; searched: string[] }`, globbing with `Bun.Glob` as `post-build.ts` does: linux `*/*/bin/launcher`, darwin `*/*.app/Contents/MacOS/launcher`, win32 `*/*/bin/launcher.exe` under `packages/desktop/build`. Windows' name is confirmed by `WINDOWS_RUNTIME_FILES` in `electrobun-runtime.ts`; the Linux and macOS names are Electrobun's `bin/launcher` layout and are confirmed on the first labelled run, where a miss prints the build tree.
+- `probeEnvironment(base, tmpDir, platform)`: copies `base`, sets `JX_STUDIO_BOOT_PROBE` to `tmpDir/boot-report.json`, points the profile at `tmpDir` (`HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`; `APPDATA`, `LOCALAPPDATA` on Windows), deletes `JSONSX_PROJECT_ROOT` (with no argument, Electrobun's `main()` then opens a welcome window), and sets `JX_STUDIO_NO_PROJECT=1` (chromium's welcome-window switch, §9.2 step 1).
+- `runBootProbe({ command, env, reportPath, timeoutMs = 120_000, screenshot?, spawn? })`: spawns the command directly (on macOS the bundle's executable, not `open`, which drops the environment), tees stdout and stderr to `tmpDir/launcher.log`, waits for exit or the deadline; on the deadline takes a best-effort screenshot (`import -window root` under Xvfb, `screencapture -x` on macOS, none on Windows; a failed capture is logged, never the verdict) and kills the process tree (`process.kill(-pid)` for a detached POSIX group, `taskkill /T /F /PID` on Windows). Then reads the report, returns `judgeBootReport`'s verdict plus the log tail.
+- `scripts/run-boot-probe.ts electrobun | chromium [--timeout-ms N] [--out DIR]`: resolves the command (the located launcher; or `process.execPath src/chromium/index.ts` with the caller's `CHROMIUM_BIN`), prints the verdict, leaves report, log and screenshot in `--out`, exits 1 on failure. `packages/desktop/package.json` gains `"boot-probe": "bun scripts/run-boot-probe.ts"`.
+
+**4. CI.**
+
+- New `.github/workflows/desktop-boot.yml`, `on: workflow_call` and `workflow_dispatch`, `permissions: contents: read`, one job with a `fail-fast: false` matrix: `ubuntu-latest` (linux-x64), `macos-15` (the lane's pin, and its reason), `windows-latest`. Steps: `actions/checkout@v7` (no `submodules:`), `./.github/actions/setup-bun`, `./.github/actions/cache-hutch-store`, on Linux the lane's apt list plus `xvfb`, `bun run build`, `bun scripts/check-electrobun-vendor.ts --init`, `bun run desktop:build`, then `bun run --cwd packages/desktop boot-probe electrobun --out "$RUNNER_TEMP/boot"` (on Linux under `xvfb-run -a -s "-screen 0 1920x1080x24"`; if CEF cannot get a GL context there, `LIBGL_ALWAYS_SOFTWARE=1` in the step env). Linux only, after that: `bun run --cwd packages/desktop scripts/pre-build-rpc.ts`, then `CHROMIUM_BIN=$(command -v google-chrome) xvfb-run -a bun run --cwd packages/desktop boot-probe chromium --out …`. Last, `actions/upload-artifact@v7` with `if: failure()`, named per platform, holding the report, log and screenshot.
+- test.yml: a `desktop-boot` job, `if: startsWith(github.head_ref, 'release-please--') || contains(github.event.pull_request.labels.*.name, 'desktop-boot')`, `uses: ./.github/workflows/desktop-boot.yml`, with a comment modelled on `nix`'s; add it to `ci`'s `needs`. `skipped` stays green.
+- Repository setting, not code: create the label (`gh label create desktop-boot --description "Boot the packaged desktop app on each OS in this pull request's CI"`).
+- CLAUDE.md, the "Release-only workflows are unexercised" bullet: add that the release pull request boots a Hutch-built window of the release commit on all three OSes (`desktop-boot.yml`), so what remains unexercised is the lanes' own steps and signing.
+
+**Integration contract.** Once this lands, a plan may rely on: `JX_STUDIO_BOOT_PROBE=<path>` making either launcher write a `BootReport` there and quit after Studio's first `getSettings`; `recordBootRequests`, `bootProbeFromEnv`, `judgeBootReport` and `BootReport` exported from `packages/desktop/src/boot-probe.ts`; `bun run --cwd packages/desktop boot-probe electrobun|chromium` as the local check; the `desktop-boot` job in `ci` on release pull requests and labelled ones. A plan that renames `getSettings` or stops Studio's entry from hydrating settings at boot must move `BOOT_SETTLE_REQUEST` with it. A rewrite of desktop.md §7.4's tree (`plan:desktop/app-structure-tree`) lists `src/boot-probe.ts`.
+
+## Tests
+
+From `packages/desktop`: `bun test --isolate --coverage`, then `bun scripts/check-coverage-manifest.ts packages/desktop` from the root. From the root: `bun test --isolate scripts`.
+
+- `tests/boot-probe.test.ts` (new): "inactive without JX_STUDIO_BOOT_PROBE" (`bootProbeFromEnv` returns null for unset and empty; `recordBootRequests(null, h)` returns `h` itself); "records each request name once, in first-seen order, rewriting the report as it grows"; "passes arguments and results through, sync and async, and records a handler that throws before rethrowing it"; "settles on getSettings: the report says settled with both timings and quit runs once"; "requests after settling change nothing"; "each launcher quits its own way" (fake `proc`: electrobun calls `exit(0)`, chromium calls `kill(pid, "SIGTERM")`); "writes through a temp file and a rename"; one `judgeBootReport` case per state, asserting the verdict and its sentence.
+- `tests/boot-probe-runner.test.ts` (new): "locateLauncher finds the launcher in each OS's bundle layout" (temp trees for linux, darwin, win32); "locateLauncher lists every pattern it searched on a miss"; "probeEnvironment isolates the profile and forces a welcome window"; "runBootProbe passes a launcher that settles" (the command is `process.execPath -e` writing a settled report and exiting); "runBootProbe kills a launcher that never settles and judges its partial report" (short timeout; asserts the process is gone and the verdict names `githubToken`); "runBootProbe fails a launcher that exits without a report"; "a failed screenshot is logged, not fatal" (injected capture that throws).
+- `tests/window-manager.test.ts`: "a boot probe set before a window opens records that window's requests" (fake probe; call two handlers through `rpcConfigs`; the parity test still passes on the wrapped map).
+- `tests/index.test.ts`: the `../src/window-manager` mock gains `setBootProbe`; "hands the window manager no boot probe when the environment has none".
+- `scripts/desktop-build-lanes.test.ts`, a new `describe("desktop boot check")`: "desktop-boot.yml boots on Linux, macOS and Windows" (the matrix `os` values); "every boot-probe step follows a desktop build step in its own job" (the existing `--init` rule already covers the new build step); "test.yml runs it on the release pull request and ci requires it" (the `if:` contains the `release-please--` clause and `ci`'s `needs` names `desktop-boot`).
+- `scripts/ci/affected.test.ts`: update the pinned line to `needs: [changes, test, checks, lens-mutants, studio-dist, nix, desktop-boot, coverage-comment]`.
+
+Coverage: `packages/desktop/bunfig.toml` holds `lines = 0.96, functions = 0.90` per file. `src/boot-probe.ts` is new and ships with its tests (the manifest check fails otherwise); `scripts/boot-probe.ts` is counted once a test imports it, so it must clear the same bar; `run-boot-probe.ts` is imported by nothing. The entry-file wiring adds no function to `index.ts` or `chromium/index.ts`. Ratchet the threshold if the worst file rises. test.yml is in `affected.ts`'s GLOBAL list, so the implementing PR runs the full matrix.
+
+## Specs & docs
+
+**desktop.md §3.3**, in place:
+
+- Line 130, the marker becomes: `> **Status: Implemented.** Registration and all three rules below ship (…the existing evidence list…), and the release pull request boots a packaged window on Linux, macOS and Windows and fails unless the desktop adapter registers (`.github/workflows/desktop-boot.yml`, `packages/desktop/src/boot-probe.ts`).`
+- Line 184 is replaced by a paragraph headed **CI boots a packaged window before a release is cut.** It says: on the release pull request, and on any pull request labelled `desktop-boot`, CI builds the Electrobun app with Hutch on Linux, macOS and Windows from a bare checkout prepared as the release lanes prepare theirs, and launches it; a launcher started with `JX_STUDIO_BOOT_PROBE` set to a path writes there every request its window's adapter sends and quits once Studio's entry asks for `getSettings`, the first request Studio makes after its platform gate; so one report proves the launcher registered its adapter and Studio runs on it, and a window that never calls its backend (the 5.0.0 through 5.1.3 failure), or whose entry never reaches it, fails `ci`; the chromium launcher (§9.2) is booted the same way on Linux from the tree the Nix package runs; the signed installers are not booted, since the lanes build the commit the check already booted, and signing is the part of a release this does not exercise. The sentence listing the unit and end-to-end tests stays, as the layer beneath.
+- If the chromium decision goes the other way, drop that clause and say the chromium launcher's boot is held by its shim tests. If the release lanes gain the step, replace the last clause with that.
+
+**Fragment**: `bun run spec:change desktop.md minor -m "§3.3: the release pull request builds and launches the desktop app on Linux, macOS and Windows, a launcher started with JX_STUDIO_BOOT_PROBE reports the requests its window's adapter sends, CI fails unless Studio's entry reaches the registered adapter, and §3.3 is Implemented."`
+
+**Docs** (`bun run docs:sync` names the pages whose `code:` lists `src/index.ts` and `src/window-manager.ts`):
+
+- `docs/extending/contributing/monorepo.md`, "What CI runs, and when": one paragraph after the interaction-performance gate. The desktop boot check runs on the release pull request and on any pull request labelled `desktop-boot`; it builds the desktop app on Linux, macOS and Windows, opens a window, and fails unless Studio reaches the app's backend through it; to run it locally after `bun run desktop:build`, use `bun run --cwd packages/desktop boot-probe electrobun`; a failed run uploads the launcher's log and, on Linux and macOS, a screenshot of the window. Add `packages/desktop/src/boot-probe.ts` (which carries the `@docs extending/contributing/monorepo` tag) and `packages/desktop/scripts/boot-probe.ts` to the page's `code:`. No em dashes.
+- `docs/studio/desktop.md` (`code:` lists `index.ts`, `window-manager.ts`): no change; nothing a user sees moves, since the probe runs only with the variable set.
+- `docs/extending/embedding/hosting.md` (`spec:` cites `desktop.md#3.3`) and `docs/extending/embedding/platform-adapter.md`: no change; the boot handshake they describe to embedders is untouched.
+
+desktop.md keeps other open items (§3.1, §3.6, §4.3, §5.3, §6.1 to §6.5, §7.4, §9.3, §10.2), so this does not graduate it.
+
+## Acceptance
+
+- `bun run --cwd packages/desktop typecheck`; `bun test --isolate --coverage` in `packages/desktop` meets the per-file bar; `bun scripts/check-coverage-manifest.ts packages/desktop`; `bun test --isolate scripts`.
+- On a developer machine: `bun run desktop:build && bun run --cwd packages/desktop boot-probe electrobun` prints a pass naming `getSettings` and the elapsed time, and the app closes by itself; on Linux, `bun run --cwd packages/desktop boot-probe chromium` does the same.
+- The implementing PR carries the `desktop-boot` label: all three `desktop-boot` legs and the chromium step are green, and `ci` lists the job.
+- Negative control, in a throwaway commit on that PR: `throw new Error("boot probe canary")` as the first statement of `packages/desktop/src/platform.ts`. Every leg goes red with the "never called its backend" verdict, and the Linux and macOS artifacts show the boot-failure screen naming the canary. Revert; green again.
+- After merge, `gh workflow run desktop-boot.yml` on `main` is green, and the next release pull request shows the job inside `ci`.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run plans:check`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose` pass, and this file is deleted in the same PR.

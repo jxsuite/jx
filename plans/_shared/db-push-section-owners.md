@@ -1,16 +1,17 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - extensions.md#11.1
   - site-architecture.md#15.2
-size: S
+requires: []
 workspaces:
   - packages/compiler
   - packages/server
+size: M
 ---
 
-# `jx db push` runs every section owner's `deploySchema` after the connector plan, so the auth extension's tables arrive through the CLI as they do through the studio push
+# `jx db push` runs every section owner's `deploySchema` after the connector plan, on the connections as declared, so the auth extension's tables reach the real database through the CLI
 
 ## Context
 
@@ -22,25 +23,103 @@ workspaces:
 
 > **Status: Partial.** Schema composition, env-var-name-only configuration and the additive connector sync ship (`packages/compiler/src/site/db-push.ts`). `jx db push` never runs a section owner's `deploySchema` (extensions.md §11.1): only the studio push composes those steps (`pushDataSchema` in `packages/server/src/data-api.ts`), so the auth extension's Better Auth tables never arrive through the CLI.
 
-Both sections were unmarked before the census; §15.2 read as inheriting §15's `Implemented`. Its closing sentence, "the auth extension's Better Auth system tables arrive that way", is true of the studio push button and false of the CLI command the paragraph names. The two census passes found this one gap from either side, each re-verified the other's finding, and agreed that it is one code change; each could write only its own spec's directory, so the two stubs stood separately until this merge.
+Both sections were unmarked before the census. §15.2's closing sentence ("the auth extension's Better Auth system tables arrive that way") is true of the studio push and false of the CLI command it names. Re-verified for this plan on 2026-09-26; every claim below holds.
 
-**Disposition: implement.** Every text that names the CLI promises the section-owner steps: extensions.md §11.1 lists `jx db push` beside the studio push button, extensions.md §15's worked example runs `jx schema && jx db push` for its table, site-architecture.md §15.2 says the auth tables "arrive that way", and the data-push route's fallback text in `packages/protocol/src/routes.ts` sends a host without the route to `jx db push`. A reconcile would also leave auth with no path to a production database. The studio push resolves providers through `resolveConnectorStandins` (`packages/server/src/jx-mounts.ts`), which substitutes a connector's `local:` stand-in, so for D1 (`"local": "sqlite"` in `extensions/connector/src/D1.class.json`) it writes the local SQLite file, and the only automatic sync is the dev server's mounts (`autoSync: true`, also in `jx-mounts.ts`); the generated worker never syncs. `jx db push` is the one command that reaches the real provider.
+**Why implement.** Every text naming the CLI promises the section steps: extensions.md §11.1 lists `jx db push` beside the studio button, extensions.md §15 runs `jx schema && jx db push`, site-architecture.md §15.2 says the auth tables "arrive that way", `docs/extending/extensions/first-party.md` says auth contributes to `jx db push`, and the data-push route's fallback text in `packages/protocol/src/routes.ts` sends a host without the route to `jx db push`. The CLI is also the only production path: the studio push resolves providers through `providerEntry` (connector plan) and `resolveConnectorStandins` (section owners, `packages/server/src/jx-mounts.ts`), both of which apply the `local:` stand-in, so for D1 (`"local": "sqlite"` in `extensions/connector/src/D1.class.json`) it writes `.jx/data/<connection>.sqlite`; the generated worker never syncs. Four docs pages currently warn that the CLI omits the account tables (below).
 
 **What exists**
 
-- `dbPush` in `packages/compiler/src/site/db-push.ts`, wired from `packages/compiler/src/cli.ts` (`jx db push [root] [--dry-run] [--connection <name>]`). It resolves each connection's connector by provider through `registry.connectors()` and runs its `deploySchema`, then applies each connector's `bindings` fragment to `wrangler.jsonc`. Tests: `packages/compiler/tests/cli-units-db-push-ok.test.ts` and `cli-units-db-push-fail.test.ts`.
-- `pushDataSchema` in `packages/server/src/data-api.ts`, the studio push behind both the dev server's `/__studio/data/push` route and the desktop session (`dataPush` in `packages/desktop/src/project-session.ts`). After the connector plan it filters `registry.projectContributions()` to non-connector entries declaring `deploySchema`, skips an absent or `null` section, calls each with the section value, the project config and `{ connection?, connectors, dryRun, env }` (the `local:` stand-ins from `resolveConnectorStandins`), and defaults each step's `kind` to the section key. It is the only caller of a section owner's `deploySchema` in any `src/` tree. Tests: the "push with the auth extension (section-owner deploySchema)" block in `packages/server/tests/data-api.test.ts` (dry run, apply then a clean second push, and a push filtered to a foreign connection).
-- `Auth.deploySchema` (`extensions/auth/src/worker.ts`), declared as a section-owner capability in `extensions/auth/src/Auth.class.json`. It compiles Better Auth's additive migration into push steps and returns none when `options.connection` names a different connection. Given no `connectors`, the auth extension resolves its database through `resolveDialect` in `extensions/connector/src/connectors.ts`, whose provider map holds only the first-party `d1`, `sqlite` and `supabase` (`resolveAuthDatabase` in `extensions/auth/src/server.ts`).
+- `dbPush` (`packages/compiler/src/site/db-push.ts`), run lazily from `packages/compiler/src/cli.ts` (`jx db push [root] [--dry-run] [--connection <name>]`). It finds each connection's connector by provider with no stand-in (`connectorByProvider`), calls its `deploySchema`, then deep-merges each connector's `bindings` fragment into `wrangler.jsonc` after a real apply. `DbPushResult` is `{ results, bindingsPatched, wranglerPath }`; any failure throws and the CLI exits 1.
+- `pushDataSchema` (`packages/server/src/data-api.ts`), behind `/__studio/data/push` and the desktop session's `dataPush` (`packages/desktop/src/project-session.ts`). Lines 478 to 509 are the only section-owner loop in any `src/`: `registry.projectContributions()` filtered to `connector === null && capabilities.deploySchema`, skip an `undefined`/`null` section, call `deploySchema(section, config, { connection?, connectors, dryRun, env })` with `connectors = await resolveConnectorStandins(registry)`, default each step's `kind` to the section key (`step.kind ||= key`), collect warnings, and collect a throw as `"<key>: <message>"` in `errors`.
+- `resolveConnectorStandins` and its private `implementationClass` (`packages/server/src/jx-mounts.ts`): import each connector's implementation, pick the export named by its title, keyed by provider, with the `local:` substitution.
+- `Auth.deploySchema` (`extensions/auth/src/worker.ts`) is the only first-party section owner (`Auth.class.json`; `Connections`, `Data`, `Content`, `Feed` and `SearchIndex` declare no `deploySchema`). It resolves its database from `options.connectors[def.provider]`, else `resolveDialect` over the first-party `PROVIDERS` map in `extensions/connector/src/connectors.ts` (`resolveAuthDatabase`, `extensions/auth/src/server.ts`), returns empty steps when `options.connection` is another connection, and needs no signing secret to plan.
+- `DataPushStep` lives in `@jxsuite/protocol` (`packages/protocol/src/types.ts`); its `kind` is `DataPushStepKind`, which ends in `(string & Record<never, never>)`, so any `string` is assignable. The compiler does not depend on protocol.
+- Tests: `packages/compiler/tests/connector-mounts.test.ts` (`describe("dbPush")`, D1 over a stubbed `fetch`), `cli-units-db-push-ok.test.ts` and `cli-units-db-push-fail.test.ts` through `_cli-harness.ts` (which doubles `../src/site/db-push.ts` with `mock.module`), and `packages/server/tests/data-api.test.ts` (`describe("push with the auth extension (section-owner deploySchema)")`). `connector-mounts.test.ts` already loads the real `@jxsuite/auth` (`describe("buildSite with the auth extension")`) although `packages/compiler/package.json` does not declare it.
 
-**What is missing**
+**Noted, not claimed.** extensions.md §15's "Open design note" (materialising a `data` table from a non-connector section) is untouched. `docs/extending/extensions/tutorial-guestbook.md` describes that unbuilt path; it is §15's concern.
 
-- The section-owner loop in `jx db push`, ideally lifted out of `pushDataSchema` into one function both paths call, so the CLI and the studio produce the same plan by construction. The server already imports the compiler; the reverse would break the dependency direction, so the shared function lives in `@jxsuite/compiler` or `@jxsuite/schema`. `DataPushStep` is declared in `@jxsuite/protocol` (`packages/protocol/src/types.ts`), which the compiler does not depend on, so the shared function either types its steps structurally or the step type moves.
-- What the CLI hands as `connectors`. The studio passes the `local:` stand-ins; a production push needs the real providers, either the registry's connector classes without the `local` substitution or nothing, which falls back to the first-party map and so fails for a third-party provider.
-- How the CLI reports the steps: `DbPushResult` carries per-connection `statements` only, and `cli.ts` prints those, so section-owner steps need a place in the result and in the output, with `--connection` passed through as the studio push does.
-- A test that `jx db push` on a project with an `auth` section plans the Better Auth steps, dry-run and applied.
+## Outcome
 
-**Related**
+- extensions.md §11.1 → Implemented: both hosts run one section-owner loop; `jx db push` hands each provider's own class as `connectors`, the studio push the `local:` stand-ins.
+- site-architecture.md §15.2 → Implemented (marker deleted; the section reads under §15's `Implemented` as it did before the census): the auth tables arrive through `jx db push`.
 
-- extensions.md §13 (secrets and `.dev.vars`, which `readDevVars` in `db-push.ts` reads for the CLI's env).
-- extensions.md §15 (the guestbook example's `jx db push` step, which this makes true, and its open design note on materialising a `data` table, which this does not address).
-- site-architecture.md §12.2 (`jx db push`, the CLI surface) and site-architecture.md §15.4 (the local SQLite stand-in).
+Neither spec graduates: both keep other open items.
+
+## Decisions
+
+- **Open:** what `jx db push` hands a section owner as `connectors`. Recommendation: each provider's own implementation class, with no `local:` substitution (the map the generated worker builds from `connector.module`), and extensions.md §11.1's `connectors` sentence rewritten to say which host hands which, because the CLI's connector plan already reaches every connection as declared and a section's steps must land on that same database. Stand-ins would put the auth tables in local SQLite while the data tables go to D1; passing nothing falls back to auth's first-party `PROVIDERS` map, which fails for a third-party provider and would make the result depend on which extension is asking.
+- **Decided:** the loop moves into a new `packages/compiler/src/site/section-push.ts`, exported as `@jxsuite/compiler/section-push`, and both hosts call it, because the server already imports the compiler (`@jxsuite/compiler/format-host`) and the reverse edge would invert the dependency, and a module of its own keeps the server from loading `@jxsuite/create/scaffold` through `db-push.ts`.
+- **Decided:** steps are typed structurally (`SectionPushStep`, `kind: string`) rather than moving `DataPushStep` out of `@jxsuite/protocol`, because `string` is assignable to `DataPushStepKind`, so `pushDataSchema` pushes the compiler's steps into `DataPushResult.plan` with no cast and the compiler gains no dependency.
+- **Decided:** one connector-class resolver, `resolveConnectorClasses(registry, { standins })`, in the same module; `resolveConnectorStandins` stays exported from `jx-mounts.ts` as a one-line delegate with `standins: true`, because the mounts, the studio push and the CLI must pick the implementation export identically, and extensions.md §12's marker (owned by `plan:extensions/connector-serve-key`) cites `resolveConnectorStandins` in `jx-mounts.ts`.
+- **Decided:** a section owner that throws does not throw out of `dbPush`. Its error rides on its result, the CLI prints the whole push and then exits 1, and bindings are still patched when the connector plan applied, because by then the connector statements have run and a throw would hide what was applied; the studio push already reports the same failure in `errors` beside the plan.
+- **Decided:** `@jxsuite/auth` joins `packages/compiler`'s `devDependencies`, because the compiler suite now drives `Auth.deploySchema` end to end, and an undeclared workspace means `scripts/ci/affected.ts` never reruns that suite when `extensions/auth` changes. `scripts/check-dep-rules.ts` permits dev dependencies. The cost is one `bun.lock` change, which runs the full matrix once.
+
+## Implementation
+
+1. **`packages/compiler/src/site/section-push.ts`** (new; `@docs extending/extensions/server`; header cites extensions.md §11.1 and §12):
+   - `export interface SectionPushStep { kind: string; table?: string; summary: string; sql?: string; connection?: string }`.
+   - `export interface SectionPushResult { section: string; steps: SectionPushStep[]; warnings: string[]; applied: boolean; error?: string }`.
+   - `export async function resolveConnectorClasses(registry: ExtensionRegistry, options: { standins: boolean }): Promise<Record<string, unknown>>`: the body of `resolveConnectorStandins` plus `implementationClass`, moved from `jx-mounts.ts`, with the `local` lookup applied only when `standins` is true.
+   - `export async function pushSectionOwners(registry, config: ProjectConfig, options: { env: Record<string, unknown>; dryRun: boolean; connection?: string; standins: boolean }): Promise<SectionPushResult[]>`: the loop from `pushDataSchema`, unchanged in rule (same filter, same `undefined`/`null` skip, same `kind` default, `connection` passed only when set), in `projectContributions()` order. It resolves `connectors` lazily, once, only when at least one owner has a section, so a project without one imports no connector code. Each result: `applied: !dryRun && error === undefined`; a throw becomes `error: errorMessage(error)` (`@jxsuite/schema/parse`) with `steps: []`. No extension import, no section-name literal.
+   - `packages/compiler/package.json`: add `"./section-push": "./src/site/section-push.ts"` to `exports`; add `"@jxsuite/auth": "workspace:^"` to `devDependencies`, then `bun install` (the lockfile must stay at `lockfileVersion: 1`).
+2. **`packages/compiler/src/site/db-push.ts`**: `DbPushResult` gains `sections: SectionPushResult[]`. After the connection loop and before the `wrangler.jsonc` patch, `const sections = await pushSectionOwners(registry, config, { dryRun, env, standins: false, ...(only === undefined ? {} : { connection: only }) })`. Rewrite the file header to cite extensions.md §11.1 and site-architecture.md §12.2 in place of its "(plan Part 4a)".
+3. **`packages/compiler/src/cli.ts`** (`isDb` branch): after the connection lines, for each `sections` entry print `` `${s.section} (section) — ${s.steps.length} step(s) [${s.applied ? "applied" : "dry-run"}]` ``, then `  ${step.sql ?? step.summary}` per step and `  warning: …` per warning (`console.warn`); an `error` prints `  error: …` with `console.error`. After the bindings line, `process.exit(1)` when any section has an `error`. Usage line: `db push [root]   Sync data tables, then section owners' steps, to their connections (additive-only)`.
+4. **`packages/server/src/data-api.ts`**: replace lines 478 to 509 with one `pushSectionOwners(registry, project.config, { dryRun, env, standins: true, ...(request.connection === undefined ? {} : { connection: request.connection }) })` call, appending each result's `steps` to `plan`, its `warnings` to `warnings`, and `"<section>: <error>"` to `errors`. Drop the `resolveConnectorStandins` import; rewrite the header's "Auth-task" paragraph to cite extensions.md §11.1 and name `pushSectionOwners`. Studio behaviour is byte-for-byte unchanged.
+5. **`packages/server/src/jx-mounts.ts`**: `resolveConnectorStandins(registry)` returns `resolveConnectorClasses(registry, { standins: true })`; delete `implementationClass`.
+6. **`packages/compiler/tests/_cli-harness.ts`**: `DbPushResultLike` gains `sections`, and the default double returns `sections: []`.
+
+**Integration contract.** Once this lands, `@jxsuite/compiler/section-push` exports `pushSectionOwners`, `resolveConnectorClasses`, `SectionPushStep` and `SectionPushResult`; any host composing section-owner push steps calls `pushSectionOwners` rather than re-implementing the loop, and passes `standins: true` only when it serves `local:` stand-ins to its mounts. `dbPush` returns `sections` after `results` and never throws for a section owner. extensions.md §11.1 states which host hands which `connectors`, and a section owner may rely on receiving the classes of the database the connector plan just wrote.
+
+## Tests
+
+Run `bun test --isolate --coverage` from `packages/compiler` and from `packages/server`.
+
+- **`packages/compiler/tests/section-push.test.ts`** (new). A temp project with the real `@jxsuite/connector` and a fixture extension in the pattern of `mount-ext` in `packages/server/tests/jx-mounts.test.ts`: class `Ledger`, `project: { key: "ledger" }`, a static `deploySchema` method declared under `$defs.methods`, implemented in `ledger.ts` so that it records `(section, config, options)` on `globalThis`, returns `{ steps: [{ summary: "Create ledger", sql: "create table ledger (id integer)", table: "ledger" }, { kind: "ledgerIndex", summary: "Index ledger" }], warnings: ["ledger warning"] }`, and throws when `section.fail === true`. Connections: `main` on `d1`. Import the module statically.
+  - `resolveConnectorClasses honours standins`: `standins: false` maps `d1` to a class whose `bindings({ $name: "main", binding: "DB" })` returns `d1_databases`; `standins: true` maps `d1` to the SQLite stand-in, whose `bindings` returns `{}`.
+  - `an absent or null section contributes nothing`: `[]`, and the recorder is untouched.
+  - `steps default kind to the section key`: kinds are `["ledger", "ledgerIndex"]`, warnings carried, `applied` false on a dry run and true otherwise.
+  - `the owner receives the section, config, env, dryRun, and connectors`: asserts the recorded arguments, that `connection` is absent unfiltered and present when passed, and that `connectors.d1` follows `standins`.
+  - `a throwing owner reports its error`: `error` is the message, `steps` is `[]`, `applied` is false.
+- **`packages/compiler/tests/connector-mounts.test.ts`**. Existing `dbPush` cases also assert `sections` is `[]`. New `describe("dbPush with the auth extension")`:
+  - `dry-run plans the Better Auth tables after the connector plan`: `sqlite` connection `main`, an `auth` section, one data table. `sections` is one `auth` entry whose steps are all `kind: "auth"` on `main` with `user` among the tables, and `results[0].statements` still creates the data table.
+  - `apply creates the auth tables and a second push plans none`: `.jx/data/main.sqlite` holds a `user` table (read with `bun:sqlite`), and a second `dbPush` returns empty auth steps.
+  - `a D1 connection receives the auth steps over the HTTP API, not the stand-in`: the stubbed `fetch` of the existing D1 case records calls during a dry run, `sections[0].steps` is non-empty, and no `.jx/data/main.sqlite` exists under the project.
+  - `--connection to another connection skips the auth steps`: `sections[0].steps` is `[]`.
+- **`packages/compiler/tests/cli-units-db-push-ok.test.ts`**: the double also returns one `auth` section with one step and one warning; assert the `auth (section) — 1 step(s) [dry-run]` line, the step's SQL, and the warning.
+- **`packages/compiler/tests/cli-units-db-push-section-fail.test.ts`** (new, one test per file like its siblings): a section with an `error` prints the connection lines and `error:`, then exits 1.
+- **`packages/server/tests/data-api.test.ts`** and **`jx-mounts.test.ts`**: unchanged, and must stay green; they are the proof the refactor kept the studio push and the mounts' stand-ins identical.
+
+Coverage: compiler's per-file bar (`packages/compiler/bunfig.toml`, lines 0.982, functions 0.98) applies to `section-push.ts`. The server's bunfig ignores `../compiler/**`, so the compiler suite alone must cover it. The manifest check (`bun scripts/check-coverage-manifest.ts packages/compiler`) finds it through the static imports above. Server files only lose lines. Raise either workspace's threshold only if its worst-file minimum rises.
+
+## Specs & docs
+
+**extensions.md §11.1**, in place:
+
+- Replace the line-571 Partial marker with `> **Status: Implemented.**` (explicit, because §11 above it stays Partial for `plan:extensions/server-module-required`).
+- Replace "`connectors` carries the same provider stand-ins the mounts receive, so dev pushes hit the `local:` stand-in databases." with: "`connectors` maps each provider id to the class the push reaches. A dev host (the dev server, and the desktop app behind the studio push button) hands the `local:` stand-ins its mounts receive (§12), so a studio push lands in the stand-in databases; `jx db push` hands each provider's own class, as the generated worker does, so a section's steps land on the connection as declared, the database the connector plan has just written."
+- After "…the capability returns empty steps.", add: "A section owner that throws does not stop the push: the host reports its error beside the plan."
+- Fragment: `bun run spec:change extensions.md minor -m "§11.1: jx db push runs every section owner's deploySchema after the connector plan and hands it each provider's own class, so the auth extension's tables reach the declared database from the CLI."`
+
+**site-architecture.md**, in place:
+
+- §15.2: delete the line-2130 marker. Rewrite the last sentence of the section as "Sections may contribute their own push steps (extensions.md §11.1), which `jx db push` runs after the connector sync, on the same connections; the auth extension's Better Auth system tables arrive that way."
+- §12.2's fenced command list (not an open item): `jx db push  # Sync data tables, then section owners' steps, to their connections (additive-only)`.
+- Fragment: `bun run spec:change site-architecture.md minor -m "§15.2: jx db push runs section owners' push steps after the connector sync, so the auth extension's Better Auth tables arrive through the CLI."`
+
+**Docs** (no em dashes in prose):
+
+- `docs/framework/build/cli.md` (`code:` lists `cli.ts` and `db-push.ts`; add `packages/compiler/src/site/section-push.ts`). In `## jx db push`: the opening paragraph gains that every enabled extension owning a section with push steps then runs its own additive migration on the same connections, which is how the auth extension's account tables arrive. The output paragraph gains the per-section line, and says a section failure prints everything first and then exits 1. The `--connection` row adds that a section living on another connection contributes nothing. Delete the `:::doc-warning` block and add to the stand-in paragraph that the account tables land wherever the data tables did.
+- `docs/studio/data/auth-and-secrets.md`: under "Account tables and roles", the "two ways" sentence becomes three, adding that `jx db push` creates the tables on the connection as declared (for D1, the real database). Delete the `:::doc-warning` block.
+- `docs/studio/data/tables.md`, the "A terminal or CI can push too" paragraph: drop "The CLI pushes the tables you define here and nothing else, so the auth extension's account tables come only from the button above." and say the CLI plans the same steps, account tables included, and differs only in where they land.
+- `docs/studio/publish/cloudflare.md`, step 2: replace "Accounts need a second pass: … covers where they come from." with a sentence saying that with the auth extension enabled the same command creates its account tables in D1 after yours, linking **[Auth and secrets](/docs/studio/data/auth-and-secrets)**.
+- `docs/extending/extensions/server.md` (`spec:` cites `extensions.md#11.1`; add `packages/compiler/src/site/section-push.ts` to `code:`): the `connectors` bullet under "Section-owner deploySchema" states the per-host rule in the spec's words, and a new bullet says a throwing owner is reported beside the plan rather than stopping the push.
+- No change: `docs/studio/data.md` and `docs/extending/extensions/first-party.md` (already true), `docs/extending/extensions/tutorial-guestbook.md`, `security.md` and `docs/framework/concepts/security.md` (cite §11, untouched), `docs/framework/site/deployment.md` (lists `cli.ts`; no db push text), `docs/extending/embedding/dev-server.md` (lists `jx-mounts.ts`; behaviour unchanged), `docs/studio/data/grid.md` and `connections.md` (list `data-api.ts`; studio push unchanged).
+
+Landing also deletes this file and rewrites the sentences naming it in `plans/extensions/README.md` and `plans/site-architecture/README.md` to cite extensions.md §11.1 and site-architecture.md §15.2.
+
+## Acceptance
+
+- `bun test --isolate --coverage` passes in `packages/compiler` and `packages/server`; `bun scripts/check-coverage-manifest.ts packages/compiler` passes.
+- In a scratch project with `@jxsuite/connector` and `@jxsuite/auth`, an `auth` section and a `sqlite` connection: `bunx jx db push --dry-run` prints an `auth (section)` line with `create table "user"` among its steps; `bunx jx db push` then creates `user` in `.jx/data/main.sqlite`; a second run prints `auth (section) — 0 step(s) [applied]`.
+- `grep -n "implementationClass" packages/server/src/jx-mounts.ts` finds nothing, and `grep -n "deploySchema" packages/server/src/data-api.ts` shows no section-owner loop.
+- `bun run docs:status`, `bun run plans:check`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:spec-release` and `bun scripts/check-dep-rules.ts` are green; `bun run plans:status --spec extensions` and `--spec site-architecture` no longer list §11.1 or §15.2 as open.

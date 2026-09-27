@@ -1,106 +1,179 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - imports.md#1.3
   - site-architecture.md#2.2
   - site-architecture.md#10.3
   - studio.md#5.4
-size: M
+requires: []
 workspaces:
   - packages/compiler
+size: M
 ---
 
-# `jx build` compiles every component a page or layout reaches, wherever it lives, and the specs state discovery and compilation as two rules
+# `jx build` compiles every component a page, layout or project declares, wherever it lives, and the specs state palette discovery and build compilation as two rules
 
 ## Context
 
-**The leading question: does the build compile every component a page or layout reaches, or does the text instead separate palette discovery from build compilation and have the build refuse what it cannot compile?** The evidence answers the first, so the disposition is `implement`:
+Two census stubs (site-architecture.md §10.3 and studio.md §5.4) were `reconcile` stubs rewriting one discovery rule in two specs. The cross-spec review found the build compiles only the files directly in `components/`, which made it an `implement`; the markers stage then opened imports.md §1.3 and site-architecture.md §2.2 for the same gap and gave imports.md §1.4's marker a build half.
 
-- **Studio writes the entry the build drops.** Dropping a project component from the Insert palette appends `{ "$ref": "<path relative to the open document>" }` to that document's `$elements` (`enableElement` and `elementsEntryFor` in `packages/studio/src/files/elements.ts`, called from `packages/studio/src/panels/dnd.ts`), and the palette offers every component document in the project tree. A drop of `components/nested/deep-card.json` or `pages/blog/_blog-card.json` therefore produces a document the canvas renders and `jx build` ships as an empty tag. Separating the two rules without implementing leaves Studio's own drop producing a broken site, unless the palette is narrowed to `components/`, which undoes what all three hosts agree on and hides the co-located components site-architecture.md §2.2 sanctions.
-- **Every other surface honours the entry.** The runtime registers both entry forms (`registerElements` in `packages/runtime/src/runtime.ts`), and the canvas resolves each `$ref` against the open document (`defineElement(new URL($ref, docBase))` in `packages/studio/src/canvas/iframe-render.ts`). The build is the only surface that does not.
-- **The user docs already promise it.** `docs/framework/site/routing.md` says `pages/blog/_blog-card.json` "is available for `$ref` but never becomes `/blog/_blog-card`", and `docs/framework/site.md` says components "can live next to the pages that use them".
-- **The compiler already compiles by path.** `compileElement` (`processElement` in `packages/compiler/src/targets/compile-element.ts`) resolves and compiles a component's own `$elements` wherever they live. What is missing is reading a page's and a layout's entries, and giving each reached component what the top-level loop gives one (below).
+**Why implement rather than narrow the text.** Studio already writes the entry the build drops: a palette drop appends `{ "$ref": "<path relative to the open document>" }` to the document's `$elements` (`enableElement` and `elementsEntryFor` in `packages/studio/src/files/elements.ts`, from `packages/studio/src/panels/dnd.ts`), and the palette offers every component document in the tree. The runtime (`registerElements` in `packages/runtime/src/runtime.ts`) and the canvas (`defineElement(new URL($ref, docBase))` in `packages/studio/src/canvas/iframe-render.ts`) honour that entry; the docs promise it (`docs/framework/site/routing.md`: `pages/blog/_blog-card.json` "is available for `$ref`"; `docs/framework/site.md`: components "can live next to the pages that use them"). Narrowing the palette to `components/` would undo what all three hosts agree on and hide the co-located components §2.2 sanctions.
 
-What survives from the other option is the separation in the text, and it lands with the implementation: discovery (what the palette offers, every component document in the project tree) is not compilation (what a build emits, every component a page or layout reaches plus the files in `components/`), and a declared `$ref` the build cannot resolve or compile becomes a build error rather than an empty tag.
-
-Two census stubs are merged here: `_shared/component-discovery` (§10.3) and `_shared/component-discovery` (studio.md §5.4). Both were `reconcile` stubs rewriting one discovery rule in two specs, and the studio census proposed the merge. The cross-spec review then found that the build compiles only the files directly in `components/`, which turns the reconcile into an implement; the markers stage opened site-architecture.md §2.2 and imports.md §1.3 for it and extended the §10.3 and imports.md §1.4 markers with the build half. imports.md §1.4 stays with `plan:imports/canvas-project-context`, which owned it before the markers stage (see **Related**).
-
-`specs/imports.md` §1.3, line 50 (opened by the markers stage):
+`specs/imports.md` §1.3, line 50:
 
 > **Status: Partial.** Both entry forms ship in the runtime (`registerElements` in `packages/runtime/src/runtime.ts`), and the site build honours bare strings from a page's and its layout's `$elements`. The build does not honour a `{ "$ref" }` entry: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` and never reads a page's or layout's `$ref` entries, so a declared `../components/nested/deep-card.json` or `./_blog-card.json` ships as an empty custom-element tag with no module and no build error; only a component's own `$elements` dependencies compile wherever they live (`compileElement` in `packages/compiler/src/targets/compile-element.ts`).
 
-`specs/site-architecture.md` §2.2, line 131 (opened by the markers stage):
+`specs/site-architecture.md` §2.2, line 131:
 
 > **Status: Partial.** The routing half ships: `_`-prefixed entries under `pages/` are skipped by route discovery (`packages/compiler/src/site/pages-discovery.ts`), and Studio's palette finds a co-located component (§10.3). The build does not compile one: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` and never reads a page's `{ "$ref" }` `$elements` entry, so a page naming `./_blog-card.json` ships an empty `<blog-card></blog-card>` with no module and no build error.
 
-`specs/site-architecture.md` §10.3, line 1401 (unmarked before the census; the last sentence is the markers stage's):
+`specs/site-architecture.md` §10.3, line 1401:
 
 > **Status: Partial.** Project scoping ships: no other project's components reach the palette, and project `imports` apply project-wide (`packages/site/src/context.ts`). Discovery is not limited to `components/`: the dev server (`/__studio/components` in `packages/server/src/studio-api.ts`), the desktop (`discoverComponents` in `packages/desktop/src/project-session.ts`) and the cloud host (`discoverComponents` in `packages/studio/src/platforms/cloud.ts`) find a component document anywhere in the project tree, which is what §2.2's co-located components need. The build compiles a narrower set than it discovers, so the second bullet does not hold for `jx build`: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` (a non-recursive listing) and never reads a page's or layout's `{ "$ref" }` `$elements` entries, so `../components/nested/deep-card.json` or `./_blog-card.json` named there ships as an empty custom-element tag with no module and no build error, and only a component's own `$elements` dependencies compile from elsewhere in the tree.
 
-`specs/studio.md` §5.4, line 383 (unmarked before the census; the studio census first recorded it as verified, and the site-architecture and desktop censuses forwarded the marker):
+`specs/studio.md` §5.4, line 383:
 
 > **Status: Partial.** The panel ships as the Insert palette's one Components section, scoped to the open project, with the live previews and drag sources described below (`componentViews` in `packages/studio/src/panels/elements-panel.ts`, `panels/component-preview.ts`, `loadComponentRegistry` in `files/components.ts`). Its `components/` rule is not what ships: every host's `discoverComponents` (`/__studio/components` in `packages/server/src/studio-api.ts`, `packages/desktop/src/project-session.ts`, `packages/studio/src/platforms/cloud.ts`) returns every component document anywhere in the project tree outside `node_modules`, `dist` and `.claude`, drawn as one flat list, and the open document's `$elements` gates only the npm components, which only the dev server discovers (`enabledNpmTags`). site-architecture.md §10.3 states the same discovery rule, and desktop.md §6.2–§6.5 scope this panel differently, as an Active/Global split per document.
 
-A ride-along this plan does not claim: studio.md §3.6's "Component definitions" row (line 150) restates §5.4's `components/` rule, and §3.6's marker (line 142) says "the component row's `components/` limit is §5.4's rule, which is not what ships". §3.6 stays with `plan:studio/site-state-in-data-panel`. The row is rewritten here, because it has no other content, and the component clause leaves §3.6's marker in the same edit; §3.6 flips to Implemented only once both plans have landed, and whichever lands second removes the marker.
+**What the build does today** (`buildSite`, `packages/compiler/src/site/site-build.ts`, re-read for this plan):
 
-**What exists**
+- Step 5 lists `components/` with a non-recursive `readdirSync`, filtered to `.json` and `formatRegistry.documentExtensions("component")`, pre-reads each file's tag into `componentTagByPath`, then compiles each with `compileElement`. A module is written once per tag, first-seen (`compiledComponentTags`); `componentDefs`, `componentCSS` and `<tag>.css` are then set from a second `readPageDocument` of the same file, last-seen. `componentDefs` feeds `expandComponents` (prerender), `isComponentFullyStatic` (script omission), the format `serialize` sidecars and step 5b.
+- `resolveElementPath` rewrites a dependency import to `./<tag>.js` only when `componentTagByPath` knows its path; otherwise it keeps `refPath` with `.json` swapped for `.js`. A dependency `compileElement` reaches from outside the top level is written as `dist/components/<tag>.js` but imported as `./nested/<file>.js`, which does not exist, and gets no `componentDefs` or CSS entry.
+- Step 5b rewrites each component server entry's `src` to `./components/<src>`, right only for files directly in `components/`.
+- `compilePage` reads `$elements` only in its npm filter (`isNpmElementEntry`: strings not starting with `./` or `../`), from the merged layout document and the raw page. `resolveLayout` (`packages/site/src/layout.ts`) keeps only the outermost layout's `$elements` when layouts nest, and `injectContext` (`packages/site/src/context.ts`) unions project.json's in unrebased, so the merged document cannot say which directory a `$ref` was written against.
+- `injectComponentScripts` loads `/components/<tag>.js` for every compiled tag the rendered HTML or an island names: the build's side of imports.md §1.4's undeclared discovery.
 
-Discovery, the palette's half, the same on all three hosts:
+Scratch builds (census, and this merge on 2026-09-26): a co-located `pages/blog/_blog-card.json` and a declared `components/nested/deep-card.json` both shipped empty tags with `errors: []`; `components/host-card.json` naming `./nested/styled-dep.json` wrote `styled-dep.js` but imported `./nested/styled-dep.js`, and the page carried neither `styled-dep`'s CSS nor its prerender; two files in `components/` declaring `tagName: "dup-card"` built green with the module from one file and the CSS and prerender from the other. The code above accounts for each.
 
-- The dev server's `/__studio/components` route (`packages/server/src/studio-api.ts`): a `Bun.Glob` over the project root that also reads the format registry's component extensions and, from `package.json`, CEM-bearing npm packages.
-- The desktop's `discoverComponents` (`packages/desktop/src/project-session.ts`): `Bun.Glob("**/*.json")`.
-- The cloud host's `discoverComponents` (`packages/studio/src/platforms/cloud.ts`): a bounded tree walk, depth 6 and 400 files, that also skips `.git`, `build`, `.obsidian` and dot-directories.
-- Each skips `node_modules`, `dist` and `.claude`, and all three share `componentMetaFrom` in `packages/schema/src/component-meta.ts`.
-- The project-scoped registry: `componentRegistry`, `loadComponentRegistry` and `noteComponentSaved` in `packages/studio/src/files/components.ts`. Project `imports` apply project-wide (`packages/site/src/context.ts`), and nothing from another project reaches the palette.
-- The panel: `componentViews` and `enabledNpmTags` in `packages/studio/src/panels/elements-panel.ts`, one `Components` accordion section drawn before the element categories. Project components are never gated; npm ones appear only when the open document's `$elements` names the package or `package/modulePath`.
-- The preview half of §5.4 holds: `packages/studio/src/panels/component-preview.ts` calls `defineElement(url)` then `document.createElement(tagName)`.
-- The drop: `registerComponentsDnD` (`packages/studio/src/panels/dnd.ts`) makes each card a drag source, and a dropped component gains its `{ $ref }` through `enableElement`, deduplicated on the resolved path (`hasElement`, studio.md §9.1.3).
-- Tests: `packages/studio/tests/elements-panel.test.ts` ("Insert panel — components"), `packages/studio/tests/components.test.ts`, `packages/studio/tests/cloud-platform.test.ts` (`discoverComponents`), `packages/server/tests/studio-api.test.ts` (`/__studio/components`).
+**Corrections found while detailing**
 
-Routing: route discovery skips `_`-prefixed files and directories under `pages/` (`packages/compiler/src/site/pages-discovery.ts`, lines 214 and 228).
+1. imports.md §1.3's "honours bare strings from a page's and its layout's `$elements`" holds for one level of layout only: an intermediate layout's entries, of both forms, are dropped by `resolveLayout`. No tracked project hits it (`blog/layouts/post.json` and `museum/layouts/{fr-ca,ar}.json` nest but declare nothing); it is closed here, because §1.3 flips.
+2. Nothing tracked breaks under a stricter rule: all 58 `{ "$ref" }` entries in tracked pages, layouts and project.json files resolve to an existing component directly in a `components/` directory (one, `examples/pages/advanced/markdown-todo.json`, names `todo-app.md`, which compiles today through the parser extension).
+3. Not claimed, noted for the executor: `compileElement` follows every string in a component's own `$elements` as a file path, so a component naming an npm package there fails to compile wherever it lives. That stays as it is.
 
-Compilation, the build's half, in `buildSite` (`packages/compiler/src/site/site-build.ts`):
+**Ride-alongs, not claimed.** studio.md §3.6's "Component definitions" row (line 150) restates §5.4's `components/` rule, and §3.6's marker (line 142) carries the clause "the component row's `components/` limit is §5.4's rule, which is not what ships"; §3.6 is `plan:studio/site-state-in-data-panel`'s. imports.md §1.4's marker (line 69) carries a build half this plan closes; §1.4 is `plan:imports/canvas-project-context`'s, which already requires this plan. site-architecture.md §12.1's pipeline line "Compile components/ → element modules + CSS" (line 1558) sits in an unmarked section no plan claims.
 
-- Step 5 lists `components/` with a non-recursive `readdirSync`, filtered to `.json` and the component formats' extensions. Each file is compiled by `compileElement`, written as `dist/components/<tag>.js`, given a stylesheet by `buildComponentCSS` (inlined into each page that uses it by `injectComponentScripts`, and written as `<tag>.css`), and entered in `componentDefs`, which feeds prerendering (`expandComponents`), the fully-static script omission and step 5b's server-entry collector.
-- `componentTagByPath` maps only those top-level files to their tags, so `resolveElementPath` rewrites a dependency's import to `./<tag>.js` only when the dependency itself sits directly in `components/`; otherwise it keeps the source-relative path with `.json` swapped for `.js`.
-- A page's and its layout's `$elements` are read only by the npm filter (`isNpmElementEntry`: strings not starting with `./` or `../`, from `layoutDoc` and `pageDoc`). A `{ "$ref" }` entry is never read. `injectContext` (`packages/compiler/src/site/context-injection.ts` over `packages/site/src/context.ts`) unions project.json's `$elements` into the layout-wrapped document without rebasing them.
-- Undeclared components: `injectComponentScripts` loads a module for every compiled tag found in the page's HTML or island source, which is the build's side of imports.md §1.4's discovery.
-- Tests: `site-build.test.ts`, `site-build-component-loading.test.ts`, `site-build-nested-components.test.ts` and `site-build-shared-dependency.test.ts` in `packages/compiler/tests` all place every component directly in `components/`.
+## Outcome
 
-Scratch builds (`buildSite` over throwaway projects, no test suite):
+- imports.md §1.3 → Implemented (marker deleted, unmarked as before the census): a site build compiles what a `{ "$ref" }` names and bundles bare strings from every declaring document.
+- site-architecture.md §2.2 → Implemented: a co-located component a page or layout names is compiled.
+- site-architecture.md §10.3 → Implemented: discovery (what the palette offers) and compilation (what a build emits) stated as two rules.
+- studio.md §5.4 → Implemented: discovery restated as shipped, sectioning deferred to desktop.md §6.
+- Ride-alongs: imports.md §1.4 stays Partial with only its canvas half; studio.md §3.6 stays Partial without its component clause (deleted outright if nothing else is left); site-architecture.md §12.1's pipeline line corrected.
 
-- The cross-spec review's, rebuilt by the markers stage: `pages/blog/_blog-card.json` named `./_blog-card.json` by `pages/blog/index.json`, and `components/nested/deep-card.json` named `../components/nested/deep-card.json` by `pages/index.json`. Both shipped empty tags with no module and `errors: []`; `dist/components` held only the top-level `top-card.js`.
-- This merge's, on 2026-09-26: `components/host-card.json` naming `{ "$ref": "./nested/styled-dep.json" }`, each with a root `style`. `errors: []`, and `dist/components/styled-dep.js` was written, but `host-card.js` opens with `import './nested/styled-dep.js';`, a file the build never writes, so the browser cannot fetch it and `host-card`'s module never evaluates. The page's `<style>` carries `host-card`'s rule and not `styled-dep`'s, and `<styled-dep></styled-dep>` is not prerendered. The markers' "a component's own `$elements` dependencies compile wherever they live" holds for the module's bytes only.
-- Also this merge's: two files directly in `components/` both declaring `tagName: "dup-card"`. `errors: []`; the shipped module came from one file, and the stylesheet and prerendered markup from the other, because the module write is guarded by first-seen tag while `componentDefs`, `componentCSS` and `<tag>.css` are overwritten by the last. Which file wins follows the directory listing's order.
+## Decisions
 
-**What is missing**
+- **Decided:** every file directly in `components/` is still compiled whether or not anything declares it, and that listing stays non-recursive, because imports.md §1.4 lets a page use `components/<tag>.json` undeclared and the build finds those tags only by scanning its HTML for compiled ones. A component anywhere else, `components/` subdirectories included, reaches the build by being declared, which is also all the runtime and the composer can register.
+- **Decided:** the declared set is collected in a pre-pass over every route's source, before step 5, reading the page, each layout in its chain and project.json as separate declaring documents and resolving each `$ref` against its own document's directory (project.json's against the project root). `injectContext` is not changed. Step 5 compiles before any page is composed (`readTranslationKeys` is the pre-pass precedent), and the merged document has already lost which file each entry came from. The build consumes `$ref`s as files and emits no `$elements` a runtime reads, so it needs no rebaser; `plan:imports/canvas-project-context` may add one for the canvas without touching the build.
+- **Decided:** the walk is not shared with `discoverElements` in `packages/site/src/compose.ts`. That function finds undeclared `components/<tag>.json` tags over an injected `SiteIO`; the build follows declared references on disk and already finds undeclared tags in its own HTML. `packages/site` stays out of the workspaces.
+- **Decided:** only `{ "$ref" }` entries are followed, since a bare string is an npm specifier (imports.md §1.3) with its own path through `injectNpmElementScripts`. That npm filter now also reads every layout in the chain (correction 1).
+- **Decided:** every compiled component, wherever its source lives, is emitted as `dist/components/<tag>.js` and `<tag>.css`, enters `componentTagByPath` and `componentDefs`, and is taken from one read of its document, because compiler.md §4.1 and site-architecture.md §12.4 name the output by tag and `injectComponentScripts` loads `/components/<tag>.js`. The compiled set stays build-wide rather than per page, as today: a page writing a tag compiled for another page still gets its module, a superset of imports.md §1.4's effective set.
+- **Decided:** step 5b resolves a component's server-entry `src` against the component's own directory. Widening `componentDefs` would otherwise hand the worker bundle `./components/<src>` for a file that lives elsewhere; for a file directly in `components/` the result is byte-identical. Page and layout entries stay `plan:_shared/page-server-entries`'s.
+- **Open:** what does a build do with a declared `{ "$ref" }` it cannot compile (no file there, a file outside the project root, a document with no hyphenated `tagName`), and with two compiled files that declare one `tagName`? Recommendation: each is an entry in `errors`, so `jx build` exits 1, naming the declaring document and the entry (both files for a clash); the page itself still builds and the first file keeps the tag. Today each is an empty tag or a silently mixed component on a green build, and none of them works at runtime either (`registerElements` skips a document without a hyphenated tag, and skips a second document whose tag `customElements.get` already holds). A file outside the root is refused because §10.3 scopes components to the project and no host that serves only the project could have offered it. No tracked project turns red: correction 2 covers the declared entries, and no tracked `components/` directory holds two files with one tag or a non-component `.json`.
+- **Open:** which spec owns how the Components panel is sectioned? studio.md §5.4 says one scoped list; desktop.md §6.2–§6.5 specify a scope label and an Active/Global split. Recommendation: §5.4 owns discovery (what the panel can list) and defers sectioning to desktop.md §6.2–§6.5 in one sentence, so that §5.4 is true now and `plan:desktop/component-scope-sections` builds the split where it is specified. Moving four Pending sections into studio.md would change that plan's claims mid-program for no behavioural gain; an editorial move can follow once both are Implemented.
+- **Open:** how much host detail does the discovery rule state? Recommendation: the rule names what every host shares (the whole project tree; `node_modules`, `dist` and hidden directories skipped; `.json` component documents), plus one sentence each for the two real differences, because "every component document" would otherwise be a false Implemented: the dev server also lists components in an enabled format (it runs the format registry), and the cloud host bounds its walk (six levels, 400 JSON files) and also skips `build`. Which hosts discover npm components is imports.md §2's item and is cited, not restated.
 
-The build:
+## Implementation
 
-- Collecting every component a page reaches: the `{ "$ref" }` entries in the page's, each wrapping layout's and project.json's `$elements`, each resolved against the directory of the document that declared it (the project root for project.json), before `injectContext` merges them unrebased; then transitively through each reached component's own `$elements`.
-- Each reached component given everything a top-level one gets: its module under its tag, its stylesheet, and a `componentDefs` entry for prerendering, static detection and the step-5b collector.
-- A dependency's import specifier pointing where the dependency is written, by extending `componentTagByPath` to every reached component rather than the files directly in `components/`.
-- A declared `$ref` that does not resolve to a file, or whose file is not a component (no hyphenated `tagName`), reported in `errors` naming the page and the entry, instead of shipping an empty tag.
-- One rule for two reached components that declare the same `tagName`: output is keyed by tag (`dist/components/<tag>.js`) and a page has one custom-element registry, so the scratch mismatch above becomes a build error or the output is keyed differently. The detail phase decides which.
-- Whether the build keeps compiling every file directly in `components/` whether or not a page reaches it (today it does, and `injectComponentScripts` loads only the ones a page uses), and whether the collection walk is shared with `discoverElements` in `packages/site/src/compose.ts`, which would add `packages/site` to the workspaces.
+1. `packages/compiler/src/site/layout-resolver.ts`: add `layoutChain(pageDoc: JxDocument, projectConfig: Record<string, unknown>, projectRoot: string): { path: string; doc: JxDocument }[]`. Start from `pageDoc.$layout ?? projectConfig.defaults?.layout` (a string, else the chain is empty, which covers `"$layout": false`), then each layout's own `$layout`, innermost first. Each path is `resolve(projectRoot, ref)` and each document is read through the existing `nodeLayoutLoader(projectRoot)`, which throws on a missing or invalid file; stop at a path already in the chain.
+2. New `packages/compiler/src/site/component-set.ts`, `@docs framework/build` in its header:
+   - `export interface SiteComponent { path: string; tagName: string; doc: JxDocument }` (absolute path).
+   - `export async function collectSiteComponents(input: { projectRoot: string; projectConfig: ProjectConfig; pageSources: readonly string[]; formatRegistry: FormatRegistry }): Promise<{ components: SiteComponent[]; errors: string[] }>`.
+   - Seeds: step 5's listing, moved here unchanged (`readdirSync(<root>/components)` filtered to `.json` and `formatRegistry.documentExtensions("component")`, listing order).
+   - `visit(path, from)`, where `from` is `null` for a seed or `{ declarer, ref }`: skip a path already accepted; refuse, when declared, a path whose `relative(projectRoot, path)` starts with `..` or is absolute, a path `existsSync` rejects, and a document whose `tagName` has no hyphen. Read with `readPageDocument(path, formatRegistry)`; a read failure is `Error compiling component <rel>: <message>` (seed or declared). A tag already held by another path is an error naming both, and the second file is dropped. Otherwise append, then visit each `{ $ref: string }` in `doc.$elements` (arrays only) resolved against `dirname(path)`.
+   - Declared roots, after the seeds: project.json's `$elements` against `projectRoot` (declarer `project.json`); then, per page source (deduplicated), the page's entries against its directory and each `layoutChain` entry's against the layout's directory. A page or layout that fails to read is skipped here, because `compilePage` reports it with its route.
+   - Messages carry project-relative `/`-separated paths, e.g. `pages/blog/index.json: $elements entry "./_blog-card.json" names no file (pages/blog/_blog-card.json)`, `… names data/nav.json, which is not a component (no hyphenated tagName)`, `… names ../shared/card.json, outside the project`, `components/a.json and components/nested/b.json both declare tagName "dup-card"; rename one`. The exact strings are the implementer's; each must name the declarer, the entry and the resolved path.
+3. `buildSite` in `site-build.ts`, step 5:
+   - Before it: `collectSiteComponents({ formatRegistry, pageSources: [...new Set(routes.map((r) => r.sourcePath))], projectConfig, projectRoot })`; push its errors onto `errors` and `console.error` each.
+   - Replace the `existsSync(componentsDir)` guard, the listing and the tag pre-read with `if (components.length > 0)` and `componentTagByPath = new Map(components.map((c) => [c.path, c.tagName]))`. The loop iterates `components` and calls `compileElement(c.path, …)` with unchanged options; the first-seen write guard stays. `componentDefs.set(c.tagName, c.doc)` and `buildComponentCSS(c.tagName, c.doc.style, c.doc, …)` replace the second `readPageDocument`. A compile failure reads `Error compiling component <rel>: …`.
+   - Fill a new `componentPathByTag: Map<string, string>` beside `componentDefs`.
+   - Step 5b, iterating `componentDefs` with its key: each entry's `src` becomes `./` followed by `relative(projectRoot, resolve(dirname(componentPathByTag.get(tag)!), entry.src)).split(sep).join("/")`, in place of `./components/<src>`.
+4. `compilePage`: the npm filter's source list gains `...layoutChain(pageDoc, projectConfig, projectRoot).flatMap((l) => l.doc.$elements ?? [])` between the merged layout's and the page's entries; the `Set` still deduplicates.
+5. Unchanged: `compileElement`, `injectComponentScripts`, `expandComponents`, `injectContext`, and everything in `packages/site`, `packages/studio`, `packages/server` and `packages/desktop`. The palette already does what the rewritten §5.4 and §10.3 say.
 
-The text:
+**Integration contract.** Once this lands:
 
-- imports.md §1.3: the marker removed; the `{ $ref }` bullet says a build compiles the component it names, as the runtime fetches it.
-- site-architecture.md §2.2: a co-located component is compiled when a page or layout names it, and a `$ref` the build cannot compile is an error.
-- site-architecture.md §10.3: the first bullet rewritten to what the palette discovers (every component document in the project tree, outside the skipped directories, whatever directory holds it), and a sentence stating what a build compiles, which the second bullet then holds for. An editorial ride-along in §12.1's pipeline line "Compile components/ → element modules + CSS" (line 1558, an unmarked section no plan claims), which becomes every component a page or layout reaches.
-- studio.md §5.4's second sentence rewritten the same way for the panel: every component document in the project tree, nothing from another project, npm components shown when the open document's `$elements` enables them. studio.md §3.6's "Component definitions" row rewritten to defer to §5.4, and the component clause dropped from §3.6's marker (the ride-along above).
-- One owner for the panel's scoping rule. desktop.md §6.2–§6.5 specify an Active/Global split per document for the same panel: either §5.4 owns the rule and desktop.md §6 defers to it, or §5.4 states discovery only and defers the sectioning to desktop.md §6. The rewrite leaves one statement of it. `plan:desktop/component-scope-sections` requires this plan for that decision.
-- Whether "only the dev server discovers npm components", the hosts' skip lists and the cloud host's bounds belong in the spec or stay host detail. Both census stubs asked it.
-- The docs pages `bun run docs:sync` names for these sections, with `docs/framework/site/routing.md` and `docs/framework/site.md` (which already promise the co-located `$ref`) checked against the result.
+- `collectSiteComponents` (`packages/compiler/src/site/component-set.ts`) is the one definition of what a build compiles: the top level of `components/` plus every declared `{ "$ref" }`, transitively, deduplicated by absolute path, unique by tag, in compile order. `layoutChain` (`layout-resolver.ts`) lists a page's layouts innermost first with their paths.
+- In `buildSite`, `componentDefs` and the new `componentPathByTag` cover every compiled component; step 5b resolves component `src` against `componentPathByTag`. `plan:_shared/page-server-entries` extends the collector to pages and layouts and may reuse `layoutChain`.
+- The build never rebases or rewrites `$elements` in `injectContext`; `plan:imports/canvas-project-context` owns any rebaser, for the canvas. imports.md §1.4's marker keeps only the canvas half.
+- site-architecture.md §10.3 states the discovery rule that `plan:desktop/component-scope-sections` partitions; studio.md §5.4 defers sectioning to desktop.md §6.2–§6.5 (if the second Open resolves as recommended). `plan:imports/packages-panel-section` may cite §5.4 as the Components section's rule.
+- studio.md §3.6's component row and its marker clause are done; `plan:studio/site-state-in-data-panel` deletes §3.6's marker when its `state` half lands.
 
-**Related**
+## Tests
 
-- `plan:desktop/component-scope-sections` (desktop.md §6.2–§6.5) requires this plan: it gets the decision on which spec owns the Components panel's scoping, and the discovery rule its Active/Global partition is computed over. `plan:desktop/single-file-mode` renders the Active set as its flat list.
-- imports.md §1.4, owned by `plan:imports/canvas-project-context`. Its marker now carries two halves: the canvas half that plan implements, and the build half this plan closes (the compiled set is not a superset of the effective one). §1.4 cannot flip until this plan has landed, so that plan should require this one; the edge is not drawn here, because its file is outside this change. Its target of `components/<tag>.json` for undeclared discovery is unchanged by this plan, which compiles declared entries wherever they live.
-- `plan:_shared/page-server-entries`: step 5b walks `componentDefs` and rewrites each `src` to `./components/<src>`, which is right only for files directly in `components/`. Widening `componentDefs` here widens that collector, and resolving `src` against the declaring document's directory is that plan's item; whichever lands second reconciles the two.
-- `plan:studio/site-state-in-data-panel` (studio.md §3.6, whose component row is rewritten here).
-- `plan:imports/packages-panel-section` points imports.md §5 and §5.1 at studio.md §5.4. `plan:studio/insert-palette-categories` owns studio.md §5.3, the element half of the same Insert panel.
-- `plan:_shared/collection-directive-elements` (imports.md §6): a collection's `$elements` are a further declaring document for Markdown rendering, outside this plan's page and layout set.
-- site-architecture.md §10.6 (the palette is project-scoped), studio.md §9.1.3 (the one `$elements` service a drop goes through), compiler.md §4.6 (a component's `$elements` imports registered before its own `define`), server.md §3.4 (the live preview composes through imports.md §1.4's rule).
+Run `bun test --isolate --coverage` from `packages/compiler`. Its bunfig holds `coverageThreshold = { lines = 0.982, functions = 0.98 }` per file; `component-set.ts` is a new source file, so it ships with the test file below or `bun scripts/check-coverage-manifest.ts packages/compiler` fails. Ratchet the threshold if the worst file rises.
+
+New `packages/compiler/tests/component-set.test.ts` (projects written under `tests/`, removed in `afterAll`):
+
+- "lists every component directly in components/, in listing order, and nothing below it".
+- "adds a component a page names, resolved against the page's directory" (`pages/blog/_blog-card.json` from `./_blog-card.json`).
+- "resolves each layout's entries against that layout's directory, at every level of a nested layout".
+- "resolves project.json's entries against the project root".
+- "follows a component's own $ref entries transitively and opens each file once" (a → `nested/b` → c, with b also named by a page).
+- "ignores bare-string entries".
+- "refuses a $ref that names no file, naming the declarer, the entry and the resolved path".
+- "refuses a $ref that resolves outside the project root".
+- "refuses a $ref to a document without a hyphenated tagName".
+- "refuses a second file declaring a held tagName, naming both, and keeps the first".
+- "reports a seed that fails to parse as a component compile error".
+- "skips a page or a layout it cannot read".
+
+`packages/compiler/tests/layout-resolver.test.ts`:
+
+- "layoutChain lists every layout a page is wrapped in, innermost first, with its path".
+- "layoutChain is empty for `$layout: false` and with no default layout".
+- "layoutChain stops at a layout that names itself".
+
+New `packages/compiler/tests/site-build-declared-components.test.ts` (end to end through `buildSite`, the `writeJSON` helper of `site-build-nested-components.test.ts`):
+
+- "a co-located _-prefixed component a page names is compiled and loaded, and is not routed" (`dist/components/blog-card.js`, its module script in `dist/blog/index.html`, no `dist/blog/_blog-card/`).
+- "a component in a subdirectory of components/ that a page names is compiled".
+- "an intermediate layout's declared component is compiled".
+- "a dependency outside the top level is imported from where the build writes it" (`host-card.js` contains `import './styled-dep.js'`).
+- "that dependency gets its stylesheet and its prerender" (the page's `<style>` carries `styled-dep`'s rule; `<styled-dep>` has prerendered content).
+- "a declared $ref the build cannot compile fails the build and names the page".
+- "two files declaring one tagName fail the build and name both" (the census's `dup-card` shape).
+- "a nested component's server entry is bundled from its own directory" (`cloudflare-workers` adapter, `components/nested/x.json` with `$src: "./x.server.js"`, following the server-entry fixture in `site-build.test.ts`; `dist/worker.js` contains the export and `errors` is empty).
+- "an intermediate layout's bare-string entry is bundled" (the `@shoelace-style/shoelace` fixture of `site-build.test.ts`, declared on a nested layout).
+
+`packages/compiler/tests/site-build.test.ts`: the "captures component compilation errors without crashing" assertion becomes `toContain("Error compiling component components/broken.json")`. The existing component suites (`site-build-component-loading`, `site-build-nested-components`, `site-build-shared-dependency`, `prerender-nested-components`) must pass unchanged, which is the regression guard for the top-level path.
+
+## Specs & docs
+
+**imports.md**
+
+- §1.3: delete the marker. The `{ $ref }` bullet gains: "A site build compiles the component instead, resolving the `$ref` against the directory of the document that declares it, wherever the file lives, and fails when it names no component (site-architecture.md §10.3)." The bare-string bullet gains: "A site build bundles the specifiers a page, each of its layouts and the project declare into one module per page (site-architecture.md §8.7)."
+- §1.4 (ride-along, marker only): replace the sentence from "`injectComponentScripts` in `packages/compiler/src/site/site-build.ts` scans the rendered HTML" through "no build error." with "The build meets it: `injectComponentScripts` in `packages/compiler/src/site/site-build.ts` loads a module for every compiled tag the rendered HTML names, and the build compiles every file directly in `components/` plus every declared component and its dependencies, deduplicated by resolved path (site-architecture.md §10.3)." The marker stays Partial for the canvas.
+- Fragment: `bun run spec:change imports.md minor -m "A site build compiles every component a page, layout or project declares by reference, wherever the file lives, fails on a reference it cannot compile, and bundles bare specifiers from every layout"`.
+
+**site-architecture.md**
+
+- §2.2: delete the marker; after the tree add: "A co-located component is not routed, and nothing about its location is special to the build: a page or layout that names it in `$elements` (`{ "$ref": "./_blog-card.json" }` from `pages/blog/index.json`) gets it compiled like any component in `components/` (§10.3). One that no document names is not compiled."
+- §10.3: delete the marker. The first bullet becomes "Every component document in the project tree is discoverable, whatever directory holds it: `components/`, a subdirectory of it, or a `_`-prefixed file beside the pages that use it (§2.2). `node_modules`, `dist` and hidden directories are not searched. Every host lists `.json` component documents; the dev server, which runs the project's format registry, also lists components written in an enabled format, and the cloud host bounds its walk (six directory levels, 400 JSON files) and also skips `build`." (the last clause per the third Open). The second bullet becomes "Explicit `$elements` imports add to (not replace) the project set: an npm package's components join it once a document's or the project's `$elements` names the package or one of its modules (imports.md §2 says which hosts discover them)". After the bullets, before "This ensures…", add: "Discovery is what an editor offers; compilation is what a build emits, and the two sets differ. `jx build` compiles every component document directly in `components/` (the ones a page may use undeclared, imports.md §1.4) and every component that a page, each layout wrapping it or `project.json` names by `{ "$ref" }` in `$elements`, followed through each compiled component's own `$elements`, wherever the file lives. A `$ref` resolves against the directory of the document that declares it, and `project.json`'s against the project root. A declared `$ref` that names no file, a file outside the project or a document with no hyphenated `tagName` fails the build, and so do two compiled files that declare one `tagName`." (last sentence per the first Open).
+- §12.1 (ride-along): the pipeline line becomes `Compile components      → element modules + CSS: components/, plus every` with the continuation `                          component a page, layout or project.json names (§10.3)`, aligned to the diagram's other continuations.
+- Fragment: `bun run spec:change site-architecture.md minor -m "Palette discovery and build compilation are two rules: the palette finds a component anywhere in the project, and a build compiles every component a page, layout or project declares wherever it lives, failing on one it cannot compile"`.
+
+**studio.md**
+
+- §5.4: delete the marker. The second sentence becomes "When a site context is active, the section lists every component document the project holds, in whatever directory (site-architecture.md §10.3 states the rule), and the npm components the open document's effective `$elements` enables; no components from other projects leak into the palette. How the list is divided, a scope label at project level and Active and Global sections at document level, is desktop.md §6.2–§6.5's rule." (the deferral per the second Open). After "Components are drag-and-drop sources for inserting into the canvas." add "A dropped project component is recorded in the open document's `$elements` as a `{ "$ref" }` relative to that document (§9.1.3), which is what a build compiles it from."
+- §3.6 (ride-along): the "Component definitions" row's effect becomes "The Components panel lists the project's components wherever they live, and the npm components the effective `$elements` enables (§5.4)"; the formatter realigns the table. In the marker, "The `$media`, `style` and `$head` rows ship, and so does the component row's `$elements` merge (…); the component row's `components/` limit is §5.4's rule, which is not what ships." becomes "The `$media`, `style`, `$head` and component rows ship (`getEffectiveMedia`, `getEffectiveStyle`, `getEffectiveHead` and `getEffectiveElements` in `packages/studio/src/site-context.ts`, and §5.4)." If `plan:studio/site-state-in-data-panel` has already landed, nothing open is left and the marker is deleted instead.
+- Fragment: `bun run spec:change studio.md minor -m "The Components panel lists every component the project holds wherever it lives, and its sectioning is the desktop specification's"`.
+
+**Docs** (no em dashes; `bun run docs:sync` names `build.md` and `layouts.md` through `site-build.ts` and `layout-resolver.ts`):
+
+- `docs/framework/build.md`: a new pipeline step between "Expand dynamic routes" and "Compile each route": "**Compile components**: every component file directly in `components/`, plus every component a page, one of its layouts or `project.json` names in `$elements` with `{ "$ref" }`, wherever the file lives (a subfolder of `components/`, or a `_`-prefixed file next to a page), and the components those name in turn. A `$ref` is relative to the file that declares it. A `$ref` that names no file, a file outside the project or a file with no hyphenated `tagName`, and two files declaring the same `tagName`, are build errors." Renumber the list; "exits non-zero if any route failed" becomes "if any route or component failed". Add `site-architecture.md#10.3` to its `spec:` and `packages/compiler/src/site/component-set.ts` to its `code:` (the file's `@docs framework/build` tag points back).
+- `docs/framework/site/layouts.md`, "What merges": add "- **`$elements`**: in a build, every level counts. The page's, each layout's and the project's entries are all registered, and each `$ref` is relative to the file that declares it."
+- `docs/framework/site.md`: the co-location sentence gains "Name one in the page's `$elements` (`{ "$ref": "./_blog-card.json" }`) and `jx build` compiles it like any component in `components/`."
+- `docs/framework/site/project-json.md`: the cascade bullet becomes "`imports` and `$elements` merge with page-level entries (page wins on collision); a `$ref` in the project's `$elements` is relative to `project.json`."
+- No change: `docs/framework/site/routing.md` (already says a `_` file "is available for `$ref`"), `docs/studio/design/elements.md` ("your project's own" holds), `docs/studio/projects/pages-layouts-components.md`, and the other pages whose `code:` lists `site-build.ts` (`color-schemes.md`, `site/redirects.md`, `site/deployment.md`, `site/seo.md`), which describe other steps.
+
+No claimed spec graduates: imports.md, site-architecture.md and studio.md each keep other open items.
+
+## Acceptance
+
+- `cd packages/compiler && bun test --isolate --coverage` passes at its thresholds; `bun scripts/check-coverage-manifest.ts packages/compiler` passes.
+- `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose` and `bun run docs:markdown` pass.
+- `bun run plans:status --spec imports` no longer lists §1.3; `--spec site-architecture` lists neither §2.2 nor §10.3; `--spec studio` does not list §5.4.
+- The census's scratch project, rebuilt with `jx build`: `dist/components/blog-card.js` and `deep-card.js` exist and the pages load them; `host-card.js` imports `./styled-dep.js`; with the `dup-card` pair added, `jx build` exits 1 naming both files.
+- `jx build` of `examples/` and of one starter under `packages/starters/sites/` writes the same `dist/components/` file set as on `main`.
