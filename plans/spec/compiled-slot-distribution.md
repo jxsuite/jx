@@ -92,6 +92,7 @@ The kit depends on this: `jx-button` (`icon` and default), `jx-menu-item` (five 
 - `data-jx-slots` appears on every non-static light instance whose definition has a slot, and nowhere else; the brackets appear around each group such an instance was given and placed.
 - A shadow component gets none of this. When `plan:spec/shadow-dom-parity` gives the interpreter `$shadow`, it must skip `captureSlotted` and `distributeSlots` for a shadow component, as the module does.
 - spec.md §8.5 reads Implemented.
+- `expandComponents` builds a page-level instance's light fill through one render callback, still `renderStaticNode(c, {}, null)`. `plan:spec/slot-content-page-scope` (spec.md §15.2) requires this plan and replaces that callback with placeholders the page's target fills, so a change to the fill's grouping or brackets keeps the callback a single argument.
 
 ## Tests
 

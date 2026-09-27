@@ -31,7 +31,7 @@ Before the census the marker said both derived values were correct only for Lati
 - Tests: `extensions/parser/tests/transpile.test.ts`, `describe("slugifyHeading")` (punctuation, the NFC pair, the non-Latin case, the pure-ASCII corpus against the legacy `\w` function); `extensions/parser/tests/md-units.test.ts`, `describe("processMarkdown heading ids")` (ids agree with `$toc`, dedupe, `section` fallback).
 - Blast radius in this repository: of 4,402 headings in tracked `*.md` files, none contains a combining mark, and the design below changes none of their slugs (measured by running both functions over every heading line). No committed anchor, docs link or search fixture moves.
 
-**Found while detailing, not claimed.** `wordScanner()` in `extensions/search/src/client.ts` (`/[\p{L}\p{N}_]+/gu`) splits `नमस्ते दुनिया` into `नमस`, `त`, `द`, `न`, `य`, so the highlighter's `matchSpans` cannot mark a Devanagari or Thai query inside a title or excerpt. That is the search client's contract (extensions.md §8.4, site-architecture.md §12, neither of which marks it), not a heading anchor; it belongs in that spec's audit, not here.
+**Found while detailing, not claimed.** `wordScanner()` in `extensions/search/src/client.ts` (`/[\p{L}\p{N}_]+/gu`) splits `नमस्ते दुनिया` into `नमस`, `त`, `द`, `न`, `य`, so the highlighter's `matchSpans` cannot mark a Devanagari or Thai query inside a title or excerpt. That is the search client's behaviour, not a heading anchor, and no spec states it (extensions.md §8.4 specifies `emit`, site-architecture.md §12 the build); `plans/extensions/README.md` records it as a defect outside the program, not an open item.
 
 ## Outcome
 
