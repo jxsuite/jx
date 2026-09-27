@@ -1,15 +1,16 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - spec.md#20.2
-size: S
+requires: []
 workspaces:
   - packages/runtime
   - packages/compiler
+size: M
 ---
 
-# A compiled structured body awaits a thenable statement before the next, as the interpreter does
+# A structured body runs as an async function in every tier, awaiting a thenable `call` result before its next statement
 
 ## Context
 
@@ -17,16 +18,174 @@ workspaces:
 
 > **Status: Partial.** All six kinds ship in both halves (`packages/runtime/src/statements.ts`). Awaiting a thenable holds only in the interpreter's `runStatements`: `compileStatements` emits plain statements with no `await`, and the compiled handlers are synchronous arrows, so a compiled body runs its next statement before an async call settles.
 
-**What exists**
+The marker is accurate. The compiled wrappers are:
 
-- `runStatements` in `packages/runtime/src/statements.ts` awaits a thenable result (`packages/runtime/tests/statements.test.ts`: "a thenable statement result is awaited before the next statement").
-- `compileStatements` in the same module emits `expr;` per statement; `packages/compiler/src/targets/compile-client.ts` and `compile-element.ts` wrap it in a synchronous `(s, e) => { … }`.
+- `packages/compiler/src/targets/compile-client.ts`: `compileClient` puts a parameterless body in the `on` table, which `emitClientModule` emits as `(e) => { const fn = (state, e) => { … }; fn(state, e); }`; a parameterised body becomes `emitFormulaFn(def, "(() => {…})()")`; `buildClientNode` adds inline handlers to the same table; `emitLitMapTemplate` emits `(e) => { state.$map = { item, index }; … }`.
+- `packages/compiler/src/targets/compile-element.ts`: `emitElementModule` emits `this.state.key = (s, e) => { … }`; `emitLitNode` emits `(e) => { … }` around `inlineHandlerBody`.
 
-**What is missing**
+None of these is `async`, and `compileStatements` emits `expr;` for every expression statement.
 
-- `compileStatements` emits `await` before any statement that may yield a thenable (a `call`, or every expression statement), and the compiled handler and callable become `async`. The interpreter's purely synchronous fast path (no awaits when nothing is thenable) has a compiled analogue only if detailing wants one.
-- The ordering question for `stopPropagation`/`preventDefault` after an `await`: an event's propagation decision is synchronous, so a verb after the first `await` is too late. Detailing states the rule (hoist the two verbs, or document it).
+**What detailing found beyond the marker.** Each item was probed against the tree, and each makes a sentence of §20.2 false once bodies really suspend:
 
-**Related**
+1. **The interpreter yields after every branch.** `runStatements` runs `await runStatements(taken, …)` for `if` and `$switch` whether or not the branch suspended. In `[if → a = 1, b = 1]`, `b` is set a microtask after the call returns. The doc comment's claim, "purely synchronous bodies complete synchronously", holds only for flat lists.
+2. **Result capture stores the promise.** `evaluateNode`'s assignment branch returns `undefined`, so `{ "=": x, value: call(async) }` assigns the pending promise to `state.x` and is never awaited. The probe printed `Promise { <resolved> }`.
+3. **A dispatch after a suspension loses its target.** The platform clears `event.currentTarget` once dispatch ends. The interpreter then falls back to `opts.target`, which `bindHandler`'s inline listener does not pass, so it dispatches nothing. Compiled `(e && e.currentTarget)?.dispatchEvent(…)` also dispatches nothing.
+4. **A compiled client callable throws on a verb or a dispatch.** `emitFormulaFn`'s callable has no `e` in scope, and module scope declares none, so `e?.stopPropagation()` throws `ReferenceError`. §20.2 says the verb is a no-op there.
+5. **A structured `onMount` receives the host as its event.** The interpreter's element calls `onMount(state, this)`, and the handler lowering passes the host through as `event`, so `event?.stopPropagation()` throws `TypeError`. §20.2 says verbs are no-ops in a lifecycle hook. `plan:_shared/compiled-element-lifecycle` will make the compiled element pass the host too.
+6. **A handler-form body called through `call` has no scope.** `buildScope` lowers it to `(s, event) => { void runStatements(body, s, …) }`, and `call` passes no arguments, so `s` is `undefined`. The body rejects, unhandled. §20.1's own example calls `refreshTotals` this way. `buildInitialScope` in `packages/compiler/src/shared.ts` already falls back with `s ?? scope`.
 
-- §20.3 (`plan:spec/compiled-element-parameterised-bodies`), §19.8, §16.4 (a lifecycle hook is a body without an event).
+**The corpus** (every tracked `*.json`, schemas excluded) has 734 structured bodies with 725 expression statements: 676 `call`, 48 `=`, 1 `+=`. No assignment captures a `call`. No `dispatchEvent` follows a `call`. Of 95 `stopPropagation`/`preventDefault` statements, 7 follow a `call` in the same list: Studio's `block-action-bar.json`, `commandbar.json` and `rail.json` keydown bodies. All 7 call synchronous host actions (`leaveBar`, `applyLink`, `closeLink`, `openStudioMenu`, `openSettings`).
+
+**Related, no edge.** `plan:spec/compiled-element-parameterised-bodies` (§20.3) and `plan:spec/compiled-host-handlers` (§16.1) add further `compileStatements` call sites in `compile-element.ts`, and the integration contract below tells them how to wrap those sites. Two compiled problems are not §20.2's:
+
+- `compile-client.ts` never puts a handler-form body on `state`, so `call` cannot reach one in an island. `plan:spec/computed-function-classification` records the string-body case.
+- A `$map/item` ref in a compiled statement compiles to an unbound `_item`.
+
+## Outcome
+
+- `spec.md` §20.2 → Implemented. The interpreter and every compiled target run a structured body as an async function that is synchronous until a `call` returns a thenable. At that point the body awaits the result, and a capture stores the settled value. The dispatch target is read on entry, the verbs are no-ops wherever there is no event, and the spec states when a verb still acts.
+
+## Decisions
+
+- **Decided:** every structured body lowers to an ECMAScript `async` function in every compiled wrapper, not only a body that contains a `call`. The interpreter's `runStatements` already returns a promise for every body, and so does its parameterised callable, so a caller's `call` sees the same thenable from both tiers. `async` costs nothing while the body runs synchronously.
+- **Decided:** the node decides where a body may suspend, not the value. Only two shapes suspend: a `call` statement, and an assignment (`=`, `+=`, `-=`, `*=`, `/=`) whose `value` is a `call` node. Each suspends only when the result is a thenable (`typeof r?.then === "function"`), and this holds in both tiers. The emitter must know statically where to put an `await`. An unconditional `await` would yield on every synchronous call and push a following `preventDefault` past the dispatch. The interpreter narrows to the same shapes. It no longer awaits a thenable that some other expression statement happens to return, which no statement in the corpus can produce.
+- **Decided:** a body stays synchronous until its first thenable, and branches do not change that. The interpreter continues without yielding when a branch did not suspend (Context 1). The compiled `if`/`switch` blocks are inline, and the verb rule below is true only if both tiers agree on where the first suspension is.
+- **Decided:** the dispatch target is read when the body starts (Context 3). The interpreter captures `event?.currentTarget` on entry. The emitter writes a `const $jxt = <target>;` prologue when a body both may suspend and dispatches. The `$jx` prefix cannot collide with anything the emitter writes for a ref (`_acc`, `_args`, `_item`, `_<key>`, `_d`, `_a`, `_fx_*`).
+- **Decided:** a body without an event gets no event, in both tiers. `runStatements` treats a second argument without a callable `stopPropagation` as no event, which covers the host `onMount` receives (Context 5). The compiled callable binds `e` as an unset parameter, so it is `undefined` (Context 4). A compiled lifecycle-key body declares `const e = null;`. Both are §20.2's "no-ops in a body run without one".
+- **Decided:** a handler-form body in `buildScope` returns its body's promise and runs against its own scope when called without one (`s ?? state`, Context 6), as `buildInitialScope` already does. Returning the promise is what lets a `call` of the handler wait for the body. §20.1's example is the case that needs it.
+- **Open:** what a capture of an async call stores. There are two readings: the settled value (the body awaits the call, then assigns), or the thenable itself (ECMAScript's `x = f()`, awaited before the next statement). Recommendation: the settled value. The capture form exists to hold a result, a document has no `await` for an author to write, and no document in the repository captures a `call` today (0 of 49 assignments), so no existing content changes.
+- **Open:** how to handle `stopPropagation`/`preventDefault` after the first suspension. The choices are to hoist the verbs to the top of the body, or to state the rule. Recommendation: state it, and hoist nothing. The rule: a verb acts only before the body first suspends, and `event#/currentTarget` reads `null` after a suspension. This is exactly how a hand-written async listener behaves. Hoisting cannot move a verb whose branch test reads state that earlier statements wrote. It would also run the verbs ahead of statements the author put first, which changes the outcome when one of those statements throws. Add no lint either: all 7 verbs in the corpus that follow a `call` follow a synchronous one, so every warning would be a false positive.
+
+## Implementation
+
+**`packages/runtime/src/expression.ts`**
+
+- Export `isAssignmentOperator(op)` beside `isMutating`, reading `ASSIGNMENT_OPS`.
+- Extract the switch in `evaluateNode`'s assignment branch (the `=`/`+=`/`-=`/`*=`/`/=` cases after `resolveWritableRef`) into an exported function, `applyAssignment(node, rhs, state, event, iterCtx?)`. `evaluateNode` resolves the right-hand side as it does today, then calls it. No behaviour changes there.
+
+**`packages/runtime/src/statements.ts`**
+
+- Add `suspension(node): "call" | "capture" | null` and `isThenable(v)`: an object or function whose `then` is a function. Add `maySuspend(list)` and `hasDispatch(list)`, which recurse into `then`/`else`/`cases`/`default`. All four stay unexported.
+- Split the interpreter into a synchronous driver, `runList(list, state, event, ctx, from = 0): Promise<void> | undefined`. `ctx` holds `opts`, the `iterCtx` and `eventTarget`. The driver runs statements in order and returns `undefined` when the list finished synchronously. At the first statement that returns a pending value, it returns `pending.then(() => runList(list, state, event, ctx, i + 1))`. The statement kinds work as follows:
+  - **`call`:** evaluate it. Return a promise only when the result is a thenable.
+  - **Capture:** evaluate `node.value`. Call `applyAssignment(node, settled, …)` at once when the result is not a thenable, otherwise in the result's `.then`. Never evaluate the call twice.
+  - **Any other expression:** evaluate it and return `undefined`.
+  - **`if`/`$switch`:** return `runList(taken, …)`.
+  - **Dispatch:** use `ctx.eventTarget ?? fallback`, where the thunk is still read at dispatch time, as today.
+- Make `runStatements` the entry point, keeping its signature. It normalises the event (`typeof event?.stopPropagation === "function" ? event : null`), captures `eventTarget = event?.currentTarget ?? null`, and returns `await runList(…)`. It stays `async`, so a synchronous throw still rejects and a synchronous body still completes before the promise settles.
+- Split the emitter the same way. The public `compileStatements(statements, opts)` keeps its signature. When `maySuspend && hasDispatch`, it emits `${indent}const $jxt = ${opts.dispatchTarget ?? "(e && e.currentTarget)"};` first, using the `eventParam` name, and compiles with `dispatchTarget: "$jxt"`. The recursive work moves to an internal `compileList`, so nested lists never repeat the prologue. Each suspending shape compiles to one line:
+  - `call`: `{ const $jxr = <call>; if (typeof $jxr?.then === "function") await $jxr; }`
+  - capture: `{ let $jxr = <call>; if (typeof $jxr?.then === "function") $jxr = await $jxr; <lhs> <op> $jxr; }`, where `<lhs>` is `compileOperandSource(node.target, opts)` and `<call>` is `compileExpression(node.value, opts)`.
+  - Every other statement compiles exactly as today, so a body with no `call` produces byte-identical output.
+- Update the module and function doc comments to state the async rule.
+
+**`packages/runtime/src/runtime.ts`** (`buildScope`, third pass): the handler form becomes `(s, event) => runStatements(body, s ?? state, event ?? null, { target: dispatchRoot })`, returning the promise. The parameterised callable is unchanged. `bindHandler`'s inline listener keeps `void`.
+
+**`packages/compiler/src/shared.ts`**
+
+- In `buildInitialScope`, the structured handler returns `runStatements(…)` instead of discarding it.
+- Add an exported `emitStatementsCallable(def, compiled)`, which returns `emitFormulaFn(def, "(async (e) => {\n" + compiled + "\n})()")`. It is the one emitter for a parameterised structured callable.
+
+**`packages/compiler/src/targets/compile-client.ts`**
+
+- `HandlerDef` gains `async?: boolean`, and `emitClientModule` emits `const fn = ${def.async ? "async " : ""}(${argNames}) => { … }`.
+- In `compileClient`, the parameterless structured branch pushes `{ args: ["state", "e"], async: true, body }`, and the parameterised branch uses `emitStatementsCallable`.
+- In `buildClientNode`, the structured inline handler sets `async: true`.
+- In `emitLitMapTemplate`, the structured handler is emitted as `async (e) => { state.$map = { item, index }; … }`.
+
+**`packages/compiler/src/targets/compile-element.ts`**
+
+- In `emitElementModule`, the structured branch emits `= async (s, e) => {`. For a key in `LIFECYCLE_KEYS`, it emits `= async (s) => {` followed by `const e = null;`.
+- In `emitLitNode`, the Function-def handler is emitted as `async (e) => { … }` when `hasStructuredBody(val)`, and stays unchanged for a string body.
+
+**Integration contract.** Once this lands:
+
+- `compileStatements` output may contain `await` and a leading `const $jxt = …;`. Every emitter must place it directly inside an `async` function, and the identifiers `$jxr` and `$jxt` are reserved.
+- `emitStatementsCallable` (`@jxsuite/compiler`'s `shared.ts`) is how a parameterised structured callable is emitted. `plan:spec/compiled-element-parameterised-bodies` uses it with `statePrefix: "this.state"` and `dispatchTarget: "this"`. A host listener from `plan:spec/compiled-host-handlers` is `async (e) => { … }` around `compileStatements` output.
+- A compiled lifecycle-key body takes no event, so `plan:_shared/compiled-element-lifecycle` may pass the host as the second argument.
+- `runStatements` keeps its signature and returns `Promise<void>`. It is synchronous up to the first thenable, and it treats a non-Event second argument as no event.
+- `@jxsuite/runtime/expression` exports `applyAssignment` and `isAssignmentOperator`.
+
+## Tests
+
+Run `bun test --isolate --coverage` from `packages/runtime` and from `packages/compiler`. The runtime change also reaches `packages/ui` and `packages/studio`, which interpret structured bodies, and CI's affected matrix runs them. Statements after a branch now run earlier, so an existing test can only see its state sooner.
+
+**`packages/runtime/tests/statements.test.ts`**, new `describe("runStatements — suspension (spec §20.2)")`:
+
+- `a statement after a synchronous branch runs before runStatements returns`: `void runStatements([if true → a = 1, b = 1])`, then `b === 1` synchronously.
+- `a thenable call inside a branch holds the statements after the branch`: an order log shows `async` before `after`.
+- `an assignment whose value is a call stores the settled result`: an async `load` gives `x === 42` after the await. A synchronous `load` assigns before the call returns, and the call runs once.
+- `an operand is never awaited`: a `push` of a call returning a promise pushes the promise, and the next statement runs synchronously.
+- `dispatchEvent after a suspension dispatches from the target the body started on`: an inline-style run with no `target` option still reaches the element's listener after the await.
+- `a verb before the first suspension acts; after it, the event has already propagated`: `[stopPropagation, call later]` stops the event. `[call later, stopPropagation]` reaches the parent's listener.
+- `a second argument that is not an Event is no event`: an element passed as `event` makes both verbs no-ops, with no throw.
+
+**`packages/runtime/tests/statements.test.ts`**, new `describe("compileStatements — suspension")`:
+
+- `a call statement compiles to a conditional await`: an exact one-line string.
+- `a capture compiles to await-then-assign`: an exact string, for `=` and for `+=`.
+- `a body without a call compiles with no await and no prologue`: `not.toContain("await")` on the existing branching body.
+- `a body that may suspend and dispatches reads its target once, on entry`: the prologue is the first line, and the dispatch reads `$jxt?.dispatchEvent(`.
+- `compiled === interpreted for a suspending body`: build the source with `Object.getPrototypeOf(async () => {}).constructor`. The body mixes a timer-backed `call`, a branch, a capture, a dispatch and a `push`. Compare the order log, the final state and the received events with `runStatements`.
+
+**`packages/runtime/tests/runtime.test.ts`** (`buildScope — structured function bodies`):
+
+- `a handler-form body returns its promise, and a call of it waits for it`: the caller's statement after the `call` sees the handler's async work done.
+- `called without a scope, a handler-form body runs against its own`.
+
+**`packages/compiler/tests/`**
+
+- `compile-client-coverage.test.ts` (`compileClient — structured statement bodies (spec §20)`):
+  - Extend the parameterless case with `const fn = async (state, e) =>` and the parameterised case with `(async (e) => {`.
+  - New `a string-body handler stays synchronous`.
+  - New `a structured handler in a mapped row is async`.
+- `expression.test.ts` (`structured bodies — compileElement`): update the pinned line to `this.state.addToCart = async (s, e) => {`. New `a lifecycle hook's structured body takes no event` asserts `this.state.onMount = async (s) => {` and `const e = null;`.
+- `compile-element.test.ts`: the inline structured case also asserts `async (e) =>`.
+- `compile-element-render.test.ts`, new `describe("compiled element — a suspending structured body")`. A button's `onclick` body is `[preventDefault, call later, = status "done", dispatchEvent "loaded" (bubbles)]`, where `later` is a `$src` export in the test's temp directory that resolves after a timer. Right after the click, `defaultPrevented` is true and the status is unchanged. After the timer, `#status` renders `done` and a host listener received `loaded`.
+- New `compile-client-render.test.ts`, following `compile-element-render.test.ts`: happy-dom globals, the island written under a `tests/` temp directory so `@vue/reactivity` resolves, and `document.body` set from the compiled HTML before import. It covers two cases:
+  - The same suspending body in an island.
+  - A parameterised callable whose body is `[stopPropagation, dispatchEvent "n"]`, called from a handler, runs without `ReferenceError`, and the handler's next statement runs.
+
+**Coverage.** This plan adds no source file, so the manifest check is unaffected. The per-file thresholds apply: `packages/runtime/bunfig.toml` (`lines = 0.963, functions = 0.98`) and `packages/compiler/bunfig.toml` (`lines = 0.982, functions = 0.98`). The new cases must cover every arm of `runList` and `compileList`. If the worst file in either workspace rises, ratchet that threshold to just below the new minimum.
+
+## Specs & docs
+
+**`specs/spec.md` §20.2, edited in place:**
+
+- The marker becomes:
+
+  ```markdown
+  > **Status: Implemented.** Both halves run a body as an async function that suspends only on a thenable `call` result: `runStatements` and the `async` functions every compiled target wraps `compileStatements` in (`packages/runtime/src/statements.ts`; `packages/runtime/tests/statements.test.ts`, `packages/compiler/tests/compile-element-render.test.ts`, `packages/compiler/tests/compile-client-render.test.ts`).
+  ```
+
+- The verbs bullet gains, after "(a parameterised callable, a lifecycle hook).": "They act only before the body first suspends (below): an event's propagation and default action are settled while it dispatches, and a suspended body resumes after that, so a body that must stop or cancel its event states the verb before its first `call`."
+- The **Result capture** bullet gains: "When the call returns a thenable, the assignment stores its settled value."
+- The dispatch bullet: "from the handler's `event.currentTarget`" becomes "from the `event.currentTarget` the handler started with, read on entry because the platform clears it once dispatch ends,".
+- The last bullet becomes: "Statements execute sequentially, and a body is an ECMAScript async function: it runs synchronously until a statement suspends, and returns a promise that settles when the body completes. Two shapes suspend, and only when the call's result is a thenable: a `call` statement, and an assignment whose `value` is a `call`; the next statement runs once it settles. No operand is awaited, so an `if` test, a `$switch` discriminant, a `detail` or an array-method argument that evaluates to a thenable is used as the thenable itself. After a suspension `event#/currentTarget` reads `null`, as in any async listener."
+- §20.3 is `plan:spec/compiled-element-parameterised-bodies`'s and is not edited. Its "the two event verbs emit `event?.stopPropagation()`" stays true.
+
+**Fragment:** `bun run spec:change spec.md minor -m "§20.2: a structured body runs as an async function in the interpreter and every compiled target, suspending only on a call that returns a thenable; a captured call stores the settled value, the dispatch target is read when the body starts, and stopPropagation and preventDefault act only before the first suspension."`
+
+**Docs.** `docs/framework/concepts/statements.md` (`spec: spec.md#20`) changes. Em dashes are banned there.
+
+- **Expression statements:** after the capture example, add "If the function returns a promise, the step waits for it and stores the settled value."
+- **Stopping and cancelling events:** add "Put these steps before any step that calls a function returning a promise. The event finishes dispatching while the body waits, so a stop or a cancel after the wait comes too late. The example above puts them first for that reason."
+- **How it works:** the emitted function becomes "an `async` function, identical in shape to a hand-written async handler". The last paragraph becomes "Statements execute sequentially. A `call` step, or an assignment that captures one, waits for a returned promise before the next step runs. A body with nothing to wait for runs to completion synchronously."
+- **Rules:** "thenable results are awaited before the next step" becomes "a `call` step that returns a promise, captured or not, is awaited before the next step; nothing else is awaited". Add a rule: "`stopPropagation` and `preventDefault` take effect only before the first awaited step."
+- **The ladder table:** the string row drops "`await` chains", because a sequence of awaited calls is now expressible as statements.
+
+`bun run docs:sync` will also name the pages whose `code:` lists `compile-client.ts`, `compile-element.ts`, `runtime.ts` or `shared.ts` (`functions.md`, `elements.md`, `components.md` and others). None of them describes handler timing, so none changes. `docs/studio/logic/statements.md` lists only Studio files and does not change.
+
+This plan does not graduate `spec.md`, whose other open items remain.
+
+## Acceptance
+
+- From `packages/runtime` and `packages/compiler`: `bun test --isolate --coverage` is green, with no file below its `bunfig.toml` threshold. `bun scripts/check-coverage-manifest.ts packages/runtime` and `bun scripts/check-coverage-manifest.ts packages/compiler` pass.
+- This command prints the `const $jxt = (e && e.currentTarget);` prologue, the one-line conditional await, and `$jxt?.dispatchEvent(new CustomEvent("done"));`:
+
+  ```sh
+  bun -e 'import { compileStatements } from "./packages/runtime/src/statements.ts"; console.log(compileStatements([{ operator: "call", target: { $ref: "#/state/load" }, value: [] }, { dispatchEvent: "done" }], { eventParam: "e", statePrefix: "state" }))'
+  ```
+
+- `rg -n "compileStatements\(" packages/compiler/src` shows every call site inside an `async` wrapper or `emitStatementsCallable`.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run plans:check`, `bun run docs:check`, `bun run docs:prose` and `bun run docs:links` are green. `bun run plans:status --spec spec` no longer lists §20.2.

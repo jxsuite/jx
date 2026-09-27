@@ -1,14 +1,16 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - site-architecture.md#4.4
-size: S
+requires: []
 workspaces:
   - packages/site
+  - packages/compiler
+size: S
 ---
 
-# A more specific dynamic route outranks a less specific one, not only a catch-all
+# Routes rank segment by segment, so a more specific dynamic route outranks a less specific one, and a URL two pages generate is built once
 
 ## Context
 
@@ -16,20 +18,111 @@ workspaces:
 
 > **Status: Partial.** Rules 1, 2 and 4 ship (`compareRoutes` in `packages/site/src/routes.ts`, the `_` exclusion in `packages/compiler/src/site/pages-discovery.ts`). Rule 3 holds only against a catch-all: two dynamic routes with no catch-all are ordered alphabetically, so `/:category/:id` sorts ahead of `/blog/:slug` and `matchRoute` answers `/blog/x` with it.
 
-The section was unmarked before the census. The auditor probed it: sorting `[category]/[id].json` and `blog/[slug].json` gives `["/:category/:id", "/blog/:slug"]`, and `matchRoute("/blog/x")` returns `/:category/:id`.
+The section was unmarked before the census. Re-verified against `84735a9f` on 2026-09-27 with a `bun -e` probe.
 
 **What exists**
 
-- `compareRoutes` (`packages/site/src/routes.ts`): static before dynamic, named before catch-all, then `localeCompare` on the pattern.
-- `matchRoute`, which takes the first hit in table order by design, so the table order is the whole of specificity; the dev server and Studio both rely on it.
-- `packages/site/tests/routes.test.ts`.
+- `compareRoutes` (`packages/site/src/routes.ts`): all static routes first, then all named-only routes, then every route with a catch-all, then `localeCompare` on the pattern. Sorting `about.json`, `about/index.json`, `[category]/[id].json`, `[slug].json`, `blog/[slug].json` and `docs/[...path].json` gives `/about, /about, /:category/:id, /:slug, /blog/:slug, /docs/*`; `matchRoute` answers `/blog/x` with `/:category/:id` and `/docs` with `/:slug`. The two `/about` rows compare equal, so their order is the directory walk's. Two catch-alls are ordered alphabetically too, which the marker does not say: `[...path].json` sorts ahead of `docs/[...path].json` and takes `/docs/x`.
+- `matchRoute` / `matchPattern`: first hit in table order, by design, so the table order is the whole of specificity. `matchPattern` reads a segment as a catch-all when it is exactly `*`, a parameter when it starts with `:`, and a literal otherwise.
+- Consumers of the order: `routeTable` in `packages/site/src/compose.ts` (the live preview, `packages/server/src/live-preview.ts` via `serveSite`), and `discoverPages` in `packages/compiler/src/site/pages-discovery.ts` (the build). Studio uses only `documentUrlPattern`. `jx dev` serves the built `dist/` (`createDistMiddleware` in `packages/server/src/dev.ts`), so it shows whatever the build wrote.
+- Tests: `packages/site/tests/routes.test.ts` (`compareRoutes`, `matchRoute`), `packages/site/tests/compose.test.ts` ("the table is in match order"), `packages/compiler/tests/pages-discovery.test.ts`, `packages/compiler/tests/site-build-reporting.test.ts` (the `captured` helper for build warnings and errors).
+
+**Found while detailing: the build inverts rule 1 on a collision.** `expandDynamicRoutes` appends each template's expansions in table order and `buildSite` writes every route to `routeToOutputPath(route.urlPattern)`, so when two routes produce one concrete URL the later write wins, silently, and the sitemap lists the URL twice. Probe: `blog/about.json`, `blog/[slug].json` (`values: ["about", "x"]`) and `[category]/[id].json` (`[{ category: "blog", id: "x" }]`) expand to `/blog/about ← blog/about.json`, `/blog/x ← [category]/[id].json`, `/blog/about ← blog/[slug].json`, `/blog/x ← blog/[slug].json`. `dist/blog/about/` is the generated page, not the static one, while the live preview shows the static one; `/blog/x` is the other way round. The two surfaces disagree on both URLs.
 
 **What is missing**
 
-- A specificity comparison between dynamic routes: static segments weighted over parameters segment by segment (Astro's rule, which the section cites), so `/blog/:slug` sorts before `/:category/:id`.
-- A decision on what the build does when two expanded routes produce the same concrete URL (today the later write wins silently), since specificity also decides that.
-- Tests for the probed case and for equal-specificity ties.
+- A comparison in which a literal earlier in the path outranks a parameter later in it, so `/blog/:slug` sorts before `/:category/:id`.
+- One rule for two routes that produce one concrete URL, applied by the build, since specificity is what decides it.
+- Tests for the probed cases and for ties.
 
-**Related**
+## Outcome
 
-- site-architecture.md §4 (route pattern validation) and site-architecture.md §4.2 (the bracket syntax).
+- site-architecture.md §4.4 → Implemented: rules 1 to 3 are one segment-by-segment comparison shared by every route table; a URL generated by two pages is built once, by the route with priority, with a warning, and a tie between two pages of one shape fails the build.
+- site-architecture.md does not graduate here: most of its other open items remain.
+
+## Decisions
+
+- **Open:** are rules 1 and 2 global passes over the whole table, with rule 3 ranking only inside each class, or is priority decided at the first segment where two routes differ? Recommendation: the first differing segment (a literal outranks a parameter, a parameter outranks a catch-all, and a route that ends first outranks one that continues), because it is the rule the section cites Astro for, each of the section's three examples is an instance of it, and it gives a folder name ownership of its subtree. Against the global reading it changes one kind of answer: a named-parameter route against a catch-all route whose first difference is a literal on the catch-all's side goes to the catch-all instead, so with `pages/[slug].json` and `pages/docs/[...path].json` the URL `/docs` moves from `/:slug` to `/docs/*`. (Both readings fix the other half of the gap the marker understates: two catch-alls are ordered alphabetically today too, so `/*` sorts ahead of `/docs/*` and takes `/docs/x`.) No site or starter in the repository has that pair (their only dynamic pages are root or single-folder `[slug]` / `[sku]` and jxsuite.com's `docs/[...slug].json`, beside a static `docs/index.json` that keeps `/docs`). If the global reading is chosen instead, `routePriority` keeps today's two class checks ahead of the segment comparison, the existing `static beats dynamic beats catch-all` case stays, and site-architecture.md §4.4 says rules 1 and 2 apply across the whole table before rule 3.
+- **Open:** what does the build do when two routes generate one concrete URL? Recommendation: the route with priority builds it and the build warns, naming the URL and both page files; when neither route outranks the other (`about.json` beside `about/index.json`, or `blog/[slug].json` beside `blog/[id].json` yielding the same value) the build reports an error, still building the first so the rest of the site builds; a `$paths` that yields one URL twice builds it once and warns. A warning, not an error, for the outranked case because a hand-written page in front of one generated entry is a legitimate override, the live preview already answers that URL with the higher route, and Astro builds the higher-priority route with a warning. An error for a tie because nothing but pattern text or walk order would pick, the routing docs already tell authors "not both", and today that case builds nondeterministically across filesystems.
+- **Decided:** a new `routePriority(a, b)` in `packages/site/src/routes.ts` is the one statement of the rule, and `compareRoutes` becomes `routePriority(a, b) || a.urlPattern.localeCompare(b.urlPattern)`, because the build needs "neither outranks" (zero) separately from the alphabetical order a table needs, and a second copy of the rule in the compiler would drift. Segment kinds are read exactly as `matchPattern` reads them, so the order and the matcher cannot disagree about what a segment is; a mid-segment parameter (`post-[id].json` → `post-:id`) stays a literal in both, and belongs to `plan:site-architecture/route-pattern-validation`.
+- **Decided:** collisions are resolved once, in the build, right after `expandDynamicRoutes` and before anything reads the route list (locale tagging, `readTranslationKeys`, `translationSets`, the compile loop, the sitemap, `generateRedirects`' `compiledUrls`), because every one of those keys by URL and the expanded list is already in priority order. The losing route is removed for that URL, not compiled and overwritten.
+- **Decided:** ties within one shape are broken by page path in both tables (`relativePath` in `discoverPages`, `sourcePath` in `routeTable`), so the build and the live preview keep the same file and the error text is stable. The live preview needs nothing else: it does not expand `$paths`, so it cannot see a collision, which `compose.ts` already documents as its trade.
+
+## Implementation
+
+1. **`packages/site/src/routes.ts`**
+   - Private `segmentRank(segment: string): 0 | 1 | 2`: `2` for exactly `*`, `1` for a segment starting with `:`, `0` otherwise. Its comment says it mirrors `matchPattern`.
+   - `export function routePriority(a: RouteShape, b: RouteShape): number`: map `splitPath(urlPattern)` of each to ranks; at the first index where they differ return `rankA - rankB`; if one runs out first return `ranksA.length - ranksB.length` (the shorter ranks first, which is what puts `/docs` ahead of `/docs/*`). Zero only when both have the same length and the same rank at every index. This is plain lexicographic order over rank sequences, so it is transitive by construction.
+   - `compareRoutes(a, b)`: `return routePriority(a, b) || a.urlPattern.localeCompare(b.urlPattern);`. Rewrite its docblock to state the segment rule and cite `site-architecture.md` §4.4.
+   - Module docblock gains `@docs framework/site/routing`.
+2. **`packages/site/src/compose.ts`**, `routeTable`: `.toSorted((a, b) => compareRoutes(a, b) || a.sourcePath.localeCompare(b.sourcePath))`; its doc comment says "in match order (`site-architecture.md` §4.4)" instead of "Static beats dynamic beats catch-all".
+3. **`packages/compiler/src/site/pages-discovery.ts`**
+   - `discoverPages`: `routes.sort((a, b) => compareRoutes(a, b) || a.relativePath.localeCompare(b.relativePath))`, and the comment above it cites `site-architecture.md` §4.4 rather than listing the old three classes.
+   - `export interface RouteCollision { url: string; kind: "outranked" | "tie" | "repeat"; kept: string; dropped: string; message: string }`, where `kept` and `dropped` are page paths (`pages/` plus `relativePath`, forward slashes).
+   - `export function resolveRouteCollisions(routes: Route[]): { routes: Route[]; collisions: RouteCollision[] }`. Precondition, in its docblock: `routes` is `expandDynamicRoutes`' output, which keeps `discoverPages`' order with each template's expansions contiguous, so the first route for a URL is the one with priority. Key each route by its `urlPattern` with trailing slashes removed (`/` stays `/`), so a catch-all expanded with an empty rest (`/docs/`) meets `/docs`. Keep the first route per key; for each later one push a collision and drop it. `kind` is `"repeat"` when both share `sourcePath`, `"tie"` when `routePriority(routeShape(kept.relativePath), routeShape(dropped.relativePath)) === 0`, else `"outranked"`. Messages:
+     - outranked: `` `${kept} and ${dropped} both generate ${url}. ${kept} is the more specific route, so it builds ${url} and ${dropped} does not.` ``
+     - tie: `` `${kept} and ${dropped} both generate ${url}, and neither route is more specific than the other. Rename or remove one of them.` ``
+     - repeat: `` `The $paths of ${kept} yields ${url} more than once; it is built once.` ``
+4. **`packages/compiler/src/site/site-build.ts`**, step 4: `const { collisions, routes } = resolveRouteCollisions(await expandDynamicRoutes(...))`. For each collision, `"tie"` goes to `errors.push(message)` and `console.error(message)`, the other kinds to `console.warn(message)`, the same split the translation-conflict block uses. The `N route(s) after expansion` log line then counts unique URLs.
+
+**Integration contract.** `@jxsuite/site/routes` exports `routePriority` (negative when the first route outranks the second, zero exactly when the two have the same length and segment kinds) and `compareRoutes` (that, then pattern text); any table sorted with `compareRoutes` is in site-architecture.md §4.4 match order. `resolveRouteCollisions` in `packages/compiler/src/site/pages-discovery.ts` turns `expandDynamicRoutes`' output into one route per concrete URL, and `buildSite` runs it once, so every later build step sees each URL once. A plan that generates routes (`plan:site-architecture/collection-pagination`) gets this for free as long as its routes come out of `expandDynamicRoutes`; note that `pages/blog/[page].json` beside `pages/blog/[slug].json` is a tie, so a slug equal to a page number fails the build, while a `/blog/page/:n` shape can never meet `/blog/:slug`. site-architecture.md §4.4 states the rule and the collision behaviour.
+
+## Tests
+
+`bun test --isolate --coverage` from `packages/site` and from `packages/compiler`.
+
+- **`packages/site/tests/routes.test.ts`**, `describe("compareRoutes")`:
+  - Replace `static beats dynamic beats catch-all` with `the first segment where two routes differ decides`: `[docs/[...rest], [slug], about, [...path]]` sorts to `/about, /docs/*, /:slug, /*` (so `/about` before `/:slug`, and `/:slug` before `/*`).
+  - `a literal earlier in the path outranks a parameter after it`: the stub's pair sorts to `/blog/:slug, /:category/:id`; `matchRoute` answers `/blog/x` with `/blog/:slug` and `/news/x` with `/:category/:id`.
+  - `a route that ends first outranks the catch-all that continues it`: `docs/index.json` and `docs/[...path].json`; `/docs` matches the index, `/docs/a` the catch-all.
+  - `a folder owns its subtree`: with `[slug].json` and `docs/[...path].json`, `matchRoute(table, "/docs")` is `/docs/*`.
+  - `a catch-all under a folder outranks one at the root`: with `[...path].json` and `docs/[...path].json`, `/docs/x` matches `/docs/*` and `/about` matches `/*`.
+  - `the order does not depend on input order`: a fixed list of eight distinct patterns sorted forward and reversed gives the same table (guards transitivity).
+  - The existing `peers sort by pattern` case stays.
+- **`routes.test.ts`**, new `describe("routePriority")`: `routes of one shape have no priority`: `blog/[slug]` vs `blog/[id]` is 0, `about.json` vs `about/index.json` is 0; `/blog/:slug` vs `/:category/:id` is negative and the reverse positive.
+- **`packages/site/tests/compose.test.ts`**: "the table is in match order" passes unchanged (`/blog, /blog/:slug, /blog/*`); add `two files for one route keep the same order whatever the tree lists first`: `pages/about/index.json` and `pages/about.json` in either input order give the same first `sourcePath`.
+- **`packages/compiler/tests/pages-discovery.test.ts`**, new `describe("resolveRouteCollisions")`, through `discoverPages` and `expandDynamicRoutes` on `_fixtures_pages`:
+  - `the more specific route keeps a URL two pages generate`: the probe fixture; `/blog/about` from `blog/about.json` and `/blog/x` from `blog/[slug].json`, each URL once, two `outranked` collisions naming both files.
+  - `two pages of one shape are a tie`: `blog/[id].json` and `blog/[slug].json` both yielding `a`; kept is `pages/blog/[id].json`, kind `tie`. Then `about.json` beside `about/index.json`, kind `tie`.
+  - `a template that yields one URL twice builds it once`: `values: ["a", "a"]`, kind `repeat`.
+  - `a trailing slash does not make a second URL`: `docs/index.json` and `docs/[...path].json` with `values: [""]`, kind `outranked`, kept the index.
+  - `a table without collisions comes back whole`: same routes, no collisions.
+- **`packages/compiler/tests/site-build-reporting.test.ts`**, new `describe("buildSite — two pages, one URL")` with `scaffold` and `captured`:
+  - `builds the more specific page and warns`: `pages/blog/about.json` (text `Static`) and `pages/blog/[slug].json` (`values: ["about"]`, text `Generated`); `dist/blog/about/index.html` contains `Static`, a warning names `/blog/about` and both files, and `result.errors` is empty.
+  - `fails the build when neither route outranks the other`: `pages/about.json` and `pages/about/index.json`; `result.errors` holds the tie message naming both, and `console.error` received it.
+
+Coverage: `packages/site/bunfig.toml` gates every file at lines 0.99, functions 1.0, so `segmentRank` and `routePriority` are each reached by the cases above, including the "one runs out first" branch. `packages/compiler/bunfig.toml` gates at lines 0.982, functions 0.98; every branch of `resolveRouteCollisions` has a case, and `site-build.ts` gains one two-way branch covered by the two build cases. No source file is added, so `bun scripts/check-coverage-manifest.ts` is unaffected in both workspaces. Ratchet only if a run shows a workspace's worst file rose.
+
+## Specs & docs
+
+**site-architecture.md §4.4**, in place (assuming both Open items take their recommendation):
+
+- The marker becomes:
+
+  ```markdown
+  > **Status: Implemented.** `routePriority` and `compareRoutes` in `packages/site/src/routes.ts` order the build's route table and the live preview's; `resolveRouteCollisions` in `packages/compiler/src/site/pages-discovery.ts` settles two pages generating one URL; the `_` exclusion is in `pages-discovery.ts`.
+  ```
+
+- The lead-in becomes: "When multiple routes could match a URL, priority follows Astro's rules. Two routes are compared segment by segment from the left, and the first segment where they differ decides:"
+- Rule 1 gains ": a literal segment outranks a parameter." Rule 2 gains ": a `[param]` segment outranks a `[...rest]` segment." Rule 3 becomes: "More specific paths over less specific (`/blog/[slug]` beats `/[...path]` and `/[category]/[id]`): because the first difference decides, a literal earlier in the path outranks any parameter after it, so `pages/docs/[...path].json` answers `/docs` and everything under it ahead of `pages/[slug].json`. A route that ends where another continues ranks first, so `/docs` beats `/docs/[...path]`." Rule 4 is unchanged.
+- New paragraph after the list: "Routes that tie at every segment (`/blog/[slug]` and `/blog/[id]`, or `about.json` and `about/index.json`) have no priority between them; they are listed by pattern text, then by file path, so every host builds the same table."
+- New paragraph: "**Two pages, one URL.** A build expands every dynamic route (§4.3) before it writes a page, so it sees when two routes generate the same URL (a trailing slash is not significant). The route with priority builds that URL and the build warns, naming the URL and both page files; the other route's page for that URL is not compiled and has no sitemap entry. When neither route has priority, the build fails, naming both files. A `$paths` that yields one URL twice builds it once, with a warning."
+- Fragment: `bun run spec:change site-architecture.md minor -m "§4.4 routes rank segment by segment, so a more specific dynamic route outranks a less specific one; when two pages generate one URL the route with priority builds it with a warning, and a tie between two pages of one shape fails the build."`
+
+No other spec cites §4.4, and no Standards Alignment row binds it.
+
+**Docs** (no em dashes). `bun run docs:sync` names the pages whose `code:` lists `pages-discovery.ts` or `site-build.ts`:
+
+- `docs/framework/site/routing.md`: add `packages/site/src/routes.ts` to `code:`. In "Static routes", "Use whichever keeps the folder tidy, but not both." gains ": the build fails when both exist." Rewrite "Route priority": the lead-in becomes "When several routes could match the same URL, the more specific one wins. Routes are compared one path segment at a time from the left, and the first segment where they differ decides:"; rule 3 becomes "More specific paths beat less specific ones: `/blog/[slug]` beats both `/[...path]` and `/[category]/[id]`, because its first segment is a literal."; then "A folder name therefore owns everything under it: with `pages/[slug].json` and `pages/docs/[...path].json`, the URL `/docs` goes to the catch-all, and a `pages/docs/index.json` would take `/docs` from both." Add a `### Two pages, one URL` subsection carrying the spec paragraph in docs voice, with the override use: "This is how you replace one generated page with a hand-written one: the static page wins, and the warning confirms it."
+- `docs/framework/build.md`, step 3 gains: "When two pages generate the same URL, the one with [route priority](/docs/framework/site/routing#route-priority) builds it and the build warns; when neither has priority, the build fails."
+- `docs/framework/site/seo.md` ("one `<url>` per compiled page" becomes true as written), `redirects.md`, `deployment.md`, `concepts/color-schemes.md` and `extending/reference/standards.md` also list `site-build.ts`; none changes.
+
+On landing: delete this file, and remove `site-architecture/route-specificity-order` from any dependent's `requires` (`plan:site-architecture/collection-pagination` may add one when it is detailed).
+
+## Acceptance
+
+- `bun test --isolate --coverage` passes in `packages/site` and `packages/compiler`; `bun scripts/check-coverage-manifest.ts packages/site` and `bun scripts/check-coverage-manifest.ts packages/compiler` are green.
+- `bun -e 'import { compareRoutes, fileToRoute, matchRoute } from "./packages/site/src/routes.ts"; const t = ["[category]/[id].json", "blog/[slug].json"].map(fileToRoute).toSorted(compareRoutes); console.log(t.map((r) => r.urlPattern), matchRoute(t, "/blog/x")?.route.urlPattern)'` prints `[ "/blog/:slug", "/:category/:id" ] /blog/:slug`.
+- In a scratch site with `pages/blog/about.json`, `pages/blog/[slug].json` (`values: ["about", "x"]`) and `pages/[category]/[id].json` (`[{ "category": "blog", "id": "x" }]`), `jx build` exits 0 with two "both generate" warnings, and `dist/blog/about/index.html` is the static page. Adding `pages/about.json` and `pages/about/index.json` makes it exit 1 naming both.
+- `jx build` in `sites/jxsuite.com` prints no "both generate" line.
+- `bun run docs:status`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:spec-release` and `bun run plans:check` are green; `bun run plans:status --spec site-architecture` no longer lists `site-architecture.md#4.4`.

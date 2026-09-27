@@ -1,5 +1,5 @@
 ---
-status: stub
+status: drafted
 disposition: reconcile
 claims:
   - studio-ui-guidelines.md#1.1
@@ -8,7 +8,7 @@ workspaces:
   - packages/studio
 ---
 
-# Theme Tokens describes the style pipeline that ships: build-styles, oklab accents, and where the animations live
+# Theme Tokens describes the style pipeline that ships: build-styles, three generated sheets, gated oklab accent tints, and animations in their surfaces
 
 ## Context
 
@@ -16,22 +16,88 @@ workspaces:
 
 > **Status: Partial.** The token table and its fallbacks ship and are gated (`guidelineTokenFindings()` in `packages/studio/scripts/check-styles.ts`). The pipeline prose below is stale: the generator is `scripts/build-styles.ts` behind `bun run styles:check` / `styles:sync` (there is no `build-tokens.ts` and no `tokens:*` script), the accent variants mix `in oklab` rather than `in srgb`, and the keyframes paragraph predates the move, since `shell.css` defines none, `inspector.css` keeps only an unreferenced `pulse`, and the live animations are in `src/surfaces/panel-signals.json` and `ai-chat.json`.
 
-Disposition `reconcile`: the table itself is right and gated, and every stale sentence describes an arrangement the code moved away from on purpose (one generator for every stylesheet, oklab mixing inherited from the kit's `--jx-accent-N`, animations hoisted into the documents that use them).
+Verified at the census commit. Every point in the marker holds, and there are three more of the same kind.
 
-**What exists**
+**The generator (spec line 32).** `packages/studio/package.json` has `styles:check` (`bun run scripts/build-styles.ts`) and `styles:sync` (`--fix`). No `tokens:*` script and no `build-tokens.ts` exist. `SHEETS` in `scripts/build-styles.ts` is the one list of generated sheets: `tokens.css`, `shell-frame.css` and `forced-colors.css`. Each generated header says "Regenerate with `bun run styles:sync`", and all three are in `.oxfmtrc.json`'s ignore list. The same stale names survive outside the spec: `build-styles.ts`'s own doc comment (lines 16 to 18 name `tokens:check`/`tokens:sync`, and line 131 names `tokens:sync`), and `styles/forced-colors.json`'s top-level `$description` ("GENERATED from this by `scripts/build-tokens.ts`").
 
-- `packages/studio/scripts/build-styles.ts`, run by `styles:check` and `styles:sync` (`packages/studio/package.json`); the generated sheets' headers say "Regenerate with bun run styles:sync".
-- `packages/studio/styles/tokens.json`: `--accent-8` to `--accent-50` as `var(--jx-accent-N, color-mix(in oklab, var(--accent) N%, transparent))`.
-- `packages/studio/scripts/check-styles.ts`: `guidelineTokenFindings()` (the table against `tokens.css`) and the duplicate `@keyframes` gate (`duplicateAnimations`).
-- `@keyframes`: only `pulse` in `styles/inspector.css`, with no reference; `jx-signals-pulse` in `src/surfaces/panel-signals.json`; `jx-ai-cursor` and `jx-ai-typing` in `src/surfaces/ai-chat.json`.
+**"Every stylesheet is generated now" (spec line 44, the `spectrum.css` paragraph) is false, and so is "It was the one hand-written sheet left".** `STUDIO_STYLESHEETS` (`src/hosting/layout.ts:174`) links eight sheets. Five of them are hand-written: `shell.css`, `canvas.css`, `panels.css`, `inspector.css` and `overlays.css`, about 990 lines in all, with no source JSON. `overlays.css` also carries the Tabulator grid theme, which styles DOM that no surface document owns. `packages/studio/STYLING.md` gets this right under "Where styles live" ("Three of these are **generated**"), but its line 108 repeats the false claim ("There is no hand-written stylesheet in `styles/` any more"). `AGENTS.md:17` does too ("shared chrome is `styles/*.css`, which is GENERATED from the `.json` beside it").
 
-**What is missing**
+**The accent tints (spec line 64).** `styles/tokens.json` declares five steps, not a range: `--accent-8`, `-10`, `-15`, `-20` and `-50`. Each is `var(--jx-accent-N, color-mix(in oklab, var(--accent) N%, transparent))`, and each aliases the kit's `--jx-accent-N` (`packages/ui/project.json:84-88`, also `in oklab`). The bullet sits outside the gated table, which is why it drifted. `guidelineTokenFindings()` reads only three-column rows whose third cell is backticked (`rowRe`). It also has a hole: when `tokens.css` does not declare a row's token at all, the row is skipped with a bare `continue`, so a misspelled or deleted token passes without a finding.
 
-- The `tokens.css` paragraph rewritten to name `build-styles.ts` and the `styles:*` pair.
-- The accent-variant bullet rewritten to the aliases `tokens.json` declares.
-- The keyframes paragraph rewritten to where the animations are now; whether the orphaned `pulse` in `inspector.css` is deleted in the same pull request is a detail-phase decision.
+**The keyframes paragraph (spec line 42).** No `styles/*.css` file defines an animation Studio plays. Three are hoisted from surface documents (`spec.md` §9.6): `jx-signals-pulse` (`src/surfaces/panel-signals.json:259`, played by a pending summary while `data-refreshing` is set) and `jx-ai-cursor` and `jx-ai-typing` (`src/surfaces/ai-chat.json:148`, `:171`). Each surface turns its own off under `prefers-reduced-motion: reduce`. `@keyframes pulse` at `styles/inspector.css:135` is dead: no `animation` in `packages/studio` or `packages/ui` names it. The duplicate-name gate (`keyframeNames()` and `duplicateAnimations` in `check-styles.ts`) scans `styles/*.css` and `src/surfaces/**/*.json`, and its comment at line 529 still says the animations "live one per stylesheet".
 
-**Related**
+**Verified and left alone.** The table's thirteen rows match `tokens.css`. The kit's light values quoted in the alias paragraph (`#f7f7f9`, `#ffffff`, `#1d1d22`, `#2563eb`) are correct today, but no gate checks them. The shell-frame, forced-colours, About and `whenReady` paragraphs match `src/shell/tree.ts`, `store.ts`'s `initShellRefs` (five cells), `ui/panel-resize.ts`, `src/surfaces/dialog.ts` and `tests/reachability.test.ts`. The About paragraph's `.settings-muted` is gone, because the settings family became documents. That paragraph tells history in the past tense, so it stays as written. The semantic-token table leaves out `--case-c` and `--slot-c`, which the `spectrum.css` paragraph names.
 
-- `ui.md` §4 (the kit's colour tokens and `--jx-accent-N`).
-- `spec.md` §9.6 (keyframes hoisted by rule text), which the paragraph cites.
+No docs page cites §1.1 or lists any file this plan changes in its `code:`. The only hits are the generated `docs/extending/reference/standards.md` and `spec-changelog.md`.
+
+## Outcome
+
+- studio-ui-guidelines.md §1.1 → Implemented. The prose names `build-styles.ts`, the `styles:*` pair and the three generated sheets, and describes the five hand-written ones as what they are. The accent tints become gated rows of the token table. The keyframes paragraph says where Studio's three animations live and what the duplicate-name gate holds.
+- The dead `@keyframes pulse` is deleted.
+- `guidelineTokenFindings()` fails on a documented token that `tokens.css` does not declare.
+- The same stale pipeline names are corrected in `build-styles.ts`, `forced-colors.json`, `check-styles.ts`, `STYLING.md` and `AGENTS.md`.
+
+## Decisions
+
+- **Open:** Should the five hand-written sheets become generated, so that "every stylesheet is generated" comes true? Recommendation: no. Reconcile the sentence instead: three sheets are generated, and five are hand-written shared chrome that shrinks as the surfaces owning its rules take them. Reasons: STYLING.md's "Where styles live" already specifies this mixed arrangement. The design moves a rule into the surface document that owns it, not into a generated shared sheet. Part of `overlays.css` (the Tabulator theme) styles third-party DOM that no document owns. A JSON copy of about 990 lines of rules that are meant to leave would be churn that the next surface conversion undoes.
+- **Decided:** The accent tints become five rows of the token table, and the "Accent opacity variants" bullet is deleted. The table is the gated form, and §1.1 already argues that "a correction without a gate only resets the clock". Each row's third cell carries the whole declaration, as the `--hover-bg` row does. The fallback extractor in `guidelineTokenFindings()` stops at the first `)`, so a row that quoted only the nested `color-mix()` would fail for no real reason. Comparing the whole declaration avoids that without touching the extractor.
+- **Decided:** `guidelineTokenFindings()` reports a documented token that `tokens.css` does not declare, instead of skipping it. Five more rows would otherwise make that silent pass five times more likely to hide a rename. All thirteen current rows are declared, so the change turns nothing red today.
+- **Decided:** Delete `@keyframes pulse` from `styles/inspector.css` in this pull request. The audit's spec-wide rule says dead rules go in the pull request that stops the spec naming them. Nothing references `pulse`, and the canvas iframe is a separate document that the chrome's keyframes cannot reach. No new gate for unreferenced `@keyframes` is added: this is the only instance, and it would be a new rule, not a reconciliation.
+- **Decided:** Under the audit's spec-wide choice between correcting a restatement of the kit and pointing at `ui.md`, §1.1 does both. The token table stays, because it is Studio's own contract (its aliases) and it is gated. The four kit light hexes in the alias paragraph become a pointer to `packages/ui/project.json` and `ui.md` §4.2, because nothing gates them and they belong to the kit to change. They are exactly the values `plan:ui/theme-ramp-only-colours` re-expresses as ramp steps.
+- **Decided:** Fix the drift this edit passes through: add `--case-c` and `--slot-c` rows to the semantic-token table, and correct the stale comments and restatements in `build-styles.ts`, `forced-colors.json`, `check-styles.ts`, STYLING.md and AGENTS.md. Each one repeats a sentence this plan corrects in the spec, and the audit's rule is that the plan editing a section fixes the drift inside it.
+
+## Implementation
+
+1. **`packages/studio/styles/inspector.css`**: delete the `@keyframes pulse { … }` block (lines 135 to 143). Nothing else in the sheet changes.
+2. **`packages/studio/scripts/check-styles.ts`**:
+   - In `guidelineTokenFindings()`, replace the `if (declared === undefined) { continue; }` branch with a finding in `specs/studio-ui-guidelines.md` (line 0) whose text is "`${token}` is documented in studio-ui-guidelines.md §1.1 but tokens.css declares no such token.", followed by `continue`.
+   - Rewrite the block comment above that branch. It still says `--radius` "is a Spectrum token with a `3px` fallback" and `--hover-bg` "is a literal `rgba()`". The new comment says that `--radius` falls back to `4px`, that `--hover-bg` and the accent tints fall back to a `color-mix()`, and that those rows quote the whole declaration.
+   - In `keyframeNames()`'s doc comment (line 529), replace "a latent trap today, when the three animations live one per stylesheet, and a certain one once the surfaces carry their own" with the present tense: the surfaces carry their own animations, and the runtime hoists them once per rule text.
+3. **`packages/studio/scripts/build-styles.ts`**: in the file's doc comment, change `bun run tokens:check`/`tokens:sync` to `styles:check`/`styles:sync`, and "Never hand-edit `tokens.css`: the fix belongs in `tokens.json`" to "Never hand-edit a generated sheet: the fix belongs in the `.json` beside it". In `expandRule()`'s comment (line 131), change `tokens:sync` to `styles:sync`. These are comments only, so no output changes.
+4. **`packages/studio/styles/forced-colors.json`**: in the top-level `$description`, change `scripts/build-tokens.ts` to `scripts/build-styles.ts`. `readSource()` returns only `doc.style`, so the generated CSS does not change. `styles:check` confirms this.
+5. **`packages/studio/STYLING.md`**:
+   - Line 105: extend the §1.1 bullet to "…on a row of `studio-ui-guidelines.md` §1.1 that disagrees with `tokens.css` or names a token it does not declare".
+   - Line 108: replace the last sentence with "The other five linked sheets (`shell.css`, `canvas.css`, `panels.css`, `inspector.css`, `overlays.css`) are hand-written shared chrome, and they shrink as the surfaces that own their rules take them; `styles/spectrum.css`, the last hand-written theme sheet, went with `<sp-theme>`."
+6. **`AGENTS.md:17`** (a root file that `affected.ts` classes as `NO_TESTS`): replace "shared chrome is `styles/*.css`, which is GENERATED from the `.json` beside it (`bun run styles:sync`)" with "shared chrome is `styles/*.css`, of which `tokens.css`, `shell-frame.css` and `forced-colors.css` are GENERATED from the `.json` beside them (`bun run styles:sync`)". The rest of the bullet stays.
+7. **The spec**: see Specs & docs. Do this last, and run `bun --cwd packages/studio run lint:styles` afterwards, because that command is where the new rows are checked against the real `tokens.css`.
+8. Delete this plan file.
+
+**Integration contract.** Once this lands, §1.1's token table is the one gated statement of Studio's aliases, the accent tints included. `bun run lint:styles` fails on any three-column row whose value disagrees with `tokens.css` or whose token `tokens.css` does not declare. A plan that renames, adds or removes a Studio alias in `styles/tokens.json` must edit the table in the same pull request. No `styles/*.css` file defines `@keyframes`, and a surface that adds an animation keeps it in its own style block. The duplicate-name gate covers `styles/*.css` and `src/surfaces/**/*.json`. `SHEETS` in `build-styles.ts` remains the one list of generated sheets.
+
+## Tests
+
+- **`packages/studio`**: run `bun test --isolate --coverage` from `packages/studio`. The new cases go in `tests/check-styles-orphans.test.ts`, inside `describe("guidelineTokenFindings")`:
+  - `"a documented token tokens.css does not declare is itself a finding"`: ``guidelineTokenFindings("| `--accent-12` | Tint | `x` |", css)`` gives exactly one finding. Its `file` is `specs/studio-ui-guidelines.md`, and its text contains "declares no such token".
+  - `"an accent tint row is held to its whole declaration"`: add `--accent-8: var(--jx-accent-8, color-mix(in oklab, var(--accent) 8%, transparent));` to a local CSS fixture. A row quoting that declaration gives `[]`. The same row spelled `in srgb` gives one finding that names `--accent-8`. That second half is the defect this plan corrects.
+  - The existing `"accepts a correct row, and a fallback quoted without its var()"` case must stay green unchanged. Its rows are declared in the fixture.
+- **Real-tree gates** (the `checks` job runs both): `bun --cwd packages/studio run lint:styles` checks all eighteen table rows against the real `tokens.css` and finds no duplicate animation name. `bun --cwd packages/studio run styles:check` confirms the three generated sheets still match their sources after the `forced-colors.json` edit.
+- **Coverage**: `scripts/check-styles.ts` is gated per file by `packages/studio/bunfig.toml` (`lines = 0.958, functions = 0.941`). The new branch is covered by the first new case. No source file is added and none is expected to move enough to ratchet. If the coverage table shows a new worst file, ratchet per CLAUDE.md.
+
+## Specs & docs
+
+In-place edits to `specs/studio-ui-guidelines.md` §1.1. Headings are unchanged.
+
+- **Marker (line 24)** becomes: ``> **Status: Implemented.** The token table, accent tints included, is gated against `styles/tokens.css` by `guidelineTokenFindings()` in `packages/studio/scripts/check-styles.ts`, and the three generated stylesheets are held to their sources by `bun run styles:check`.``
+- **Alias paragraph (line 30):** replace "(`--bg` `#f7f7f9`, `--bg-panel` `#ffffff`, `--fg` `#1d1d22`, `--accent` `#2563eb`)" with "(the kit's light values, `packages/ui/project.json`, `ui.md` §4.2)".
+- **BUILD OUTPUT paragraph (line 32):**
+  - Replace "`scripts/build-tokens.ts` writes the stylesheet from it: `bun run tokens:check` is the gate and `bun run tokens:sync` is the fixer" with "`scripts/build-styles.ts` writes the stylesheet from it: `bun run styles:check` is the gate and `bun run styles:sync` is the fixer".
+  - Append: "`SHEETS` in that script is the one list of generated stylesheets (`tokens.css`, `shell-frame.css`, `forced-colors.css`), and each is in `.oxfmtrc.json`'s ignore list so the generator is its only author. The other five sheets `index.html` links (`STUDIO_STYLESHEETS`, `src/hosting/layout.ts`: `shell.css`, `canvas.css`, `panels.css`, `inspector.css`, `overlays.css`) are hand-written shared chrome that `check-styles.ts` reads and that shrinks as the surfaces owning its rules take them."
+- **Keyframes paragraph (line 42), rewritten whole:** "**Every animation Studio plays lives in the surface document that plays it.** There are three: `jx-signals-pulse` in `src/surfaces/panel-signals.json`, for a pending value while a refresh is in flight, and `jx-ai-cursor` and `jx-ai-typing` in `src/surfaces/ai-chat.json`, for the streaming cursor and the typing dots. Each sits beside the one rule that plays it, and each is switched off under `prefers-reduced-motion: reduce` in the same style block. No sheet in `styles/` defines one. The runtime hoists a surface's `@keyframes` once per rule text for the whole document (`spec.md` §9.6), so a name is document-global, and CSS keeps the LAST definition of a name while ignoring every earlier one with no parse error either way. `check-styles.ts` therefore fails when a name is defined twice across `styles/*.css` and `src/surfaces/**/*.json`, and names both sites."
+- **`spectrum.css` paragraph (line 44):**
+  - "It was the one hand-written sheet left:" becomes "It was the last hand-written theme sheet:".
+  - The closing "Every stylesheet is generated now, and `check-styles.ts` fails on a `--spectrum-*` name in any of them." becomes "`check-styles.ts` fails on a `--spectrum-*` name in any stylesheet, generated or hand-written."
+- **Token table:** append five rows after `--hover-bg`, in this shape: ``| `--accent-8` | Accent tint, 8% | `var(--jx-accent-8, color-mix(in oklab, var(--accent) 8%, transparent))` |``. Do the same for 10, 15, 20 and 50. Then delete the "**Accent opacity variants** for backgrounds:" heading line and its bullet (lines 62 to 64).
+- **Semantic-token table:** append ``| `--case-c` | Case badges in the outline (uses `--accent`) |`` and ``| `--slot-c` | Slot badges in the outline (uses `--success`) |``.
+- Fragment: `bun run spec:change studio-ui-guidelines.md minor -m "Theme Tokens describes the pipeline that ships: build-styles.ts behind styles:check and styles:sync generates three of the eight stylesheets, the accent tints alias the kit's oklab mixes as gated rows of the token table, and Studio's animations live in the surface documents that play them."`
+- Docs pages: none changes. No page's `spec:` cites `studio-ui-guidelines.md#1.1`, and no page's `code:` lists `inspector.css`, `check-styles.ts`, `build-styles.ts`, `forced-colors.json` or `STYLING.md`. `bun run docs:sync` should report nothing.
+- This does not graduate the spec. Other studio-ui-guidelines items stay open, so the header stays `Partial`.
+
+## Acceptance
+
+- `bun --cwd packages/studio run lint:styles` and `bun --cwd packages/studio run styles:check` both pass.
+- Changing `in oklab` to `in srgb` in one new accent row makes `lint:styles` fail and name that token. Documenting `--accent-12` makes it fail with "declares no such token". Revert both.
+- `grep -rn "tokens:check\|tokens:sync\|build-tokens" packages/studio specs/studio-ui-guidelines.md AGENTS.md` prints nothing.
+- `grep -rn "@keyframes" packages/studio/styles` prints nothing, and `grep -n "in srgb, var(--accent)" specs/studio-ui-guidelines.md` prints nothing.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:section-refs` and `bun run plans:check` all pass.
+- `bun run plans:status --spec studio-ui-guidelines` no longer lists §1.1.
+- `bun test --isolate --coverage` from `packages/studio` passes at the bunfig thresholds.

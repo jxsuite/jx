@@ -1,14 +1,16 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - studio-ui-guidelines.md#8.2
-size: M
 workspaces:
   - packages/studio
+  - specs
+  - docs
+size: M
 ---
 
-# Every drag in Studio has a non-drag route: statement reorder, Files-tree moves, tab order and grid column order close the gap
+# Every drag in Studio has a route without one: statement reorder, Files-tree moves, tab order and grid column order close the gap
 
 ## Context
 
@@ -16,31 +18,126 @@ workspaces:
 
 > **Status: Partial.** Pragmatic drag for the outline, the canvas (from the block action bar's handle only), the tab strip and the pane grid's right edge ships, with the OS file-drag rules below (`packages/studio/src/panels/dnd.ts`, `src/canvas/iframe-entry.ts`). Four drags have no single-pointer alternative: statement reorder in the logic editor, which has no other route at all (`src/panels/statement-editor.ts`, whose `[part="drag"]` handle in `src/surfaces/statements.json` is `aria-hidden`); a Files-tree move into a folder, reachable otherwise only by typing a path into Rename (`src/files/files.ts`); reordering a tab within its own strip, since `moveTab` (`src/workspace/workspace.ts`) has one caller, the drop handler in `src/panels/tab-drop.ts`, and no command moves a tab along its strip; and reordering a data grid's columns, which Tabulator's `movableColumns` offers by drag alone and `src/grid/grid-view.ts` saves only from `columnMoved`. The indicator bullets name `.dragging` and `.drop-target` classes where the elements style `data-dragging` and `data-drop`.
 
-And the unnumbered "Moving without dragging (WCAG 2.2 SC 2.5.7)" subsection inside it, line 453, which the census corrected from Implemented:
+The unnumbered "Moving without dragging (WCAG 2.2 SC 2.5.7)" subsection, line 453 (the census corrected it from Implemented):
 
 > **Status: Partial.** Cut and paste (`src/editor/context-menu.ts`, announced through `notify`), Move up and Move down (`src/panels/block-action-bar.ts`), Split Right and Open to the Side ship. Statement reorder, a Files-tree move, a tab's place in its own strip and a grid's column order are the exceptions named on §8.2.
 
-Before the census, §8's own marker said drag and drop had no non-dragging alternative at all. That was stale (see the audit record); these four drags are what is left of it.
+Verified against the tree; all four gaps hold, and the census missed two smaller untruths in the subsection.
 
-**What exists**
+- **Statements.** `registerStatementsDnD` (`packages/studio/src/panels/statement-editor.ts`) registers a pragmatic `draggable` and `dropTargetForElements` per card and splices the lane in its `onDrop`. The card head in `src/surfaces/statements.json` is the `aria-hidden` handle, the kind label and a delete button; the handle's own style description says keyboard reorder "is the lane's own concern" and nothing carries it. `flattenStatements` already hands every card a `CardPlan` whose `commitLane` is exactly the write a move needs.
+- **Files tree.** `adoptFileTreeElement`'s monitor calls the private `moveFileEntry` behind `canMoveInto` (`src/files/files.ts`). Rename joins the typed name onto the parent directory. Three places already promise more: `files-panel.json`'s tree description ("Every chord it does not own — cut, copy, paste, delete, rename — passes straight through to the flow"), `docs/studio/interface.md` ("cut, paste and delete still work on the row you are standing on"), and `jx-tree-item`'s `cut` prop, which `ui.md` §5.5 ships for this and no Studio tree binds. The flow answers none of it.
+- **Tabs.** `moveTab` → `reorderWithinPane` (the pinned clamp) has one caller, `resolveTabSlotDrop` in `src/panels/tab-drop.ts`. The strip's menu is `placedTabItems` in `src/panels/tab-strip.ts`, a pure `forPlacement("context/tab")` projection, and no record moves a tab along its strip. The kit's tabs behaviour (`packages/ui/src/behaviors/tabs.ts`) moves the caret only.
+- **Grid columns.** `createGridView` (`src/grid/grid-view.ts`) sets `movableColumns: true`; `columnMoved` saves `ordered.map(getField)`, which holds only the drawn columns, so a drag also drops every hidden column's slot. The View panel (`openViewPopover` in `src/grid/grid-panel.ts`, `src/surfaces/grid-views.json`) lists every column with a visibility checkbox, in SOURCE order (`projectViews`), so it can hide a column but not place one.
+- **Indicators.** `jx-tree-item`, `surfaces/tab-strip.json` and `surfaces/statements.json` style `data-dragging` and `data-drop`. In `packages/studio/styles/panels.css` the whole leading `.file-tree*` / `.layer-row*` block (lines 1–39: the selected, dragging, drag-over, drag-over-root, drop-target, toggle, drag-handle and actions rules) has no emitter, since both trees are `jx-tree` documents.
+- **Census misses, same subsection.** It says cut and paste "both have a chord, a context-menu item and a palette entry": `edit.paste` (`src/editor/shortcuts.ts`) declares no `menus`, so it is ⌘V and a palette row only (its level is `document`, which `context/element` does not admit). It says the block bar's Move up / Move down act "in one keystroke": `registerSelectionCommands` claims no chord on purpose, so it is one click.
+- **§14.** The WCAG 2.2 row's "cut/paste is the stated alternative to every drag" and the ATAG row's "§8.2's keyboard alternative to every drag" overclaim until this lands (audit record, spec-wide decisions).
 
-- The element alternatives: `edit.cut` / `edit.paste` in `packages/studio/src/editor/context-menu.ts` (`notify.success("Cut")`, `"Pasted"`), `selection.moveUp` / `selection.moveDown` in `src/panels/block-action-bar.ts`, click-to-insert in `src/panels/elements-panel.ts` (`insertAtSelection`), `pane.splitRight` and `document.openToSide` in `src/workspace/`.
-- Statement reorder: `registerStatementsDnD` in `packages/studio/src/panels/statement-editor.ts` registers pragmatic `draggable` / `dropTargetForElements` per lane and writes through `onChange`; `src/surfaces/statements.json` draws the handle `aria-hidden` with the title "Drag to reorder". No Move Up / Move Down verb and no key path exist.
-- Files tree: `adoptFileRow` in `packages/studio/src/files/files.ts` makes every row a drag source and a directory a target (`moveFileEntry`); the only other route is the Rename prompt, whose name is joined onto the parent directory.
-- Tab order: `moveTab(tabId, toIndex)` in `packages/studio/src/workspace/workspace.ts` applies the pinned clamp, and its only caller is the pragmatic drop handler in `src/panels/tab-drop.ts`; `src/panels/tab-strip.ts` lists drag reorder as the strip's reorder mechanism. The tab and pane records (`document.nextTab` / `previousTab`, `pane.splitRight`, `pane.compareWith`, `pane.focusPrimary` / `focusSecondary`, `pane.unsplit`) move focus or move a tab between panes, never along a strip, and the kit's tabs behaviour (`packages/ui/src/behaviors/tabs.ts`) moves the caret only.
-- Grid column order: `createGridView` in `packages/studio/src/grid/grid-view.ts` sets Tabulator's `movableColumns: true` and saves the order through `saveGridLayout` only from `columnMoved`; a saved view (`src/grid/grid-layout.ts`) re-applies an order but cannot author one.
-- Indicators: `data-dragging` and `data-drop` are what `jx-tree-item` and `src/surfaces/tab-strip.json` style (`dnd.ts` records the rename from `data-drop-target`); the `.layer-row.dragging` / `.layer-row.drop-target` and `.file-tree-item.dragging` rules in `styles/panels.css` have no emitter.
+## Outcome
 
-**What is missing**
+- `studio-ui-guidelines.md` §8.2 → Implemented: both markers flip, the indicator bullets name the attributes, and the subsection tables the route for every drag Studio has.
+- §14's WCAG 2.2 note names the routes; the ATAG note becomes true unchanged. No gap closes: `gap:wcag-conformance` is about a claimed level, which this does not add.
+- `studio.md` §9.1.1 and §14.4 gain the non-drag routes beside the drags they already specify (additive).
+- The dead `.file-tree*` / `.layer-row*` rules leave `styles/panels.css`.
 
-- Statement reorder without a drag: Move up / Move down verbs on a statement row (declared records, so they carry a name, a chord and a palette row per §12.3), with an announcement through `notify` as cut and paste have.
-- A Files-tree move without a drag and without typing: cut and paste on file rows, or a "Move to…" verb with a folder picker. Detailing picks one; the section already says why an APG keyboard-drag mode is not the answer.
-- Tab reorder without a drag: for example Move Tab Left / Move Tab Right records on `context/tab` and the palette that call `moveTab` with the same pinned clamp and announce through `notify`.
-- Grid column order without a drag: a non-drag route (a column menu's Move Left / Move Right, or an order control in the view settings), or a recorded decision that the order is out of scope, with the reason, in §8.2's own text. Detailing decides; SC 2.5.7 has no exception for a view preference, so leaving it needs an argument rather than silence.
-- §8.2's indicator bullets rewritten to `data-dragging` / `data-drop`, and the dead `styles/panels.css` rules deleted (a reconcile riding with the implement, since the section is one claim).
+## Decisions
 
-**Related**
+- **Decided:** one plan, one pull request. The four routes share one claim, one workspace and one spec edit, and each is small; slicing would hold the marker open across several pull requests for no dependent.
+- **Decided:** the Files tree's route is Cut and Paste, not a "Move to…" folder picker, because `ui.md` §5.5, `jx-tree-item`'s `cut` prop, `files-panel.json` and `docs/studio/interface.md` already commit to it, it is §8.2's own model for the Outline, and a picker would be a second rendering of the tree.
+- **Decided:** the pair are `context/file` records (`file.cut`, `file.paste`), not panel closures, and this plan does not require `plan:studio/file-tree-command-records`. That plan turns the tree's existing hand rows into records; these two are records from the first commit, which is the critic's whole concern, and `placedFileRows` already renders any `context/file` record whose required arguments the row's facts answer. That plan inherits the `entry` fact (Integration contract).
+- **Decided:** the tree's ⌘X, ⌘V and Escape are answered by the row (an `onkeydown` in `files-panel.json`, as the Outline answers F2 and the git panel tests `ctrlKey || metaKey`), which runs the records; the records declare no `keybinding`. `studio.md` §13.3 has one `dock` scope for every dock and the context carries no finer focus fact, so a `dock`-scoped ⌘X would run `file.cut` with no `entry` from the Inspector's buttons and file a refusal in Problems. The cost: the row menu prints no chord for them; the docs page and §8.2 name the keys.
+- **Decided:** statement Move up / Move down are card controls beside the card's Delete, not command records. The statement editor edits a value inside an Inspector-style editor (`studio-ui-guidelines.md` §12.4 calls the Inspector "not a command surface"), it is mounted by two hosts at once (`signals-panel.ts`, `events-panel.ts`), and the command context has no key that addresses one card in one of them. Its Add, Delete, Add else and Remove branch are card controls already.
+- **Decided:** every route reports through `notify.success` with a per-surface `key` (`"tab-move"`, `"file-clipboard"`, `"statement-move"`, `"grid-column-move"`), so a run of moves replaces one toast rather than stacking four, and the announcement comes from `notify()` as §13.1a requires (never a direct `announce()`).
+- **Decided:** a tab moved by command is promoted, as `placeTab` promotes a dropped one ("a drag is a commitment"), and moves only within its pane's pinned group, through `reorderWithinPane`.
+- **Open:** do Move Tab Left / Move Tab Right carry chords? Recommendation: yes, `mod+shift+pageup` / `mod+shift+pagedown` (global scope), because that is VS Code's Windows/Linux binding and Chrome's own tab-move chord, it is free in Studio's table, and without a chord the only keyboard route is the palette. `formatChord` needs `PgUp` / `PgDn` labels for it.
+- **Open:** grid column order: implement a route, or record it out of scope in §8.2? Recommendation: implement it in the View panel's Columns list, because SC 2.5.7 has no exception for a view preference, the list already names every column, and the write is the `saveGridLayout({ order })` the drag already makes. A header menu (Move Left / Move Right on each column) is the heavier alternative: Tabulator's `headerMenu` module is not registered and would be a second menu system beside the kit's.
 
-- `studio.md` §16.3 (the Logic tab in the Bottom dock), §9.1.1 (create, rename, delete), §5.2 (Layers panel).
-- `studio-ui-guidelines.md` §14: the WCAG 2.2 row's SC 2.5.7 note and the ATAG row's "keyboard alternative to every drag" become true when this lands; a Standards Alignment note is not a status marker, so the census left them.
-- `ui.md` §5.5 (`jx-tree` and the drop attributes).
+## Implementation
+
+**1. Tabs** (`packages/studio/src/workspace/workspace.ts`, `src/commands/keymap.ts`)
+
+- `export function tabStepTarget(tabId, step: -1 | 1): number | null`: the tab's index in `paneOfTab(tabId).tabOrder` plus `step`, or `null` when `reorderWithinPane(pane, tabId, at + step)` leaves the tab where it is (an end of the strip, or the pinned boundary). `export function moveTabBy(tabId, step): boolean` calls `moveTab` then `promoteTab`, returning whether it moved.
+- Two records in `tabCommands`, beside `document.togglePinned`: `document.moveTabLeft` "Move Tab Left" and `document.moveTabRight` "Move Tab Right"; `category: "Document"`, `level: "document"`, `menus: ["context/tab", "palette"]`, `group: "3_arrange"`, `when: ctx.document.open`, `enablement: tabStepTarget(workspace.activeTabId, ∓1) !== null`, `requires: "a tab with room to its left (or right) in its own group: pinned tabs stay ahead of the rest"`, `undo: "none"`, no `aiTool` (§12.4 deletion rule 1, chrome). `run`: `moveTabBy(activeTabId, step)`, then `notify.success(\`Moved the tab to position ${n} of ${total}\`, { key: "tab-move", source: "Tabs" })`. Keybindings per the Open decision. `openTabContextMenu` already activates the chip first, so the menu row moves the tab that was right-clicked.
+- `KEY_LABELS` in `keymap.ts` gains `pageup: "PgUp"` and `pagedown: "PgDn"` (only if the chords are taken).
+- `tab-drop.ts` keeps calling `moveTab`; the clamp stays one function.
+
+**2. Files tree** (new `packages/studio/src/files/file-move.ts`; `src/files/files.ts`, `src/surfaces/files-panel.json`, `src/surfaces/files-panel.ts`, `src/studio.ts`, `src/commands/app-commands.ts`)
+
+- `file-move.ts`, DOM-free at module scope (it joins `appCommandSet()`), `@docs studio/interface`:
+  - `canMoveInto` moves here from `files.ts` unchanged, with the normalising parent-directory helper it reads; `files.ts` imports it (the drag island is its only other caller), so the drop, the monitor, the row facts and the paste share one predicate (`studio.md` §9.1.1 rule 2).
+  - The pending cut: `cutEntry(): string | null`, `setCutEntry(path | null)`, `forgetCut(path)` (clears when the cut is `path` or lies under it).
+  - `interface FileMoveDeps { move(from: string, to: string): Promise<boolean>; repaint(): void }`, `noopFileMoveDeps()`, `fileMoveCommands(deps)` and `registerFileMoveCommands(registry, deps)`.
+  - `file.cut` "Cut": `args: argsSchema({ entry: stringProperty(…) })`, `level: "project"`, `menus: ["context/file"]` (not the palette: `paletteArgs` cannot prompt for a free-text path, as `file.convertFormat` records), `group: "2_move"`, `when: ctx.project.open`, `undo: "none"`. `run` sets the cut, repaints, and `notify.info(\`Cut ${name}. Paste it into a folder to move it.\`, { key: "file-clipboard", source: "Files" })`.
+  - `file.paste` "Paste": `args: { into }`, same level, placement and group, `enablement: cutEntry() !== null`, `requires: "a file or folder cut in the Files tree"`, `undo: "none"`. `run` refuses with a `RangeError` naming both paths when `!canMoveInto(cut, into)` (a scripted caller can ask for anything), then `deps.move(cut, join(into, basename(cut)))` and clears the cut only when the move landed, so a failed paste can be retried.
+- `files.ts`:
+  - `moveFileEntry` returns `Promise<boolean>` (true after `notifyMoveOutcome`, false from the catch) and calls `forgetCut(oldPath)` on success; `renameFile` and `deleteFile` call `forgetCut(entry.path)` on success; `loadProject` clears the cut.
+  - `export function fileMoveDeps(): FileMoveDeps` returns `{ move: (from, to) => moveFileEntry(from, to, repaintFiles), repaint: repaintFiles }`.
+  - `pasteTargetOf(row)`: a directory row's own path, a file row's parent (`.` at the root, which `project.json` always gives a row).
+  - `fileRowFacts` states `entry` on every row, and `into = pasteTargetOf(row)` unless a cut is pending and `canMoveInto(cut, into)` is false. So with nothing cut, Paste renders disabled with its `requires`; with a cut pending it is offered only where a drop would be accepted, and never on the cut row itself.
+  - `FilesPanelValues` gains `cutPath` (`filesPanelValues`, `emptyFilesPanelValues`); `FILE_ACTIONS` gains `cut(path)`, `paste(path)` and `cancelCut()`, each running its record through `runActiveReported(…, "Files")` (`cancelCut` clears, repaints, and says "Cut cancelled" under the same key).
+- `files-panel.json`: the `jx-tree-item` row gains `"cut": "${state.cutPath === $map.item.path ? '' : null}"` and an `onkeydown` that, when `event#/ctrlKey || event#/metaKey`, maps `x` to `cut` and `v` to `paste` with `$map/item/path`, and maps `Escape` to `cancelCut`, each with `preventDefault` and `stopPropagation`. The tree's `$description` names which chords the flow now answers. `files-panel.ts`'s `FilesPanelActions` and `FilesPanelValues` follow.
+- `studio.ts`: `registerFileMoveCommands(commandRegistry, fileMoveDeps())` beside `registerFileFormatCommands`. `app-commands.ts`: `...fileMoveCommands(noopFileMoveDeps())` in the same position.
+
+**3. Statements** (`src/panels/statement-editor.ts`, `src/surfaces/statements.ts`, `src/surfaces/statements.json`)
+
+- Extract `export function reorderLane(lane, from, to): JxStatement[]` from `registerStatementsDnD`'s `onDrop` splice; the drop keeps its instruction arithmetic and calls it.
+- `StatementRowView` gains `canMoveUp` / `canMoveDown` (a card's `index > 0` / `index < list.length - 1`; `false` on every other row); `StatementActions` gains `move(key, step)`.
+- `statements.json`: two `jx-action-button`s in `card-head` before Delete, `part="move-up"` / `"move-down"`, `size: sm`, `quiet`, icons `arrow-up` / `arrow-down`, labels "Move statement up" / "Move statement down", `disabled` bound to the negated flag. The `[part="drag"]` description points at them.
+- `mountStatementEditor`'s `move`: `card.commitLane(reorderLane(card.list, card.index, card.index + step))`, `notify.success("Moved the statement up" | "down", { key: "statement-move" })`, and a pending focus recorded per host (`WeakMap<HTMLElement, { lane, index, part }>`). The next mount for that host focuses the same part on the card now at `index + step` (card keys are `lane#index`, so the pressed button's own node stays behind), falling back to the other move button when that one is disabled.
+
+**4. Grid columns** (`src/grid/grid-layout.ts`, `src/grid/grid-panel.ts`, `src/grid/grid-view.ts`, `src/surfaces/grid-views.ts`, `src/surfaces/grid-views.json`)
+
+- `grid-layout.ts`: `orderedFields(fields, order)` (saved order first, unknowns after in source order: the rank `applyGridLayout` already sorts by, extracted so both share it), `moveInOrder(order, field, step): string[] | null`, and `withVisibleOrder(full, visible)` (the drawn fields take the drag's new relative order, hidden fields keep their slots).
+- `projectViews` lists columns in `orderedFields` order, and `GridColumnToggle` gains `canMoveUp` / `canMoveDown`. `openViewPopover` gains `moveColumn(field, step)`: `change({ order: next }, () => panel.remount())`, then `notify.success(\`Moved ${title} left|right\`, { key: "grid-column-move", source: "Grid" })`.
+- `grid-views.json`: each column becomes a row (`part="column-row"`) holding the existing checkbox, unchanged (`part="column"`, `data-field`), and two quiet `sm` `jx-action-button`s, `part="column-up"` / `"column-down"`, icons `arrow-up` / `arrow-down`, labels "Move ‹title› left" / "Move ‹title› right". The section title reads "Columns, left to right".
+- `grid-view.ts`'s `columnMoved` saves `withVisibleOrder(orderedFields(all, saved order), ordered fields)`, so a drag after a hidden column was placed keeps its slot.
+
+**5. Dead rules**: delete `packages/studio/styles/panels.css`'s leading `.file-tree*` and `.layer-row*` rules (lines 1–39), after a grep of `src/`, `index.html` and `packages/ui` confirms no emitter of any of their class names. Three comments that call those rules survivors are updated with them: `tests/outline-fixture.ts`, `tests/stylebook-layers-panel.test.ts` and the `$description` of `src/surfaces/panel-stylebook-layers.json`.
+
+**Integration contract.** Once this lands: `file-move.ts` owns `canMoveInto`, the pending cut (`cutEntry`, `setCutEntry`, `forgetCut`) and the `file.cut` / `file.paste` records; `fileRowFacts` states `entry` (every row's own path) and `into` (the paste target), and `plan:studio/file-tree-command-records` should key its path-taking file records on `entry` rather than minting another name for "this row". `moveFileEntry` returns whether the move landed. `workspace.ts` exports `tabStepTarget` and `moveTabBy`, and `document.moveTabLeft` / `document.moveTabRight` are `context/tab` records, so whatever projector `plan:studio-ui-guidelines/name-and-chord-gaps` puts behind that menu prints them (with their chords, if taken). `grid-layout.ts` exports `orderedFields`, `moveInOrder` and `withVisibleOrder`. §8.2 tables one route per drag, and a new drag source must add its row.
+
+## Tests
+
+`packages/studio`, `bun test --isolate --coverage` from the workspace directory.
+
+- **New `tests/file-move.test.ts`**: `canMoveInto refuses a directory onto itself, into its descendant, and into the directory already holding it, on either slash spelling`; `file.cut records the entry and says so under the file-clipboard key`; `file.paste is disabled with its requires sentence until something is cut`; `file.paste moves the cut entry into the target and clears the cut` (deps double records `move("a/x.json", "b/x.json")`); `a paste that fails keeps the cut` (`move` resolves false); `file.paste refuses an impossible target with a RangeError naming both paths`; `forgetCut clears a cut at or under a path and leaves an unrelated one`; `the records are project-level, on context/file only`.
+- **`tests/files-tree.test.ts`**, new describe "moving without a drag": `a file row's menu offers Cut, and Paste disabled until something is cut`; `after a cut, Paste is offered on a folder and on a file in another folder, and not on the cut row or its own folder`; `the cut row carries jx-tree-item's cut`; `⌘X then ⌘V on focused rows moves the file, reports "Moved to", and clears the cut`; `Escape on the tree cancels a pending cut`; `renaming or deleting the cut entry forgets the cut`; `Paste on a root-level file lands the entry at the project root`. The drag-island describe stays green unchanged (the predicate moved, its behaviour did not).
+- **`tests/panes.test.ts`**, "pinning and reorder": `tabStepTarget is null at the strip's ends and at the pinned boundary`; `moveTabBy moves one slot, promotes a preview tab, and never interleaves pinned with unpinned`. Beside "the two new tab commands": `Move Tab Left and Right are disabled with their requires at the ends and run moveTabBy on the active tab`, `a move reports its position under the tab-move key`.
+- **`tests/tab-strip.test.ts`**, "tab context menu": `the menu offers Move Tab Left and Right, and running one moves the right-clicked chip`.
+- **`tests/commands-keymap.test.ts`**: `pageup and pagedown print as PgUp and PgDn on both platforms` (if the chords are taken).
+- **`tests/statement-editor.test.ts`**: "every card has a drag handle and a delete button" becomes "…, move buttons and a delete button". New: `reorderLane moves one statement and leaves the input untouched`; `the first card's Move up and the last card's Move down are disabled`; `Move down swaps a top-level statement with the one below it through onChange`; `Move up inside a Then lane writes through the branch statement`; `after a move the pressed button's part is focused on the moved card`; `a move reports through notify under the statement-move key`. The drag-reorder cases stay green through `reorderLane`.
+- **`tests/grid-layout.test.ts`**: `orderedFields puts saved order first and unknown fields after in source order`; `moveInOrder swaps with a neighbour and is null at either end`; `withVisibleOrder reorders drawn fields and keeps hidden fields in their slots`.
+- **`tests/grid-panel.test.ts`**, "saved views": `the Columns list is drawn in the working order, hidden columns included`; `a column's move buttons are disabled at the ends`; `Move right saves the order, remounts the engine and reports under grid-column-move`; the `toggleColumn` helper keeps working, since the checkbox keeps its `part` and `data-field`.
+- **`tests/grid-view.test.ts`**: the `columnMoved` case gains `a drag keeps a hidden column's saved slot`.
+- **`tests/grid-surfaces.test.ts`** adds `moveColumn` to its no-op action set. **`tests/app-commands-composition.test.ts`** stays green with `file.cut` / `file.paste` in both the app registry and `appCommandSet()`; `scripts/check-command-levels.ts` and `scripts/check-chrome-budget.ts` pass (no cap is touched).
+- Coverage: per-file `lines = 0.958, functions = 0.941` (`packages/studio/bunfig.toml`). `file-move.ts` is a new source file and ships with `tests/file-move.test.ts` in the same pull request at 100%, so `bun scripts/check-coverage-manifest.ts packages/studio` finds it. No workspace's worst file is expected to move; ratchet only if it does.
+
+## Specs & docs
+
+**`specs/studio-ui-guidelines.md` §8.2**, in place:
+
+- Leading marker → `> **Status: Implemented.** Every drag Studio has is tabled under Moving without dragging with its route without one.`
+- The preamble names every pragmatic source: layer reordering, canvas element manipulation, statement reorder, Files-tree moves, the tab strip and the pane grid's right edge; a data grid's column drag is Tabulator's own (`movableColumns`).
+- The indicator bullets: **Drag indicator**: `data-dragging` on the row, chip or card being carried (opacity 0.4), written by the drag island, styled by the element or surface (`jx-tree-item`, `surfaces/tab-strip.json`, `surfaces/statements.json`) and bound by nothing (`ui.md` §5.5). **Drop target**: `data-drop` on what a drop lands in or beside (a tree row's accent wash and dashed outline, a tab chip's inset accent edge, a statement card's accent border above or below). **Drop line**: the 2px accent bar between elements on the canvas. The canvas bullet stays.
+- Subsection marker → `> **Status: Implemented.**`. The cut-and-paste paragraph is corrected: Cut has a chord, an element-menu row and a palette row, and Paste a chord and a palette row. The "APG keyboard-drag mode" paragraph stays. The "Move up / Move down … in one keystroke" paragraph is replaced by a table, one row per drag: an Outline row or canvas block anywhere (Cut, then Paste); among its siblings (Move Up / Move Down on the block bar and the Outline row, Move Into Previous / Move Out of Parent on the row); an Insert card (a click inserts at the selection); a Files-tree row onto a folder (Cut, then Paste on the row's menu, or ⌘X then ⌘V on a focused row); a tab along its strip (Move Tab Left / Right, with their chords if taken); a tab onto the other pane or the grid's edge (Split Right, Open to the Side, as the paragraph after says); a statement card (Move up / Move down on the card); a grid column header (Move left / right beside the column in the View panel's list); a desktop file onto a folder (Upload Files… on the folder's menu). Two sentences follow: each route reports through `notify` under one key per surface, so a run of moves replaces its toast; and a Files-tree cut moves nothing until the paste, fades its row, is forgotten on Escape, a second cut, or a rename, delete or move of the entry, and is offered as a paste only where a drop would be accepted. The tree answers the chords itself because `studio.md` §13.3's `dock` scope spans every dock.
+- **§14**, WCAG 2.2 row: "**SC 2.5.7** (Dragging Movements) — cut/paste is the stated alternative to every drag" becomes "**SC 2.5.7** (Dragging Movements): every drag has a route without one, tabled in §8.2 (cut and paste for elements and files, move verbs for elements, statements, tabs and grid columns, Split Right for a tab's pane)"; its Evidence cell gains `packages/studio/tests/file-move.test.ts`. The ATAG row is left as it is, now true.
+- Fragment: `bun run spec:change studio-ui-guidelines.md minor -m "Every drag has a route without one: Cut and Paste move a Files-tree entry, Move Tab Left and Right reorder a strip, statement cards and a grid's column list gain Move up and Move down, and the drag indicators are named as the data-dragging and data-drop attributes the elements style."`
+
+**`specs/studio.md`**, in place: §14.4's Reorder row adds "**Move Tab Left** / **Move Tab Right** (`document.moveTabLeft`, `document.moveTabRight`, on the tab's menu and in the palette) are the route without a drag, under the same clamp"; §9.1.1's "A refused drop is refused" rule 2 adds that the Files tree's Paste reads the same predicate, so a paste is offered only where a drop would land. Fragment: `bun run spec:change studio.md minor -m "A tab moves along its strip by Move Tab Left and Move Tab Right under the pinned clamp a drag uses, and a Files-tree entry moves by Cut and Paste through the predicate a drop reads."`
+
+**Docs** (no em dashes; `bun run docs:sync` names these through their `code:` lists):
+
+- `docs/studio/interface.md` (Files): after the drag-move paragraphs, "To move without dragging, right-click the file or folder and choose **Cut** (or press :kbd[⌘X] on its row), then right-click the folder it should go into, or any file already in that folder, and choose **Paste** (:kbd[⌘V]). The cut row fades until you paste, and :kbd[Esc] cancels. Paste is offered only where a drop would be accepted." `code:` gains `packages/studio/src/files/file-move.ts`.
+- `docs/studio/interface/tabs.md`: "Drag along the strip to reorder" gains "or right-click a document and choose **Move Tab Left** or **Move Tab Right**" (with the chords, if taken); "Dragging can never interleave pinned documents with unpinned ones" becomes "Moving a document, by dragging or by command, never interleaves…".
+- `docs/studio/logic/statements.md`: the card sentence names **Move up** and **Move down**, and "Drag cards to reorder them" becomes "Drag cards, or use their move buttons, to reorder them within their list". `statement-editor.png` changes; the screenshots lane re-captures it and lists the page.
+- `docs/studio/editing/grid.md`: "Drag column headers to reorder them" gains "or use the move buttons in **View** › **Columns**"; the Columns bullet says the list is in the table's order, top to bottom is left to right, and the buttons beside a column move it.
+- `docs/studio/projects/pages-layouts-components.md`: "Dragging a file to a new folder in the Files panel does the same refactor" becomes "Moving a file to a new folder in the Files panel, by dragging it or by Cut and Paste, does the same refactor".
+- Checked, no change: `docs/studio/data/grid.md`, `docs/studio/editing.md`. The shortcuts and commands pages are generated and pick the records up.
+
+studio-ui-guidelines.md keeps other open items, so it does not graduate.
+
+## Acceptance
+
+- `bun run plans:check`, `bun run docs:status`, `bun run docs:check`, `bun run docs:links`, `bun run docs:standards`, `bun run docs:prose` and `bun run docs:spec-release` pass; `bun run plans:status --spec studio-ui-guidelines` no longer lists §8.2.
+- `bun test --isolate --coverage` in `packages/studio` is green and `bun scripts/check-coverage-manifest.ts packages/studio` passes.
+- `grep -rn "file-tree-item\|layer-row\|drag-over" packages/studio/styles` is empty.
+- In a running Studio (the `packages/studio:verify` recipe), with no pointer drag: ⌘X on a Files row and ⌘V on a folder moves the file and toasts "Moved to …"; a tab's menu moves it along its strip, never across the pinned boundary; a statement card's Move down reorders the body and focus follows the card; View › Columns moves a column and the order survives reopening the grid.

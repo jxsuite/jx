@@ -1,15 +1,16 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - spec.md#8.5
-size: M
+requires: []
 workspaces:
-  - packages/compiler
   - packages/runtime
+  - packages/compiler
+size: L
 ---
 
-# Built output distributes slotted children by `name`, in the component module and in the prerender, as the interpreter does
+# Built output distributes slotted children by `name`, in the component module and in the prerender, by one rule the interpreter shares
 
 ## Context
 
@@ -17,24 +18,149 @@ workspaces:
 
 > **Status: Partial.** The interpreter distributes by `name` as described (`distributeSlots` in `packages/runtime/src/runtime.ts`). Built output does not. The component module's light-DOM emulation (`compile-element.ts`) finds the first `<slot>` and moves every slotted child there whatever its `slot` name, and the static prerender (`renderStaticNode` in `packages/compiler/src/shared.ts`, reached through `expandComponents` in `packages/compiler/src/site/site-build.ts`) substitutes all of the instance's children for every `<slot>`, so the example below prerenders the header and the body into both `<header>` and `<main>`.
 
-The section's trailing `Implemented` marker describes the interpreter and stays. §16.6 specifies the same distribution's other half ("A `<slot>` leaves no node") and its marker names the same two emitters; `plan:spec/shadow-dom-parity` owns §16.6 and requires this plan for that part.
+The trailing `> **Status: Implemented.**` marker describes the interpreter. §16.6's leading Partial marker names the same two emitters as its third open part; `plan:spec/shadow-dom-parity` owns §16.6 and requires this plan for that part.
 
-Reproduced by a reviewer: `preRenderComponentHtml` on §8.5's card with `<h1 slot="header">T</h1><p>Body</p>` returned `<header><h1 slot="header">T</h1><p>Body</p></header><main><h1 slot="header">T</h1><p>Body</p></main>`.
+Verified against the code (the census's evidence holds; the last six points are new):
 
-**What exists**
+- **Interpreter.** `connectedCallback` in `packages/runtime/src/runtime.ts` takes `[...this.childNodes]`, clears the host, renders, then calls the module-private `distributeSlots(host, slottedChildren)`: an element with a truthy `slot` attribute joins that name's group, every other node (whitespace text and comments included) joins the unnamed group, and each `querySelectorAll("slot")` result is `replaceWith`ed by its group, or by its own children when the group is empty. Covered by `packages/runtime/tests/runtime-gaps-elements.test.ts` ("distributeSlots").
+- **Component module.** `emitElementModule` in `packages/compiler/src/targets/compile-element.ts` emits, when `treeHasSlot(doc.children)` and the component is light: `_slotted = Array.from(this.childNodes).filter(n => n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim()))` before the render, and `const _slot = this.querySelector('slot'); if (_slot && _slotted.length > 0) { for (const n of _slotted) _slot.before(n); _slot.remove(); }` after it. One slot takes everything, and a slot stays in the tree when nothing was slotted. `compile-element.test.ts` ("slot handling") and `shadow-dom.test.ts` assert only the emitted text.
+- **Prerender.** `renderStaticNode(node, scope, slotContent, context)` returns `slotContent` for any `tag === "slot"` when it is non-null. `expandComponents` (page-level instances) and `renderComponentInstance` (instances inside a definition) build `slotContent` by joining every instance child's HTML with `"\n"`. A reviewer's reproduction, re-run for this plan: `preRenderComponentHtml` on §8.5's card with `<h1 slot="header">T</h1><p>Body</p>` returns `<header><h1 slot="header">T</h1><p>Body</p></header>\n<main><h1 slot="header">T</h1><p>Body</p></main>`.
+- **A light instance given no children keeps its `<slot>` in the prerender.** `slotContent` is `null` then, so `<slot></slot>` is emitted literally (`prerender-nested-components.test.ts` pins it: "a nested instance with no children leaves the definition's slot in place"). §16.6's "A `<slot>` leaves no node" is false for that output too.
+- **A prerendered instance that upgrades captures its own prerender as slot content.** A non-static instance is stamped `data-jx-prerendered` with the definition's prerendered markup as its children. Its module reads `this.childNodes` (that markup), clears, re-renders, and moves the markup into the first slot, so the §8.5 card made non-static upgrades to its own template nested inside its header. No code handles this in either tier.
+- **Removing a lit-rendered `<slot>` is unsafe.** lit ends a child part at the node that followed its marker when the template was cloned (`new ChildPart(node, node.nextSibling, …)` in `lit-html` 3.3). A `$map` or `$switch` written directly before a `<slot>` ends at that slot; once the slot is removed, the part's next non-text update clears every later sibling (`_$clear` walks to an end node it never meets) and then throws. A binding that is the last fallback child ends at `null` and, once unwrapped, appends to the end of its new parent. The module's filter also drops the parent's own lit markers, so a compiled parent's `${…}` text slotted into a compiled child throws on its next update (`_commitText` reads the detached marker's `nextSibling`).
+- **`treeHasSlot` looks only at `children`**, so a definition whose only `<slot>` sits in a `$switch` case or a mapped-array template emits no capture and discards its children, where the interpreter distributes whatever `querySelectorAll("slot")` finds.
+- **The tiers disagree on forwarding.** The interpreter's `connectedCallback` awaits `buildScope` before capturing, so an enclosing element distributes into a nested instance's children before that instance captures them: a named group forwarded through `<inner-card><slot name="header"></slot></inner-card>` reaches the nested element as elements still named `header`. The module (whose nested element captures synchronously, while the enclosing template renders) and the prerender group the forwarding `<slot>` itself as an unnamed child, which is the platform's forwarding. The kit forwards once, through a non-direct child (`jx-color-field`'s `tokens` slot inside `jx-popover`), where all tiers agree.
+- **The unspecified corners differ.** Duplicate names: the interpreter's `replaceWith` moves a group to the last same-named slot and leaves earlier ones empty, fallback included; `fillSlots` in `packages/site/src/layout.ts` (layouts, site-architecture.md §5.3) gives a named group to the first. Whitespace: the interpreter counts it as content; the module drops it with `trim()`, which also drops a `&nbsp;`.
 
-- `distributeSlots` in `packages/runtime/src/runtime.ts`: named and unnamed matching, fallback unwrap, no `<slot>` left behind; `packages/runtime/tests/custom-elements.test.ts`.
-- The component module's emulation in `packages/compiler/src/targets/compile-element.ts`: `_slotted` collects the host's element and non-blank text children, then `const _slot = this.querySelector('slot'); if (_slot && _slotted.length > 0) { for (const n of _slotted) _slot.before(n); _slot.remove(); }`, so one slot, only when something was slotted.
-- The static prerender: `if (tag === "slot" && slotContent != null) return slotContent;` in `renderStaticNode` (`packages/compiler/src/shared.ts`), where `slotContent` is every instance child rendered and joined by `expandComponents` in `packages/compiler/src/site/site-build.ts` (`null` for a shadow component, whose declarative root projects its light children).
+The kit depends on this: `jx-button` (`icon` and default), `jx-menu-item` (five slots), `jx-tab`, `jx-tree-item` and `jx-field` all distribute by name, so on a built site today their named children land in the first slot.
 
-**What is missing**
+## Outcome
 
-1. One distribution rule for both emitters, matching `distributeSlots`: each `<slot>` takes the children whose `slot` attribute names it (the unnamed slot takes the rest), is replaced by them or by its own fallback children, and never survives into the tree.
-2. The prerender receives the instance's children as nodes (or a name-keyed map) rather than one joined string, so it can distribute by name.
-3. The rule is inlined into generated modules from one runtime export with a drift test, as `attrHelperSource()` does for §8.3, so the interpreter and the module cannot diverge again.
-4. Tests: the §8.5 example through `compileElement` (run in happy-dom) and through `preRenderComponentHtml`, with named, unnamed, unmatched-with-fallback and empty cases.
+- spec.md §8.5 → Implemented. §8.5 states the rule (capture, group, place, forward) once, and the interpreter, the component module and the prerender apply it, held together by one fixture table. No light-DOM `<slot>` element survives in any tier. A prerendered instance that upgrades recovers the children the prerender placed.
+- §16.6's marker loses its third open part; its other two (interpreter shadow support, `defaults` into `compileElement`) stay with `plan:spec/shadow-dom-parity`.
 
-**Related**
+## Decisions
 
-- §16.6 (light-DOM rendering, `plan:spec/shadow-dom-parity`), §9.2 (`jxs` handles on slotted children).
-- `compiler.md` §4 (custom element compilation), `site-architecture.md` (component expansion).
+- **Decided:** the rule is two exported runtime functions, `captureSlotted` and `distributeSlots`, inlined into generated modules by `slotHelperSource()` in the compiler with the whitespace pattern, marker word and attribute name serialized from runtime exports, and held to the runtime by a behavioural test. This is the spec-wide decision in `plans/spec/README.md`, with `plan:spec/compiled-cookie-attributes`'s reasons for keeping the source in the compiler: `Function.prototype.toString()` depends on which transpiler loaded the runtime, and `dist/runtime.js` should not carry a code string it never runs.
+- **Decided:** the prerender applies the rule to the instance's children as definitions (`createSlotFill`), not to one joined string, and a shared fixture table holds it to the other two tiers. It works on JSON and HTML strings and cannot call a DOM function, so the table is the proof of "as the interpreter does".
+- **Decided:** the module keeps `<slot>` as a lit placeholder and unwraps it after the first render, but `emitLitNode` writes an empty comment `<!---->` before every `<slot>` and before its closing tag. Those comments are what the adjacent and trailing child parts end at instead of the slot. Comments affect neither `:empty` nor child combinators, so §16.6's "leaves no node" still holds in the selector tree it is about. The guards are emitted in shadow mode too, where they are inert, so `emitLitNode` needs no mode flag.
+- **Decided:** a non-static light instance recovers its children from comment brackets. The prerender stamps the host `data-jx-slots="<n>"`, with `n` unique in the page, and wraps each placed group in `<!--jx-slot n-->` … `<!--/jx-slot n-->`; `captureSlotted` returns the nodes inside this host's brackets when the attribute is present and removes it. Ids are needed because a forwarded group sits inside a nested instance's own brackets. Recovery returns only what the prerender placed, which differs from the live render only when a `$switch` in the definition resolves differently after upgrade.
+- **Decided:** grouping reads `attributes.slot`, the documented form (`elements.md`, `authoring-rules.md`), and falls back to a node-level `slot` string, which is `Element.slot` and reflects in the interpreter. `buildAttrs` drops node-level properties (§8.1), so the prerender moves a node-level `slot` into `attributes` when it renders that child; otherwise a recovered child would regroup as unnamed.
+- **Decided:** `treeHasSlot` moves to `shared.ts` as `definitionHasSlot` and walks `$switch` cases and mapped-array templates too. The module uses it to decide whether to emit capture and distribution, and the prerender uses it to decide whether to stamp `data-jx-slots`.
+- **Decided:** distribution still runs once per connection in every tier, and §8.5 says so. Both tiers already work this way; redistributing on later host mutations is new behaviour no item claims.
+- **Open:** what counts as content? Recommendation: discard whitespace-only text at capture (HTML's ASCII whitespace, so `&nbsp;` stays). Keep empty text nodes and comments in their group, and show fallback when a group holds no element and no non-empty text. The reasons: compiled hosts are parsed HTML or lit templates full of formatting whitespace, and whitespace placed in a `-slot` part makes its `:empty` false in every shipping browser. Comments are lit's part markers and the interpreter's `$map` anchor, and they must travel with the nodes they manage. The interpreter changes in two corners: a whitespace-only child no longer suppresses fallback, and a group holding only an empty list's anchor shows fallback.
+- **Open:** what happens when two `<slot>`s share a name? Recommendation: the first in tree order takes the group and a later one shows its fallback. That is the DOM standard's "find a slot", and it keeps the answer unchanged when a component moves to `$shadow`. The interpreter's last-wins-and-empty result is an accident of `replaceWith` moving nodes. Layout slots (`fillSlots`, which copies the unnamed group into every unnamed slot) belong to site-architecture.md §5.3, sit outside this claim and stay as they are.
+- **Open:** does §8.5 specify forwarding, and does the interpreter change to match? Recommendation: yes. A `<slot>` written directly among a nested instance's children is that instance's child, grouped by its own `slot` attribute, and the enclosing group stands where it lands. The module and the prerender do this by construction. The interpreter gets there with a module-level `WeakMap`: when `distributeSlots` replaces a `<slot>` whose parent is a custom element other than the host, it records the forwarding slot's own `slot` value on each node it puts there, and a later `distributeSlots` reads that record before the node's attribute. The alternative is to state forwarding for built output only and mark the interpreter's direct named forwarding `Future`, which leaves the tiers split exactly where components compose.
+
+## Implementation
+
+**CSD1.1: the rule, in the interpreter and the component module**
+
+1. `packages/runtime/src/runtime.ts`
+   - `export const SLOT_WHITESPACE = /^[\t\n\f\r ]+$/`, `export const SLOT_MARK = "jx-slot"`, `export const SLOT_ATTR = "data-jx-slots"`. The `+` keeps an empty text node out of the pattern.
+   - `export function captureSlotted(host: Element): ChildNode[]`: without `SLOT_ATTR`, `[...host.childNodes]`. With it, the function removes the attribute, walks `document.createTreeWalker(host, NodeFilter.SHOW_COMMENT)`, and for each comment whose data is `` `${SLOT_MARK} ${id}` `` collects its following siblings up to the comment `` `/${SLOT_MARK} ${id}` ``.
+   - `distributeSlots` becomes `export function distributeSlots(host: ParentNode, captured: readonly ChildNode[]): void`. It keeps the no-early-return comment. It skips a text node matching `SLOT_WHITESPACE`. The group name is `forwardedSlot.get(n) ?? (element ? n.getAttribute("slot") ?? "" : "")`, and the record is deleted once read. A `taken` set gives each name to its first slot in `querySelectorAll` order. `placed = [...group, ...(hasContent(group) ? [] : slot.childNodes)]`, where `hasContent` is "an element, or a text node whose data is not empty". When `slot.parentElement` is a custom element other than `host`, `forwardedSlot.set(n, slot.getAttribute("slot") ?? "")` runs for each placed node. Then `slot.replaceWith(...placed)`. Each rule gets its reason in the doc comment, citing spec.md §8.5.
+   - `connectedCallback`: `const slottedChildren = captureSlotted(this);` replaces `[...this.childNodes]`.
+2. `packages/compiler/src/shared.ts`
+   - `export const SLOT_CAPTURE_HELPER = "__jxCaptureSlotted"` and `export const SLOT_DISTRIBUTE_HELPER = "__jxDistributeSlots"`.
+   - `export function slotHelperSource(): string` returns a `const __jxSlotWs = new RegExp(<JSON of SLOT_WHITESPACE.source>)` and two ES2020 `function` declarations with numeric node types (1, 3, 8) and filter `128`. Each mirrors its runtime counterpart except that the distributor has no forwarding record: a compiled nested element captures synchronously while the enclosing template renders, before the enclosing element distributes, so it receives the forwarding `<slot>` itself. `SLOT_MARK` and `SLOT_ATTR` are written with `JSON.stringify`. The doc comment points at `attrHelperSource`'s "why inlined" paragraph.
+   - `export function definitionHasSlot(children: JxMutableNode["children"]): boolean`: `treeHasSlot`, moved, and extended into `cases` values and into `map` of a mapped array (including a whole-children mapped array).
+3. `packages/compiler/src/targets/compile-element.ts`
+   - `emitElementModule`: `hasSlot = definitionHasSlot(doc.children)`. When `hasSlot && shadow === null`, it pushes `slotHelperSource()` after `attrHelperSource()`, replaces the `_slotted` filter line with `const _slotted = __jxCaptureSlotted(this);` (still before `data-jx-prerendered` is removed and before `replaceChildren()`), and replaces the `_slot` block with `__jxDistributeSlots(this, _slotted);` after the render effect. The comment above it is rewritten to cite spec.md §8.5.
+   - `emitLitNode`: for `tag === "slot"`, it emits `<!---->` before the opening tag and before `</slot>` in both the indented and the preformatted return, with the lit end-node reason in a comment.
+   - Delete `treeHasSlot`.
+4. `packages/compiler/bunfig.toml`: add `"**/jx-slot-helper-*/**"` to `coveragePathIgnorePatterns`, commented like the temp-module entries already there.
+
+**CSD1.2: the prerender**
+
+5. `packages/compiler/src/shared.ts`
+   - `export interface SlotFill { groups: Map<string, { html: string; content: boolean }>; taken: Set<string>; id: number | null }`. `""` is the unnamed group, and one render consumes a fill.
+   - `export function createSlotFill(children, scope, render: (child) => string, id: number | null = null): SlotFill` applies the rule to definitions. It drops a literal string child that matches `SLOT_WHITESPACE`. The name is the resolved `attributes.slot` when it is a non-empty string, else the resolved node-level `slot` (rendered as `{ ...rest, attributes: { ...rest.attributes, slot } }`), else `""`. A string or number never carries a name, and neither does a mapped array. An element, `$switch` or mapped-array child is content; a string or number is content when its rendered text is non-empty. `html` joins the group's renders with `"\n"`.
+   - `ComponentPrerenderContext` gains `slotIds?: { n: number }`, and `nextSlotId(context)` increments it.
+   - `renderStaticNode(node, scope, slots: SlotFill | null = null, context)`: `null` keeps `<slot>` literal (the shadow path, and a definition rendered with no instance). For `tag === "slot"` with a fill, the name is the resolved `attributes.name` or `""`. A name already in `taken` gets no group; otherwise the slot takes its group and adds the name to `taken`. The slot returns the group's `html`, wrapped in `<!--jx-slot n-->`/`<!--/jx-slot n-->` when `slots.id` is set. It then appends `renderInner(node, scope, slots, context)` when the group has no content. When the group has content, the fallback is not rendered, but every slot name inside it is added to `taken`, matching `querySelectorAll` order.
+   - `renderInner`, `renderComponentInstance` and `preRenderComponentHtml` take `SlotFill | null` where they took `slotContent`. In light mode, `renderComponentInstance` builds `createSlotFill(node.children, scope, (c) => renderStaticNode(c, scope, slots, context), id)` with `id = !isStatic && definitionHasSlot(def.children) && node.children?.length ? nextSlotId(context) : null`, and writes `SLOT_ATTR` into `instance.attributes` when `id` is set. In shadow mode it still joins every child after `</template>` and renders the definition with `null`.
+6. `packages/compiler/src/site/site-build.ts`: `compilePage` creates `slotIds = { n: 0 }` beside `slotCss` and passes it to `expandComponents` (a new parameter, threaded through its recursion and into each `ComponentPrerenderContext`). `expandComponents` builds the light fill with its current render callback (`collectStyles` into `slotCss`, then `renderStaticNode(c, {}, null)`), assigns an id by the same predicate, stamps `node.attributes[SLOT_ATTR]`, and keeps the joined string for the shadow branch.
+
+**Integration contract.** Once this lands, a plan may rely on the following:
+
+- `@jxsuite/runtime` exports `captureSlotted`, `distributeSlots`, `SLOT_WHITESPACE`, `SLOT_MARK` and `SLOT_ATTR`.
+- `packages/compiler/src/shared.ts` exports `slotHelperSource`, `SLOT_CAPTURE_HELPER`, `SLOT_DISTRIBUTE_HELPER`, `definitionHasSlot`, `createSlotFill` and `SlotFill`. `renderStaticNode` and `preRenderComponentHtml` leave `<slot>` literal under a `null` fill and replace every slot under any fill.
+- In light DOM no `<slot>` element survives in any tier. Distribution never places whitespace-only text, and the only extra nodes beside slotted children are comments.
+- `data-jx-slots` and the brackets appear only on non-static light instances whose definition has a slot.
+- A shadow component gets none of this. When `plan:spec/shadow-dom-parity` gives the interpreter `$shadow`, it must skip `captureSlotted` and `distributeSlots` for a shadow component, as the module does.
+- spec.md §8.5 reads Implemented.
+
+## Tests
+
+Run `bun test --isolate --coverage` from `packages/runtime` and from `packages/compiler`, then `bun scripts/check-coverage-manifest.ts packages/runtime` and `… packages/compiler`. Also run `packages/ui`'s suite, which renders the kit through the interpreter. A kit test that pinned whitespace or duplicate-slot behaviour is updated to the signed rule; none is expected.
+
+CSD1.1:
+
+- **`packages/runtime/tests/distribute-slots.test.ts`** (new, `GlobalRegistrator`), calling the exports directly:
+  - "each slot is replaced by the group its name selects, and none survives"
+  - "whitespace-only text is discarded, so a host given only named children shows its unnamed fallback"
+  - "a non-breaking space is content"
+  - "an empty text node and a comment travel with the unnamed group and do not suppress fallback", which asserts their order ahead of the fallback
+  - "the first slot of a name takes the group and a later one shows its fallback"
+  - "an empty slot attribute and an empty name are the unnamed slot"
+  - "a group no slot takes is not rendered"
+  - "a slot inside a discarded fallback still takes its name"
+  - "captureSlotted returns the children when there is no data-jx-slots"
+  - "captureSlotted returns only its own brackets' nodes, including one inside a nested host, and removes the attribute"
+- **`packages/runtime/tests/runtime-gaps-elements.test.ts`** ("distributeSlots"), with two defined elements:
+  - "a named group forwarded through an unnamed slot lands in the nested element's default slot"
+  - "a forwarding slot's own slot attribute chooses the nested element's slot"
+  - "a bracketed prerender upgrades to the children it holds, not its own markup"
+  - The existing "named and unnamed slots receive matching light DOM children" stays unchanged and green.
+- **`packages/compiler/tests/slot-distribution-agreement.test.ts`** (new). `GlobalRegistrator` is registered, then `slotHelperSource()` plus `export { __jxCaptureSlotted, __jxDistributeSlots };` is written to `mkdtempSync(join(tmpdir(), "jx-slot-helper-"))` and imported once. The exported `SLOT_CASES` table rows are `{ name, template, children, expected }`: the §8.5 card, unnamed only, an unmatched name with fallback, an empty instance, duplicate names, `slot=""` with `name=""`, an unplaced group, whitespace between named children, `&nbsp;`, and a slot in a discarded fallback. For each row, `interpreter: <name>` and `module: <name>` build a host from `renderStaticNode(template, null, null)`, parse the children's HTML as the captured nodes, run `distributeSlots` or the helper, and compare `innerHTML` with `expected`. Two cases are DOM-only: a comment-only group and an empty text node. "the inlined capture agrees with captureSlotted" runs over three bracket fixtures. "the helper serializes the runtime's pattern, mark and attribute" checks the source text.
+- **`packages/compiler/tests/compile-element-slots.test.ts`** (new, the `compile-element-render.test.ts` harness; modules are written under `tests/`). It compiles a non-static §8.5 card with a `$map` written directly before its unnamed slot, a parent that slots `${state.title}` and `${state.body}` into the card, and a wrapper that forwards its own slot into the card:
+  - "distributes by name and leaves no slot"
+  - "an unmatched slot shows its fallback, and an empty host shows every fallback"
+  - "a list before a slot updates without disturbing the slotted children"
+  - "a compiled parent's text bindings keep updating inside the child's slots"
+  - "a forwarded slot lands where the nested element puts it"
+  - "a bracketed prerender upgrades to the fresh render" (hand-written markup here, generated in CSD1.2)
+- **Updates.** `compile-element.test.ts` "slot handling" asserts `__jxCaptureSlotted(this)`, `__jxDistributeSlots(this, _slotted)`, the helper exactly once, the guards around `<slot`, and no `querySelector('slot')`, and adds "a slot only inside a $switch case still distributes". `shadow-dom.test.ts` "keeps the light-DOM slot emulation" asserts the two calls, and "drops the slot emulation entirely" asserts neither call and no helper source.
+
+CSD1.2:
+
+- The agreement table gains `prerender: <name>` for every row, using `preRenderComponentHtml({ tagName: "x-case", children: template }, null, createSlotFill(children, {}, render), null)` with `"\n"` joins normalized.
+- **`packages/compiler/tests/shared.test.ts`**: the two `slotContent` tests become "a fill replaces a slot with its group" and "a null fill leaves a slot literal". Add "an empty fill unwraps every slot to its fallback", "an id brackets each placed group and not a fallback", and "a node-level slot is written as an attribute on the placed child".
+- **`packages/compiler/tests/prerender-nested-components.test.ts`**: the forwarding test takes a fill. "a nested instance with no children leaves the definition's slot in place" becomes "…unwraps the definition's slot to its fallback" (`<div class="wrap"></div>`). Add "a named group forwarded through an unnamed slot lands in the nested default slot" and "a non-static nested instance carries data-jx-slots with an id unique in the page".
+- **`packages/compiler/tests/site-build.test.ts`** ("component slot content expansion"): add a named-slot card instance whose `dist/index.html` places the header and body by name and contains no `<slot`, a non-static card that carries `data-jx-slots="1"` and its brackets, and a static card that carries neither.
+- `compile-element-slots.test.ts`'s upgrade case builds its markup with `preRenderComponentHtml` and `createSlotFill(…, 1)`.
+
+Coverage: the runtime's per-file bar is `lines = 0.963, functions = 0.98`, and the compiler's is `lines = 0.982, functions = 0.98`. No new source file is added, so the manifest check sees nothing new. Every new function is reached by the cases above. Raise a threshold only if `runtime.ts`, `shared.ts`, `compile-element.ts` or `site-build.ts` was its workspace's worst file and rises.
+
+## Specs & docs
+
+- **spec.md §8.5, body (CSD1.1).** Replace "The runtime performs manual light DOM slot distribution: … Fallback content is preserved when no matching content is provided." with the rule, as one paragraph per step. **Capture**: the host's children are taken before the template renders; text that is only HTML whitespace (space, tab, line feed, form feed, carriage return) is discarded, and an empty text node, where a binding will write, is kept. **Group**: an element whose `slot` attribute is non-empty joins that name's group, and every other child joins the unnamed group. **Place**: after the render, each `<slot>` in tree order is replaced by its group; the first `<slot>` of a name takes it, the first without a `name` (or with an empty one) takes the unnamed group, a later `<slot>` of the same name gets nothing, the slot's own children follow when its group holds no element and no non-empty text, a group no `<slot>` takes is not rendered, and no `<slot>` element survives (§16.6). **Forward**: a `<slot>` written directly among a nested instance's children is that instance's child, grouped by its own `slot` attribute, and the enclosing group stands where it lands. Close with "Distribution runs once, when the element connects. A prerendered instance that upgrades recovers the children the prerender placed rather than capturing its own markup (compiler.md §8.1)." Any Open that review declines comes out of this text.
+- **spec.md §8.5, markers.** In CSD1.1 the leading marker narrows to the prerender ("The interpreter and the component module distribute as described …; the static prerender (`renderStaticNode` …) substitutes all of the instance's children for every `<slot>`, and keeps the `<slot>` when the instance has none."). In CSD1.2 it is deleted, and the trailing marker becomes:
+
+  > **Status: Implemented.** One rule in three places. The interpreter's `captureSlotted` and `distributeSlots` (`packages/runtime/src/runtime.ts`) are exported; the component module calls inlined copies (`slotHelperSource()` in `packages/compiler/src/shared.ts`); and the prerender groups the instance's children as definitions (`createSlotFill`) before `renderStaticNode` places them. One fixture table holds all three to the same output (`packages/compiler/tests/slot-distribution-agreement.test.ts`).
+
+- **spec.md §16.6, leading marker.** CSD1.1 drops "the component module's light-DOM emulation replaces only the first `<slot>` and leaves the `<slot>` element in place when nothing is slotted"; CSD1.2 drops the third part entirely and changes "Three parts do not" to "Two parts do not". The section stays Partial and stays `plan:spec/shadow-dom-parity`'s.
+- **compiler.md §8.1 (CSD1.2)**, in "A component instance is expanded wherever it is written": "the instance's own children as its slot content" becomes "the instance's own children, placed in its slots by name (spec.md §8.5)". "a `<slot>` among them passes the grandparent's slot content through" becomes "…passes the grandparent's group of that name through". Add after the stamp sentence: "A light instance that is not static and whose definition has a `<slot>` also carries `data-jx-slots`, a number unique in the page, and each group it placed is bracketed by the comments `<!--jx-slot n-->` and `<!--/jx-slot n-->`: the element discards its prerendered markup when it upgrades, and the brackets are how it finds the children it was given." Both comments are written as inline code, so the page does not swallow them.
+- **Fragments.** CSD1.1: `bun run spec:change spec.md minor -m "§8.5 states one slot distribution rule and the interpreter and the compiled component module both apply it: whitespace-only text is discarded, the first slot of a name takes its group, fallback follows a group with no content, and a slot forwarded into a nested instance is grouped by its own slot attribute."` CSD1.2: `bun run spec:change spec.md minor -m "§8.5 the static prerender distributes slotted children by the same rule, leaves no slot element, and brackets what it placed so an upgrading element recovers it."` and `bun run spec:change compiler.md minor -m "§8.1 a prerendered component instance places its children by slot name, and a live one carries data-jx-slots with comment brackets so its element recovers them on upgrade."`
+- **Docs** (no em dashes):
+  - `docs/framework/concepts/elements.md` (`spec: spec.md#8`), "Slots": after the fallback sentence, add "Whitespace between children is not content, so a component given only named children still shows its unnamed slot's fallback. When two slots share a name, the first one in the template takes the children and the second shows its fallback. A slot written directly inside another component's children passes on what it receives, placed by its own `slot` attribute." "How it works": append "A built page distributes the same way, in the component's module and in its prerendered HTML."
+  - `docs/framework/concepts/styling.md` (`code:` lists `shared.ts`): "`data-jx-static` and `data-jx-prerendered`" becomes "`data-jx-static`, `data-jx-prerendered` and `data-jx-slots`".
+  - `docs/framework/build.md` (`code:` lists `site-build.ts`), "Components inside components": add the bullet "**Children land in the slot they name, at every level.** A live component finds the children it was given when it upgrades, so its first paint and its live render place them alike."
+  - `bun run docs:sync` also names `docs/framework/concepts/components.md` (its light/shadow table stays true), `docs/extending/ui-kit.md` (its `-slot` parts and `:empty` sentence become true of built sites) and the other pages listing `runtime.ts` or `shared.ts`, none of which describes distribution. The pull request states that none of them changes.
+- spec.md does not graduate. CSD1.2 deletes `plans/spec/compiled-slot-distribution.md`, removes it from `plan:spec/shadow-dom-parity`'s `requires`, and trims that plan's quoted §16.6 marker and its "What is missing" item 3 to the `:empty` and `& > x` re-check.
+
+## Acceptance
+
+- `bun run plans:check --audit spec` reports nothing for `spec.md#8.5`, and `bun run plans:status --who-claims spec.md#8.5` names no plan.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links` and `bun run docs:prose` pass.
+- `cd packages/runtime && bun test --isolate --coverage`, `cd packages/compiler && bun test --isolate --coverage` and `cd packages/ui && bun test --isolate --coverage` pass with their thresholds, and both manifest checks pass.
+- `grep -n "querySelector('slot')\|treeHasSlot" packages/compiler/src/targets/compile-element.ts` prints nothing.
+- The stub's reproduction, `preRenderComponentHtml(card, null, createSlotFill([h1 slot=header, p], {}, render))`, returns `<header><h1 slot="header">T</h1></header>\n<main><p>Body</p></main>`.
+- Build a site whose page uses the §8.5 card with a `state` entry and a handler, then open `dist/index.html`. The card carries `data-jx-slots="1"`, the header holds only the `<h1>` between brackets, and no `<slot` appears. In a browser, after the module loads, the header still holds only the `<h1>`, `<main>` holds only the `<p>`, and neither is nested in a second copy of the template.
+
+## Slices
+
+| Slice  | Scope                                                                                                                                                                                                                                            | Claims      | State |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- | ----- |
+| CSD1.1 | The rule in the interpreter (`captureSlotted`, `distributeSlots`, forwarding record) and the component module (`slotHelperSource`, lit guards, `definitionHasSlot`), the agreement table's two DOM columns, §8.5's rule text and narrowed marker | —           | open  |
+| CSD1.2 | The prerender (`createSlotFill`, fill-based `renderStaticNode`, ids and brackets in `renderComponentInstance` and `expandComponents`), the prerender column, the upgrade end-to-end test, compiler.md §8.1, docs, the marker flip                | spec.md#8.5 | open  |

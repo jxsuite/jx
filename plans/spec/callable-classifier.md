@@ -1,12 +1,16 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims: []
+requires: []
 size: M
 workspaces:
   - packages/schema
   - packages/runtime
   - packages/compiler
+  - packages/ui
+  - specs
+  - docs
 ---
 
 # One classifier decides whether each Function entry is a computed or a callable, and every tier calls it
@@ -15,65 +19,144 @@ workspaces:
 
 This plan claims nothing. It enables the two plans that own spec.md §5.3's Function-classification items, and both require it:
 
-- `plan:spec/computed-function-classification` owns §5.3 4b (inline bodies). It gets the "no `arguments`" condition in every tier, which is the parameter half of its marker and a bug under either reading of the usage half. What stays with that plan is the decision whether callable use also decides an inline body, and the §5.3 4b text. If it chooses the usage-based rule, it changes one branch of this classifier rather than four tiers.
-- `plan:spec/function-entry-tier-parity` owns §5.3 4d. It gets that plan's item 1, usage-based classification of a bodyless `$src` entry in the interpreter and in `compile-client.ts`, and the verdict that item 3's `$lazy` computed-use build error in `compile-client.ts` reads. Items 2 and 4 stay its own.
+- `plan:spec/computed-function-classification` owns §5.3 4b (inline bodies). It gets the "no `arguments`" condition in every tier, which is the parameter half of its marker and a bug under either reading of the usage half. The decision whether callable use also decides an inline body, and the rest of 4b's text, stay with it; if it chooses the usage rule, it changes one branch of this classifier rather than four tiers.
+- `plan:spec/function-entry-tier-parity` owns §5.3 4d. It gets that plan's item 1 (usage-based classification of a bodyless `$src` entry in the interpreter and in `compile-client.ts`) and the verdict its item 3 (`$lazy`'s computed-use build error in `compile-client.ts`) reads. Items 2 and 4 stay its own.
 
-Each stub had proposed this same classifier on its own: one function over the document, in the shape of `collectCallableRefs`, called by the interpreter and by both compiled targets. It is built once here, and each owner keeps its own marker flip.
+`specs/spec.md` §5.3 4b, line 396:
 
-The markers it serves. `specs/spec.md` §5.3 4b, line 396:
+> **Status: Partial.** The bare-`return;` rule ships in every tier through `bodyReturnsValue` (`packages/schema/src/guards.ts`). The "no `arguments`" condition holds only in the interpreter (`resolveFunction` in `packages/runtime/src/runtime.ts`): `compile-element.ts`, `compile-client.ts` and the build-time scope in `packages/compiler/src/shared.ts` classify a string body by `bodyReturnsValue` alone, so a body with declared `parameters` that returns a value compiles to a `computed()` with its parameter unbound. No tier classifies by reactive use, as the first paragraph below describes; classification reads the declaration and the body text.
 
-> The "no `arguments`" condition holds only in the interpreter (`resolveFunction` in `packages/runtime/src/runtime.ts`): `compile-element.ts`, `compile-client.ts` and the build-time scope in `packages/compiler/src/shared.ts` classify a string body by `bodyReturnsValue` alone, so a body with declared `parameters` that returns a value compiles to a `computed()` with its parameter unbound. No tier classifies by reactive use, as the first paragraph below describes; classification reads the declaration and the body text.
-
-`specs/spec.md` §5.3 4d, line 425:
+`specs/spec.md` §5.3 4d, line 425 (first of its four rules):
 
 > usage-based classification of a `$src` entry is `compile-element.ts`'s alone (the interpreter introspects the imported function, and `compile-client.ts` makes every `$src` entry a computed, so a `$src` handler bound to `on*` attaches no listener)
 
-The rule the spec states has two halves. 4b says: "A function with only `body` (no `arguments`) and no event binding acts as a computed value". 4d's "Classifying an external Function" paragraph adds: "An entry referenced as a **callable** — bound to an `on*` event, invoked by an `$expression` `call` node (§19.4c), called as `state.key(…)` from a template or another body, or named as a lifecycle hook (§16.4) — stays a function. Otherwise … the entry is a computed value, matching the inline-body rule in 4b."
+The rule, from 4b: "A function with only `body` (no `arguments`) and no event binding acts as a computed value". From 4d's "Classifying an external Function" (line 446): "An entry referenced as a **callable** — bound to an `on*` event, invoked by an `$expression` `call` node (§19.4c), called as `state.key(…)` from a template or another body, or named as a lifecycle hook (§16.4) — stays a function. Otherwise … the entry is a computed value, matching the inline-body rule in 4b."
 
-**What exists**
+**What exists** (verified at `84735a9f`). Four call sites classify, each by its own rule:
 
-Four call sites classify, each by its own rule:
+| Tier             | Where                                                                             | Inline string body                                                          | Bodyless `$src` entry                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Interpreter      | `resolveFunction`, `packages/runtime/src/runtime.ts:1229`–`1240`                  | declared `parameters`/`arguments` make it callable; else `bodyReturnsValue` | declared parameters make it callable; else `fn.length <= 1 && bodyReturnsValue(fn.toString())` (line 1235) |
+| Element target   | `emitElementModule`, `packages/compiler/src/targets/compile-element.ts:474`–`487` | `bodyReturnsValue` alone                                                    | `collectCallableRefs(doc)` or `LIFECYCLE_KEYS` makes it callable, else computed                            |
+| Client target    | `compileClient`, `packages/compiler/src/targets/compile-client.ts:176`–`186`      | `bodyReturnsValue` alone                                                    | always computed ("$src functions always produce computed entries"); `compile-client.test.ts:933` pins it   |
+| Build-time scope | `buildInitialScope`, `packages/compiler/src/shared.ts:629` and `:636`             | `bodyReturnsValue` alone, stored as a deferred computed                     | a `() => {}` placeholder marked runtime-only, so never a value at build time                               |
 
-| Tier             | Where                                                                                  | Inline string body                                                          | Bodyless `$src` entry                                                                                                     |
-| ---------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Interpreter      | `resolveFunction`, `packages/runtime/src/runtime.ts:1229`                              | declared `parameters`/`arguments` make it callable; else `bodyReturnsValue` | declared parameters make it callable; else introspection, `fn.length <= 1 && bodyReturnsValue(fn.toString())` (line 1235) |
-| Element target   | `emitElementModule`, `packages/compiler/src/targets/compile-element.ts:478` and `:483` | `bodyReturnsValue` alone                                                    | by usage: `collectCallableRefs(doc)` or `LIFECYCLE_KEYS` makes it callable, else computed                                 |
-| Client target    | `packages/compiler/src/targets/compile-client.ts:182` and `:185`                       | `bodyReturnsValue` alone                                                    | always computed ("$src functions always produce computed entries"), pinned by `compile-client.test.ts:933`                |
-| Build-time scope | `buildInitialScope`, `packages/compiler/src/shared.ts:629` and `:636`                  | `bodyReturnsValue` alone, stored as a deferred computed                     | a `() => {}` placeholder marked runtime-only, so it is never a value at build time                                        |
+- `bodyReturnsValue` (`packages/schema/src/guards.ts:189`) is the one shared piece. Every tier imports from `@jxsuite/schema/guards` (`runtime.ts:65`, `compile-element.ts:37`, `compile-client.ts:52`, `shared.ts:40`).
+- `collectCallableRefs` (`compile-element.ts:285`) is the usage walker the spec describes: `on*` `$ref`s at any depth, `call`-node targets, `state.key(` in any string. It is private, and it also gates `$lazy`'s computed-use error (line 372).
+- It visits only `doc.children` and `doc.state` (line 326), so it misses the root's own keys: a root-level `on*` handler, the kind the interpreter binds on the host (`bindDefinitionHandlers`, `runtime.ts:1563`, §16.1), and a root `textContent` template.
+- The interpreter has the document where it classifies: `buildScope(doc, …)` (`runtime.ts:769`) runs the Function pass (line 902) that calls `resolveFunction` (line 931). `buildInitialScope(defs, parentScope)` takes only `state`, from four callers (`shared.ts:447` and `:1598`, `site-build.ts:784`, where it is the `buildScope(state)` handed to format extensions' `serialize`, and `:1308`).
+- **The corpus, re-measured.** There are 100 bodyless `$src` Function entries in the repository: 88 in 26 `packages/ui/components/*.json`, 10 in `examples/components/` and 2 in `sites/jxsuite.com/components/site-search.json`. The kit's run through the interpreter wherever `registerUi()` or `KIT_LOADERS` (`packages/ui/src/loaders.ts`) serves them, so introspection decides them today. Loading each sidecar and comparing verdicts:
+  - 39 of the 88 kit entries, and `fetch-demo.json`'s 3, get the same verdict from `collectCallableRefs` as from introspection.
+  - The other 49 are root-level handlers in 16 components, such as `jx-menu`'s `onkeydown` bound to `onKeydown` (`$export: "onMenuKeydown"`). Each takes `(state, event)`, so introspection makes it callable and the walker, blind to the root, makes it computed.
+  - Counting the root's `on*` keys, all 91 loadable entries agree. `user-card.json`'s and `dynamic-list.json`'s sidecars are not in the repository, and site-search's import MiniSearch, but each of those 9 entries is bound through a child's `on*` or declares `parameters`.
+- Eight of the 100 declare `parameters`, and each is also used as a callable: `jx-icon` `lookup`, `jx-color-field` `dropperAvailable`, `jx-swatch` `inkOf`, `jx-tabs`, `jx-swatch-group` `applySelection` and `jx-tree` `applyCurrent` are called as `state.x(…)` from a template; site-search's `searchInit` is called from `onMount`'s body and `runSearch` is bound to `oninput`.
+- Of the 40 string-body Function entries in the repository, none declares parameters and returns a value, none is a lifecycle hook that returns a value, and none also declares `$src`. So the parameter half changes no shipped document.
 
-- `bodyReturnsValue` (`packages/schema/src/guards.ts:189`) is the one piece every tier already shares: the bare-`return;` and ASI rules. Every tier imports its guards from `@jxsuite/schema/guards` (`runtime.ts:65`, `compile-element.ts:37`, `compile-client.ts:52`, `shared.ts:40`), so that module is where one classifier can live.
-- `collectCallableRefs` (`compile-element.ts:285`) is the usage walker the spec describes. It walks `children` and `state` at any depth and collects `on*` `$ref`s, `call`-node targets and `state.key(` in any string. Its caller adds `LIFECYCLE_KEYS` (`onMount`, `onUnmount`, `onAdopted`, line 270). It is private to that file, and it also gates `$lazy`'s computed-use build error (line 374).
-- That walker never reads the document root's own keys (`visit(doc.children); visit(doc.state)`), so it misses a root-level `on*` handler, the kind the interpreter binds on the host (`bindDefinitionHandlers`, `runtime.ts:1563`, §16.1). The element target gets away with this only because it binds no root handler at all (`plan:spec/compiled-host-handlers`).
-- The interpreter has the whole document where it classifies: `buildScope(doc, …)` (`runtime.ts:769`) runs the Function pass (line 902) that calls `resolveFunction` (line 931). The build-time scope does not: `buildInitialScope(defs, parentScope)` takes only `state`, from four callers (`shared.ts:447` and `:1598`, `site-build.ts:784` and `:1308`).
-- The corpus. There are 88 bodyless `$src` Function entries in 26 `packages/ui/components/*.json`, 10 in `examples/components/` and 2 in `sites/jxsuite.com/components/site-search.json`. The kit's entries run through the interpreter, in Studio and wherever `registerUi()` or `KIT_LOADERS` (`packages/ui/src/loaders.ts`) serves them, so today the interpreter's introspection decides them. Loading each kit sidecar and comparing verdicts gives this:
-  - 39 of the 88 get the same verdict from `collectCallableRefs` as from introspection.
-  - The other 49 are root-level handlers in 16 components, such as `jx-menu`'s `onkeydown` bound to `onKeydown`. Each takes two parameters (`fn.length` 2), so the interpreter makes it callable, and the walker, blind to the root, makes it computed.
-  - With the root's `on*` keys counted, all 88 agree. `fetch-demo.json`'s three agree too. The sidecars of `user-card.json` and `dynamic-list.json` are missing from the repository, so their introspection cannot be run, but each of their entries is bound through a child's `on*`.
-- Eight of the 100 declare `parameters`, and every one of those is also used as a callable: `jx-icon` `lookup`, `jx-color-field` `dropperAvailable`, `jx-swatch` `inkOf`, `jx-tabs` and `jx-swatch-group` `applySelection`, and `jx-tree` `applyCurrent` are each called as `state.x(…)` from a template, while site-search's `searchInit` is called from `onMount`'s body and `runSearch` is bound to `oninput`. No document in the repository declares a parameterised inline body that returns a value.
+**What is missing.** One exported classifier over a document, and all four call sites reading it: `resolveFunction` stops reading an import's arity and source, `compile-element.ts` drops its private walker and inline-body branch, `compile-client.ts` gains a callable lowering for a `$src` entry, and `buildInitialScope` stops deferring a parameterised body as a computed.
 
-**What is missing**
+**Found while detailing, not taken here.** These are lowering, not classification, and they are recorded for the 4d owner:
 
-- One exported function, next to `bodyReturnsValue`, that takes a document and returns a verdict (computed or callable) for each string-body and bodyless `$src` Function entry:
-  - declared `parameters` or `arguments` make an entry callable. That is the interpreter's rule today, and §19.4c's for named formulas.
-  - A bodyless `$src` entry is callable when the document uses it as one, and is otherwise computed. "Uses it as one" means `collectCallableRefs`, lifted, plus the lifecycle keys, **plus the root's own `on*` keys**. Lifting the walker unchanged into the interpreter would turn 49 kit host handlers into computeds and break every one of those components in Studio.
-  - An inline string body is computed exactly when `bodyReturnsValue` holds, which is today's rule, until `plan:spec/computed-function-classification` decides the usage half.
-- All four call sites read that verdict:
-  - `resolveFunction` drops the `fn.length` and `fn.toString()` introspection, so an imported function's arity and source text no longer decide its role.
-  - `compile-element.ts` drops its private walker and its inline-body branch.
-  - `compile-client.ts` drops the always-computed `$src` branch, so a callable `$src` entry binds as a function.
-  - `buildInitialScope` is handed the verdict (or the document), since its callers pass only `state`.
-- Three questions for detail:
-  - Declared `parameters` and usage agree on every shipped document, so which of them wins for a `$src` entry changes nothing today. The order still has to be written down.
-  - Which document is "the document" for an entry that reaches a page through the project-state merge (§19.4c's project-global formulas), where one page may call it and another read it.
-  - Whether structured bodies (§20) join the classifier. Their parameter rule already agrees in the interpreter and `compile-client.ts`. `compile-element.ts` always lowers them to a handler, and that is a lowering, owned by `plan:spec/compiled-element-parameterised-bodies`, not a classification.
-- Tests:
-  - A verdict table in `packages/schema`'s suite.
-  - Per-tier cases for a parameterised body that returns a value, and for a bodyless `$src` handler bound to `on*` on a page compiled by `compile-client.ts`.
-  - A corpus case: every kit `$src` entry gets the verdict the interpreter's introspection gives it today, so the switch to usage changes no shipped component.
+- The element target forces the event convention onto every `$src` callable. `lookup` (`parameters: ["name", "weight"]`) compiles to `this.state.lookup = (state, e) => lookup(e, e);`, so `state.lookup(state.name, state.weight)` passes the weight twice; an undeclared `$src` callable compiles to `(state) => fn(state)` and drops the event its binding passes (`s.fn(s, e)`). The interpreter calls the import directly.
+- The interpreter's `bindHandler` calls a `$src` handler with `(state, event)` whatever it declares; §5.3 4d's by-name binding (which `compile-element.ts` applies) is not applied there.
+- `compile-client.ts` puts a string-body callable only on its `on` table, so `state.key(…)` from a template finds nothing.
 
-**Related**
+## Outcome
 
-- spec.md §5.3 4b and 4d (the two owners above), §16.4 (lifecycle keys are callables), §19.4c (a `call` node makes an entry callable; `parameters` make a named formula callable), §20.3 (the structured-body equivalent).
-- `compiler.md` §4 (custom element compilation).
-- spec.md §16.1 (`plan:spec/compiled-host-handlers`). Once the element target binds root handlers, a root `$ref` to a `$src` handler has to be a callable there. That needs this plan's root-aware verdict, or the same fix made to the walker in that plan.
-- `exportCemManifest` in `packages/studio/src/services/cem-export.ts` lists every Function entry as a CEM `method`, including the ones every tier treats as a computed value. spec.md §16.8 (`plan:spec/cem-manifest-export`) could read this verdict instead. No edge is drawn.
+- No claim changes status. spec.md §5.3 4b stays Partial, its marker narrowed to the usage half. §5.3 4d stays Partial, its marker narrowed to its three remaining rules.
+- One verdict per `$prototype: "Function"` entry, from `classifyFunctionEntries` in `@jxsuite/schema/function-role`, read by `buildScope`, `emitElementModule`, `compileClient` and `buildInitialScope`. `bodyReturnsValue` is called from nowhere else.
+- A `$src` handler bound to `on*` on a page compiled by `compile-client.ts` attaches a listener; a root-level `on*` `$ref` makes a `$src` entry callable in every tier; a string body with declared parameters is never a computed.
+- §5.3 4d's classification paragraph states the precedence of declared parameters, root handlers, and which document decides.
+
+## Decisions
+
+- **Open:** Does the interpreter drop introspection outright? Recommendation: yes; usage and declared parameters decide, and an import's `fn.length` and `fn.toString()` are never read. Because a compiler has only the document, so any introspection fallback keeps the Studio-versus-production divergence §5.3 4d exists to remove, and `fn.toString()` of a bundled or minified import is not a stable input. The cost is a third-party sidecar whose two-parameter helper is called only from other JavaScript: it becomes a computed. Declaring its `parameters` (next item) is the stated fix, and on every shipped document the switch changes nothing (Context).
+- **Open:** Do declared `parameters` or `arguments` make a `$src` entry callable even when the document only reads it? Recommendation: yes, checked before usage. Because §19.4c already says "the presence of `parameters` makes the entry callable", 4b's rule is "no `arguments`", and 4d says its external rule matches 4b; it also gives an author an explicit way to keep a helper a function when no document string calls it. All eight shipped entries that declare parameters are used as callables anyway, so the order changes nothing today.
+- **Decided:** "uses it as a callable" is read from the whole document except `$defs`: `on*` `$ref`s at any depth including the root, `call`-node targets, `state.key(` in any string, and the lifecycle keys `onMount`, `onUnmount`, `onAdopted` present in `state`. Because lifting the walker unchanged into the interpreter would turn the 49 kit host handlers into computeds and break every one of those components in Studio, and walking the root also catches a root `textContent` template. `$defs` holds JSON Schema, not usage.
+- **Decided:** the document is the one a tier builds, after the project-state merge. `injectContext` (`packages/site/src/context.ts`) copies `project.json` `state` into each page's `state` before it is compiled or mounted, and each page compiles to its own module, so a project-global entry one page calls and another only reads is a function on the first and a computed on the second, with nothing to reconcile.
+- **Decided:** the classifier covers every Function entry. A structured body (§20) is always `callable`; how it lowers (handler or positional callable) stays each tier's, and `plan:spec/compiled-element-parameterised-bodies` owns the element target's. An entry with neither `body` nor `$src` is `callable` (the interpreter's no-op). An entry declaring both is classified by its string body, as `compile-element.ts` does today; rejecting it is item 2 of `plan:spec/function-entry-tier-parity`.
+- **Decided:** it lives in a new `packages/schema/src/function-role.ts`, exported as `@jxsuite/schema/function-role`, not in `guards.ts`, because it is a document walk rather than a type predicate and it gets its own docs association (`framework/concepts/functions`), which `guards.ts` has none of.
+- **Decided:** the walk runs only when some entry's verdict needs it (a bodyless `$src` entry without declared parameters), because `buildScope` runs once per custom-element instance and most documents have no such entry.
+- **Decided:** `buildInitialScope` classifies the `state` it is given (`classifyFunctionEntries({ state: defs })`) and gains no parameter. No build-time verdict depends on usage today (a `$src` entry is a runtime-only placeholder whatever its role), and `buildScope(state)` in the `serialize` context is an extension-facing signature.
+- **Decided:** `compile-client.ts` lowers a callable `$src` entry to `state[key] = <import>` plus an `on[key]` adapter that maps declared names by name and passes `(state, event)` when none are declared. Template and `call` sites read `state`, event bindings read `on`, so this matches the interpreter for positional calls and `compile-element.ts` for event sites (its "maps a $src handler's declared parameters as well" test).
+- **Decided:** `compile-element.ts`'s lowering is untouched; only its classification and its `$lazy` check change. `plan:_shared/compiled-element-lifecycle` rewrites its `$src` hook wrapper and `plan:spec/compiled-host-handlers` binds root handlers, so the emitted shapes are theirs.
+
+## Implementation
+
+1. **`packages/schema/src/function-role.ts`** (new; module JSDoc carries `@docs framework/concepts/functions`), importing `bodyReturnsValue`, `hasStructuredBody`, `isFunctionDef`, `isRef` from `./guards` and `JxElement`, `JxFunctionDef` from `../types`:
+   - `export type FunctionRole = "computed" | "callable";`
+   - `LIFECYCLE_HOOK_KEYS`, moved from `compile-element.ts:270`.
+   - `collectCallableKeys(doc)`, not exported: `collectCallableRefs` moved from `compile-element.ts:285`, keeping its `seen` set, its `call`-node rule, its `state.key(` regex and its `observedAttributes` exclusion, with the entry point changed from `visit(doc.children); visit(doc.state)` to `visit(doc)` and the record loop skipping a `$defs` key (so a root `on*` `$ref` is added by the same rule as a child's), then adding each `LIFECYCLE_HOOK_KEYS` member present in `doc.state`.
+   - `functionEntryRole(key, def, callable)`, not exported, in this order: structured body → `callable`; `(def.parameters ?? def.arguments ?? []).length > 0` (the interpreter's `hasParams`, byte for byte) → `callable`; string `body` → `bodyReturnsValue(body) ? "computed" : "callable"`; `$src` → `callable.has(key) ? "callable" : "computed"`; otherwise `callable`.
+   - `export function classifyFunctionEntries(doc: JxElement): Map<string, FunctionRole>`: one entry per `isFunctionDef` value in `doc.state`, none for other shapes; `collectCallableKeys` is called at most once, and only when the fourth rule is reached.
+   - `packages/schema/package.json` `exports`: `"./function-role": "./src/function-role.ts"`.
+2. **`packages/runtime/src/runtime.ts`.** In `buildScope`'s third pass (line 902), `const roles = classifyFunctionEntries(doc);` before the loop, and `resolveFunction(def, state, key, base, roles.get(key) ?? "callable")`. `resolveFunction` takes `role: FunctionRole` and replaces lines 1227–1240 (the `hasParams`/`isComputed` block) with `if (role === "computed") { return computed(() => fn(state)); }`; its JSDoc says the role comes from the document. Its `body`-and-`$src` throw, no-op and import paths are unchanged. Drop `bodyReturnsValue` from the guards import.
+3. **`packages/compiler/src/targets/compile-element.ts`.** Delete `LIFECYCLE_KEYS` and `collectCallableRefs`. At line 361, `const roles = classifyFunctionEntries(doc);`. The `$lazy` check (line 372) becomes `if (roles.get(key) === "computed")`, message unchanged. The `isFunctionDef(d)` branch (lines 473–488) becomes one push: `(roles.get(key) === "computed" ? computedEntries : functionEntries).push([key, d])`. Drop `bodyReturnsValue` from the import. Emission below is unchanged.
+4. **`packages/compiler/src/targets/compile-client.ts`.** `const roles = classifyFunctionEntries(raw);` before the loop at line 131. In the Function branch, the structured-body arm is unchanged. The `$src` arm keeps its `srcImportMap` entry, then on `computed` pushes today's `computedEntries` item, and on `callable` pushes two things: an `initBlocks` line assigning the import to the state (for `doSomething`, `state["doSomething"] = doSomething;`), and an `onEntries` item `[key, { args: names, body }]` whose body returns the import called with `names` (for `doSomething`, `return doSomething(state, event);`). `names` is the declared `args` when non-empty and `["state", "event"]` otherwise; `emitClientModule` already maps `state` to the state and any other name to the event. The string-body arm tests `roles.get(key) === "computed"` in place of `bodyReturnsValue`. Drop the "always produce computed entries" comment and `bodyReturnsValue` from the import.
+5. **`packages/compiler/src/shared.ts`.** In `buildInitialScope`, `const roles = classifyFunctionEntries({ state: defs });` after pass 0, and the string-body branch (line 629) tests `roles.get(key) === "computed"`. Drop `bodyReturnsValue` from the import at line 25 if nothing else reads it.
+
+**Integration contract.** Once this lands:
+
+- `@jxsuite/schema/function-role` exports `classifyFunctionEntries(doc)` and `FunctionRole`, with the rule order in step 1. The string-body arm of `functionEntryRole` is the one place `plan:spec/computed-function-classification` changes if it adopts the usage rule; the callable set it would read already holds root and child `on*` `$ref`s and lifecycle keys. If it does, `buildInitialScope` must then be handed the document's roles: `createCompileContext` and `buildInstanceScope` have the document, the two `site-build.ts` callers do not.
+- `plan:spec/function-entry-tier-parity` can rely on `compile-client.ts` binding a callable `$src` entry as `state[key]` (the import) and `on[key]` (the adapter), and on `roles.get(key) === "computed"` being the computed-use test its `$lazy` build error reads, as `compile-element.ts`'s does. The three lowering findings in Context are there for it.
+- `plan:spec/compiled-host-handlers` can rely on a root `on*` `$ref` to a `$src` entry being a callable in `emitElementModule`; the wrapper it will call drops the event (Context).
+- `plan:spec/cem-manifest-export` may read the verdict to list only callables as `method`s. No edge is drawn.
+
+## Tests
+
+Each workspace runs `bun test --isolate --coverage` from its directory. Per-file thresholds are in each `bunfig.toml`: `packages/schema` lines 0.99 and functions 0.99, `packages/runtime` 0.963/0.98, `packages/compiler` 0.982/0.98, `packages/ui` 0.99/1.0. Ratchet a workspace whose worst file rises. `function-role.ts` is new and ships with its test, which imports it statically, or `check-coverage-manifest.ts` fails.
+
+- `packages/schema/tests/function-role.test.ts` (new), a verdict table:
+  - "a string body that returns a value is computed"
+  - "a bare return; or an ASI return leaves a string body callable"
+  - "declared parameters or arguments make a returning string body callable"
+  - "a structured body is callable, with or without parameters"
+  - "an entry with neither body nor $src is callable"
+  - "an entry declaring both body and $src is classified by its body"
+  - "a bodyless $src entry the document only reads is computed"
+  - "a bodyless $src entry is callable when bound to a child on*, a call node's target, or called as state.key( in a template, a body or a root textContent"
+  - "a root-level on* $ref makes a bodyless $src entry callable"
+  - "a lifecycle hook key is callable"
+  - "declared parameters make a bodyless $src entry callable when the document only reads it"
+  - "strings under $defs and the observedAttributes key are not usage"
+  - "non-Function entries get no verdict"
+- `packages/runtime/tests/runtime.test.ts`, Shape 4: rename the two "via introspection" / "≤1 param" `$src` cases to "a $src export the document only reads is a computed" (they stay green, since neither document uses the entry). Add, with exports added to `_test_handlers_fn.ts`:
+  - "a returning $src export bound to onclick is a function and its listener fires" (`bump(state)` increments and returns the count; introspection made it a computed and dropped the listener)
+  - "a two-parameter $src export the document only reads is a computed" (`pair(state, extra)`, previously callable by arity)
+- `packages/runtime/tests/custom-elements.test.ts`: "a root on* $ref keeps a $src handler callable on the host": a definition whose root `onclick` names a one-parameter returning export, clicked, updates state. This fails under introspection and under the unlifted walker alike.
+- `packages/compiler/tests/compile-element.test.ts`, under "bodyless $src classification": "a root-level on* $ref keeps a bodyless $src entry callable" (`(state) => rows(state)`, no `computed(`); "a parameterised string body that returns a value is a function" (no `this.state.double = computed(`); "a $lazy entry that declares parameters is not a computed-use error". The existing five classification cases stay as they are.
+- `packages/compiler/tests/compile-client.test.ts`: replace "$src function is imported and called as computed" with "a $src handler bound to on* is bound as state and on", asserting `state["doSomething"] = doSomething;`, an `on` entry whose body is `return doSomething(state, event);`, and no `computed(() => { return doSomething(state); })`. Add "a $src entry the page only reads stays computed", "a $src handler's declared names map by name" (`parameters: ["event"]` gives `return save(event);` called as `fn(e)`), and "a parameterised string body that returns a value is a handler".
+- `packages/compiler/tests/shared.test.ts`, `describe("buildInitialScope")`: "a parameterised string body that returns a value is a callable, not a deferred computed" (`typeof scope.double === "function"`, and `scope.double(scope, 5)` binds `x` to 5 by name).
+- `packages/ui/tests/function-roles.test.ts` (new), the migration guard and an authoring lint: for every `components/*.json` and every bodyless `$src` entry, load the export through `KIT_LOADERS` (awaited one at a time, never `Promise.all`, so no two imports of one module overlap; CLAUDE.md's Bun 1.4.0 coverage defect), and assert `classifyFunctionEntries(doc).get(key)` equals the retired rule (`callable` when parameters are declared, `fn.length >= 2`, or `!bodyReturnsValue(fn.toString())`). Name `jx-menu`'s `onKeydown` explicitly so the root case cannot silently fall out. A future component that disagrees on purpose declares `parameters`.
+- The kit's DOM suites (`menu.test.ts`, `split.test.ts`, `tabs.test.ts` and the rest) are the end-to-end guard: they drive root keyboard and pointer handlers through the interpreter.
+
+## Specs & docs
+
+In place, in `specs/spec.md` (release as one fragment):
+
+- §5.3 4b marker (line 396) becomes:
+
+  > **Status: Partial.** The bare-`return;` rule and the "no `arguments`" condition ship in every tier: the interpreter's `buildScope`, both compiled targets and the build-time scope in `packages/compiler/src/shared.ts` read one verdict, `classifyFunctionEntries` (`packages/schema/src/function-role.ts`). No tier classifies an inline body by reactive use, as the first paragraph below describes; classification reads the declaration and the body text.
+
+- §5.3 4d marker (line 425) becomes:
+
+  > **Status: Partial.** The property table, parameter-object normalization, compiled-site bundling (`packages/compiler/src/site/bundler.ts`) and usage-based classification of a `$src` entry (`classifyFunctionEntries` in `packages/schema/src/function-role.ts`, read by every tier) ship. Three rules hold in only some tiers: declaring both `body` and `$src` throws at runtime scope build but is never a compile-time error; `compile-client.ts` ignores `$lazy`; and the interpreter's `resolveParamNames` recognizes `state` only in first position rather than binding by name.
+
+- §5.3 4d "Classifying an external Function" (line 446) becomes (drop the clause of an Open that goes the other way):
+
+  > **Classifying an external Function.** Because `body` and `$src` are mutually exclusive, a `$src` entry has no body for the framework to inspect, so its role follows its declaration and how the document uses it, never the imported function's arity or source. An entry that declares `parameters` or `arguments` is a callable wherever it is used. So is an entry referenced as a **callable** — bound to an `on*` event (a definition's root-level handlers included, §16.1), invoked by an `$expression` `call` node (§19.4c), called as `state.key(…)` from a template or another body, or named as a lifecycle hook (§16.4). Otherwise its return value is read reactively and the entry is a computed value, matching the inline-body rule in 4b. The document is the one the entry is built in, after the project-state merge (§19.4c), so a project-global entry one page calls and another only reads is a function on the first page and a computed value on the second. Reading an undeclared `$src` entry that resolves to a function (rather than its result) is therefore not a supported way to obtain the imported function itself; declare its `parameters` instead.
+
+- Both markers stay `Partial`; each owner flips its own. Fragment: `bun run spec:change spec.md minor -m "§5.3 4d: every tier classifies Function entries through one shared classifier, an external Function that declares parameters is always callable, and a root-level handler counts as callable use."`
+- This does not graduate spec.md.
+
+Docs:
+
+- `docs/framework/concepts/functions.md` (its `spec:` cites `spec.md#5.3`; its `code:` lists both targets): add `packages/schema/src/function-role.ts` to `code:`, and replace the paragraph beginning "A sidecar entry has no `body` to read" with: "A sidecar entry has no `body` to read, so its role follows its declaration and how the document uses it. Declare `parameters` and it stays a function wherever it is used. Otherwise, bind it to an event (on a child, or at a component's root beside `tagName`), invoke it as `state.helper(state)`, or name it a lifecycle hook, and it stays a function. Read it anywhere else, in a list's `items`, a `${}` interpolation or a property binding, and it becomes a computed value: what you get is the export's **return value**, recomputed when its inputs change, not the function itself. The export's own parameter count is never consulted, so a helper that only other JavaScript calls needs its `parameters` declared." No em dash.
+- The other pages `bun run docs:sync` names for `runtime.ts`, `shared.ts`, `compile-element.ts` and `compile-client.ts` (reactivity, components, elements, lists, styling, scope and the rest) describe rendering, styling and scope, not classification; none changes.
+
+## Acceptance
+
+- `rg -n 'bodyReturnsValue' packages/runtime/src packages/compiler/src` finds nothing; `rg -n 'fn\.length|collectCallableRefs|LIFECYCLE_KEYS|always produce computed' packages/runtime/src packages/compiler/src` finds nothing.
+- `bun test --isolate --coverage` passes in `packages/schema`, `packages/runtime`, `packages/compiler` and `packages/ui`, and `bun scripts/check-coverage-manifest.ts packages/schema` passes.
+- Compiling a page whose button binds `onclick` to a bodyless `$src` entry with `compileClient` emits `state["<key>"] = <key>;` and an `on` entry for it.
+- In Studio, `jx-menu`, `jx-tabs` and `jx-split` still answer the keyboard (covered by the kit suites).
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:prose`, `bun run docs:links` and `bun run plans:check --audit spec` pass.

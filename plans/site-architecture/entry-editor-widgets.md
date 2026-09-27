@@ -1,38 +1,158 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - site-architecture.md#7.4
-size: M
+requires:
+  - extensions/settings-section-vocabulary
 workspaces:
   - packages/studio
+  - packages/ui
+  - extensions/parser
+size: L
 ---
 
-# The entry editor draws the widget §7.4's table names for every schema type
+# The entry editor draws the widget §7.4's table names for every schema type, through the one form engine every schema form shares
 
 ## Context
 
-`specs/site-architecture.md` §7.4, line 865 (the Frontmatter Form marker, which leads the section):
+`specs/site-architecture.md` §7.4, line 867 (the Frontmatter Form marker, which leads the section):
 
 > **Status: Partial.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-editor.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, and an `array` of `string` and an `object` are raw JSON text.
 
-Before the census this marker read `Implemented`. The two later markers in the section (JSON Data Entry Editing, CSV Editing) are accurate and stay.
+At b900b326 the marker read `Implemented`. The section's two later markers (JSON Data Entry Editing, CSV Editing) are accurate and stay. Re-verified on 2026-09-27; the census evidence holds, with the additions below.
 
 **What exists**
 
-- `entry-editor.ts` and `entry-fields.ts` (`packages/studio/src/content/`): one editor over both storage shapes, with `packages/studio/tests/entry-editor.test.ts` and `entry-fields.test.ts`.
-- The control dispatch in `packages/studio/src/ui/schema-form.ts` (enum to select, boolean to checkbox, number to number field, array of objects to rows, other arrays and objects to JSON text, default to text) and `referenceControl` in `packages/studio/src/ui/form-controls.ts` (the `$ref` entry picker).
-- A media picker (`packages/studio/src/ui/media-picker.ts`) already used for `uri-reference` fields in the Document Header and Page panel (`packages/studio/src/panels/frontmatter-fields.ts`), but not in the entry editor.
+- `deriveField` in `packages/studio/src/ui/schema-form.ts` dispatches in this order: a `ui.control` override, a pointer left in the record, a relationship (`referenceTarget`, `#/content/<type>`, to the registered `reference` control), enum to select, boolean to `checkbox`, number, `format: "json-schema"` to JSON, array of objects to rows, any other array or object to JSON text, else text. `format` is read only for `json-schema`, so `date`, `date-time`, `uri-reference`, `image` and `color` are all plain text. `deriveCell` (array-of-objects cells) is the same ladder minus JSON. `surfaces/schema-form.json` draws the nine kinds.
+- Three hosts mount the engine: the entry editor (`paintForm` in `content/entry-editor.ts`), contributed settings sections (`settings/contributed-section.ts`), and a signal's configuration (`placeSchemaForm` in `panels/signals-panel.ts`). Settings fragments carry booleans (the Auth, Data and Search descriptors).
+- `mountMediaPicker(host, prop, value, onCommit)` / `unmountMediaPicker(host)` in `ui/media-picker.ts` is already a host-mounted field (`surfaces/media-field.json`), idempotent per host. Its thumbnail goes through `previewAssetSrc` (`canvas/asset-refs.ts`) and its Upload through `uploadAssets` (`files/media-upload.ts`) with `uploadDirFor(activeTab…)`: both read the FOCUSED tab. The entry editor is drawn per pane (`_active` is keyed by pane id), so in a split that is another document, which studio.md §18.3 forbids ("Nothing drawn for a pane may resolve the focus").
+- `isMediaFormat` (`utils/studio-utils.ts`) is Studio's one media predicate, `image` or `uri-reference`. The Content Types builder offers `image`, `date` and `color` (`FORMAT_OPTIONS`, `settings/schema-field-ui.ts`) and the starters declare `format: "image"`, but the collection loader rewrites a content-relative reference only in a `uri-reference` field (`rewriteEntryAssets`, `extensions/parser/src/content-loader.ts`; parser.md §9.2 and site-architecture.md §9.3 say the same). An Upload from an entry writes `./images/<name>` (§9.4), so into an `image` field it would write a reference the build does not publish.
+- The kit has what the table needs: `jx-switch` (ui.md §5.3), `jx-textfield` forwarding `type` to its native input (ui.md §5.1), `jx-combobox` with `allows-custom-value` (ui.md §5.3), and `jx-color-field` (ui.md §5.6), which `surfaces/properties-panel.json` already draws for a `format: "color"` prop.
+- `docs/studio/projects/content-types.md` already promises "yes/no switches, dates, colors and the media picker for image fields" in the entry form.
+- Tests: `tests/schema-form.test.ts` (dispatch, ladder, cells, standing mount), `tests/entry-editor.test.ts` (`BLOG_SCHEMA` has a `format: "date"` field and a `draft` boolean), `tests/media-picker.test.ts`, `tests/form-controls.test.ts` (asserts `builtinFormControls`), `tests/reference-control.test.ts`; `extensions/parser/tests/content-loader.test.ts` ("remaps only frontmatter fields declared uri-reference").
 
-**What is missing**
+**Not claimed here**
 
-- A date control for `format: "date"` (and `date-time`, which the parser also normalizes).
-- The media picker for `format: "uri-reference"`, writing references per site-architecture.md §9.3.
-- A toggle for `boolean`, a chip editor for an `array` of `string`, and a nested field group for an `object`.
-- A decision on where the mapping lives: `schema-form.ts` is shared with extension settings (extensions.md §9.1), so a change there reaches both surfaces, which is either the point or needs a per-host option.
-- Editorial ride-along: §7.3's "Currently stored but not editable via a UI form (see §7.4)" is stale.
+- The Document Header card and the Page panel draw frontmatter through `projectFmField` (`panels/frontmatter-fields.ts`), a second mapping (checkbox, a `YYYY-MM-DD` placeholder, comma-separated arrays). Converging it on the engine is a studio.md surface, not §7.4.
+- An entry below its collection root, or in a `{locale}` folder: `uploadDirFor` answers `content/<first segment>/images` and `assetRef` writes `./images/<name>`, which resolves against the entry's own directory and misses. Every upload surface shares it; this plan does not widen it.
+- An array of `$ref` (to-many) is relationships.md §5, owned by `plan:relationships/studio-reference-picker`, whose to-many branch goes ahead of the tag field below whichever lands second.
 
-**Related**
+## Outcome
 
-- site-architecture.md §6.3 (schema validation in the editor) and site-architecture.md §9.4 (the media picker).
-- relationships.md (the entry picker for a reference field) and extensions.md §9.1 (the controls a settings section declares).
+- site-architecture.md §7.4 → Implemented: every row of the table ships in the entry editor, including the rows the Open decisions add (`date-time`, `color`, the `image` spelling).
+- §7.3's "Currently stored but not editable via a UI form (see §7.4)" is corrected in the last slice (the audit record assigns it to this plan).
+- site-architecture.md §9.3 and parser.md §9.2: a content-relative reference in a `format: "image"` field is rewritten like a `uri-reference` one (fourth Open decision).
+- extensions.md §9.1 lists `media` among the built-in controls.
+- site-architecture.md does not graduate: other items stay open.
+
+## Decisions
+
+- **Open:** does the new mapping live in the shared engine, reaching the settings forms and signal configuration too, or behind a per-host option? Recommendation: shared, because §7.4's marker and `entry-editor.ts`'s docstring both define the entry editor as the engine's mapping ("every improvement to the engine reaches content entries, settings and the inspector at once"), extensions.md §9.1 already defers to "implicit defaults per type/enum/format", and a per-host flag is the second mapping `frontmatter-fields.ts` shows the cost of. What changes elsewhere: settings and signal booleans become switches (the kit's own rule, "a switch for this setting is on", `docs/extending/ui-kit.md`), and a string list or an object with declared properties stops being JSON text.
+- **Open:** `format: "date-time"`, which the table does not name. Recommendation: a `datetime-local` input over the UTC wall time, labelled `<field> (UTC)`, writing `YYYY-MM-DDTHH:MM:SSZ`, because that is the form the parser normalizes every date-time to (`toInstant` in `extensions/parser/src/dates.ts`), and a local-time control would shift a value by the author's offset when opened on another machine. A value in another RFC 3339 form (an offset, fractional seconds) stays a text field, unconverted, so opening an entry never rewrites it. Declining leaves date-time as text and drops its table row.
+- **Open:** a `format: "color"` row, which the table does not name. Recommendation: add it and draw `jx-color-field` without the token palette, because the Content Types builder offers the format, the docs page already promises colors, and the Properties panel draws exactly this control for a `color` prop; a content value is a literal colour, not a page token. Declining drops the row and the word "colors" from the docs page.
+- **Open:** a content-relative reference in a `format: "image"` field. Recommendation: the loader rewrites `image` fields as it does `uri-reference` ones, and §9.3 and parser.md §9.2 say so, because `image` is the spelling Studio's builder writes and the new media field's Upload would otherwise write a reference the build leaves unpublished. The rewrite stays conservative (relative, resolves to an existing file inside the collection), so a root-relative `/images/post-1.jpg` in the starters is untouched. Declining keeps the loader as it is and the media row names `uri-reference` alone for content; an `image` field still draws the media field (`isMediaFormat`), and its Upload remains broken on the built site.
+- **Decided:** the media field is a registered control, `"media"`, mounted from `ui/media-picker.ts` and registered in `ui/form-controls.ts` with the formats it answers implicitly (`registerFormControl` gains `{ formats }`, fed from `MEDIA_FORMATS` beside `isMediaFormat`), because `schema-form.ts` must not import the platform and workspace chain `media-picker.ts` pulls in (the reason `reference` is registered rather than imported), and the format list must stay the one `isMediaFormat` holds. A registered name is nameable in `entry.ui`, so extensions.md §9.1 lists it; `plan:extensions/settings-section-vocabulary` rewrites that sentence, `builtinFormControls` and the `form-controls.ts` header first, and its integration contract asks the next built-in to extend them, which is this plan's one `requires` edge.
+- **Decided:** a form names the document it edits (`SchemaFormContext.documentPath`), and the media field previews and uploads against it, because of studio.md §18.3. A host that names none (settings, signal configuration) gets `public/` uploads and root-relative previews, never the focused tab's. Browse keeps listing `public/` in every host; co-located media arrive through Upload.
+- **Decided:** a date is `jx-textfield` with `type="date"` (or `datetime-local`), committing on `change` only, because the kit forwards `type` and the platform's input is the date picker; no kit element is added.
+- **Decided:** the tag editor is its own document and flow (`surfaces/tag-field.json`, `ui/tag-field.ts`), mounted by the engine directly rather than registered, because it is an implicit default per type and imports nothing heavy. One `jx-combobox`: free text with `allows-custom-value`, or the unchosen `items.enum` values as a closed list. Its parts are `tags`, `tag`, `tag-remove` and `tag-input`, never `chip`, because `schema-form.json`'s `& [part="chip"]` rule would restyle them (light DOM, one cascade).
+- **Decided:** a nested group is drawn only for an `object` with declared `properties`, as a child form built by the engine's own `createController()` inside a `group` host, because that recursion is free and a free-form map has no fields to draw. An object without `properties`, and an array of anything but objects or strings, stay JSON text.
+- **Decided:** a value a widget cannot hold falls back to the text or JSON control (a date the picker cannot represent, a list with a non-string item, a non-object where a group is expected, a non-string media value), with `validateFieldValue`'s refusal where the value is invalid, because an empty widget would overwrite the authored value on its next commit.
+- **Decided:** emptying a list or a group removes the key unless the schema requires it, then writes `[]` or `{}`, because that is what New Entry seeds (`emptyForField`, `content/entry-model.ts`), and removing it would make a freshly valid entry report a missing required field. `SchemaFormControlArgs` gains `required` for this.
+- **Decided:** array-of-objects cells follow the field mapping for boolean, date, media and string lists; an object cell stays text, because a form inside a table cell is not a cell.
+- **Decided:** `validateFieldValue` refuses a date string the parser would refuse, in the parser's words, with `DATE_ONLY` and `RFC_3339` copied from `extensions/parser/src/dates.ts` under a comment naming it, because Studio does not depend on `@jxsuite/parser`.
+
+## Implementation
+
+Paths are under `packages/studio/src/` unless named. Slice EEW1.1 ships the scalar widgets and the media field; EEW1.2 the structured widgets and the marker flip.
+
+**EEW1.1**
+
+1. `utils/studio-utils.ts`: `export const MEDIA_FORMATS = ["image", "uri-reference"] as const;` and `isMediaFormat` reads it.
+2. `ui/schema-form.ts`:
+   - `registerFormControl(name, control, opts?: { formats?: readonly string[] })`; a second private map `formatControls` (format → name) records `opts.formats`. `deriveField` and `deriveCell` consult it for a string (`ps.type` `"string"` or absent) whose `format` it holds and whose value is a string or absent, after the enum branch, before boolean.
+   - `SchemaFormContext.documentPath?: string | null`, documented as above. `SchemaFormControlArgs.required?: boolean`; `FieldPlan.required`, set in `deriveField` and passed by `controlFor`.
+   - Date: `dateInputValue(format, value): string | null` (`date`: a `YYYY-MM-DD` string as is; `date-time`: `YYYY-MM-DDTHH:MM[:SS]Z` without the `Z`; else `null`) and `fromDateInput(format, raw): string | undefined` (`date`: `raw || undefined`; `date-time`: append `:00Z` or `Z` to the input's `HH:MM` or `HH:MM:SS`). For a string whose `format` is `date` or `date-time` and whose value is absent or representable: `plan.commit = "date"`, `debounceMs = 0`, `row.kind = "text"`, `row.inputType = "date"` or `"datetime-local"`, `row.value = dateInputValue(…) ?? ""`, and a `date-time` label `${prop} (UTC)`. Otherwise the ordinary text row. `write()` gains `case "date"`; `coerceCell` converts a date-time cell with `fromDateInput`.
+   - `validateFieldValue`: after the enum check, a string under `date` / `date-time` matching neither pattern returns `Write the date as YYYY-MM-DD.` / `Write the time as YYYY-MM-DDTHH:MM:SSZ.`
+   - Color: `ps.format === "color"` → `row.kind = "color"`, commit `"text"`, `TEXT_COMMIT_MS`.
+   - Boolean: `row.kind = "switch"`; the cell kind likewise. Media cells go through `formatControls` into `plan.cellControls`.
+   - The module docstring's dispatch list is rewritten to the new order.
+3. `surfaces/schema-form.ts`: `SchemaFormFieldKind` replaces `checkbox` with `switch` and adds `color`; `SchemaFormFieldView.inputType: "text" | "date" | "datetime-local"`; `SchemaFormCellView` gets the same `inputType` and `switch`. `surfaces/schema-form.json`: both `checkbox` cases become `switch` cases drawing `jx-switch` (`part: "switch"`, same `label`, `checked`, `size` and `onchange`); both `text` cases bind `"type": { "$ref": "$map/item/inputType" }`; a `color` case draws `div[part="color"]` carrying `oninput` → `edit` and `onchange` → `commit`, around `jx-color-field[part="color-field"]` (`size: "sm"`, `label`, `value`), with `properties-panel.json`'s reason for listening on the wrapper in its `$description`. The document's "nine controls" becomes the new count.
+4. `canvas/asset-refs.ts`: `previewAssetSrc(value, documentPath?: string | null)`, using `activeTab`'s path only when the argument is `undefined`; the docstring's "resolved against the ACTIVE tab" names the exception.
+5. `ui/media-picker.ts`: `mountMediaPicker(host, prop, value, onCommit, opts: { documentPath?: string | null } = {})`, kept on `FieldEntry`; `fieldView` passes it to `previewAssetSrc`; Upload calls `pickAndUpload(commit, { dir: uploadDirFor(documentPath) })` when it is named. `pickAndUpload(onCommit, opts = {})` and `uploadAndAssign(files, onCommit, opts = {})` pass `opts` to `uploadAssets`. New `mediaFieldControl: SchemaFormMountedControl`: `mount` calls `mountMediaPicker(host, args.key, string value, (v) => latest.onChange(v.trim() || undefined), { documentPath: args.ctx.documentPath ?? null })`, `update` repeats the call, `dispose` calls `unmountMediaPicker(host)`. Type-only imports from `schema-form.ts`.
+6. `ui/form-controls.ts`: `registerFormControl("media", mediaFieldControl, { formats: MEDIA_FORMATS })`; `builtinFormControls` gains `"media"`; the header's count and list gain it ("drawn for a media-format string without being named").
+7. `content/entry-editor.ts` `formContext(tab)`: `documentPath: tab.documentPath ?? null`.
+8. `packages/ui/components/jx-textfield.json`: the `type` entry's description lists `date` and `datetime-local`.
+9. `extensions/parser/src/content-loader.ts` `rewriteEntryAssets` (fourth Open decision): a `REFERENCE_FORMATS` set of `uri-reference` and `image`, tested on `def.format` and `def.items.format`; the docstring says why `image` is there.
+
+**EEW1.2**
+
+1. New `surfaces/tag-field.json` and `surfaces/tag-field.ts`, in `surfaces/reference-field.ts`'s shape (`registerSurface("tag-field", …)`, `mountTagFieldSurface(host, view, actions)` returning `update` / `dispose`). View: `label`, `tags: { key, text, removeLabel }[]`, `hasTags`, `draft`, `options`, `closed`, `help`, `hasHelp`. Actions: `add(value)`, `remove(index)`, `draft(text)`. Markup: `div[part="tags"][role="group"]` named by `label`, a keyed `$map` of `span[part="tag"]` each holding its text and a quiet `sm` `jx-action-button[part="tag-remove"]` with the `x` glyph and `Remove <text>`, then `jx-combobox[part="tag-input"]` (`value` = draft, `options`, `allows-custom-value` = not `closed`, `help`), `oninput` → `draft`, `onchange` → `add`.
+2. New `ui/tag-field.ts` (`@docs studio/projects/content-types`): `isStringList(schema)` (`type: "array"`, `items.type === "string"`, no `items.$ref`), `stringListValue(value): string[] | null` (absent → `[]`), and `tagFieldControl: SchemaFormMountedControl`. Per mount it holds the draft, so clearing after an add is a real scope move. `add` trims, ignores empty, refuses a duplicate with help `Already in the list.`, commits the appended list and clears the draft; `remove(i)` commits the rest, or `args.required ? [] : undefined` when none remain. `options` are `items.enum` minus held values; `closed` is whether `items.enum` exists.
+3. `ui/schema-form.ts`: after array of objects, `isStringList(ps)` with a representable value → `plan.control = tagFieldControl`, `row.kind = "control"`, `commit = "none"`; `deriveCell` likewise into `cellControls`. `ps.type === "object"` with `properties` and an absent or plain-object value → `row.kind = "group"`, `plan.control = groupControl`, where the module-private `groupControl` mounts `createController()` into the host, updates it with `args.schema`, the object, a context that spreads `args.ctx` with `fieldKeyPrefix` set to the parent's prefix, a dot and `args.key` (so a nested field's ladder memory is its own), `rerender`, and an `onChange` merging the child's patch into the latest object (a key patched `undefined` is deleted; an emptied object follows the required rule), and disposes it with the field. `@docs studio/projects/content-types` joins the docstring.
+4. `surfaces/schema-form.ts` / `.json`: kind `group`, drawn as `div[part="control-host"][data-kind="group"][role="group"]` named by the row label, styled `& [part="control-host"][data-kind="group"]` with `flex: 1`, `borderInlineStart: 1px solid var(--jx-border)`, `paddingInlineStart: var(--jx-space-2)`. `controlIdOf` needs no change: the part is `control-host`.
+
+**Integration contract.** Once EEW1.2 lands: the engine draws §7.4's table for any host; `SchemaFormContext.documentPath` is how a host says where its document lives, and `SchemaFormControlArgs.required` tells a control the key is required; `registerFormControl(name, control, { formats })` makes a control the implicit one for those string formats; `"media"` is a registered built-in (`mediaFieldControl`), and `mountMediaPicker`'s `documentPath` option resolves preview and upload against a named document; `tagFieldControl` (`ui/tag-field.ts`) edits any array of strings with an optional closed list, and a plan drawing a to-many value may reuse it; the dispatch order is override, pointer, relationship, enum, format controls (date, colour, registered formats), boolean, number, `json-schema`, array of objects, string list, object group, JSON, text, and a to-many relationship branch belongs ahead of the string list. site-architecture.md §7.4 is Implemented with the table below.
+
+## Tests
+
+**`packages/studio`** (`bun test --isolate --coverage` from `packages/studio`; per-file `lines = 0.958, functions = 0.941` in its `bunfig.toml`):
+
+- EEW1.1, `tests/schema-form.test.ts`: "boolean renders a checkbox committing checked state" becomes `a boolean is a switch committing its checked state` (`[part="switch"]`, the control's `role` is `switch`). New: `a date field is the platform's date input and commits only on change` (`type="date"`, no patch on `input`, `2026-03-04` on `change`, blank → `undefined`); `a date-time field edits the UTC instant and writes it back with Z` (held `2026-03-04T10:00:00Z` shows `2026-03-04T10:00:00`; `2026-03-04T11:30` commits `2026-03-04T11:30:00Z`; the label ends `(UTC)`); `a date the picker cannot hold stays text, refused only when the parser would refuse it` (`03/04/2026` → text row with `Write the date as YYYY-MM-DD.`; `2026-03-04T10:00:00+02:00` → text, no error); `a color field is the kit's colour field, committed from its wrapper`; `a control registered for formats is drawn for both media spellings, and an enum still wins` (stub registered with `{ formats: ["image", "uri-reference"] }`); `a control is told the host's document and whether its key is required`; `cells take the switch, the date input and a format control`. `validateFieldValue`'s table gains the two date refusals.
+- EEW1.1, `tests/media-picker.test.ts`: `a field naming its document previews against it, not the focused tab` (focused tab a page, `documentPath` `content/blog/hello.md`, `./images/hero.png` → the mount URL); `a field naming its document uploads beside it`; `a field naming no document uploads to public/ whatever is focused` (`documentPath: null`); `the media control mounts, follows the value and empties its host on dispose`.
+- EEW1.1, `tests/form-controls.test.ts`: the registration test covers four built-ins, `mediaFieldControl` a mount. `tests/asset-refs.test.ts`: `a preview names its document when the caller does`.
+- EEW1.1, `tests/entry-editor.test.ts`: `BLOG_SCHEMA` gains `cover: { format: "image", type: "string" }`; new `the entry form draws the date input, the switch and the media field its schema asks for`; `the media field resolves against the entry while another pane has the focus` (a page tab focused, the entry's form rendered in its own pane, `cover: ./images/hero.png` previews at `/content/blog/images/hero.png`).
+- EEW1.2, new `tests/tag-field.test.ts`: `draws one tag per string, each with a named remove button`; `a committed value is added and the field is cleared`; `a value already held is not added twice, and the help says so`; `removing the last tag writes undefined, or [] when the field is required`; `an items enum offers only the values not yet chosen, as a closed list`; `an update redraws the tags without losing the draft`; `dispose empties the host`.
+- EEW1.2, `tests/schema-form.test.ts`: `an array of strings is a tag field`; `an array of refs is not a tag field`; `a list holding a non-string stays JSON`; `an object with declared properties is a group whose edits merge into the object`; `a group nests`; `emptying a group removes the key, or writes {} when required`; `a string-list cell is a tag field and an object cell stays text`. The existing `array/object props are edited as JSON…` must pass unchanged (its fields declare no `items` and no `properties`).
+- EEW1.2, `tests/entry-editor.test.ts`: `AUTHOR_SCHEMA` gains `topics` (string list) and `address` (`{ city }`); new `a JSON entry's tags and nested group reach the saved file` through `serializeDocument`.
+- Coverage: `ui/tag-field.ts` and `surfaces/tag-field.ts` are new and ship with `tests/tag-field.test.ts`, so `bun scripts/check-coverage-manifest.ts packages/studio` sees them; each must clear the per-file bar. Ratchet the thresholds only if the worst file moves.
+
+**`packages/ui`**: a description change; its suite re-runs unchanged (`lines = 0.99, functions = 1.0`).
+
+**`extensions/parser`** (EEW1.1, `lines = 0.987, functions = 0.975`): in `tests/content-loader.test.ts` the media fixture gains `poster: { format: "image", type: "string" }` with `poster: ./images/hero.png` in `post.md`, and "remaps only frontmatter fields declared uri-reference" becomes `remaps frontmatter fields declared uri-reference or image`, asserting `poster` too.
+
+## Specs & docs
+
+**EEW1.1**
+
+- `specs/site-architecture.md` §7.4: the marker's last sentence becomes "Two rows of the table below do not ship there: an `array` of `string` and an `object` are raw JSON text." The table's rows become (a declined Open decision drops its row or its words):
+
+  | JSON Schema Type                                  | Widget                                                                                                              |
+  | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+  | `string` + `format: "date"`                       | Date picker (the platform's date input), writing `YYYY-MM-DD`                                                       |
+  | `string` + `format: "date-time"`                  | Date and time picker over the UTC instant, writing `YYYY-MM-DDTHH:MM:SSZ`                                           |
+  | `string` + `format: "uri-reference"` or `"image"` | Media field: the path, a thumbnail, **Upload** and **Browse** (the media browser, §9.4), resolved against the entry |
+  | `string` + `format: "color"`                      | Colour field                                                                                                        |
+  | `boolean`                                         | Toggle switch                                                                                                       |
+
+- §9.3's first eligibility bullet: "or in a frontmatter field the collection schema declares `"format": "uri-reference"` or `"format": "image"`, the spelling Studio's content type builder writes;". `specs/parser.md` §9.2's first bullet the same.
+- `specs/extensions.md` §9.1, the controls sentence as `plan:extensions/settings-section-vocabulary` leaves it, gains after `"reference"`: "and `"media"` (the media field: a path, a thumbnail, Upload and Browse, which the form draws for a string whose `format` is `uri-reference` or `image` without being named)".
+- Fragments: `bun run spec:change site-architecture.md minor -m "§7.4: the entry editor draws a date picker for date and date-time fields, a media field for uri-reference and image fields, a colour field for color fields and a toggle switch for booleans; §9.3: the collection loader rewrites content-relative image fields as it does uri-reference ones."`, `bun run spec:change parser.md minor -m "§9.2: a content-relative reference in a format image field is remapped like a uri-reference one."` and `bun run spec:change extensions.md minor -m "§9.1: media is a built-in control, the media field a form draws for a uri-reference or image string."`
+- Docs: `docs/studio/projects/media.md` (`spec:` site-architecture.md#9.4; `code:` lists `media-picker.ts`, `asset-refs.ts`): the Upload paragraph's list of places gains "an entry form's image field", and one sentence says the entry form places an upload beside the entry it edits even while another pane has the focus. `docs/framework/site/content-collections.md` (`code:` `content-loader.ts`): the doc-note reads "declares as `"format": "uri-reference"` or `"format": "image"`". `docs/extending/extensions/project-sections.md` ("Controls and dynamic enums"): the named-controls list gains "`"media"`: a media field (path, thumbnail, Upload and Browse). A string whose format is `uri-reference` or `image` gets it without naming it." Checked, no change: `docs/studio/projects/content-types.md` (its control sentence becomes true here and is extended in EEW1.2), `docs/studio/data/tables.md` and `docs/studio/data/auth-and-secrets.md` (list `form-controls.ts`; nothing they say moves), `docs/extending/ui-kit.md` (`@docs` of `surfaces/schema-form.ts`; its switch guidance is what this follows), `docs/framework/site/relationships.md` (lists `content-loader.ts`).
+
+**EEW1.2**
+
+- `specs/site-architecture.md` §7.4, the marker becomes:
+
+  > **Status: Implemented.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form (`packages/studio/src/content/entry-editor.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). The table below is the form engine's own mapping, so the project settings forms and a signal's configuration draw the same control for the same schema.
+
+- The table's `array` of `string` row: "Tag input (chip editor); `items.enum` limits it to those values". The `object` row: "`object` with `properties`" / "Nested form group". After the table: "**A value the widget cannot hold is shown as it is.** A date the picker cannot represent, a list with a non-string item or a non-object where a group is expected falls back to the text or JSON field, with the refusal beside it when the value is invalid. An `object` with no declared `properties`, and an `array` of anything but objects or strings, are edited as JSON. **Emptying a list or a group removes the key**, unless the schema requires it, in which case it is written empty (`[]`, `{}`), the value New Entry seeds (§7.5)."
+- §7.3's last bullet: "Currently stored but not editable via a UI form (see §7.4)." becomes "Its fields are edited as a form in the entry editor (§7.4)."
+- Fragment: `bun run spec:change site-architecture.md minor -m "§7.4: the entry editor edits an array of strings as tags and an object with declared properties as a nested group, so every row of its widget table ships; §7.3 no longer says frontmatter has no form."`
+- Docs: `docs/studio/projects/content-types.md` (`code:` lists `entry-editor.ts`; gains `packages/studio/src/ui/tag-field.ts` and `packages/studio/src/ui/schema-form.ts` for their new `@docs` tags): the "type and format choose the control" bullet becomes "**The field's type and format choose the control.** Text, numbers, on/off switches, dates, colors, the [media picker](/docs/studio/projects/media) for image fields, tags for a list of words, and a nested group for an object's sub-fields. A value the control can't show, such as a date written `03/04/2026`, stays a text field with the problem named beside it." No other page cites §7.4 (`grep -rn "site-architecture.md#7" docs` finds none).
+
+Neither slice graduates a spec: site-architecture.md, parser.md and extensions.md keep other open items.
+
+## Acceptance
+
+- After EEW1.2, `bun run plans:status --spec site-architecture` no longer lists `site-architecture.md#7.4`; `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose` and `bun run docs:markdown` pass after each slice.
+- `bun test --isolate --coverage` passes from `packages/studio`, `packages/ui` and `extensions/parser` with no per-file threshold failure, and `bun scripts/check-coverage-manifest.ts packages/studio` passes. `bun --cwd packages/studio scripts/check-surface-purity.ts`, `scripts/check-icons.ts` and `scripts/check-pane-singletons.ts` exit 0.
+- `git grep -n "not editable via a UI form" -- specs` prints nothing; `git grep -n '"checkbox"' -- packages/studio/src/surfaces/schema-form.json` prints nothing.
+- By hand in Studio, on a site whose `blog` type declares `pubDate` (`date`), `published` (`date-time`), `cover` (`image`), `accent` (`color`), `featured` (`boolean`), `tags` (string list), `seo` (`object` with `title`, `description`): **Open Entry Form** on a post draws a date picker, a UTC date-time picker, the media field with a thumbnail, a colour field, a switch, tags and a nested group; each edit survives ⌘S and ⌘Z. Split the pane with a page focused on the other side, Upload into `cover` in the entry: the file lands in `content/blog/images/`, the field holds `./images/<name>`, and `jx build` publishes it at `/content/blog/images/<name>`. Project Settings › Auth draws its booleans as switches. The screenshots lane re-captures the settings shots (`connections-section` and the Content Types shots); review the images and the pages it lists.
+
+## Slices
+
+| Slice  | Scope                                                                                                                                                          | Claims                   | State |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- |
+| EEW1.1 | Scalar widgets: date and date-time, colour, switch, the registered `media` control with `documentPath`, the loader's `image` rewrite, the narrowed §7.4 marker | —                        | open  |
+| EEW1.2 | Structured widgets: the tag field and the nested group, fields and cells; §7.4 → Implemented, §7.3 corrected                                                   | site-architecture.md#7.4 | open  |
