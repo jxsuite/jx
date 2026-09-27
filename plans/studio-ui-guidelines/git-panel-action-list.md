@@ -154,6 +154,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
    - `state()` starts one `effect` with the scope that writes `actions = startActions()`, and `project()` stops returning `actions`. The effect is what makes the list complete: `studio.ts` calls `render()` in its normal-mode branch well before `initShortcuts` publishes the registry, and `renderWelcome` is not reactive, so a list read there would stay empty until an unrelated repaint.
    - `run(id)` is `void runActiveReported(id, undefined, "Welcome")`.
    - `WelcomeCtx` keeps only `openRecentProject`, and `studio.ts`'s `initWelcome` call shrinks to match.
+   - If `plan:desktop/single-file-mode` has landed (its step 14 hand-writes an Open File… tile), `START_COMMANDS` gains `"file.openFile"` after `"project.open"`, and that record gains `icon: "file"` if it lacks one. Its `when` (`ctx.capability.openFile`) hides the tile off the desktop. `WelcomeCtx.openFile`, the `"file"` `StartAction` id and its `run` case go with the hand-written list, and `studio.ts` keeps `openFile` in the command deps only.
 6. Delete `platformSupportsClone` from `git-panel.ts`, which has no caller left, and its tests.
 
 **Integration contract.**
@@ -235,6 +236,7 @@ Two suites share a harness for the git panel:
   - "a tile runs its record, and a refusal is filed under Welcome"
   - "no registry, no tiles and no throw"
   - "the tiles appear when the registry is published after the pane mounted"
+  - If `plan:desktop/single-file-mode` has landed, its "Open File… appears only with the three members" case is rewritten as the `file.openFile` record listed only while `ctx.capability.openFile` holds.
 - `studio-shell.test.ts`: the `new-project-modal.ts` and `add-repo-modal.ts` mocks gain `registerAddRepositoryCommands` and capture the deps both register calls receive. The four welcome-callback cases and the welcome half of the clone case become "openCreated opens the created project" and "onAdded refreshes the catalogue and opens the added repository", so `studio.ts`'s new closures stay covered.
 - `project-gap-commands.test.ts`: "project.new opens the project the wizard created" and "…and nothing when it is dismissed".
 - `add-repo-modal.test.ts`: "project.addRepository is gated on the capability and hands the added root on".
@@ -311,7 +313,7 @@ Docs:
 
 Docs:
 
-- `docs/studio/interface/welcome-screen.md` gains one sentence: the four start actions are also commands in Quick Access.
+- `docs/studio/interface/welcome-screen.md` gains one sentence: the four start actions are also commands in Quick Access. If `plan:desktop/single-file-mode` has landed, the sentence counts five, and says Open File… appears only in the desktop app.
 - `docs/studio/projects/create.md` does not change. Its "and opens it" is now true from every entry point.
 - `docs/studio/projects.md` lists `welcome.ts` in `code:`; re-read it, and expect no change.
 

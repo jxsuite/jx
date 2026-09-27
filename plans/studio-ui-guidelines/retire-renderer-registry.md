@@ -6,6 +6,8 @@ claims:
 size: L
 workspaces:
   - packages/studio
+  - scripts
+  - specs
 ---
 
 # Retire the renderer registry: surfaces follow reactive state, and nothing repaints by name
@@ -98,6 +100,7 @@ Each slice deletes call sites by making the state they chased visible to an effe
   - "Module-local state (Sets, variables) persists across renders and does not need to go through the state system." becomes: "Module-local state that no surface reads (a timer, a pending write) may stay a plain variable. State a surface reads is reactive, by the rule above, and a section's open state lives where §5.3 says." This keeps §9.3 from contradicting `plan:studio-ui-guidelines/section-open-state`'s §5.3, which forbids a module-level store for section state. That plan makes this edit if it lands first, and then this step is skipped.
   - The idle-source list in `services/idle.ts`'s header comment is updated.
   - Release: `bun run spec:change studio-ui-guidelines.md minor -m "§9.3 …"`.
+  - If the `render` idle source is deleted: `studio.md` §13.5's quiescence paragraph loses its "no renderer mid-paint (`store.ts`)" clause in place. The clause is there before and after `plan:studio/panel-scheduler-text` rewrites the paragraph; if that plan has not landed, its subsystem count stays for it to drop. The render item of `scripts/screenshots/README.md`'s `probe.idle()` list goes too ("queued lit renders" today, "renderers mid-paint" after that plan). Release: `bun run spec:change studio.md patch -m "§13.5 probe.idle() no longer waits on a renderer mid-paint, since no surface repaints by name"`.
 - No user-visible behaviour changes, so no docs page changes. State that in each slice's pull request after running `bun run docs:sync`.
 
 ## Acceptance

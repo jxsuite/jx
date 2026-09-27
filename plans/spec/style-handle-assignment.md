@@ -4,6 +4,7 @@ disposition: implement
 claims: []
 workspaces:
   - packages/compiler
+  - specs
 size: M
 ---
 
@@ -58,12 +59,12 @@ The markers it serves. `specs/spec.md` §9.2, line 903 (the handle half):
 
 ## Outcome
 
-No marker changes here. Once it lands:
+No claim changes status. Once it lands:
 
 - every node with a `style` object, a repeater's item template included (at a definition's root too), carries one generated class that no other element carries, and its rules are keyed on it;
 - every emitter writes that class into the element's single `class` attribute, so the prerendered HTML, the component module and the client module stamp the same handle (Route 2's bare root excepted, per Context);
 - an element with neither a handle nor a `className` keeps its bytes: its `attributes.class` is emitted where and how it is today;
-- `spec.md` §9.2's handle half and `compiler.md` §8.2 close in the same pull request, through `plan:_shared/static-style-handle-and-descriptions`'s text.
+- the `spec.md` §9.2 and `compiler.md` §8.2 markers stop saying the code uses the old handle and say instead that the body text still describes it (Specs & docs); both stay Partial, and `plan:_shared/static-style-handle-and-descriptions` rewrites that text and closes both, in its own pull request after this one.
 
 ## Decisions
 
@@ -76,7 +77,7 @@ No marker changes here. Once it lands:
 - **Decided:** an element with a handle or a `className` writes one `class` attribute, at the `className` position: the author's classes, then the handle. The author's classes are `attributes.class` when the element writes one and `className` otherwise, because that is what `renderNode` leaves in effect (`attributes` apply after properties), and the two compiled emitters disagree with each other today. The `attributes` loops skip `class` exactly when that attribute was written. An element with neither keeps today's `attributes.class` emission, position and the element target's `ATTR_HELPER` form included, so an unstyled element's bytes do not move.
 - **Decided:** a repeater's item template gets one handle shared by every row, and its non-reactive rules go to the sheet the template belongs to, because a row's literal declarations are identical per row. The client target stops writing literal declarations inline in `emitLitMapTemplate`, or the new `:hover` rules could never apply; that function also renders `$switch` cases and mixed children, whose rules `collectStyles` already writes, so their inline copies go too. Templated declarations stay inline for `plan:spec/static-style-rules-only`.
 - **Decided:** the element target assigns handles without building rules (`assignStyleHandles`), because its rules are thrown away and building them records each dropped reactive declaration a second time.
-- **Decided:** this plan lands in the same pull request as `plan:_shared/static-style-handle-and-descriptions`, because it changes behaviour `spec.md` §9.2 line 918 and `docs/framework/concepts/styling.md` describe, and that plan owns their text.
+- **Decided:** this plan lands alone, before `plan:_shared/static-style-handle-and-descriptions`, and narrows the two markers whose handle clauses it makes false, as `plan:compiler/image-sizes-and-encode-limit` narrows `compiler.md` §7.2's. Landing the two together would make them one plan (`plans/README.md` merges plans that always land together) and would hold `plan:spec/static-style-rules-only`, which needs only the handle, behind the `$description` comments. In between, §9.2's line 918 and `compiler.md` §8.2's line 656 still describe the old handle, and the narrowed markers say so; `docs/framework/concepts/styling.md` says nothing this makes false (its "Different handle, same cascade" becomes true).
 
 ## Implementation
 
@@ -102,11 +103,11 @@ No marker changes here. Once it lands:
    - `buildClientNode`, dynamic `attributes`: when the key is `class` and the node has a handle, register a fresh `_t<n>` binding whose body joins the bound value and the handle, ignoring a null or empty value. Do not reuse `addRefBinding`'s shared key, which another element binding the same ref also reads.
 4. No change to `site-build.ts`, `compile-static.ts` or `compiler.ts`: they reach the handle through `collectStyles` and `buildAttrs`.
 
-**Integration contract.** Once this lands, `packages/compiler/src/shared.ts` exports `styleHandleOf(node)` (the class name without its dot, or `undefined` for a node no pass has handled; the selector is `.` plus it), `assignStyleHandles(def, counter, prefix)`, `styleChildren(def)` and `authorClassValue(def)`. `collectStyles` keeps its signature and stays where a sheet's handles are assigned, so the §9.2 marker text the co-landing plan writes stays true. Every node with a `style` object, a repeater's item template included, has a handle no other element carries, minted once and kept by every later pass and by object spreads; a later change that deep-clones a node between a style pass and an emitter must carry it over. Its static rules are keyed `.<handle>`, and no author class, id or bound value reaches a selector. A definition's handles are the same in `buildComponentCSS` and in `emitElementModule`'s template, and `emitElementModule` makes no `collectStyles` call, so a resolver branch for that stamping pass has no caller. Every emitter writes exactly one `class` attribute for a handled element, author classes then the handle, in static HTML, the component module's templates and the client module's row templates and `class` bindings. There is no per-render handle and no page-level rule sink in `renderComponentInstance`. `recordDroppedReactive` receives `.jx-<n>`-style selectors.
+**Integration contract.** Once this lands, `packages/compiler/src/shared.ts` exports `styleHandleOf(node)` (the class name without its dot, or `undefined` for a node no pass has handled; the selector is `.` plus it), `assignStyleHandles(def, counter, prefix)`, `styleChildren(def)` and `authorClassValue(def)`. `collectStyles` keeps its signature and stays where a sheet's handles are assigned, so the §9.2 marker text the dependent writes stays true. Every node with a `style` object, a repeater's item template included, has a handle no other element carries, minted once and kept by every later pass and by object spreads; a later change that deep-clones a node between a style pass and an emitter must carry it over. Its static rules are keyed `.<handle>`, and no author class, id or bound value reaches a selector. A definition's handles are the same in `buildComponentCSS` and in `emitElementModule`'s template, and `emitElementModule` makes no `collectStyles` call, so a resolver branch for that stamping pass has no caller. Every emitter writes exactly one `class` attribute for a handled element, author classes then the handle, in static HTML, the component module's templates and the client module's row templates and `class` bindings. There is no per-render handle and no page-level rule sink in `renderComponentInstance`. `recordDroppedReactive` receives `.jx-<n>`-style selectors.
 
 For `plan:spec/static-style-rules-only`: `collectStyles` already walks a repeater's `map` template and `emitLitMapTemplate` already writes no literal declaration inline, so its steps doing either reduce to nothing, and its `styleHandle(node)` is `styleHandleOf`.
 
-For `plan:_shared/static-style-handle-and-descriptions`'s text under the recommended Opens: its `spec.md` §9.2 line-918 sentence drops "the element's own `#id` when its `id` is a literal, and otherwise" and gains a clause that an author's `id` is not the handle because an id rule outranks the runtime's (§9.6), plus one that the author's classes are `attributes.class` when written, else `className`; its §16.6 addition drops "unless it carries a literal `id`, which is its handle instead"; its `styling.md` sentence drops "its `id`, when you wrote one as plain text"; and its `spec.md` fragment sentence drops "a literal id or".
+For `plan:_shared/static-style-handle-and-descriptions`: its `spec.md` §9.2 line-918 sentence, its §16.6 addition, its `styling.md` sentence and its fragment already follow both recommended Opens (every styled element gets a generated class, id or not, in the spellings that ship, and the author's classes are `attributes.class` when written, else `className`), and each carries its variant for a kept literal `id`. It replaces the §9.2 marker and deletes the `compiler.md` §8.2 marker in whatever wording this plan leaves.
 
 ## Tests
 
@@ -143,18 +144,22 @@ Coverage: the per-file bar in `packages/compiler/bunfig.toml` is lines 0.982, fu
 
 ## Specs & docs
 
-No spec edit and no fragment here. `spec.md` §9.2, §16.6 and `compiler.md` §8.2 are `plan:_shared/static-style-handle-and-descriptions`'s, and it lands in the same pull request with the adjustments listed at the end of the integration contract. This plan graduates nothing.
+Marker edits only, in place, each applied to the wording that stands. The sections, their body text and both status words stay `plan:_shared/static-style-handle-and-descriptions`'s, which lands after this one (integration contract). This plan graduates nothing.
+
+- **`spec.md` §9.2 marker** (line 903): from "and the compiler's handle is the author's FIRST class" to the end becomes "and the handle paragraph below no longer describes the compiler's: `collectStyles` (`packages/compiler/src/shared.ts`) gives every element with a `style` object a generated class of its own, never an author's `#id` or class, named for the sheet that holds its rules (`jx-<n>` on a page) rather than always `.<tagName>-<n>`." Variant, if the id is kept: "…a generated class of its own, never an author's class, unless it is a page element whose `id` is a literal CSS identifier, which is its handle instead, …".
+- **`compiler.md` §8.2 marker** (line 650): from "The handle preference does not:" to the end becomes "The handle sentence below no longer holds: `collectStyles` in `packages/compiler/src/shared.ts` has no `#id` preference, and gives every element with a `style` object a generated class of its own, as `spec.md` §9.2's marker records." Variant, if the id is kept: "…prefers `#id` only for a page element whose `id` is a literal CSS identifier, and otherwise gives…".
+- Fragments: `bun run spec:change spec.md patch -m "§9.2's status marker records that the compiler gives every styled element a generated class of its own, never an author's id or class."` and `bun run spec:change compiler.md patch -m "§8.2's status marker records that the compiler gives every styled element a generated class of its own, with no id preference."` Under the id variant, the first ends "never an author's class" and the second "with an id preference for literal page ids only".
 
 Docs pages `bun run docs:sync` names for `shared.ts`, `compile-element.ts` and `compile-client.ts`:
 
-- `docs/framework/concepts/styling.md`: edited by the co-landing plan. Under the recommended id Open, its "Different handle, same cascade" sentence (line 72) becomes true for elements with an id and needs no qualification.
+- `docs/framework/concepts/styling.md`: no change here; `plan:_shared/static-style-handle-and-descriptions` rewrites its handle sentence. Under the recommended id Open, its "Different handle, same cascade" sentence (line 72) becomes true for elements with an id and needs no qualification.
 - `docs/framework/concepts/lists.md`: no change. Its claim that `style` works in a `map` template becomes true in both compiled targets.
 - `docs/framework/concepts/components.md` (line 139, the generated `.<tagName>-<n>` class): no change; still true.
 - `docs/framework/concepts/elements.md`, `color-schemes.md`, `functions.md` and `docs/framework/build.md`: no change; none describes the handle or class emission.
 
 ## Acceptance
 
-- `bun run plans:check --audit spec` and `bun run plans:check --audit compiler` report nothing for this file.
+- `bun run plans:check --audit spec` and `bun run plans:check --audit compiler` report nothing for this file; `bun run docs:status` passes and `bun run docs:spec-release` finds both fragments.
 - The `packages/compiler` suite and manifest check pass at their thresholds.
 - `grep -n 'split(" ")\[0\]' packages/compiler/src/shared.ts` finds nothing.
 - Scratch `compileStyles`: the two-`card` document gives two rules on two handles; the bound-class document's sheet contains no `${`; a `$ref` `className` builds; `id: "1st"` gives a class rule; the `#intro` document gives `.jx-1` and `.jx-2` rather than `#intro`.
