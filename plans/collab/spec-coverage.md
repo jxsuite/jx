@@ -1,54 +1,254 @@
 ---
-status: stub
-disposition: reconcile
+status: drafted
+disposition: implement
 claims:
   - collab.md
-  - collab.md#1
-  - collab.md#2
-size: M
+requires: []
+workspaces:
+  - packages/collab
+  - packages/server
+  - packages/studio
+size: L
 ---
 
-# The collab spec specifies the subsystem that ships, starting with the backends that serve it
+# collab.md specifies the room host, the envelope, persistence, presence and the source lock, and each of them does what the spec says
 
 ## Context
-
-Three items, one piece of work. All three are the spec lagging code that is right, all three are paper, and §1's and §2's corrections open the backend and wire description the coverage pass has to write anyway, so they land together.
 
 The whole-spec marker, `specs/collab.md` line 12:
 
 > **Status: Partial.** This is a stub spec for a shipped subsystem that grew ahead of its specification. It records the wire contract and the load-bearing invariants as implemented today; the room host (`packages/collab/src/ws-room.ts`), the dev server's explicit-save persistence (`packages/server/src/collab.ts`), the source-canonical lock (`packages/collab/src/source-lock.ts`), the envelope's frame types and control messages (`packages/collab/src/envelope.ts`) and the awareness state shape (`packages/collab/src/awareness-types.ts`) ship but are not yet specified here.
 
-§1, line 16:
+The stub treated this as paper. Detailing found that four of the five modules do not do what the sections would have to say, so the plan became `implement`, and §1 and §2 (which stay paper) moved to `plan:collab/spec-coverage-backends`. Re-read against the tree on 2026-09-27.
 
-> **Status: Partial.** `/__studio/collab` is served by the dev server (`packages/server/src/collab.ts`, wired in `server.ts`) and, under its session prefix, by the cloud gateway Studio reaches through `packages/studio/src/platforms/cloud.ts`, which this section does not name. Neither desktop launcher serves it: the Electrobun app's adapter (`packages/desktop/src/platform.ts`), the Chromium launcher's (`packages/desktop/src/chromium/platform.ts`) and the project server both start (`packages/server/src/project-server.ts`) implement no `collab`, so collaboration is `unavailable` on desktop.
+**What ships and is specified as it is.** The room host `createCollabHost` (`ws-room.ts`; the connect, open, sync, relay, read-only, epoch, leave and unknown-input behaviour §1.1 below states), the four frame types and eight control messages of `envelope.ts` with their `error` codes (`too-large` and `rate-limited` come only from the gateway) and the client's one `hydratePath` retry (`ws-client.ts`), the dev server's flush-only write-back, room-level `doc-dirty`, 30-second empty-room grace and external-change reset (`packages/server/src/collab.ts`, with the rename route's `onFileMoved` in `studio-api.ts`), the lock's flip, freeze, source reconciler and stale-parse discard (`source-lock.ts`, `sourceParseNow` and `setTransactGate` in `packages/studio/src/collab/collab-session.ts`), and the awareness fields and palette (`awareness-types.ts`). Each clause of the sections below was checked against those files.
 
-§2, line 22:
+**Found while detailing: what the sections could not truthfully say**
 
-> **Status: Partial.** The transport, the epoch-tagged envelope, out-of-band awareness and the `jx.collab.v1` subprotocol ship (`packages/collab/src/envelope.ts`, `ws-client.ts`, `packages/collab/tests/envelope.test.ts`, `ws-wire.test.ts`). The compression bullet does not hold as written: the client opens its socket through the platform `WebSocket` (`ws-client.ts`), which offers `permessage-deflate` on every handshake and has no way to suppress the offer, so the extension is declined rather than not offered. The dev server declines it only because Bun's `perMessageDeflate` is off by default and `packages/server/src/server.ts` does not set it, no test pins that, and the cloud gateway is outside this repository.
+1. **A save can be reported that did not happen, or never end.** `persist` swallows a failed `writeFile`, and the host's `flush` handler sends `flush-ack` once `onFlush` settles, so `collabSave` returns `true` and `saveFile` (`packages/studio/src/files/file-ops.ts`) calls `reportSaved`; if `onFlush` rejects, no ack is ever sent. On the client, `flush()` goes through `sendFrame`, which drops the frame while the socket is not open, and nothing settles `pendingFlush` on close, reset or destroy, so a save while offline never finishes and `flushAllCollab` holds the commit flows (`doCommit`, `doCommitAndSync` in `packages/studio/src/panels/git-panel.ts`) with it. The host checks permission only on `doc-sync`, so a read-only connection's `flush` writes the file.
+2. **A save during a Code view session writes the lagging tree over the shared text.** `collabSave` calls `mirrorNow` whatever `canonicalOf` says, and `mirrorNow` serializes the tab's structure (the source reconciler's last parse, up to 600 ms behind) into `source` while `source` is canonical, reverting peers' latest keystrokes and reformatting the text to the serializer's layout. `scheduleMirror` has the guard; the save path does not.
+3. **The shutdown write is unreachable.** `CollabRegistry.stop()` writes every path in `pendingPersist`, but `createDevServer` never calls it, `collab.ts` is not a package export, and neither `dev.ts` nor `server.js` handles a signal; only tests call it (the rename test's `renamed.stop(true)` is the Bun server's `stop` and writes nothing). server.md §4.1 ("flush on save, plus graceful shutdown", and its rename reasoning), the `collab.ts` header, the rename comment in `studio-api.ts` and `docs/extending/embedding/dev-server.md` describe it as live; `docs/studio/publish/collaboration.md` says the file changes only when someone saves.
+4. **The structure mirror is elected per project, not per room.** `isReconciler` (`collab-session.ts`) picks the lowest write-capable client id among every awareness state on the connection, and the host relays awareness project-wide, so a room whose writers do not include that client is never mirrored between saves. The host derives a room's unsaved state from `source` against its baseline, so that room also never tells its peers it is unsaved, which `docs/studio/publish/collaboration.md` promises ("the moment anyone edits, the file counts as unsaved for the whole session"). `collab-session-gaps.test.ts` "a lower write-capable clientID wins the election" pins today's rule with an injected peer that holds no document.
+5. **Presence names the wrong document.** A connection has one awareness state. `createSession` replaces it wholesale with `focusedPath` set to the document just joined, and nothing updates it on leaving; every session's selection effect writes `structuralSelection` under whatever `focusedPath` holds, so with two co-edited tabs a peer's canvas (`packages/studio/src/canvas/iframe-host.ts`) draws one document's selection on the other; Code view's `enter()` sets `mode: "source"` without `focusedPath`, so its holder can be counted as a source editor of the wrong document (`otherSourceEditors`, `isSourceReconciler`); and a client that has left every document keeps publishing, against collab.md §4's "presence that has ended must stop being published".
 
-Disposition `reconcile`: the code is right. `collab?` is an optional PAL member (`packages/studio/src/types.ts`), and desktop.md §3 and §10.3 already say a platform without it edits solo with file-level saves; nothing in desktop.md promises co-editing on the desktop app. A browser client cannot decline to offer `permessage-deflate`, so §2's reasons for rejecting RFC 7692 stand and only the sentence describing the handshake is wrong.
+**Tests in the area**: `packages/collab/tests/ws-room-host.test.ts`, `ws-wire.test.ts` (`LoopbackSocket`, `fixture()`), `envelope.test.ts`, `source-lock.test.ts`, `index.test.ts`; `packages/server/tests/collab-api.test.ts`; `packages/studio/tests/collab-session.test.ts`, `collab-session-gaps.test.ts`, `collab-source.test.ts`, `collab-presence.test.ts`, `git-panel-gaps.test.ts`, with `collab-mock.ts` (whose hub gives every handle its own `Awareness`, unlike the wire client).
 
-**What exists**
+**Related.** collab.md §3's epoch rule (`plan:collab/epoch-continuity`), §4's lifecycle and refusal outcomes (`plan:collab/attach-failure-state`), §5's shared-document version in `open` (`plan:collab/room-schema-skew`). The new sections defer to those sections instead of restating them, so no edge is needed either way.
 
-- Two backends. The dev server: `createCollabRegistry` in `packages/server/src/collab.ts`, routed at `/__studio/collab` in `packages/server/src/server.ts`, probe answer `{collab: true, protocols, version}`. The cloud gateway: `collab()` in `packages/studio/src/platforms/cloud.ts`, probing `api("/collab")` and connecting to `${base}/collab` under `sessionBase`, with a `hydratePath` hook the dev server does not need. The protocol route is `collab` in `packages/protocol/src/routes.ts`, and desktop.md §5.1 says gateway prefixes preserve its sub-path.
-- Neither desktop adapter defines `collab`: `createDesktopPlatform` in `packages/desktop/src/platform.ts` (the Electrobun app, bootstrapped by `init.ts`) and `packages/desktop/src/chromium/platform.ts`. Both launchers start `createProjectServer` (`window-manager.ts`, `chromium/index.ts`), which routes no `collab`.
-- The room host, `createCollabHost` in `packages/collab/src/ws-room.ts`, shared by the dev server and the platform's Durable Object: one `Y.Doc` per path, server-seeded `source`, the y-protocols sync handshake, project-level awareness relay, read-only enforcement, and the `docEpoch`/`doc-reset` lifecycle.
-- The envelope in `packages/collab/src/envelope.ts`: four frame types (`FRAME_DOC_SYNC`, `FRAME_AWARENESS`, `FRAME_DOC_CLOSE`, `FRAME_CONTROL`) and eight control messages in the `ControlMessage` union (`hello`, `open`, `opened`, `doc-reset`, `flush`, `flush-ack`, `doc-dirty`, `error`, the last with its refusal codes). §2 names the envelope only as "an epoch tag" and §2.1 names only `hello`.
-- Persistence in `packages/server/src/collab.ts`: explicit flush on save and on graceful shutdown, the room-level dirty signal (`markPersisted`, `doc-dirty`), the 30-second empty-room grace before teardown, and an epoch bump on a genuinely external change (`handleExternalChange`).
-- The source-canonical lock in `packages/collab/src/source-lock.ts` (`meta.canonical`, `meta.canonicalRev`, stale-mirror discard), which §4 mentions only as a freeze the UI shows.
-- The awareness state shape in `packages/collab/src/awareness-types.ts`.
-- `permessage-deflate`: `createWsCollabConnection` in `packages/collab/src/ws-client.ts` constructs `globalThis.WebSocket` with only a URL and subprotocols, and `Bun.serve` in `packages/server/src/server.ts` passes `collabRegistry.websocket` without `perMessageDeflate`.
+## Outcome
 
-**What is missing**
+- The collab.md whole-spec marker → removed. New numbered subsections, each Implemented: §1.1 The Room Host, §1.2 Persistence, §2.2 Frames, §2.3 Control Messages, §2.4 Awareness State (with a `Future` remainder: presence per document), §3.2 The Source-Canonical Lock.
+- server.md §4.1's co-editing bullet says what the registry persists, with no shutdown write.
+- The header stays `Partial` unless this lands last (see Specs & docs).
 
-- §1 rewritten to name the dev server and the cloud gateway, and to say the desktop app offers no co-editing.
-- §2's compression bullet rewritten to say the extension is never negotiated because the servers decline the browser's offer, and a server test that pins the declined extension.
-- Additive sections for the room host, the envelope's frame types and control messages, persistence, the source-canonical lock and the awareness state shape.
-- The whole-spec marker removed once those sections exist, which is a `minor` release (new sections).
+## Decisions
 
-**Related**
+- **Decided:** fix defects 1, 2, 4 and 5 here rather than specify them, because each contradicts something already published (a Save that reports saved, "unsaved for the whole session", "the text is the truth" while Code view holds the lock, and §4's presence rule), and none needs a subprotocol token change.
+- **Open:** does stopping the dev server write unsaved room edits to disk? Recommendation: no. Delete the unreachable write from `CollabRegistry.stop()` and say so in collab.md §1.2 and server.md §4.1, because the user docs promise the file changes only when someone saves, a tab still open keeps its unsaved copy through a restart (so the write protects nothing a tab does not), and wiring it would take signal handlers in `dev.ts` and `server.js` plus a `createDevServer` return value exposing the registry, all to write edits nobody chose to save.
+- **Decided:** a flush answers once. `flush-ack` gains an optional `error` (a sentence an author can read), absent on success, because an older client reads any `flush-ack` as success (today's behaviour) where it would hang forever on an `error` frame it ignores after `opened`, and an optional JSON field mis-parses nothing, so `jx.collab.v1` stands (collab.md §2.1's bump rule).
+- **Decided:** the host answers a `flush` from a read-only connection with `flush-ack` and `error` "Write access required" and never calls `onFlush`, because a flush writes durable storage and read-only enforcement is the host's job (its header).
+- **Decided:** on the client, `flush()` rejects at once when the socket is not open or the document is not opened; a pending flush rejects when the socket closes, the document resets or the connection is destroyed; an ack with `error` rejects; one ack settles every flush of its path still waiting. Because a save must end, and "not confirmed" is the truth when the socket dropped mid-flush.
+- **Decided:** `flushAllCollab` flushes every co-edited tab and then throws one error naming every path that failed; both commit flows stop before committing, put the message back and show the error, because the flush exists so a commit never misses the session's latest text.
+- **Decided:** `collabSave` mirrors only while `canonicalOf` is `"structure"`; while `"source"` it flushes the text as it stands, because the text is then the document.
+- **Decided:** each awareness state lists `rooms`, every document the client holds a session on, in join order; the structure mirror is the lowest write-capable client id among states that list the path or list no rooms at all (`isStructureMirror` in `source-lock.ts`), because only a room's own writers can mirror it, and counting a pre-`rooms` Studio as present everywhere keeps a mixed-version room at today's at-most-one mirror.
+- **Decided:** focus rules. Joining a document focuses it unless a Code view holds focus; opening a Code view focuses its document; leaving the focused document focuses the most recently joined one still held; holding none withdraws the state (`setLocalState(null)`); only the focused document's session publishes `structuralSelection`. Because these are the smallest rules under which every field describes one document, the source reconciler is the Code view's own document, and a client that holds nothing is not present.
+- **Open:** presence per document. Recommendation: a `Future` remainder in §2.4: a client with several documents open (split panes, background tabs) is shown and counted as a source editor in its focused document only, and focus does not follow the active tab. Because following the active tab would drop a Code view's holder from its document's source-editor count while that view is still bound in another pane, so the lock could be released under it; the correct answer is a state per document, which changes what every peer reads and is a feature, not coverage.
+- **Decided:** the new text goes in as numbered subsections under the section it belongs to (§1.1, §1.2, §2.2 to §2.4, §3.2), no heading renumbered, and each defers to the owner of a rule it touches (the epoch rule to §3, refusal outcomes to §4, the shared-document version to §5), so the sibling collab plans need no edit to these sections whichever lands first. `open` and the error codes are tabled as they ship when this lands; `plan:collab/room-schema-skew`'s integration contract already adds `schemaVersion` and `schema-version-mismatch` if it lands later.
 
-- desktop.md §3 (the `collab?` PAL member), desktop.md §5.1 (gateway prefixes), desktop.md §10.3 (collaboration as shipped).
-- studio.md §14 (read-only collaborators and the save prompt), studio.md §17 (the `project.json` exclusion, stated in both specs).
-- collab.md §4's state machine is not in scope here: `plan:collab/attach-failure-state` changes that lifecycle and writes it down.
-- The room host section describes the epoch lifecycle that `plan:collab/epoch-continuity` changes; whichever lands second writes it to match.
+## Implementation
+
+**SC1.1: a save answers once.**
+
+1. `packages/collab/src/envelope.ts`: `flush-ack` becomes `{ type: "flush-ack"; path: string; error?: string }`, commented: without `error` the room's text is durable (and a `doc-dirty` `false` precedes it when the room was unsaved); with `error` nothing was written and `error` says why.
+2. `packages/collab/src/ws-room.ts`, `handleMessage`, the `flush` branch: a `read` connection gets `flush-ack` with `error: "Write access required"` and `onFlush` is not called; otherwise `try { await options.onFlush?.(path) }` then `flush-ack`, `catch (error)` then `flush-ack` with `error` set to the message (`String(error)` for a non-`Error`). `CollabHostOptions.onFlush`'s doc: reject with an author-readable reason when nothing was written.
+3. `packages/collab/src/ws-client.ts`: `DocEntry.pendingFlush` becomes `Set<{ resolve: () => void; reject: (error: Error) => void }>` with a local `settleFlushes(entry, error?)`. `handle.flush()` rejects with `new Error("The collaboration server is not connected, so nothing was saved.")` when `socket?.readyState !== WS_OPEN` or `!entry.opened`, else registers and sends. The `flush-ack` case settles with `message.error === undefined ? undefined : new Error(message.error)`. `onclose` settles every entry with "The connection closed before the save was confirmed."; `fireReset` with "The document was reset before the save was confirmed."; `destroy` with "The collaboration connection was closed before the save was confirmed.".
+4. `packages/collab/src/provider.ts`: `CollabHandle.flush`'s doc: resolves once the text is durable, rejects with the reason when nothing was written or no answer can arrive (collab.md §1.2).
+5. `packages/server/src/collab.ts`: on a failed write, `persist` clears `lastWritten` and throws an `Error` whose message is "Could not write", the path, and the write's own reason. Per the Open decision: delete `pendingPersist`, the `onSourceChange` option passed to the host, and the write loop in `stop()`, which keeps clearing timers and destroying the host; rewrite the module header (a room reaches disk only on a flush; stopping the server writes nothing) and the `stop` doc on `CollabRegistry`.
+6. `packages/server/src/studio-api.ts`, rename route: the comment above `opts.onFileMoved?.(absFrom)` says a room still keyed to the old path would be written back by the next save from anyone in it. Comment only.
+7. `packages/studio/src/collab/collab-session.ts`: `collabSave` calls `mirrorNow` only when `session.collab.canonicalOf(session.handle.doc) === "structure"`; a rejected `flush()` propagates to `saveFile`, whose `catch` already posts "Could not save …" with the reason keyed `save:<path>`. `flushAllCollab` collects `{ path, error }` per failing tab, keeps going, and afterwards throws one `Error` whose message names every failed path and the first reason. Comments cite `collab.md §1.2`, never a bare `§`.
+8. `packages/studio/src/panels/git-panel.ts`: `doCommit` and `doCommitAndSync` await `flushAllCollab()` in a `try`; on a throw they restore `shell.git.commitMessage` to the message they cleared, set `shell.git.error = errorMessage(error)`, set `shell.git.loading = false` and return without committing.
+
+**SC1.2: presence names the rooms a client holds.**
+
+1. `packages/collab/src/awareness-types.ts`: `CollabAwarenessState` gains `rooms?: string[]` (every document the client holds a session on, in join order; absent from a Studio built before it, which counts as present in every room); the `focusedPath` doc states the focus rules.
+2. `packages/collab/src/source-lock.ts`: `export function isStructureMirror(awareness: Awareness, path: string): boolean`: false unless the local state lists `path` in `rooms` and has `canWrite !== false`; false when any state with a lower client id has `canWrite !== false` and either no `rooms` or `rooms` including `path`; otherwise true. Export it from `packages/collab/src/index.ts`. The module header describes both elections.
+3. `packages/studio/src/collab/collab-session.ts`:
+   - `isReconciler(session)` returns `session.canWrite && session.collab.isStructureMirror(session.handle.awareness, session.path)`.
+   - `createSession`'s presence write spreads the previous local state and sets `user`, `canWrite`, `rooms` (previous `rooms` plus `path`, deduplicated) and, unless the previous state has `mode: "source"` on another path, `focusedPath: path`, `mode: "structure"`, `structuralSelection: null`.
+   - New `leaveRoom(awareness, path)`, called from `detachSession` after `unregisterCollabPath` when `isCollabPath(path)` is false: drop `path` from `rooms`; none left, `setLocalState(null)`; `path` was focused, focus the last remaining room with `mode: "structure"`, `structuralSelection: null`, `selection: null`.
+   - `collabSourceContext`'s `enter()` writes `focusedPath: session.path` with `mode: "source"`; `leave()` keeps the focus it has.
+   - The structural-selection effect publishes only when the local state's `focusedPath === session.path`.
+4. `packages/studio/tests/collab-mock.ts` gains `sharedAwareness?: boolean` (one `Awareness` for every handle the hub issues, as `createWsCollabConnection` has) and `flushError?: (path: string) => string | null` (the handle's `flush` rejects with it). Both default off, so existing tests keep their shape.
+
+**SC1.3: the spec writes it down.** The collab.md and server.md edits and the docs `spec:` anchors in Specs & docs. It may ride in SC1.2's pull request.
+
+**Integration contract.** Once this lands, a plan may rely on: every `flush` is answered exactly once by `flush-ack`, carrying `error` when nothing was written, and never honoured for a read-only connection; `CollabHandle.flush()` rejects rather than hangs on a closed socket, a reset or a destroy; `collabSave` never serializes over a source-canonical room; `flushAllCollab` throws when any co-edited tab could not be saved; the dev server writes only on `flush`; each awareness state carries `rooms`, `isStructureMirror` is exported from `@jxsuite/collab`, and a client holding no document publishes no state; collab.md §1.1, §1.2, §2.2, §2.3, §2.4 and §3.2 exist as anchors for docs `spec:` lists. `plan:collab/epoch-continuity` edits §3's first bullet only, since §1.1 defers the epoch rule to it; `plan:collab/room-schema-skew` adds its `open` field and code to §2.3 and its refusal to §1.1's "Opening" bullet if it lands after this.
+
+## Tests
+
+From each workspace directory, `bun test --isolate --coverage` in `packages/collab`, `packages/server` and `packages/studio`; then `bun scripts/check-coverage-manifest.ts <workspace>` for each from the root.
+
+SC1.1:
+
+- `packages/collab/tests/envelope.test.ts`, "every control message shape survives": add a `flush-ack` with `error`.
+- `packages/collab/tests/ws-room-host.test.ts`, new `describe("flush answers")`: "a flush whose embedder rejects is answered with the reason" (an `onFlush` that rejects; the recorded ack carries `error`); "a read-only connection's flush is refused and never reaches the embedder" (`onFlush` not called; ack carries "Write access required").
+- `packages/collab/tests/ws-wire.test.ts`: `fixture()` takes an optional `onFlush`. New: "flush rejects with the server's reason"; "flush while the socket is down rejects at once" (`dropFromServer`, then `flush()`); "a flush pending when the socket closes rejects" (an `onFlush` that never settles, then `dropFromServer`); "a flush pending when the document resets rejects" (`host.resetDoc`); "destroy rejects a pending flush". "flush round-trips an ack" is unchanged.
+- `packages/server/tests/collab-api.test.ts`: `describe("graceful shutdown")` becomes `describe("stopping the registry")` with "stop() drops unsaved edits and writes nothing, and a second stop() is a no-op"; "persist failures" becomes "a flush whose write fails is answered with the reason, the room stays unsaved, and the next flush writes" (the directory-in-place-of-file trick, `flush()` rejects naming the path, the last `onDirty` value is `true`, then remove the directory and flush again); the rename test becomes "a rename resets the old path's room, so no later save writes the old path back" (after the reset, the old handle's `flush()` rejects and `pages/movable.md` still does not exist), dropping its `stop`-based assertion.
+- `packages/studio/tests/collab-session.test.ts`: "a co-edited save the provider could not write says so and is not reported saved" (`createMockCollabHub({ flushError })`, `saveFile` resolves `false`, one error notification keyed `save:<path>` whose detail carries the reason); "a save while Code view holds the lock flushes the shared text as it is" (acquire source canonical, type into `sourceText`, `collabSave`; the text is unchanged and one flush was recorded). "collabSave refreshes the source mirror before flushing" stays.
+- `packages/studio/tests/collab-session-gaps.test.ts`: "flushAllCollab flushes every session and names every failure" (two tabs, one failing).
+- `packages/studio/tests/git-panel-gaps.test.ts`: "a commit stops when a co-edited file cannot be saved, and keeps its message" and the same for commit and sync (a co-edited tab over a hub with `flushError`; `gitCommit` not called, `shell.git.error` set, message restored, `loading` false).
+
+SC1.2:
+
+- `packages/collab/tests/source-lock.test.ts`, new `describe("isStructureMirror")`: "the lowest writer among the room's holders mirrors, whoever is lower elsewhere"; "a state with no rooms counts as present"; "a read-only peer never wins, and a read-only self never mirrors"; "a client that does not hold the room never mirrors".
+- `packages/collab/tests/index.test.ts`: the barrel exposes `isStructureMirror`.
+- `packages/studio/tests/collab-session-gaps.test.ts`, `describe("reconciler election")`: the existing injected-peer test stays (a peer with no `rooms` still wins); new "a lower writer in another room does not stop this room's mirror" (injected peer with `rooms: ["pages/other.json"]`; a local edit reaches `source`).
+- `packages/studio/tests/collab-presence.test.ts`, new `describe("presence names the rooms a client holds")` over `createMockCollabHub({ sharedAwareness: true })`: "the state lists every document the client holds, in join order"; "leaving the focused document focuses the most recently joined one still held"; "leaving the last document withdraws presence" (`getLocalState()` is `null`); "a background tab's selection is not published under another document"; "opening Code view focuses its document, and joining another keeps that focus" (through `collabSourceContext(tab).enter()`).
+
+Coverage: no new source file, so the manifest check finds nothing new. Per-file thresholds: `packages/collab/bunfig.toml` (lines 0.98, functions 0.96), `packages/server/bunfig.toml` (0.96, 0.95), `packages/studio/bunfig.toml` (0.958, 0.941); every new branch above has a case. `collab.ts` loses the `stop()` write loop and `pendingPersist`, so its line count falls; if it or `ws-client.ts` was its workspace's worst file and rises, ratchet that `coverageThreshold` to just below the new minimum.
+
+## Specs & docs
+
+**collab.md** (SC1.3, in place; no heading renumbered):
+
+- Delete the line-12 whole-spec marker, and on the footer line delete "— a stub, subject to expansion." (the footer's version is untouched).
+- §2's **Envelope** bullet ends "…see §3; the frame layout is §2.2 and the control messages §2.3." The **Awareness** bullet ends "…the state each client publishes is §2.4."
+- Add after §1's body, before §2 (after whatever `plan:collab/spec-coverage-backends` left there):
+
+```markdown
+### 1.1 The Room Host
+
+Every backend hosts its rooms with one module, `createCollabHost` (`@jxsuite/collab/room`, `packages/collab/src/ws-room.ts`). The host owns the wire; the embedder owns everything else: the sockets, an identity and permission per connection, the file text a room starts from (`loadSource`), the paths it refuses (`rejectPath`) and what a flush writes (`onFlush`, §1.2). The host never parses a Jx document: it seeds and reads `source` and never reads `structure` or `meta`.
+
+- **Connecting.** The host greets each connection with `hello`, carrying its identity and permission (§2.3), then sends the current presence roster (§2.4).
+- **Opening.** The first `open` for a path creates its room: one `Y.Doc` whose `source` the host seeds from the file. A path the embedder refuses, or whose text cannot be loaded, is answered with `error` before `opened`, so no document state moves (§4 says what the author sees). Otherwise the host subscribes the connection and sends `opened` with the room's epoch, `doc-dirty` with the room's unsaved state (§1.2) and sync step 1; the client answers with step 2 and its own step 1, and the attach completes on the host's step 2.
+- **Editing.** Every update the host applies is relayed to the room's other subscribers. A read-only connection's sync step 1 is answered and nothing else it sends to a document is applied; the first refusal is reported with `error` `read-only`, once per connection, and its `flush` is refused (§1.2).
+- **Epochs.** A room carries an epoch. A `doc-sync` at another epoch, for a path the connection has not opened, or for a room that no longer exists is answered with `doc-reset` at the path's current epoch, and `resetDoc` is how an embedder replaces a room's history. When the host issues a new epoch is §3's first bullet.
+- **Presence** is one channel per project, not per room: the host relays every awareness update to every other connection and, when a socket closes, withdraws the states it published and tells the rest (§2.4).
+- **Leaving.** `doc-close` unsubscribes a connection from one room, and a closed socket from all of them. When a room's last subscriber leaves, the host tells the embedder (`onEmpty`), which decides when to discard it (`destroyRoomIfEmpty`).
+- **Unknown input.** A frame the host cannot decode is answered with `error` `unknown-frame`, which carries no path, and dropped; a control message of a type it does not know is ignored (§2.2).
+
+### 1.2 Persistence
+
+Syncing is not saving. Edits reach every peer as they are made, but a room's text reaches storage only when a client **flushes** it, and a flush is what an author's Save sends.
+
+- **What is saved** is the room's `source`. Studio's Save mirrors the structure into it first while the structure is canonical, and flushes the text as it stands while a Code view holds the lock (§3.2), so what is written is what the saver sees.
+- **Unsaved state belongs to the room.** A room is unsaved while its `source` differs from the text last written or seeded. The host sends `doc-dirty` to every subscriber when that changes and to each joiner during `open`, so one author's edit marks the document unsaved for everyone and one author's save clears it for everyone. The embedder calls `markPersisted` after each durable write.
+- **A flush answers once.** Every `flush` gets one `flush-ack`: without `error` the text is durable; with `error` nothing was written, and `error` says why in a sentence an author can read. A read-only connection's flush is refused that way. Studio's Save fails with that reason, and fails too when the socket closes, the document resets or the connection ends before the answer arrives. Committing saves every co-edited document first and stops, naming each file it could not save.
+
+**The dev server** (`packages/server/src/collab.ts`) writes a flushed room's `source` to the file it was seeded from, skipping a write of the text it last wrote; a failed write answers the flush with the reason and leaves the room unsaved. It keeps a room nobody holds for 30 seconds and then discards it with any unsaved edits. A change to the file that is not its own write, whether the file watcher saw it or the Studio API renamed the file, resets the room (§3), so no peer can save the old text back over it. Stopping the dev server writes nothing: its rooms are dropped, and a tab still open keeps its copy of the document, still unsaved, for its author to save once the server is back.
+
+**The gateway** keeps its rooms in its own storage, outside this repository, under the same contract.
+```
+
+- Add after §2.1, before §3:
+
+```markdown
+### 2.2 Frames
+
+Every message is one binary WebSocket frame; a text frame is ignored. A frame is a lib0 `varUint` type followed by its body, and `jx.collab.v1` names exactly this layout (§2.1):
+
+| Type | Frame       | Body                                                                        | Sent by    |
+| ---- | ----------- | --------------------------------------------------------------------------- | ---------- |
+| 0    | `doc-sync`  | `varString` path, `varUint` epoch, `varUint8Array` y-protocols sync message | both       |
+| 1    | `awareness` | `varUint8Array` y-protocols awareness update, for the whole project         | both       |
+| 2    | `doc-close` | `varString` path                                                            | the client |
+| 3    | `control`   | `varString` JSON control message (§2.3)                                     | both       |
+
+Paths are project-relative with `/` separators, and one socket carries every open document. A `doc-sync` at an epoch other than its room's is never applied (§1.1, §3). A frame of an unknown type is dropped by both halves (the host also answers `unknown-frame`), and a control message is read for the fields its receiver knows, so a new frame type, control message or field does not move the token.
+
+### 2.3 Control Messages
+
+| Message     | Sent by    | Fields                                                                             | Means                                                                                                         |
+| ----------- | ---------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `hello`     | the host   | `login`, `name?`, `avatarUrl?`, `color`, `permission` (`admin`, `write` or `read`) | Once per connection: who it is and what it may do. `read` makes every document read-only (§4).                |
+| `open`      | the client | `path`                                                                             | Join the path's room with an empty local `Y.Doc`. Re-sent for every document held when the socket reconnects. |
+| `opened`    | the host   | `path`, `epoch`                                                                    | The room is ready at this epoch; sync follows (§1.1).                                                         |
+| `doc-reset` | the host   | `path`, `epoch`                                                                    | The room's history was replaced: discard the local `Y.Doc` and open the document again (§3).                  |
+| `flush`     | the client | `path`                                                                             | Save the room's text now (§1.2).                                                                              |
+| `flush-ack` | the host   | `path`, `error?`                                                                   | The flush was handled: durable without `error`, not written with it (§1.2).                                   |
+| `doc-dirty` | the host   | `path`, `dirty`                                                                    | The room's unsaved state changed, or, during `open`, what it is (§1.2).                                       |
+| `error`     | the host   | `path?`, `code`, `message`                                                         | A request was refused, with one of the codes below.                                                           |
+
+| Code                        | Sent when                                                                               | The client                                                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `binary-file`               | the embedder refuses a path it cannot co-edit (the dev server: media and archive files) | ends the attach before `opened` (§4)                                                                                                     |
+| `content-not-loaded`        | the path is outside the project or its text could not be loaded                         | reads the file over HTTP and asks once more when its adapter supplies that hook (the cloud adapter does); otherwise ends the attach (§4) |
+| `too-large`, `rate-limited` | the gateway declines the room                                                           | ends the attach before `opened` (§4)                                                                                                     |
+| `read-only`                 | a read-only connection sent a document write (once per connection)                      | nothing: the read-only banner already says so (§4)                                                                                       |
+| `unknown-frame`             | the host could not decode a frame                                                       | nothing (it carries no path)                                                                                                             |
+
+### 2.4 Awareness State
+
+> **Status: Implemented.** packages/collab/src/awareness-types.ts, source-lock.ts; packages/studio/src/collab/collab-session.ts; packages/collab/tests/source-lock.test.ts; packages/studio/tests/collab-presence.test.ts.
+
+Presence travels in y-protocols awareness (§2), one channel per project: each client publishes one state for the whole project (`CollabAwarenessState`, `packages/collab/src/awareness-types.ts`) and peers filter it by document. A client that holds no document publishes no state, so a person who has left every shared document leaves every roster.
+
+| Field                 | Holds                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `user`                | `login`, `name?`, `avatarUrl?` and `color`, from `hello`                                                               |
+| `rooms`               | every document the client holds a session on, in the order it joined them                                              |
+| `focusedPath`         | the document the client is working in (below)                                                                          |
+| `mode`                | `"source"` while the client's Code view on `focusedPath` is open, otherwise `"structure"` (§3.2)                       |
+| `structuralSelection` | the JSON paths selected on `focusedPath`'s canvas, or `null`                                                           |
+| `selection`           | the Code view's text cursor as y-monaco relative positions, written only while a Code view is bound, `null` after (§4) |
+| `canWrite`            | whether `hello` granted write access: advisory, since the host enforces it (§1.1), and what §3.2's elections count     |
+
+**Focus.** Joining a document focuses it, unless a Code view holds focus. Opening a Code view focuses its document. Leaving the focused document focuses the most recently joined one still held. Only the focused document's session publishes `structuralSelection`, so a selection is never drawn on a document it does not belong to.
+
+**Colour.** The host assigns `color`. A backend without identities derives it from the login with `colorForKey`, which maps the same login to the same one of eight hues (`PRESENCE_PALETTE`).
+
+Fields are additive and a peer ignores one it does not know. A state with no `rooms`, from a Studio built before the field, counts as present in every room.
+
+> **Status: Future.** Presence per document. A client with several documents open, in split panes or background tabs, is shown only in its focused document and counted as a source editor only there (§3.2), and focus does not follow the active tab. Following it would drop a Code view's holder from its document's count while that view is still bound in another pane, so the lock could be released under it; the answer is a state per document.
+```
+
+- Add after §3.1's closing paragraph, before §4:
+
+```markdown
+### 3.2 The Source-Canonical Lock
+
+A room stores its document twice, as the `structure` tree the canvas edits and as the `source` text the Code view edits and a flush saves (§1.2), and exactly one is authoritative at a time. `meta.canonical` names it, `"structure"` (the default) or `"source"`, and every flip adds one to `meta.canonicalRev` (`packages/collab/src/source-lock.ts`).
+
+- **Structure canonical.** Edits reach `structure` through the op bridge (§3), and one writer keeps `source` in step by serializing its own copy: the **structure mirror**, the lowest write-capable client id among the clients holding the room (§2.4). It mirrors 800 ms after the last edit, and never lets the text fall more than 2.5 s behind while edits continue. Every Save mirrors first, whoever saves.
+- **Taking the lock.** A writer opening Code view writes its own serialization of the structure into `source` and sets `canonical` to `"source"` in one transaction. While the room is source-canonical every client refuses structural edits, the holder's own included, and says so (§4's freeze).
+- **Source canonical.** Writers co-edit `source` character by character. The **source reconciler**, the lowest write-capable client id among the clients whose Code view is open on the document, parses the text back into `structure` 600 ms after the last keystroke, so every canvas previews it. A parse is discarded when `canonicalRev` moved while it ran (a whole-document write to the structure moves it too), and text that does not parse leaves the last good structure. A Save flushes the text as it stands.
+- **Releasing it.** When the last writer with a Code view open on the document leaves, it parses once more and sets `canonical` back to `"structure"`. A read-only client neither takes nor releases the lock and never counts as a source editor.
+
+Both elections read awareness, so while a joiner's state is still arriving two writers can briefly write the same text; the next mirror or parse restores it.
+```
+
+If the §2.4 Open decision is signed the other way, the Future remainder and the Focus paragraph change with it.
+
+**server.md §4.1** (SC1.1, in place), the **Realtime co-editing** bullet: "persistence is explicit (flush on save, plus graceful shutdown)" becomes "a room reaches disk only when a client flushes it, and stopping the server writes nothing (collab.md §1.2)"; "Without it the room survives the move holding pre-rename content and the shutdown flush writes it back, recreating the file the rename deleted; a room enters the flush worklist on its seed transaction, so an unedited document is not exempt." becomes "Without it the room survives the move holding pre-rename content, and the next save from anyone in it writes that back, recreating the file the rename deleted."
+
+**Fragments**:
+
+- SC1.1: `bun run spec:change server.md minor -m "§4.1: the co-editing registry writes a room only when a client flushes it, stopping the dev server writes nothing, and a rename resets the old path's room so no later save writes it back."`
+- SC1.3: `bun run spec:change collab.md minor -m "The room host, persistence, frames, control messages, awareness state and source-canonical lock are specified in new sections 1.1, 1.2, 2.2, 2.3, 2.4 and 3.2: a flush answers once and a failed or unconfirmed save says so, a read-only flush is refused, a save under the source lock flushes the text as it is, the dev server writes only on a flush, the structure mirror is elected among the room's writers, presence lists the rooms a client holds, and presence per document is Future."`
+
+**Graduation.** If the whole-spec marker is collab.md's last open item when SC1.3 lands (`bun run plans:status --spec collab`), that pull request graduates the spec instead of writing the collab.md fragment: `**Status:** Implemented`, then `bun run spec:bump collab.md minor -m "…"` in place with the sentence above, and `plans/collab/` deleted.
+
+**Docs** (no em dashes). `bun run docs:sync` names `docs/studio/publish/collaboration.md` (`collab-session.ts`, `collab-state.ts`, `provider.ts`, `packages/server/src/collab.ts`), `docs/studio/publish/source-control.md` and `docs/studio/publish.md` (`git-panel.ts`), and `docs/extending/embedding/dev-server.md` (`studio-api.ts`).
+
+- `docs/studio/publish/collaboration.md`: SC1.1, in "Syncing is not saving": after "one person saving saves the shared result for everyone", add "If the save can't be written, or the connection drops before the server confirms it, Studio says so and the file stays unsaved." After the commit sentence, add "If a co-edited file can't be saved, the commit stops and names it." The warning gains "Stopping the dev server discards them too, but a tab that is still open keeps its copy, so save it once the server is back." SC1.2, in "What you see", the presence-chips bullet: "peers elsewhere in the project show up too, labeled with the file they're browsing" becomes "peers elsewhere in the project show up too, labeled with the file they're working in, and someone who has closed every shared file leaves the row. With several shared files open, a collaborator appears in the one they opened or switched to Code view in most recently." SC1.3: `spec:` gains `collab.md#1.2` and `collab.md#2.4`, and `code:` gains `packages/collab/src/source-lock.ts`.
+- `docs/studio/publish/source-control.md` (SC1.1): the commit paragraph's last sentence gains "If one of those files can't be saved, the commit stops, keeps your message, and says which file."
+- `docs/studio/publish.md`: no change; it describes committing, not what a commit saves first.
+- `docs/extending/embedding/dev-server.md` (SC1.1): "the room's shutdown flush would write its pre-rename content back" becomes "the next save from anyone still in the room would write its pre-rename content back".
+- `docs/extending/embedding/backend-protocol.md` (not named by `docs:sync`, but where a backend author reads the `collab` contract): SC1.1, in the `collab` bullet, add "Answer each `flush` control message exactly once, with `flush-ack`. When nothing was written, add `error`, a sentence Studio shows the author; refuse a flush from a read-only connection the same way. A `flush-ack` without `error` tells Studio the file is saved." SC1.3: `spec:` gains `collab.md#1.1`, `collab.md#1.2` and `collab.md#2.3`.
+
+## Acceptance
+
+- `bun test --isolate --coverage` is green in `packages/collab`, `packages/server` and `packages/studio` with no per-file threshold failure and the cases above listed; the three manifest checks pass.
+- `rg -n "pendingPersist|graceful shutdown" packages/server/src` prints nothing; `rg -n "error\?: string" packages/collab/src/envelope.ts` shows `flush-ack`; `rg -n "isStructureMirror" packages/studio/src/collab/collab-session.ts` shows the election.
+- `grep -n "a stub" specs/collab.md` prints nothing; `bun run plans:status --spec collab` no longer lists the whole-spec item; `bun run plans:check --audit collab` reports nothing for this file.
+- `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:standards` and `bun run docs:section-refs` are green.
+- By hand (the `packages/studio:verify` recipe), three windows on one dev server: A opens `pages/other.json`, B and C open `pages/index.json`. B edits: within about a second C's tab shows unsaved (today it stays clean when A holds the lowest client id). B closes the file: C's chip row drops B. With a room unsaved, stop the dev server: the file on disk is unchanged; restart it, save from the tab still open, and the file holds the edit. Make the file read-only on disk and save: Studio reports it could not save and the tab stays unsaved.
+
+## Slices
+
+| Slice | Scope                                                                                                                                                                                                             | Claims    | State |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----- |
+| SC1.1 | A save answers once: `flush-ack` `error`, read-only flush refused, client flush settlement, no mirror over a source-canonical room, commit stops on a failed save, no shutdown write; server.md §4.1 and its docs | —         | open  |
+| SC1.2 | Presence names the rooms a client holds: `rooms`, `isStructureMirror`, the focus rules, presence withdrawn when nothing is held; its docs                                                                         | —         | open  |
+| SC1.3 | collab.md §1.1, §1.2, §2.2, §2.3, §2.4 and §3.2 written, the whole-spec marker removed, docs `spec:` anchors; may ride in SC1.2's pull request                                                                    | collab.md | open  |

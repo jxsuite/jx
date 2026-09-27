@@ -1,60 +1,166 @@
 ---
-status: stub
+status: drafted
 disposition: implement
 claims:
   - compiler.md#6.3
   - site-architecture.md#14.1.1
-size: M
+requires: []
 workspaces:
   - packages/compiler
+size: M
 ---
 
-# The site worker serves every `timing: "server"` entry a page, its layout or a component declares
+# The site worker serves every `timing: "server"` entry a page, its layouts or a component declares, one module per export name
 
 ## Context
 
-Two census stubs merged here, one from each spec, because they describe one code change: the step-5b collector in `buildSite` (`packages/compiler/src/site/site-build.ts`) walks `componentDefs` only, and step 6c keeps the first of two sources that claim one export name without a word. The `compiler.md`, `site-architecture.md` and `spec.md` censuses each found it and forwarded the merge.
+Two census stubs merged here, one from each spec, because they describe one code change: the step-5b collector in `buildSite` (`packages/compiler/src/site/site-build.ts`) walks `componentDefs` only, and step 6c keeps the first of two sources that claim one export name without a word.
 
-`specs/compiler.md` §6.3, line 422. The section's only marker was a trailing `Implemented` one, which also claimed server sources are copied into `dist/components/`; the census corrected that sentence (the worker is bundled self-contained, §12) and led the section with:
+`specs/compiler.md` §6.3, line 422 (the section's trailing `Implemented` note, line 474, is the pre-census marker):
 
 > **Status: Partial.** Entries are collected from components only: step 5b of `packages/compiler/src/site/site-build.ts` walks `componentDefs` and never a page, and with an adapter set the per-page `_server.js` is skipped as well, so a page's own `timing: "server"` entry gets no route at all. The worker, the Pages `_worker.js` and `_routes.json`, ordered mounts and the no-adapter build error ship as described (`packages/compiler/tests/connector-mounts.test.ts`, `site-build.test.ts`); the parameter table omits the `i18n` and `base` options `compileSiteServer` also takes.
 
-The retired `compiler.md` §10 ledger row "Site-wide server bundling" (**Implemented**) was the same claim and is tracked here now.
-
-`specs/site-architecture.md` §14.1.1, line 1911:
+`specs/site-architecture.md` §14.1.1, line 1911 (unmarked before the census; step 3 already called the gap "a known gap, not a design intent" in prose):
 
 > **Status: Partial.** The keys, their defaults and adapter-gated worker generation ship (`packages/compiler/src/site/site-loader.ts`, `compileSiteServer` in `packages/compiler/src/targets/compile-server.ts`). Step 3's known gap is unbuilt: the step-5b collector in `packages/compiler/src/site/site-build.ts` walks `componentDefs` only, so once `adapter` is set a `timing: "server"` entry declared on a page is dropped with no warning. Step 5 also understates `_routes.json`: for a site declaring more than one locale its `include` list is `/` and `/_jx/*`, so the worker can negotiate the root (§13.6).
 
-That section was unmarked, although its step 3 already said "**This is a known gap, not a design intent**" in prose, which no parser reads. The census moved the §14 marker's open status here: §14's own stated gap, `vercel.json`, is declined rather than missing. Step 5's `_routes.json` sentence was first left as a ride-along on the locale-negotiation plan; a review moved it here, because this plan owns the anchor and would otherwise flip it to `Implemented` with step 5 still wrong.
+Every passage that describes the worker already says pages are collected (compiler.md §6.3's body, site-architecture.md §14.1.1 step 3, spec.md §11.4's Site-Wide Bundling paragraph), so the disposition is `implement`.
 
-**Disposition.** `implement`, as both stubs had it. Every spec that describes the worker already says pages are collected (`compiler.md` §6.3's body, `site-architecture.md` §14.1.1 step 3, which calls the gap "not a design intent", and `spec.md` §11.4's Site-Wide Bundling paragraph), and the code is one collector short of that. Size `M`: one collector and one dedupe decision, plus the spec ride-alongs below across two specs.
+**What exists** (verified 2026-09-27)
 
-**Who requires it.** `plan:_shared/compiled-server-call` needs a worker route for every entry a compiled page can call. `plan:_shared/no-adapter-server-tier` needs this same collector, run with or without an adapter, to find the entries a no-adapter build has to refuse.
+- Step 5 of `buildSite` compiles each file directly in `components/` (a non-recursive `readdirSync`) and fills `componentDefs` (tag → document). Step 5b, only under `build.adapter`, runs `collectServerEntries(doc)` over `componentDefs` and rewrites each `src` to `./components/<src>`. That rewrite is right only for a relative `$src` on a file directly in `components/`; a bare package specifier becomes `./components/@scope/pkg`, which names no file.
+- `collectServerEntries` (`packages/compiler/src/shared.ts`) walks `state` and `children` and keys a `Map` by `$export` with `Map#set`, so inside one document the last of two sources wins silently. Its only callers are step 5b and `compileServer`.
+- Step 6c keeps the first entry per export name in a `Map`, hands the values to `compileSiteServer`, and uses `deduped.size` for `skipWorker` and its log line. `bundleWorkerSource` (`packages/compiler/src/site/bundler.ts`) bundles with `resolveDir: projectRoot`, so each `src` must resolve from the project root.
+- The `_routes.json` writer in step 6c: `include` is `["/", "/_jx/*"]` when `i18n` declares more than one locale and `["/_jx/*"]` otherwise, never under the deployment base. That contradicts site-architecture.md §14.7 ("Every output a host reads carries the base"): the worker's routes and mounts are registered under the base (`compileSiteServer`'s `base`, `withBase` in `buildMountSpecs`), so on a based Pages site the worker is never invoked for them. Found while detailing; the stub did not list it.
+- `compilePage` reads the page (`readPageDocument`) and merges it with its layouts through `resolveLayout` (`packages/compiler/src/site/layout-resolver.ts` over `packages/site/src/layout.ts`), which spreads the page's `state` over the layout's and distributes the page's children into the layout. Layouts nest, and each `$layout` is project-relative. The merged document no longer records which file an entry came from.
+- `injectContext` (`packages/site/src/context.ts`) copies every `project.json` `state` key into each page that does not declare it (site-architecture.md §3.2), so a server entry there is called by every such page. The stub did not list this source either.
+- `compileSiteServer` takes `adapter`, `base`, `baseUrl`, `connectors`, `i18n` and `mounts`; the spec's table and call line list only four of them.
+- `build.deploy` in `packages/schema/defs/project-config.schema.ts` (`provider`, `accountId`, `projectName`, optional `productionUrl`), which Studio writes (`packages/studio/src/publish/pages-service.ts`), is in no spec. In `buildSite` it gates §14.3's `public/CNAME` warning, which only a build with neither `adapter` nor `deploy` reaches. `adapter: "static"` is normalised to unset (`site-loader.ts`) and is not in the table either.
+- No tracked page, layout, component, starter or site declares a `timing: "server"` entry; only tests do (`site-build.test.ts` "buildSite — server worker" and "cloudflare-pages adapter", `compile-server.test.ts`, `shared.test.ts`).
 
-**What exists**
+**Who requires it.** `plan:_shared/no-adapter-server-tier` reads this collector's pre-deduplication records, run with or without an adapter, to refuse entries on a static build. `plan:_shared/compiled-server-call` needs a worker route for every entry a compiled page can call, and returns the deduplicated list from `buildSite`.
 
-- Step 5b in `buildSite`: `collectServerEntries(doc)` over `componentDefs`, run only when `projectConfig.build.adapter` is set, each `src` rewritten to `./components/<src>`. `componentDefs` is filled only by step 5's loop over the files directly in `components/` (a non-recursive `readdirSync`), so that rewrite is right for them alone, and a component compiled from elsewhere as another component's `$elements` dependency contributes no entry.
-- The per-page fallback in `compilePage` (same file): `compileServer(route.sourcePath)` only when `build.adapter` is unset, written beside the page as `_server.js`. That path does not load from `dist/` (`compiler.md` §6.2), and `plan:_shared/no-adapter-server-tier` owns it.
-- Step 6c's deduplication in `buildSite`: a first-wins `Map` keyed by export name, which silently keeps the first source when two claim one name. Inside one document, `collectServerEntries` (`packages/compiler/src/shared.ts`) keys by `$export` too but with `Map#set`, so there the last wins; it walks only `state` and `children`.
-- `compileSiteServer` in `packages/compiler/src/targets/compile-server.ts`: its options are `adapter`, `base`, `baseUrl`, `connectors`, `i18n` and `mounts`; it emits one import and one route (under `withBase(base, …)`) per entry it is handed and registers the mounts. Tests in `packages/compiler/tests/compile-server.test.ts`, `site-build.test.ts` and `connector-mounts.test.ts`.
-- The `_routes.json` writer in step 6c, whose `include` is `["/", "/_jx/*"]` when `i18n` declares more than one locale and `["/_jx/*"]` otherwise.
-- `build.deploy` in `packages/schema/defs/project-config.schema.ts` (the hosting project Studio publishes to): a schema key no spec defines. In `buildSite` it also gates §14.3's `public/CNAME` warning, which only a build with neither `adapter` nor `deploy` reaches.
+**Related, no edge.** `plan:_shared/component-discovery` widens what step 5 compiles and specifies `layoutChain` and `componentPathByTag`, which this plan also needs (see Decisions); this collector reads `componentDefs`, so it covers whatever set that plan settles. `plan:site-architecture/locale-negotiation-gaps` may change `skipWorker` next to the `_routes.json` writer; step 5's text holds either way. Noted, not claimed: `compilePage`'s `rewriteSrc` resolves a layout's Function-def `$src` against the page's directory, the browser-sidecar form of the defect this plan fixes for server entries.
 
-**What is missing**
+## Outcome
 
-- The collector walking every page document too, after layout resolution so a layout's entries count, and every component the build compiles, resolving each `src` against the declaring document's directory rather than `./components/`, deduplicated by export name as both sections say.
-- One decision for two sources claiming one export name, at both levels (across documents in step 6c, within one document in `collectServerEntries`). The `site-architecture.md` stub proposed a build error, raised in step 6c's loop, where the first-wins choice is made today; at minimum, if detailing stops short of that, a build warning naming the document whose entry is dropped, replacing the silent drop.
-- Site-build tests under an adapter: a page-level and a layout-level entry, each asserting the worker serves it; and the clash.
-- Ride-alongs (spec text in the claimed sections and the passages that restate them):
-  - `compiler.md` §6.3: the parameter table gains `i18n` and `base`, its `entries` row stops saying "from all components", and the `compileSiteServer(...)` call line matches the options that ship.
-  - `site-architecture.md` §14.1.1: step 1 ("from the project's components") and step 3's gap prose rewritten; step 5 rewritten to the `_routes.json` that ships (`/_jx/*`, plus `/` for a site with more than one locale); the table gains `build.deploy`, with the §14.3 `CNAME` warning it gates.
-  - `site-architecture.md` §12.1's pipeline line "Collect server entries → from componentDefs (if adapter set)" (line 1559), an unmarked section no plan claims.
-  - `site-architecture.md` §15.1's table cell ("on a component") and second scoping rule (line 2126), and §1.1 principle 3 (line 45), updated once page entries reach the worker. Their no-adapter clauses are `plan:_shared/no-adapter-server-tier`'s, which lands after this plan.
-  - `spec.md` §11.4's Site-Wide Bundling paragraph (line 1301) becomes true; the section itself is `plan:_shared/compiled-server-call`'s.
+- compiler.md §6.3 → Implemented: its leading Partial marker is deleted, leaving the pre-census trailing `Implemented` note, which gains the collector's evidence.
+- site-architecture.md §14.1.1 → Implemented: its marker is deleted (unmarked as before the census, under §14's `Implemented`), steps 1, 2, 3 and 5 state what ships, and the table gains `build.deploy`.
+- Ride-alongs made true: site-architecture.md §1.1, §12.1, §14's marker, §14.7's table and §15.1; spec.md §11.4's leading marker (its with-adapter half) and its Site-Wide Bundling paragraph.
 
-**Related**
+## Decisions
 
-- `compiler.md` §1 (whose overview promises "every `timing: "server"` entry"), §6.2, and §12 (the worker bundle: `workerBundleOptions` and `bundleWorkerSource` in `packages/compiler/src/site/bundler.ts`).
-- `site-architecture.md` §14.1 (adapter outputs), §14.3 (the `CNAME` warning), §13.6 (the negotiation the `/` include exists for), §15.1 and §15.4 (the application tier's view of server functions); `spec.md` §11.4 (`timing: "server"`).
-- Which components a build compiles at all is open elsewhere: `site-architecture.md` §2.2 and §10.3 and `imports.md` §1.3 and §1.4 are marked for a build that compiles only the files directly in `components/`, so a component a page names by `{ "$ref" }` from anywhere else ships as an empty tag with no module. Whatever set that item settles is the set this collector walks; until it lands, a server entry on such a component is dropped along with the component.
-- `plan:_shared/compiled-server-call` (the client that calls these routes) and `plan:_shared/no-adapter-server-tier` (the no-adapter half) both require this plan.
+- **Decided:** entries are collected from each declaring document as written, not from the merged tree: the page file, each layout in its chain, `project.json`'s `state` and each document in `componentDefs`, each resolved against its own path. `resolveLayout` merges state and splices children, so the merged document cannot say which file a relative `$src` was written against. A layout entry that a page shadows still gets a route, which is right, because every other page using that layout calls it. The layout chain comes from `layoutChain` in `layout-resolver.ts`, the helper `plan:_shared/component-discovery` specifies with the same signature: whichever plan lands first adds it and the other reuses it, so the two plans stay unordered.
+- **Decided:** `project.json`'s `state` is a declaring document, resolved against the project root, because `injectContext` makes each of its keys page state on every page that does not shadow it (site-architecture.md §3.2). Leaving it out would repeat the defect this plan fixes.
+- **Decided:** a `$src` starting `./` or `../` resolves against the declaring document's directory and is emitted as `./` plus a project-relative path with `/` separators; any other specifier is kept as written. The worker bundle resolves from the project root, which is what made `./components/<src>` right for top-level components alone. The POSIX form keeps the generated import valid on Windows.
+- **Open:** what does a build do when two different modules export one name? Recommendation: an `errors` entry (so `jx build` exits 1) naming the export and each module with a document declaring it; the first-seen module is kept so the worker is still written and `jx dev` still serves the pages. Each entry is served at `/_jx/server/<export>`, so two functions under one name cannot both be served, and a page calling the dropped one silently receives the other's answer; a warning would let that ship. The same module declared more than once (a shared layout, a `$paths` route, a page and a component importing one helper) is one route and no message, and so is one document declaring the same module and export under two keys. The commit is not marked breaking: no spec ever said which source wins, and no tracked project declares a server entry.
+- **Decided:** collection runs whether or not `build.adapter` is set; deduplication, the clash error and worker emission stay under the adapter in step 6c. `plan:_shared/no-adapter-server-tier` reads the same records to refuse entries on a static build, and until it lands a no-adapter build's per-page handlers are separate apps in which a cross-document clash means nothing.
+- **Decided:** `_routes.json`'s `include` entries pass through `withBase(basePath, …)`, because site-architecture.md §14.7 requires every host-read output to carry the base, and Pages matches `include` against the request path as it does `_headers` and `_redirects`. Step 5 cannot be flipped to Implemented stating a list that never invokes a based site's worker.
+
+## Implementation
+
+1. New `packages/compiler/src/site/server-entries.ts`. Its header cites compiler.md §6.3 and site-architecture.md §14.1.1 and carries `@docs framework/site/deployment`.
+   - `export interface ServerEntryRecord { exportName: string; src: string; declaredIn: string }`. `src` is the specifier the worker imports, resolvable from the project root. `declaredIn` is the declaring document, project-relative with `/` separators (`pages/blog/index.json`, `layouts/base.json`, `project.json`).
+   - `export function resolveServerSrc(src: string, docDir: string, projectRoot: string): string` returns `` `./${relative(projectRoot, resolve(docDir, src)).split(sep).join("/")}` `` when `src` starts with `./` or `../`, else `src` unchanged.
+   - `export function documentServerEntries(doc: JxElement, docPath: string, projectRoot: string): ServerEntryRecord[]` maps `collectServerEntries(doc)` through `resolveServerSrc(entry.src, dirname(docPath), projectRoot)` with `declaredIn` computed once.
+   - `export function dedupeServerEntries(records: readonly ServerEntryRecord[]): { entries: { exportName: string; src: string }[]; errors: string[] }` groups by `exportName` in first-seen order and, within a group, collects the distinct `src` values in first-seen order, each with the first `declaredIn` naming it. `entries` takes each group's first `src`. A group with two or more is one error, e.g. `Server function "sendForm" is exported by two modules: ./components/contact.server.js (components/test-contact.json) and ./components/other.server.js (components/other-card.json). The site worker serves one function per export name at /_jx/server/sendForm; rename one export and its $export.` The wording is the implementer's; it must name the export, every module and a declaring document for each.
+2. `packages/compiler/src/shared.ts`: `collectServerEntries` returns one `{ key, exportName, src }` per server entry in walk order (root `state` keys, then `children` depth-first), accumulated in an array; `_walkServerEntries` takes the array. The walk itself (`state` and `children`) is unchanged.
+3. `packages/compiler/src/targets/compile-server.ts`: `compileServer` takes `[...new Map(collectServerEntries(doc).map((e) => [e.exportName, e])).values()]`, so its output is byte-identical to today's last-wins result until `plan:_shared/no-adapter-server-tier` deletes it.
+4. `packages/compiler/src/site/layout-resolver.ts`, unless `plan:_shared/component-discovery` has already added it: `export function layoutChain(pageDoc: JxDocument, projectConfig: Record<string, unknown>, projectRoot: string): { path: string; doc: JxDocument }[]`. It starts from `pageDoc.$layout ?? projectConfig.defaults?.layout` (a string, else the chain is empty, which covers `"$layout": false`), then follows each layout's own `$layout`, innermost first. Each path is `resolve(projectRoot, ref)`, each document is read through `nodeLayoutLoader(projectRoot)`, and it stops at a path already in the chain.
+5. `packages/compiler/src/site/site-build.ts`:
+   - Imports: `documentServerEntries`, `dedupeServerEntries` and `type ServerEntryRecord` from `./server-entries.ts`, and `layoutChain`; `collectServerEntries` leaves the `../shared.ts` import.
+   - Step 5: beside `componentDefs.set(doc.tagName, doc)`, record `componentPathByTag.set(doc.tagName, componentPath)` in a `Map<string, string>` declared with `componentDefs`. Reuse the map if `plan:_shared/component-discovery` has added it.
+   - Step 5b becomes "Collect server entries" with no adapter condition. `const siteServerEntries: ServerEntryRecord[] = []` is filled from each `[tag, doc]` of `componentDefs` with `documentServerEntries(doc, componentPathByTag.get(tag)!, projectRoot)`, then, when `projectConfig.state` is set, from `documentServerEntries({ state: projectConfig.state }, resolve(projectRoot, "project.json"), projectRoot)`.
+   - `compilePage`: directly after `resolveLayout(...)` returns, and before `injectContext` mutates anything, compute `serverEntries` from `documentServerEntries(pageDoc, route.sourcePath, projectRoot)` followed by each `layoutChain(pageDoc, projectConfig, projectRoot)` entry's `documentServerEntries(l.doc, l.path, projectRoot)`. Return it as a new `serverEntries` field and add it to the JSDoc return type. If `layoutChain` is already called in `compilePage` (component-discovery's npm filter), compute it once and share it.
+   - The route loop: `siteServerEntries.push(...result.serverEntries)` right after `compilePage` resolves.
+   - Step 6c, under `build.adapter`: replace the first-wins `Map` with `const { entries: serverEntries, errors: clashErrors } = dedupeServerEntries(siteServerEntries)`. Push each clash onto `errors` and `console.error` it, and hand `serverEntries` to `compileSiteServer`. `skipWorker` and the log line read `serverEntries.length`. The `_routes.json` `include` becomes `(i18n && i18n.locales.length > 1 ? ["/", "/_jx/*"] : ["/_jx/*"]).map((p) => withBase(basePath, p))` (`withBase` is already imported).
+6. `docs/framework/site/deployment.md`'s `code:` gains `packages/compiler/src/site/server-entries.ts` (see Specs & docs).
+
+**Integration contract.** Once this lands:
+
+- `server-entries.ts` exports `ServerEntryRecord`, `resolveServerSrc`, `documentServerEntries` and `dedupeServerEntries`. `collectServerEntries` no longer deduplicates.
+- In `buildSite`, `siteServerEntries` holds every record before deduplication, collected whatever the adapter. The order is components in compile order, then `project.json`, then each route's page followed by its layouts, innermost first. Each record's `declaredIn` is the POSIX project-relative path `plan:_shared/no-adapter-server-tier`'s error names. Under an adapter, step 6c's `serverEntries` is the deduplicated list the worker serves, each `src` relative to the project root; `plan:_shared/compiled-server-call` may return it from `buildSite` (`resolve(projectRoot, src)` for a relative one).
+- `compilePage` returns `serverEntries`. `layoutChain` exists in `layout-resolver.ts`.
+- A worker built under an adapter answers `/_jx/server/<export>` for every entry a page, its layouts, `project.json`'s `state` or a compiled component declares. `_routes.json` carries the deployment base.
+- Spec text: compiler.md §6.3 and site-architecture.md §14.1.1 are Implemented and state the collection rule. spec.md §11.4's leading marker names only the no-adapter per-page handler as the server half's open part. site-architecture.md §15.1's second scoping rule and §1.1 principle 3 keep their no-adapter clauses for `plan:_shared/no-adapter-server-tier` to rewrite.
+
+## Tests
+
+Run `bun test --isolate --coverage` from `packages/compiler`, whose `bunfig.toml` holds `coverageThreshold = { lines = 0.982, functions = 0.98 }` per file, and `bun scripts/check-coverage-manifest.ts packages/compiler`. `server-entries.ts` is a new source file and ships with the test file below, or the manifest check fails. Ratchet the threshold if the worst file rises.
+
+- New `packages/compiler/tests/server-entries.test.ts` (pure functions; paths under a fake root, no disk):
+  - "resolveServerSrc resolves ./ and ../ against the declaring directory to a ./ project-relative path" (`pages/blog` + `./x.server.js` → `./pages/blog/x.server.js`; `layouts` + `../lib/y.js` → `./lib/y.js`).
+  - "resolveServerSrc keeps a bare specifier as written" (`@acme/fns/server`).
+  - "documentServerEntries records one entry per state key with its document's project-relative path", including a nested child's entry and two keys sharing an export.
+  - "dedupeServerEntries keeps one entry for one module declared by several documents, silently".
+  - "dedupeServerEntries reports two modules claiming one export once, naming each module and a declaring document, and keeps the first".
+  - "dedupeServerEntries keeps first-seen order across export names".
+- `layout-resolver.test.ts`, if this plan adds `layoutChain`: "layoutChain lists a page's layouts innermost first with absolute paths"; "falls back to defaults.layout, and is empty with no layout or $layout false"; "stops at a layout already in the chain".
+- `shared.test.ts`: "deduplicates by export name" becomes "returns one record per server entry, in document order" (both `a` and `b` listed).
+- `compile-server.test.ts`: "compileServer keeps one route per export name, the last declared" (two keys, one export, two modules: one import, from the second).
+- `site-build.test.ts`, new `describe("buildSite — server entries from pages, layouts, project state and components")`. The fixture has `build.adapter: "bun"`, `project.json` `state.siteStats` from `./lib/stats.server.js`, and `layouts/base.json` declaring `trackVisit` from `./visits.server.js`. `pages/index.json` uses that layout, declares `loadData` from `./api.server.js` and renders `components/test-contact.json` (`sendForm` from `./contact.server.js`). `pages/blog/index.json` uses the same layout and declares `loadPost` from `./post.server.js`, so a `pages/`-root assumption breaks. Each module sits beside its document.
+  - "the worker serves every declared entry": `errors` is empty. The bundled worker, copied into a `jx-worker-portability-` temp directory as the existing portability case does (the bunfig already ignores that pattern), answers a POST to each of the five routes with status 200 and that function's JSON.
+  - "a layout two pages share registers its route once": `/_jx/server/trackVisit` occurs once in `dist/worker.js`.
+- `site-build.test.ts`, new `describe("buildSite — two modules claiming one server export")`: `components/test-contact.json` and `components/other-card.json` each declare `sendForm` from their own module. `errors` has exactly one entry, containing `sendForm`, `components/test-contact.json` and `components/other-card.json`, and the worker still exists and answers with the first module's value.
+- `site-build.test.ts`, in `describe("buildSite — cloudflare-pages adapter")`: "the _routes.json include list names the locale root and carries the deployment base". Its own fixture sets `url: "https://x.dev/m/site/"` and `i18n: { defaultLocale: "en", locales: ["en", "fr"] }` with one component entry, and `include` equals `["/m/site/", "/m/site/_jx/*"]`. The existing `["/_jx/*"]` case stays.
+
+## Specs & docs
+
+**`compiler.md` §6.3**
+
+- Delete the leading `> **Status: Partial.** Entries are collected from components only: …` marker (line 422).
+- The first paragraph (line 424) becomes: "When `build.adapter` is set in `project.json`, the site build collects every `timing: "server"` entry declared by a page, by each layout in that page's chain, by `project.json`'s `state` (which every page inherits, site-architecture.md §3.2) and by every component the build compiles. Each document is read as written, before layout merging, so a relative `$src` (`./`, `../`) resolves against the directory of the document that declares it; any other specifier is kept as written, and the worker bundle resolves both from the project root (§12). Entries are deduplicated by export name, because each is served at `/_jx/server/<export>`: one module declared by several documents is one route, and two different modules exporting one name are a build error naming each module and a document declaring it. The build emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` ([Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)) plus a `dist/_routes.json` for `"cloudflare-pages"` (site-architecture.md §14.1.1). Per-route `_server.js` files are not generated in this mode. A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all."
+- The call line becomes `compileSiteServer(entries, { adapter, base, baseUrl, connectors, i18n, mounts });`.
+- The table's `entries` row reads "Collected server entries, one per export name, each `src` resolvable from the project root". Add `base` (`string`, `""`, "Deployment base path (site-architecture.md §14.7); the server routes register under `base` + `baseUrl`") and `i18n` (`ResolvedI18n \| null`, `null`, "Locale routing; with two or more locales the `/` negotiation middleware is registered first (site-architecture.md §13.6)").
+- The trailing marker (line 474): "`site-build` orchestrates entry collection and worker generation when `build.adapter` is set." becomes "`site-build` collects every page's, layout's, `project.json`'s and compiled component's entries (`packages/compiler/src/site/server-entries.ts`) and generates the worker when `build.adapter` is set (`packages/compiler/tests/site-build.test.ts`, `connector-mounts.test.ts`)."
+- Fragment: `bun run spec:change compiler.md minor -m '§6.3: the site worker serves every timing server entry a page, its layouts, project.json state or a compiled component declares, each relative $src resolved against its own document, and two modules exporting one name fail the build'`.
+
+**`site-architecture.md`**
+
+- §14.1.1:
+  - Delete the Partial marker (line 1911).
+  - The `adapter` row's description becomes "Deployment adapter: `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, `"bun"`. `"static"`, Studio's explicit choice of none, is the same as unset".
+  - A `deploy` row follows it: `object`, default —, "The hosting project the site publishes to, which Studio records when it connects one: `provider` (`"cloudflare-pages"`), `accountId`, `projectName`, optional `productionUrl`; identifiers only. The build reads it once: a build with neither `adapter` nor `deploy` gets §14.3's `public/CNAME` warning".
+  - After the table, one sentence: "`build.headers` is specified in §14.3, and `build.minify` in compiler.md §12."
+  - Step 1: "Collects `timing: "server"` entries from every page, from each layout in the page's chain, from `project.json`'s `state` (which every page inherits, §3.2) and from every component the build compiles (§10.3), resolving a relative `$src` against the directory of the document that declares it".
+  - Step 2: "Deduplicates by export name, since each entry is served at `/_jx/server/<export>`: one module declared by several documents is one route, and two different modules exporting one name fail the build with an error naming each module and a document declaring it".
+  - Step 3: "Skips per-route `_server.js` generation: the worker serves every entry step 1 collects, a page's own included".
+  - Step 5, its last sentence: "For Pages, a `dist/_routes.json` is emitted alongside so that static assets are served without invoking the worker: its `include` list is `/_jx/*`, plus `/` when `i18n` declares more than one locale so that the worker can negotiate the root (§13.6), each under the deployment base (§14.7)."
+- §14's marker (line 1884): delete "; what does not, a page's own server function under an adapter, is recorded in §14.1.1", ending the first sentence at "all ship".
+- §14.7's table gains, after "The generated worker (§14.1)": `` `_routes.json` (§14.1.1) `` | "Cloudflare Pages matches its `include` patterns against the request path, so an unprefixed pattern never invokes the worker".
+- §12.1's pipeline (line 1559): "Collect server entries → from componentDefs (if adapter set)" becomes "Collect server entries → from components and project.json state". Under "For each route:", after "Resolve $layout", add "Collect server entries → from the page and each layout, each $src resolved against its own file (compiler.md §6.3)". The "Bundle server entries" line is `plan:_shared/no-adapter-server-tier`'s.
+- §15.1: the "Server functions" cell (line 2120) becomes "a `state` entry with `timing: "server"` on a page, its layout, a component or `project.json` (spec.md §11.4)". The second scoping rule (line 2126) becomes "Second, the generated worker serves a server function wherever it is declared (a page, a layout it uses, `project.json`'s `state` or a component), one route per export name (§14.1.1). With no adapter there is no worker, and only a page's own entries compile, to a per-route `_server.js` (§15.4)."
+- §1.1 principle 3 (line 45): "a single Hono app carrying the site's server entries, deduplicated by export name," becomes "a single Hono app carrying every server entry the site's pages, layouts and components declare, one route per export name,". The no-adapter sentence stays for `plan:_shared/no-adapter-server-tier`.
+- Fragment: `bun run spec:change site-architecture.md minor -m '§14.1.1: the worker serves server entries from pages, their layouts, project.json state and components, the Pages _routes.json include list carries the locale root and the deployment base, and build.deploy joins the table'`.
+
+**`spec.md` §11.4** (restatements only; the section stays `plan:_shared/compiled-server-call`'s)
+
+- The leading marker (line 1240): "The server half ships for a component's entries:" becomes "The server half ships under an adapter for every entry a page, its layouts, `project.json` or a component declares:". The sentence opening "A page's own entry gets no route that loads" becomes "A page's own entry gets no route that loads with no adapter: the per-page `_server.js` is emitted beside the page in `dist/` but imports its `$src` as written, relative to the source page, and the build neither copies nor bundles that module (compiler.md §6.2)." Its with-adapter half, through "although Site-Wide Bundling below says pages are collected", is deleted.
+- Site-Wide Bundling (line 1301): "(components and pages) are collected, deduplicated by export name, and bundled" becomes "(pages, their layouts, `project.json`'s `state` and components) are collected, one route per export name (two modules exporting one name fail the build), and bundled".
+- Fragment: `bun run spec:change spec.md patch -m '§11.4: the site worker collects server entries from pages, their layouts and project.json state as well as components; only the no-adapter per-page handler remains open on the server side'`.
+
+**Docs** (no em dash in any of them)
+
+- `docs/framework/site/deployment.md` (`spec:` `site-architecture.md#14`; `code:` `site-build.ts`):
+  - `code:` gains `packages/compiler/src/site/server-entries.ts`.
+  - The "What the worker serves" row for `/_jx/server/<export>` reads "One route per server function export name".
+  - The first bullet becomes "Server functions are collected from every page, the layouts it uses, `project.json`'s `state` and every component, and bundled once, so there are no per-route server files when an adapter is set. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files."
+  - The Pages bullet's first sentence becomes "On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, plus `/` when the site has more than one locale so the worker can choose a language for the root, and static assets are served without waking the worker."
+  - "Serving from a subfolder": "`_headers` patterns, `_redirects` on both sides," becomes "`_headers` patterns, `_redirects` on both sides, `_routes.json` and the worker's own routes,".
+- `docs/framework/concepts/timing.md` (`spec:` `compiler.md#6`, `spec.md#11.4`):
+  - "How it works", the first sentence of its second paragraph: "When `build.adapter` is set in `project.json`, every server entry a page, its layouts, `project.json`'s `state` or a component declares is collected and bundled into a single worker, one route per export name (`dist/worker.js`, or `dist/_worker.js` plus a `_routes.json` on Cloudflare Pages; see [Build output and adapters](/docs/framework/site/deployment#what-the-worker-serves))." The no-adapter sentence after it is `plan:_shared/no-adapter-server-tier`'s.
+  - "Rules" gains "A relative `$src` resolves against the file that declares the entry (the page, layout or component), not the page it renders on." and "An export name means one function across the whole site: two modules exporting the same name stop the build."
+- `docs/framework/site/layouts.md` (`code:` `layout-resolver.ts`), "What merges", the State bullet, appends: "A layout's `timing: "server"` entries are served like a page's, with a relative `$src` resolved from the layout's own file (see [Timing](/docs/framework/concepts/timing))."
+- `bun run docs:sync` also names `docs/framework/build.md`, `docs/framework/concepts/color-schemes.md`, `elements.md`, `styling.md`, `docs/framework/site/redirects.md` and `seo.md` (`code:` lists `site-build.ts` or `shared.ts`). None describes server entries, so none changes. `build.md`'s line 133 is `plan:_shared/no-adapter-server-tier`'s. `docs/studio/publish/other-hosts.md` (`spec:` `site-architecture.md#14`) does not change.
+
+No spec graduates: compiler.md, site-architecture.md and spec.md each keep other open items. Landing deletes this file and removes `_shared/page-server-entries` from the `requires` of `plan:_shared/no-adapter-server-tier` and `plan:_shared/compiled-server-call`. The commit subject is `feat(compiler): serve every page, layout and component server entry from the site worker`, with no plan id.
+
+## Acceptance
+
+- From `packages/compiler`, `bun test --isolate --coverage` passes at the bunfig thresholds; `bun scripts/check-coverage-manifest.ts packages/compiler` passes.
+- `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose` and `bun run docs:markdown` pass. `bun run plans:status --spec compiler` no longer lists §6.3, and `bun run plans:status --spec site-architecture` no longer lists §14.1.1.
+- Scratch site with `build.adapter: "bun"`, `pages/index.json` using `./layouts/base.json` and declaring `loadData` from `./api.server.js`, and the layout declaring `trackVisit` from `./visits.server.js`:
+  - `bunx jx build` exits 0, and `grep -c "/_jx/server/" dist/worker.js` finds both routes.
+  - `bun -e 'const w = (await import("./dist/worker.js")).default; console.log((await w.fetch(new Request("http://x/_jx/server/trackVisit", { method: "POST", body: "{}" }), {})).status)'` prints `200`.
+  - Add `components/card.json` declaring `loadData` from `./other.server.js`: `bunx jx build` exits 1 with one error naming `loadData`, `pages/index.json` and `components/card.json`.
+- The same site with `build.adapter: "cloudflare-pages"`, `url: "https://x.dev/m/site/"` and two locales: `dist/_routes.json` includes `/m/site/` and `/m/site/_jx/*`.
