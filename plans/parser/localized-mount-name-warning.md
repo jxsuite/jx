@@ -32,7 +32,7 @@ Verified at the current tree:
 ## Outcome
 
 - parser.md §9.1 → Implemented: one name check covers both source shapes, and the body states the per-locale mount shape and what an unsafe name costs.
-- parser.md stays Partial: §3 (`plan:parser/heading-slug-combining-marks`), §7 (`plan:_shared/collection-directive-elements`) and §9.3 (`plan:parser/uniform-entry-dates`) remain open. Nothing graduates.
+- parser.md graduates only if this lands last: §3 (`plan:parser/heading-slug-combining-marks`), §7 (`plan:_shared/collection-directive-elements`) and §9.3 (`plan:parser/uniform-entry-dates`) are owned elsewhere.
 
 ## Decisions
 
@@ -50,6 +50,7 @@ Verified at the current tree:
    - In the `{locale}` loop, delete the `if (!SAFE_TYPE_NAME.test(locale)) { continue; }` block and change the push condition to `existsSync(dir) && statSync(dir).isDirectory()`. Extend the block comment with one sentence: every locale is a canonical BCP 47 tag from `localesForExpansion`, so it is already a URL-safe segment.
    - Delete the plain branch's own `if (!SAFE_TYPE_NAME.test(name)) { … }` block; the hoisted check replaces it.
    - Update the JSDoc: a `{locale}` source yields one mount per declared locale whose directory exists, at `/content/<type>/<locale>`; a type whose name is not URL-safe yields none and is reported. Add the missing `@param {ProjectConfig} [projectConfig]` line.
+   - `Content.assets`' JSDoc (~817) says the same: its summary and `@returns` name the per-locale shape beside `/content/<type>`.
 2. No other file changes in code. `SAFE_TYPE_NAME`, `SECTION_KEY` and `localesForExpansion` are reused as they are; Studio's mirror already matches.
 
 **Integration contract.** `contentAssetMounts(section, root, projectConfig)` and `Content.assets` return the same mounts as today for every URL-safe name. A type whose name fails `/^[\w.~-]+$/` gets no mount of either shape and exactly one `not URL-safe` warning per call; its entries still load through `projectData`, with references as authored. Every mount `urlPrefix` is `/content/<safe name>` or `/content/<safe name>/<canonical tag>`. parser.md §9.1 states both shapes and the unsafe-name rule.
@@ -72,17 +73,17 @@ Verified at the current tree:
 **`specs/parser.md` §9.1**, in place:
 
 - The marker becomes `> **Status: Implemented.**`.
-- The body paragraph becomes: "`Content.assets(sectionValue, { root, projectConfig })` returns one mount per content type whose `source` is a local **directory**: `{ urlPrefix: "/content/<type>", dir: <resolved source> }`. A `{locale}` source (site-architecture.md §13.3) returns one mount per declared locale whose directory exists, at `/content/<type>/<locale>`, so two translations' co-located files cannot collide at one URL. Single-file, remote, and missing sources get no mount — a lone file's siblings are not its collection. A content type whose name is not URL-safe (anything beyond ASCII letters, digits, `_`, `.`, `~` and `-`) gets no mount of either shape and is reported with one warning naming it; its entries still load, and their content-relative references (§9.2) stay as authored."
+- The body paragraph becomes: "`Content.assets(sectionValue, { root, projectConfig })` returns one mount per content type whose `source` is a local **directory**: `{ urlPrefix: "/content/<type>", dir: <resolved source> }`. A `{locale}` source (site-architecture.md §13.3) returns one mount per declared locale whose directory exists, at `/content/<type>/<locale>`, so two translations' co-located files cannot collide at one URL. Single-file, remote, and missing sources get no mount — a lone file's siblings are not its collection. A content type whose name is not URL-safe (anything beyond ASCII letters, digits, `_`, `.`, `~` and `-`) gets no mount of either shape and is reported with a warning naming it, never one per locale; its entries still load, and their content-relative references (§9.2) stay as authored."
 
-**Fragment:** `bun run spec:change parser.md minor -m "§9.1: a content type whose name is not URL-safe is reported with one warning whether its source is plain or per-locale, and the section states the per-locale mount shape."`
+**Fragment:** `bun run spec:change parser.md minor -m "§9.1: a content type whose name is not URL-safe is reported with a warning whether its source is plain or per-locale, and the section states the per-locale mount shape."`
 
 **Docs** (no em dashes). `bun run docs:sync` names the pages whose `code:` lists `content-loader.ts`; none cites `parser.md#9.1`.
 
-- `docs/framework/site/content-collections.md`: after the paragraph ending "…which is how these docs ship their screenshots from `docs/images/`." add: "The collection's name is part of that URL, so keep it to ASCII letters, digits, `-`, `_`, `.` and `~`. A collection named anything else (`my posts`, say) still loads, but its images get no URL: their references stay as written, and the build warns once, naming the collection."
+- `docs/framework/site/content-collections.md`: after the paragraph ending "…which is how these docs ship their screenshots from `docs/images/`." add: "The collection's name is part of that URL, so keep it to ASCII letters, digits, `-`, `_`, `.` and `~`. A collection named anything else (`my posts`, say) still loads, but its images get no URL: their references stay as written, and the build warns, naming the collection." (Not "once": a site build asks for mounts twice, through `assets` and `projectData`, per the Decided item above.)
 - `docs/framework/site/relationships.md`: no change; it documents reference resolution, not mounts.
 - `docs/framework/site/i18n.md` (line 300, per-locale images) and `docs/extending/extensions/capabilities.md` (the mount shape): no change; the naming rule is stated once, where collection images are introduced.
 
-No spec graduates; `plans/parser/` stays.
+If §3, §7 and §9.3 have already closed when this lands, it also graduates parser.md: header `**Status:** Implemented`, `bun run spec:bump parser.md minor` in place with the fragment's sentence as its `-m` instead of the fragment, and delete `plans/parser/`. Otherwise nothing graduates: delete this file, and in `plans/parser/README.md` drop the §9 bullet's closing sentence about the `{locale}` skip.
 
 ## Acceptance
 

@@ -89,9 +89,9 @@ Run `bun test --isolate --coverage` from `packages/studio`.
 - **studio-ui-guidelines.md §5.1** (lines 319–335): change "(`ui.md` §5.3)" to "(`ui.md` §5.4)", and delete the `"size": "sm",` line from the example. Nothing else in §5.1 changes.
 - **studio-ui-guidelines.md §5.2** (lines 339–341): delete the Partial marker and the body paragraph, and replace them with the text below. The heading stays. The section carries no marker afterwards, like the built §4.5 and §4.6.
 
-  > A section's look is the kit's, and a surface adjusts it from its own `style` block, keyed on `part`. `jx-accordion` draws one 1px `--jx-border` hairline between visible sections and none above the first (`ui.md` §5.4), as the `border-block-start` of each later section, and no Studio panel removes it. `jx-accordion-item` draws its header and its body at `--jx-text-md`. A panel whose own text runs a step smaller re-sizes its headers from its own block: the Signals panel re-declares `--jx-text-md` as `--jx-text-sm` on its `[part="category"]` sections, and the document header sets its Raw head tags' `[part="summary"]` to `--jx-text-sm`.
+  > A section's look is the kit's, and a surface adjusts it from its own `style` block, keyed on `part`. `jx-accordion` draws one 1px `--jx-border` hairline between visible sections and none above the first (`ui.md` §5.4), as the `border-block-start` of each later section, and no Studio panel removes it. `jx-accordion-item` draws its header and its body at `--jx-text-md`. A panel whose own text runs a step smaller re-sizes its sections from its own block: the Signals panel re-declares `--jx-text-md` as `--jx-text-sm` on its `[part="category"]` sections, header and body alike, and the document header sets only its Raw head tags' `[part="summary"]` to `--jx-text-sm`.
   >
-  > A surface's rule is a descendant selector under the surface's own scope, so a rule keyed on one of the item's part names (`heading`, `details`, `summary`, `marker`, `label`, `actions`, `body`) reaches that part of every section the surface draws. The document header's rule means to. A surface part that shares one of those names restyles the headers beside it whether it means to or not, which is why the Signals panel's entry summary is `[part="entry-summary"]`.
+  > A surface's rule is a descendant selector under the surface's own scope, so a rule keyed on one of the item's part names (`heading`, `details`, `summary`, `marker`, `marker-icon`, `label`, `actions`, `body`) reaches that part of every section the surface draws. The document header's rule means to. A surface part that shares one of those names restyles the headers beside it whether it means to or not, which is why the Signals panel's entry summary is `[part="entry-summary"]`.
 
   (The quote marks show the replacement text; the spec text itself is not a blockquote.)
 
@@ -103,7 +103,7 @@ Run `bun test --isolate --coverage` from `packages/studio`.
 
 - `cd packages/studio && bun test --isolate --coverage` is green, including the new case, and no file falls below its threshold.
 - `bun run --cwd packages/studio lint:styles` passes.
-- In `packages/studio/src/surfaces/panel-signals.json`, `grep -c 'part=\\"summary\\"'` (selectors) and `grep -c '"part": "summary"'` (nodes) both print `0`, and `grep -c 'entry-summary'` prints at least `6`.
+- In `packages/studio/src/surfaces/panel-signals.json`, `grep -c '"part": "summary"'` (nodes) prints `0`, `grep -n 'part=\\"summary\\"'` matches only the root `$description` sentence step 1 adds (no selector key), and `grep -c 'entry-summary'` prints at least `6`.
 - In `specs/studio-ui-guidelines.md`, `grep -n '"size": "sm"'` no longer matches inside §5.1, and §5.1's opening sentence cites `ui.md` §5.4.
 - `bun run plans:status --spec studio-ui-guidelines` no longer lists §5.2.
 - These gates pass: `bun run plans:check`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:section-refs` and `bun run docs:markdown`.

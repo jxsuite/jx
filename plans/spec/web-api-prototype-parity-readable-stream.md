@@ -76,6 +76,7 @@ So a streamed body is a `Request` option, not a prototype of its own.
    - Its report should name only the `examples` pointer: in `packages/schema/schema.json`, and in the embedded copies in the 28 `document.schema.json` files (`examples/`, 13 under `packages/starters/sites/`, `packages/studio/`, `packages/ui/`, 10 under `scripts/screenshots/fixtures/`, `sites/jxsuite.com/`, `sites/test-blank/`).
    - Anything else in the report is unrelated drift.
    - Commit the regenerated files; never hand-edit them.
+   - `packages/schema/--cwd` and `packages/schema/--filter` are stray tracked copies of an old generator output that also list the name. No gate reads them (the schema gate's file set is every tracked `*schema.json`), and removing them is not this plan's work, so they are left alone.
 4. **`packages/schema/README.md`**, line 59: drop `` `ReadableStream`, `` from the built-in list. No em dash (the file is in `docs:prose`'s corpus).
 5. The spec edits below.
 
@@ -95,7 +96,7 @@ So a streamed body is a `Request` option, not a prototype of its own.
 - "ReadableStream: returns null" becomes "ReadableStream is not a built-in: warns and resolves to null". It spies on `console.warn` as "unknown $prototype: warns and returns ref(null)" does, and asserts the warning names `ReadableStream`.
 - Add "every built-in prototype but Function and Array resolves without the unknown-prototype warning". It iterates `BUILT_IN_PROTOTYPES` from `@jxsuite/schema/defs` (the runtime already depends on `@jxsuite/schema`) with a minimal config per name:
   - `Request` with `manual: true`;
-  - `IndexedDB` with `database`, `store` and the file's existing `indexedDB` stub;
+  - `IndexedDB` with `database` and `store`, against a `globalThis.indexedDB` stub installed and deleted by this test, in the shape of the one the file's IndexedDB case builds (line 1089);
   - `Cookie` and the storage entries with a `default`.
 
   It asserts that no warning was logged. This is what stops a stub from being listed again.
@@ -132,12 +133,12 @@ The level is patch because the name was listed only as Pending or a stub, never 
 - No docs page names `ReadableStream`: `docs/framework/concepts/data-prototypes.md` and `reactivity.md` already omit it.
 - `bun run docs:sync` names the pages whose `code:` lists `runtime.ts`. None describes the name, so the pull request states that no update is needed.
 
-**Landing.** This plan claims nothing, so it graduates nothing. The pull request that lands it deletes this file and removes `spec/web-api-prototype-parity-readable-stream` from `plans/spec/web-api-prototype-parity.md`'s `requires`.
+**Landing.** This plan claims nothing, so it graduates nothing. The pull request that lands it deletes this file and removes `spec/web-api-prototype-parity-readable-stream` from the `requires` of both plans that list it, `plans/spec/web-api-prototype-parity.md` and `plans/spec/reconcile-built-in-prototypes.md`. It rewrites the `plan:spec/web-api-prototype-parity-readable-stream` citations in those two files to cite spec.md §11.2's `ReadableStream` row, and re-reads the reconcile plan's §12.1 list (12 names) against what landed. `bun run plans:check` names any `requires-unknown` or `citation-unknown` left.
 
 ## Acceptance
 
 - `grep -rn "ReadableStream" specs/spec.md specs/schema.md packages/schema/README.md packages/schema/defs packages/runtime/src` prints only the `**Removed**` row.
-- `bun run schema:verify` passes. `git diff --stat` lists only `external-class-def.schema.ts`, `runtime.ts`, the README, the two specs, the fragments, the test and the 29 regenerated schema files.
+- `bun run schema:verify` passes. `git diff --stat` lists only `external-class-def.schema.ts`, `runtime.ts`, the README, the two specs, the fragments, the test, the 29 regenerated schema files and the `plans/` edits under Landing.
 - These pass: `bun run plans:check --audit spec`, `bun run plans:check --audit schema`, `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`.
 - `bun run plans:status --who-claims spec.md#11.2` still names `spec/web-api-prototype-parity`.
 - `cd packages/runtime && bun test --isolate --coverage` passes at its thresholds.

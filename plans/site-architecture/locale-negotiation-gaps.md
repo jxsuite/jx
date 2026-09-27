@@ -36,6 +36,7 @@ Ride-alongs this plan owns (audit record, "Spec-wide decisions"): §13.4's "`pre
 
 - site-architecture.md §13.6 → Implemented: every adapter, `"cloudflare-pages"` included, emits a worker that answers the site root whenever the root has something to negotiate (more than one locale, or `prefix-always`); the middleware and its redirect targets carry the deployment base; `*` is skipped when another range follows it and otherwise answers `defaultLocale`.
 - `resolveI18n` lists `defaultLocale` first in every case, which makes §5.5's `$site.locales` row true (§5.5 stays Partial for its other items under `plan:site-architecture/page-context-props`).
+- compiler.md §6.3's Pages sentence and `i18n` parameter row say when the worker is emitted and where the middleware registers; no compiler.md marker changes.
 - site-architecture.md stays Partial; nothing graduates.
 
 ## Decisions
@@ -46,7 +47,7 @@ Ride-alongs this plan owns (audit record, "Spec-wide decisions"): §13.4's "`pre
 - **Decided:** `resolveI18n` always puts `defaultLocale` first and keeps the rest in declaration order, because `ResolvedI18n` documents it, §5.5 states it and `libraryLocales` relies on it. Studio's locale settings edit the raw declared list (`declaredLocales` in `packages/studio/src/settings/locales-section.ts`), so no project file is rewritten; the visible change is ordering for a project that declares its default later (`$site.locales`, the Languages panel's columns, the Library's language facet). Only `packages/starters/sites/museum` declares `i18n` in this repository, default first.
 - **Decided:** one exported predicate, `negotiatesRoot(i18n)` in `locale-negotiation.ts`, decides the middleware, the Pages `skipWorker` exemption and the `_routes.json` root entry, because those three encode "does the root negotiate" separately today (`i18n.locales.length < 2` in two places, nothing in `skipWorker`), which is how the Pages gap arose.
 - **Decided:** the middleware registers at `withBase(base, "/")` and bakes `withBase(base, localeHome(…))` as each home, because every other worker route is registered under the base (§14.7's worker row) and an unbased `app.use('/')` matches no request a based site receives. Only the trailing-slash root is registered, matching the URL the build's own links use.
-- **Decided:** this plan requires `plan:_shared/page-server-entries`, because that plan rewrites the same `skipWorker` and `_routes.json` lines and puts the deployment base on the `include` list, without which a based Pages site's worker is never woken for its root; it also owns §14.1.1, whose skip paragraph this plan edits.
+- **Decided:** this plan requires `plan:_shared/page-server-entries`, because that plan rewrites the same `skipWorker` and `_routes.json` lines and puts the deployment base on the `include` list, without which a based Pages site's worker is never woken for its root; it also owns §14.1.1, whose skip paragraph this plan edits, and it writes compiler.md §6.3's Pages sentence and `i18n` parameter row, which this plan rewrites.
 
 ## Implementation
 
@@ -93,7 +94,7 @@ Ride-alongs this plan owns (audit record, "Spec-wide decisions"): §13.4's "`pre
   - `two locales get a worker and a root entry`: `_worker.js` exists and contains `Accept-Language`; `_routes.json` `include` is `["/", "/_jx/*"]`.
   - `one locale with prefix-always gets a worker`: `_worker.js` exists.
   - `one locale with prefix-except-default stays static`: neither `_worker.js` nor `_routes.json` exists.
-- `tests/site-build-reporting.test.ts`, in "prefix-always with no runtime to answer the root": new `says nothing under an adapter, even with one locale`: `build: { adapter: "cloudflare-pages" }`, `locales: ["en"]`, `prefix-always`, no page at `/`; no warning contains `no page claims "/"`.
+- `tests/site-build-reporting.test.ts`, in "prefix-always with no runtime to answer the root": new `says nothing under an adapter, even with one locale`: `build: { adapter: "cloudflare-pages" }`, `locales: ["en"]`, `prefix-always`, no page at `/`; no warning contains `no page claims "/"`, and `dist/_worker.js` exists (today it does not, so the root is a silent 404).
 
 **Coverage.** No source file is added, so both manifest checks are unaffected. `negotiatesRoot` is covered by its own suite and by the build; the new `continue` is covered by the corpus. Thresholds: `packages/compiler/bunfig.toml` `{ lines = 0.982, functions = 0.98 }`, `packages/schema/bunfig.toml` `{ lines = 0.99, functions = 0.99 }`; ratchet only if the run shows either workspace's worst file rose.
 
@@ -118,12 +119,18 @@ Ride-alongs this plan owns (audit record, "Spec-wide decisions"): §13.4's "`pre
 
 **Fragment:** `bun run spec:change site-architecture.md minor -m "§13.6: every adapter's worker negotiates the root of a site with more than one locale or with prefix-always, cloudflare-pages included and under the deployment base, and a wildcard is skipped when another range follows it and otherwise answers defaultLocale, which resolved locales now always list first"`.
 
+**`specs/compiler.md` §6.3**, in place, as `plan:_shared/page-server-entries` leaves it (both sentences go false once a Pages site with a negotiating root gets a worker):
+
+- The first paragraph's last sentence: "A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all." becomes "A `"cloudflare-pages"` site with no server entries, no active extension mounts **and** no root to negotiate (site-architecture.md §13.6) emits no worker at all."
+- The parameter table's `i18n` row description becomes "Locale routing; when the root negotiates (more than one locale, or `prefix-always`), the negotiation middleware is registered first, at `base` (site-architecture.md §13.6)".
+- Fragment: `bun run spec:change compiler.md minor -m "§6.3: a cloudflare-pages site whose root negotiates a locale gets a worker, and compileSiteServer registers the negotiation middleware at the deployment base whenever the site declares more than one locale or prefix-always"`.
+
 **Docs** (no em dashes). `bun run docs:sync` names `docs/framework/site/i18n.md` (`spec:` `site-architecture.md#13.6`; `code:` `locale.ts`, `locale-negotiation.ts`) and `docs/framework/site/deployment.md` (`code:` `site-build.ts`), plus the pages that list `site-build.ts` for other reasons (`build.md`, `redirects.md`, `seo.md` and others), which describe nothing this changes.
 
 - `docs/framework/site/i18n.md`:
   - The context table's `$site.locales` row: "every declared locale, in order" becomes "every declared locale, your default first".
   - "With an adapter, the generated worker handles `/`:" becomes "With an adapter, the generated worker handles `/`. That includes Cloudflare Pages, which otherwise ships no worker for a site with no server functions: a site with more than one locale, or with `prefix-always`, gets one that wakes for `/` alone. Like every adapter's worker it needs `hono` in your project's dependencies, which `bun create @jxsuite` adds for you. On a site served from a subfolder, the root is the subfolder and the redirect keeps it:"
-  - The table gains two rows after `ja, ko`: `` `*` `` | anything | your default locale; `` `*, fr` `` | `fr` | redirect to `/fr/`; a `*` counts only at the end.
+  - The table gains two rows after `ja, ko`: `` `*` `` | all of them | your default locale; `` `*, fr` `` | `fr` | redirect to `/fr/`; a `*` counts only at the end.
 - `docs/framework/site/deployment.md`:
   - Adapters table, Pages row: "only when there is a server tier" becomes "only when there is a server tier or a root to negotiate".
   - "What the worker serves": "Three route families, and nothing else:" becomes "Three route families:". After the table, before "**Pages are never rendered per request.**", add: "On a site with more than one locale, or with `prefix-always`, it also answers the site root, sending a visitor to their language before the page is served (see [Locales and languages](/docs/framework/site/i18n#sending-a-visitor-to-their-language))."

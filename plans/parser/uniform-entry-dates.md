@@ -6,6 +6,7 @@ claims:
 requires: []
 workspaces:
   - extensions/parser
+  - packages/compiler
 size: S
 ---
 
@@ -60,9 +61,9 @@ Before the census the section led with `Implemented`. Both gaps have one cause, 
    - JSON branch: `stampSourceMtime(fileEntries, filePath)` after `loadJSONEntries`; end with `return finishEntries(entries, schema, name)`.
    - Format branch: `stampSourceMtime(fileEntries, filePath)` after `load`; replace the tail (~614–625) with `return finishEntries(entries, schema, name)`.
    - `validateEntries`: delete the `isDateFormat(def.format) && … !isCoercedDate(value)` branch; the `else if` chain starts at the `string` type check.
-3. **`extensions/parser/src/markdown.ts`**, `Markdown.load`: delete the `statSync` import and the `try` block (~95–106); `_meta` still starts as `{}` and gets excerpt, toc, readingTime and wordCount.
+3. **`extensions/parser/src/markdown.ts`**, `Markdown.load`: drop `statSync` from the method's dynamic `node:fs` import and delete the comment and `try` block (~95–106); `_meta` still starts as `{}` and gets excerpt, toc, readingTime and wordCount.
 
-`plan:_shared/collection-directive-elements` and `plan:site-architecture/build-excludes-drafts` also edit `loadContentType`'s branches. Neither depends on this; whichever lands second rebases, and a per-entry step either adds belongs in `finishEntries` so it reaches all three branches.
+Two plans edit the same code, and neither is a prerequisite either way; whichever lands second rebases. `plan:_shared/collection-directive-elements` gives every entry of all three branches its type's `$elements` and changes the format branch's `load` calls: that per-entry step belongs in `finishEntries`. `plan:relationships/reference-validation` adds reference checks to `validateEntries`, placed "before the date branch" this plan deletes: they go first in the per-field loop, after the `value == null` skip. (`plan:site-architecture/build-excludes-drafts` filters in `Content.projectData` and does not touch `loadContentType`.)
 
 **Integration contract.** Every entry `loadContentSection` (so `Content.projectData`) returns has each schema-declared `date` field as `YYYY-MM-DD` and each `date-time` field as `YYYY-MM-DDTHH:MM:SSZ`, or unchanged with exactly one `Content dates:` warning; the authored text of a rewritten value is at `_meta.rawDates[field]`. Every entry loaded from a local regular file has `_meta.mtime` in the `YYYY-MM-DDTHH:MM:SSZ` form, the format class's own value winning; a remote entry has none. `dates.ts` exports `toInstant`; `isCoercedDate` no longer exists. parser.md §9.3 states all of this.
 
@@ -82,8 +83,9 @@ Before the census the section led with `Implemented`. Both gaps have one cause, 
   - `dates nothing that is not a file`: a fake with no `discover` on a directory source, and the existing `/virtual/*.fake` discover case, both leave `_meta` undefined.
   - "validates registry-loaded entries against the schema" and "warns on an ambiguous date field instead of guessing" pass unchanged.
 - **`tests/dates.test.ts`**: replace "isCoercedDate recognizes both normalized forms" with `toInstant drops fractional seconds and reads in UTC` (`new Date("2024-03-04T05:06:07.890Z")` → `2024-03-04T05:06:07Z`), and drop `isCoercedDate` from the import.
+- **`packages/compiler/tests/sitemap-lastmod.test.ts`** (end to end, since no `extensions/parser` test reaches a sitemap): add a native JSON type `items` (`format: "json"`, `source: "./content/items/"`) to the fixture's `content`, a `pages/items/[slug].json` with `$paths: { contentType: "items" }`, and `content/items/list.json` holding `[{ "id": "a" }, { "id": "b" }]`, backdated with `utimesSync` to a third instant before the build. New case `dates a route generated from a JSON entry by that entry's file`: `/items/a` and `/items/b` both have that instant as `<lastmod>`. It fails today, where both take the template's time.
 
-Coverage: `extensions/parser/bunfig.toml` gates every file at lines 0.987, functions 0.975. Both new functions have a case per branch (not a file, not on disk, format-set value, stamped); the deleted `validateEntries` branch and `Markdown.load` block remove lines rather than add them. No source file is added, so `bun scripts/check-coverage-manifest.ts extensions/parser` is unaffected. Ratchet only if the run shows the workspace's worst file rose.
+Coverage: `extensions/parser/bunfig.toml` gates every file at lines 0.987, functions 0.975. Both new functions have a case per branch (not a file, not on disk, format-set value, stamped); the deleted `validateEntries` branch and `Markdown.load` block remove lines rather than add them. No source file is added, so `bun scripts/check-coverage-manifest.ts extensions/parser` is unaffected. Ratchet only if the run shows the workspace's worst file rose. `packages/compiler` gains a test case only, so its thresholds are untouched; run `bun test --isolate --coverage` there too, because `content-types.test.ts` and `sitemap-lastmod.test.ts` load real JSON and CSV collections.
 
 ## Specs & docs
 
@@ -97,7 +99,7 @@ Coverage: `extensions/parser/bunfig.toml` gates every file at lines 0.987, funct
 - §10's RFC 3339 row: Evidence gains `extensions/parser/tests/content-loader.test.ts`; class stays `**Subset**`. Re-pad the table with `bun run format`.
 - Fragment: `bun run spec:change parser.md minor -m "§9.3 declared dates are coerced on every loading branch, native JSON and remote sources included, a refused date is reported once, and every entry loaded from a local file carries its file's modification time while a remote entry carries none."`
 
-No other spec changes: §4's "handled once for every format by the content loader" becomes true as written, and site-architecture.md §6.7 and §8.4.1 and extensions.md §8 already describe the fallbacks.
+No other spec changes: §4's "handled once for every format by the content loader" becomes true as written. site-architecture.md §6.7 and §8.4.1 and extensions.md §8 read `_meta.mtime` as parser.md §9.3 defines it and fall back when it is absent, so the remote case is stated once, in §9.3, rather than released in a second spec.
 
 **Docs** (no em dashes). `bun run docs:sync` names the pages whose `code:` lists `content-loader.ts`:
 
@@ -112,5 +114,5 @@ On landing: delete this file, and in `plans/parser/README.md` drop the §4 bulle
 
 - `bun test --isolate --coverage` passes in `extensions/parser`, and `bun scripts/check-coverage-manifest.ts extensions/parser` is green.
 - `grep -rn "isCoercedDate\|was not coerced" extensions/parser/src` and `grep -n statSync extensions/parser/src/markdown.ts` find nothing.
-- A scratch site (`url` set, `extensions: ["@jxsuite/parser"]`) with a content type `items` (`format: "json"`, `source: "./content/items/"`, schema declaring `published` as `date-time`), `content/items/list.json` holding `[{ "id": "a", "published": "2025-03-04T01:00:00+02:00" }]` backdated with `touch -d 2024-03-04T05:06:07Z`, and `pages/items/[slug].json` with `$paths: { contentType: "items" }`: `jx build` writes a sitemap whose `<lastmod>` for `/items/a` is `2024-03-04T05:06:07Z` (today it is the template's time).
+- `bun test --isolate --coverage` passes in `packages/compiler`, including the new `sitemap-lastmod.test.ts` case (a JSON-backed route's `<lastmod>` is its entry file's time, not the template's).
 - `bun run docs:status`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:standards`, `bun run docs:spec-release` and `bun run plans:check` are green; `bun run plans:status --spec parser` no longer lists `parser.md#9.3`.
