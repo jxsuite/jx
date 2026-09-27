@@ -98,7 +98,7 @@ The section was unmarked before the census. Verified at the audited tree:
 - `docs/extending/extensions/connectors.md`:
   - The example drops the `"serve"` line.
   - The table's `serve` row is replaced by a `module` row: "Bare import specifier for the provider implementation. The generated site worker imports the class from it and hands it to the data mount, so a deployable build requires it once any section entry names this provider."
-  - The `local` row becomes: "The provider whose class stands in for this one on the dev server. `"sqlite"` serves it from a local SQLite file, auto-synced on first use."
+  - The `local` row becomes: "The provider whose class stands in for this one in the dev server's data mount, Studio's data routes and Studio's schema push. `"sqlite"` serves those from a local SQLite file, auto-synced on first use. Other reads, the deployed worker's included, use the connection as declared." It names the same three paths as the spec row rather than "the dev server" as a whole, because node-side table reads (`TableQuery` and `TableEntry` bakes, a table `$paths` source) reach the declared connection even under `jx dev`.
   - The parenthetical paragraph after the table ("(The class also carries a `module` bare specifier…)") is deleted.
   - Under "The data mount", append: "A provider declares no mount of its own. The host hands this mount every provider class in `options.connectors`, and it opens each connection through that class's `dialect`."
 - `docs/extending/extensions/formats.md`: no change, because it describes the `format` block only.

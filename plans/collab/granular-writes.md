@@ -143,11 +143,11 @@ Coverage: `packages/collab/bunfig.toml` gates every file at lines 0.98 and funct
 
 **Fragment**: `bun run spec:change collab.md minor -m "§3.1: every write to the shared document keeps the table's granularity, the root and whole-document writes included, children merge element by element and per character instead of being replaced, a moved, wrapped or unpaired element is the stated exception, and §3.1 is Implemented."`
 
-This plan does not graduate collab.md: the whole-spec marker, §1, §2, §3, §4 and §5 stay open.
+This plan never graduates collab.md: `plan:collab/epoch-continuity` requires it, so §3 is still open when it lands.
 
 **Docs** (no em dashes). No page cites `collab.md#3.1` or `collab.md#3` in `spec:`. `bun run docs:sync` names `docs/studio/publish/collaboration.md` through `collab-session.ts`, and it changes:
 
-- `code:` gains `packages/collab/src/schema.ts`, where the merge rule now lives, and a `spec:` list is added with `collab.md#3.1` (the page has none today; `plan:collab/spec-coverage` adds its own anchors to the same list, a textual rebase).
+- `code:` gains `packages/collab/src/schema.ts`, where the merge rule now lives, and `spec:` gains `collab.md#3.1` (the page has no `spec:` list today; whichever of this plan and `plan:collab/spec-coverage` lands first creates it, and the other appends its anchors).
 - "How co-editing behaves", the **Edits merge.** bullet becomes: "**Edits merge.** Everyone edits the same live document, and changes apply as they arrive. Two people typing in the same paragraph both keep what they typed, around bold text and links too, and two people changing different style properties of one element both keep theirs. When two people change the same thing at once, such as one element's tag or the same style property, only one of the two changes is kept, and moving or wrapping an element while someone types inside it keeps the move and loses their typing. No locking, no taking turns." (Yjs picks the surviving write by client, not by arrival, so the page does not say which one.)
 
 `docs/studio/editing/slash-commands.md` lists `inline-edit-apply.ts`, which this plan does not change. `packages/collab/README.md` is step 4 above.

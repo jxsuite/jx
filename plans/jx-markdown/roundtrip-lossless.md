@@ -62,8 +62,8 @@ Three library facts decide the fix, each measured:
 **What the three prerequisites land**, from their drafted plans:
 
 - `plan:jx-markdown/repeater-map-template-roundtrip` (§6.5): the transpiler reads a leaf directive's label as its inline content (§4.2); `serialize.ts` gains `partToDirective` (a labelled leaf for static text or phrasing content, a bare leaf when empty, a container otherwise), `isInlineOnly`, `holdsNatively` (a list or table holding anything its markdown form cannot hold is written as directives throughout; whitespace-only strings do not count), `blockChild`, `boundText` and `LABEL_UNSAFE`; a bound `textContent` on any element `convertJxNode` visits is written `textContent.ref`. It leaves GFM's structural limits, a native list item's `li > p`, array values, `mdastToJx`, two label limits (a `br`, and a code span holding `]`) and a bound `textContent` on a `pre`'s `code` child (written as an empty fence) to this plan, and moves those last two into §12.8's marker.
-- `plan:jx-markdown/directive-attribute-routing` (§6.6): one routing set for every element (`ELEMENT_LEVEL_KEYS`, `isElementLevelKey`), and a bare `hidden` is `true`. It names two placement normalizations for this plan to state (an element-level key outside the set comes back under `attributes`; an `attributes` key inside it comes back on the element) and leaves scalar typing here. Its §12.8 marker rewrite leaves "a bound `value`, `checked` or `selected` becomes the control's default" for this plan to name or refuse. Its set omits `cases` and `innerText`, both `ElementDef` keys (`packages/schema/schema.json`); `cases` is spec.md §14.1's.
-- `plan:jx-markdown/pseudo-element-names` (§7.3): `applyStyleKeyMapping` and `collapseStylePaths` act at every depth on keys holding a block (a plain object that is not a `$ref`), so a `--` key holding a value is a custom property in both directions, and §7.4, §12.4, §12.5 and §12.7 say so. Its integration contract asks this plan to require it and to write styles through `collapseStylePaths`, which is what closes the census's style clause.
+- `plan:jx-markdown/directive-attribute-routing` (§6.6): one routing set for every element (`ELEMENT_LEVEL_KEYS`, `isElementLevelKey`), and a bare `hidden` is `true`. It names two placement normalizations for this plan to state (an element-level key outside the set comes back under `attributes`; an `attributes` key inside it comes back on the element) and leaves scalar typing here. Its §12.8 marker rewrite leaves "a bound `value`, `checked` or `selected` becomes the control's default" for this plan to name or refuse. Its set holds `cases` (spec.md §14.1) and `innerText`, both `ElementDef` keys (`packages/schema/schema.json`), so the `$switch` row above closes there, and this plan does not edit §6.6. Its value-control Open and this plan's binding refusal are one question: if that Open keeps a bound `value`, `checked` or `selected` at element level, the refusal goes.
+- `plan:jx-markdown/pseudo-element-names` (§7.3): `applyStyleKeyMapping` and `collapseStylePaths` act at every depth on keys holding a block (a plain object that is not a `$ref`), so a `--` key holding a value is a custom property in both directions, and §7.4, §12.4, §12.5 and §12.7 say so. Its integration contract asks this plan to require it and to write styles through `collapseStylePaths`, which is what closes the census's style clause. That is its recommended answer to its depth Open; if the Open is declined (first segment only), a state nested in a breakpoint and a `--` key holding a value move from this plan's `EXACT` table to its refusals. A custom property named after a §6.3 annotation (`--title`, `--description`, and `--id` once this plan adds it) is read as the annotation at every segment, which that plan's §7.4 sentence states and this plan refuses.
 
 **What else exists**
 
@@ -75,12 +75,16 @@ Three library facts decide the fix, each measured:
 - `serialize-tagname-expression.test.ts` pins the render-time `tagName` refusal, whose message shape (`Markdown cannot express … Keep this element in a JSON component.`) the new refusals copy.
 - `scripts/ci/affected.ts` resolves a changed path with `EXTRA_EDGES.find`, so only the first matching edge fires. `examples/**` (→ `packages/compiler`) and `packages/starters/sites/portfolio/**` (→ `packages/server`) are already edges.
 
-**Related.** jx-markdown.md §4.2, §6.1–§6.3, §6.6, §7.3, §7.4, §8, §9, §12.5–§12.7; parser.md §5; spec.md §8.3 (boolean attributes), §9.2 (nesting in either order), §14.1 (`cases`, the `div` container); studio.md §8.1 (the save path). `plan:jx-markdown/commonmark-coverage` (§9) edits `serialize.ts` too and is written for either landing order.
+**Related.** jx-markdown.md §4.2, §6.1–§6.3, §6.6, §7.3, §7.4, §8, §9, §12.5–§12.7; parser.md §5; spec.md §8.3 (boolean attributes), §9.2 (nesting in either order), §14.1 (`cases`, the `div` container); studio.md §8.1 (the save path).
+
+- `plan:jx-markdown/commonmark-coverage` (§9) edits `serialize.ts` too and is written for either landing order, as this plan is. It owns whether a list item's text keeps its `p` (the list-item Open below); this plan owns `mdastToJx`'s fate. If its CC1.2 has landed, `convertJxNode` calls `footnoteRefId` and `plainGfm` first, and `needsDirective` and `holdsNatively` judge `plainGfm`'s copy, as `hasJxProps` did. `jxToMdast` maps a root `section[data-footnotes]` before `flowChildren` sees it.
+- `plan:jx-markdown/content-document-root` (§3.1) says the empty paragraph Studio seeds a content document with serializes to nothing, and pins it with a string-level test. This plan keeps that true (Decisions).
+- `plan:extensions/format-icon-hint` makes the same `EXTRA_EDGES.find` → `filter` change to `scripts/ci/affected.ts` (step 3). Whichever lands second finds it made and adds only its own entry and tests.
 
 ## Outcome
 
 - jx-markdown.md §12.8 → Implemented. The marker is removed; the roundtrip bullet states the inverse, the normalizations it makes and the refusals, and `extensions/parser/tests/roundtrip-corpus.test.ts` proves all three at the string level.
-- jx-markdown.md §6.6's element-level set gains `cases` and `innerText`; §12.6 says each keyword segment is written unprefixed; §6.3 gains `--id` if the refusal Open resolves as recommended. parser.md §5 defers to §12.8.
+- §12.6 says each keyword segment is written unprefixed; §6.3 gains `--id` if the refusal Open resolves as recommended. §6.6 is not edited here: `plan:jx-markdown/directive-attribute-routing` writes its whole element-level set. parser.md §5 defers to §12.8.
 - If §3.1 and §9 are already Implemented when this lands (§6.5, §6.6 and §7.3 are, as prerequisites), this pull request graduates jx-markdown.md.
 
 ## Decisions
@@ -89,6 +93,7 @@ Three library facts decide the fix, each measured:
 - **Open:** how a directive outside `PHRASING_ELEMENTS` writes static text or inline-only content. Recommendation: the §6.5 plan's labelled leaf (`::div[plain **b** tail]`), signed together with that plan's own label Open, which asks for exactly this. A transpiler rule unwrapping a lone paragraph would re-read every hand-written `:::section` / text / `:::` and every docs callout as `textContent`, while leaf labels are new syntax; the container-and-paragraph form stays for phrasing tags, so no saved file churns. The cost, which the §6.5 plan's lists do not carry: a project that builds with a published `@jxsuite/parser` older than the §6.5 change drops a label, so a `div`, `dd`, `option` or custom element whose text is written this way renders empty there, where today's form shows the text inside a `p`. The alternative, keeping today's form and naming the `p` wrap as a normalization, leaves the edge-whitespace and one-paragraph-per-child loss the marker names.
 - **Decided:** a phrasing directive (a tag in `PHRASING_ELEMENTS`) with inline-only content keeps today's container-and-paragraph form, and `INLINE_CONTENT_TAGS` is deleted in favour of the transpiler's set, since the two disagreeing is itself a loss. A phrasing directive holding a block (the card link `a > [h3, p]`) is a container whose body is flow, with each `p` child written as a directive, because the transpiler unwraps a phrasing element's paragraphs: text beside the blocks then comes back as bare text, exactly, and the `p` survives.
 - **Decided:** in a flow position (the document root, a directive body holding blocks), a run of inline siblings that contains text is written as one paragraph, an inline element with no text beside it is written as a block directive (`::img{src="…" alt="…"}`, `::a[Home]{href="/"}`) that re-parses as itself, and a whitespace-only string is skipped (a paragraph of it is written as blank lines). The root must never hold a phrasing node, and a lone `img` or `a` is what §4.2, §5 and an HTML `<img>` line produce.
+- **Decided:** an empty `p` carrying nothing (no attributes, no Jx props, no `textContent`, no children) is dropped, a named normalization, while an empty `em`, `strong`, `del`, `ul`, `ol` or `table` is written as a directive. Because jx-markdown.md §3.1 (`plan:jx-markdown/content-document-root`) has Studio seed an empty content body with exactly that paragraph and says it serializes to nothing, and Studio's Enter key and Insert Paragraph leave empty ones (`shortcuts.ts`, `context-menu.ts`): writing `::p` would put a directive into every content page saved with an empty body. Markdown has no empty paragraph, and a bare one renders nothing. The others are not seeded, and an empty `strong` turns into literal `****`.
 - **Decided:** styles are written through `collapseStylePaths` as the §7.3 plan leaves it, and `collapseDotPaths` writes every `$`-keyword segment through `mdKey`, so its output is always writable. The serializer's own pseudo-class and keyword sets and its bare-`@` branch go.
 - **Open:** what roundtrip does with a key or value no directive can carry. Recommendation: throw before anything is written, naming the element and the key, as the render-time `tagName` refusal does. Every caller already reports a throw without writing, and today's output does not parse, so the next save escapes it into literal text and the loss is permanent. The cases:
   - a tag or attribute name outside the grammar above: a style block keyed by a selector (`.child`, `& li`, `[open]`, `:nth-child(2n)`), an at-rule other than a named media query, a `$` key §6.2 and §6.3 do not map (`$shadow` on a nested element, `$expression` inside a bound value);
@@ -106,7 +111,7 @@ Three library facts decide the fix, each measured:
 
   Studio's property, attribute and component-prop rows write `true`, `""` or delete the key and never write `false` (`packages/studio/src/panels/properties-panel.ts`), so the refusal cannot fire on a Studio edit. A typed attribute syntax is the alternative, and it is new format surface for a case Studio does not produce.
 
-- **Open:** text or inline elements directly in a native list item or block quote. Recommendation: a named normalization, written as today (`- a`, `> q`) and coming back inside a `p`, the block markdown gives both. The exact form would write every list Studio types into as `:::ul` / `::li[a]`, which defeats the format for the content it exists for. Whether a tight list item should parse without its `p`, as CommonMark renders it, is §9's question (`plan:jx-markdown/commonmark-coverage`), and that plan narrows this bullet if it lands second.
+- **Open:** text or inline elements directly in a native list item or block quote. Recommendation: a named normalization, written as today (`- a`, `> q`) and coming back inside a `p`, the block markdown gives both. The exact form would write every list Studio types into as `:::ul` / `::li[a]`, which defeats the format for the content it exists for. Whether a tight list item should parse without its `p`, as CommonMark renders it, is §9's question (`plan:jx-markdown/commonmark-coverage`), and that plan narrows this bullet if it lands second. If it landed first, this plan writes the narrowed form itself: the §12.8 bullet says "a list item of a loose list (§9)", the `NORMALIZED` row asserts that a tight list's text stays in its `li` and that `li` text gains a `p` only in a loose list, the list-item grouping extends its CC1.3 pass rather than adding a second, and the docs sentence reads "returns inside a paragraph when the list has blank lines between its items".
 - **Open:** keep or delete `mdastToJx`. Recommendation: keep the export and make it a wrapper over the transpiler's converter, deleting its private one. parser.md §5 documents it, and deleting a documented export of `@jxsuite/parser` 1.x is a major release for no user gain; the wrapper turns every mdast-level test into a test of the production converter. Its output changes (text children become strings, directive attributes are routed), which is the fix, and nothing in the repository calls it.
 
 ## Implementation
@@ -117,7 +122,6 @@ Written for the recommended answer to every Open.
    - Export `PHRASING_ELEMENTS` and `PROTOTYPE_DIRECTIVE_NAMES`.
    - `JX_ANNOTATION_KEYS` gains `id`, so `jxKey("--id")` is `$id` and `mdKey("$id")` is `--id`.
    - `collapseDotPaths(obj)`: pass each path segment through `mdKey`. JSDoc cites jx-markdown.md §12.6.
-   - After §6.6 lands: its `ELEMENT_LEVEL_KEYS` gains `cases` and `innerText`.
    - `applyStyleKeyMapping`, `collapseStylePaths`: nothing beyond the §7.3 plan.
 2. **`extensions/parser/src/serialize.ts`**, roundtrip half (export mode's `nodeToMdast` is untouched):
    - Import `collapseDotPaths`, `collapseStylePaths`, `jxKey`, `mdKey`, `convertChildren`, `mdastNodeToJx`, `PHRASING_ELEMENTS` and `PROTOTYPE_DIRECTIVE_NAMES` from `./transpile.ts`. Delete `INLINE_CONTENT_TAGS`, `CSS_PSEUDO_NAMES`, `JX_DOLLAR_KEYS`, `JX_ANNOTATION_KEYS`, the local `PROTOTYPE_DIRECTIVE_NAMES` and `collapsePropsToAttrMap`.
@@ -143,7 +147,7 @@ Written for the recommended answer to every Open.
      - `attributes` holds anything the tag's markdown form does not write back. `NATIVE_ATTRIBUTES` allows `a`: `href` (a string, required) and a non-empty string `title`; `img`: `src` and `alt` (strings, both required) and a non-empty string `title`; `ol`: `start`, `String(n)` for a whole `n` other than 1, at most nine digits; every other native tag: none;
      - the tag's markdown form holds inline content only (`p`, `h1`–`h6`, `em`, `strong`, `del`, `a`, `th`, `td`) and its children are not `isInlineOnly`;
      - the tag is `code` and its content is anything but a non-empty string `textContent` (the native writer reads only that);
-     - the tag is `p`, `em`, `strong`, `del`, `ul`, `ol` or `table` and it has no content (no non-empty `textContent`, no children), since each of those vanishes or turns into literal text when empty;
+     - the tag is `em`, `strong`, `del`, `ul`, `ol` or `table` and it has no content (no non-empty `textContent`, no children), since each of those vanishes or turns into literal text when empty. A bare empty `p` is not in the list: it is dropped (Decisions);
      - the tag is `pre` and it holds neither a string `textContent` nor exactly one `code` child whose only keys are `tagName`, a string `textContent` and a `className` of the form `language-<name>` with no whitespace in the name. This closes the bound-`code` case the §6.5 plan hands over.
 
      `convertJxNode`'s directive test and the §6.5 plan's `holdsNatively` both call it.
@@ -156,7 +160,7 @@ Written for the recommended answer to every Open.
    - `mdastToJx(node)`: a `root` returns `{ children: convertChildren(node.children ?? []) }` (or §9's root converter, `mdastRootToJx`, if `plan:jx-markdown/commonmark-coverage` has landed); any other node returns `mdastNodeToJx(node)`, whose return type the export takes. Delete `MDAST_TAG_MAP`, `convertMdastNode`, `convertDirective` and the local `prototypeDirectiveToJx`. The JSDoc says it is the transpiler's own tree walk.
    - The module header and `jxToMdast`'s comment describe the inverse, the normalizations and the refusals, citing jx-markdown.md §12.8.
 3. **`scripts/ci/affected.ts`**:
-   - `decide` collects the seeds of every edge whose patterns match (`EXTRA_EDGES.filter`), not the first (`find`). Without it, the new edge never fires for `examples/**` or the two starters the refactor edge names, whichever order the entries take.
+   - `decide` collects the seeds of every edge whose patterns match (`EXTRA_EDGES.filter`), not the first (`find`). Without it, the new edge never fires for `examples/**` or the two starters the refactor edge names, whichever order the entries take. `plan:extensions/format-icon-hint` makes the same change; if it has landed, this bullet and its test are already done.
    - A new `EXTRA_EDGES` entry: `patterns` `examples/**/*.md`, `packages/create/template/**/*.md`, `packages/create/templates/**/*.md`, `packages/starters/sites/**/*.md` and `specs/jx-markdown.md`; `seeds: ["extensions/parser"]`; `evidence: ["extensions/parser/tests/roundtrip-corpus.test.ts"]`; and a `why` saying the corpus reads those documents and the spec's examples while those workspaces depend on the parser, never the reverse.
 4. On landing, delete this file. If this pull request graduates the spec, delete `plans/jx-markdown/` with it.
 
@@ -183,18 +187,19 @@ New `extensions/parser/tests/roundtrip-corpus.test.ts`, with `roundTrip = (doc) 
   - `a { className, href } > [h3, p]`, `a > [h3, "text"]` and `p > a > h3`;
   - `nav > a`; a root `[hr, input, img]`; a root `img` beside a `p`;
   - native `p` and `h2` carrying `data-*` and `aria-*` attributes; `a` without `href`; `img` without `alt`; `a` with an empty `title`;
-  - an empty `p`, `ul`, `table` and `strong`;
+  - an empty `ul`, `table` and `strong`, and an empty `p` carrying a class;
   - `pre > code` with a plain class, with `attributes`, with two `code`s, and with a bound `textContent`;
   - `innerHTML` on `div` and `p`; a `p` with the §8 descriptor;
   - a styled `td` table cell holding a `br`, and one with edge spaces (both written as directives);
   - every §7.3 name, `::backdrop`, `"@--dark": { ":hover" }`, `":hover": { "@--sm" }`, a `--brand` custom property and a bound style value, written through `collapseStylePaths`;
-  - `$switch` with `cases` and a `tagName`; `hidden: true`; `$id: "hero"` (written `--id`);
+  - `$switch` with `cases` and a `tagName`; `innerText` on a `p` and on a custom element; `hidden: true`; `$id: "hero"` (written `--id`);
   - `$props` string, `$ref` and nested values; `--title` and `--description`;
   - a table without `thead` and one with a short row (both written as directives);
   - frontmatter holding `yes`, `on`, `2024-01-01` and `null`.
 - `describe("normalizations come back in the form §12.8 names")`, a `NORMALIZED` table of `[input, expected]` pairs written out literally, one per §12.8 bullet:
   - `children: ["x"]` gives `textContent: "x"`, and `["Score: ", 42]` merges into one string;
   - `children: []`, `title: null` and `$props: {}` are dropped, and so is a `"\n"` between two root blocks;
+  - an empty `p` carrying nothing is dropped, so `{ title: "T", children: [{ tagName: "p", children: [] }] }` serializes to its frontmatter alone (the §3.1 seed; `plan:jx-markdown/content-document-root` pins the same string in `jx-markdown.test.ts`, which stays green);
   - root text and `li` text gain a `p`, and so does a text run beside a block in a `section`;
   - a `$switch` without `tagName` gains `div`;
   - an element-level `href` moves under `attributes`, and `attributes.id` moves to the element;
@@ -207,7 +212,6 @@ New `extensions/parser/tests/roundtrip-corpus.test.ts`, with `roundTrip = (doc) 
 Extended:
 
 - `extensions/parser/tests/jx-markdown.test.ts`, by the helper tests: "collapseDotPaths writes keyword segments unprefixed" (a nested `$ref` under `items` flattens to `items.ref`) and "--id is the $id annotation" (`jxKey` and `mdKey` both ways, and `expandDotPaths({ "--id": "x" })`).
-- The §6.6 plan's `attribute-routing.test.ts`: "cases and innerText stay on the element".
 - `serialize.test.ts`: the `mdToJx` and `round-trip` describes assert the transpiler's output (text children are strings, attributes routed); a case that only covered the deleted converter is deleted. "container directive inline content" keeps its phrasing cases and changes "non-inline-content tag keeps block children" only if its fixture is inline-only.
 - `serialize-coverage.test.ts`:
   - `mdToJx — uncovered node types` and `mdToJx — directives` are deleted, apart from one delegation case per branch (root, non-root);
@@ -221,7 +225,7 @@ Extended:
 
 > `mode: "roundtrip"` (default): the inverse of `transpileJxMarkdown()`. YAML frontmatter from non-children doc keys; non-markdown elements, and markdown elements carrying what their markdown form cannot, emitted as directives with collapsed dot-path attributes; the inline content of a directive outside the transpiler's phrasing set written as its label (§4.2). With the default options, `transpileJxMarkdown(serializeJxMarkdown(doc))` is `doc` except for these normalizations:
 >
-> - a lone text child and `textContent` are one form, adjacent text children merge, a number in text becomes a string, and an empty `children` array, `textContent` or object, a `null` value, and whitespace-only text between blocks are dropped;
+> - a lone text child and `textContent` are one form, adjacent text children merge, a number in text becomes a string, and an empty `children` array, `textContent` or object, a `null` value, whitespace-only text between blocks, and an empty paragraph carrying nothing (the one Studio seeds a content document with, §3.1) are dropped;
 > - a run of text and inline elements written directly in the document root, a list item or a block quote, or beside a block in a directive outside the phrasing set, comes back inside a `p`, the block markdown gives it;
 > - a node without a `tagName`, other than a repeater, comes back as a `div`, the container every renderer gives it (spec.md §14.1);
 > - a key §6.6 routes elsewhere comes back where §6.6 puts it: an element-level property as the attribute of the same name, which renders the same when the property reflects that attribute (`href`, `title`, `src`), and an `attributes` entry §6.6 keeps on the element as that property;
@@ -232,13 +236,13 @@ Extended:
 
 The export bullet and the closing sentence are unchanged. If an Open resolves differently, the matching bullet or refusal changes with it.
 
-**§6.3**: the table gains `--id` → `$id`, and after it: "`$id` is the identifier Studio's Element section sets; like the other two it is metadata, never an HTML attribute." **§6.6**: the element-level set the §6.6 plan writes gains `cases` (spec.md §14.1) and `innerText`. **§12.6** gains "Each `$`-keyword segment is written unprefixed (§6.2, §6.3), so the result is writable as directive attributes." §7.4, §12.4, §12.5 and §12.7 are the §7.3 plan's and do not change here.
+**§6.3**: the table gains `--id` → `$id`, and after it: "`$id` is the identifier Studio's Element section sets; like the other two it is metadata, never an HTML attribute." §7.4's exception for annotation names (the §7.3 plan's sentence) cites §6.3's table rather than listing names, so `--id` joins it without an edit. **§12.6** gains "Each `$`-keyword segment is written unprefixed (§6.2, §6.3), so the result is writable as directive attributes." §7.4, §12.4, §12.5 and §12.7 are the §7.3 plan's and do not change here.
 
 **parser.md §5**: the roundtrip bullet becomes "**roundtrip** — YAML frontmatter (via the `yaml` package) from non-children doc keys; elements outside the allowlist (or carrying what their markdown form cannot) emit as remark directives with collapsed dot-path attributes. The inverse of `transpileJxMarkdown()`; jx-markdown.md §12.8 states what it normalizes and what it refuses." It drops "lossless for everything it can express", which the named normalizations contradict.
 
 **Fragments** (no graduation):
 
-- `bun run spec:change jx-markdown.md minor -m "§12.8: roundtrip serialization re-parses to the document it was given up to the normalizations it names, and refuses what no directive can carry; --id carries an element's ID annotation, cases and innerText stay on the element, and collapseDotPaths writes keyword segments unprefixed."`
+- `bun run spec:change jx-markdown.md minor -m "§12.8: roundtrip serialization re-parses to the document it was given up to the normalizations it names, and refuses what no directive can carry; --id carries an element's ID annotation, and collapseDotPaths writes keyword segments unprefixed."`
 - `bun run spec:change parser.md patch -m "§5 defers to jx-markdown.md §12.8 for what roundtrip serialization normalizes and refuses."`
 
 **Graduation.** If §3.1 and §9 are already Implemented when this lands, this pull request closes jx-markdown.md's last open item. The header `**Status:**` becomes `Implemented`, and `bun run spec:bump jx-markdown.md minor -m "…"`, with the jx-markdown fragment's sentence, runs in place instead of that fragment. `plans/jx-markdown/` is deleted.

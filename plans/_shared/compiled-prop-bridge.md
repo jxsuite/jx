@@ -80,7 +80,7 @@ All three items are open for one mechanism, the compiled element's property brid
    - its JSDoc names `spec.md` §13.2 as the rule's home and the drift test as its guard, mirroring `attrHelperSource()`'s.
 3. **`packages/compiler/src/targets/compile-element.ts`**:
    - Import `isPrivateStateKey` from `@jxsuite/schema/guards`, and `propSupplyHelperSource` from `../shared.ts`.
-   - Add `ELEMENT_MEMBERS` beside `LIFECYCLE_KEYS`.
+   - Add `ELEMENT_MEMBERS` beside `LIFECYCLE_KEYS`. If `plan:spec/callable-classifier` has landed first, `LIFECYCLE_KEYS` has moved to `@jxsuite/schema/function-role`, and `ELEMENT_MEMBERS` goes where the local constant stood, as that plan says; it stays local to `compile-element.ts` either way, because it names the emitted class's members and nothing outside the element target reads it.
    - In `emitElementModule`, compute `propKeys = Object.keys(defs).filter((k) => !isPrivateStateKey(k))` and `bridgedKeys = propKeys.filter((k) => !ELEMENT_MEMBERS.has(k))`. Push `const __jxProps = ${JSON.stringify(propKeys)};` after `attrHelperSource()`. When `bridgedKeys` is non-empty, follow it with `const __jxBridged = ${JSON.stringify(bridgedKeys)};` and `propSupplyHelperSource()`.
    - In the class, add `#jxConnected = false;`, only when `bridgedKeys` is non-empty.
    - In `connectedCallback`:

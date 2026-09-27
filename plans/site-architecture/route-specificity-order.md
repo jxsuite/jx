@@ -117,7 +117,7 @@ No other spec cites §4.4, and no Standards Alignment row binds it.
 - `docs/framework/build.md`, step 3 gains: "When two pages generate the same URL, the one with [route priority](/docs/framework/site/routing#route-priority) builds it and the build warns; when neither has priority, the build fails."
 - `docs/framework/site/seo.md` ("one `<url>` per compiled page" becomes true as written), `redirects.md`, `deployment.md`, `concepts/color-schemes.md` and `extending/reference/standards.md` also list `site-build.ts`; none changes.
 
-On landing: delete this file, and remove `site-architecture/route-specificity-order` from any dependent's `requires` (`plan:site-architecture/collection-pagination` may add one when it is detailed).
+On landing: delete this file. No plan requires it: `plan:site-architecture/collection-pagination` weighed the edge and needs none, because its paged routes come out of `expandDynamicRoutes` contiguous and concrete, so `resolveRouteCollisions` settles them like any other expansion; its routing docs already warn that a `[page].json` beside a `[slug].json` is one shape. Re-read its paging paragraph in `docs/framework/site/routing.md` if it landed first, since this plan's "Two pages, one URL" subsection then names the winner that paragraph leaves open.
 
 ## Acceptance
 

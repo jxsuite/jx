@@ -69,13 +69,13 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
 - **Decided:** A control runs its record through `runActiveReported(id, args, "Source Control")`. The panel is mounted by the Navigator with no registry injected, which is the Command Bar's and the status bar's situation too, and §12.4 routes a surface's refusal to Problems through that one helper.
 - **Decided:** A new module, `src/commands/projection.ts`, owns what a command prints: `commandControl` (one record to one control), `commandTooltip` (moved from `surfaces/commandbar.ts`) and, in GPA1.2, `commandRow` (one record to one menu row). It is the module `plan:studio-ui-guidelines/name-and-chord-gaps` names and extends with `placementRows`, so the two plans build one projector rather than two. `commands/app-commands.ts` imports `git-panel.ts`, so the panel must stay loadable in a bare Bun process and cannot import `surfaces/commandbar.ts`, which reaches the canvas and preview stack.
 - **Decided:** The panel draws its controls by id, not through a new placement. Each mood lays out its own controls, and the deploy checklist's `actionView` already renders a record by id with its title and `requires`.
-- **Decided:** The projection folds `busy` into each control's `disabled`, because the adapter decides and the document binds values (the module header's rule). The hint stays the record's.
+- **Decided:** The projection folds `busy` into each control's `disabled`, because the adapter decides and the document binds values (the module header's rule). The hint stays the record's, except while busy: then a control disabled only by `busy` takes the `busyReason` sentence, which `plan:studio-ui-guidelines/empty-state-copy` (the no-repository buttons) and `plan:studio-ui-guidelines/conventions-checklist-controls` (CCO2.3, the rest) add to `gitPanelValues()`. Whichever of them has landed, `gitPanelValues()` sets `controls.*.hint` from it while `loading`; if neither has, the record's hint stands and they apply it when they land.
 - **Decided:** Every new record that writes the repository declares the family precondition (§12.4): `when: (ctx) => ctx.project.open`, `enablement: (ctx) => ctx.project.isRepo`, `requires: "a project tracked by git"`, narrowed by `hasRemote` for the remote verbs if that decision holds. `git.refresh` has `when` only, because reading status is how a project learns it is a repository. `git.clone` is `application`-level with `when: (ctx) => ctx.capability.gitClone`. Every new record is `menus: ["palette"]`, and the Studio menu is unchanged.
 - **Decided:** Labels are record titles in Title Case (§10, §12.3): "Create GitHub Repository", "Commit and Sync", "Stage All", "Unstage All", "Create Branch…". The commit menu's row is the `git.commit` record, "Commit". A count is state, so the projection appends it to the title ("Push (1 ahead)"), as "Local Changes (6)" already does. A row button is named `<title>: <path>`.
 - **Decided:** The panel keeps its error contract. A git command that fails lands in the panel's banner (`shell.git.error`); a refusal lands in Problems. Each event is reported once (§13.3).
 - **Decided:** `git.commit` and `git.commitAndSync` take an optional `message`. Without one they read the field and clear it; an empty message is a `RangeError` saying "<title> requires a commit message.". The panel draws both buttons disabled while the field is empty, with the same noun phrase in the hint. Ctrl+Enter runs the record only when the field has text.
 - **Decided:** A row verb takes `path` as a `derivedEnumProperty` over the last status read: unstaged paths for `git.stage`, staged paths for `git.unstage`, and unstaged tracked paths for `git.discard`. So `coerceArgs` refuses a path that is not there, and `git.discard` refuses an untracked one. `git.discard` is `destructive: true` and keeps its confirmation.
-- **Decided:** `runNextStep` in the deploy checklist moves to `runActiveReported` in GPA1.1 unless `plan:studio-ui-guidelines/run-reported-sweep` has already moved it. The new refusal is asynchronous, and a bare `void activeRegistry()?.run()` would leave it as an unhandled rejection. The source is the name that plan settles for this file (its recommendation is "Deploy Checklist"), so the two plans cannot file one surface under two names.
+- **Decided:** `runNextStep` in the deploy checklist moves to `runActiveReported` in GPA1.1 unless `plan:studio-ui-guidelines/run-reported-sweep` has already moved it. The new refusal is asynchronous, and a bare `void activeRegistry()?.run()` would leave it as an unhandled rejection. The source is "Publish", the name that plan gives this file (it owns every surface's source name), so the two plans cannot file one surface under two names.
 - **Decided:** The Packages row's Remove calls `removeExtensionPackage`, the function `packages.remove` runs, as the Extensions rows already do, rather than running the record. The table reports through its own progress modal, which shows a rejected operation as its failure, and `runActiveReported` never rejects, so the modal would report success over a refusal.
 - **Decided:** A record that needs the bootstrap takes its dependencies with a no-op default, so `appCommandSet()`'s calls stay argument-free. That covers `sourceControlCommands({ openRecentProject })`, `newProjectCommands({ openCreated })` and `addRepositoryCommands({ onAdded })`.
 
@@ -104,7 +104,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
    - Both `create-repository` buttons do the same from `controls.createRepository`, and the literal goes.
    - `push`: `label`, `hint` and `disabled` come from `controls.push`.
    - Update the document's `$description`.
-6. `src/publish/deploy-checklist.ts`, `runNextStep`, unless the sweep has landed: `void runActiveReported(next.command, undefined, <the sweep's source>)`, and `publish/deploy-checklist.ts` leaves `NOT_YET_CONVERTED` in `tests/run-reported.test.ts`.
+6. `src/publish/deploy-checklist.ts`, `runNextStep`, unless the sweep has landed: `void runActiveReported(next.command, undefined, "Publish")`, and `publish/deploy-checklist.ts` leaves `NOT_YET_CONVERTED` in `tests/run-reported.test.ts`.
 7. `src/settings/dependencies-editor.ts`, `onRemove(name)`: `await withBusy(() => removeExtensionPackage(name))`, importing it from `./extension-commands`. Its own `notify.success` goes, because the function reports "Removed name." itself, and a refusal reaches `progress.fail` with the function's sentence.
 
 **GPA1.2: the panel's other capabilities as records**
@@ -132,7 +132,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
 
 3. `ACTIONS`: every capability entry runs its record through `runActiveReported`.
    - `chooseBranch` keeps the `_branchOverride` handling around `await runActiveReported("git.createBranch", …)`, and otherwise runs `git.checkout` with `{ branch }`.
-   - `openCommitMenu` builds its one row with `commandRow(registry, registry.get("git.commit"), { source: SOURCE })`, and opens nothing when the registry or the record is absent.
+   - `openCommitMenu` builds its one row with `commandRow(registry, registry.get("git.commit"), { source: SOURCE })`, and opens nothing when the registry or the record is absent. If `plan:studio-ui-guidelines/conventions-checklist-controls` CCO2.2 has landed, it keeps passing `expanded` to `openMenu`, so the commit-menu opener's `aria-expanded` stays live.
    - `clone` runs `git.clone`. `openFile`, `editMessage` and `selectTab` are unchanged.
 4. Projection:
    - `controls` gains `refresh`, `fetch`, `pull` (with the behind count as suffix), `commit`, `commitAndSync`, `stageAll`, `unstageAll` and `clone`.
@@ -159,7 +159,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
 **Integration contract.**
 
 - After GPA1.1:
-  - `src/commands/projection.ts` exports `CommandControlView`, `commandControl` and `commandTooltip`, and `commandbar.ts` still re-exports `commandTooltip`. `plan:studio-ui-guidelines/name-and-chord-gaps` adds `placementRows` to this module instead of creating it, and may draw the dock's close button with `commandControl`. `plan:studio/file-tree-command-records` imports `commandControl` from `commands/projection.ts`, not the `commands/command-control.ts` its text names.
+  - `src/commands/projection.ts` exports `CommandControlView`, `commandControl` and `commandTooltip`, and `commandbar.ts` still re-exports `commandTooltip`. `plan:studio-ui-guidelines/name-and-chord-gaps` adds `placementRows` to this module instead of creating it, and may draw the dock's close button with `commandControl`. `plan:studio/file-tree-command-records` imports `commandControl` from `commands/projection.ts`, and `plan:studio-ui-guidelines/empty-state-copy` may build `commandEmptyAction` on it.
   - Both Create buttons print the record's title.
   - `git.createGithubRepository` refuses a repository with no commit before signing in, and, if the remote decision holds, `ctx.git.hasRemote` exists and gates Create and Push.
   - `createGithubRepository({ projectName })`, `REPO_STEPS` and the activity's messages are unchanged.
@@ -209,7 +209,7 @@ Two suites share a harness for the git panel:
   - If the remote decision holds: "Create is refused on a repository that already has a remote" and "Push is refused without a remote", through `registry.isEnabled` and `disabledReason`.
 - `commands-live-context.test.ts`, if it holds: `hasRemote` from `status.remotes`, and `false` with no status or no array.
 - `dependencies-editor.test.ts`: "remove calls removePackage" stays green (no extension enables the package). New: "remove refuses a package an enabled extension still needs, and removes nothing" (`project.json` enabling it; `removePackage` not called; the progress modal fails with the function's sentence).
-- `deploy-checklist.test.ts`, unless the sweep has landed: "a refused step is filed in Problems under" the sweep's source.
+- `deploy-checklist.test.ts`, unless the sweep has landed: "a refused step is filed in Problems under Publish", the case and name `plan:studio-ui-guidelines/run-reported-sweep` uses.
 - `run-reported.test.ts`, unless the sweep has landed: the ratchet entry goes, and "the ratchet names only files that still spell it bare" proves it.
 
 **GPA1.2**
@@ -248,7 +248,7 @@ Two suites share a harness for the git panel:
 `specs/studio-ui-guidelines.md`, edited in place:
 
 - §12.3's marker: delete the last clause, "and the Source Control panel's "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/git-panel.json`)". The Bottom dock clause becomes the list's last item, so it takes the "and".
-- §12.4's marker: delete ", and the `git.*` row's failure returns through the Source Control panel, which is §12.5's". Unless the sweep has landed, "Thirteen modules" also becomes "Twelve modules".
+- §12.4's marker: delete ", and the `git.*` row's failure returns through the Source Control panel, which is §12.5's". Unless the sweep has landed, the module count ("Thirteen modules") also drops by one to the list's new length (count it: `plan:studio-ui-guidelines/empty-state-copy` removes an entry too).
 - §12.5's marker becomes: "**Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements, and the Source Control panel draws Initialize Repository, Create GitHub Repository and Push from their records. The panel's other verbs are still defined by `ACTIONS` in `packages/studio/src/panels/git-panel.ts` rather than by records. The welcome screen's Start list (`src/surfaces/welcome.ts`) duplicates `project.new` and `project.open` and disagrees with the first: its tile opens the project the wizard creates, and the record's `run` opens nothing."
 - Fragment: `bun run spec:change studio-ui-guidelines.md patch -m "The Source Control panel draws Initialize Repository, Create GitHub Repository and Push from their records, so §12.3 and §12.4 no longer name it, and §12.5 names what remains: the panel's other verbs and the welcome screen's Start list"`.
 
@@ -301,7 +301,7 @@ Docs:
 
 - §12.5's marker becomes: "**Status: Implemented.** The tab strip, the outline, the block bar, the Command Bar, the Source Control panel and the welcome screen draw their controls from command records and run them through the registry (`packages/studio/src/panels/git-panel.ts`, `src/surfaces/welcome.ts`), and no surface calls past a record's refusal: the Packages table's Remove runs the function `packages.remove` runs (`src/settings/dependencies-editor.ts`)."
 - §12.4 rule 2's set gains `project.addRepository`.
-- §10's marker: "inherit §12.3's and §12.5's: the rail prints no chord, the tab-strip and Files-tree menus carry none, and the welcome screen's Start list is a list of its own" becomes "inherit §12.3's: the rail prints no chord, and the tab-strip and Files-tree menus carry none". The count of five stands, because both items still wait on §12.3.
+- §10's marker: "inherit §12.3's and §12.5's: the rail prints no chord, the tab-strip and Files-tree menus carry none, and the welcome screen's Start list is a list of its own" becomes "inherit §12.3's: the rail prints no chord, and the tab-strip and Files-tree menus carry none". The count stands, because both items still wait on §12.3.
 - Fragment: `bun run spec:change studio-ui-guidelines.md minor -m "§12.5: the Source Control panel and the welcome screen draw every control from its command record, and New Project opens what it creates from every surface"`.
 
 `specs/studio.md`:

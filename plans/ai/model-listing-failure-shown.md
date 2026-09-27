@@ -36,7 +36,7 @@ The clause it falls short of (line 28): the listing failure "**MUST** be disting
 
 ## Outcome
 
-ai.md §2 → Implemented. Whenever a listing answers with `upstreamError`, every Studio surface that offers the catalogue says the listing failed, using the upstream's reason when there is one and the status when there is not. A `401` or `403` is worded as a refused key.
+ai.md §2 → Implemented, its census-added marker deleted. Whenever a listing answers with `upstreamError`, every Studio surface that offers the catalogue says the listing failed, using the upstream's reason when there is one and the status when there is not. A `401` or `403` is worded as a refused key, and a `3xx` as an address to change.
 
 ## Decisions
 
@@ -44,9 +44,11 @@ ai.md §2 → Implemented. Whenever a listing answers with `upstreamError`, ever
 - **Decided:** the witness is `upstreamMessage` trimmed when non-empty; otherwise `HTTP <n>` for a numeric status (the words the thrown path already uses), `Provider unreachable` for `"network"`, the code itself for any other non-empty string, and `Model listing failed` for an empty one. An absent or `null` `upstreamError` is no failure, because the type admits `number | string` and JSON can carry `null`.
 - **Decided:** the failure is stored with the catalogue and read by credentials (`proxyListingFailure(credentials)`), replacing the unkeyed `proxyModelsErrorMessage()`, because the form lists under drafts and the probe under stored credentials into the same slot: the reason `cachedModels` is keyed.
 - **Decided:** in the form, a status of `401` or `403` gets "check the key and endpoint" in place of "type the model ID directly instead", because that is the authentication failure §2 distinguishes the listing failure from, and typing a model id cannot fix a refused key.
+- **Decided:** in the form, a status from `300` to `399` gets "the endpoint redirects; enter the address it redirects to" in place of the model-id advice, because `plan:ai/link-local-guard` makes the proxy follow no upstream redirect and report it on `ai/models` as `upstreamError: <3xx>`, and its user-docs sentence tells the reader to enter the address that answers; typing a model id cannot fix an address any more than a refused key, and the chat request would meet the same redirect. This plan owns Studio's wording of every status; that plan owns the server's reporting and the docs sentence. No edge either way: the branch is tested against a fake answering `upstreamError: 307`, and before the guard lands a `3xx` still arrives when `fetch` cannot follow it (a `300`, or no `Location`).
 - **Decided:** the fallback catalogue is still offered beside the failure, because server.md §4.3 names the catalogue "degraded success: the catalogue is still delivered, from defaults". The docs are corrected instead.
+- **Decided:** the §2 marker is deleted, not rewritten as `Implemented`, because §2 was unmarked before the census, which added the marker only to carry this item; this is the spec-wide rule for ai.md's §2, §3 and §4 (`plans/ai/README.md`). §2.1, §2.2 and §2.4 keep their own markers.
 - **Decided:** correct the two `AiModelsResponse` doc comments in `packages/protocol/src/types.ts` (comment only), because that type is what a second backend implements against, and today it misstates when `upstreamError` is set.
-- **Open:** does the composer's and Import tab's model picker show the failure too, or does §2 bind only the credentials form? Recommendation: show it in the picker's hint (`Couldn't load models: <reason>`) with no Retry button. The composer is where authors switch models per conversation, so a silent `gpt-4o` there is the silent success §2 forbids. The hint is where the picker already reports a thrown listing, the compact row has no room for a line of text, and Retry cannot fix a route the provider does not serve. If declined, drop step 3 and its picker tests, drop `ai-model-picker.ts` from the new marker, the `chat.md` sentence and the by-hand hover check, and §2's new sentence says "the credentials form" rather than "every surface that offers the catalogue".
+- **Open:** does the composer's and Import tab's model picker show the failure too, or does §2 bind only the credentials form? Recommendation: show it in the picker's hint (`Couldn't load models: <reason>`) with no Retry button. The composer is where authors switch models per conversation, so a silent `gpt-4o` there is the silent success §2 forbids. The hint is where the picker already reports a thrown listing, the compact row has no room for a line of text, and Retry cannot fix a route the provider does not serve. If declined, drop step 3 and its picker tests, the `chat.md` sentence and the by-hand hover check, and §2's new sentence says "the credentials form" rather than "every surface that offers the catalogue".
 
 ## Implementation
 
@@ -57,7 +59,7 @@ ai.md §2 → Implemented. Whenever a listing answers with `upstreamError`, ever
    - Replace `proxyModelsErrorMessage()` with `proxyListingFailure(credentials: AiCredentials = aiConnection()): ListingFailure | null`, which returns `cacheKey === fingerprint(credentials) ? cacheFailure : null`. Rewrite its docblock to say that `reason` is never empty and that `null` means the listing under those credentials succeeded or never ran.
 2. `packages/studio/src/ui/ai-credentials-form.ts`, `fetchModels()`
    - Build `const credentials: AiCredentials = { apiKey: keyDraft || getOpenAiKey(), baseUrl: baseUrlDraft || getBaseUrl() }` once, and pass it to both `fetchAvailableModels` and `proxyListingFailure`.
-   - When a failure comes back, set `modelsError` to `` `${reason} — check the key and endpoint.` `` for `status` `401` or `403`, and to `` `${reason} — type the model ID directly instead.` `` for anything else. Use a local `isKeyRefusal(status)` for the test.
+   - When a failure comes back, set `modelsError` to `` `${reason} — check the key and endpoint.` `` for `status` `401` or `403`, to `` `${reason} — the endpoint redirects; enter the address it redirects to.` `` for a numeric `status` from `300` to `399`, and to `` `${reason} — type the model ID directly instead.` `` for anything else (`"network"` and the other string codes included). Use a local `listingAdvice(status)` for the choice.
    - Update the comment above the check: the failure is `upstreamError`, and the message is only its wording. A spec citation in a Studio comment is qualified (`ai.md` §2): a bare `§` in `packages/studio` means `studio.md`, and `docs:section-refs` checks it.
 3. `packages/studio/src/ui/ai-model-picker.ts`, `view()` (subject to the Open decision)
    - Import `proxyListingFailure`, and compute `const listed = failure ? "" : (proxyListingFailure(aiConnection())?.reason ?? "")`.
@@ -81,18 +83,17 @@ Run `bun test --isolate --coverage` from `packages/studio`. Protocol changes onl
 - `packages/studio/tests/ai-credentials-form.test.ts`, `describe("ai-credentials-form")`:
   - New `test.each` "fetchModels says the listing failed when the upstream gave %s": no reason, and an empty one. `[part="models-error"]` contains `HTTP 404` and `type the model ID directly`.
   - New "a refused key is worded as a key problem, not a missing listing": `upstreamError: 401` with "Incorrect API key provided". The error line contains the message and `check the key`, and does not contain `type the model ID directly`.
+  - New "a redirect is worded as an address to change": `upstreamError: 307` with no message. The error line contains `HTTP 307` and `enter the address it redirects to`, and does not contain `type the model ID directly`.
   - New "the failure shown is the one listed under the drafts": the stored key is `sk-old` and the drafted key is `sk-new`. `fetchImpl` answers `upstreamError: 404` only when the `X-Api-Key` header is `sk-new`, and the error line shows `HTTP 404`.
 - `packages/studio/tests/ai-model-picker.test.ts`:
   - New "a listing the upstream could not serve is named in the hint, without Retry" under `describe("ai-model-picker — failure")`: a 200 with `upstreamError: 404`. The select host's `title` is `Couldn't load models: HTTP 404`, there is no `[part="retry"]`, `picker.error()` is `""`, and `gpt-4o` is still a row.
   - Extend "a credential change makes the catalogue unavailable rather than stale": the first listing carries `upstreamError`. After `saveAiProvider` and a clean listing, the `title` is `Model`.
 
-Coverage: the per-file thresholds in `packages/studio/bunfig.toml` (`lines = 0.958`, `functions = 0.941`) hold. The table covers every branch of `listingFailure`, and no touched file is the workspace floor, so there is no ratchet. There is no new source file, so the manifest check needs nothing.
+Coverage: the per-file thresholds in `packages/studio/bunfig.toml` (`lines = 0.958`, `functions = 0.941`) hold. The table covers every branch of `listingFailure`, the `404`, `401` and `307` form cases cover every branch of `listingAdvice`, and no touched file is the workspace floor, so there is no ratchet. There is no new source file, so the manifest check needs nothing.
 
 ## Specs & docs
 
-- **ai.md §2 marker** (line 20) is replaced by:
-
-  > **Status: Implemented.** The wire, the `usage` frame, the calls deciding rather than the finish, Stop armed before the first wait, and a failed model listing shown whatever the backend said about it (`proxyListingFailure` in `packages/studio/src/services/ai-models.ts`, read by `packages/studio/src/ui/ai-credentials-form.ts` and `packages/studio/src/ui/ai-model-picker.ts`).
+- **ai.md §2 marker** (line 20) is deleted, so §2 reads unmarked as it did before the census (see Decisions). Its evidence is the audit record's §2 line under Verified, which the landing pull request rewrites to cite `proxyListingFailure` in `packages/studio/src/services/ai-models.ts` with `ai-credentials-form.ts` and `ai-model-picker.ts`.
 
 - **ai.md §2, the listing bullet** (line 28) keeps its text. Its closing clause, "and chat itself is unaffected: …", becomes a sentence of its own ("Chat itself is unaffected: …"), and these two sentences go in front of it:
 
@@ -100,7 +101,7 @@ Coverage: the per-file thresholds in `packages/studio/bunfig.toml` (`lines = 0.9
 
 - **Fragment:** `bun run spec:change ai.md minor -m "§2 a failed model listing is always shown, with the upstream's reason when it gives one and its status when it does not, and a refused key is worded as an authentication failure."`
 - **`docs/studio/ai.md`** (its `code:` lists `ai-models.ts` and `ai-credentials-form.ts`, and the picker carries `@docs studio/ai`):
-  - Step 3 of "Bring your own key" gains: "If the provider cannot list its models, the form says why under the field: the provider's own reason, or the status it answered with (for example HTTP 404) when it gives none. If the provider refused the key, the form says to check the key and endpoint."
+  - Step 3 of "Bring your own key" gains: "If the provider cannot list its models, the form says why under the field: the provider's own reason, or the status it answered with (for example HTTP 404) when it gives none. If the provider refused the key, the form says to check the key and endpoint." The redirect case is `plan:ai/link-local-guard`'s sentence in step 2, which says why a redirect is not followed; this step adds nothing for it.
   - The Cloudflare note's "**Fetch models will not list anything**: …" becomes "**Fetch models cannot list your models**: Cloudflare's OpenAI-compatible surface has no models-listing route, only chat completions and embeddings, so the form shows Cloudflare's reason and the list holds only a default ID that Workers AI does not serve."
   - The page's last two lines are `code:` entries stranded below the Next list (`packages/studio/src/surfaces/ai-credentials-form.ts`, `packages/studio/src/surfaces/ai-model-picker.ts`), rendered today as a stray nested bullet: move them into the frontmatter `code:` list. `plan:ai/link-local-guard` also adds a `code:` line here, so the two conflict textually at most.
   - Keep all of it free of em dashes.

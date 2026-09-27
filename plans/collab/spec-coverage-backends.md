@@ -90,7 +90,7 @@ The transport is one WebSocket route, `collab`, and a plain GET on the same URL 
 
 `docs/studio/publish/collaboration.md` ("Which setups support it" already says the desktop app is always solo), `docs/extending/reference/studio-routes.md` (generated from `routes.ts`) and `docs/framework/build/dev-server.md` need no change.
 
-This plan does not graduate collab.md: the whole-spec marker, §3, §3.1, §4 and §5 stay open.
+**Graduation.** Nothing in collab.md requires this plan and it requires nothing, so it can land last. If §1 and §2 are collab.md's last open items when it lands (`bun run plans:status --spec collab`), this pull request graduates the spec instead of writing the fragment: `**Status:** Implemented`, then `bun run spec:bump collab.md minor -m "…"` in place with the sentence above (a graduation riding on the last execution, per the release table in plans/README.md), and `plans/collab/` deleted.
 
 ## Acceptance
 

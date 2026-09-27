@@ -112,7 +112,7 @@ Run `bun test --isolate --coverage` from `packages/runtime`, `packages/compiler`
   - `the resolver is told where a value sits, as authored keys`. `{ color: "${a}", ":hover": { color: "${b}" }, "@--md": { "& .nav": { color: { $ref: "#/state/c" } } } }` with `--md` defined gives the paths `[]`, `[":hover"]` and `["@--md", "& .nav"]`.
   - `both copies of a scheme-query block report one path`. A `--dark` scheme query around a template gives two calls, each with `["@--dark"]`.
   - `a declaration at-rule reports its key`. `{ "@property --x": { "initial-value": "${a}" } }` gives `["@property --x"]`.
-- **`packages/compiler/tests/shared.test.ts`**: rewrite "a static build says what it drops" around the structured entries.
+- **`packages/compiler/tests/shared.test.ts`**: rewrite "a static build says what it drops" around the structured entries. The `#box` selectors below are what `collectStyles` gives an element with `id: "box"` today; if `plan:spec/style-handle-assignment` has landed, the recorded selector is the generated class (`.jx-0`), so assert through `styleHandleOf` rather than a literal.
   - `a base template on an element is carried, so nothing is recorded`: `compileStyles` of a `p` with `color: "${state.c}"`.
   - `a template in a nested block is recorded with its path`: on `#box`, gives `{ origin: "element", property: "color", source: "${state.c}", selector: "#box", path: [":hover"] }`.
   - `a $ref is recorded even in the base style`.

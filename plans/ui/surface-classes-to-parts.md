@@ -123,6 +123,7 @@ One pull request. Paths are under `packages/studio/`.
      - `& [part="element-card-label"]`: `padding: 2px 6px`, `fontSize: var(--jx-text-xs)`, `color: var(--fg-dim)`, `background: var(--bg-input)`, `textAlign: center`, `fontFamily: var(--font-mono)`.
    - `--jx-text-xs` is the 10px the sheet wrote; `check-styles.ts` warns on the literal (`TOKENIZABLE_FONT_PX`). The runtime splits a selector list only at depth 0 (`splitSelectorList` in `packages/runtime/src/css.ts`), so the commas inside `:not()` and `:is()` are safe.
    - Rewrite both `$description`s: the root's "that seam is why three class names survive" and the style block's `.element-card…` paragraph go. The sentence about the preview being drawn EMPTY for `dnd.ts` to fill stays.
+   - If `plan:desktop/component-scope-sections` has landed first, the one `components-section` container has become a mapped `div.components-section` inside each section's `jx-accordion-item`. Convert that template's class to `part` the same way, and keep its `querySelectorAll` over every section in step 10. That plan's integration contract expects exactly this of whichever lands second.
 9. `styles/panels.css`: delete lines 111 to 163, from `.components-section` through `.element-card-label`.
 10. `src/panels/dnd.ts`: `registerComponentsDnD` queries `'[part="components-section"]'` (line 262), and both preview lookups use `'[part="element-card-preview"]'` (lines 280 and 312).
 11. `src/canvas/iframe-render.ts`: in the `STYLEBOOK_CSS` doc comment (line 589), "the parent's `.element-card-preview { pointer-events: none }`" becomes "the Insert palette's `pointer-events: none` on `[part="element-card-preview"]` (`surfaces/panel-elements.json`)". The CSS is unchanged.
@@ -156,6 +157,7 @@ One pull request. Paths are under `packages/studio/`.
   - `plan:desktop/component-scope-sections` writes `part="components-section"` on each section's container and iterates `querySelectorAll('[part="components-section"]')`, where its step 3 says `div.components-section` and its step 5 says `.components-section`.
   - `plan:studio/insert-palette-categories`'s count test reads `[part="element-card"]`.
 - The dock handles are `#app > [part="dock-handle"]`, rest at (1,1,0) and lit at (1,2,0). `plan:ui/principles-text` may cite that rule as the frame's instance of §5.5's weight rule.
+- ui.md §3.1's body says a surface's box is addressed by `part`, or by the id a host adopts it by, and never through a class. `plan:ui/principles-text`'s principle 1 defers to that sentence and is true in either landing order: before this plan lands, §3.1's marker names what a surface still owes.
 - `#app` carries `data-left-collapsed`, `data-right-collapsed` and `data-bottom-collapsed`, written only by `applyDockLayout()`. The Edit column carries `data-resizing` during a gesture.
 - `check-surface-purity.ts` exports `CLASS_CONTRACTS` and `ISLAND_CLASS_PREFIXES`, and `check-styles.ts` exports `surfaceSelectedClasses` and `isVendorClass`. The gate refuses a class a surface document or adapter writes outside the contracts, a computed one, and a class selector in a surface's `style` that is neither a contract, a vendor class nor an island's. A plan that puts a surface over a new third-party widget adds its prefix to `VENDOR_CLASS_PREFIXES` in `check-styles.ts`, which the orphan rule reads too. `plan:ui/jx-table` and `plan:ui/studio-toast-host` convert surfaces and must add no class.
 
@@ -185,7 +187,7 @@ New cases:
 - `tests/shell-tree.test.ts`, "the frame's handles are parts and the frame writes no class": after `mountShellTree()`, all three handles have `part="dock-handle"`, and `#app[class], #app [class]` matches nothing.
 - `tests/elements-panel.test.ts`:
   - The header's "Three class names survive" paragraph (lines 8 to 12) is replaced by one saying `dnd.ts` addresses the card parts.
-  - Selectors move to parts (lines 166 to 331).
+  - Selectors move to parts (lines 166 to 331), including any case another plan has added by landing time: `plan:studio/insert-palette-categories`'s count test selects `.element-card` if it lands first, and `plan:desktop/component-scope-sections`'s section cases select `.components-section`.
   - New case, "the palette writes no class, and its cards are styled by the document": `host.querySelectorAll("[class]")` is empty, and `styles/panels.css` contains neither `element-card` nor `components-section`.
 
 Changed assertions:
@@ -210,7 +212,11 @@ The screenshots lane runs, since `src/**` changes. The computed look of the hand
 
 > **Status: Implemented.** The kit's side: no element writes a class, and the only sheet the kit emits is the token block (`packages/ui/tests/conformance.test.ts`, `theme.test.ts`). The surface side: a box a Studio surface draws is addressed by `part` or by the id a host adopts it by, and a state a host writes onto one is an attribute. The dock handles in `packages/studio/src/surfaces/shell.json` are `[part="dock-handle"]`, the Insert palette's cards in `surfaces/panel-elements.json` are parts that document styles and `src/panels/dnd.ts` finds, and `#app`'s collapsed docks and the Edit column's width readout are `data-*` attributes. `packages/studio/scripts/check-surface-purity.ts` refuses a class a surface document or adapter writes outside the platform contracts it lists, a class either computes, and a class a surface's `style` selects outside the third-party and island markup it lists.
 
-**ui.md §3.1 body (line 55).** After "A class written to reach a rule is a defect." append:
+**ui.md §3.1 body (line 55).** Two edits in the same paragraph. First, "A runtime handle is `part`, which `regions.ts` resolves identically." becomes:
+
+> A runtime handle is `part`, which `regions.ts` resolves identically, or, for a box a host adopts by id, that id: the shell frame's boxes in `surfaces/shell.json` (`#app`, its docks and the three dock handles), which `styles/shell-frame.json` lays out by id and `ui/panel-resize.ts` binds the handles by.
+
+This is the addressing rule the new marker states ("addressed by `part` or by the id a host adopts it by"), and it is the rule `plan:ui/principles-text`'s principle 1 defers to ("addressed and styled as §3.1 says a surface's boxes are"), so it belongs in the body rather than only in the marker. Then, after "A class written to reach a rule is a defect." append:
 
 > A state a host writes onto a node a document draws is an attribute, as `jx-split` mirrors its own gesture as `data-dragging`. A surface's `style` selects a class only on markup no document draws, a third-party component's or an island's, such as the rows Tabulator hands Studio's grid.
 
@@ -226,7 +232,7 @@ The orphan rule only asks that a class have CSS, so the old sentence credited it
 
 **Fragments:**
 
-- `bun run spec:change ui.md minor -m "§3.1 is implemented on the surface side: Studio's dock handles and Insert palette cards are addressed by part, a state a host writes onto a surface node is an attribute, a surface style selects a class only on third-party or island markup, and check-surface-purity refuses any other class in a surface"`
+- `bun run spec:change ui.md minor -m "§3.1 is implemented on the surface side: Studio's dock handles and Insert palette cards are addressed by part, a box a host adopts by id is addressed by that id, a state a host writes onto a surface node is an attribute, a surface style selects a class only on third-party or island markup, and check-surface-purity refuses any other class in a surface"`
 - `bun run spec:change studio-ui-guidelines.md patch -m "§9.4 names check-surface-purity as the gate that refuses a class in a surface document outside a platform contract"`
 
 **Docs.** None change:

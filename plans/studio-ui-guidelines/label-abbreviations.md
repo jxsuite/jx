@@ -44,7 +44,7 @@ No gap in §14 binds §2.3. `studio.md` §6.1 (Property Panel) titles its rows w
 ## Outcome
 
 - `studio-ui-guidelines.md` §2.3 → Implemented: every key-derived label goes through `keyToLabel()`/`propLabel()` in `packages/studio/src/utils/labels.ts`, and every hand-written field label is Title Case under a test; the bullets name that module, the abbreviation rule and the framework-key table.
-- `studio-ui-guidelines.md` §10's "Labels are Title Case" item becomes true of the schema-driven forms and the hand-written field labels too. The item is owned by `plan:studio-ui-guidelines/conventions-checklist`, whose Decisions say that half of the item "ships"; it does not until this plan lands, so that plan should add this one to its `requires`.
+- `studio-ui-guidelines.md` §10's "Labels are Title Case" item becomes true of the schema-driven forms and the hand-written field labels too. The item is owned by `plan:studio-ui-guidelines/conventions-checklist`, which requires this plan for it: the item does not hold until this plan lands.
 
 ## Decisions
 
