@@ -37,7 +37,7 @@ The first five bullets (four toasts, rest times, one line and one glyph, the rec
 - **"Takes precedence over a warning state" holds only because nothing sets both.** The Style tab's `data-warning` rows (`style-panel.json`) draw no inline error, and no surface sets `jx-field`'s `warning`. The kit row would get it wrong: `jx-field.json` declares `[data-invalid] > [part="label"]` before `[data-warning] > [part="label"]` at equal specificity, so a row carrying both draws its label in the warning colour, and `packages/ui/tests/field.test.ts` ("emits these rules and no others, in this order") pins that order.
 - **"Counts them from two up" is drawn by nobody.** `RenderFormOptions.errorCounts` in `src/ui/schema-form.ts` draws `×N` through `field-error-count`, but no host passes it (`content/entry-editor.ts`, `settings/contributed-section.ts`, `panels/signals-panel.ts`); only `tests/schema-form.test.ts` does. `docs/studio/interface/problems-and-progress.md` ("Errors at the field") promises the count, and also says a field "waits until you leave it or press Enter before it objects", which the prompt dialog and the Locales field contradict.
 
-**Found while detailing, not this plan's claim.** A failed `project.json` write is announced twice. `commitProjectConfig` (`src/tabs/project-config.ts`) files an error Problem, which `services/announce.ts` speaks assertively, and the Locales, CSS Variables, Deploy, Extensions and Overview sections draw the same failure again as a `role="alert"` line (the `$description` in `settings-extensions.json` calls it "not a second announcement"; a screen reader hears it twice). Overview parks the failure in a field's `error` too. That contradicts `studio-ui-guidelines.md` §13.3 rule 3 ("Nothing is announced twice"), which the audit verified. Review should mark `studio-ui-guidelines.md` §13.3 and give it an owner in this detailing pull request; this plan leaves those lines as they are and pins them by name.
+**Found while detailing, not this plan's claim.** A failed `project.json` write is announced twice. `commitProjectConfig` (`src/tabs/project-config.ts`) files an error Problem, which `services/announce.ts` speaks assertively, and the Locales, CSS Variables, Deploy, Extensions and Overview sections draw the same failure again as a `role="alert"` line (the `$description` in `settings-extensions.json` calls it "not a second announcement"; a screen reader hears it twice). Overview parks the failure in a field's `error` too. That contradicts `studio-ui-guidelines.md` §13.3 rule 3 ("Nothing is announced twice"), which the audit verified. `studio-ui-guidelines.md` §13.3 now carries a Partial marker for it, owned by `plan:studio-ui-guidelines/settings-failure-announced-once`, which requires this plan; this plan leaves those lines as they are and pins them by name.
 
 ## Outcome
 
@@ -81,7 +81,7 @@ The first five bullets (four toasts, rest times, one line and one glyph, the rec
 - A new surface-drawn refusal joins `REFUSAL_LINES`, and a new alert joins `ALERT_PARTS` or the gate fails.
 - `RenderFormOptions` has no `errorCounts`.
 - `jx-field`'s `invalid` wins the label over `warning`.
-- Whoever takes the `studio-ui-guidelines.md` §13.3 double announcement edits `ALERT_PARTS` rather than working around it.
+- `plan:studio-ui-guidelines/settings-failure-announced-once` (the `studio-ui-guidelines.md` §13.3 double announcement) edits `ALERT_PARTS` rather than working around it, and relies on `row-error` being a polite line.
 
 ## Tests
 

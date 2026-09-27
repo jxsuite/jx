@@ -518,6 +518,8 @@ State entries prefixed with `#` are private. They are never exposed to the studi
 
 ### 5.7 Shape Detection Algorithm
 
+> **Status: Partial.** The interpreter follows the steps below (`buildScope` in `packages/runtime/src/runtime.ts`), but an object with no `default`, `$prototype` or `$expression` is sorted by two different predicates, and the algorithm names neither. The interpreter treats it as a pure type definition, holding no value, when any key is one of its own schema keywords (`hasSchemaKeywords`); the compiled targets do so only when every key is one of a different set (`isSchemaOnlyDef` in `packages/schema/src/guards.ts`). So `{}` and `{ "description": "x" }` hold a value in the interpreter and none in built output, and `{ "type": "string", "label": "x" }` the reverse.
+
 ```
 For each entry in state:
 
@@ -732,6 +734,8 @@ Every renderer applies this identically — the static compiler writing HTML sou
 > The element and client targets did NOT defer to it until they were made to: they stringified booleans, so a component's `open: true` compiled to `open="true"` and a bound `open` that flipped false wrote `open="false"` — an OPEN element the author had closed. Only the static emitter was ever correct, which is why this note used to name two writers.
 
 ### 8.4 Child Arrays
+
+> **Status: Partial.** Element and text-node children, and computed children resolved at build time, ship. Content a computed-children template splices in is not kept literal: the template pass (`resolveDocTemplates` in `packages/compiler/src/site/site-build.ts`) recurses into the resolved nodes and evaluates every `${…}` in their text and attributes, so a content entry's prose or inline code that contains `${` renders its evaluation (`Clicked ${state.count} times` in `docs/start/first-component.md` renders as "Clicked undefined times"), and one left for the client can make the page's module a syntax error.
 
 Children are expressed as a JSON array of element definitions and/or bare text nodes:
 
@@ -1606,6 +1610,8 @@ Signal scope is bounded at the component (custom element) level. Child component
 | Component  | Custom element boundary | CSS Custom Property scope |
 
 ### 15.2 Within-Component Scope
+
+> **Status: Partial.** The interpreter renders the children written inside a component instance in the scope of the document that wrote them, before the instance distributes them. Built output does not for an instance written on a page or a layout: `expandComponents` (`packages/compiler/src/site/site-build.ts`) serialises those children with an empty scope before the page compiles, so a binding among them renders empty and is never hydrated, and a bound `$props` on an instance among them is lost the same way.
 
 All `state` entries are available to all descendant elements within that component without explicit passing.
 

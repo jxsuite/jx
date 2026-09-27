@@ -909,6 +909,8 @@ The message carries its `source` when it has one: a listener has none of the vis
 
 ### 13.3 The rules that keep this from becoming a fourth surface
 
+> **Status: Partial.** Rules 1, 2 and 4 hold (`packages/studio/src/services/notify.ts`, `src/services/announce.ts`, `src/ui/layers.ts`). Rule 3 does not for a failed `project.json` write from Settings: `commitProjectConfig` (`src/tabs/project-config.ts`) files an error Problem, which is announced assertively, and the section that asked for the write draws the same failure again in a live region, a `role="alert"` line in Locales, CSS Variables, Deploy, Extensions, Overview and Contexts, or Overview's field `error` region, so a screen reader hears it twice.
+
 1.  **The status bar never carries an outcome.** It is ambient state. This is the single rule that the 78-call-site predecessor broke, and every regression here starts by breaking it again.
 2.  **A modal is not a notification.** Blocking is reserved for an operation that cannot proceed while the author edits — in practice, dependency installation — and even then it offers to run in the background. Everything else reports and gets out of the way.
 3.  **Nothing is announced twice.** An operation with an Activity entry does not also toast its completion; a failure raises exactly one Problem, deduped by `key`.
