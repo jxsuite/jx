@@ -114,24 +114,7 @@ export interface Violation {
  * request that writes its audit record (`unaudited-stale` fires otherwise), and once it is empty a
  * spec that goes back to draft fails until somebody audits it.
  */
-export const UNAUDITED: readonly string[] = [
-  "ai.md",
-  "collab.md",
-  "compiler.md",
-  "desktop.md",
-  "extensions.md",
-  "imports.md",
-  "jx-markdown.md",
-  "parser.md",
-  "relationships.md",
-  "schema.md",
-  "site-architecture.md",
-  "spec.md",
-  "standards.md",
-  "studio-ui-guidelines.md",
-  "studio.md",
-  "ui.md",
-];
+export const UNAUDITED: readonly string[] = [];
 
 /** One line of a tracked text file outside plans/ that carries a plan citation or a slice id. */
 export interface Mention {
