@@ -74,7 +74,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "lit-html": "^3.3.3",
-    "monaco-editor": "^0.56.0",
+    "monaco-editor": "^0.57.0",
     "tabulator-tables": "^6.5.3",
     "yaml": "^2.9.1"
   },
