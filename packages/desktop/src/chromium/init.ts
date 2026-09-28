@@ -3,7 +3,7 @@
    only from this position does it run before the modules below — and it is one of THEM throwing at
    import (desktop 5.0.0-5.1.3, in the Electrobun shim) that it exists to record. See boot.ts. */
 import { bootLauncher, stripLaunchToken } from "../boot";
-import { hydrateGithubToken } from "@jxsuite/studio/github-auth";
+import { hydrateGithubToken } from "@jxsuite/studio/github-auth-status";
 import { createDesktopPlatform } from "./platform";
 
 // CreateDesktopPlatform reads ?token from the shell URL to authenticate its WS upgrade.
