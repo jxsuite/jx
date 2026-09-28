@@ -74,7 +74,8 @@ describe("the settings pane surface", () => {
     expect(panel.getAttribute("aria-labelledby")).toBe("settings-nav-overview");
 
     /* The island: the adapter HOLDS it as the node is created rather than querying for a node this
-       package renders (§9.4), and the document never writes into it — a section renderer does. */
+       package renders (studio-ui-guidelines.md §9.4), and the document never writes into it — a
+       section renderer does. */
     const island = surface.body()!;
     expect(island).toBe(host.querySelector('[part="body"]') as HTMLElement);
     expect(island.childElementCount).toBe(0);

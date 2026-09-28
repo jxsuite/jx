@@ -48,7 +48,7 @@
       "minWidth": "0"
     },
     "& [part=\"section-body\"] > [part=\"row\"], & [part=\"layout-class-slot\"] > [part=\"row\"]": {
-      "$description": "§4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest in a narrow dock — a field refuses to shrink below its own min-content without it. Scoped to the tab's OWN rows rather than to every `part=\"row\"` beneath it, which a colour row made load-bearing: the kit is light DOM and one cascade, so a bare descendant selector also matches `jx-color-field`'s internal row — and at equal specificity with the kit's own `& > [part=\"row\"]` the winner is whichever sheet was interned later, which is not a thing a stylesheet may depend on. `[part=\"chip\"]` moved under `[part=\"chip-slot\"]` for the same reason and a sharper one: its `background: transparent` and its border would otherwise have erased a swatch's colour and drawn a box round it. The `layout-class-slot` half of the pair is there because that slot is `display: contents`, so its row is a grandchild in the DOM even though it is a child in the box tree.",
+      "$description": "studio-ui-guidelines.md §4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest in a narrow dock — a field refuses to shrink below its own min-content without it. Scoped to the tab's OWN rows rather than to every `part=\"row\"` beneath it, which a colour row made load-bearing: the kit is light DOM and one cascade, so a bare descendant selector also matches `jx-color-field`'s internal row — and at equal specificity with the kit's own `& > [part=\"row\"]` the winner is whichever sheet was interned later, which is not a thing a stylesheet may depend on. `[part=\"chip\"]` moved under `[part=\"chip-slot\"]` for the same reason and a sharper one: its `background: transparent` and its border would otherwise have erased a swatch's colour and drawn a box round it. The `layout-class-slot` half of the pair is there because that slot is `display: contents`, so its row is a grandchild in the DOM even though it is a child in the box tree.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "stretch",
@@ -92,7 +92,7 @@
       "minInlineSize": "0"
     },
     "& [part=\"chip-slot\"] > [part=\"chip\"]": {
-      "$description": "§6.2's provenance chip. `set` is the 6px accent dot it has always been — a circle is not a button, whatever element draws it — and the three states that carry a donor are bordered chips naming it. The fourth state, `default`, draws nothing at all: a ghost dot on every unset row says less than silence.",
+      "$description": "§6.7's provenance chip. `set` is the 6px accent dot it has always been — a circle is not a button, whatever element draws it — and the three states that carry a donor are bordered chips naming it. The fourth state, `default`, draws nothing at all: a ghost dot on every unset row says less than silence.",
       "flexShrink": "0",
       "display": "inline-flex",
       "alignItems": "center",
@@ -585,7 +585,7 @@
                 },
                 "children": [
                   {
-                    "$description": "§6.2's collapsed-header tally. It is an indicator and not a control: the heading's own click already toggles the section, so a second meaning for the same click would be worse than the silence. It says how many values in the section are set, which is what a closed section otherwise cannot say.",
+                    "$description": "§6.7's collapsed-header tally. It is an indicator and not a control: the heading's own click already toggles the section, so a second meaning for the same click would be worse than the silence. It says how many values in the section are set, which is what a closed section otherwise cannot say.",
                     "tagName": "span",
                     "attributes": {
                       "slot": "heading",
@@ -744,7 +744,7 @@
                                       },
                                       "cases": {
                                         "true": {
-                                          "$description": "§6.3's Value Source chip: the rung this value is produced at, in plain language, opening a picker of every rung the POSITION permits. The rungs are derived from the schema at that position and the picker is the kit menu every other list in the shell opens, so neither is decided here.",
+                                          "$description": "§6.6's Value Source chip: the rung this value is produced at, in plain language, opening a picker of every rung the POSITION permits. The rungs are derived from the schema at that position and the picker is the kit menu every other list in the shell opens, so neither is decided here.",
                                           "tagName": "jx-action-button",
                                           "attributes": {
                                             "part": "source",

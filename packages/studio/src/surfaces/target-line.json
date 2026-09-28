@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioTargetLine",
-  "$description": "The Style tab's edit target, as one sentence (plan §6.1): element · breakpoint · scheme variant · selector, then the chip that states how wide the blast radius is. Every word of the sentence is a control, because a sentence you cannot act on is a caption and the panel already had one of those. The breakpoint and scheme segments ROUTE to where those axes are defined rather than offering a third list to pick from — the Style tab owns the selector axis and nothing else — so the selector is the one segment with a menu, and that menu is the kit's. The project-scope warning band is not decoration: entering Stylebook converts every edit from `this element` to `every element of this tag`, and the band states that before the first keystroke.",
+  "$description": "The Style tab's edit target, as one sentence (§6.2): element · breakpoint · scheme variant · selector, then the chip that states how wide the blast radius is. Every word of the sentence is a control, because a sentence you cannot act on is a caption and the panel already had one of those. The breakpoint and scheme segments ROUTE to where those axes are defined rather than offering a third list to pick from — the Style tab owns the selector axis and nothing else — so the selector is the one segment with a menu, and that menu is the kit's. The project-scope warning band is not decoration: entering Stylebook converts every edit from `this element` to `every element of this tag`, and the band states that before the first keystroke.",
   "tagName": "div",
   "attributes": {
     "part": "target"

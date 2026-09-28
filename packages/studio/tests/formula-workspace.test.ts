@@ -1,8 +1,8 @@
 /**
- * ⑪ · Logic — the Bottom dock's tab (`panels/formula-workspace.ts` over
+ * Logic — the Bottom dock's tab (`panels/formula-workspace.ts` over
  * `surfaces/logic-workspace.json`).
  *
- * It no longer takes over the canvas: P8.5 moved it into the dock so the page whose values it
+ * It no longer takes over the canvas: it moved into the dock (§16.3) so the page whose values it
  * computes stays on screen beside it, and this batch made it a **Jx document over the UI kit**. So
  * every assertion below is about a ROLE, a PART or a REGION — the surface names no class of its own
  * — and the tests drive the seam the dock drives: `syncLogicPanel` against a painted body that
@@ -307,7 +307,7 @@ describe("def-type target", () => {
     expect(part("result")?.dataset["tone"]).toBe("pending");
     expect(text("result")).toContain("Preview unavailable");
     expect(parts("badge")).toHaveLength(0);
-    // The rail says what it is FOR rather than that it is empty (§11.1).
+    // The rail says what it is FOR rather than that it is empty (studio-ui-guidelines.md §11.1).
     expect(text("rail")).toContain("appear here once the canvas has rendered");
     expect(part("tree-host")).toBeNull();
   });

@@ -253,7 +253,8 @@ export function openPreferencesSurface(
     setKeyQuery: (value: string) => {
       /* What the control now holds, first and unconditionally. A binding only writes when the
          scope CHANGES, so a surface that decided a query without announcing the raw one would
-         leave the field showing something the scope does not have (§9.3). */
+         leave the field showing something the scope does not have
+         (studio-ui-guidelines.md §9.3). */
       scope.keyQuery = value;
       options.onKeyQuery(value);
     },

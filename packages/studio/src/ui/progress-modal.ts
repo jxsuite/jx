@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
 /**
- * The one surface in Studio that still BLOCKS while it works — and now the only one (plan §7.3).
+ * The one surface in Studio that still BLOCKS while it works — and now the only one (§16.4).
  *
  * What changed. This modal used to be four things at once: the running state, the error view, the
  * log and the operation's entire memory. It blocked the whole app, offered no way out, and took all
  * four with it when it closed — so a failed `bun install` could be read exactly once, and a hung
- * one could not be escaped at all. §7.3 splits those apart:
+ * one could not be escaped at all. §16.4 splits those apart:
  *
  * - The **record** moves to `panels/activity-panel.ts`, which keeps the entry, its steps and its log
  *   after the modal is gone;
@@ -15,7 +15,7 @@
  * - And the **exit** arrives twice: `Run in the background` hands the app back while the operation
  *   keeps going in Activity, and an operation that passed a `cancel` gets a real Cancel button.
  *
- * What did NOT change is which operations block. §7.3 keeps blocking for dependency install and
+ * What did NOT change is which operations block. §16.4 keeps blocking for dependency install and
  * nothing else, and this module's four call sites are exactly that — `packages/ensure-deps.ts`,
  * `packages/pull-package-sync.ts`, `packages/jxsuite-update.ts` and
  * `settings/dependencies-editor.ts`. Every other long operation calls `beginActivity` directly and

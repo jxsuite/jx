@@ -564,8 +564,8 @@ describe("navigateToComponent", () => {
     expect(parent.documentPath).toBe("pages/current.json");
     expect(parent.session.selection).toEqual([["children", 0]]);
 
-    /* TO THE SIDE. §8.2 has promised this since P3 and the chain `openFileInTab → openTab →
-       activePane()` opened it in place instead — over the page it is teaching about. */
+    /* TO THE SIDE. §14.2 says drilling in opens to the side, and the chain `openFileInTab →
+       openTab → activePane()` opened it in place instead — over the page it is teaching about. */
     expect(workspace.panes.map((pane) => pane.tabOrder)).toEqual([
       ["shell-tab"],
       ["components/card.json"],
@@ -1060,7 +1060,8 @@ describe("openRecentProject", () => {
 
     expect(activities[0]?.state).toBe("failed");
     // ONE notification, not two: `fail()` raises the Problem, so the catch does not also call
-    // `notify.error` — §13.3 rule 3. The success cases above assert the other half, zero.
+    // `notify.error` — studio-ui-guidelines.md §13.3 rule 3. The success cases above assert the
+    // Other half, zero.
     expect(statusMessages).toEqual(["Could not open the project at /gone/site."]);
     // The reason is on the entry's log, which `fail()` hands to the Problem as its detail.
     expect(activities[0]?.log.join("\n")).toContain("project.json is not there");

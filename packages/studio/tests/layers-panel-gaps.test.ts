@@ -560,7 +560,7 @@ describe("the empty state", () => {
     /* `"insert"` — and the second assertion is the one that matters.
        This test asserted `"blocks"` while its own title said "opens Insert", so it PASSED for three
        phases over an action that put the Navigator into "No Navigator panel is registered as
-       blocks": P3.1 renamed the panel, migrated the persisted id, and left this live caller behind.
+       blocks": renaming the panel migrated the persisted id and left this live caller behind.
        Naming the id alone would only re-encode whatever the code does, so the id is also checked
        against the declared set — that is the assertion a rename cannot satisfy by accident. */
     expect(shell.leftTab).toBe("insert");

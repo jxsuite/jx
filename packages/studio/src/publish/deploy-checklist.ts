@@ -9,19 +9,19 @@
  * different command owned by a different module. Nothing in Studio held the chain, so no surface
  * could say which link was missing.
  *
- * This module is the chain (plan §9.5):
+ * This module is the chain (`docs/studio/publish.md`):
  *
  * - {@link deployChecklist} is the ordered prerequisite list, each step carrying **the command that
  *   satisfies it** rather than a sentence telling the reader to go and find one;
  * - {@link deployChecklistView} is its projection and {@link syncDeployChecklist} mounts the document
  *   that draws it (`surfaces/panel-deploy-checklist.json`), in the Bottom dock's **Activity** tab
- *   because a deploy is a long operation with a log and the dock cap is four (§2 principle 9). It
- *   draws in the Activity tab's vocabulary — the same row, the same ordered steps, the same glyphs
- *   — for the same reason: a fifth visual idiom for "an ordered list of stages that finish" would
- *   be a second design of a thing the tab already has;
+ *   because a deploy is a long operation with a log and the dock cap is four
+ *   (`studio-ui-guidelines.md` §12.2). It draws in the Activity tab's vocabulary — the same row,
+ *   the same ordered steps, the same glyphs — for the same reason: a fifth visual idiom for "an
+ *   ordered list of stages that finish" would be a second design of a thing the tab already has;
  * - {@link deployStatusItem} is the status bar's project-field item, whose **label is the next
  *   blocking prerequisite** — the shortcut and the explanation in one 24px item, and ambient state
- *   rather than a transient message, which is the only thing that bar carries (§3.2 ⑫).
+ *   rather than a transient message, which is the only thing that bar carries (§16.2).
  *
  * **A step it cannot answer says `unknown`.** `services/references.ts` established the rule and it
  * matters more here: "no deployment" and "we have not asked Cloudflare" look identical from inside
@@ -81,8 +81,9 @@ function currentConfig(): ProjectConfig | null {
 /**
  * The connected provider block, or `undefined`.
  *
- * Exported because the Publish panel asks the same question and P6's lesson was that two copies of
- * one derivation drift apart in silence — there is one reader of `build.deploy` in the app.
+ * Exported because the Publish panel asks the same question and the shell redesign's configuration
+ * phase taught that two copies of one derivation drift apart in silence — there is one reader of
+ * `build.deploy` in the app.
  */
 export function currentDeploy(): DeployConfig | undefined {
   return currentConfig()?.build?.deploy;
@@ -336,7 +337,7 @@ function stepView(step: DeployStep): DeployStepRowView {
  *
  * A command the registry does not have, or whose `when` is false, draws NOTHING rather than a dead
  * label. The status bar's projection takes the same position for the same reason: a surface may
- * choose whether to show a command, never whether it exists (§12.4).
+ * choose whether to show a command, never whether it exists (`studio-ui-guidelines.md` §12.3).
  */
 function actionView(
   step: DeployStep | null,
@@ -415,7 +416,7 @@ const CHECKLIST_SURFACE = { project: deployChecklistView, runAction: runNextStep
  * Rendered ABOVE the operation feed rather than as an entry in it: an activity is something that
  * happened, and this is something that has not. It carries no `data-jx-region` stamp — the region
  * is `dock.bottom/panel:activity`, which the dock derives, and a hand-stamped leaf is a committed
- * budget (§13.2) that this does not need to spend.
+ * budget (`scripts/screenshots/README.md`, "The region grammar") that this does not need to spend.
  *
  * @param host The dock body element the tab was rendered into.
  */

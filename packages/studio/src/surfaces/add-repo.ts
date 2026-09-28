@@ -187,8 +187,8 @@ export function openAddRepoSurface(options: AddRepoSurfaceOptions): AddRepoSurfa
     setFilter: (value: string) => {
       /* What the control holds, first and unconditionally. A binding only writes when the scope
          CHANGES, so a surface that decided a value without announcing the raw one would leave the
-         field showing text the scope does not have (§9.3). Nothing refuses a filter today; the echo
-         is what makes a refusal possible at all. */
+         field showing text the scope does not have (`studio-ui-guidelines.md` §9.3). Nothing
+         refuses a filter today; the echo is what makes a refusal possible at all. */
       scope.filter = value;
       options.onFilter(value);
     },

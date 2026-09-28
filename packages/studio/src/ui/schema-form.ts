@@ -162,7 +162,7 @@ export interface RenderFormOptions {
   ui?: Record<string, { control?: string; enum?: unknown }> | undefined;
   rerender?: (() => void) | undefined;
   /**
-   * Externally-produced diagnostics, keyed by property name — §7.1's inline tier, sourced.
+   * Externally-produced diagnostics, keyed by property name — §16.1's inline tier, sourced.
    *
    * This is how a validator that runs over the WHOLE document reaches the one field it is about:
    * `jx-validate`'s `project.json` errors, Monaco's markers for the same file open in the code
@@ -177,7 +177,7 @@ export interface RenderFormOptions {
   /** How many times each field has been refused in a row; drives the row's repeat counter. */
   errorCounts?: Record<string, number> | undefined;
   /**
-   * Report required-but-empty fields inline. Off by default, and that default is §7.1's rule
+   * Report required-but-empty fields inline. Off by default, and that default is §16.5's rule
    * literally applied: a form the user has not touched yet has not committed anything, so painting
    * every required field red the moment it renders is telling them they got something wrong before
    * they did anything. Required-ness is already shown — the row carries the required mark. A host
@@ -313,7 +313,7 @@ function asText(value: unknown): string {
   return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
 }
 
-// ─── Field validation (§7.1, inline tier) ────────────────────────────────────
+// ─── Field validation (§16.1, inline tier) ───────────────────────────────────
 
 /**
  * Why this value is not acceptable for this property schema, or `""` when it is.
@@ -670,7 +670,7 @@ function createController(): FormController {
     return raw;
   }
 
-  /** The rung picker: every source this position permits, one action away (§6.3). */
+  /** The rung picker: every source this position permits, one action away (§6.6). */
   function openSourceMenu(key: string, anchor: HTMLElement): void {
     const plan = plans.get(key);
     if (!plan?.ladder) {
@@ -985,11 +985,12 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
   }
 
   /* A relationship to another collection (`$ref: "#/content/<type>"`) is the registered `reference`
-     control, wherever the form is drawn — §9.2's "one picker" is this dispatch plus the single
-     `registerFormControl("reference", …)` in `ui/form-controls.ts`. It is deliberately NOT an enum:
-     the choices are entry files on disk, so they are read asynchronously and can be stale, and a
-     schema `enum` is a closed set the document itself declares. When the control is not registered
-     (a bare-Bun import of this engine), the field falls through to the plain text control below. */
+     control, wherever the form is drawn — site-architecture.md §7.4's one entry picker is this
+     dispatch plus the single `registerFormControl("reference", …)` in `ui/form-controls.ts`. It is
+     deliberately NOT an enum: the choices are entry files on disk, so they are read asynchronously
+     and can be stale, and a schema `enum` is a closed set the document itself declares. When the
+     control is not registered (a bare-Bun import of this engine), the field falls through to the
+     plain text control below. */
   if (referenceTarget(ps) !== null) {
     const reference = controlRegistry.get("reference");
     if (reference) {

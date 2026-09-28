@@ -359,10 +359,11 @@ describe("report", () => {
   /**
    * The lit-author rule, both directions.
    *
-   * §9.3 says lit is "named and bounded" now, and that was prose until this rule carried the names.
-   * An adversarial pass found the sentence citing an allow-list that did not hold the list — and
-   * the rule, once written, immediately found a module every static inventory had missed, because
-   * `format/convert-file.ts` reaches lit through a DYNAMIC `await import("lit-html")`.
+   * Studio-ui-guidelines.md §9.3 says lit is "named and bounded" now, and that was prose until this
+   * rule carried the names. An adversarial pass found the sentence citing an allow-list that did
+   * not hold the list — and the rule, once written, immediately found a module every static
+   * inventory had missed, because `format/convert-file.ts` reaches lit through a DYNAMIC `await
+   * import("lit-html")`.
    */
   test("an undeclared lit author and a stale entry are both reported", () => {
     const { failed, lines } = report({

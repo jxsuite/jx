@@ -30,8 +30,8 @@ function rowsUi(): Record<string, boolean> | null {
  *
  * The tree caps arrays at 20, objects at 30 and depth at 5, and printed "… 5 more" as inert text.
  * That is the panel telling you it has the answer and will not show it — the exact case a user
- * opens this panel for is the fetch that returned something unexpected at item 40. Plan §11.2:
- * "truncation markers gain real expand actions."
+ * opens this panel for is the fetch that returned something unexpected at item 40. §5.6: every
+ * truncation marker in the tree is a control.
  *
  * Raising a limit is remembered per marker rather than globally, so opening one long array does not
  * re-render every other one at full length, and it never lowers: a step is a step.
@@ -136,7 +136,7 @@ export function dataTypeLabel(value: unknown) {
 /* THE VALUE LIST IS GONE, AND ITS ROWS ARE THE DEFINITION ROWS — `panels/signals-panel.ts`.
    It listed every state entry with its badge and what it resolved to, one rail tab away from a
    panel listing every state entry with its badge and how it is defined: the same names twice, and
-   you read one to understand the other. Plan §11.2 asks for "definitions + live values in one row",
+   you read one to understand the other. §5.6 asks for definitions and live values in one row,
    so the definition row now carries the resolved type and expands to the value tree, and what is
    left here is the tree WALK, the type label and the row-expansion record the merged rows read. */
 
@@ -369,12 +369,12 @@ export function registerDataExplorerCommands(
  *
  * `level: "document"`, because both belong to the open document.
  *
- * **This is where the State editor lives now.** Plan §11.2 always said so ("State panel + inline
- * editor → Navigator › Data"), but the two halves shipped apart: the rail button was taken away to
- * keep the DOCUMENT group at four, the merge was deferred, and the editor was left reachable only
- * by typing its name into the palette. So the one surface for declaring a state variable — or a
- * component property, which is a state entry with a default — became unfindable, which is a
- * capability lost rather than a control moved.
+ * **This is where the State editor lives now.** §5.6 says so (expanding a row opens the entry's
+ * editor), but the two halves shipped apart: the rail button was taken away to keep the DOCUMENT
+ * group at four, the merge was deferred, and the editor was left reachable only by typing its name
+ * into the palette. So the one surface for declaring a state variable — or a component property,
+ * which is a state entry with a default — became unfindable, which is a capability lost rather than
+ * a control moved.
  *
  * Defining and watching are the same task interrupted: you add an entry, then look at what it
  * resolved to. Two panels made that two panels.

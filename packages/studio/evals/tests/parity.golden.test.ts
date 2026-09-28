@@ -17,7 +17,7 @@ import type { Task, TrialResult } from "../runner.js";
 import { writeRun } from "../scoreboard.js";
 
 /*
- * Eval parity goldens (harness slice J1.2, "freeze v1").
+ * Eval parity goldens ("freeze v1", taken before the harness refactor).
  *
  * Every golden task in `evals/tasks/` is run through the REAL runner path (`runTrial` -> the real
  * `runAgentLoop`, the real tool registry, the real render critic and schema grader) with a scripted,

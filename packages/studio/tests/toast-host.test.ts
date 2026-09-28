@@ -3,9 +3,9 @@
  *
  * Three things are worth pinning here and nothing else is: that the host is a RENDERING of
  * `notify`'s store (nobody pushes DOM at it), that the recovery button is a projection of a command
- * record, and that the §13.3 clause 6 exception behaves the way it is written down — an
- * automation-gated infinite lifetime, and a settling toast that shows up in the idle account and
- * then stops.
+ * record, and that the toast exception to §13.5's automation rule behaves the way it is written
+ * down — an automation-gated infinite lifetime, and a settling toast that shows up in the idle
+ * account and then stops.
  */
 import { flush, mountOverlayLayers } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -181,7 +181,7 @@ describe("the recovery action", () => {
   });
 });
 
-// ─── §13.3 clause 6, the one listed exception ────────────────────────────────
+// ─── §13.5's toast exception, the one that changes what is on screen ─────────
 
 describe("lifetime", () => {
   test("a resting toast retires itself after its own timeout", async () => {

@@ -142,7 +142,7 @@ let projectionQueued = false;
  * the effect would read the turn's changed-files summary one write too early, every time. (When it
  * lands later than that, after a Stop mid-stream, the send re-projects once the turn has settled.)
  * The old frame loop hid both by accident of deferral; this states them. Precedent:
- * `panels/overlays.ts`, §9.3's second scheduler.
+ * `panels/overlays.ts`, studio-ui-guidelines.md §9.3's second scheduler.
  */
 export function renderAiPanel(): void {
   if (projectionQueued || !surface) {
@@ -293,7 +293,7 @@ async function handleAssistantSend(text: string) {
 }
 
 /**
- * Re-send the last user message — §7.4's Retry.
+ * Re-send the last user message — ai.md §3.0's Retry.
  *
  * `chatState.retryLast()` pops the failed assistant turn AND the user message that caused it, on
  * the contract that the caller re-sends. It has been exported with zero callers since it was
@@ -313,7 +313,7 @@ async function handleRetry(): Promise<void> {
 }
 
 /**
- * Undo everything one assistant turn changed — §7.4's "Restore to here".
+ * Undo everything one assistant turn changed — ai.md §3.2's "Restore to here".
  *
  * The loop opens one batch per turn per document, so undoing the turn is undoing that batch. The
  * button is offered by the projection only when every recorded change was transactional; this guard
@@ -652,25 +652,24 @@ function projectPanel(): AiChatView {
   };
 }
 
-// ─── The `Assistant:` command family (§11.1) ────────────────────────────────
+// ─── The `Assistant:` command family (ai.md §3.0) ───────────────────────────
 
 /**
  * Six records, beside the chat session they write.
  *
- * §11.1 pays for the chat column's demotion into an Inspector tab with a command family, and the
- * `Assistant` category — declared in `commands/levels.ts` since the taxonomy landed — held ZERO
- * records. Every capability below already existed and every one of them existed ONLY as a button in
- * this panel: not in the palette, not bindable, not reachable by `__jxAutomation` or by name, and
- * absent from the generated commands and shortcuts sheets. A capability that one surface can reach
- * and the registry cannot is the second definition site inverted.
+ * The chat column's demotion into an Inspector tab was paid for with a command family (ai.md §3.0),
+ * and the `Assistant` category — declared in `commands/levels.ts` since the taxonomy landed — held
+ * ZERO records. Every capability below already existed and every one of them existed ONLY as a
+ * button in this panel: not in the palette, not bindable, not reachable by `__jxAutomation` or by
+ * name, and absent from the generated commands and shortcuts sheets. A capability that one surface
+ * can reach and the registry cannot is the second definition site inverted.
  *
- * **All six are `level: "application"`, by principle 3 — a record is filed by the level of the
- * state it WRITES, not the state it reads.** The chat session is application state: it outlives the
- * open document, survives project close, and `assistant.attachSelection` is the case that proves
- * the rule — it READS the canvas selection and writes a chip into the composer, so it is
- * application, not selection, however selection-ish it looks. That is also why it may declare
- * `menus: ["palette"]` at all: `blockbar` and `context/element` admit selection-level records
- * only.
+ * **All six are `level: "application"`, by §13.2 — a record is filed by the level of the state it
+ * WRITES, not the state it reads.** The chat session is application state: it outlives the open
+ * document, survives project close, and `assistant.attachSelection` is the case that proves the
+ * rule — it READS the canvas selection and writes a chip into the composer, so it is application,
+ * not selection, however selection-ish it looks. That is also why it may declare `menus:
+ * ["palette"]` at all: `blockbar` and `context/element` admit selection-level records only.
  *
  * **No `aiTool` on any of them.** The assistant projecting "start a new chat" into its own tool
  * list would let a turn end its own conversation; the tier tables in `services/ai-tools.ts` gate

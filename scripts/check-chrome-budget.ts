@@ -1,4 +1,4 @@
-// Enforces the chrome budget from packages/studio/UX-REDESIGN-PLAN.md §2, principle 9:
+// Enforces the chrome budget from specs/studio-ui-guidelines.md §12.2:
 //
 //   * At most five commands may declare `menus: ["commandbar/primary"]`.
 //   * At most four tabs per dock.
@@ -54,7 +54,7 @@ const docks = source.dockTabs ?? dockTabs(railDeclarations());
 const violations = checkChromeBudget({ commands: source.defaultCommandSet(), docks });
 
 if (violations.length > 0) {
-  console.error("Chrome budget exceeded (UX-REDESIGN-PLAN §2, principle 9):\n");
+  console.error("Chrome budget exceeded (studio-ui-guidelines.md §12.2):\n");
   for (const violation of violations) {
     console.error(`  ✗ ${violation.subject}: ${violation.message}`);
   }

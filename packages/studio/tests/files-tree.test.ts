@@ -358,7 +358,7 @@ describe("the panel's three states", () => {
     part("open-project").click();
     await flush();
     // The button runs the command the ⌘O chord and the status bar already run — not an opener of
-    // This surface's own (§12.5).
+    // This surface's own (studio-ui-guidelines.md §12.5).
     expect(ran).toEqual(["project.open"]);
   });
 

@@ -21,6 +21,8 @@ Pages are always prerendered at build time — there is no per-request page rend
 
 ## 2. Compilation Routes
 
+> **Status: Partial.** Route 0's condition is not the file extension: `compile()` in `packages/compiler/src/compiler.ts` takes route 0 on `isClassDef(raw)`, which is exactly `$prototype === "Class"` (`packages/schema/src/guards.ts`), whatever the file is called (§5.6).
+
 The compiler inspects each input document and routes to the appropriate compilation target:
 
 | Route              | Condition                               | Output                                 | Status          |
@@ -48,13 +50,15 @@ Static detection is a single recursive tree walk — no code execution required.
 
 ### 2.2 Text Node Children
 
+> **Status: Partial.** All three targets emit bare strings and numbers as text nodes, and the element target binds a template text child reactively (`toLitTextContent` in `compile-element.ts`). The other two do not. The client target's `buildClientNode` (`packages/compiler/src/targets/compile-client.ts`) escapes a child such as `"Hello ${state.name}"` and writes it out verbatim, neither prerendered nor bound, so template text is reactive in that tier only inside a lit-rendered region (a mapped array, or mixed children rendered through `emitChildLit`). The static target does the same (`compileNode` in `compile-static.ts`), and the site build's prerender does not resolve such a child first: `resolveDocTemplates` in `packages/compiler/src/site/site-build.ts` substitutes a template child only when it evaluates to an array. `isDynamic` does not count a template child, so a page whose only template is a text child routes static and ships the literal `${…}`, while a `textContent` template beside it resolves.
+
 Bare strings and numbers in `children` arrays compile to text nodes in all three output tiers. All three compilation targets (`compile-element.js`, `compile-static.js`, `compile-client.js`) handle `typeof def === "string"` children. Template strings (`"${...}"`) in text node children are reactive in the client tier.
 
 ---
 
 ## 3. Output Tiers
 
-> **Status: Partial.** The tiers themselves are complete. One property of the emitted page is not: every tier emits an **inline** import map, and a project declaring a colour-scheme query also gets an inline pre-paint script, so no tier emits a Content-Security-Policy yet — though both inline blocks are now constants a hash can name. See §13. The page no longer loads anything from a third party: the import map resolves to `/assets/` (§12), and bare `$elements` and `$head` specifiers are bundled and copied there too (`site-architecture.md` §8.7).
+> **Status: Partial.** Two rows do not hold. An external class with `timing: "client"` reaches a compiled page as its literal definition object in reactive state (`compile-client.ts`, and `extractInitialValue` in `compile-element.ts`), never instantiated or resolved, and only a registry class with a `lower` capability compiles to a working definition (`packages/compiler/src/site/prototype-resolver.ts`). An external class with `timing: "compiler"` is baked only when its document names an `$implementation`: `resolveClassPrototype` in the same file refuses a self-contained class with a console warning, and the site build then strips the entry, so nothing is baked and the build reports no error (§5.4). The server-function row's missing client fetch is marked on §6.1. With `build.headers.security.csp` set, the site build emits a Content-Security-Policy naming both constant inline blocks by hash (`packages/compiler/src/site/csp.ts`, `site-architecture.md` §14.3.1), and the page loads nothing from a third party (§12, `site-architecture.md` §8.7).
 
 | Component surface                        | Compiler output                                 |
 | ---------------------------------------- | ----------------------------------------------- |
@@ -73,6 +77,8 @@ Bare strings and numbers in `children` arrays compile to text nodes in all three
 ## 4. Custom Element Compilation
 
 ### 4.1 Output Structure
+
+> **Status: Partial.** The lifecycle paragraph below does not hold as "the same contract as the runtime's interpreted elements" (`spec.md` §16.4): the emitted `connectedCallback` calls `this.state.onMount(this.state)` without the host the interpreter passes as the second argument, and the module has no `adoptedCallback`, so `onAdopted` never runs (`packages/compiler/src/targets/compile-element.ts`).
 
 For each custom element, the compiler emits a self-contained ES module:
 
@@ -170,6 +176,8 @@ customElements.define("user-card", UserCard);
 
 ### 4.3 lit-html Binding Syntax
 
+> **Status: Partial.** Two rows do not match what `packages/compiler/src/targets/compile-element.ts` emits: a template-valued `hidden` is bound as the property `.hidden=${…}`, and the element target emits no `?attr` binding at all (a bound entry under `attributes` goes through the inlined boolean-attribute helper, §11); and an event reference is bound as `@click=${(e) => s.fn(s, e)}`, passing the event. The ref lowering described below ships as written.
+
 | Jx                                         | lit-html                    | What it does               |
 | ------------------------------------------ | --------------------------- | -------------------------- |
 | `"textContent": "${state.name}"`           | `${s.name}`                 | Reactive text              |
@@ -188,6 +196,8 @@ The bracket branch is what makes the lowering total rather than a bet: a referen
 Until 0.3.0 the compiler lowered a ref by replacing `/` with `.` and pasting the result, which emitted `s.items.0` — a syntax error — and `s.custom/path`, which parses as a division against an undeclared identifier. Neither failed the build: nothing between the string concatenation and the browser ever parsed the output. A target that emits JavaScript **must** produce source that parses for every ref the schema admits.
 
 ### 4.4 Property Bridge
+
+> **Status: Partial.** The third source is narrower than the snippet: the emitted merge takes a property only when `this.hasOwnProperty(key)` (`packages/compiler/src/targets/compile-element.ts`), not `key in this`, so a value set before connection through a reflected `HTMLElement` property (`title`, `lang`, `hidden` and the rest), which creates no own property, is dropped and the component renders its default, where the interpreter takes it (`instanceSupplies` in `packages/runtime/src/runtime.ts`, `spec.md` §13.2).
 
 `connectedCallback` takes props from three sources, in order — a `data-jx-props` payload, literal `props.*` attributes, then JS properties set before connection — and registers the render effect:
 
@@ -285,6 +295,8 @@ ${{
 
 ### 5.2 Document Format
 
+> **Status: Partial.** The example below would neither validate nor compile. The class schema (`classDefSchema` in `packages/schema/defs/class-def.schema.ts`, published as `https://jxsuite.com/schema/class/v1`) requires `$prototype: "Class"` and `title`, and `compileClassJson` takes the class name from `title` and throws without it; a method carries `role`, `access`, `scope`, `identifier` and a `parameters` array, and is async when its `returnType` names a `Promise` or its body awaits, not through an `async` key (`extensions/connector/src/D1.class.json` is a shipped document).
+
 ```json
 {
   "$schema": "https://jxsuite.com/schema/v1/class",
@@ -324,6 +336,8 @@ ${{
 
 ### 5.3 `$defs` Object Categories
 
+> **Status: Partial.** The table does not match `class-def.schema.ts` or `compile-class.ts`: a field is private through `access: "private"`, not a `#`-prefixed key; an accessor is `role: "accessor"` with `getter`/`setter` objects, not a `get`/`set` prefix or `accessor: true`; `parameters` holds reusable typed parameter schemas that a method's parameters reference by `$ref` (`resolveParams`), not constructor config fields; and `constructor` takes `superCall.arguments` beside `body`.
+
 | Category      | Purpose                                                                 |
 | ------------- | ----------------------------------------------------------------------- |
 | `parameters`  | Constructor parameter properties (config object fields)                 |
@@ -333,6 +347,8 @@ ${{
 | `returnTypes` | Named return type schemas for tooling                                   |
 
 ### 5.4 The `$implementation` Key
+
+> **Status: Partial.** Only a direct compile of the class document (route 0, §5.6) generates a class from the schema. A state entry naming a class with no `$implementation` gets none in a site build: at `timing: "compiler"`, `resolveClassPrototype` in `packages/compiler/src/site/prototype-resolver.ts` refuses it (`has no $implementation field`, logged as a warning) and the entry is then stripped, and at `timing: "client"` it reaches the page as its literal definition (§3). Only the runtime and the dev server construct one (`classFromSchema` in `packages/runtime/src/runtime.ts` and `packages/server/src/resolve.ts`).
 
 Links the schema to its JavaScript implementation:
 
@@ -355,6 +371,8 @@ The compiler emits:
 
 ### 5.6 Detection and Routing
 
+> **Status: Partial.** Neither condition below routes a document: route 0 is taken on `isClassDef(raw)` in `packages/compiler/src/compiler.ts`, which is exactly `$prototype === "Class"` (`packages/schema/src/guards.ts`). A `.class.json` file without that key, or a root whose `$defs` has `constructor`, `methods` or `fields` and no `tagName`, falls through to the static, element or client route; §2's route-0 condition has the same drift.
+
 A file is a `.class.json` document when:
 
 - File extension is `.class.json`, OR
@@ -368,12 +386,16 @@ A file is a `.class.json` document when:
 
 ### 6.1 `timing: "server"` Entries
 
+> **Status: Partial.** The server-side artifact is emitted (§6.2, §6.3). The client side is not: no target emits the `POST /_jx/server/$export` fetch, the signal holding its response or the effect around reactive `arguments`, because `compile-client.ts` and `compile-element.ts` serialise the entry into reactive state as a literal object. Only the interpreted runtime calls a server function, in process or through the dev-server proxy (`/__jx_server__`; `resolveServerFunction` in `packages/runtime/src/runtime.ts`), and nothing requests `/_jx/server/*`.
+
 For each `timing: "server"` entry, the compiler emits two artifacts:
 
 1. **Client-side:** A `POST /_jx/server/$export` fetch call that stores the JSON response in a signal. If any `arguments` value is reactive, the fetch is wrapped in an effect.
 2. **Server-side:** A Hono handler file that imports the `$export` from `$src` and exposes it at `/_jx/server/$export`.
 
 ### 6.2 Per-Route Server Handler (`compileServer`)
+
+> **Status: Partial.** The handler is emitted but cannot load where the site build puts it. `compileServer` (`packages/compiler/src/targets/compile-server.ts`) copies each `$src` into its import as written, relative to the source page; the site build writes the result to `_server.js` beside the page's HTML in `dist/` (`packages/compiler/src/site/site-build.ts`) and neither copies nor bundles the modules it names, unlike the §6.3 worker, which is bundled self-contained (§12). So the import names a file `dist/` does not contain, and the per-page handler is not the standalone app this section and §1 describe.
 
 Generates a standalone Hono app for a single document's server entries. Used when no `build.adapter` is set:
 
@@ -396,6 +418,8 @@ export default app;
 ```
 
 ### 6.3 Site-Wide Server Bundling (`compileSiteServer`)
+
+> **Status: Partial.** Entries are collected from components only: step 5b of `packages/compiler/src/site/site-build.ts` walks `componentDefs` and never a page, and with an adapter set the per-page `_server.js` is skipped as well, so a page's own `timing: "server"` entry gets no route at all. The worker, the Pages `_worker.js` and `_routes.json`, ordered mounts and the no-adapter build error ship as described (`packages/compiler/tests/connector-mounts.test.ts`, `site-build.test.ts`); the parameter table omits the `i18n` and `base` options `compileSiteServer` also takes.
 
 When `build.adapter` is set in `project.json`, the site build collects all `timing: "server"` entries across every component and page, deduplicates by export name, and emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` ([Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)) plus a `dist/_routes.json` limiting invocation to `/_jx/*` for `"cloudflare-pages"`. Per-route `_server.js` files are not generated in this mode. A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all.
 
@@ -447,7 +471,7 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 export default app;
 ```
 
-> **Status: Implemented.** `compile-server.js` exports `compileServer` (per-route) and `compileSiteServer` (site-wide). `site-build` orchestrates entry collection and worker generation when `build.adapter` is set. Server source files are copied into `dist/components/` so the worker's relative imports resolve.
+> **Status: Implemented.** `compile-server.js` exports `compileServer` (per-route) and `compileSiteServer` (site-wide). `site-build` orchestrates entry collection and worker generation when `build.adapter` is set. The worker is bundled self-contained (§12); server sources are no longer copied into `dist/components/`.
 
 ---
 
@@ -460,6 +484,8 @@ The compiler includes a build-time image optimization pipeline that generates re
 - `image-cache.js` — persistent cache for skipping redundant re-encoding
 
 ### 7.1 Configuration
+
+> **Status: Partial.** The table omits `picture` (default `true`: `DEFAULTS.images` in `packages/compiler/src/site/site-loader.ts`, `packages/schema/defs/image-config.schema.ts`). And `optimize` is not a master switch: `site-build` calls `transformImageNodes` whatever it says, and the loading pass applies `lazyLoad` on its own, yielding to `fetchpriority="high"` (`imgLoadingAttrs` in `packages/compiler/src/site/img-loading.ts`), as `site-architecture.md` §9.2.1 and §9.2.7 state.
 
 Image optimization is configured via `project.json` under the `images` key. All properties have defaults and are optional:
 
@@ -489,6 +515,8 @@ Image optimization is configured via `project.json` under the `images` key. All 
 
 ### 7.2 Document Transformation (`transformImageNodes`)
 
+> **Status: Partial.** With two or more formats (the default `webp` and `avif`) and `picture` not `false`, `wrapInPicture` in `packages/compiler/src/site/image-transform.ts` rewrites the node into a `<picture>` with one `<source type>` per format, best compression first, carrying the `srcset` and `sizes`, while the `<img>` keeps `src`, dimensions and loading attributes; only a single-format config gets the bare `<img srcset>` described below (`site-architecture.md` §9.2.2 states the shipped form). Variants are written to the image cache's `_optimized/` directory (`processImage` in `image-optimizer.ts`) and copied to `dist/images/_optimized/` after the routes build, not written to `dist/` directly. And the concurrency sentence does not hold: `processImage` starts every encode as it builds the width × format list, and its `CONCURRENCY = 4` loop only awaits the already-running promises four at a time.
+
 During page compilation, `transformImageNodes()` walks the document tree and mutates eligible `<img>` nodes. For each image:
 
 1. **Process** — `processImage()` reads the source via Sharp, filters `widths` to ≤ the original width, and generates one variant per width × format combination. Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}`.
@@ -506,6 +534,8 @@ Up to 4 variants are processed concurrently per image.
 
 #### 7.2.1 `sizes`
 
+> **Status: Partial.** Within one node the derivation does not take the narrowest length: `containerWidthOf` in `packages/compiler/src/site/image-transform.ts` takes a literal `max-width` and ignores `width` whenever both are declared, so `{ "width": "320px", "maxWidth": "960px" }` derives `(max-width: 960px) 100vw, 960px`. The minimum is taken only across ancestors.
+
 `sizes` is a promise about layout that the browser keeps absolutely: it selects a candidate from the string before layout exists, and never revisits the choice. A single project-wide default therefore cannot be right for every image on a site — `(max-width: 768px) 100vw, 50vw` describes a half-width image, and applied to a hero that renders full-width inside a 960 px column it is too small on a wide screen and too large on a narrow one.
 
 Resolution order, first match wins:
@@ -518,6 +548,8 @@ Resolution order, first match wins:
 Only literal lengths derive. A `clamp()`, a percentage or a custom property is a real constraint too, but not one the build can resolve, and a wrong `sizes` is worse than none.
 
 ### 7.3 Eligibility
+
+> **Status: Partial.** There is no raster allowlist and no animation check: `shouldSkip` in `packages/compiler/src/site/image-transform.ts` skips template, external and empty sources and the `.svg` and `.gif` extensions (`SKIP_EXTENSIONS`), so every GIF is skipped, animated or not, and any other local file goes to Sharp whatever its extension.
 
 **Processed:**
 
@@ -554,6 +586,8 @@ Individual `<img>` nodes can override global settings via attributes:
 
 ### 7.5 Caching (`image-cache.js`)
 
+> **Status: Partial.** The cache is not at `.cache/images/` by default: `getImageCacheDir` in `packages/compiler/src/site/image-cache.ts` prefers the npm cache (`npm config get cache`, then `jxsuite-images/<project basename>/`) and falls back to `.cache/images` in the project only when npm is unavailable, and invalidation looks for the variant files in that directory's `_optimized/`, not in `dist/`. The config hash also folds in `PIPELINE_VERSION` (`image-optimizer.ts`); the key format, persistence and pruning ship as described.
+
 Processed images are cached to `.cache/images/manifest.json` to avoid redundant re-encoding across builds.
 
 - **Cache key:** `{contentHash}:{configHash}` — MD5 of source file contents + MD5 of optimization config (`widths`, `formats`, `quality`)
@@ -571,13 +605,15 @@ When `images.service` is `"cloudflare"`, the Sharp variant pipeline is skipped e
 
 ### 7.7 Build Integration
 
+> **Status: Partial.** Step 2's argument list is stale: `transformImageNodes` (`packages/compiler/src/site/image-transform.ts`) receives the config, the project root, the cache (or `null`), the dimension memo and the extension asset mounts, not an output directory; variants reach `dist/` through the copy after the routes build (§7.2).
+
 In `site-build`, the pipeline integrates at step 6 (per-route compilation):
 
 1. Cache loaded if `projectConfig.images.optimize === true` and `images.service` is `"build"`; in `"cloudflare"` mode a per-build dimension memo is used instead
 2. For each page, `transformImageNodes()` is called with the cache (or memo), config, project root, and output directory
 3. Cache saved to disk after all routes are compiled (`"build"` mode only); stale entries are pruned first when every route compiled without errors
 
-> **Status: Implemented.** `image-optimizer.js`, `image-transform.js`, `image-cache.js`, and `compile-image-endpoint.js` provide the full pipeline. Requires Sharp as a project dependency.
+> **Status: Implemented.** `image-optimizer.ts`, `image-transform.ts` and `image-cache.ts` in `packages/compiler/src/site/` provide the pipeline, driven from `site-build`. Requires Sharp as a project dependency.
 
 ---
 
@@ -610,6 +646,8 @@ Until 0.4.4 the definition walk had no registry. A nested instance went through 
 **A definition that names itself is a build error, not a stack overflow.** The expansion path is tracked per instance — tag and resolved props — and meeting a frame already on the path is the instance rendering itself with the same props, the one shape that can never terminate. The route fails with a diagnostic naming the chain (`a-loop → b-loop → a-loop`) and the other routes still build. A self-reference whose props change at every level is data-driven recursion — a tree node rendering its children until a `$switch` on its depth says stop — and is allowed, bounded by a depth cap of 32 levels; exceeding it is the same kind of error, with the same chain.
 
 ### 8.2 CSS Extraction
+
+> **Status: Partial.** Extraction, the shared `buildStyleRules` nesting and the component-sheet inlining ship (see the marker closing this section). The handle preference does not: `collectStyles` in `packages/compiler/src/shared.ts` prefers `#id`, but assigns a generated `.jx-N` class only when an element has neither `id` nor `className`, and otherwise keys its rules on the author's first class, so an element's rules also style every other element carrying that class; this is the drift `spec.md` §9.2 marks.
 
 All static `style` definitions are extracted into a single `<style>` block in `<head>`.
 
@@ -651,26 +689,21 @@ The container is emitted **empty**, with the matched case supplied at hydration.
 
 ## 10. Pending Features
 
-| Feature                              | Description                                                       | Status                                                                           |
-| ------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `timing: "compiler"`                 | Bake fetch responses into HTML at build time                      | **Pending**                                                                      |
-| Island serialization                 | `<script type="application/Jx+json">` hydration islands           | **Pending**                                                                      |
-| Bundle manifest                      | Exact dependency manifest from JSON analysis                      | **Partial** (imports collected but no standalone manifest file)                  |
-| Multi-page build                     | Orchestrate compilation across all pages in a site project        | **Pending**                                                                      |
-| Layout resolution                    | Resolve `$layout` and `<slot>` insertion during compilation       | **Implemented** via `site-build`                                                 |
-| `$head` merge                        | Merge site + layout + page `<head>` entries with deduplication    | **Implemented** via `head-merger.js`                                             |
-| `$paths` expansion                   | Generate one page per content entry for dynamic routes            | **Implemented** via `pages-discovery.js`                                         |
-| `ContentCollection` / `ContentEntry` | New `$prototype` values for querying content at build time        | **Implemented** via `content-loader.js`                                          |
-| Sitemap generation                   | Auto-generate `sitemap.xml` from route table                      | **Pending**                                                                      |
-| Image optimization                   | Format conversion, responsive sizes, lazy loading, caching        | **Implemented** via `image-optimizer.js`, `image-transform.js`, `image-cache.js` |
-| Site-wide server bundling            | `build.adapter` collects all server entries into `dist/worker.js` | **Implemented** — Cloudflare adapter with asset fallback                         |
-| Platform-specific files              | Emit `_redirects` (Netlify), `vercel.json`, etc.                  | **Pending** (redirects partially via `generateRedirects`)                        |
+> **Status: Partial.** None of the three remaining rows ships. A `$prototype: "Request"` with `timing: "compiler"` is never fetched at build time: `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) has no class mapping for it and skips it, and the site build then strips it as a resolved compiler entry, so nothing is baked and the page gets no fetch either; the row belongs to `spec.md` §11.3's compiler row and stays here until that section marks it. Nothing emits a `<script type="application/Jx+json">` island: a dynamic page compiles to prerendered HTML plus one module holding its state and its `data-bind` hydration (`compile-client.ts`, §9.1), and a prerendered component instance upgrades from its `data-jx-props` payload (§4.4). No dependency-manifest file is written, and nothing in the build collects imports (`collectSrcImports` in `packages/compiler/src/shared.ts` has no caller outside its tests). The ledger's other rows belong to the sections that specify them: §6.3, §7, and `site-architecture.md` §4.3, §5, §6.4, §8.3, §8.4.1, §11.1, §12.1 and §14.
+
+| Feature              | Description                                             | Status                                                           |
+| -------------------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| `timing: "compiler"` | Bake fetch responses into HTML at build time            | **Pending**                                                      |
+| Island serialization | `<script type="application/Jx+json">` hydration islands | **Pending**                                                      |
+| Bundle manifest      | Exact dependency manifest from JSON analysis            | **Pending** (nothing in the build collects imports; no manifest) |
 
 See the [Site Architecture Specification](site-architecture.md) for the full multi-page compilation and routing design.
 
 ---
 
 ## 11. Shared Utilities
+
+> **Status: Partial.** Three entries do not match the code: `transformImageNodes` is `(doc, config, projectRoot, cache, metaCache?, mounts?)` and returns `{ imageRefs }` (`packages/compiler/src/site/image-transform.ts`); `processImage` is `(srcPath, cacheImgDir, config)` and writes to the image cache, not an `outDir` (`image-optimizer.ts`); and `buildRoute` is a private helper of `packages/compiler/src/targets/compile-server.ts`, not a shared utility. The others ship as listed, in `packages/compiler/src/shared.ts`.
 
 ### `isDynamic(def)` — Recursive static detection
 

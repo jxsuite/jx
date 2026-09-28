@@ -713,7 +713,7 @@ describe("array-of-objects fields", () => {
   });
 });
 
-// ─── Inline errors (§7.1) ────────────────────────────────────────────────────
+// ─── Inline errors (§16.5) ───────────────────────────────────────────────────
 
 describe("inline errors", () => {
   test("a host message is announced at the control, with a repeat counter from two up", async () => {

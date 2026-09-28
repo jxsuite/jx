@@ -1,5 +1,5 @@
 /**
- * What Studio may import from `@jxsuite/ai` (harness plan §2, "Enforcement").
+ * What Studio may import from `@jxsuite/ai`.
  *
  * Studio is a CLIENT of the assistant's wire, never a server of it. Three subpaths exist for the
  * other side: `./gateway` (the chat and models routes a backend serves), and, as they land,

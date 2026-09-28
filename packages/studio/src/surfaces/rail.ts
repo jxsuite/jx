@@ -8,11 +8,11 @@
  *
  * **Every rail button opens the Navigator, and the grouping is by LEVEL.** Every button is a
  * `jx-action-button` in its stacked form, so it carries a 10px text label under its icon — an icon
- * whose only name is a hover tooltip is the accessibility failure §2 principle 6 names — and
- * `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel collapses
- * its dock, which is a two-state control, not a one-way selection. The label is the record's
- * `railLabel` when it declares one (Source Control's is "Source", because the full title ellipsed
- * in the 48px label box), and the full `title` stays the accessible name and the tooltip.
+ * whose only name is a hover tooltip is the accessibility failure studio-ui-guidelines.md §12.3
+ * names — and `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel
+ * collapses its dock, which is a two-state control, not a one-way selection. The label is the
+ * record's `railLabel` when it declares one (Source Control's is "Source", because the full title
+ * ellipsed in the 48px label box), and the full `title` stays the accessible name and the tooltip.
  *
  * The foot is the ⚙ **Settings** menu, a menu button rendered from the `settings/menu` placement: a
  * record joins the gear by declaring the placement and there is nothing here to update in step.

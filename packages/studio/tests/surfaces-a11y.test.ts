@@ -1,7 +1,7 @@
 /**
- * Every Studio surface document passes the overlay, dialog and accessibility lints (spec §8.7,
- * §8.8). The same lints Studio files as Problems for an author's document, run over its own chrome
- * — studio.md §2 principle 4 made literal.
+ * Every Studio surface document passes the spec.md §8.7–§8.8 lints: overlay, dialog and
+ * accessibility. The same lints Studio files as Problems for an author's document, run over its own
+ * chrome — studio.md §2 principle 4 made literal.
  */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";

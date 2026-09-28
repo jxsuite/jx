@@ -2,9 +2,9 @@
  * Score.js — derive the logic-only rubric axes from a settled harness run.
  *
  * Produces _objective sub-signals + evidence_ and a conservative suggested score per axis — never a
- * bare number (testing-plan §10.3: no self-serving scores; pick the lower score when uncertain).
- * Browser-only ceilings (rendered-DOM Correctness ≥4, seamless Undo/Redo) are returned as `N/A
- * (browser)` — the studio owns those.
+ * bare number (no self-serving scores: pick the lower score when uncertain). Browser-only ceilings
+ * (rendered-DOM Correctness ≥4, seamless Undo/Redo) are returned as `N/A (browser)` — the studio
+ * owns those.
  *
  * See docs/extending/contributing/ai-evals.md.
  */
@@ -74,8 +74,8 @@ export function extractToolResults(chatState: ChatStateLike) {
  *
  * `check` is an outcome assertion. It receives the final document and a ctx ({ writes, readWritten
  * }) so file-creation tests (Layer 3) can assert on written files. Return boolean or 0..1 fraction.
- * Drives Completeness — independent of _which_ tools the model used (testing-plan §3.1). May be
- * async. `mustReadFirst` is whether the task requires read_document before mutating (§5.1).
+ * Drives Completeness — independent of _which_ tools the model used. May be async. `mustReadFirst`
+ * is whether the task requires read_document before mutating.
  */
 export async function scoreRun({
   harness,
@@ -119,7 +119,7 @@ export async function scoreRun({
           : { score: 2, why: "tools fired but the goal state was not reached" };
   }
 
-  // ── Read-first (§5.1 hard constraint): mutating before reading is a Correctness/Recovery risk. ──
+  // ── Read-first (a hard constraint): mutating before reading is a Correctness/Recovery risk. ──
   // `delete_node` and `duplicate_node` are the command projections of `selection.delete` and
   // `selection.duplicate` (issue 273); `remove_node`, the hand tool `delete_node` replaced, is gone.
   const MUTATORS = new Set([
@@ -143,10 +143,13 @@ export async function scoreRun({
     ? { ok: true, why: "N/A — read-first not required for this task" }
     : readBeforeMutate
       ? { ok: true, why: "read_document preceded the first mutation" }
-      : { ok: false, why: "mutated before reading — guessed paths instead of reading (§5.1)" };
+      : {
+          ok: false,
+          why: "mutated before reading — guessed paths instead of reading the document first",
+        };
 
   // ── Efficiency: fewer model rounds is better, but the mandatory read_document is NOT a cost
-  // (§3.1) — discount one round when the task required reading first and the model complied, so a
+  // — discount one round when the task required reading first and the model complied, so a
   // Clean read→mutate→wrap scores like a 2-round mutate→wrap rather than being capped at 3. ──
   const readDiscount =
     mustReadFirst && readFirst.ok && calls.some((c) => c.name === "read_document") ? 1 : 0;
@@ -155,7 +158,7 @@ export async function scoreRun({
   const efficiency = {
     score: effScore,
     why: readDiscount
-      ? `${rounds} round(s), ${effRounds} after discounting the mandatory read (§3.1)`
+      ? `${rounds} round(s), ${effRounds} after discounting the mandatory read`
       : `${rounds} model round(s)`,
   };
 

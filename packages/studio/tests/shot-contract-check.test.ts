@@ -1,5 +1,6 @@
 /**
- * Lane 1 of the screenshot gate: `bun scripts/check-shot-contract.ts` (UX-REDESIGN-PLAN §13.5).
+ * Lane 1 of the screenshot gate: `bun scripts/check-shot-contract.ts`
+ * (scripts/screenshots/README.md).
  *
  * Two halves, deliberately:
  *
@@ -86,7 +87,7 @@ const ZERO_BUDGET: ContractCounts = {
   waitForSelectors: 0,
 };
 
-describe("the toggle rule (§13.3 clause 3)", () => {
+describe("the toggle rule (§13.5's idempotence rule)", () => {
   test("matches a delta id and not an idempotent one", () => {
     expect(isToggleId("view.toggleAssistant")).toBe(true);
     expect(isToggleId("canvas.togglePreview")).toBe(true);
@@ -259,7 +260,7 @@ describe("args schemas", () => {
 });
 
 describe("region ids", () => {
-  test("the §13.2 grammar is derived; a selector never is", () => {
+  test("the region grammar is derived; a selector never is", () => {
     for (const id of [
       "rail",
       "pane",
@@ -386,7 +387,7 @@ describe("selectors", () => {
   });
 });
 
-describe("the contract-1 bespoke verbs (§13.6's codemod, applied at read time)", () => {
+describe("the contract-1 bespoke verbs (the migration's codemod, applied at read time)", () => {
   test("a `value` verb is read as the command and argument the codemod will write", () => {
     const facts = readManifest({
       shots: [
@@ -441,7 +442,7 @@ describe("the contract-1 bespoke verbs (§13.6's codemod, applied at read time)"
     ]);
   });
 
-  test("§13.7's claim holds: a panel rename fails on the `setActivity` steps that name it", () => {
+  test("a panel rename fails on the `setActivity` steps that name it", () => {
     const result = checkShotContract({
       commands: table([
         {
@@ -467,7 +468,7 @@ describe("the contract-1 bespoke verbs (§13.6's codemod, applied at read time)"
   });
 });
 
-describe("the contract-2 shape (§13.2)", () => {
+describe("the contract-2 shape (the five verbs)", () => {
   test("`steps`/`expect`/`capture`/`seed`/`unstable` read without a rewrite", () => {
     const facts = readManifest({
       contract: 1,
@@ -561,7 +562,7 @@ describe("loadCommandTable", () => {
     expect(loaded.get("seed.git")?.source).toBe(DEFAULT_COMMAND_SOURCES[1]);
     // … and the shim still contributes the ids no registry declares yet.
     expect(loaded.get("media.browse")?.source).toBe(DEFAULT_COMMAND_SOURCES[1]);
-    // `insert.data` (P5) is the shape of the countdown ending: the record landed in the registry,
+    // `insert.data` is the shape of the countdown ending: the record landed in the registry,
     // So the id resolves from the FIRST source and `element.insertData` left the shim entirely.
     expect(loaded.get("insert.data")?.source).toBe(DEFAULT_COMMAND_SOURCES[0]);
     expect(loaded.has("element.insertData")).toBe(false);
@@ -612,7 +613,7 @@ describe("the CLI", () => {
     expect(result.stdout).not.toContain("ratchet:");
   });
 
-  test("a renamed panel exits 1 with the message §13.5 specifies, verbatim", async () => {
+  test("a renamed panel exits 1 with the checker's rename message, verbatim", async () => {
     const result = await runCheck([
       "--manifest",
       `${FIXTURES}/renamed-panel.json`,
@@ -650,7 +651,7 @@ describe("the CLI", () => {
       'manifest shot "quick-access" step 1 names command "view.setActivty"; no command registry ' +
         'declares it — nearest declared id is "view.setActivity"',
       'manifest shot "quick-access" step 2 names command "view.toggleAssistant"; a toggle names ' +
-        'a delta against unstated state (§13.3 clause 3) — declare "view.setAssistant" and ' +
+        'a delta against unstated state (the idempotence rule, studio.md §13.5) — declare "view.setAssistant" and ' +
         "name the value the step ends in",
       'manifest shot "quick-access" step 3 names command "view.setStatus"; ' +
         `${FIXTURES}/commands.ts declares it unscriptable`,

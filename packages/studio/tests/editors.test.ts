@@ -1,8 +1,8 @@
 /**
- * ⑪ · Logic — the code surface (`panels/editors.ts`). Monaco cannot load in happy-dom, so
- * editor.api is mocked with a minimal fake editor that mirrors the bits editors.ts relies on
- * (create/get/ setValue/dispose/change events, setValue firing onDidChangeModelContent like real
- * Monaco).
+ * The Bottom dock's Logic tab — the code surface (`panels/editors.ts`). Monaco cannot load in
+ * happy-dom, so editor.api is mocked with a minimal fake editor that mirrors the bits editors.ts
+ * relies on (create/get/ setValue/dispose/change events, setValue firing onDidChangeModelContent
+ * like real Monaco).
  *
  * The tests drive it the way the Bottom dock does — paint the code host into a body, then call
  * {@link syncFunctionEditor} as the panel's `afterRender` — and assert what the move out of the
@@ -297,7 +297,7 @@ describe("the code surface — def target", () => {
     await flush();
 
     // The takeover tore the stage down before drawing over it. The page whose handler this is
-    // Stays rendered, patchable and on screen — the whole point of P8.5.
+    // Stays rendered, patchable and on screen — the whole point of the Logic tab (§16.3).
     expect(canvasPanels).toHaveLength(1);
     expect(canvasWrap.textContent).toBe("the rendered page");
 
@@ -569,8 +569,8 @@ describe("living in a dock tab", () => {
   });
 
   /**
-   * The REPAINT got more frequent in P8 too, and it is the rate that matters most: it is the one
-   * that runs while the author's hands are on the keyboard.
+   * The REPAINT got more frequent in the dock too, and it is the rate that matters most: it is the
+   * one that runs while the author's hands are on the keyboard.
    *
    * `syncFunctionEditor` is the Logic tab's `afterRender`, and the dock's render effect tracks
    * every badge in the strip — Problems' count, Activity's running list, Source Control's file
@@ -625,7 +625,7 @@ describe("living in a dock tab", () => {
   });
 
   /**
-   * The teardown got MORE FREQUENT in P8, and neither of the two things it tried was right.
+   * The teardown got MORE FREQUENT in the dock, and neither of the two things it tried was right.
    *
    * The canvas takeover was torn down by exactly one thing — closing it. A dock tab is disposed by
    * five: selecting Problems, collapsing the dock, moving the pane, opening another target, and the

@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioEntryEditor",
-  "$description": "The Entry editor (§7.4) — one content entry's fields, in a pane, as a Jx document over the kit. The adapter (`surfaces/entry-editor.ts`) hands in a projection; `content/entry-editor.ts` decides everything in it — which collection the file belongs to, which record its fields live in, which required keys are absent and what a draft flag commits into. The FORM is an island: a schema is `ui/schema-form.ts`'s subject, so this document renders an empty `fields` node and the flow places the element that engine hands back (studio-ui-guidelines.md §9.3, §9.4). That is the whole of the difference between this and the card the lit version drew, and it is why the engine converting in batch 7 is what unblocked this one.",
+  "$description": "The Entry editor (site-architecture.md §7.4) — one content entry's fields, in a pane, as a Jx document over the kit. The adapter (`surfaces/entry-editor.ts`) hands in a projection; `content/entry-editor.ts` decides everything in it — which collection the file belongs to, which record its fields live in, which required keys are absent and what a draft flag commits into. The FORM is an island: a schema is `ui/schema-form.ts`'s subject, so this document renders an empty `fields` node and the flow places the element that engine hands back (studio-ui-guidelines.md §9.3, §9.4). That is the whole of the difference between this and the card the lit version drew, and it is why the engine converting in batch 7 is what unblocked this one.",
   "tagName": "div",
   "attributes": {
     "part": "entry",

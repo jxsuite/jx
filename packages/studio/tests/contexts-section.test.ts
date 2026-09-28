@@ -1,6 +1,6 @@
 /**
  * Tests for src/settings/contexts-section.ts — Project Settings › Contexts, the ONE definition site
- * for breakpoints, colour schemes and feature queries (plan §4.2, §2 principle 5).
+ * for breakpoints, colour schemes and feature queries (§6.2, §17.1).
  *
  * What these pin is mostly what is NOT here any more. `$media` used to be writable from four
  * surfaces — the New Project wizard, Settings › General, Properties › Media and the CSS-variables
@@ -365,7 +365,7 @@ describe("editing", () => {
   });
 });
 
-// ─── Refusals (§7.1 inline tier) ─────────────────────────────────────────────
+// ─── Refusals (§16.1 inline tier) ────────────────────────────────────────────
 /* Every one of these used to be a silent snap-back: the predecessors did `void
    updateSiteConfig(...)` and dropped the rejection, so a refused value looked like the field
    forgetting what you typed. */

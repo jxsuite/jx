@@ -294,9 +294,9 @@ export function startInteraction(
     }
     const hit = nearestHit(e.target);
     if (hit) {
-      // Ctrl/Cmd is the accumulate gesture (§6.5). The iframe reports the modifier and nothing
-      // Else — it holds no selection state, so what a modified click MEANS is the parent's to
-      // Decide, exactly as the unmodified click already was.
+      // Ctrl/Cmd is the accumulate gesture (studio-ui-guidelines.md §8.1). The iframe reports the
+      // Modifier and nothing else — it holds no selection state, so what a modified click MEANS is
+      // The parent's to decide, exactly as the unmodified click already was.
       const mouse = e as MouseEvent;
       channel.post({
         additive: mouse.ctrlKey === true || mouse.metaKey === true,
@@ -427,9 +427,10 @@ export function startInteraction(
      *
      * This called `preventDefault()` before looking, "legacy parity" with a handler that did the
      * same. The parent then posts `path: null`, `showContextMenu` returns early on it, and the
-     * result is a right-click that suppresses the browser menu and shows nothing in its place:
-     * plan §10's dead zone, named there as the thing to fix. The margin around the artboard is
-     * exactly where a reader reaches for View Source or Inspect.
+     * result is a right-click that suppresses the browser menu and shows nothing in its place, a
+     * dead zone where the docs promise the browser's own menu
+     * (`docs/studio/interface/canvas.md#the-right-click-context-menu`). The margin around the
+     * artboard is exactly where a reader reaches for View Source or Inspect.
      */
     if (!hit) {
       return;

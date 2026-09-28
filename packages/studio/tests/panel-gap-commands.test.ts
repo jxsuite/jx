@@ -2,9 +2,10 @@
  * The Inspector, Data, State, Formula and Style verbs the screenshot manifest names.
  *
  * Every record here replaces an XPath press that matched RENDERED TEXT — a signal row's name, a
- * data row's label, an accordion's `label=` attribute — which plan §13's R1 forbids outright: those
- * strings are derived, so improving how a panel labels a row broke a shot. Each one now names the
- * thing the DOCUMENT declares, and refuses a name the document does not.
+ * data row's label, an accordion's `label=` attribute — which the shot contract's R1
+ * (scripts/screenshots/README.md) forbids outright: those strings are derived, so improving how a
+ * panel labels a row broke a shot. Each one now names the thing the DOCUMENT declares, and refuses
+ * a name the document does not.
  *
  * `inspector.setSection` is also the setter that empties the last of `TOGGLE_DEBT`.
  */
@@ -210,7 +211,7 @@ describe("formula.openWorkspace", () => {
     });
     // It reveals the Logic dock tab, exactly as `formula.editDef` does. It used to call
     // `renderCanvas` instead: a full repaint of a surgically patched canvas, for a takeover the
-    // Canvas stopped performing in P8, fired by a verb that changes nothing the canvas draws. The
+    // Canvas no longer performs, fired by a verb that changes nothing the canvas draws. The
     // Dep went with it, and then so did the whole bag: nothing this verb does needs its host.
     expect(shell.docks.bottom.collapsed).toBe(false);
     expect(shell.bottomTab).toBe("logic");

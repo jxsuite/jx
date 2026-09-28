@@ -12,12 +12,12 @@
  * Collections type their columns from the content-type schema (plus inferred extras found in the
  * data); the pages grid is fully inference-driven.
  *
- * **A collection listing obeys the draft perspective (§7.6).** `content/draft-state.ts` owns both
- * the one flag and the one definition of what a draft is, and this source calls it rather than
- * testing `draft === true` itself — which is what makes "including drafts" mean the same thing here
- * as it does on the tab chip. It can, because that module imports nothing but `reactivity`: the
- * richer `content/entry-model.ts` asks THIS file where a collection's entries live, so an edge back
- * to it would be the cycle `import/no-cycle` rejects.
+ * **A collection listing obeys the draft perspective (site-architecture.md §7.6).**
+ * `content/draft-state.ts` owns both the one flag and the one definition of what a draft is, and
+ * this source calls it rather than testing `draft === true` itself — which is what makes "including
+ * drafts" mean the same thing here as it does on the tab chip. It can, because that module imports
+ * nothing but `reactivity`: the richer `content/entry-model.ts` asks THIS file where a collection's
+ * entries live, so an edge back to it would be the cycle `import/no-cycle` rejects.
  */
 import { getPlatform } from "../../platform";
 import { projectState } from "../../store";
@@ -207,9 +207,10 @@ interface EntryFileSourceOptions {
   /** Inferred columns to front-load, in order (e.g. title/description for pages). */
   priorityFields?: string[];
   /**
-   * Whether this listing is subject to the draft perspective (§7.6) — collections are, the pages
-   * tree is not. A draft is a property of a content ENTRY: a page carrying `draft: true` would
-   * vanish from the only tree that lists it, with no collection schema to explain why.
+   * Whether this listing is subject to the draft perspective (site-architecture.md §7.6) —
+   * collections are, the pages tree is not. A draft is a property of a content ENTRY: a page
+   * carrying `draft: true` would vanish from the only tree that lists it, with no collection schema
+   * to explain why.
    */
   drafts?: boolean;
 }

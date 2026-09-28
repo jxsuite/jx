@@ -1,5 +1,5 @@
 /**
- * The registry, projected into the two generated documentation pages (plan §12 P3).
+ * The registry, projected into the two generated documentation pages (renderings, §13).
  *
  * The properties worth defending are DETERMINISM and TOTALITY: a generated page that reorders
  * itself between runs is a CI diff nobody can review, and a page that quietly omits a command is

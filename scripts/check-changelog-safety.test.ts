@@ -63,8 +63,8 @@ describe("findChangelogUnsafeParts", () => {
         "BREAKING CHANGE: entries now always carry <summary>\ncontinued on the next line\n\ntrailer\n",
     );
     expect(parts.map((p) => p.part)).toEqual(["BREAKING CHANGE"]);
-    expect(parts[0].tags).toEqual(["<summary>"]);
-    expect(parts[0].text).toContain("continued on the next line");
+    expect(parts[0]!.tags).toEqual(["<summary>"]);
+    expect(parts[0]!.text).toContain("continued on the next line");
   });
 
   test("ignores markup in an ordinary body — only the changelog-bound text matters", () => {
@@ -100,7 +100,7 @@ describe("findUnsafeCommits and report", () => {
   test("returns only the offenders, with their subject", () => {
     const unsafe = findUnsafeCommits(commits);
     expect(unsafe.map((c) => c.sha)).toEqual(["14f920de7d5a"]);
-    expect(unsafe[0].subject).toBe("feat(compiler): responsive images — <picture> per format");
+    expect(unsafe[0]!.subject).toBe("feat(compiler): responsive images — <picture> per format");
   });
 
   test("the report names the sha, the subject and the tag", () => {
@@ -112,7 +112,7 @@ describe("findUnsafeCommits and report", () => {
   });
 
   test("nothing to report when every commit is clean", () => {
-    expect(findUnsafeCommits([commits[1]])).toEqual([]);
+    expect(findUnsafeCommits([commits[1]!])).toEqual([]);
     expect(report([])).toBe("");
   });
 });

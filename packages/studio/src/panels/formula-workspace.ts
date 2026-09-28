@@ -1,15 +1,15 @@
 /// <reference lib="dom" />
 /**
- * ⑪ · Logic — the flow behind the Bottom dock's Logic tab.
+ * Logic — the flow behind the Bottom dock's Logic tab.
  *
  * **What changed, and why it is the whole point.** Both of these surfaces used to TAKE OVER the
  * canvas: `TabUi.editingFormula` (this file) and `TabUi.editingFunction` (`panels/editors.ts`) each
  * cleared `canvasWrap`, dropped every canvas panel and drew themselves over the stage. So the one
  * artefact whose values you are authoring — the page — was the one thing you could not see while
  * authoring them, and the workspace's own data rail existed to paper over it: a frozen snapshot of
- * a scope, shown because the live thing had just been unmounted. Plan §12 P8.5: "no editor hides
- * the page it computes." They are a **tab of the Bottom dock** now (§3.2 ⑪), which sits under the
- * pane grid, so the page renders beside the formula and keeps rendering while you edit it.
+ * a scope, shown because the live thing had just been unmounted. No editor may hide the page it
+ * computes (§16.3). They are a **tab of the Bottom dock** now, which sits under the pane grid, so
+ * the page renders beside the formula and keeps rendering while you edit it.
  *
  * **A dock tab is not a reparented takeover.** The surface has to work at dock height, so the
  * header is one row, the chip pipeline and the result are single lines, and the data rail is a
@@ -93,7 +93,10 @@ export type LogicTarget =
   | { surface: "function"; editing: FunctionEditDef }
   | { surface: "formula"; editing: FormulaEditDef };
 
-/** The sentence the tab shows with nothing open in it — what the region is FOR (§11.1). */
+/**
+ * The sentence the tab shows with nothing open in it — what the region is FOR
+ * (studio-ui-guidelines.md §11.1).
+ */
 const NOTHING_OPEN = "Open a formula or a function to edit it here, beside the page it computes.";
 
 /** The target names a document position that holds no expression: say so, keep the header. */

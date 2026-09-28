@@ -1,9 +1,9 @@
 /**
  * Command-args.ts — loud coercion for the arguments a command record declares.
  *
- * Every scriptable command carries an `args` JSON Schema (spec §13.1, plan §13.3): the palette
- * prompts from it, the AI tool's parameters are it, and `scripts/check-shot-contract.ts` validates
- * every manifest step against it in the `checks` job. This module is the RUNTIME half of that same
+ * Every scriptable command carries an `args` JSON Schema (studio.md §13.1): the palette prompts
+ * from it, the AI tool's parameters are it, and `scripts/check-shot-contract.ts` validates every
+ * manifest step against it in the `checks` job. This module is the RUNTIME half of that same
  * declaration, twice over: the typed readers a `run` body calls (`stringArg(...)` and its family),
  * and {@link coerceArgs}, which `registry.run` applies to the received record BEFORE `run` for
  * every caller — the palette, `__jxAutomation`, the assistant and a chord alike. The coercion
@@ -16,11 +16,12 @@
  * 1. **Reject loudly, never clamp.** An unknown panel id, a mode the tab cannot enter, a selection
  *    path that is not in the document — each throws. A no-op would photograph the previous state
  *    and a docs build would accept it; a clamp would photograph a state the caller did not ask for.
- *    Plan §13.4 makes this a tested property.
+ *    The shot contract (`scripts/screenshots/README.md`, `steps`) makes this a tested property.
  * 2. **The failure names the fix.** `{@link enumArg}` prints the declared values, which is what makes
- *    §13.5's headline failure — _manifest shot "properties-bar" names panel "head"; the registry
- *    declares "page"_ — a sentence a reader can act on rather than a stack trace. Nothing else in
- *    this file matters as much as that message.
+ *    the screenshot gate's headline failure (`scripts/screenshots/README.md`, "The gate") —
+ *    _manifest shot "properties-bar" names panel "head"; the registry declares "page"_ — a sentence
+ *    a reader can act on rather than a stack trace. Nothing else in this file matters as much as
+ *    that message.
  *
  * `RangeError` (not a bespoke class) because `services/profile.ts` already throws it for exactly
  * this — an id outside a declared set — and one refusal shape is easier to catch than two.
@@ -185,7 +186,7 @@ export function nullablePathArg(
 }
 
 /**
- * A LIST of document paths — the whole selection set (§6.5).
+ * A LIST of document paths — the whole selection set (§6.7).
  *
  * Every element is validated as a path, so a caller that passes one bare path by mistake
  * (`["children", 0]` rather than `[["children", 0]]`) is refused by name instead of selecting two
@@ -218,7 +219,7 @@ export function pathListArg(
 
 // ─── Schema fragments ─────────────────────────────────────────────────────────
 // The readers above are what a `run` body calls; these are the same facts in the form the palette
-// Prompt, the AI tool's parameter list and Lane 1's static check read. The pair used to be kept
+// Prompt, the AI tool's parameter list and the shot-contract check read. The pair used to be kept
 // Adjacent so a reviewer could see that a schema agreed with its coercion; `coerceArgs` below made
 // Them ONE call site, so a schema that disagrees with its coercion is now a refusal rather than a
 // Defect a reviewer has to spot — which is what this module exists to prevent.

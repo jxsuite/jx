@@ -798,8 +798,8 @@ export async function createLibraryEntry(key: string): Promise<string | null> {
  *
  * The active category's directory when it has one — printed on the drop zone, so the destination is
  * visible BEFORE the drop. "All" has none, and rather than falling back to a default nobody chose,
- * it asks. That fallback is exactly the surprise §7 names: the file arrives, the toast says it
- * worked, and it is in a directory the author never picked.
+ * it asks. That fallback is exactly the surprise studio.md §16 exists to refuse: the file arrives,
+ * the toast says it worked, and it is in a directory the author never picked.
  */
 export async function resolveUploadDir(): Promise<string | null> {
   const named = uploadDirForCategory(libraryView.category);

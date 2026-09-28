@@ -1,5 +1,5 @@
 /**
- * Multi-select in the Outline — shift-range and ctrl/cmd-accumulate (§6.5, P5 item 4).
+ * Multi-select in the Outline — shift-range and ctrl/cmd-accumulate (studio-ui-guidelines.md §8.1).
  *
  * The Outline goes first because it is the one surface where "the range between these two" has an
  * unambiguous answer: its rows are a flat, ordered, expansion-aware list, and `data-jx-path` on

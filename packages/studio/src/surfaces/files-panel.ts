@@ -230,7 +230,7 @@ function mappedRow(state: JxScope | undefined): FileRowView | null {
  *
  * Nothing is called on the elements, so the mount is all this has to wait for: the two islands
  * announce themselves through `onNodeCreated` as their nodes are created, which is one
- * `connectedCallback` EARLIER than awaiting the element would be (guidelines §1.1).
+ * `connectedCallback` EARLIER than awaiting the element would be (studio-ui-guidelines.md §1.1).
  */
 export function mountFilesPanelSurface(
   container: HTMLElement,

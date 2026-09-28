@@ -1,5 +1,5 @@
 /**
- * The minimal pane model (§4.1) — panes as the unit of split, focus and zoom; the workspace-level
+ * The minimal pane model (§18.1) — panes as the unit of split, focus and zoom; the workspace-level
  * `activeTabId` / `tabOrder` as DERIVED reads over the focused pane; pin, drag reorder and preview
  * tabs; and the five `pane.*` command records.
  */
@@ -229,7 +229,7 @@ describe("the lifted cap", () => {
    * There is exactly ONE cap left, and it is {@link MAX_PANES}. `SECONDARY_PANE_KINDS` and its five
    * predicates — `paneCanHostKind`, `canOpenInSecondPane`, `hostableKindsOf`,
    * `paneOfTabCanHostMode`, `capToPaneKind` — are deleted, because they existed to keep a second
-   * LIVE canvas host off the screen and workstream 1 made one affordable.
+   * LIVE canvas host off the screen and the render fan-out (§18.2) made one affordable.
    *
    * This is the assertion that the deletion was complete rather than partial: a cap enforced at
    * some of its points and not others is how the two ends of a rule start disagreeing, and this one
@@ -251,7 +251,7 @@ describe("the lifted cap", () => {
     expect(editorKindOf(tab)).toBe("canvas");
   });
 
-  test("two Canvas documents can be open side by side — the point of the workstream", () => {
+  test("two Canvas documents can be open side by side — the point of §18.1", () => {
     openCanvasOnly("left");
     openCanvasOnly("right");
     splitRight();

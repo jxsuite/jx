@@ -7,7 +7,7 @@
  * Spectrum surface in Studio, and the island `studio-ui-guidelines.md` §9.4 describes: the Style
  * tab and the Content tab each drew an empty `[part="control-host"]` and this filled it with lit.
  *
- * §5.6 landed, so the control is `jx-color-field` and both tabs draw it inline in their own
+ * `ui.md` §5.6 landed, so the control is `jx-color-field` and both tabs draw it inline in their own
  * documents. What no kit element can answer is what is LEFT here: which colours this project has
  * given a name to. That is a question about the document being edited — the `--color-*` custom
  * properties of the effective style, site and document together — and it is Studio's to answer.

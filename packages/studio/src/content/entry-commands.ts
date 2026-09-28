@@ -190,9 +190,10 @@ export function contentCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       enablement: () => creatableCollections().length > 0,
       undo: "project",
-      /* No `aiTool`, by §12.4's second deletion rule: `createEntry` awaits `createFileIn`, which
-         awaits the New File prompt for the name; a cancel resolves with nothing thrown. An optional
-         `name` argument that skips the prompt is the way back in, and is a UX call (issue 273). */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: `createEntry` awaits
+         `createFileIn`, which awaits the New File prompt for the name; a cancel resolves with
+         nothing thrown. An optional `name` argument that skips the prompt is the way back in, and
+         is a UX call (issue 273). */
       run: async (_ctx, args) => {
         const names = creatableCollections();
         await createEntry(enumArg("content.newEntry", args, "collection", names));
@@ -210,8 +211,8 @@ export function contentCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface; the model has
-         `open_document`. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: this opens a surface;
+         the model has `open_document`. */
       run: async (_ctx, args) => {
         await openEntryEditor(stringArg("content.openEntry", args, "path"));
       },
@@ -233,12 +234,12 @@ export function contentCommands(): AnyCommand[] {
       when: (ctx) => ctx.document.open,
       enablement: () => activeEntryTab() !== null,
       undo: "document",
-      /* No `aiTool`, by §12.4's fourth deletion rule: the draft flag is ONE FIELD on the entry,
-         and the model already writes fields — `set_property` at the root path for a JSON entry
-         (`mutateDocumentField` is the same `set-key` at `[]`), `write_file` for a frontmatter one.
-         The state is reachable — `open_document` opens a collection file as readily as
-         `content.openEntry` does — so the reason is redundancy, not reach. Six lines to re-enter
-         should a task want the flag by name rather than by key. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's fourth deletion rule: the draft flag is ONE
+         FIELD on the entry, and the model already writes fields — `set_property` at the root path
+         for a JSON entry (`mutateDocumentField` is the same `set-key` at `[]`), `write_file` for a
+         frontmatter one. The state is reachable — `open_document` opens a collection file as
+         readily as `content.openEntry` does — so the reason is redundancy, not reach. Six lines to
+         re-enter should a task want the flag by name rather than by key. */
       run: (_ctx, args) => {
         const tab = activeEntryTab();
         if (!tab) {
@@ -259,7 +260,8 @@ export function contentCommands(): AnyCommand[] {
       group: "2_view",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: a listing filter for a person. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: a listing filter for a
+         person. */
       /*
        * Set the flag, then repaint what reads it.
        *

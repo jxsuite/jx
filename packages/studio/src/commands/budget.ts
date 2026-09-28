@@ -1,26 +1,27 @@
 /**
  * Budget.ts — chrome is earned by frequency and capped by a build check.
  *
- * Plan §2, principle 9: at most five commands may declare `menus: ["commandbar/primary"]`, and at
- * most four tabs per dock. `scripts/check-chrome-budget.ts` fails CI otherwise, which is what turns
- * "we should keep the toolbar small" from a code-review opinion into a build error.
+ * The chrome budget, studio-ui-guidelines.md §12.2: at most five commands may declare `menus:
+ * ["commandbar/primary"]`, and at most four tabs per dock. `scripts/check-chrome-budget.ts` fails
+ * CI otherwise, which is what turns "we should keep the toolbar small" from a code-review opinion
+ * into a build error.
  *
  * The cap is not arbitrary. The toolbar's own CSS already admits it is over budget — a container
  * query at 1140px strips every `.tb-label` rather than conceding there are too many controls — and
  * an unlabelled icon is a control the user has to hover to identify. A hard number is what makes
  * "retire this control, keep its name and its chord" the cheap option.
  *
- * The dock/tab sets used to be a flat declaration — written out from §3.2 because `registerPanel()`
- * did not exist. It does now, so the two `rail/*` rows are a QUERY over `railDeclarations()`
- * ({@link dockTabs}) and adding a ninth rail panel fails this check without anyone remembering to
- * update a list. The two rows that remain declared are the two docks whose tab sets this module
- * cannot see from a bare Bun process: the Inspector's four come from `commands/defaults.ts`'s
- * `INSPECTOR_TABS` (a query in all but name), and the Bottom dock's four are records in
- * `panels/bottom-dock.ts`, which renders lit templates and therefore cannot be imported here.
- * `tests/bottom-dock.test.ts` asserts the declared row and the registered set are the same four
- * titles, so the copy cannot drift — the same bargain `tests/right-panel.test.ts` strikes for the
- * Inspector. Both become real queries the day `scripts/check-chrome-budget.ts` joins them the way
- * it already joins the rail.
+ * The dock/tab sets used to be a flat declaration — written out by hand from the shell redesign's
+ * region table, because `registerPanel()` did not exist. It does now, so the two `rail/*` rows are
+ * a QUERY over `railDeclarations()` ({@link dockTabs}) and adding a ninth rail panel fails this
+ * check without anyone remembering to update a list. The two rows that remain declared are the two
+ * docks whose tab sets this module cannot see from a bare Bun process: the Inspector's four come
+ * from `commands/defaults.ts`'s `INSPECTOR_TABS` (a query in all but name), and the Bottom dock's
+ * four are records in `panels/bottom-dock.ts`, which renders lit templates and therefore cannot be
+ * imported here. `tests/bottom-dock.test.ts` asserts the declared row and the registered set are
+ * the same four titles, so the copy cannot drift — the same bargain `tests/right-panel.test.ts`
+ * strikes for the Inspector. Both become real queries the day `scripts/check-chrome-budget.ts`
+ * joins them the way it already joins the rail.
  */
 
 import { INSPECTOR_TABS } from "./defaults";
@@ -56,7 +57,7 @@ export const CHROME_BUDGET = {
 
 /** One tabbed region and what it currently hosts. */
 export interface DockDeclaration {
-  /** Region key as §3.2 names it. Rail groups count separately — they are separate placements. */
+  /** Region key. Rail groups count separately — they are separate placements. */
   dock: string;
   tabs: readonly string[];
 }

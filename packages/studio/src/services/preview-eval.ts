@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Parent-side live expression preview (spec §19.9).
+ * Parent-side live expression preview (`spec.md` §19.9).
  *
  * Evaluates an expression node against the canvas iframe's last dataScope snapshot
  * (tab.session.canvas.scope) on a structuredClone, so mutating operators are safe — they mutate the

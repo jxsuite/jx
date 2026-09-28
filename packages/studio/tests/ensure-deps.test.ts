@@ -70,7 +70,7 @@ describe("ensureDependenciesInstalled", () => {
     });
     await ensureDependenciesInstalled();
     await flush();
-    // §7.3: the modal's error view is promoted into Problems, so the log is still readable after
+    // §16.4: the modal's error view is promoted into Problems, so the log is still readable after
     // The blocking surface has gone — which it has.
     expect(card()).toBeNull();
     expect(problems[0]?.message).toContain("EACCES denied");

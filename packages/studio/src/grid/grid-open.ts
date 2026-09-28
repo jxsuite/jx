@@ -250,8 +250,8 @@ export async function openGridSourcePicker(): Promise<void> {
  * `collection.editInGrid` used to be a press on the file tree's context-menu row, matched by the
  * item's rendered label ("Edit Collection in Grid") through an XPath — so the shot that used it
  * also had to open the menu first, and renaming the row broke both steps. Naming the COLLECTION
- * instead of the control is what plan §13's R1 asks for: the menu row and the command are the same
- * action, and only one of them is addressable.
+ * instead of the control is what the shot contract's R1 (`scripts/screenshots/README.md`) asks for:
+ * the menu row and the command are the same action, and only one of them is addressable.
  *
  * Both refuse a source the project does not declare. `data.openGrid` is additionally gated on the
  * platform serving the data routes (`capability.dataRows`), so on a build without them the command
@@ -272,8 +272,8 @@ export function gridCommands(): AnyCommand[] {
       group: "5_data",
       requires: "a project that declares content collections",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the grid is
-         not a tool surface. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: this opens a surface
+         for a person; the grid is not a tool surface. */
       run: (_commandCtx, args) => {
         const name = stringArg("collection.editInGrid", args, "name");
         const declared = collectionDirs().map((c) => c.name);
@@ -308,7 +308,8 @@ export function gridCommands(): AnyCommand[] {
       requires: "a platform that serves the data routes",
       when: (ctx) => ctx.project.open,
       enablement: (ctx) => ctx.capability.dataRows,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: this opens a surface
+         for a person. */
       run: (_commandCtx, args) => {
         const table = stringArg("data.openGrid", args, "table");
         openConnectorGrid(optionalStringArg("data.openGrid", args, "connection"), table);

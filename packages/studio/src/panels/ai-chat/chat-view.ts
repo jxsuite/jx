@@ -10,7 +10,7 @@
  * module decides what it says, which is the same split the file always had with a document on the
  * other side of it instead of a lit template.
  *
- * §7.4 (AI honesty) is why three things here are not what they were:
+ * ai.md §3.2 (the accountable turn) is why three things here are not what they were:
  *
  * - **A chip renders its OUTCOME.** It reads `ToolCallRecord.result`, so a chip that said
  *   `update_style: ["children",0]` no longer says exactly as much when the edit was refused as when
@@ -24,8 +24,8 @@
  * - **An error offers Retry.** `chatState.retryLast()` has been implemented, exported and called by
  *   nobody; the error row is where it belongs.
  *
- * §11.1 is why the three buttons here are not callbacks any more. History, New Chat and Retry were
- * closures this module received and invoked, so the capabilities existed ONLY as buttons: the
+ * ai.md §3.0 is why the three buttons here are not callbacks any more. History, New Chat and Retry
+ * were closures this module received and invoked, so the capabilities existed ONLY as buttons: the
  * `Assistant` category held zero records, and nothing could reach them from the palette, a chord,
  * the automation runner or the generated commands sheet. They are {@link projectCommand} now, in
  * the idiom `surfaces/statusbar.ts` established — the record is the definition site, and this file
@@ -196,10 +196,9 @@ export function tokenLabel(tokens: number): string {
  * The sentence behind the token readout.
  *
  * `services/context-manager.ts` has computed both numbers on every turn since it was written, and
- * `chat-state.ts` has stored them — with NO READER anywhere. Plan §11.6: "Context budget manager →
- * tokenCount / contextWarning actually rendered". So a conversation was silently trimmed, the
- * assistant forgot what you told it ten turns ago, and the two numbers that would have explained
- * why sat in the store.
+ * `chat-state.ts` has stored them — with NO READER anywhere. So a conversation was silently
+ * trimmed, the assistant forgot what you told it ten turns ago, and the two numbers that would have
+ * explained why sat in the store.
  *
  * @param {number} tokens
  * @param {boolean} overBudget

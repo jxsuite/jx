@@ -23,9 +23,10 @@ import type { Tab } from "./tabs/tab";
  * different modules, torn down by different events and written into by different continuations —
  * and each of those differences used to justify its own spelling of the same two ideas ("ignore the
  * change my own `setValue` is about to fire" and "cancel the work armed over this buffer"). The
- * function editor got a canceller in P8 and the source view did not, which is exactly how a 600ms
- * timer survived three disposal sites and stayed able to replace a page with an empty parse.
- * `services/monaco-buffer.ts` owns the rule; this is the storage it needs.
+ * function editor got a canceller in the shell redesign's panes phase and the source view did not,
+ * which is exactly how a 600ms timer survived three disposal sites and stayed able to replace a
+ * page with an empty parse. `services/monaco-buffer.ts` owns the rule; this is the storage it
+ * needs.
  */
 /**
  * A comparison's Monaco diff editor.

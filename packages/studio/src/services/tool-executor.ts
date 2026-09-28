@@ -5,8 +5,8 @@
  * `transactDoc()`), feeds the results back as `tool` messages, and re-streams — up to a capped
  * number of rounds (specs/ai.md §3.2 to §3.4).
  *
- * Two §7.4 honesty rules live here rather than in the panel, because they are properties of the RUN
- * and a panel can only render what the run recorded:
+ * Two `ai.md` §3.2 honesty rules live here rather than in the panel, because they are properties of
+ * the RUN and a panel can only render what the run recorded:
  *
  * - **A partial success is not a failure.** Running out of rounds called `setError`, which paints
  *   the turn red and — in `chat-state.ts` — DELETES the streaming message, so a turn that applied
@@ -304,7 +304,7 @@ export async function runAgentLoop({
     /*
      * The round cap. Surface the actual errors so the user knows what went wrong, not just a
      * generic "I couldn't do it" — and, when anything was applied, say it as the ASSISTANT rather
-     * than as a failure (§7.4). A partial success is not a failure.
+     * than as a failure (`ai.md` §3.2). A partial success is not a failure.
      */
     const uniqueErrors = [...new Set(allErrors)];
     const applied =

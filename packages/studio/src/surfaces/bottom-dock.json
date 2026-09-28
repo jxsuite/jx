@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioBottomDock",
-  "$description": "⑪ The Bottom dock's chrome as a Jx document over the kit: a real `tablist` of the dock's tabs, the button that shuts it, and ONE `tabpanel` for whichever tab is showing. Every tab names that one panel — the dock draws the selected tab's body and no other, so there is exactly one panel element and its `aria-labelledby` follows the selection, which is the same shape `surfaces/git-panel.json` uses for its two sub-tabs. It draws no tab BODY: `panels/bottom-dock.ts` keeps the panel registry, the `when` filter, the badge in each tab's label, the Logic reveal and every tab's `afterRender`, and renders the active record into the one empty `[part=\"dock-body\"]` island this document leaves for it (studio-ui-guidelines.md §9.4).",
+  "$description": "The Bottom dock's chrome (studio.md §16.3) as a Jx document over the kit: a real `tablist` of the dock's tabs, the button that shuts it, and ONE `tabpanel` for whichever tab is showing. Every tab names that one panel — the dock draws the selected tab's body and no other, so there is exactly one panel element and its `aria-labelledby` follows the selection, which is the same shape `surfaces/git-panel.json` uses for its two sub-tabs. It draws no tab BODY: `panels/bottom-dock.ts` keeps the panel registry, the `when` filter, the badge in each tab's label, the Logic reveal and every tab's `afterRender`, and renders the active record into the one empty `[part=\"dock-body\"]` island this document leaves for it (studio-ui-guidelines.md §9.4).",
   "tagName": "div",
   "attributes": {
     "part": "bottom-dock"

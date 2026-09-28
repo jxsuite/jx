@@ -42,9 +42,8 @@ export type LogicFieldKind = "control" | "text" | "select";
 /**
  * A bindable value as a first-class field row: a collection, a filter, a sort key, a `$switch`.
  *
- * These were the last second-class rows in the inspector (§12 P5 item 6) — a bare label and a
- * widget, with no set dot, no clear affordance and no error slot. Every field the tab has is one of
- * these now.
+ * These were the last second-class rows in the inspector — a bare label and a widget, with no set
+ * dot, no clear affordance and no error slot. Every field the tab has is one of these now.
  */
 export interface LogicFieldView {
   /** The slot's field key: the repeater's key, and what every callback names. */
@@ -161,7 +160,10 @@ export interface LogicView {
   /** `empty` or `ready` — no document, no selection and a stale one are all the first. */
   state: string;
   emptyMessage: string;
-  /** What the reader can do about it. An empty state that teaches nothing offers none (§11.1). */
+  /**
+   * What the reader can do about it. An empty state that teaches nothing offers none
+   * (studio-ui-guidelines.md §11.1).
+   */
   emptyActions: LogicEmptyAction[];
   hasEmptyActions: boolean;
 

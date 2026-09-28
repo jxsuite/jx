@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /**
- * The pane's chrome as a mounted document — regions ⑦ and ⑩, one mount per pane.
+ * The pane's chrome as a mounted document — the pane context bar and the floating zoom pod, one
+ * mount per pane.
  *
  * `panels/pane-context.ts` is the flow: which editor kinds a document declares, which canvas views
  * it has, whether preview is a flag over one of them, what a lens may never write, which pane's

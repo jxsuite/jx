@@ -4,8 +4,7 @@
  * Reads a site (default: `sites/test-blank/`) from disk and returns the page document, project
  * config, and a component list for `buildSystemPrompt`. Crucially, all file writes (Layer 3
  * component/page creation) are redirected into a **throwaway temp copy** of the site — the real
- * fixture is never mutated, honoring the testing-plan §10.3 guardrail ("never edit the test-blank
- * fixtures").
+ * fixture is never mutated, honoring the evals' guardrail ("never edit the test-blank fixtures").
  *
  * See docs/extending/contributing/ai-evals.md.
  */

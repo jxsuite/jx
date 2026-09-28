@@ -3,6 +3,7 @@ title: "Working in the monorepo"
 description: "Repo layout, running Studio from source, tests, and the conventions the Jx monorepo enforces in CI."
 code:
   - scripts/ci/affected.ts
+  - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
   - scripts/check-schema-freshness.ts
   - scripts/check-electrobun-vendor.ts
@@ -17,6 +18,7 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 - `packages/` holds the `@jxsuite/*` core packages: runtime, compiler, schema, server, studio, desktop, protocol, formulas, collab, ai, markup, import, starters, create.
 - `extensions/` holds the extension packages built on the public hooks: parser (Markdown/CSV formats and content), connector (databases), auth, search, feed.
 - `specs/`: the numbered specifications. These are the living source of truth: consult and update them **before** implementing a feature.
+- `plans/`: transient implementation plans, one per open item in a draft spec. A plan claims the spec sections it closes, names the plans it requires, and is deleted in the pull request that lands it. `plans/README.md` is the contract; `bun run plans:status` prints what is ready to work on, and `bun run plans:check` gates the lot in CI.
 - `sites/`: real sites built with Jx, including jxsuite.com.
 - `docs/`: this documentation (see [Contributing to these docs](/docs/extending/contributing/docs)).
 

@@ -16,7 +16,7 @@
 - Live reload over SSE, driven by a chokidar file watcher
 - `$src`/`$prototype` proxy resolution and `timing: "server"` function execution (`/__jx_resolve__`, `/__jx_server__`)
 - Registry-driven extension server mounts under `/_jx/*` (specs/extensions.md §11)
-- The Studio Backend Protocol under `/__studio/*` — the reference implementation of the `STUDIO_ROUTES` table in `@jxsuite/protocol` (~60 routes), including realtime co-editing over WebSocket
+- The Studio Backend Protocol under `/__studio/*` — the reference implementation of the `STUDIO_ROUTES` table in `@jxsuite/protocol`, including realtime co-editing over WebSocket
 - OXC-powered code services for Studio's function-body editors
 - A CLI entry, `@jxsuite/server/dev`, that `jx dev` spawns
 - A shared loopback project-server factory (`project-server.ts`) reused by the desktop launchers
@@ -173,7 +173,7 @@ The reference implementation of the Studio Backend Protocol, serving Studio's Pl
 
 ### 4.1 Endpoints
 
-The canonical endpoint list is the `STUDIO_ROUTES` table in `@jxsuite/protocol` (`packages/protocol/src/routes.ts`) — roughly 60 routes, each with method, path, core-vs-optional flag, contract summary, and degradation note. A generated reference lives in the docs (`docs/extending/embedding/backend-protocol.md`). This spec no longer enumerates them; the families are:
+The canonical endpoint list is the `STUDIO_ROUTES` table in `@jxsuite/protocol` (`packages/protocol/src/routes.ts`) — one row per route, each with method, path, core-vs-optional flag, contract summary, and degradation note. A generated reference lives in the docs (`docs/extending/embedding/backend-protocol.md`). This spec no longer enumerates them; the families are:
 
 - **Site preview and build** — `POST /__studio/preview` renders the working tree at a route on the live origin (§3.4) and reports whether a client already holding this project's preview took it; `POST|DELETE /__studio/preview/overlay` publishes and retracts one document's unsaved bytes; `POST /__studio/build` runs the compiler and names where the output is browsable
 - **Session / project** — activate, project metadata/probing, site enumeration, project creation, directory location (placing a `showDirectoryPicker()` handle on disk by the id it wrote into a hidden `.jx-loc-id`, so the New Project **Location** field gets a real folder chooser in the browser — specs/desktop.md §8.2.1), starters, AI-guided site import (NDJSON progress stream, whose terminal line carries what the run found)

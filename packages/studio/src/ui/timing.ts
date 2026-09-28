@@ -13,16 +13,17 @@
  */
 
 /**
- * Text/style input debounce — the §4.4 standard. Long enough that a normal typing cadence produces
- * one commit per pause rather than one per keystroke, short enough that the canvas still feels
- * live.
+ * Text/style input debounce — the studio-ui-guidelines.md §4.4 standard. Long enough that a normal
+ * typing cadence produces one commit per pause rather than one per keystroke, short enough that the
+ * canvas still feels live.
  */
 export const INPUT_DEBOUNCE = 400;
 
 /**
- * Code and expression textareas — the §4.4 standard. Longer than {@link INPUT_DEBOUNCE} because
- * each commit re-parses source (or re-lints), and because half-typed code is usually invalid, so
- * committing eagerly just burns work on states the user is about to leave.
+ * Code and expression textareas — the studio-ui-guidelines.md §4.4 standard. Longer than
+ * {@link INPUT_DEBOUNCE} because each commit re-parses source (or re-lints), and because half-typed
+ * code is usually invalid, so committing eagerly just burns work on states the user is about to
+ * leave.
  */
 export const CODE_DEBOUNCE = 500;
 
@@ -38,7 +39,8 @@ export const LIVE_PREVIEW = 350;
  * `STATUS_MESSAGE = 3000` used to live here: how long a transient message stayed in the status bar
  * before it erased itself. It had one reader, `statusMessage`, which is deleted — the bar carries
  * ambient state now and outcomes go to `services/notify.ts`, whose `TOAST_LIFETIME_MS` is per
- * SEVERITY (§7.1 caps the band at 4–8s) rather than one number for a failure and a save alike.
+ * SEVERITY (4s, or 8s for a warning or an error: studio-ui-guidelines.md §13.2) rather than one
+ * number for a failure and a save alike.
  */
 
 /**

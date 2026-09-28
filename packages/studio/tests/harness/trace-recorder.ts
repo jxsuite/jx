@@ -1,5 +1,5 @@
 /**
- * Trace-recorder.ts — what one agent turn DID, recorded as data a golden file can pin (J1.2).
+ * Trace-recorder.ts — what one agent turn DID, recorded as data a golden file can pin.
  *
  * Three instruments, each a forwarding layer over the real object rather than a double of it, so a
  * trace describes the code that ships and not a model of it:

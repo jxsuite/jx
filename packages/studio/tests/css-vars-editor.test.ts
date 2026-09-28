@@ -399,7 +399,7 @@ describe("other section", () => {
   });
 });
 
-// ─── Scheme-aware color tokens (spec §9.5) ───────────────────────────────────
+// ─── Scheme-aware color tokens (spec.md §9.5) ────────────────────────────────
 
 describe("color scheme overrides", () => {
   const SCHEME_MEDIA = { "--dark": "(prefers-color-scheme: dark)" };
@@ -472,7 +472,7 @@ describe("color scheme overrides", () => {
   test("with no scheme declared the section points at Contexts and defines nothing", async () => {
     /* This button used to APPEND `--dark: (prefers-color-scheme: dark)` to $media — the fourth and
        least discoverable of the four places a $media entry could be created, filed under
-       "variables" and never using the word breakpoint. §2 principle 5: this level overrides, the
+       "variables" and never using the word breakpoint. §7.4: this level overrides, the
        Contexts section defines. What replaced it can only NAVIGATE. */
     const { container } = await setup(baseStyle(), { "--sm": "(max-width: 600px)" });
     const colors = groupByTitle(container, "Colors");
@@ -508,7 +508,7 @@ describe("color scheme overrides", () => {
   });
 });
 
-// ─── The add-an-override affordance (plan §9.4) ──────────────────────────────
+// ─── The add-an-override affordance (§7.4) ───────────────────────────────────
 
 describe("adding an override", () => {
   const media = {
@@ -637,7 +637,7 @@ describe("token reference chips", () => {
   });
 });
 
-// ─── A write that fails says so (§9.3) ───────────────────────────────────────
+// ─── A write that fails says so (§17.1) ──────────────────────────────────────
 
 describe("a refused write", () => {
   test("is reported under the title rather than dropped on the floor", async () => {

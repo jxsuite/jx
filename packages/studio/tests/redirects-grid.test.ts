@@ -4,7 +4,7 @@
  * review.
  *
  * `services/notify.ts` is NOT mocked — it is a reactive store with no I/O, and the assertion this
- * workstream owes is which tier each finding landed in, which only the real store can answer.
+ * file owes is which tier each finding landed in, which only the real store can answer.
  */
 import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -36,7 +36,8 @@ void mock.module("../src/ui/layers.js", () => ({
     return { dismiss: () => host.remove(), host, update: () => {} };
   },
   showConfirmDialog: async () => true,
-  /* The tab strip's close is a §8.7 three-way now; this partial mock has to name it. */
+  /* The tab strip's close is a three-way (studio-ui-guidelines.md §8.7) now; this partial mock
+     has to name it. */
   showSaveDiscardDialog: async () => "discard",
   showDialog: (templateFn: (done: (value: unknown) => void) => TemplateResult) =>
     new Promise((resolve) => {
@@ -54,9 +55,9 @@ void mock.module("../src/ui/layers.js", () => ({
         done(null);
       }
     }),
-  /* The paste box IS the prompt dialog with a multiline field (§12.5), so the driver here is the
-     prompt's answer rather than a template to render. What the flow asked for is kept, because
-     "multiline" is the difference between a paste box and a one-line field. */
+  /* The paste box IS the prompt dialog with a multiline field (studio-ui-guidelines.md §12.5), so
+     the driver here is the prompt's answer rather than a template to render. What the flow asked
+     for is kept, because "multiline" is the difference between a paste box and a one-line field. */
   showPromptDialog: async (headline: string, opts: Record<string, unknown> = {}) => {
     lastPrompt = { headline, opts };
     return promptAnswer;
@@ -531,7 +532,7 @@ describe("commands", () => {
       expect(record.when!(openCtx)).toBeTrue();
       expect(record.when!({ project: { open: false } } as never)).toBeFalse();
       // Only the check projects to the assistant: opening the table is a surface for a person, and
-      // Importing waits on a paste dialog (§12.4's first and second deletion rules).
+      // Importing waits on a paste dialog (rules 1 and 2 of studio-ui-guidelines.md §12.4).
       expect([record.id, record.aiTool?.name]).toEqual([
         record.id,
         record.id === "redirects.validate" ? "validate_redirects" : undefined,

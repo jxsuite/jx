@@ -72,6 +72,8 @@ Any additional frontmatter keys are passed through to the document.
 
 ### 3.1 Detection
 
+> **Status: Partial.** Detection ships: `isJxMarkdown` (`extensions/parser/src/transpile.ts`) performs the check and does not gate `transpileJxMarkdown`, and Studio applies the same rule through the `$studio.documentMode.componentWhen` hint in `extensions/parser/src/Markdown.class.json`. The `{ tagName: "div", $id: "content" }` wrapper does not exist: `splitFormatDocument` (`packages/studio/src/format/format-host.ts`) gives a content document a tagName-less root holding `children` plus any `state` and `imports`, and moves every other frontmatter key into a separate frontmatter object.
+
 A `.md` file is recognized as a Jx component (vs content markdown) when its frontmatter contains a `tagName` key whose value includes a hyphen. The `isJxMarkdown(source)` utility performs this check. However, detection does **not** gate the pipeline — all markdown goes through `transpileJxMarkdown()`. Content documents (no `tagName`) produce a Jx element tree that is wrapped in a `{ tagName: "div", $id: "content" }` root by the studio. This enables gradual enhancement: any `.md` file can add Jx schema at any point without changing how it is processed.
 
 ## 4. Directive Syntax
@@ -206,6 +208,8 @@ This expands to:
 
 ### 6.5 Prototype Directives (`:::Array`)
 
+> **Status: Partial.** The directive ships: `prototypeDirectiveToJx` (`extensions/parser/src/transpile.ts`) restores `$prototype`, expands the attributes and takes the first element child as `map`, `prototypeToDirective` (`extensions/parser/src/serialize.ts`) writes it back, and the older dot-path form still parses. The worked example does not produce the JSON shown: the `:li{…}` line parses as a `p` wrapping the `li`, and `children.0` expands to an object keyed `"0"`. The round trip is not lossless for a template markdown can only write inside a parent: an `li` map serializes as a bare `- …` list item and re-parses as `ul > li > p`. A repeater among a list's items, the shape Studio's Convert to Repeater leaves when it converts a list item, fares worse: it is written between the `- …` items and re-parses outside the list, as its sibling.
+
 An array pseudo-element (repeater) has no `tagName`, so it serializes as a directive **named after its `$prototype`** — e.g. `:::Array`. The directive's attributes carry `items`/`filter`/`sort` (dot-path encoded), and its nested block content is the `map` template. On parse, the synthetic tagName is dropped and `$prototype` is restored. Because it is an ordinary block directive, a repeater can sit among sibling blocks:
 
 ```markdown
@@ -229,6 +233,8 @@ Expands to:
 This is the canonical, round-trippable encoding. The older dot-path form (`children.prototype="Array" …` on the parent directive) is still accepted on parse for backward compatibility.
 
 ### 6.6 HTML Attributes
+
+> **Status: Partial.** `aria-*`, `data-*` and `slot` reach `attributes`, and the example below is what ships, but the rest of the routing diverges from the text. `directiveToJx` (`extensions/parser/src/transpile.ts`) keeps only `style`, `children`, `textContent`, `innerHTML`, `id`, `className`, `hidden`, `tabIndex`, `lang`, `dir`, `$`-keys and `on*` keys at element level on a standard element, and only `style`, `children`, `textContent`, `innerHTML` and `$`-keys on a custom element; every other key (`type`, `placeholder`, `src`, `href`, and so on) becomes an HTML attribute. On a custom element this sends `className` and `on*` keys to `attributes` as well, where neither the runtime's `applyAttributes` nor the compiler's `buildAttrs` maps them back: the class is written as a literal `className` attribute and the handler is never bound.
 
 Attributes matching `aria-*`, `data-*`, or `slot` are routed to the `attributes` sub-object. All other attributes become top-level DOM properties.
 
@@ -292,6 +298,8 @@ style:
 
 ### 7.3 Pseudo-Classes in Style Attributes
 
+> **Status: Partial.** The mapping ships as listed (`CSS_PSEUDO_NAMES`, `CSS_PSEUDO_ELEMENTS` and `applyStyleKeyMapping` in `extensions/parser/src/transpile.ts`), but `placeholder` and `selection` are CSS pseudo-elements that have never had a one-colon form, and the transpiler gives them one colon: `style.placeholder.color` becomes `:placeholder`, `buildStyleRules` (`packages/runtime/src/css.ts`, which the compiler shares) emits `#id:placeholder`, and the browser discards the rule.
+
 The `:` character cannot start a remark-directive attribute key. CSS pseudo-class names are written **without** the `:` prefix inside `style.*` attributes, and the transpiler adds it:
 
 ```markdown
@@ -349,6 +357,8 @@ Arrays (mapped lists) are encoded using `children.*` dot-path attributes on the 
 The `children.*` attributes expand to a `children` descriptor object (not an array). The transpiler detects this and preserves the object form, skipping the normal content-children array.
 
 ## 9. Standard Markdown Mapping
+
+> **Status: Partial.** The table and build-time highlighting ship (`JX_TAG_MAP` and `mdastNodeToJx` in `extensions/parser/src/transpile.ts`, `extensions/parser/src/highlight.ts`), but a reference-style link or image (`[text][label]`, `![alt][label]` with a `[label]: url` definition) is dropped together with its text, and a GFM footnote with its definition. Two constructs the table does not list are mapped rather than dropped: raw HTML goes through `htmlToJx` and a hard line break becomes `br`. §13's CommonMark note says §10 names the unmapped constructs and that each is dropped; §10 names none of them.
 
 Standard markdown nodes map to Jx elements:
 
@@ -417,6 +427,8 @@ Inverse of `expandDotPaths` — flattens a nested object to dot-path attributes.
 Inverse of `expandStylePaths` — strips `:` and `@` prefixes before flattening.
 
 ### 12.8 `serializeJxMarkdown(doc: object, options?): string`
+
+> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. A custom element's `className` and `on*`, and a standard element's `href`, `title` or `value`, come back under `attributes` (§6.6). An `li` or table-part `map` template, or a repeater among a list's items, does not come back as written (§6.5). The `popover-open`, `open`, `modal` and `backdrop` style keys are written with their colons (`style.:popover-open.opacity`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
 
 Converts a Jx JSON document back to markdown source (`@jxsuite/parser/serialize`). Two modes:
 

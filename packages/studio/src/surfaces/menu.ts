@@ -1,11 +1,11 @@
 /**
  * The menu surface: a `jx-menu` of command-record projections, mounted into a popover layer slot.
  *
- * This is the first Studio surface rendered as a Jx document (specs/studio-ui-guidelines.md §6,
- * §9.3): `menu.json` is the markup, ARIA and style, and this adapter is the decisions — which
- * records, what they print, where the panel opens, what runs on select. The kit owns the menu
- * contract (roving focus, typeahead, submenus, light dismissal, Escape) through the platform's own
- * popover, so nothing here binds a key or a document listener.
+ * This is the first Studio surface rendered as a Jx document (studio-ui-guidelines.md §6, §9.3):
+ * `menu.json` is the markup, ARIA and style, and this adapter is the decisions — which records,
+ * what they print, where the panel opens, what runs on select. The kit owns the menu contract
+ * (roving focus, typeahead, submenus, light dismissal, Escape) through the platform's own popover,
+ * so nothing here binds a key or a document listener.
  *
  * Every menu opens in a `getLayerSlot("popover", id)` slot, which is what carries the
  * `overlay.menu:<id>` region the screenshot pipeline addresses, and is torn down when the popover

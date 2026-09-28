@@ -254,10 +254,11 @@ describe("layers after init", () => {
       expect(await promise).toBe("seed");
     });
 
-    /* A paste box is this same flow with a taller field, not a second dialog (§12.5) — which is
-       what the redirects import needed. Two things have to change together for that to be usable:
-       the control becomes a `<textarea>`, and Enter stops confirming, because Enter on the second
-       line of a pasted `_redirects` file would submit the dialog mid-paste. */
+    /* A paste box is this same flow with a taller field, not a second dialog
+       (studio-ui-guidelines.md §12.5) — which is what the redirects import needed. Two things have
+       to change together for that to be usable: the control becomes a `<textarea>`, and Enter stops
+       confirming, because Enter on the second line of a pasted `_redirects` file would submit the
+       dialog mid-paste. */
     test("a multiline prompt is a textarea, and Enter in it is a newline rather than a confirm", async () => {
       const promise = showPromptDialog("Paste", { multiline: true, mono: true, rows: "10" });
       const host = await dialog();

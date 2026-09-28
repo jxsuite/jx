@@ -166,7 +166,8 @@ export function mountMediaSurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all there is to wait for: the DOCUMENT is
      what this surface renders, and the kit's Copy button settles its own template one
-     `connectedCallback` later without anybody asking it to (§1.1, "await the element"). */
+     `connectedCallback` later without anybody asking it to (studio-ui-guidelines.md §1.1, "await
+     the element"). */
   const ready = mountSurface("media-pane", scope, host).then((surface) => {
     if (disposed) {
       surface.dispose();

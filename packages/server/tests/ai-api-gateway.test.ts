@@ -1,5 +1,5 @@
 /**
- * The AI proxy runs `@jxsuite/ai/gateway` (harness slice J1.17), and this suite holds the one place
+ * The AI proxy runs `@jxsuite/ai/gateway` (specs/ai.md §2.4), and this suite holds the one place
  * where the two packages carry the same table twice.
  *
  * The frames themselves are proven by `ai-upstream-fixtures.test.ts`, whose goldens were recorded

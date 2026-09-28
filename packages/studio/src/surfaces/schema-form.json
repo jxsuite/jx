@@ -151,7 +151,7 @@
                 },
                 "cases": {
                   "true": {
-                    "$description": "The Value Source chip (§6.3): what produces this value, in the same four words every other bindable position in Studio uses. It opens the rung picker rather than cycling, so any rung the position permits is one action away. Drawn only where the host named somewhere a value could come from — a settings form that names none edits fixed values and shows no chip.",
+                    "$description": "The Value Source chip (§6.6): what produces this value, in the same four words every other bindable position in Studio uses. It opens the rung picker rather than cycling, so any rung the position permits is one action away. Drawn only where the host named somewhere a value could come from — a settings form that names none edits fixed values and shows no chip.",
                     "tagName": "jx-action-button",
                     "attributes": {
                       "part": "source",
@@ -966,7 +966,7 @@
             },
             "cases": {
               "true": {
-                "$description": "§7.1's inline tier: why this value is refused, said AT the control that refuses it and for exactly as long as the value stays bad. `role=\"alert\"` so it is announced when it appears, and a repeat counter from two up — “it refused me again” is otherwise indistinguishable from “the field is still red from last time”.",
+                "$description": "§16.1's inline tier: why this value is refused, said AT the control that refuses it and for exactly as long as the value stays bad. `role=\"alert\"` so it is announced when it appears, and a repeat counter from two up — “it refused me again” is otherwise indistinguishable from “the field is still red from last time”.",
                 "tagName": "p",
                 "attributes": {
                   "part": "field-error",

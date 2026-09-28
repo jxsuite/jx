@@ -13,7 +13,7 @@
 //   - Body image refs must be page-relative paths into docs/images/ (so the page
 //     Renders in any markdown editor), be produced by the screenshots manifest,
 //     Exist on disk, be NAMED BY scripts/screenshots/capture.lock.json, and never
-//     Belong to a quarantined shot (UX-REDESIGN-PLAN §13.5)
+//     Belong to a quarantined shot (scripts/screenshots/README.md)
 //   - `generated: true` pages must carry the generator banner
 //   - Nav bijection: every docs page appears exactly once in docs/nav.json and
 //     Every nav path has a page
@@ -233,7 +233,7 @@ for (const file of docFiles) {
     }
     // A page may only reference an image the capture lock names. `existsSync` says a file is
     // There; the lock says the pipeline PRODUCED it — which is the difference between a
-    // Screenshot and a picture somebody dropped in the directory (UX-REDESIGN-PLAN §13.5).
+    // Screenshot and a picture somebody dropped in the directory (scripts/screenshots/README.md).
     if (lock && !lockedImages.has(relative(ROOT, resolved).replaceAll("\\", "/"))) {
       fail(
         file,
@@ -324,7 +324,7 @@ if (warnings.length > 0) {
 }
 
 // ─── The capture lock ────────────────────────────────────────────────────────
-// Two page-context assertions §13.5 puts here rather than in `docs:images:check`, because
+// Two page-context assertions live here rather than in `docs:images:check`, because
 // "docs/studio/publish.md illustrates itself with a quarantined shot" is only actionable if it
 // Names the page. The byte-level half — every PNG in docs/images/ is one the pipeline produced,
 // And every shot definition is current — is `bun run docs:images:check`.

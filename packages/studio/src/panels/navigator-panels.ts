@@ -16,11 +16,11 @@
  * advertisement, in the shell's own furniture, for a place to find things wrong with the product.
  * The count reaches the user from the status bar the moment there is one.
  *
- * **Search is declared and hidden.** It is a surface a later phase builds (P3.3's palette index),
- * and it holds a rail slot §3.2 has already spent. A `when: () => false` record is the honest way
- * to say "this exists in the design and not yet in the app": the id is reserved, the budget already
- * counts it, and the day it ships the only edit is deleting one predicate — as opposed to a stub
- * button that lies to whoever clicks it.
+ * **Search is declared and hidden.** It is a surface a later phase builds (the palette's project
+ * index), and it holds a slot in the rail's four-tab budget (`studio-ui-guidelines.md` §12.2). A
+ * `when: () => false` record is the honest way to say "this exists in the design and not yet in the
+ * app": the id is reserved, the budget already counts it, and the day it ships the only edit is
+ * deleting one predicate — as opposed to a stub button that lies to whoever clicks it.
  */
 
 import { registerFilesPanel } from "../files/files";
@@ -79,11 +79,11 @@ export function registerNavigatorPanels(): void {
   // ── Off-rail: reachable by command and palette, no rail button ──────────────
   registerInsertPanel();
 
-  // ── The Bottom dock's tabs (§3.2 ⑪): Problems · Logic · Activity ────────────
+  // ── The Bottom dock's tabs (§16.3): Problems · Logic · Activity ──────────────
   // Composed here, in the one place panel records are gathered, so the shell has ONE composition
   // Site rather than one per dock. Importing the module is also what attaches the dock to the
-  // Shell's mount lifecycle — see its `registerShellSurface` call. Problems arrives with them and
-  // Still takes the rail's fourth PROJECT slot, because the rail groups by level, not by dock.
+  // Shell's mount lifecycle — see its `registerShellSurface` call. Problems arrives with them and,
+  // Like every Bottom-dock tab, has no rail button (§16.3).
   registerBottomPanels();
 }
 

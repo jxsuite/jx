@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /**
- * The Command Bar — region ① of studio-ui-guidelines §6, rendered FROM the registry, as a document.
+ * The Command Bar — the `commandbar/*` placements of `studio-ui-guidelines.md` §12.1, rendered FROM
+ * the registry, as a document.
  *
  * `surfaces/commandbar.json` is the band; this module is its adapter. Every control in the band is
  * a command, so what the document is handed is a PROJECTION of the registry rather than a list of
@@ -8,24 +9,24 @@
  * `scripts/check-chrome-budget.ts`), `docks` is the three dock records with the shell's state
  * beside them, `layouts` is the project's own layout record, and the ⬢ Studio menu is
  * `forPlacement("commandbar/overflow")` opened on the `menu` surface. With no project open the same
- * document renders; the records' own `when` clauses empty it (§2 principle 4: enablement is a
- * predicate with a sentence, never a second template).
+ * document renders; the records' own `when` clauses empty it (§13.1: enablement is a predicate with
+ * a sentence, never a second template).
  *
  * What is decided here, and nowhere in the document:
  *
  * - {@link commandTooltip}: the title, plus its chord formatted for THIS platform by `keymap.format`,
  *   or plus the `requires` sentence when the record is off — so no control is ever permanently dead
  *   with no explanation.
- * - The **Command Center pill** (①a) is the app's address bar: `◈ project › document › selection`,
+ * - The **Command Center pill** is the app's address bar: `◈ project › document › selection`,
  *   right-aligned ⌘K, each segment opening the palette pre-scoped. It gives Studio a persistent
  *   project name — the desktop titlebar is `titleBarStyle:"hidden"`.
  * - The window controls, which are the one thing in the band that is not an action, and whose ORDER
  *   is the platform's.
  *
- * **Retired, with a name, a chord and a residue** (§2 principle 9): Open Project + New Project +
- * recents → the pill and `Project: Open Recent…`; `Manage` → `File: Browse Library`; `Publish` →
- * the `Publish:` family; `Sync Project` → Source Control. The five-mode switcher lives in the pane
- * context bar and is reachable as `View: Set Canvas Mode` in the palette.
+ * **Retired, with a name, a chord and a residue** (`studio-ui-guidelines.md` §12.2): Open Project +
+ * New Project + recents → the pill and `Project: Open Recent…`; `Manage` → `File: Browse Library`;
+ * `Publish` → the `Publish:` family; `Sync Project` → Source Control. The five-mode switcher lives
+ * in the pane context bar and is reachable as `View: Set Canvas Mode` in the palette.
  *
  * @docs studio/interface
  */
@@ -553,7 +554,7 @@ function windowControls(): WindowControls | undefined {
 
 /**
  * `◈ project › document › selection`: four facts about where you are, in non-collapsible chrome
- * (§4.4).
+ * (the Command Center pill, `docs/studio/interface.md`).
  */
 function projectSegments(tab: Tab | null): SegmentProjection[] {
   const segments: SegmentProjection[] = [
@@ -837,7 +838,7 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}): void {
         void tab.doc.dirty;
         void tab.doc.mode;
         // The whole SET, joined — a bare property read would not re-trigger when the selection
-        // Changes WITHIN the array, and §6.5's helpers always replace it but nothing enforces that.
+        // Changes WITHIN the array, and §6.7's helpers always replace it but nothing enforces that.
         void tab.session.selection.map((path) => path.join("/")).join("|");
         void tab.session.ui.canvasMode;
         // Open in Browser needs a value for every route param before it can resolve a page.

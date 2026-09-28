@@ -13,7 +13,7 @@
  * out of the field a reader is typing in, and that is what the lit panel needed the dock's focus
  * guard for.
  *
- * Repeater, Switch and the custom-element contract sections moved to the Logic tab in P5
+ * Repeater, Switch and the custom-element contract sections moved to the Logic tab (§6)
  * (`tests/events-panel.test.ts`); the Page section moved to the Document Header card
  * (`tests/head-panel.test.ts`). What is tested here is what Content still draws.
  */
@@ -163,7 +163,7 @@ function options(el: Element): (string | null)[] {
   return [...el.querySelectorAll("option")].map((o) => o.getAttribute("value"));
 }
 
-/** The provenance chip on a row, or null where §6.2 says a row draws none. */
+/** The provenance chip on a row, or null where §6.7 says a row draws none. */
 function chip(root: Element, prop: string): HTMLElement | null {
   return row(root, prop).querySelector('[part="chip"]');
 }
@@ -191,7 +191,7 @@ async function openSourceMenu(root: Element, prop: string): Promise<HTMLElement>
 }
 
 /**
- * Pick a rung on a row's Value Source control (§6.3's ladder).
+ * Pick a rung on a row's Value Source control (§6.6's ladder).
  *
  * The chip opens a picker rather than cycling, so a test names the rung it wants instead of
  * counting clicks — which is the behaviour change that made "$ref → literal must pass through ${}"
@@ -263,8 +263,8 @@ describe("drafts belong to a node, not to a field name", () => {
    * `ui/field-input.ts`'s draft map is module-global and these three rows keyed it by field name
    * alone (`"prop:className"`), so every element shared one slot per field. Type a class name,
    * click a sibling before blurring, and the sibling's Class row showed your text — and blurring it
-   * there committed to the WRONG element. Plan §11.4: "drafts keyed by node path (today all
-   * elements share one draft slot per field)".
+   * there committed to the WRONG element. §6.1 says so now: a draft belongs to a node, keyed by
+   * node path AND field name.
    */
   test("a draft on one element does not appear on the next", async () => {
     const tab = openDoc(
@@ -834,7 +834,7 @@ describe("component props section", () => {
   });
 });
 
-// ─── The tab re-split (§6.5) ──────────────────────────────────────────────────
+// ─── The tab re-split (§6) ────────────────────────────────────────────────────
 
 describe("what Content no longer draws", () => {
   test("a repeating list says where its wiring lives and offers the tab that has it", async () => {
@@ -908,7 +908,7 @@ describe("what Content no longer draws", () => {
   });
 });
 
-// ─── Provenance chips on component props (§6.2) ───────────────────────────────
+// ─── Provenance chips on component props (§6.7) ───────────────────────────────
 
 describe("component prop provenance", () => {
   function registerDefaulted() {
@@ -962,9 +962,9 @@ describe("component prop provenance", () => {
     expect(bound.textContent!.trim()).toBe("username");
   });
 
-  test("…and the chip OPENS it — §6.2 says a bound chip's click opens the source", async () => {
+  test("…and the chip OPENS it — §6.7 says a bound chip's click opens the source", async () => {
     /*
-     * The Style tab's bound chip has jumped to the Data panel since P5. The Content tab's two bound
+     * The Style tab's bound chip has long jumped to the Data panel. The Content tab's two bound
      * branches returned a `donor` and a `title` and no `onClick`, so the chip was a handler-less
      * span: the same promise, in the same table, kept on one tab and printed on the other.
      */
