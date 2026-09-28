@@ -1,7 +1,6 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 import { Electroview } from "electrobun/view";
-import { html, render as litRender } from "lit-html";
 import { streamImport } from "@jxsuite/studio/import-client";
 import { base64ToBytes, toBase64 } from "@jxsuite/studio/base64";
 import type { RecentProjectEntry, StudioRPC } from "./rpc-schema";
@@ -776,35 +775,44 @@ export function createDesktopPlatform() {
  * that one is silent because `services/notify.ts` announces every record through its own announcer,
  * and this notice is not one of those records, so this host is the only thing that can speak it.
  *
+ * Built with plain DOM calls rather than a template library: this is the PAL-init bundle, built by
+ * its own `bun build` pass independent of the studio bundle (`init-bundle.ts`), so any templating
+ * runtime it imported would load a second time in the same window as the studio bundle's own copy —
+ * which is exactly what made Lit report itself loaded twice here before this was rewritten.
+ *
  * @param version The version that has been downloaded and is waiting for a restart.
  * @param rpc The webview's RPC handle, for the restart itself.
  */
 function showUpdateToast(version: string, rpc: { request: { updaterApplyUpdate: () => unknown } }) {
   const container = document.createElement("div");
   container.className = "update-toast-container";
+
+  const button = document.createElement("jx-button");
+  button.setAttribute("slot", "action");
+  button.setAttribute("variant", "accent");
+  button.setAttribute("size", "sm");
+  button.textContent = "Restart to update";
+  button.addEventListener("click", () => rpc.request.updaterApplyUpdate());
+
+  const toast = document.createElement("jx-toast");
+  toast.setAttribute("open", "");
+  toast.setAttribute("variant", "info");
+  toast.setAttribute("timeout", "0");
+  toast.setAttribute("dismiss-label", "Dismiss update notice");
+  toast.append(`Version ${version} is ready`, button);
+
+  const host = document.createElement("jx-toast-host");
+  host.setAttribute("label", "Software updates");
+  host.setAttribute("live", "polite");
+  host.setAttribute("hotkey", "");
   /* A toast that retires itself takes its wrapper with it. The element writes its own `open` back
      to false when the reader dismisses it or uses the recovery control, and the wrapper would
      otherwise sit in the body for the rest of the session — one more per update message. `close` is
      dispatched only when the ELEMENT decided (ui.md §5.2), so this can never answer a removal this
      code performed itself. */
-  const onClose = () => container.remove();
-  litRender(
-    html`
-      <jx-toast-host label="Software updates" live="polite" hotkey="" @close=${onClose}>
-        <jx-toast open variant="info" timeout="0" dismiss-label="Dismiss update notice">
-          Version ${version} is ready
-          <jx-button
-            slot="action"
-            variant="accent"
-            size="sm"
-            @click=${() => rpc.request.updaterApplyUpdate()}
-          >
-            Restart to update
-          </jx-button>
-        </jx-toast>
-      </jx-toast-host>
-    `,
-    container,
-  );
+  host.addEventListener("close", () => container.remove());
+  host.append(toast);
+
+  container.append(host);
   document.body.append(container);
 }

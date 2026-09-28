@@ -148,7 +148,7 @@ The desktop app does this with a short init bundle loaded ahead of the Studio bu
 ```ts
 // packages/desktop/src/init.ts, loaded before studio.js
 import { bootLauncher } from "./boot"; // first: publishes globalThis.__jxLauncher
-import { hydrateGithubToken } from "@jxsuite/studio/github-auth";
+import { hydrateGithubToken } from "@jxsuite/studio/github-auth-status";
 import { createDesktopPlatform } from "./platform";
 
 await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "electrobun" });
