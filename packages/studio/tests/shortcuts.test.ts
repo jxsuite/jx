@@ -281,6 +281,34 @@ function wheel(target: EventTarget, init: WheelEventInit = {}) {
   return e;
 }
 
+/**
+ * A scroll container as the DOM reports one. Happy-dom performs no layout, so `scrollHeight` and
+ * `clientHeight` are stubs — which is exactly what the wheel guard reads before it asks for a
+ * computed `overflow`.
+ */
+function scrollBox(
+  size: { scrollHeight: number; clientHeight: number; scrollTop: number },
+  part?: string,
+): HTMLElement {
+  const el = document.createElement("div");
+  if (part) {
+    el.setAttribute("part", part);
+  }
+  el.style.overflowY = "auto";
+  Object.defineProperty(el, "scrollHeight", { value: size.scrollHeight });
+  Object.defineProperty(el, "clientHeight", { value: size.clientHeight });
+  el.scrollTop = size.scrollTop;
+  return el;
+}
+
+/** The stage's page scroller, by the `part` the stage document draws it with. */
+function editScroller(size?: { scrollHeight: number; clientHeight: number }): HTMLElement {
+  return scrollBox(
+    { clientHeight: size?.clientHeight ?? 0, scrollHeight: size?.scrollHeight ?? 0, scrollTop: 0 },
+    "edit-canvas",
+  );
+}
+
 /** Focus a text control so the context reports a live caret, as the old target test did. */
 function focusTextField(tag = "input"): HTMLElement {
   const el = document.createElement(tag);
@@ -369,6 +397,80 @@ describe("wheel handler", () => {
   test("edit mode with no content-edit-canvas does not throw", () => {
     canvasMode = "edit";
     expect(() => wheel(wrapEl(), { deltaY: 50 })).not.toThrow();
+  });
+
+  /* The Document Header band stands in the same stage cell as the page's scroller and scrolls
+     ITSELF, capped. Forwarding its wheel to the page cancelled the band's own native scroll — a form
+     longer than the cap could not be wheeled at all, and the page moved underneath it instead. */
+  test("a wheel over the docked Document Header band is left to the band", () => {
+    canvasMode = "edit";
+    const sc = editScroller();
+    // Drawn with its own part, as the stage draws it — though the guard reads whether the box can
+    // Scroll, not which part it is.
+    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 0 }, "doc-header");
+    const field = document.createElement("input");
+    band.append(field);
+    wrapEl().append(band, sc);
+    const e = wheel(field, { deltaY: 120 });
+    expect(e.defaultPrevented).toBe(false);
+    expect(sc.scrollTop).toBe(0);
+    band.remove();
+    sc.remove();
+  });
+
+  /* …and only while it has room. At the end of its range the band answers nothing, so the page takes
+     the wheel — which is the chaining the browser would do, and the reason the stage keeps claiming
+     the event at all (native chaining out of the scroller reaches the shell). */
+  test("a band at the end of its range hands the wheel back to the page", () => {
+    canvasMode = "edit";
+    const sc = editScroller();
+    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 500 }, "doc-header");
+    const field = document.createElement("input");
+    band.append(field);
+    wrapEl().append(band, sc);
+    const e = wheel(field, { deltaY: 120 });
+    expect(e.defaultPrevented).toBe(true);
+    expect(sc.scrollTop).toBe(120);
+    // Back UP is still the band's, from the same position.
+    sc.scrollTop = 0;
+    const up = wheel(field, { deltaY: -120 });
+    expect(up.defaultPrevented).toBe(false);
+    expect(sc.scrollTop).toBe(0);
+    band.remove();
+    sc.remove();
+  });
+
+  /* Both axes, because a trackpad sends either: a sideways swipe over a box that scrolls sideways is
+     that box's, and the page's own scroller clips horizontally anyway. */
+  test("a sideways swipe over a horizontally scrolling box inside the stage is left alone", () => {
+    canvasMode = "edit";
+    const sc = editScroller();
+    const strip = document.createElement("div");
+    strip.style.overflowX = "auto";
+    Object.defineProperty(strip, "scrollWidth", { value: 900 });
+    Object.defineProperty(strip, "clientWidth", { value: 400 });
+    strip.scrollLeft = 0;
+    wrapEl().append(strip, sc);
+    const e = wheel(strip, { deltaX: 60, deltaY: 0 });
+    expect(e.defaultPrevented).toBe(false);
+    expect(sc.scrollLeft).toBe(0);
+    strip.remove();
+    sc.remove();
+  });
+
+  /* The page's own scroller is NOT a box that claims the wheel: it is the box the stage scrolls, so
+     a wheel over the page content stays forwarded. Left to the browser it would scroll natively and
+     then chain out of the cell into the shell at the end of the page. */
+  test("a wheel over the page's own scroller is still forwarded to it", () => {
+    canvasMode = "edit";
+    const sc = editScroller({ clientHeight: 600, scrollHeight: 2000 });
+    const page = document.createElement("div");
+    sc.append(page);
+    wrapEl().append(sc);
+    const e = wheel(page, { deltaY: 80 });
+    expect(e.defaultPrevented).toBe(true);
+    expect(sc.scrollTop).toBe(80);
+    sc.remove();
   });
 
   /* The grid could not be wheel-scrolled at all: the pan branch preventDefaulted over a Tabulator

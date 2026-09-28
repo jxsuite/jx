@@ -38,7 +38,8 @@
       "flexDirection": "column",
       "gap": "var(--jx-space-4)"
     },
-    "& [part=\"icon\"]": {
+    "& > [part=\"content\"] > [part=\"icon\"]": {
+      "$description": "The child, not any descendant: `jx-button` renders its own `<span part=\"icon\">` into light DOM unconditionally, so a bare `[part=\"icon\"]` reached the Reload and Copy buttons too. `--jx-icon-size` is a custom property and `color` inherits, so both passed through that span's `display: contents` and drew the Copy button's clipboard glyph at 32px in warning amber, stretching the actions row with it. This is the collision `[part=\"error\"]` taught: a part name is shared with the kit unless a selector says otherwise.",
       "--jx-icon-size": "2rem",
       "color": "var(--jx-warning)"
     },

@@ -85,7 +85,8 @@
       "maxHeight": "60vh",
       "overflowY": "auto"
     },
-    "& [part=\"title\"]": {
+    "& [part=\"section\"] > [part=\"title\"]": {
+      "$description": "The sheet's own heading, and a CHILD selector because the Assistant section mounts other documents into this one's light DOM: the credentials form draws a `[part=\"title\"]` of its own (\"AI provider key\"), and as a bare descendant this rule set the section heading's size on it. A host styles the boxes it draws, never a name its guest also uses — `tests/surface-part-names.test.ts` holds the island hosts to that.",
       "margin": "0",
       "fontSize": "var(--jx-text-lg)",
       "color": "var(--fg)"
@@ -121,8 +122,10 @@
       "gap": "var(--jx-space-2)"
     },
     "& [part=\"account\"]": {
+      "$description": "A wrapping row (studio-ui-guidelines.md §4.6): the sentence and the actions share one line while the sentence keeps its basis, and the actions drop under it when they would not. A brokered Cloudflare row carries two actions (Reconnect or Choose account, beside Disconnect), and on one line they squeezed the sentence into a column about 114px wide at the default width. Every single-action row measures exactly what it did before the wrap existed. `align-items: flex-start`, not `center`, because the sentence's height is not the row's: the AI row's endpoint wraps to five lines, and centred that put Disconnect level with the fourth line of a URL while the heading it acts on sat at the top, so the card read as two unrelated things. Pinned to the start, the button is always beside its label.",
       "display": "flex",
-      "alignItems": "center",
+      "flexWrap": "wrap",
+      "alignItems": "flex-start",
       "justifyContent": "space-between",
       "gap": "var(--jx-space-4)",
       "padding": "var(--jx-space-3)",
@@ -130,8 +133,9 @@
       "borderRadius": "var(--radius)"
     },
     "& [part=\"account-text\"]": {
-      "$description": "`min-width: 0` so a long detail sentence ellipses inside the row rather than pushing the row's own buttons off the end of it.",
+      "$description": "The wrap threshold is this basis, not a width: 120px of sentence is the least a row keeps before its actions take a line of their own. Keep it well under 200px, or a single-action row at the default sheet width wraps at rest. `min-width: 0` lets the column shrink below its content, and what then fits the detail into it is the detail's own `overflow-wrap`. Nothing here ellipsizes: the detail is the only place the row names its endpoint or account, so a truncated one would hide exactly the part that tells two of them apart.",
       "display": "flex",
+      "flex": "1 1 120px",
       "flexDirection": "column",
       "gap": "var(--jx-space-1)",
       "minWidth": "0"
@@ -140,19 +144,25 @@
       "color": "var(--fg)"
     },
     "& [part=\"account-detail\"]": {
+      "$description": "`overflow-wrap: anywhere` because the detail carries author-supplied strings with no break opportunity in them: the AI row's endpoint URL (a Cloudflare AI Gateway URL is a 32-hex account id between slashes) and the local Cloudflare row's account id. Without it one of them measured 419px in a 223px column, ran under Disconnect, past the card's border, and scrolled the whole section sideways. `anywhere` rather than `break-word`, because only `anywhere` lowers the min-content the row is sized from; not `word-break: break-all`, which would split every ordinary word in the sentences around it. It sits here rather than on the column because the label is a fixed service name and only the detail is unbounded.",
       "fontSize": "var(--jx-text-sm)",
-      "color": "var(--fg-dim)"
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
     },
     "& [part=\"account-actions\"]": {
+      "$description": "`margin-inline-start: auto` keeps the actions at the row's end when the wrap puts them on a line of their own; on a shared line `space-between` already puts them there, so the margin changes nothing.",
       "display": "flex",
       "alignItems": "center",
       "gap": "var(--jx-space-3)",
-      "flexShrink": "0"
+      "flexShrink": "0",
+      "marginInlineStart": "auto"
     },
     "& [part=\"keys\"]": {
+      "$description": "The inline-end padding is for the scrollbar, not for rhythm. A row whose title wraps pushes its `Change` button to the very end of the line, and the sheet always scrolls (64 bindings), so that button's right edge landed exactly on the scroller's content edge and read as touching the scrollbar track.",
       "display": "flex",
       "flexDirection": "column",
-      "gap": "var(--jx-space-1)"
+      "gap": "var(--jx-space-1)",
+      "paddingInlineEnd": "var(--jx-space-2)"
     },
     "& [part=\"refusal\"]": {
       "display": "flex",
@@ -177,9 +187,10 @@
       "textTransform": "uppercase",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"key\"]": {
+    "& [part=\"key\"][data-command]": {
+      "$description": "Qualified by `data-command`, the attribute a binding row carries, because `key` is also the credentials form's API-key FIELD and that form is mounted into this sheet's own light DOM: as a bare descendant this rule laid a 16px flex row over a `jx-textfield`, which drew it 24px tall beside the 20px endpoint field under it. `center`, not `baseline`: the `Change` and `Reset` buttons are small kit action buttons, and a small kit control is layout-contained so its outset hit area adds nothing to this sheet's scrollable overflow, which leaves it with no baseline to export. A baseline row synthesises one from the button's bottom edge instead, and every row grew from 24px to 29px with the chord and title dropped onto it. Centred, every single-line row measures exactly what the baseline layout did (24px, with the chord, the title and the button label on one baseline); a row whose title wraps centres its chord and buttons between the title's lines. surface-baseline-rows.test.ts holds the rule for every surface.",
       "display": "flex",
-      "alignItems": "baseline",
+      "alignItems": "center",
       "gap": "var(--jx-space-4)",
       "padding": "var(--jx-space-1) 0"
     },
@@ -191,6 +202,8 @@
       "color": "var(--fg)"
     },
     "& [part=\"key-title\"]": {
+      "$description": "`flex: 1` for the same reason the chord beside it is a fixed 96px column: down 64 rows, an action that starts where the last title ended is not scannable. The title took its content's width, so `Change` landed at fourteen different offsets in the first twenty rows, and at the line's very end on a row whose title wrapped. Growing the title instead pins the actions to that end, where a reader finds them by scanning one edge. `minWidth: 0` is what still lets a long title wrap rather than widen the sheet.",
+      "flex": "1",
       "color": "var(--fg-dim)",
       "minWidth": "0"
     }

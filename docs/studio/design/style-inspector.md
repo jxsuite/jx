@@ -7,6 +7,7 @@ spec:
 code:
   - packages/studio/src/panels/style-panel.ts
   - packages/studio/src/surfaces/style-panel.ts
+  - packages/studio/data/css-meta.json
   - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/provenance.ts
   - packages/studio/src/utils/inherited-style.ts
@@ -82,6 +83,7 @@ Each property gets a control built for it:
 - **Color**: a swatch beside the value, and behind the swatch a picker holding a saturation square, a hue track, an opacity track and your project's color tokens. Picking a token writes the reference, so the value reads `var(--color-primary-blue)` and follows the token wherever you take it, and the swatch shows the colour the token stands for; moving any of the tracks replaces it with a literal, because that is what moving a picker means. The value box takes anything CSS can read, a named color or a `color-mix()` included, and keeps it as you wrote it. See **[Design tokens](/docs/studio/design/tokens)**.
 - **Font family**: type a font stack, or pick one from the list under the field, which shows your project's font tokens first, each named beside its token, and then a set of ready-made stacks. Every row is drawn in its own typeface, so you choose by looking. Picking a ready-made stack saves it as a font token the moment you commit, so the next element that wants it points at the token rather than repeating the stack. The field shows a token by its name, `--font-body` rather than `var(--font-body)`, and a stack you type is written as you typed it.
 - **Keyword lists**: a property with a known set of values lists them under the field, opened by its chevron or by :kbd[↓]. The field stays typable, because a CSS keyword list is a set of suggestions rather than a closed one: a value the list does not offer is still a value you can write, and pressing :kbd[Enter] commits what you typed unless you arrowed onto a row first. The typography rows draw each value as itself: weights at their weight, styles leaning, transforms applied, decorations drawn, all in the element's own typeface.
+- **Button rows**: Display, direction, wrapping, alignment and text alignment are rows of buttons, one per common value, each drawn as an icon. A handful of values have no icon that would read as them, such as `nowrap`, and those buttons carry the CSS keyword itself instead, spelled out in full rather than shortened. Hover a button to see the value it writes, click it again to clear it, and open **···** for the values the row has no room for, `wrap-reverse` among them.
 
 Shorthand rows like **Padding** and **Margin** take a combined value, or expand with their chevron into per-side fields; border rows expand into width, style, and color. Studio recombines the sides into the shortest form when it writes the value. A shorthand's chip answers for the whole family. It reads **set here** when the shorthand or any one side is set, and clicking it clears all five at once.
 

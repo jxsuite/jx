@@ -176,7 +176,6 @@ async function drawBoards(entries: CanvasPanelEntry[]) {
   const stage = mountCanvasStage(
     host,
     {
-      columnHeader: "hidden",
       frame: "boards",
       framePart: "panzoom",
       frameVars: "",
@@ -822,11 +821,15 @@ describe("panToParentRect", () => {
    * these four cases are the geometry the block-action-bar shot's caret step depends on: while this
    * function only wrote `surfaceForPane("primary").panY`, Edit — which renders no `.panzoom-wrap` — did not move at all.
    */
+  /* The viewport these measure is the SCROLLER, not the stage (see `centeringOffset`), so the rect
+     is stubbed on the scroll container. With no band docked above it the two are the same box,
+     which is what each case below states by stubbing them alike. */
   test("scrolls the active panel's container when the pane is a scrolling surface", () => {
     const scrollContainer = document.createElement("div");
     scrollContainer.scrollTop = 0;
     makeRenderedPanel({ scrollContainer });
     stubRect(primary().wrap, { height: 885, top: 0 });
+    stubRect(scrollContainer, { height: 885, top: 0 });
 
     // The measured case from P4: children/1 at y=1139 in an 885px viewport.
     panToParentRect({ height: 40, top: 1139 });
@@ -840,6 +843,7 @@ describe("panToParentRect", () => {
     scrollContainer.scrollTop = 800;
     makeRenderedPanel({ scrollContainer });
     stubRect(primary().wrap, { height: 600, top: 100 });
+    stubRect(scrollContainer, { height: 600, top: 100 });
 
     // Rect centre 150 is 50px below the pane's top, i.e. 250px above its centre.
     panToParentRect({ height: 100, top: 100 });
@@ -853,11 +857,31 @@ describe("panToParentRect", () => {
     (scrollContainer as unknown as { scrollTo: typeof scrollTo }).scrollTo = scrollTo;
     makeRenderedPanel({ scrollContainer });
     stubRect(primary().wrap, { height: 600, top: 0 });
+    stubRect(scrollContainer, { height: 600, top: 0 });
 
     panToParentRect({ height: 0, top: 1000 });
 
     expect(scrollTo).not.toHaveBeenCalled();
     expect(scrollContainer.scrollTop).toBeCloseTo(700);
+  });
+
+  /*
+   * Edit docks the Document Header card ABOVE its scroller, inside the same stage cell. The live
+   * geometry: a 859px stage, a 176.5px band and the stage's 24px gap, which leaves the scroller
+   * 642px tall from y=217. A node centred at y=538 is dead centre in what the author can see — and
+   * 108.5px below the centre of the STAGE, which is what this measured before, so a reveal "centred"
+   * it by scrolling it up under the band's lower half.
+   */
+  test("centres in the scroller, not the stage, when a band sits above it", () => {
+    const scrollContainer = document.createElement("div");
+    scrollContainer.scrollTop = 400;
+    makeRenderedPanel({ scrollContainer });
+    stubRect(primary().wrap, { height: 859, top: 0 });
+    stubRect(scrollContainer, { height: 642, top: 217 });
+
+    panToParentRect({ height: 0, top: 538 });
+
+    expect(scrollContainer.scrollTop).toBeCloseTo(400);
   });
 
   test("still pans when the active panel is a panzoom stage, scroll container or not", () => {

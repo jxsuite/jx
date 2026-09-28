@@ -11,6 +11,7 @@ import {
   clearDiffView,
   diffChangeCount,
   diffChangeMapOf,
+  diffShowsCode,
   diffStepOf,
   diffViewOf,
   resetDiffViews,
@@ -133,5 +134,21 @@ describe("defaults", () => {
     setDiffChangeMap("primary", null);
     expect(diffChangeMapOf("primary")).toBeNull();
     expect(diffChangeCount("primary")).toBe(0);
+  });
+});
+
+/* The renderer's branch, its mount guard and the zoom pod all ask this one question. Two spellings
+   of it once left an empty stage; a third would put the pod over a Monaco it cannot zoom. */
+describe("which half a pane draws", () => {
+  test("a renderable file shows the half the author chose, per pane", () => {
+    expect(diffShowsCode("primary", true)).toBe(false);
+    setDiffView("primary", "code");
+    expect(diffShowsCode("primary", true)).toBe(true);
+    expect(diffShowsCode("secondary", true)).toBe(false);
+  });
+
+  test("a file with no visual half is Code whatever the switch says", () => {
+    expect(diffViewOf("primary")).toBe("visual");
+    expect(diffShowsCode("primary", false)).toBe(true);
   });
 });

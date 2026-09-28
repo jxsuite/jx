@@ -66,6 +66,9 @@ import {
 import { openMenu } from "../surfaces/menu";
 import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-context";
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
+import { diffShowsCode } from "../canvas/diff-view";
+import { canRenderComparison } from "./git-diff-open";
+import { shell } from "../shell";
 import { paneRegion } from "../ui/regions";
 import {
   fitToScreen,
@@ -971,12 +974,27 @@ function fitChoiceValue(fit: FitMode): string {
 const STAGE_ZOOM_MODES = new Set(["design", "stylebook", "git-diff"]);
 
 /**
+ * The path this pane is comparing, or "" before it has a comparison.
+ *
+ * Resolved exactly as `canvas-render.ts`'s git-diff branch resolves the comparison it draws: a Diff
+ * lens carries its own, and every other pane draws the Source Control panel's one app-level slot.
+ * Both halves are reactive, so the pod repaints when either one lands or retargets.
+ */
+function comparisonPathOf(paneId: string): string {
+  const derived = derivationOfPane(paneId);
+  const state =
+    derived?.kind === "lens" && derived.preset === "diff" ? derived.diff : shell.git.diffState;
+  return state?.filePath ?? "";
+}
+
+/**
  * Zoom and fit, floating over the canvas bottom-right.
  *
  * Two surfaces, one control: `edit` drives the content-reflow `editZoom`, while design / Stylebook
  * / git-diff render on the panzoom surface and drive `ui.zoom` — and only the panzoom surface has a
  * fit, because a fit is a statement about an artboard. Preview is deliberately absent: its frame is
- * a real viewport that scrolls its own document, so there is nothing to zoom.
+ * a real viewport that scrolls its own document, so there is nothing to zoom. So is a comparison's
+ * CODE half, for the same reason: see below.
  */
 function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
   /* THIS pane's mode. `ctx.getCanvasMode()` answers for the focused pane, so the unfocused pod
@@ -991,6 +1009,15 @@ function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
     return { podState: "shown", zoomLabel: `${Math.round(editZoom * 100)}%` };
   }
   if (!STAGE_ZOOM_MODES.has(mode)) {
+    return { podState: "hidden" };
+  }
+  /* NO POD OVER A COMPARISON'S CODE HALF. That half is one Monaco diff editor filling the stage,
+     with no panzoom surface under it, so `applyTransform` and `resetZoom` return early and + / − /
+     100% / Fit moved nothing but their own label. And it sat on Monaco's own scrollbar and diff
+     overview ruler at the stage's right edge, which no native measurement can see. The predicate is
+     the one the renderer chose the half with, so the two cannot disagree; `diff-view.ts` is not
+     reactive, so the Visual/Code switch repaints this chrome itself (`diff-toolbar.ts`). */
+  if (mode === "git-diff" && diffShowsCode(paneId, canRenderComparison(comparisonPathOf(paneId)))) {
     return { podState: "hidden" };
   }
   const zoom = stageZoom(surface);

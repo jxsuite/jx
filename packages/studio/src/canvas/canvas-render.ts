@@ -35,8 +35,9 @@ import {
 import { collabSourceContext } from "../collab/collab-session";
 import { buildChangeMap } from "./diff-marks";
 import type { ChangeMap, ChangeMark } from "./diff-marks";
-import { clearDiffView, diffViewOf, setDiffChangeMap } from "./diff-view";
+import { clearDiffView, diffShowsCode, setDiffChangeMap } from "./diff-view";
 import { canRenderComparison } from "../panels/git-diff-open";
+import { releaseStageScrollbar, trackStageScrollbar } from "./stage-scrollbar";
 import { renderDiffToolbar, setDiffRepaint, setDiffToolbarHost } from "./diff-toolbar";
 import { attachCursorStyles } from "../collab/monaco-cursors";
 import type { AwarenessLike } from "../collab/monaco-cursors";
@@ -231,7 +232,7 @@ function hardClearCanvasWrap(canvasWrap: HTMLElement) {
 
 /**
  * Where each stage's non-artboard hosts landed, keyed by part (and by the static mark that tells
- * two of one part apart: a handle's side, a card's placement).
+ * the two width handles apart: `data-side`, the one part the stage document draws twice).
  *
  * Per STAGE rather than per module, for the reason every other field on `CanvasSurface` is: two
  * panes each have a Monaco host and a card slot, and one slot would hand the second pane's stage
@@ -345,7 +346,6 @@ function drawStage(
  */
 function editorStageView(frame: "source" | "code"): CanvasStageView {
   return {
-    columnHeader: "hidden",
     frame,
     framePart: "panzoom",
     frameVars: "",
@@ -515,35 +515,6 @@ function disposeDiffEditor(surface: CanvasSurface): void {
 }
 
 /**
- * Mount the comparison's Monaco diff editor: HEAD on the left, the working copy on the right.
- *
- * This is {@link mountSourceEditor} minus everything about writing — no change handler, no
- * debounce, no collab binding. **The collab lock in particular is never entered**: `enter()` flips
- * the room's canonical lock to "source" and freezes structural editing for every peer, and doing
- * that to show somebody a read-only comparison would freeze a live co-editing session on a gesture
- * nobody made.
- *
- * The post-await guard is the one `mountSourceEditor`'s comment explains at length, and it is not
- * belt-and-braces here either: `renderCanvasImpl` writes `surface.prevCanvasMode` BEFORE this runs,
- * so a second synchronous render inside the 12.6 MB cold load sees `modeChanged === false` and a
- * still-null slot, falls through, and mounts again — and the second `createModel` claims a URI the
- * first registered, which real Monaco throws on. Asked before `createModel`, for that reason.
- *
- * A RETARGET is the second, independent race, and `mountStillWanted` cannot catch it: it answers
- * false when the slot is already filled, so a comparison switching to a different file would keep
- * the old editor and its claimed URIs. That one is disposed synchronously, before the await.
- */
-/**
- * Whether this pane draws the comparison as TEXT.
- *
- * One definition, because two callers must never disagree about it: the render branch chooses which
- * half to build, and the mount's post-await guard re-asks whether that half is still wanted. They
- * were two spellings — the branch said "not renderable OR the author chose Code", the guard said
- * only "the author chose Code" — so for a file with no visual half the branch built the Code
- * container and the guard then refused to mount into it. An empty stage, no error, and a toolbar
- * correctly describing an editor that was never there.
- */
-/**
  * One artboard's marks, with a modification given the face that side wears.
  *
  * {@link ChangeMap} names a modification once, semantically; the two artboards draw it as the before
@@ -562,10 +533,28 @@ function sideMarks(
   );
 }
 
-function diffShowsCode(paneId: string, filePath: string): boolean {
-  return !canRenderComparison(filePath) || diffViewOf(paneId) === "code";
-}
-
+/**
+ * Mount the comparison's Monaco diff editor: HEAD on the left, the working copy on the right.
+ *
+ * This is {@link mountSourceEditor} minus everything about writing — no change handler, no
+ * debounce, no collab binding. **The collab lock in particular is never entered**: `enter()` flips
+ * the room's canonical lock to "source" and freezes structural editing for every peer, and doing
+ * that to show somebody a read-only comparison would freeze a live co-editing session on a gesture
+ * nobody made.
+ *
+ * The post-await guard is the one `mountSourceEditor`'s comment explains at length, and it is not
+ * belt-and-braces here either: `renderCanvasImpl` writes `surface.prevCanvasMode` BEFORE this runs,
+ * so a second synchronous render inside the 12.6 MB cold load sees `modeChanged === false` and a
+ * still-null slot, falls through, and mounts again — and the second `createModel` claims a URI the
+ * first registered, which real Monaco throws on. Asked before `createModel`, for that reason.
+ *
+ * A RETARGET is the second, independent race, and `mountStillWanted` cannot catch it: it answers
+ * false when the slot is already filled, so a comparison switching to a different file would keep
+ * the old editor and its claimed URIs. That one is disposed synchronously, before the await.
+ *
+ * The guard asks {@link diffShowsCode}, the same predicate the render branch chose the half with
+ * (`canvas/diff-view.ts` says why there is only one).
+ */
 async function mountDiffEditor(
   surface: CanvasSurface,
   container: Element,
@@ -581,7 +570,8 @@ async function mountDiffEditor(
     !mountStillWanted(
       container,
       surface.monacoDiffEditor,
-      () => canvasModeOfPane(paneId) === "git-diff" && diffShowsCode(paneId, key),
+      () =>
+        canvasModeOfPane(paneId) === "git-diff" && diffShowsCode(paneId, canRenderComparison(key)),
     )
   ) {
     return;
@@ -629,6 +619,7 @@ function resetCanvasView(surface: CanvasSurface) {
     surface.centerObserver.disconnect();
     surface.centerObserver = null;
   }
+  releaseStageScrollbar(surface);
   for (const p of surface.panels) {
     p.renderScope?.stop();
     p.renderScope = null;
@@ -641,6 +632,7 @@ function resetCanvasView(surface: CanvasSurface) {
   canvasWrap.style.padding = "";
   canvasWrap.style.alignItems = "";
   canvasWrap.style.flexDirection = "";
+  canvasWrap.style.gap = "";
   canvasWrap.style.display = "";
   canvasWrap.style.overflow = "";
   dismissBlockActionBar();
@@ -1029,23 +1021,24 @@ function renderCanvasImpl(surface: CanvasSurface) {
   // Re-rendering the previous mode's panels in place.
   const canvasMode = canvasModeOfPane(surface.paneId);
 
-  /* The Document Header card (§3.2 ⑧) is drawn by the STAGE, not by a band above it. Two surfaces
-     draw a page you can author: the centered Edit column, where the card goes INSIDE the document
-     column and scrolls with the artefact, and the Design artboards, where it is pinned above the
-     panzoom surface because a form drawn at the artboard's scale is a picture of a form, not a
-     control. `hasDocumentHeader` is the only remaining predicate and it is a fact about the
-     DOCUMENT — the one condition left, because the mode is the only other thing that decides
-     whether a page is being authored. It used to carry two more clauses, suppressing the card while
-     a function body or a formula was open on the grounds that those sub-editors took the whole
-     stage. They open in the dock's Logic tab now (P8) and the page is still on screen behind it, so
-     those clauses only DETACHED the visible card: it stopped re-rendering and quietly showed
-     frontmatter from before the edit. */
+  /* The Document Header card (§3.2 ⑧) is drawn by the STAGE, and only by Edit's. It is docked
+     above the page's scroller, a band across the pane at 1:1: its width is the PANE's rather than
+     the breakpoint's, and the page scrolls under it rather than taking it along. It used to go
+     INSIDE Edit's column, where it was exactly as wide as whatever breakpoint or dragged width the
+     column had and scrolled off with the first screen of the page, and it was pinned above Design's
+     artboards as well. Design omits it now, so the artboards get the whole pane, and nothing is
+     lost by that: the Navigator's Page panel carries the same fields in every mode.
+     `hasDocumentHeader` is the other predicate, and it is a fact about the DOCUMENT. It used to
+     carry two more clauses, suppressing the card while a function body or a formula was open on
+     the grounds that those sub-editors took the whole stage. They open in the dock's Logic tab now
+     (P8) and the page is still on screen behind it, so those clauses only DETACHED the visible
+     card: it stopped re-rendering and quietly showed frontmatter from before the edit. */
   /* …and NOT in a lens. The Document Header is an editing surface — Title, Route, SEO, the raw
      frontmatter — over a document this pane does not own, and two cards editing one document's
      frontmatter side by side is two writers for one field. A lens is a view; the card belongs to
      the pane that owns the tab. */
   const wantsDocHeader =
-    (canvasMode === "edit" || canvasMode === "design") &&
+    canvasMode === "edit" &&
     derivationOfPane(surface.paneId)?.kind !== "lens" &&
     hasDocumentHeader(tab);
   if (!wantsDocHeader) {
@@ -1235,6 +1228,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
       surface.centerObserver.disconnect();
       surface.centerObserver = null;
     }
+    /* Edit's scroller leaves with its stage, and the pod must not keep Edit's inset in a mode that
+       has no scrollbar under it: missed here, Design's pod would float 15px short of its corner. */
+    releaseStageScrollbar(surface);
 
     // Destroy the grid panel if switching away from grid mode
     detachGridPanel(surface.paneId);
@@ -1268,8 +1264,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "";
     canvasWrap.style.alignItems = "";
     canvasWrap.style.flexDirection = "";
+    canvasWrap.style.gap = "";
     canvasWrap.style.display = "";
-    canvasWrap.style.overflow = "";
     canvasWrap.style.overflow = "";
 
     // Dismiss open popovers/toolbars that are no longer relevant
@@ -1342,7 +1338,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
     void drawStage(
       surface,
       {
-        columnHeader: "hidden",
         frame: "boards",
         framePart: "preview-stage",
         frameVars: `--preview-w:${previewWidth}px`,
@@ -1468,7 +1463,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
        a Diff lens, the Editor axis) and only this one sees every arrival. Forcing it here also
        leaves `diffView` alone, so a document opened after a `.css` still comes up Visual. */
     const renderable = canRenderComparison(gitDiffState.filePath ?? "");
-    if (diffShowsCode(surface.paneId, gitDiffState.filePath ?? "")) {
+    if (diffShowsCode(surface.paneId, renderable)) {
       /* A null map is how the toolbar learns there is no visual half to offer: it draws Code as a
          static label rather than as half of a choice, and reports the line marks instead of a node
          count. Cleared rather than left, so a pane that compared a document and then a stylesheet
@@ -1504,7 +1499,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const diffStage = drawStage(
       surface,
       {
-        columnHeader: "hidden",
         frame: "boards",
         framePart: "panzoom",
         frameVars: "",
@@ -1641,21 +1635,38 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const rootTag = (S.document as { tagName?: unknown }).tagName;
     const isComponentDoc = typeof rootTag === "string" && rootTag.includes("-");
     const { featureToggles: editToggles } = S.ui;
+    /* The stage stacks when it carries the card: the band first, the page's scroller below it.
+       Set on every render rather than on the transition, because whether a document HAS a header
+       changes with the tab and not with the mode. `editors.ts` and `formula-workspace.ts` already
+       claim the column this way — `#canvas-wrap` is a row by default and each surface states its
+       own axis. Stretched, because the band is as wide as the PANE: that is the whole difference
+       between docking the card here and drawing it in the column, whose width is the breakpoint's
+       or the drag's.
+       And FLUSH: the cell's own 24px gap (`pane-grid.json`) between two side-by-side surfaces is
+       dead space between a docked band and the box below it. The scroller clips its content at its
+       top edge, so the gap put that edge 24px below the band's border with nothing drawn in
+       between — the page ended at an invisible line and the band read as a hairline over one
+       continuous surface. At 0 the clip happens AT the border, which is what makes the border read
+       as the band's edge; the scroller's own 32px of top padding is the breathing room. */
+    canvasWrap.style.flexDirection = wantsDocHeader ? "column" : "";
+    canvasWrap.style.alignItems = wantsDocHeader ? "stretch" : "";
+    canvasWrap.style.gap = wantsDocHeader ? "0px" : "";
     void drawStage(
       surface,
       {
-        /* The card is the column's FIRST child by contract (`tests/canvas-render.test.ts`, "Edit
-           puts it INSIDE the document column"). The two handles are not in the column at all: they
-           are `jx-split`s standing beside it in the canvas's row, because the canvas is the track
-           a splitter has to measure and the column is the thing being resized. */
-        columnHeader: wantsDocHeader ? "shown" : "hidden",
+        /* The card LEADS the frame (`tests/canvas-render.test.ts`, "Edit docks it above the page's
+           scroller"): a sibling of the scroller rather than a block of the column, so the page
+           scrolls under it and the breakpoint does not size it. The two handles are not in the
+           column either: they are `jx-split`s standing beside it in the canvas's row, because the
+           canvas is the track a splitter has to measure and the column is the thing being
+           resized. */
         frame: "boards",
         framePart: "edit-canvas",
         frameVars: "",
         handles: "shown",
         hug: isComponentDoc,
         innerPart: "edit-column",
-        lead: "none",
+        lead: wantsDocHeader ? "header" : "none",
         panels: [entry.item],
       },
       [entry],
@@ -1664,7 +1675,13 @@ function renderCanvasImpl(surface: CanvasSurface) {
         return;
       }
       const editColumn = stageHost(surface, "edit-column");
-      entry.panel.scrollContainer = stageHost(surface, "edit-canvas") as HTMLElement;
+      const scroller = stageHost(surface, "edit-canvas");
+      entry.panel.scrollContainer = scroller as HTMLElement;
+      /* The one mode whose stage SCROLLS under the zoom pod, so the one that tells the pane how
+         wide its scrollbar is. The pod floats in the pane's chrome layer, which spans the gutter
+         too, and without this it sat 3px into the track. A same-scroller repaint is a no-op, and
+         every teardown below releases it back to 0. See `canvas/stage-scrollbar.ts`. */
+      trackStageScrollbar(surface, scroller);
       // The one writer of the column's width — see the note above.
       if (editColumn) {
         editColumn.style.maxWidth = `${Math.round(columnWidth)}px`;
@@ -1696,13 +1713,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "0";
     canvasWrap.style.overflow = "hidden";
   }
-  /* The stage stacks when it carries the card: header first, artboards below. Set on every render
-     rather than on the transition, because whether a document HAS a header changes with the tab and
-     not with the mode. `editors.ts` and `formula-workspace.ts` already claim the column this way —
-     `#canvas-wrap` is a row by default and each surface states its own axis. */
-  canvasWrap.style.flexDirection = wantsDocHeader ? "column" : "";
-  canvasWrap.style.alignItems = wantsDocHeader ? "stretch" : "";
-  const designLead = wantsDocHeader ? "header" : "none";
+  /* No Document Header here, so the stage cell stays the row it is by default: the card is Edit's
+     alone (see `wantsDocHeader`), and the transition into this mode has already cleared the two
+     inline writes Edit makes to stack it. */
 
   const {
     sizeBreakpoints,
@@ -1727,14 +1740,13 @@ function renderCanvasImpl(surface: CanvasSurface) {
     void drawStage(
       surface,
       {
-        columnHeader: "hidden",
         frame: "boards",
         framePart: "panzoom",
         frameVars: "",
         handles: "hidden",
         hug: false,
         innerPart: "boards",
-        lead: designLead,
+        lead: "none",
         panels: [entry.item],
       },
       [entry],
@@ -1793,14 +1805,13 @@ function renderCanvasImpl(surface: CanvasSurface) {
   const stageDrawn = drawStage(
     surface,
     {
-      columnHeader: "hidden",
       frame: "boards",
       framePart: "panzoom",
       frameVars: "",
       handles: "hidden",
       hug: false,
       innerPart: "boards",
-      lead: designLead,
+      lead: "none",
       panels: panelEntries.map((e) => e.item),
     },
     panelEntries,
@@ -1968,6 +1979,7 @@ setSurfaceTeardown((surface) => {
   disposeSourceEditor(surface);
   surface.centerObserver?.disconnect();
   surface.centerObserver = null;
+  releaseStageScrollbar(surface);
   surface.panzoomWrap = null;
   detachCanvasStage(surface);
 });

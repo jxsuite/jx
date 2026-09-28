@@ -1073,6 +1073,9 @@ export function registerGitPanel(): void {
   registerPanel({
     id: "git",
     title: "Source Control",
+    /* The full title is 71px against the rail's 48px label box. The header, the tooltip and the
+       accessible name keep it; only the words under the glyph shorten. */
+    railLabel: "Source",
     level: "project",
     dock: "navigator",
     // A KEY into the kit's icon manifest, not a tag: this one resolves to

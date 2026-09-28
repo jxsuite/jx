@@ -157,7 +157,7 @@ describe("a mounted island keeps projecting", () => {
     // Keyed: the step that survived is the same node, not a repaint of the list.
     expect(island.querySelector('[part="step"]')).toBe(first);
     expect(island.querySelector('[part="warning"]')?.textContent).toBe("drift");
-    expect(island.querySelector('[part="error"]')?.textContent).toBe("denied");
+    expect(island.querySelector('[part="failure"]')?.textContent).toBe("denied");
     handle.dispose();
   });
 

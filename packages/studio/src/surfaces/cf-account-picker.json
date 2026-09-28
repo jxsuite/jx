@@ -49,8 +49,8 @@
       "fontSize": "var(--jx-text-md)",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"error\"]": {
-      "$description": "A commit the broker refused, said above the list the reader is still looking at. It is not an announcement of the same thing twice: the list survives a refusal, because listing again is not what would fix an account Cloudflare will not accept, so the reason has to sit beside the rows that are still on offer.",
+    "& [part=\"failure\"]": {
+      "$description": "A commit the broker refused, said above the list the reader is still looking at. It is not an announcement of the same thing twice: the list survives a refusal, because listing again is not what would fix an account Cloudflare will not accept, so the reason has to sit beside the rows that are still on offer. It is `failure` rather than `error` because every kit field draws a permanent, empty `[part=\"error\"]` of its own, and the kit is light DOM: a rule on that name here would reach any field this dialog ever holds.",
       "margin": "0",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
@@ -77,19 +77,22 @@
       "borderRadius": "var(--radius)"
     },
     "& [part=\"text\"]": {
-      "$description": "`min-width: 0` so a long account name ellipses inside the row instead of pushing its own button off the end of it.",
+      "$description": "`min-width: 0` lets the column shrink below its content, so the name and id reflow inside the row instead of pushing its own button off the end of it; what lets them reflow is their own `overflow-wrap`. Nothing here ellipsizes. Unlike Preferences › Accounts, the row does not wrap its button onto a line of its own: in an `sm` dialog the arithmetic (a 120px basis, the gap and a 105px button against a 236px row) would wrap every row at rest.",
       "display": "flex",
       "flexDirection": "column",
       "gap": "var(--jx-space-1)",
       "minWidth": "0"
     },
     "& [part=\"name\"]": {
-      "color": "var(--fg)"
+      "$description": "`overflow-wrap: anywhere` because Cloudflare names a new account after the email that opened it (`name@example.com's Account`), and an address has no break opportunity in it.",
+      "color": "var(--fg)",
+      "overflowWrap": "anywhere"
     },
     "& [part=\"detail\"]": {
-      "$description": "The account id under the name. Two Cloudflare accounts may carry the same name and the id is what is stored, so the row shows both rather than the half a reader would have to guess from.",
+      "$description": "The account id under the name. Two Cloudflare accounts may carry the same name and the id is what is stored, so the row shows both rather than the half a reader would have to guess from. `overflow-wrap: anywhere` because the id is 32 hex digits with no break opportunity: it measured 203px in a 119px column and ran under the row's own button. It reflows rather than ellipsizing, because the id is the half that tells two same-named accounts apart.",
       "fontSize": "var(--jx-text-sm)",
-      "color": "var(--fg-dim)"
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
     }
   },
   "children": [
@@ -188,7 +191,7 @@
                 {
                   "tagName": "div",
                   "attributes": {
-                    "part": "error-slot",
+                    "part": "failure-slot",
                     "role": "none"
                   },
                   "style": {
@@ -201,7 +204,7 @@
                     "true": {
                       "tagName": "p",
                       "attributes": {
-                        "part": "error"
+                        "part": "failure"
                       },
                       "textContent": "${state.failure}"
                     }

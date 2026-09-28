@@ -90,8 +90,6 @@ export interface DocHeaderRawEntry extends Record<string, unknown> {
 export interface DocHeaderView {
   /** The region id the card stamps on itself — `pane.<id>/frontmatter`. */
   region: string;
-  /** `in-column` in Edit, `pinned` in Design. The stage decides; the card only draws it. */
-  placement: "in-column" | "pinned";
   /** The matched collection's name, or the word `Document` when it belongs to none. */
   collection: string;
   /** This page's route. */
@@ -150,7 +148,6 @@ interface DocHeaderScope extends Record<string, unknown>, DocHeaderView, DocHead
 /** Write a whole view into the scope. Assignment only — the mount is never rebuilt for a repaint. */
 function project(scope: DocHeaderScope, view: DocHeaderView): void {
   scope.region = view.region;
-  scope.placement = view.placement;
   scope.collection = view.collection;
   scope.route = view.route;
   scope.hasRoute = view.hasRoute;
@@ -180,7 +177,6 @@ export function mountDocHeaderSurface(
     ...actions,
     collection: "Document",
     hasRoute: false,
-    placement: "in-column",
     rawEntries: [],
     rawOpen: false,
     rawState: "empty",

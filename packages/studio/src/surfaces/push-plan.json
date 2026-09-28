@@ -41,7 +41,8 @@
       "fontSize": "var(--jx-text-sm)",
       "color": "var(--warning, var(--fg-dim))"
     },
-    "& [part=\"error\"]": {
+    "& [part=\"failure\"]": {
+      "$description": "`failure` rather than `error`: every kit field draws a permanent, empty `[part=\"error\"]` of its own, and the kit is light DOM, so a rule on that name here would reach any field the plan ever holds.",
       "margin": "0",
       "fontSize": "var(--jx-text-sm)",
       "color": "var(--danger)"
@@ -100,7 +101,7 @@
       "map": {
         "tagName": "p",
         "attributes": {
-          "part": "error",
+          "part": "failure",
           "role": "alert"
         },
         "textContent": "${$map.item.text}"
