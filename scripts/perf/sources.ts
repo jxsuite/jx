@@ -64,7 +64,7 @@ export function lookupMapped(byLine: number[][][], sm: SourceMapFile, line0: num
   }
   let best = segs[0]!;
   for (const s of segs) {
-    if (s[0] <= col) {
+    if (s[0]! <= col) {
       best = s!;
     } else {
       break;
@@ -95,8 +95,9 @@ export function lookupMapped(byLine: number[][][], sm: SourceMapFile, line0: num
 export async function mapSources(bundled: { url: string; line: number; totalMs: number }[]) {
   const maps = new Map<string, { byLine: number[][][]; sm: SourceMapFile }>();
   const ensure = async (url: string) => {
-    if (maps.has(url)) {
-      return maps.get(url);
+    const cached = maps.get(url);
+    if (cached) {
+      return cached;
     }
     try {
       const response = await fetch(`${url}.map`);

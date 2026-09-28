@@ -361,7 +361,11 @@ export function parseSpecSource(source: string, file: string): SpecStatus {
         seenNumbered = true;
       }
       if (ROADMAP_TITLE.test(heading[2]!)) {
-        out.roadmaps.push({ line: lineNo, title: heading[2]!.trim(), anchor: h?.[1] });
+        out.roadmaps.push({
+          line: lineNo,
+          title: heading[2]!.trim(),
+          ...(h?.[1] !== undefined ? { anchor: h[1] } : {}),
+        });
       }
       continue;
     }

@@ -42,9 +42,10 @@ export function parseLog(stdout: string): { sha: string; message: string }[] {
   const commits: { sha: string; message: string }[] = [];
   // Fields arrive in pairs; a trailing empty field after the final NUL is expected.
   for (let i = 0; i + 1 < fields.length; i += 2) {
-    const sha = fields[i].trim();
-    if (sha) {
-      commits.push({ sha, message: fields[i + 1] });
+    const sha = fields[i]?.trim();
+    const message = fields[i + 1];
+    if (sha && message !== undefined) {
+      commits.push({ sha, message });
     }
   }
   return commits;

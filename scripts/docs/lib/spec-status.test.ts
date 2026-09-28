@@ -278,8 +278,9 @@ describe("sections and headings", () => {
     expect(s.sections.map((x) => x.depth)).toEqual([2, 3]);
     expect(s.roadmaps).toMatchObject([
       { title: "11. Implementation Roadmap", anchor: "11" },
-      { title: "Appendix C: Roadmap", anchor: undefined },
+      { title: "Appendix C: Roadmap" },
     ]);
+    expect(s.roadmaps[1]).not.toHaveProperty("anchor");
   });
 });
 

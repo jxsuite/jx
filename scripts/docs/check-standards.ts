@@ -407,7 +407,6 @@ function checkStructure(spec: SpecStandards, exempt: boolean, uncited: boolean, 
       out.push(
         v(
           "section-missing",
-          "heading-escaped",
           spec.file,
           "no `## N. Standards Alignment` section — every spec with numbered headings declares " +
             "which standards it binds itself to (specs/standards.md §4)",

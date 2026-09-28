@@ -946,7 +946,8 @@ export function bootUrl(ctx: ShotContext, open: ResolvedOpen): string {
  */
 async function assertNoUninvitedModal(page: Page, shotName: string): Promise<void> {
   const uninvited = await page.evaluate(() => {
-    if (!window.__jxAutomation?.probe.state().modal.open) {
+    const state = window.__jxAutomation?.probe.state() as { modal: { open: boolean } } | undefined;
+    if (!state?.modal.open) {
       return null;
     }
     return [...document.querySelectorAll("#layer-dialog [open], #layer-modal [open]")].map(
