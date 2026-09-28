@@ -1,7 +1,6 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import {
-  abbreviateValue,
   attrLabel,
   camelToLabel,
   findContentTypeSchema,
@@ -98,29 +97,6 @@ describe("attrLabel", () => {
 
   test("handles entry with no $label and camelCase", () => {
     expect(attrLabel({}, "maxLength")).toBe("Max Length");
-  });
-});
-
-// ─── abbreviateValue ─────────────────────────────────────────────────────────
-
-describe("abbreviateValue", () => {
-  test("known abbreviations", () => {
-    expect(abbreviateValue("inline")).toBe("inl");
-    expect(abbreviateValue("flex-start")).toBe("start");
-    expect(abbreviateValue("space-between")).toBe("betw");
-    expect(abbreviateValue("column")).toBe("col");
-    expect(abbreviateValue("baseline")).toBe("base");
-  });
-
-  test("unknown values returned as-is", () => {
-    expect(abbreviateValue("center")).toBe("center");
-    expect(abbreviateValue("flex")).toBe("flex");
-    expect(abbreviateValue("grid")).toBe("grid");
-  });
-
-  test("reverse variants", () => {
-    expect(abbreviateValue("row-reverse")).toBe("row-r");
-    expect(abbreviateValue("column-reverse")).toBe("col-r");
   });
 });
 

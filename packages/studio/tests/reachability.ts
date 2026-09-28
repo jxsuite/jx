@@ -174,11 +174,19 @@ function callerFiles(dir: string): string[] {
     if (name.startsWith(".")) {
       continue;
     }
+    /* The skip is consulted BEFORE the stat, because `result` is in SKIP_DIRS for the sake of a
+       `nix build` output symlink and `statSync` follows one: once its store path is collected, the
+       stat throws ENOENT and the skip that exists for exactly this case never runs. That made the
+       whole studio suite red on a gitignored symlink unrelated to any change, took the file's own
+       dead-code guards down with it, and blocked the pre-push hook. `throwIfNoEntry: false` covers
+       the rest of the class, any other dangling or unreadable entry, which is skipped rather than
+       fatal: a path the walk cannot read holds no caller either way. */
+    if (SKIP_DIRS.has(name)) {
+      continue;
+    }
     const path = tsPath(dir, name);
-    if (statSync(path).isDirectory()) {
-      if (!SKIP_DIRS.has(name)) {
-        out.push(...callerFiles(path));
-      }
+    if (statSync(path, { throwIfNoEntry: false })?.isDirectory()) {
+      out.push(...callerFiles(path));
     } else if (name.endsWith(".ts") && !name.endsWith(".d.ts") && !name.includes(".test.")) {
       out.push(path);
     }

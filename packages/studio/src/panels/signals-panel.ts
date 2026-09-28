@@ -1189,13 +1189,19 @@ function functionFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
         prop: "Body",
         segments: [
           {
+            checked: statements ? "true" : "false",
             field: "body",
             key: "statements",
             label: "Statements",
-            selected: statements,
             signal: name,
           },
-          { field: "body", key: "code", label: "Code", selected: !statements, signal: name },
+          {
+            checked: statements ? "false" : "true",
+            field: "body",
+            key: "code",
+            label: "Code",
+            signal: name,
+          },
         ],
         signal: name,
       },

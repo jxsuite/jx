@@ -14,7 +14,7 @@
       "type": "boolean",
       "default": true,
       "attribute": "compact",
-      "description": "Draw the children joined into one segmented control, sharing their inner borders and rounding only the outer corners. Off leaves them as separate buttons with a gap. This is the one thing no button can do about itself: joining N of them needs selectors about a child's position among its siblings. The seam is a DIRECT-CHILD rule: it reaches the buttons the group itself owns — a slot leaves no node, so a distributed child is one — and so a nested group keeps its own compact, and a button a surface wraps in a div of its own is roved but not joined."
+      "description": "Draw the children joined into one segmented control, sharing their inner borders and rounding only the outer corners. The group draws every member's frame and fill itself, whatever the member's own quiet says: a strong border round an input fill, the selected member in the accent tint with an accent edge (the solid accent with emphasized), 6px of inline padding on a small member that shows text and no glyph, because the small size's 2px ran \"Edit\" into \"Design\", and muted ink on a disabled member, because fading it whole would fade its share of the shared frame. A member's quiet has no effect here. The control is one LINE — a segmented frame is written in tree order and no selector can find the ends of a wrapped line — so a row of choices that has to wrap is compact=false too. Off leaves them as separate buttons with a gap, each drawing itself, so a row of borderless tools is compact=false, never a compact group of quiet members. This is the one thing no button can do about itself: joining N of them needs selectors about a child's position among its siblings. The seam is a DIRECT-CHILD rule: it reaches the buttons the group itself owns — a slot leaves no node, so a distributed child is one — and so a nested group keeps its own compact, and a button a surface wraps in a div of its own is roved but not joined."
     },
     "label": {
       "type": "string",
@@ -83,7 +83,9 @@
       "alignItems": "stretch"
     },
     "&[data-compact]": {
-      "gap": "0"
+      "$description": "A segmented control is ONE line, and this is where it says so. Every seam rule below is written in TREE order — the -1px overlap on `+ jx-action-button`, the rounded ends on `:first-of-type` and `:last-of-type` — and CSS has no selector for the first or last item on a flex LINE, so a group that wrapped put the overlap on a line-start member (1px outside the group's own edge), left both line ends square, and abutted the two lines into a doubled 2px border. Nothing in a sheet can see a line break, so the group refuses one rather than drawing it badly. A row of choices that has to wrap is `compact: false`: there each member draws its own rounded frame and the gap comes back, so every line reads the same (Studio's Size and Features chips are that row).",
+      "gap": "0",
+      "flexWrap": "nowrap"
     },
     "&[data-compact] > jx-action-button > [part=\"control\"]": {
       "borderRadius": "0"
@@ -99,6 +101,10 @@
       "borderStartEndRadius": "var(--jx-radius-sm)",
       "borderEndEndRadius": "var(--jx-radius-sm)"
     },
+    "&[data-compact][data-orientation=\"vertical\"] > jx-action-button > [part=\"control\"]": {
+      "$description": "A vertical group stretches its member HOSTS to the widest one (`align-items: stretch` above), and a host is an inline-flex row whose control sits inside it at its own content width: so the segments' end edges stepped in and out down the column, one frame per label length, from the moment the group started drawing those frames. The control takes the whole host, as the zoom pod's label does for the same reason, and keeps the control's own centring.",
+      "flex": "1"
+    },
     "&[data-compact][data-orientation=\"vertical\"] > jx-action-button + jx-action-button > [part=\"control\"]": {
       "marginInlineStart": "0",
       "marginBlockStart": "-1px"
@@ -111,8 +117,43 @@
       "borderStartEndRadius": "0",
       "borderEndStartRadius": "var(--jx-radius-sm)"
     },
-    "&[data-compact] > jx-action-button > [part=\"control\"]:focus-visible": {
+    "&[data-compact] > jx-action-button:not([data-selected]) > [part=\"control\"]": {
+      "$description": "The frame is the group's, not the member's. Every seam rule above acts on a member's border, and jx-action-button is quiet by default (a transparent border and fill, which is what a toolbar wants), so the shared borders, the rounded ends and the -1px overlap all worked on borders nobody could see, and a compact group drew as a gap-less row of bare words: the Canvas view switch, the Style panel's Display row, Preferences' Theme, the zoom pod and every other group Studio converted from Spectrum, whose sp-action-button was NOT quiet by default, so the conversion dropped the frame without anybody writing it off. So the group draws its members whatever their quiet says, which is what ui.md §5.4 means by `compact` with `single` being the segmented control. This rule and the selected one below are mutually exclusive, so neither depends on sheet order against the member's own; at (0,4,1) under the scope handle each outranks the member's quiet and selected rules at (0,3,0) and quiet's hover at (0,4,0). The ink restates the member's resting colour at this specificity so that only the hover rule below, which leaves a disabled member alone, can raise it: the member's own hover is not gated on disabled, and a disabled segment brightening under the pointer reads as one that can act.",
+      "borderColor": "var(--jx-border-strong)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "&[data-compact] > jx-action-button:not([data-selected]) > [part=\"control\"]:hover:not(:disabled)": {
+      "$description": "The hover wash is LAYERED over the input fill rather than replacing it, as the member's own hover does. `--jx-hover-bg` is 6% of the ink over transparent, so on its own it shows whatever stands behind the group, and on the zoom pod's darkest background that came out a shade from the resting fill: a hover that did not read. As an image over the fill it is always the resting colour plus the wash, in both schemes.",
+      "backgroundColor": "var(--jx-bg-input)",
+      "backgroundImage": "linear-gradient(var(--jx-hover-bg), var(--jx-hover-bg))",
+      "color": "var(--jx-fg)"
+    },
+    "&[data-compact] > jx-action-button[data-selected] > [part=\"control\"]": {
+      "$description": "The chosen segment: the accent tint with an accent EDGE. The member's own selected state is a 15% tint and nothing else, which beside a bordered neighbour read as a faint wash rather than as the one that is on. Raised over both neighbours, so the accent edge shows on every side through the -1px overlap, and still under a focus ring. A hovered selected segment stays as it is: this outranks the member's quiet hover.",
+      "borderColor": "var(--jx-accent)",
+      "background": "var(--jx-accent-20)",
+      "color": "var(--jx-fg)",
       "zIndex": "1"
+    },
+    "&[data-compact] > jx-action-button[data-selected][data-emphasized] > [part=\"control\"]": {
+      "$description": "The member's emphasized, kept: the solid accent, edge and all.",
+      "borderColor": "var(--jx-accent-solid)",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)"
+    },
+    "&[data-compact] > jx-action-button > [part=\"control\"]:disabled": {
+      "$description": "A disabled segment dims its INK and not the frame. jx-action-button fades the whole control (`opacity: 0.5`), which is right where the border is the button's own; in a group the border is one member's share of a frame drawn across all of them, so half-fading it left the outer rectangle bright on one side of a seam and faint on the other — a control that reads as half-broken rather than as half-unavailable. Muted ink is a step below the resting dim, and it carries a selected segment too: the accent fill and edge stay, so the chosen one still reads as chosen while it cannot act. AFTER the selected rules on purpose, because it ties with them at (0,4,1) and has to win the ink.",
+      "opacity": "1",
+      "color": "var(--jx-fg-muted)"
+    },
+    "&[data-compact] > jx-action-button[data-size=\"sm\"][data-no-icon] > [part=\"control\"]": {
+      "$description": "A small member that shows no glyph is a text segment, and the small size's inline padding is 2px, which is right for a 20px glyph button and ran the words of a text row together (\"flex\" into \"grid\"). A text segment takes 6px: one step between --jx-space-2 and --jx-space-3, because the widest Style panel row measured 220px of its 256px at 4px and --jx-space-3 overflowed it. 6px costs that row 4px — `nowrap`, `wrap-reverse`, `normal` and `auto` are the only values css-meta leaves without a glyph, so no button row draws more than two text segments and the six-segment rows draw one. Keyed on the HOST's data-no-icon, not on a hidden icon part: the icon span is hidden while a glyph segment is `loading` too, since the spinner takes its place, so an icon segment grew 4px mid-verb and snapped back when it settled. Scoped to the group rather than made the small size's own, because some forty other small text buttons in Studio would widen with it.",
+      "paddingInline": "6px"
+    },
+    "&[data-compact] > jx-action-button > [part=\"control\"]:focus-visible": {
+      "$description": "Over everything, the selected segment's raised edge included, so a focus ring is never painted under a neighbour.",
+      "zIndex": "2"
     },
     "&[data-compact] > jx-action-button[data-size=\"sm\"] > [part=\"control\"]::before": {
       "$description": "A small action button carries a `::before` that extends its hit area 2px past its drawn box on every side (an inset of -3px: the button's 1px border, then half the 4px it is under, because an absolutely positioned box is offset from the padding edge), so that a 20px picture accepts the pointer over the kit's 24px control height (WCAG 2.2 SC 2.5.8, ui.md §4.3). In a compact group the boxes TOUCH on the packed axis — no gap, and each border drawn over the last — so an extension there could reach nothing but the neighbour's own box, and the later sibling paints above the earlier one: the last 2px of every button but the last would activate the button after it. The criterion gives an overlapped area to the target on TOP, so the extension would buy the earlier button nothing and cost it a stolen strip. The default 2px gap is the other case: two extensions overlap by 2px there, the later member keeps the strip, and every small member but the last counts 22px on the packed axis, which is under the floor and which ui.md §11 names beside this one. The packed axis is therefore zeroed here — `0` is the padding edge, 1px inside the drawn border, and the button's own box accepts the pointer over that pixel — and the cross axis keeps its 2px past the drawn box, which reaches only the gap around the group: a compact group's small members are 24px tall and as wide as they draw, which ui.md §11 records as the one thing the technique cannot reach. The vertical variant swaps the axes, and its inline value is the button's own -3px for the same reason.",
@@ -121,6 +162,15 @@
     "&[data-compact][data-orientation=\"vertical\"] > jx-action-button[data-size=\"sm\"] > [part=\"control\"]::before": {
       "insetInline": "-3px",
       "insetBlock": "0"
+    },
+    "@(forced-colors: active)": {
+      "&[data-compact] > jx-action-button[data-selected] > [part=\"control\"], &[data-compact] > jx-action-button[data-selected][data-emphasized] > [part=\"control\"]": {
+        "$description": "The chosen segment, redrawn. Forced colours replace every author colour with the user's palette, so the accent tint and the accent edge both collapse into the ones around them and the segmented control would say nothing about which segment is on. The system's own selection pair says it instead, as jx-switch does for its checked track. The emphasized selector is spelled out beside the plain one because a media condition adds no specificity: at (0,4,1) this block won `forced-color-adjust: none` and then LOST border, background and colour to the emphasized rule at (0,5,1), which painted the author's blue over the user's palette with adjustment switched off — the one combination where forced colours were worse than none.",
+        "forcedColorAdjust": "none",
+        "borderColor": "Highlight",
+        "background": "Highlight",
+        "color": "HighlightText"
+      }
     }
   },
   "children": [

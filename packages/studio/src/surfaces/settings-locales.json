@@ -20,8 +20,8 @@
       "fontSize": "var(--jx-text-md)",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"error\"]": {
-      "$description": "A write that failed, said under the section title rather than pinned to a control: settings save on change, so a silent rejection would read as \"my edit just vanished\", and the whole file failed rather than one field.",
+    "& [part=\"section-error\"]": {
+      "$description": "A write that failed, said under the section title rather than pinned to a control: settings save on change, so a silent rejection would read as \"my edit just vanished\", and the whole file failed rather than one field. It is `section-error` rather than `error` because the tag field's refusal IS the kit's own `[part=\"error\"]` sentence, in this same light-DOM tree: a rule on that name gave the tag field's refusal this margin and size, and reached the two pickers' empty regions as well.",
       "margin": "6px 0 0",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
@@ -95,7 +95,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "error-slot",
+        "part": "section-error-slot",
         "role": "none"
       },
       "$switch": {
@@ -105,7 +105,7 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "error",
+            "part": "section-error",
             "role": "alert"
           },
           "textContent": "${state.error}"

@@ -64,10 +64,12 @@ export interface CanvasStageView {
   frameVars: string;
   /** Whether Edit's column hugs its content — a component definition rather than a page. */
   hug: boolean;
-  /** What stands over the frame, and only ever one of the three. */
+  /**
+   * What stands over the frame, and only ever one of the three: the Document Header card docked
+   * above Edit's scrolling column, the Compare bar over a comparison, or the Project Styles bar
+   * over the catalogue.
+   */
   lead: "none" | "header" | "toolbar" | "chrome";
-  /** Whether Edit draws the Document Header card inside its column. */
-  columnHeader: "hidden" | "shown";
   /** Whether the column has its two width handles. */
   handles: "hidden" | "shown";
   panels: CanvasStagePanelItem[];
@@ -81,8 +83,8 @@ export interface CanvasStageActions {
    * A host the document drew, announced as it is BUILT — one reconcile step before it is in the
    * page, which is what lets an editor be handed a node before the frame paints.
    *
-   * `detail` is the handle's side for `edit-handle` and the card's placement for `doc-header`; the
-   * artboard's own three parts are not announced here at all, because a record is filled from
+   * `detail` is the handle's side for `edit-handle` and "" for every other part; the artboard's own
+   * three parts are not announced here at all, because a record is filled from
    * {@link CanvasStageHandle.panelNode} once the reconcile has settled.
    */
   host: (part: string, element: HTMLElement, detail: string) => void;
@@ -112,7 +114,7 @@ interface CanvasStageScope extends Record<string, unknown>, CanvasStageView {
  * Static is the whole point. A node is announced as it is BUILT, one reconcile step before its
  * attributes are settled, so nothing here may read the element: `part` is what the node is,
  * `data-slot` says which of the two bound parts it is (see {@link CanvasStageView.framePart}), and
- * `data-side` / `data-placement` tell two nodes of one part apart.
+ * `data-side` tells the two width handles apart — the one part the document draws twice.
  */
 function attrOf(def: JxElement | string, name: string): string {
   const value = typeof def === "string" ? undefined : def.attributes?.[name];
@@ -153,7 +155,6 @@ function project(scope: CanvasStageScope, view: CanvasStageView): void {
   scope.frameVars = view.frameVars;
   scope.hug = view.hug;
   scope.lead = view.lead;
-  scope.columnHeader = view.columnHeader;
   scope.handles = view.handles;
   scope.panels = view.panels;
 }
@@ -180,7 +181,6 @@ export function mountCanvasStage(
      than from a callback that will not fire again. */
   const boards = new Map<string, Map<string, HTMLElement>>();
   const scope = reactive<CanvasStageScope>({
-    columnHeader: "hidden",
     frame: "boards",
     framePart: "panzoom",
     frameVars: "",
@@ -206,7 +206,7 @@ export function mountCanvasStage(
         const slot = attrOf(def, "data-slot");
         const named =
           slot === "frame" ? scope.framePart : slot === "inner" ? scope.innerPart : part;
-        actions.host(named, element, attrOf(def, "data-side") || attrOf(def, "data-placement"));
+        actions.host(named, element, attrOf(def, "data-side"));
       }
     },
   }).then((surface) => {

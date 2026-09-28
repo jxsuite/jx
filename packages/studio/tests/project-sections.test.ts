@@ -15,10 +15,11 @@
  * control no reader can move. The mount is asynchronous, because the kit has to be defined before a
  * document can render, so every setup awaits it.
  *
- * **The section's own error is addressed through its slot**, and that is not fussiness: `jx-select`
- * draws a permanent `[part="error"]` region of its own, empty until it has something to say, so a
- * bare `[part="error"]` lookup finds an empty string wherever the section is quiet and never fails
- * the way a missing element would.
+ * **The section's own error is `section-error`**, never `error`: `jx-select` draws a permanent
+ * `[part="error"]` region of its own, empty until it has something to say, so a section banner
+ * under that name would share its selector with the picker's empty sentence (and its rule would
+ * restyle it). The lookup still goes through the slot, so it proves where the sentence sits as
+ * well.
  */
 import {
   flush,
@@ -80,7 +81,9 @@ function written(state: MockPlatformState): AnyConfig {
 
 /** The whole-file write failure, said under the section title rather than beside the control. */
 function errorText(container: HTMLElement): string | undefined {
-  return container.querySelector('[part="error-slot"] > [part="error"]')?.textContent?.trim();
+  return container
+    .querySelector('[part="section-error-slot"] > [part="section-error"]')
+    ?.textContent?.trim();
 }
 
 /** The adapter picker's native control, which is where a reader chooses. */
@@ -146,10 +149,12 @@ describe("the Deploy section", () => {
        sentence is the section's rather than the field's. */
     const section = container.querySelector('[part="deploy"]')!;
     const order = [...section.children].map((el) => el.getAttribute("part"));
-    expect(order.indexOf("error-slot")).toBeGreaterThan(order.indexOf("title"));
-    expect(order.indexOf("error-slot")).toBeLessThan(order.indexOf("row"));
+    expect(order.indexOf("section-error-slot")).toBeGreaterThan(order.indexOf("title"));
+    expect(order.indexOf("section-error-slot")).toBeLessThan(order.indexOf("row"));
     expect(
-      container.querySelector('[part="error-slot"] > [part="error"]')?.getAttribute("role"),
+      container
+        .querySelector('[part="section-error-slot"] > [part="section-error"]')
+        ?.getAttribute("role"),
     ).toBe("alert");
   });
 

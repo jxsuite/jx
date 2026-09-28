@@ -5,6 +5,7 @@ import { documents } from "../src/documents.ts";
 import { iconPath } from "../src/icons.ts";
 import { registerUi } from "../src/index.ts";
 import { clearField, focusField, mintFieldId, selectValue } from "../src/behaviors/textfield.ts";
+import { expectInertWhileEmpty } from "./error-region.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -117,6 +118,17 @@ describe("jx-textfield", () => {
       expect(el.querySelector('[part="error"]')).toBe(region);
       expect(region.textContent).toBe(sentence);
     }
+  });
+
+  test("the empty error region draws nothing and takes no click, whatever an ancestor rule sets", async () => {
+    /* The kit is light DOM, so a consumer's `X [part="error"]` banner rule reaches this paragraph,
+       and its padding and border used to survive the 0×0 as a 16×13 box that took the click. */
+    const el = await field({ label: "Name" });
+    expectInertWhileEmpty(ruleFor(el, '[part="error"]:empty'));
+    // The drawn sentence is untouched: only the `:empty` rule carries the reset.
+    const drawn = ruleFor(el, '[part="error"] {');
+    expect(drawn).toContain("color: var(--jx-danger)");
+    expect(drawn).not.toContain("pointer-events");
   });
 
   test("help, type, name, autocomplete, disabled, readonly and mono forward or mark", async () => {

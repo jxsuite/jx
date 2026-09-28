@@ -15,8 +15,8 @@
       "fontWeight": "600",
       "color": "var(--fg)"
     },
-    "& [part=\"error\"]": {
-      "$description": "A write that failed, said under the section title rather than pinned to a control. This section saves on change and the predecessor dropped every rejection on the floor, so a read-only file made each edit look as though it had been taken and then quietly forgotten.",
+    "& [part=\"section-error\"]": {
+      "$description": "A write that failed, said under the section title rather than pinned to a control. This section saves on change and the predecessor dropped every rejection on the floor, so a read-only file made each edit look as though it had been taken and then quietly forgotten. It is `section-error` rather than `error` because every text field and select in the section draws a permanent `[part=\"error\"]` of its own in this same light-DOM tree, and a rule on that name would give their refusal sentences this margin and size too.",
       "margin": "0 0 12px",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
@@ -172,7 +172,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "error-slot",
+        "part": "section-error-slot",
         "role": "none"
       },
       "$switch": {
@@ -182,7 +182,7 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "error",
+            "part": "section-error",
             "role": "alert"
           },
           "textContent": "${state.error}"

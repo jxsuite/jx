@@ -22,8 +22,8 @@
       "maxWidth": "280px",
       "textAlign": "center"
     },
-    "& [part=\"error\"]": {
-      "$description": "Why the last attempt did not finish, said under the button that would try it again. Narrower than the lede: a refusal is a sentence to read once, not the thing the surface is about.",
+    "& [part=\"connect-failure\"]": {
+      "$description": "Why the last attempt did not finish, said under the button that would try it again. Narrower than the lede: a refusal is a sentence to read once, not the thing the surface is about. The name is qualified, and BOTH halves of it are load-bearing. Not `error`, because every kit field draws a permanent, empty `[part=\"error\"]` of its own and the kit is light DOM, so a rule on that name would reach any field this surface ever holds. Not the bare `failure` every panel banner uses either, because this document is MOUNTED inside another one: `new-project.json` puts it in `[part=\"managed-island\"]` and styles its own backend refusal with a descendant `[part=\"failure\"]`, which would draw this sentence with that dialog's footer border and padding. A guest surface picks a name its host does not write, and `tests/surface-part-names.test.ts` holds the two island hosts to it.",
       "margin": "0",
       "color": "var(--danger)",
       "fontSize": "var(--jx-text-sm)",
@@ -78,7 +78,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "error-slot",
+        "part": "connect-failure-slot",
         "role": "none"
       },
       "style": {
@@ -91,7 +91,7 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "error"
+            "part": "connect-failure"
           },
           "textContent": "${state.error}"
         }
