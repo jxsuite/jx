@@ -185,8 +185,9 @@ export function openConvertRepeaterSurface(
     setName: (value: string) => {
       /* What the control holds, first and unconditionally. A binding only writes when the scope
          CHANGES, so a surface that refused a value without announcing the raw one would leave the
-         field showing text the scope does not have (§9.3). The refusal here is a sentence UNDER the
-         field rather than a rewrite of it, but the echo is what keeps that true of the next one. */
+         field showing text the scope does not have (`studio-ui-guidelines.md` §9.3). The refusal
+         here is a sentence UNDER the field rather than a rewrite of it, but the echo is what keeps
+         that true of the next one. */
       scope.newName = value;
       options.onName(value);
     },

@@ -1,6 +1,6 @@
 /**
- * Formula chips — the MODEL behind the chip pipeline (spec §19.9): an expression tree read as a row
- * of chips, left to right. The `target` chain unrolls deepest-first, so the head chip is the
+ * Formula chips — the MODEL behind the chip pipeline (spec.md §19.9): an expression tree read as a
+ * row of chips, left to right. The `target` chain unrolls deepest-first, so the head chip is the
  * innermost target operand (a ref or a literal) and each operator follows it out to the root;
  * nested non-target operands (`value`, `initial`, a `switch` case, a positional arg) become
  * parenthesized group chips beside the link they belong to.

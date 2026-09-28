@@ -118,7 +118,7 @@ function schemaHost(): HTMLElement {
  * Open one row's Value Source picker and hand back the menu.
  *
  * The rungs are a kit menu in the popover layer now, not a `sp-overlay` inside the row: the ladder
- * is one answer shared with every other bindable position (studio-ui-guidelines.md §6.3).
+ * is one answer shared with every other bindable position (the value-source ladder, §6.6).
  */
 async function openSourceMenu(scope: HTMLElement, prop: string): Promise<HTMLElement> {
   const chip = scope.querySelector(`[data-prop="${prop}"] [part="source"] [part="control"]`);

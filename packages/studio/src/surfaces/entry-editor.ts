@@ -154,7 +154,8 @@ export function mountEntryEditorSurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all there is to wait for: the island
      announces itself through `onNodeCreated` as it is created, which is one `connectedCallback`
-     earlier than awaiting the element would be (§1.1, "await the element"). */
+     earlier than awaiting the element would be (studio-ui-guidelines.md §1.1, "await the
+     element"). */
   const ready = mountSurface("entry-editor", scope, host, {
     onNodeCreated: (element, _path, def) => {
       if (element instanceof HTMLElement && partOf(def) === "fields") {

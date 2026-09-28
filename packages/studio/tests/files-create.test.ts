@@ -2,11 +2,11 @@
  * Tests for `createFileIn` — the ONE creation flow, shared by the Files tree, the Library and the
  * content collections.
  *
- * Before P7.1 there were two, and they disagreed about both of the things asserted here. The tree
- * asked for a file NAME and wrote it verbatim; the Manage view asked for a display name, slugified
- * it and appended the type's extension. Neither checked whether the destination already held that
- * name, so creating `about.md` in a directory that had one silently replaced it — with no undo,
- * because the file was never open.
+ * There used to be two, and they disagreed about both of the things asserted here. The tree asked
+ * for a file NAME and wrote it verbatim; the Manage view asked for a display name, slugified it and
+ * appended the type's extension. Neither checked whether the destination already held that name, so
+ * creating `about.md` in a directory that had one silently replaced it — with no undo, because the
+ * file was never open.
  *
  * The extension is now CHOSEN rather than typed, which adds a third naming mode and one rule that
  * only a picker can break: switching format changes whether the composed name is already taken,

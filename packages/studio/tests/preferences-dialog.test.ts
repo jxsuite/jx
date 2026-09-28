@@ -7,9 +7,10 @@
  * and Keyboard is GENERATED from the registry's own `shortcutReference()`, so it cannot drift from
  * the app or from `docs/studio/interface/shortcuts.md`.
  *
- * §13.5 forbids a screenshot of generated content, so the keyboard sheet's guarantee is checked
- * here instead: the rows come from the registry, and a record registered after this file was
- * written appears without this file knowing about it.
+ * The shot contract forbids a screenshot of generated content (scripts/screenshots/README.md,
+ * "Authoring notes"), so the keyboard sheet's guarantee is checked here instead: the rows come from
+ * the registry, and a record registered after this file was written appears without this file
+ * knowing about it.
  *
  * Everything is addressed by `part`, because the sheet is a document now: there is no `.prefs-nav`
  * or `.prefs-key` to find, and no `sp-dialog-wrapper` to dispatch at — the box, the underlay,

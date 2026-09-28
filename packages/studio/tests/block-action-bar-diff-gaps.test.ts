@@ -365,8 +365,9 @@ describe("the ⋮ menu released by an outside click", () => {
  * contract rather than against the ring that used to implement it.
  *
  * The roving caret is `jx-action-group`'s now, and it refuses to land on a control that cannot act.
- * ONE shape (§8.6) means such a bar still draws every control, so the honest statement is: the
- * chord is claimed, the bar is still whole, and the keyboard does not stop on a refusal.
+ * ONE shape (studio-ui-guidelines.md §8.6) means such a bar still draws every control, so the
+ * honest statement is: the chord is claimed, the bar is still whole, and the keyboard does not stop
+ * on a refusal.
  */
 describe("⌥↑ into a bar where nothing can act", () => {
   test("claims the key, keeps every control, and lands on none of them", async () => {

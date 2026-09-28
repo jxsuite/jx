@@ -680,7 +680,7 @@ export function newProjectCommands(): AnyCommand[] {
       menus: ["commandbar/overflow", "palette"],
       group: "1_file",
       /* No `aiTool`: application-level, refused at registration; it opens the wizard, and the
-         model's own door is `create_project` / `import_site` (§12.4). */
+         model's own door is `create_project` / `import_site` (studio-ui-guidelines.md §12.4). */
       run: (_commandCtx, args) => {
         const tab =
           (args as { tab?: unknown }).tab === undefined

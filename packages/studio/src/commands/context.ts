@@ -1,11 +1,11 @@
 /**
  * Context.ts — the record every `when` / `enablement` predicate closes over.
  *
- * One flat-ish record of the facts a command can be gated on (UX-REDESIGN-PLAN §5.2). Predicates
+ * One flat-ish record of the facts a command can be gated on (specs/studio.md §13.4). Predicates
  * are plain closures over this record — the shape `services/gated-registry.ts` already ships for
- * the AI's tools — not a serialisable string DSL. §13 rejects the DSL explicitly: a `"project.open
- * && editor.kind == 'canvas'"` grammar needs a tokenizer, a parser and a reactive evaluator to buy
- * serialisability nothing in Studio consumes.
+ * the AI's tools — not a serialisable string DSL, which the shell redesign rejected explicitly: a
+ * `"project.open && editor.kind == 'canvas'"` grammar needs a tokenizer, a parser and a reactive
+ * evaluator to buy serialisability nothing in Studio consumes.
  *
  * This module owns the SHAPE and a pure builder. It deliberately imports nothing from the state
  * modules: the registry takes a `getContext()` thunk, so wiring the live sources (the reactive
@@ -185,7 +185,7 @@ export interface CommandContext {
   selection: {
     count: number;
     /**
-     * The selected document paths, in selection order — `[]` when nothing is selected (§6.5).
+     * The selected document paths, in selection order — `[]` when nothing is selected (§6.7).
      *
      * The context is what `probe.state()` answers with, so this is how a script, a screenshot step
      * or the assistant READS a multi-selection back. `count` is its length; the last entry is the
@@ -368,8 +368,8 @@ const GLOBAL_STACK: readonly KeyScope[] = ["global"];
 /**
  * The scope stack for the current context, narrowest scope first.
  *
- * The ladder is `caret > grid/code engine > focused dock > global` (plan §5.3), and the whole point
- * is that a scope which is not on the stack cannot fire AT ALL. Three hand-written guards collapse
+ * The ladder is `caret > grid/code engine > focused dock > global` (§13.3), and the whole point is
+ * that a scope which is not on the stack cannot fire AT ALL. Three hand-written guards collapse
  * into it:
  *
  * - The blanket modal return → the `palette`-only stack;

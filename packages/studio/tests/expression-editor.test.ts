@@ -1,5 +1,5 @@
 /**
- * Tests for the expression editor (spec §19.9): `src/ui/expression-editor.ts`, the flow, and
+ * Tests for the expression editor (spec.md §19.9): `src/ui/expression-editor.ts`, the flow, and
  * `src/surfaces/expression-editor.json`, the document it mounts.
  *
  * Everything is addressed by `part` and by `data-prop`, because the editor is a document: there is

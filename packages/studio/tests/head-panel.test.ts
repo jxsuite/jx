@@ -209,7 +209,7 @@ function clearRow(scope: ParentNode, prop: string): void {
   pointer(chip, "click");
 }
 
-/** Whether a row draws its clear dot at all — §4.2's "set on this document". */
+/** Whether a row draws its clear dot (studio-ui-guidelines.md §4.2): "set on this document". */
 function hasChip(scope: ParentNode, prop: string): boolean {
   return row(scope, prop).querySelector('[part="chip"]') !== null;
 }

@@ -68,7 +68,7 @@ export function staleSelectionMessage(): string {
  *
  * Quick Access is reached through a lazy import on purpose: this module is imported by every panel
  * in the shell, and a static edge would drag the file browser, the format host and the recents
- * store into all of them. P2 replaces the closure with a command id.
+ * store into all of them. A command id would replace the closure.
  */
 export function openPageAction(label = "Open a page…"): EmptyStateAction {
   return {

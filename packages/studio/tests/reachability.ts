@@ -1,12 +1,12 @@
 /**
  * Function-level reachability for `packages/studio/src`, measured from the app's real entry points.
  *
- * P7 shipped eleven features that were built, unit-tested, and reachable from nothing:
- * `sourceControlCommands`, `publishCommands`, `gridViewCommands` and `redirectsCommands` were never
- * composed or registered; `aboutCommands` and `collabCommands` were composed but never registered;
- * `applyDraftFilter`, `loadMediaUsages`, `peekMediaUsages` and `mediaUsageHeadline` had no caller
- * at all. Every gate was green, because a unit test imports the module under test directly and
- * therefore cannot tell whether anything else does.
+ * The shell redesign's content phase shipped eleven features that were built, unit-tested, and
+ * reachable from nothing: `sourceControlCommands`, `publishCommands`, `gridViewCommands` and
+ * `redirectsCommands` were never composed or registered; `aboutCommands` and `collabCommands` were
+ * composed but never registered; `applyDraftFilter`, `loadMediaUsages`, `peekMediaUsages` and
+ * `mediaUsageHeadline` had no caller at all. Every gate was green, because a unit test imports the
+ * module under test directly and therefore cannot tell whether anything else does.
  *
  * The naive guard — "exported, mentioned by tests, no cross-module caller" — flags 406 symbols
  * here, because exporting a helper so a test can reach it is the house style and is legitimate. The

@@ -5,23 +5,20 @@
  * Its predecessor (`settings-modal.ts`) was an `inset: 40px` overlay with a scrim, which meant that
  * while you tuned a design token that pushes live to the canvas, the canvas was behind the thing
  * you were tuning it in, ⌘S/⌘Z/⌘P were suspended, and "Open Data Grid" opened a tab you could not
- * see. Plan §9.3 replaces it with a document in the pane whose sections are INNER NAV: Overview ·
- * Contexts · Site head · CSS Variables · Definitions · Content types · Packages · Extensions ·
- * Deploy · Raw JSON.
+ * see. §17.1 replaces it with a document in the pane whose sections are INNER NAV, and lists them.
  *
- * **The document is the `project.json` tab.** P6.1 made `project.json` a real Tab under the
- * transaction log with one write chokepoint (`tabs/project-config.ts`); this module opens that same
- * tab — same id, same document object — in the `settings` canvas mode. So the settings form, the
+ * **The document is the `project.json` tab.** `project.json` is a real Tab under the transaction
+ * log with one write chokepoint (`tabs/project-config.ts`, §17.1); this module opens that same tab
+ * — same id, same document object — in the `settings` canvas mode. So the settings form, the
  * Project Styles catalogue and the raw JSON are three editors over ONE document, and undo, the
  * dirty flag and ⌘S are the ordinary document verbs rather than three bespoke ones. That is the
- * whole of P6.1's disclosed residual ("⌘Z reaches config history only when the `project.json` tab
- * is focused"): the settings surface now IS that tab.
+ * whole of the residual the shell redesign's configuration phase disclosed ("⌘Z reaches config
+ * history only when the `project.json` tab is focused"): the settings surface now IS that tab.
  *
- * **`settings.open` did not change what it means.** §13.7 makes this phase's deliverable a
- * near-zero manifest diff: the command still means "reach project settings, optionally at a named
- * section", its args schema still declares `section`, and every shot step that names it is
- * untouched. What changed is the `run` — a Tab instead of a modal — and the frame the seven region
- * crops are taken in.
+ * **`settings.open` did not change what it means.** The deliverable was a near-zero manifest diff:
+ * the command still means "reach project settings, optionally at a named section", its args schema
+ * still declares `section`, and every shot step that names it is untouched. What changed is the
+ * `run` — a Tab instead of a modal — and the frame the seven region crops are taken in.
  *
  * @docs studio/projects/settings
  */
@@ -92,8 +89,8 @@ registerSettingsSection({
  * Contexts sits directly under Overview because it is the project's second identity: Overview says
  * what the site IS, Contexts says what it is rendered UNDER. It is a definition site only — the
  * pane context bar selects among what is defined here, and its "Manage contexts…" footer names this
- * key (plan §4.2, §2 principle 5). P6.3 is a RE-HOST: the section shipped in P4 through this same
- * registry and moves into the document's inner nav without its renderer being touched.
+ * key (§6.2). It is a RE-HOST: the section shipped earlier through this same registry and moved
+ * into the document's inner nav without its renderer being touched.
  */
 registerSettingsSection({
   icon: "browser",
@@ -124,10 +121,9 @@ registerSettingsSection({
   render: renderLocalesSection,
 });
 /*
- * CSS Variables is the one section §12 P6.2 does not list, and it stays until P6.4 lands the
- * Project Styles document that is to absorb it. Deleting it here would take the project's design
- * tokens off every surface for the length of one phase — and `css-variables-shot` addresses this
- * key by name.
+ * CSS Variables was the one section the shell redesign's configuration phase did not list, and it
+ * stayed so that the project's design tokens never left every surface at once; §17.1 lists it now,
+ * and `css-variables-shot` addresses this key by name.
  */
 registerSettingsSection({
   icon: "paint-brush",
@@ -288,8 +284,8 @@ export async function openProjectSettings(section?: string): Promise<void> {
     await syncExtensionSettingsSections();
   } catch (error) {
     /* Contributed sections are optional — the built-ins render regardless — but a contribution that
-       will not load is a broken extension, and §7.2 says a thing that must be fixed and is about a
-       named file is a Problem rather than a toast that erases itself. */
+       will not load is a broken extension, and §17.1 files a section that fails to load as a
+       Problem rather than a toast that erases itself. */
     notify.warn(`Could not load extension settings sections — ${errorMessage(error)}`, {
       key: "settings:sections",
       path: PROJECT_CONFIG_PATH,
@@ -313,11 +309,11 @@ export async function settingsSectionsReady(): Promise<void> {
  *
  * **This one record replaces four manifest verbs**: `openSettings`, `openSettings {section}`,
  * `settings.setSection` and the five `input: type` steps that clicked an entry row by region id.
- * The third was refused outright by plan §13.3 because its press-shim mirrored the section
- * registry's LABELS in a hand-kept map; the fourth was raw input standing in for a verb that did
- * not exist ("`settings.selectEntry` has no command record", `until: "P6.2"`). Sections have KEYS
- * and map-layout sections have ENTRY keys; this names both, so the manifest's input-step budget
- * falls by five and its unstable budget by five without one `settings.open` step changing.
+ * The third was refused outright by §13.5 because its press-shim mirrored the section registry's
+ * LABELS in a hand-kept map; the fourth was raw input standing in for a verb that did not exist
+ * ("`settings.selectEntry` has no command record"). Sections have KEYS and map-layout sections have
+ * ENTRY keys; this names both, so the manifest's input-step budget falls by five and its unstable
+ * budget by five without one `settings.open` step changing.
  *
  * The validation is deliberately asynchronous. Extension-contributed sections (`connections`,
  * `data`, `content`) register a tick after the document opens, so refusing synchronously would
@@ -348,22 +344,22 @@ export function settingsCommands(): AnyCommand[] {
       category: "Project",
       id: "settings.open",
       level: "project",
-      // ⌘⇧, — the other half of §5.3's `⌘, / ⌘⇧,` pair. `app.preferences` shipped with its chord
+      // ⌘⇧, — the other half of §15's `⌘, / ⌘⇧,` pair. `app.preferences` shipped with its chord
       // And this one did not, so the two halves of "settings" were a keystroke and a palette search.
       keybinding: "mod+shift+,",
       menus: ["commandbar/overflow", "settings/menu", "palette"],
       group: "7_settings",
       requires: "an open project",
       /* `enablement`, not `when`: with no project open this row is DRAWN, greyed, carrying the
-         sentence above — §12.3's rule that a control which cannot act explains itself rather than
-         vanishing, and the reason the palette greys unavailable commands instead of hiding them.
-         It used to be `when`, so the rail's Settings menu held one row on the welcome screen and
-         said nothing about the other two; "why can't I" had no answer anywhere. The gate itself is
-         unchanged — `enabledWith` still refuses, so `registry.run` and the assistant's tool still
-         throw `CommandUnavailableError` exactly as before. */
+         sentence above — `studio-ui-guidelines.md` §12.3's rule that a control which cannot act
+         explains itself rather than vanishing, and the reason the palette greys unavailable
+         commands instead of hiding them. It used to be `when`, so the rail's Settings menu held one
+         row on the welcome screen and said nothing about the other two; "why can't I" had no answer
+         anywhere. The gate itself is unchanged — `enabledWith` still refuses, so `registry.run` and
+         the assistant's tool still throw `CommandUnavailableError` exactly as before. */
       enablement: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person; the model
-         writes `project.json` through `write_file` and the extension verbs. */
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a surface for a
+         person; the model writes `project.json` through `write_file` and the extension verbs. */
       run: async (_commandCtx, args) => {
         const section = optionalStringArg("settings.open", args, "section");
         const entry = optionalStringArg("settings.open", args, "entry");
@@ -405,10 +401,10 @@ export function settingsCommands(): AnyCommand[] {
      * in for this: it is level `document` and requires an open one, so from a cold workspace there
      * is nothing to re-mode.
      *
-     * It is a peer of `settings.open` and declares the same gate, byte for byte (§12.4: two verbs
-     * over one document declare ONE availability rule). `styles.*` is the project-level plural of
-     * the selection-level `style.*` verbs in `panels/style-panel.ts`; the ids are one letter apart
-     * and the levels are the reason.
+     * It is a peer of `settings.open` and declares the same gate, byte for byte
+     * (`studio-ui-guidelines.md` §12.4: two verbs over one document declare ONE availability
+     * rule). `styles.*` is the project-level plural of the selection-level `style.*` verbs in
+     * `panels/style-panel.ts`; the ids are one letter apart and the levels are the reason.
      */
     {
       category: "Project",
@@ -416,13 +412,15 @@ export function settingsCommands(): AnyCommand[] {
       level: "project",
       menus: ["settings/menu", "palette"],
       /* A distinct ordinal inside the settings family, so the gear reads Settings → Styles.
-         §12.3's lever is `group`, never a per-menu sort; `styles.open` is not in the ⬢ menu, so
-         nothing else sees this string. */
+         `studio-ui-guidelines.md` §12.3's lever is `group`, never a per-menu sort; `styles.open` is
+         not in the ⬢ menu, so nothing else sees this string. */
       group: "7_settings_styles",
       requires: "an open project",
-      // §12.4: two verbs over ONE document declare ONE availability rule, byte-identical.
+      /* `studio-ui-guidelines.md` §12.4: two verbs over ONE document declare ONE availability rule,
+         byte-identical. */
       enablement: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person. */
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a surface for a
+         person. */
       run: () => {
         showSettingsDocument(PROJECT_STYLES_VIEW);
       },

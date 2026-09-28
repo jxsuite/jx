@@ -1,9 +1,17 @@
-interface Analysis {
+interface Breakdown {
+  scripting: number;
+  rendering: number;
+  painting: number;
+  loading: number;
+  gc: number;
+}
+
+export interface Analysis {
   scenario: string;
   wallMs: number;
   busyMs: number;
   longTasks: number[];
-  breakdown: Record<string, number>;
+  breakdown: Breakdown;
   styleRecalc: { count: number; time: number; elements: number };
   styleCauses: { label: string; count: number; time: number }[];
   layout: { count: number; time: number; invalidated: number };
@@ -155,7 +163,7 @@ export function analyze(scenario: string, wallMs: number, events: any[]): Analys
     }
   }
 
-  const breakdown: Record<string, number> = {
+  const breakdown: Breakdown = {
     scripting: 0,
     rendering: 0,
     painting: 0,
@@ -182,8 +190,8 @@ export function analyze(scenario: string, wallMs: number, events: any[]): Analys
       breakdown.loading += ms;
     }
   }
-  for (const [k, v] of Object.entries(breakdown)) {
-    breakdown[k] = Number(v.toFixed(1));
+  for (const k of Object.keys(breakdown) as (keyof Breakdown)[]) {
+    breakdown[k] = Number(breakdown[k].toFixed(1));
   }
 
   const ranked = [...topFrames.values()]
@@ -213,7 +221,7 @@ export function analyze(scenario: string, wallMs: number, events: any[]): Analys
     bundled: [...bundleTotals.entries()]
       .map(([k, ms]) => {
         const [url, line] = k.split("|");
-        return { url, line: Number(line) + 1, totalMs: Number(ms.toFixed(1)) };
+        return { url: url!, line: Number(line) + 1, totalMs: Number(ms.toFixed(1)) };
       })
       .filter((f) => f.totalMs > 10)
       .toSorted((a, b) => b.totalMs - a.totalMs)

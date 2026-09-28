@@ -4,8 +4,8 @@
  * JSON-Schema field editor), "secret" (value committed via the host's secret store, never
  * project.json) and "reference" (an entry of another content collection).
  *
- * Three, not the four the spec still lists: `"binding"` was the signal/route-param picker, and P5
- * replaced it with the value-source ladder every scalar field now carries (`ui/dynamic-slot.ts`,
+ * Three, not the four the spec still lists: `"binding"` was the signal/route-param picker, and the
+ * value-source ladder every scalar field now carries replaced it (§6.6; `ui/dynamic-slot.ts`,
  * `ui/value-source.ts`). Nothing has registered it since, so a descriptor naming it falls through
  * to the control its type would have had anyway.
  *
@@ -705,13 +705,14 @@ registerFormControl("secret", secretControl);
 
 /**
  * An entry of another content collection — site-architecture.md §6.1's `{ "$ref": "#/content/x" }`
- * and §7.4's "entry picker (dropdown of collection entries)".
+ * and site-architecture.md §7.4's "entry picker (dropdown of collection entries)".
  *
  * **Registered once, consulted by everything.** `ui/schema-form.ts` dispatches to it for any
  * property whose `$ref` names a collection, so the settings forms, the entry editor and the
  * frontmatter card all draw the same picker without any of them knowing it exists. That is the
- * whole point: P5 collapsed six value-source vocabularies into one and three call sites still spoke
- * their own, so this one arrives as a registration rather than as a fourth renderer.
+ * whole point: the value-source ladder (§6.6) collapsed six vocabularies into one and three call
+ * sites still spoke their own, so this one arrives as a registration rather than as a fourth
+ * renderer.
  *
  * Three states, and none of them lies:
  *

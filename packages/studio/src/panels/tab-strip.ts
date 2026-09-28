@@ -2,7 +2,7 @@
 /**
  * Tab strip — one strip PER PANE, above each pane's editor.
  *
- * A tab belongs to a pane and the pane is what splits (§4.3), so the strip is a rendering of
+ * A tab belongs to a pane and the pane is what splits (§14.4), so the strip is a rendering of
  * `Pane.tabOrder` / `Pane.activeTabId`, not of a workspace-wide list. The host for each pane is
  * addressed by REGION id — `pane.primary/tabs`, `pane.secondary/tabs` — rather than by element id,
  * so the shell can move or rename the divs without touching this file.
@@ -185,7 +185,8 @@ export function mount(host: HTMLElement) {
         source.data.type === "tab"
           ? { kind: "tab", tabId: source.data.tabId as string }
           : { kind: "file", path: source.data.path as string };
-      // The tail target does not exist until a pane with no tabs is asked to grow one (§7).
+      // The tail target does not exist until a pane with no tabs is asked to grow one (§14.4's
+      // "Between panes" row; `project` draws it).
       render();
       // `render()` alone does not write `dragKey` — only `syncDrag()` does — so without this the
       // Source chip's `data-dragging` mark would not appear until the pointer's first move.
@@ -566,8 +567,8 @@ function project(pane: Pane): TabStripValues {
     tabs: pane.tabOrder.flatMap((id, index) => chipView(pane, id, index, labels)),
     trailing: _overflowing.get(pane.id) === true,
     trailingGlyph: "⌄",
-    // ONE accessible name (§10): the glyph is hidden, so `title` is both the tooltip and the name
-    // — `title` + a matching `aria-label` would announce it twice.
+    // ONE accessible name (`studio-ui-guidelines.md` §10): the glyph is hidden, so `title` is both
+    // The tooltip and the name — `title` + a matching `aria-label` would announce it twice.
     trailingTitle: "Show hidden tabs",
   };
 }
@@ -594,9 +595,10 @@ function chipView(
   if (!tab) {
     return [];
   }
-  /* The draft pill (§7.6). On the CHIP, not only inside the entry editor: the mistake this
-     prevents — publishing something you believed was private — is made while glancing at a row of
-     tabs, and it is made about a document that may not even be the active one. */
+  /* The draft pill (`site-architecture.md` §7.6). On the CHIP, not only inside the entry editor:
+     the mistake this prevents — publishing something you believed was private — is made while
+     glancing at a row of tabs, and it is made about a document that may not even be the active
+     one. */
   const pill = entryDraftPill(tab);
   return [
     {
@@ -678,8 +680,9 @@ function adoptChip(host: HTMLElement, element: HTMLElement, id: string): void {
 
 /**
  * Make a strip's OWN element a drop target — the empty tail after the last chip, and, for an empty
- * pane growing one during a drag (§7), the whole of it. Innermost wins, so a chip under the pointer
- * answers first; this only ever resolves a drop that landed on the strip itself.
+ * pane growing one during a drag (§14.4, "Between panes"), the whole of it. Innermost wins, so a
+ * chip under the pointer answers first; this only ever resolves a drop that landed on the strip
+ * itself.
  */
 function adoptStrip(host: HTMLElement, element: HTMLElement): void {
   _stripDnd.get(host)?.();
@@ -848,11 +851,11 @@ export function dismissOverflowMenu() {
  * List the off-screen tabs. Falls back to every tab when nothing measures as hidden, because an
  * empty menu is a dead control and happy-dom (plus any zero-height layout) measures everything at 0.
  *
- * **The kit menu, not a popover of this strip's own** (guidelines §8.4). `surfaces/menu.ts` owns
- * the panel, the roving caret, the typeahead, Escape and the light dismissal, and it clamps the
- * panel into the viewport once it has been laid out — so the `right:`/`top:` arithmetic that used
- * to sit in a style attribute here is one `place` callback, measured against the panel's real box
- * instead of guessed from the chevron's.
+ * **The kit menu, not a popover of this strip's own** (`studio-ui-guidelines.md` §8.4).
+ * `surfaces/menu.ts` owns the panel, the roving caret, the typeahead, Escape and the light
+ * dismissal, and it clamps the panel into the viewport once it has been laid out — so the
+ * `right:`/`top:` arithmetic that used to sit in a style attribute here is one `place` callback,
+ * measured against the panel's real box instead of guessed from the chevron's.
  *
  * A row states whether it is the tab the pane is already showing. The strip's own chips carry that
  * as `aria-selected`, and a menu row cannot: `checked` on every row is the shape this shell already
@@ -1038,12 +1041,12 @@ function placedTabItems(tab: Tab): MenuRowProjection[] {
  * beside the gesture that needs them (`surfaces/tab-strip.json`), so what arrives here is the tab
  * and the point — which is everything a menu is a function of.
  *
- * **The rows go to the kit menu** (`surfaces/menu.ts`, guidelines §12.5), which is why there is no
- * row template in this file any more. Three things that were written here went with it: the clamp
- * that kept a right-click near the screen edge readable — `onMenuToggle` clamps every panel once it
- * has been laid out, against the panel's real box rather than a guessed one — the `Needs …` line a
- * disabled row prints, and the refusal to dismiss when a disabled row is clicked, which is
- * `jx-menu-item`'s own `onClick` guard.
+ * **The rows go to the kit menu** (`surfaces/menu.ts`, `studio-ui-guidelines.md` §12.5), which is
+ * why there is no row template in this file any more. Three things that were written here went with
+ * it: the clamp that kept a right-click near the screen edge readable — `onMenuToggle` clamps every
+ * panel once it has been laid out, against the panel's real box rather than a guessed one — the
+ * `Needs …` line a disabled row prints, and the refusal to dismiss when a disabled row is clicked,
+ * which is `jx-menu-item`'s own `onClick` guard.
  */
 function openTabContextMenu(tab: Tab, clientX: number, clientY: number) {
   dismissTabContextMenu();
@@ -1340,9 +1343,9 @@ async function confirmClose(tab: Tab): Promise<boolean> {
  *
  * **Three ways out, not two.** This asked "Close without saving?" over a two-way confirm, so the
  * only buttons were the one that threw the work away and the one that did nothing — a dialog that
- * cannot do the thing the user most likely wants. §8.7's table assigns "Unsaved-work decisions" to
- * `showSaveDiscardDialog`, and this is that decision — except when a save is not one of the ways
- * out at all, which is {@link confirmClose}'s job to tell apart.
+ * cannot do the thing the user most likely wants. `studio-ui-guidelines.md` §8.7's table assigns
+ * "Unsaved-work decisions" to `showSaveDiscardDialog`, and this is that decision — except when a
+ * save is not one of the ways out at all, which is {@link confirmClose}'s job to tell apart.
  *
  * **A failed save must not close the tab.** `saveFile` reports its own failures and returns whether
  * the bytes landed; treating "Save" as "save and then close regardless" would turn a write error

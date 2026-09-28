@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioExpressionEditor",
-  "$description": "The expression editor (spec §19.9): a `$expression` node edited as STRUCTURE — an operator, the operands that operator needs, and the live value of each. The rows arrive FLAT. An expression nests to any depth (an operand may be another expression, an aggregate's per-item body is one, and either may hold more of both) while a document's one repeater is `$prototype: \"Array\"` over a list, so `ui/expression-editor.ts` walks the tree once and hands over rows that already carry their own indent — recursion is a property of the walk, exactly as it is for the statement tree and the Data panel's value tree. Six kinds of row come out of that walk: the CHIP strip that summarises the whole pipeline, the preview's ERROR line, the OPERATOR row, an OPERAND row (the workhorse, which carries the value ladder and every literal control), a section LABEL, and an ACTION that grows the node. Five surfaces draw this — the Inspector's Content and Logic tabs, the Navigator's State panel, the statement editor and the Logic dock — and none of them is named here: each host has already said where it is, so this document stamps no region of its own.",
+  "$description": "The expression editor (spec.md §19.9): a `$expression` node edited as STRUCTURE — an operator, the operands that operator needs, and the live value of each. The rows arrive FLAT. An expression nests to any depth (an operand may be another expression, an aggregate's per-item body is one, and either may hold more of both) while a document's one repeater is `$prototype: \"Array\"` over a list, so `ui/expression-editor.ts` walks the tree once and hands over rows that already carry their own indent — recursion is a property of the walk, exactly as it is for the statement tree and the Data panel's value tree. Six kinds of row come out of that walk: the CHIP strip that summarises the whole pipeline, the preview's ERROR line, the OPERATOR row, an OPERAND row (the workhorse, which carries the value ladder and every literal control), a section LABEL, and an ACTION that grows the node. Five surfaces draw this — the Inspector's Content and Logic tabs, the Navigator's State panel, the statement editor and the Logic dock — and none of them is named here: each host has already said where it is, so this document stamps no region of its own.",
   "tagName": "div",
   "attributes": {
     "part": "expression"
@@ -58,7 +58,7 @@
       "textOverflow": "ellipsis"
     },
     "& [part=\"row\"]": {
-      "$description": "§4.1's standard form row, stacked, with its own indent. `display: flex` rather than `block` because an operand row carries a leading cell (an argument's name, a case's key) beside the field.",
+      "$description": "studio-ui-guidelines.md §4.1's standard form row, stacked, with its own indent. `display: flex` rather than `block` because an operand row carries a leading cell (an argument's name, a case's key) beside the field.",
       "boxSizing": "border-box",
       "display": "flex",
       "alignItems": "flex-start",
@@ -107,7 +107,7 @@
       "fontSize": "var(--jx-text-xs)"
     },
     "& [part=\"badge\"]": {
-      "$description": "The live value (spec §19.9). A resolved formula is arbitrary text — an object, a URL, a paragraph — so it ellipsizes inside the line it annotates and never sets that line's width.",
+      "$description": "The live value (spec.md §19.9). A resolved formula is arbitrary text — an object, a URL, a paragraph — so it ellipsizes inside the line it annotates and never sets that line's width.",
       "flex": "0 1 auto",
       "minWidth": "0",
       "maxWidth": "120px",
@@ -123,7 +123,7 @@
       "textOverflow": "ellipsis"
     },
     "& [part=\"preview-error\"]": {
-      "$description": "§7.1's inline tier: not a toast and not a problem record, because it is a property of the value currently in the editor and lives exactly as long as that value does.",
+      "$description": "§16.1's inline tier: not a toast and not a problem record, because it is a property of the value currently in the editor and lives exactly as long as that value does.",
       "margin": "0",
       "padding": "2px 0",
       "minWidth": "0",
@@ -529,7 +529,7 @@
                     },
                     "children": [
                       {
-                        "$description": "The value ladder (§6.3), in the one vocabulary `ui/value-source.ts` owns. It is absent where the position admits a single shape — an assignment target, a `call`'s callee — because a picker with one entry is a control that asks a question with one answer.",
+                        "$description": "The value ladder (§6.6), in the one vocabulary `ui/value-source.ts` owns. It is absent where the position admits a single shape — an assignment target, a `call`'s callee — because a picker with one entry is a control that asks a question with one answer.",
                         "tagName": "span",
                         "attributes": {
                           "part": "source-slot",

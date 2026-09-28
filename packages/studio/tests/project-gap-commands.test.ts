@@ -249,10 +249,11 @@ describe("settings.open", () => {
   });
 
   test("with no project open it is DISABLED with its reason, not hidden", () => {
-    /* §12.3: a control that cannot act explains itself rather than vanishing, and the palette greys
-       unavailable commands for the same reason — "why can't I" is the question it is uniquely good
-       at answering. It was `when` (invisible), which left the rail's Settings menu holding one row
-       on the welcome screen with nothing to say about the other two. The GATE is unchanged. */
+    /* The rule of studio-ui-guidelines.md §12.3: a control that cannot act explains itself rather
+       than vanishing, and the palette greys unavailable commands for the same reason — "why can't
+       I" is the question it is uniquely good at answering. It was `when` (invisible), which left
+       the rail's Settings menu holding one row on the welcome screen with nothing to say about the
+       other two. The GATE is unchanged. */
     ctx = makeContext();
     expect(registry.isVisible("settings.open")).toBe(true);
     expect(registry.isEnabled("settings.open")).toBe(false);

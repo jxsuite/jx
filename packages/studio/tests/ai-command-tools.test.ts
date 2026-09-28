@@ -928,11 +928,11 @@ describe("the assistant's tool budget", () => {
   });
 
   /*
-   * The records whose `run` waits on a person — a dialog, a prompt, a confirm. §12.4's second
-   * deletion rule keeps them out of the projection: the loop does not count a New File prompt as
-   * interactive, the turn would hang on the author, and a cancel resolves with nothing a report
-   * could describe. This set is the ratchet for the ones already known; adding a dialog to a
-   * projected `run` is a review rule the spec states.
+   * The records whose `run` waits on a person — a dialog, a prompt, a confirm. The second deletion
+   * rule of studio-ui-guidelines.md §12.4 keeps them out of the projection: the loop does not count
+   * a New File prompt as interactive, the turn would hang on the author, and a cancel resolves with
+   * nothing a report could describe. This set is the ratchet for the ones already known; adding a
+   * dialog to a projected `run` is a review rule the spec states.
    */
   const WAITS_ON_A_PERSON = [
     "selection.repeat",

@@ -1,5 +1,5 @@
 /**
- * ⑫ The status bar — three fields, in scope order, every interactive item a command.
+ * The status bar — three fields, in scope order, every interactive item a command.
  *
  * The bar's contract is what it CANNOT do as much as what it can: it holds no transient message, it
  * has no click handler of its own, and it renders no item whose command the registry does not
@@ -142,7 +142,7 @@ describe("viewLabel", () => {
   });
 });
 
-// ─── ⑫a PROJECT ──────────────────────────────────────────────────────────────
+// ─── PROJECT ─────────────────────────────────────────────────────────────────
 
 describe("the PROJECT field", () => {
   test("with no project it offers the one command that fixes that", async () => {
@@ -170,12 +170,12 @@ describe("the PROJECT field", () => {
   });
 
   /*
-   * Plan §12 P1 workstream 9: "repo state becomes a persistent status-bar field".
+   * The first-hour redesign asked for it: "repo state becomes a persistent status-bar field".
    *
    * It reads like a request for a "not tracked" twin of the branch item, and it is not: the field
    * already states an untracked project, one item along, because `deployStatusItem()`'s first link
    * is `repo` — label "Track this project with git", command `git.init`. Two items saying that with
-   * the same verb is the adjacent-duplicate chrome §2 principle 9 forbids.
+   * the same verb is the adjacent-duplicate chrome studio-ui-guidelines.md §12.2 forbids.
    *
    * So the invariant worth pinning is the PAIRING, and it is asserted from both ends: exactly one
    * item names `git.init`, and it is there at all. Deleting the checklist's repo step takes the
@@ -269,7 +269,7 @@ describe("the PROJECT field", () => {
   });
 });
 
-// ─── ⑫b DOCUMENT ─────────────────────────────────────────────────────────────
+// ─── DOCUMENT ────────────────────────────────────────────────────────────────
 
 describe("the DOCUMENT field", () => {
   test("does not exist with no document open", async () => {
@@ -345,7 +345,7 @@ describe("the DOCUMENT field", () => {
   });
 });
 
-// ─── ⑫c SELECTION ────────────────────────────────────────────────────────────
+// ─── SELECTION ───────────────────────────────────────────────────────────────
 
 describe("the SELECTION field", () => {
   test("is absent with nothing selected", async () => {
@@ -477,7 +477,7 @@ describe("mountStatusbar", () => {
     expect(items()).toContain("⚠ 1");
   });
 
-  test("a multi-selection says its SIZE — the one selection fact this bar still owns (§6.5)", async () => {
+  test("a multi-selection says its SIZE — the one selection fact this bar still owns (§6.7)", async () => {
     const tab = resetWorkspaceWithTab();
     mountStatusbar();
     await flush();

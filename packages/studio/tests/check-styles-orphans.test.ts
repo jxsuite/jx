@@ -997,8 +997,9 @@ describe("guidelineTokenFindings", () => {
 
   test("catches a documented value the app does not ship", () => {
     /*
-     * The defect this rule exists for: §1.1 named `#1e1e1e` for `--bg` where the app had shipped
-     * `#111111` for months, so the documented palette was one nobody could design against.
+     * The defect this rule exists for: studio-ui-guidelines.md §1.1 named `#1e1e1e` for `--bg`
+     * where the app had shipped `#111111` for months, so the documented palette was one nobody
+     * could design against.
      */
     const spec = "| `--bg` | App background | `#1e1e1e` |";
     const findings = guidelineTokenFindings(spec, css);

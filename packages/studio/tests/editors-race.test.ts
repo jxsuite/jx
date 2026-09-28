@@ -1,5 +1,5 @@
 /**
- * ⑪ · Logic — what happens INSIDE the Monaco load.
+ * The Bottom dock's Logic tab — what happens INSIDE the Monaco load.
  *
  * `tests/editors.test.ts` drives the code surface the way the dock does and awaits `loadMonaco()`
  * before it asserts, which is right for every question it asks and blind to the only question this

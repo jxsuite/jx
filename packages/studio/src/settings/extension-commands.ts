@@ -20,11 +20,11 @@
  * **`enablement` is `ctx.project.open` and nothing else, on all three.** A precondition that
  * depends on an ARGUMENT cannot live there — `enablement` cannot see one — so "is this a real
  * extension?", "can this backend run it?" and "is it still enabled?" are refused with a
- * `RangeError` naming the value, the shape §12.4 prescribes and `pane.derive` already uses. The
- * first two are answered by the derived enum that `registry.run` coerces `package` against — a
- * value outside it reads `is not declared — declared: …` — and the sentences inside `run` remain
- * for the callers that reach it directly (the Extensions section's switch) and for a row that
- * changed between the schema being read and the verb running.
+ * `RangeError` naming the value, the shape `studio-ui-guidelines.md` §12.4 prescribes and
+ * `pane.derive` already uses. The first two are answered by the derived enum that `registry.run`
+ * coerces `package` against — a value outside it reads `is not declared — declared: …` — and the
+ * sentences inside `run` remain for the callers that reach it directly (the Extensions section's
+ * switch) and for a row that changed between the schema being read and the verb running.
  *
  * **The in-flight latch lives here, not in the section**, because the assistant can run these too:
  * a latch the renderer owned would let a tool call and a click install concurrently.
@@ -137,11 +137,11 @@ export async function enableExtension(specifier: string): Promise<void> {
   try {
     if (!row.installed && !row.bundled) {
       /*
-       * `beginActivity`, not `showProgressModal`. §13.3 reserves blocking for an operation that
-       * cannot proceed while the author edits, and this one can — the only real hazard is a second
-       * concurrent write, which the latch closes for a fraction of the cost of freezing the app.
-       * `ui/progress-modal.ts` also enumerates its four call sites as a closed set, and a fifth
-       * would make a written invariant false.
+       * `beginActivity`, not `showProgressModal`. `studio-ui-guidelines.md` §13.3 reserves blocking
+       * for an operation that cannot proceed while the author edits, and this one can — the only
+       * real hazard is a second concurrent write, which the latch closes for a fraction of the cost
+       * of freezing the app. `ui/progress-modal.ts` also enumerates its four call sites as a closed
+       * set, and a fifth would make a written invariant false.
        */
       const activity = beginActivity({
         source: "Extensions",
@@ -161,8 +161,8 @@ export async function enableExtension(specifier: string): Promise<void> {
        * The activity ends HERE, before the config write, and that boundary is load-bearing:
        * `ActivityHandle.fail` raises its own Problem and `commitProjectConfig` raises another keyed
        * `save:project.json`, so an activity spanning both would post two Problems for one failure
-       * with different keys — undeduplicable, and exactly what §13.3 rule 3 forbids. It is also
-       * honest: the install did succeed.
+       * with different keys — undeduplicable, and exactly what `studio-ui-guidelines.md` §13.3
+       * rule 3 forbids. It is also honest: the install did succeed.
        */
       activity.done();
     }
@@ -210,8 +210,8 @@ export async function disableExtension(specifier: string): Promise<void> {
  *
  * Refuses while `project.json` still names it, because removing the package under a live
  * `extensions` entry produces precisely the enabled-but-missing state that fails the next build.
- * §12.4's rule: the strict member's refusal is evidence the write is unsafe, so the loose member
- * must not do it anyway.
+ * `studio-ui-guidelines.md` §12.4's rule: the strict member's refusal is evidence the write is
+ * unsafe, so the loose member must not do it anyway.
  *
  * @param {string} name
  * @returns {Promise<void>}
@@ -357,10 +357,11 @@ export function extensionCommands(): AnyCommand[] {
       enablement: (ctx) => ctx.project.open,
       undo: "none",
       /*
-       * Deliberately no `aiTool`. §12.4 binds an agent tool that WRITES what a command writes to
-       * the command's rule; it does not require every command to have one. The model has no read
-       * that tells it whether a dependency is load-bearing elsewhere in the project, so it cannot
-       * form the judgement this verb needs, and the act is destructive and not undoable.
+       * Deliberately no `aiTool`. `studio-ui-guidelines.md` §12.4 binds an agent tool that WRITES
+       * what a command writes to the command's rule; it does not require every command to have one.
+       * The model has no read that tells it whether a dependency is load-bearing elsewhere in the
+       * project, so it cannot form the judgement this verb needs, and the act is destructive and
+       * not undoable.
        */
       run: async (_ctx, args) =>
         removeExtensionPackage(stringArg("packages.remove", args, "package")),

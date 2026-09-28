@@ -1,5 +1,6 @@
-// oxlint-disable unicorn/no-thenable -- `then` is a manifest KEY (§13.2, the verb that replaced
-// `variants`). These are inert JSON literals; nothing awaits a shot.
+// oxlint-disable unicorn/no-thenable -- `then` is a manifest KEY (the verb that replaced
+// `variants`; scripts/screenshots/README.md, "The five verbs"). These are inert JSON literals;
+// Nothing awaits a shot.
 import { describe, expect, test } from "bun:test";
 import {
   CONTRACT_VERSION,
@@ -74,7 +75,7 @@ describe("the region grammar", () => {
 });
 
 describe("validateManifest", () => {
-  test("accepts the §13.2 shape", () => {
+  test("accepts the five-verb shape", () => {
     const ok = validateManifest(
       manifest([
         {

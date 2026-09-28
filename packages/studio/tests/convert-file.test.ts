@@ -544,7 +544,8 @@ describe("the command record", () => {
 
   test("nothing restores a convert, and the record says so rather than pretending", () => {
     expect(record().undo).toBe("none");
-    // And it is not an assistant tool: `run` awaits a confirm dialog the person answers (§12.4).
+    // And it is not an assistant tool: `run` awaits a confirm dialog the person answers
+    // (studio-ui-guidelines.md §12.4, rule 2).
     expect(record().aiTool).toBeUndefined();
   });
 

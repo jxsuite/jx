@@ -1,5 +1,6 @@
 /**
- * The proxy's SSE normalizer, frozen against recorded upstream bodies (harness slice J1.2).
+ * The proxy's SSE normalizer, frozen against recorded upstream bodies (the v1 freeze taken before
+ * the harness refactor).
  *
  * Every `fixtures/ai-upstream/<name>.sse` is an upstream response as an OpenAI-compatible provider
  * sends it. Each is fed through `handleAiApi` (POST /__studio/ai/chat) with `globalThis.fetch`

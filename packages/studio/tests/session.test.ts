@@ -1,10 +1,10 @@
 /**
- * The session a project is left in, and the one it comes back as (plan §4.4).
+ * The session a project is left in, and the one it comes back as (§14.8).
  *
  * Every case here is about a claim the app made and did not keep: the per-project record's own
  * interface said "session state grows into this shape" while holding two layout fields, so
- * reopening a project landed on the home page with an empty strip — and P3's "Newly possible" says
- * "the session survives a relaunch".
+ * reopening a project landed on the home page with an empty strip — while §14.8 promises "the
+ * session survives a relaunch".
  *
  * The validation cases matter as much as the round trip. `localStorage` is hand-editable and
  * outlives the version that wrote it, so every field read back is input.

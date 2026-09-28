@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioStylePanel",
-  "$description": "The Inspector's Style tab: the Target Line's host, one filter, then the CSS property accordion — every row saying where its value came from (§6.2), every section heading tallying what is set inside it. Nothing here knows what CSS is. `panels/style-panel.ts` resolves the compound coordinate (selection, breakpoint, scheme layer, nested selector), reads css-meta, decides which of seven controls a property gets, works out its provenance and what a commit writes; this document draws the answer and decides nothing. That split is what lets the tab stop going through `panels/panel-scheduler.ts`: the focus guard existed because a lit repaint of the whole panel could take the field a reader was typing into, and a document is one runtime effect per bound property with an equal write skipped.",
+  "$description": "The Inspector's Style tab: the Target Line's host, one filter, then the CSS property accordion — every row saying where its value came from (§6.7), every section heading tallying what is set inside it. Nothing here knows what CSS is. `panels/style-panel.ts` resolves the compound coordinate (selection, breakpoint, scheme layer, nested selector), reads css-meta, decides which of seven controls a property gets, works out its provenance and what a commit writes; this document draws the answer and decides nothing. That split is what lets the tab stop going through `panels/panel-scheduler.ts`: the focus guard existed because a lit repaint of the whole panel could take the field a reader was typing into, and a document is one runtime effect per bound property with an equal write skipped.",
   "tagName": "div",
   "attributes": {
     "part": "panel"
@@ -14,7 +14,7 @@
     "fontFamily": "var(--jx-font-sans)",
     "color": "var(--jx-fg)",
     "& [part=\"empty\"]": {
-      "$description": "The one empty-state pattern (`panels/empty-state.ts`), drawn here because a document cannot render a lit helper. Its rules are what is kept (§11): one sentence saying what the region is FOR, then the action that fills it.",
+      "$description": "The one empty-state pattern (`panels/empty-state.ts`), drawn here because a document cannot render a lit helper. Its rules are what is kept (studio-ui-guidelines.md §11): one sentence saying what the region is FOR, then the action that fills it.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "center",
@@ -106,7 +106,7 @@
       "minInlineSize": "0"
     },
     "& [part=\"chip-slot\"] > [part=\"chip\"]": {
-      "$description": "One vocabulary, five states (§6.2). `default` draws nothing at all — absence IS the ghost — which is why there is no rule for it: the document never makes the node. `set` is the 6px accent disc `.set-dot` has always been; the two that carry information wear their donor's name in a bordered pill, and `mixed` is neutral on purpose because it says nothing about WHERE a value came from, only that the selection disagrees.",
+      "$description": "One vocabulary, five states (§6.7). `default` draws nothing at all — absence IS the ghost — which is why there is no rule for it: the document never makes the node. `set` is the 6px accent disc `.set-dot` has always been; the two that carry information wear their donor's name in a bordered pill, and `mixed` is neutral on purpose because it says nothing about WHERE a value came from, only that the selection disagrees.",
       "display": "inline-flex",
       "alignItems": "center",
       "flexShrink": "0",
@@ -190,7 +190,7 @@
       "background": "var(--jx-handler)"
     },
     "& [part=\"source\"]": {
-      "$description": "The Value Source chip (§6.3): quiet while the value is a literal, accent-tinted the moment it is produced from something else. A CSS declaration has exactly two rungs — `JxStyle` admits no `$ref` — so the picker it opens is two rows, and that is derived from the schema rather than written here.",
+      "$description": "The Value Source chip (§6.6): quiet while the value is a literal, accent-tinted the moment it is produced from something else. A CSS declaration has exactly two rungs — `JxStyle` admits no `$ref` — so the picker it opens is two rows, and that is derived from the schema rather than written here.",
       "flex": "none",
       "color": "var(--jx-fg-dim)"
     },
@@ -881,7 +881,7 @@
                                       }
                                     },
                                     "group": {
-                                      "$description": "The dual-mode control: a number beside its unit. Type what you mean, or take a unit from the list — and the list is the kit MENU rather than a second popup of this document's own (§12.5), because every row of it is a verb: a unit re-attaches to the number the field holds. A keyword row, whose list commits a value, is the `keywords` case instead — and so is the font row now, because a font is chosen by looking and a menu row cannot draw itself in its own face.",
+                                      "$description": "The dual-mode control: a number beside its unit. Type what you mean, or take a unit from the list — and the list is the kit MENU rather than a second popup of this document's own (studio-ui-guidelines.md §12.5), because every row of it is a verb: a unit re-attaches to the number the field holds. A keyword row, whose list commits a value, is the `keywords` case instead — and so is the font row now, because a font is chosen by looking and a menu row cannot draw itself in its own face.",
                                       "tagName": "div",
                                       "attributes": {
                                         "part": "group"

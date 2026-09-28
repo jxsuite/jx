@@ -3,10 +3,11 @@
  * Overview — the project's identity: name, description, production URL, favicon, global styles.
  *
  * It has lost a field twice for the same reason. Breakpoints were one of **four** places `$media`
- * could be defined (plan §4.2) and this was the only one that named them; they live in Contexts
- * now, beside the colour schemes and feature queries they share a map with. The platform adapter
- * has moved to Deploy in P6.2, because §2 principle 5 says a definition site is a LEVEL, not a
- * field on some other level's form — and "what this site is" and "where it ships" are two levels.
+ * could be defined and this was the only one that named them; they live in Contexts now, beside the
+ * colour schemes and feature queries they share a map with. The platform adapter has moved to
+ * Deploy, because a definition site is a LEVEL, not a field on some other level's form (the rule
+ * §6.2 applies to rendering contexts) — and "what this site is" and "where it ships" are two
+ * levels.
  *
  * **The markup left too.** The section is the `settings-overview` surface
  * (`surfaces/settings-overview.json`), mounted by `surfaces/settings-overview.ts`; what is here is
@@ -102,16 +103,17 @@ const CLEAR_URL = { url: undefined } as unknown as Partial<ProjectConfig>;
  * What the surface should be showing, from the configuration and the registry as they stand now.
  *
  * The Project Styles button is rendered FROM the `styles.open` record, so it is disabled rather
- * than absent when it cannot act (§12.3) and it cannot drift from the palette row or the gear menu.
- * The record's TITLE, and nothing else off the registry: `disabledReason` would be the §12.3 shape
- * for a control that can be inapplicable, but this one cannot be — `styles.open` is gated on
- * `ctx.project.open` and Overview is a section of the project's own configuration document, so by
- * the time this renders the answer is always yes. Asking anyway would also be a FOCUS read inside a
- * function that was handed a container, which is what `scripts/check-pane-singletons.ts` rule 4
- * forbids: a pane-scoped surface must not report the focused pane's state. A project-level verb
- * happens to read the same in every pane, but the way to be right about that is not to ask. The one
- * thing that can genuinely be missing is the registry itself (bootstrap order, a test), and that is
- * an existence check, not a state read.
+ * than absent when it cannot act (`studio-ui-guidelines.md` §12.3) and it cannot drift from the
+ * palette row or the gear menu. The record's TITLE, and nothing else off the registry:
+ * `disabledReason` would be the `studio-ui-guidelines.md` §12.3 shape for a control that can be
+ * inapplicable, but this one cannot be — `styles.open` is gated on `ctx.project.open` and Overview
+ * is a section of the project's own configuration document, so by the time this renders the answer
+ * is always yes. Asking anyway would also be a FOCUS read inside a function that was handed a
+ * container, which is what `scripts/check-pane-singletons.ts` rule 4 forbids: a pane-scoped surface
+ * must not report the focused pane's state. A project-level verb happens to read the same in every
+ * pane, but the way to be right about that is not to ask. The one thing that can genuinely be
+ * missing is the registry itself (bootstrap order, a test), and that is an existence check, not a
+ * state read.
  */
 function values(container: HTMLElement): OverviewValues {
   const cfg = config();
@@ -188,10 +190,11 @@ function actions(container: HTMLElement): OverviewActions {
     /*
      * Project Styles is the SAME document in a different editor, and `styles.open` is the one place
      * that says so. This used to write `session.ui.canvasMode` here directly — a second
-     * implementation of a capability, §12.5's defect in miniature: the button and the command could
-     * disagree about what "open Project Styles" means, and only one of them was reachable by name.
-     * The mode is still a fact about the TAB, and there is exactly one `project.json` tab, so
-     * `revealTab`'s `focusPane` puts the keyboard on whichever pane holds it.
+     * implementation of a capability, `studio-ui-guidelines.md` §12.5's defect in miniature: the
+     * button and the command could disagree about what "open Project Styles" means, and only one of
+     * them was reachable by name. The mode is still a fact about the TAB, and there is exactly one
+     * `project.json` tab, so `revealTab`'s `focusPane` puts the keyboard on whichever pane holds
+     * it.
      */
     openStyles: () => {
       void activeRegistry()?.run("styles.open");

@@ -21,7 +21,8 @@
  *   print — one sentence, three consumers.
  *
  * The primary Command Bar cluster is capped at five by `scripts/check-chrome-budget.ts`; four are
- * spent here (Save, Undo, Redo, Open in Browser) exactly as plan §3.2 region ① specifies.
+ * spent here (Save, Undo, Redo, Open in Browser), exactly the four studio-ui-guidelines.md §12.1
+ * admits to `commandbar/primary` at document level.
  */
 
 import { isSpliceablePath } from "../tabs/selection";
@@ -41,10 +42,10 @@ import type { CommandContext } from "./context";
 export type DockId = "navigator" | "inspector" | "bottom";
 
 /**
- * Palette modes, echoed as a removable chip in the input (plan §5.4).
+ * Palette modes, echoed as a removable chip in the input.
  *
  * The value space is the palette's namespace, declared once here so a new mode is a new member
- * rather than a new widget: P4's Problems and P7's content search slot in beside these.
+ * rather than a new widget: a Problems mode or a content search slots in beside these.
  */
 export type PaletteMode = "picker" | "files" | "commands" | "nodes" | "projects";
 
@@ -68,15 +69,14 @@ export interface RailPanel {
   when?: (ctx: CommandContext) => boolean;
 }
 
-/** How many rail panels get a ⌘N. §3.2 ② spends exactly this many slots, four per level group. */
+/** How many rail panels get a ⌘N: the Navigator rail (§5.1) spends four per level group. */
 export const RAIL_CHORD_LIMIT = 8;
 
 /**
- * The Inspector's four tabs, in the order §3.2 ⑨ names them — which is the order ⌘⇧1–4 follow.
+ * The Inspector's four tabs, in the order §6 names them — which is the order ⌘⇧1–4 follow.
  *
- * `"assistant"` is a different dock (it is the Inspector's second instance until P3.6 folds the
- * column in), so it is not one of `shell.ts`'s `INSPECTOR_TAB_IDS`; the chord still belongs in the
- * same run of four, because a user counting tabs does not know that.
+ * `"assistant"` is the fourth tab, not a dock of its own (there is no assistant column, §3.1), so
+ * it is one of `shell.ts`'s `INSPECTOR_TAB_IDS` like the other three.
  */
 export interface InspectorTab {
   /** The stored `session.ui.rightTab` value, or `"assistant"` for the assistant dock. */
@@ -130,9 +130,9 @@ export interface CommandDeps {
    */
   panelRoster: readonly RailPanel[];
   /**
-   * Toggle-FOCUS a panel (plan §5.3): reveal it and take focus, or — when it already has focus —
-   * collapse the dock hosting it and hand focus back to the pane. Deliberately not toggle-visible:
-   * ⌘1 pressed from the canvas must land you in Files, not close it.
+   * Toggle-FOCUS a panel: reveal it and take focus, or — when it already has focus — collapse the
+   * dock hosting it and hand focus back to the pane. Deliberately not toggle-visible: ⌘1 pressed
+   * from the canvas must land you in Files, not close it.
    */
   focusPanel: (panelId: string) => void;
   /** Show an Inspector tab and focus the dock. `"assistant"` addresses the assistant dock. */
@@ -202,11 +202,11 @@ const structurallyEditable = (ctx: CommandContext) =>
 /**
  * The one sentence for {@link structurallyEditable}, read by Delete and Duplicate both.
  *
- * It names the gate the predicate actually has (§12.4's corollary): the old sentences said "not the
- * document root" and "has a sibling position" for a gate that also refuses a repeater's template
- * and a `$switch` case, which sent a reader who had selected a template looking for a root. Two
- * records with one predicate carry one sentence, because the tooltip, the palette subtitle and the
- * assistant's refusal are all this string.
+ * It names the gate the predicate actually has (studio-ui-guidelines.md §12.4's corollary): the old
+ * sentences said "not the document root" and "has a sibling position" for a gate that also refuses
+ * a repeater's template and a `$switch` case, which sent a reader who had selected a template
+ * looking for a root. Two records with one predicate carry one sentence, because the tooltip, the
+ * palette subtitle and the assistant's refusal are all this string.
  */
 const SPLICEABLE_SELECTION =
   "an element selected on the canvas that has a sibling position: not the document root, a " +
@@ -278,7 +278,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
        * the build keeps a command of its own rather than disappearing with the coupling.
        *
        * `commandbar/overflow` rather than `commandbar/primary`: the primary row is budgeted at five
-       * and is document-level by frequency (studio-ui-guidelines §12), and a build is neither
+       * and is document-level by frequency (studio-ui-guidelines.md §12), and a build is neither
        * frequent nor about the document in front of you. No default chord for the same reason.
        */
       id: "project.buildSite",
@@ -373,10 +373,11 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       enablement: (ctx) => structurallyEditable(ctx) && !ctx.selection.isRepeater,
       requires: "an element with a sibling position that is not already a repeater",
       /*
-       * No `aiTool`, by §12.4's second deletion rule: `run` waits on a person. The dialog picks the
-       * collection, and a projected call would suspend the agent's turn on it while the loop counts
-       * the round as work; a cancel returns nothing a report could describe. A record with a
-       * `collection` argument that skips the dialog would be the way back in, and is a UX call.
+       * No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: `run` waits on a
+       * person. The dialog picks the collection, and a projected call would suspend the agent's
+       * turn on it while the loop counts the round as work; a cancel returns nothing a report could
+       * describe. A record with a `collection` argument that skips the dialog would be the way back
+       * in, and is a UX call.
        *
        * The one record here whose implementation is not injected, and the reason is a property of
        * the implementation rather than of this record: `convertToRepeater()` is self-contained —
@@ -540,11 +541,11 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       /*
        * The other half of multi-window, and the half that had no door.
        *
-       * "Open a project ELSEWHERE" is reachable from Open Project and from Recents (§4.2a); "open
-       * an EMPTY window" was reachable only from the ElectroBun launcher's native application menu
-       * — so on a launcher whose window has no menu bar, `newWindow` existed on the platform and
-       * could not be run. Gated on the same capability every other multi-window verb is, so a host
-       * with one window does not offer it.
+       * "Open a project ELSEWHERE" is reachable from Open Project and from Recents
+       * (desktop.md §4.2a); "open an EMPTY window" was reachable only from the ElectroBun
+       * launcher's native application menu — so on a launcher whose window has no menu bar,
+       * `newWindow` existed on the platform and could not be run. Gated on the same capability
+       * every other multi-window verb is, so a host with one window does not offer it.
        */
       id: "view.newWindow",
       title: "New Window",
@@ -559,7 +560,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
     },
     {
       // The no-project palette stops being a hidden domain swap on `!projectState` and becomes a
-      // NAMED mode that works either way (plan §5.4) — same trigger, same chrome, stated feature.
+      // NAMED mode that works either way — same trigger, same chrome, stated feature.
       id: "project.openRecent",
       title: "Open Recent…",
       category: "Project",
@@ -569,7 +570,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       run: () => deps.openPalette("projects"),
     },
 
-    // ── Direct keys (plan §5.3) ──
+    // ── Direct keys ──
     ...panelFocusCommands(deps),
     ...inspectorFocusCommands(deps),
     {
@@ -602,7 +603,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
  * Generated rather than written out eight times for the reason the whole registry exists: the rail,
  * the chord, the palette row and the generated shortcut sheet are then four renderings of one list.
  * Only the first eight get a chord; a ninth panel keeps its name and its palette row, which is the
- * cost §2 principle 9 puts on chrome.
+ * cost studio-ui-guidelines.md §12.2 puts on chrome.
  */
 export function panelFocusCommands(deps: CommandDeps): AnyCommand[] {
   let chordsSpent = 0;

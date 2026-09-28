@@ -42,7 +42,7 @@ export function mount(ctx: OverlaysCtx) {
       // Track selection, hover, mode, and the active panel (a hit in another breakpoint panel — or
       // A header click — re-anchors the block action bar even when the selection path is unchanged).
       // The whole SET, joined — a bare property read would not re-trigger when the selection
-      // Changes WITHIN the array, and §6.5's helpers always replace it but nothing enforces that.
+      // Changes WITHIN the array, and §6.7's helpers always replace it but nothing enforces that.
       void tab.session.selection.map((path) => path.join("/")).join("|");
       void tab.session.hover;
       void tab.doc.mode;

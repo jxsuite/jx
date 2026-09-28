@@ -172,7 +172,7 @@ describe("the project-wide warning band", () => {
  * Its `style` is handed to every route's compile as `projectStyle`, so a bare tag key becomes a
  * global `h1 { … }` rule on every page and inside every component instance (nothing attaches a
  * shadow root), and Studio merges the same object into every open document via `getEffectiveStyle`.
- * It spent P5 labelled "in this document" — the narrowest phrase in the vocabulary on the widest
+ * It was long labelled "in this document" — the narrowest phrase in the vocabulary on the widest
  * blast radius in the app.
  */
 describe("project.json is the widest scope, not the narrowest", () => {

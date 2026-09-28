@@ -105,7 +105,8 @@ export function mountDeploySurface(
   let disposed = false;
   /* Nothing is called on the element, so the mount is all this has to wait for: the DOCUMENT is
      what this surface renders, and `jx-field` and `jx-select` settle their own templates one
-     `connectedCallback` later without anybody here asking them to (§1.1, "await the element"). */
+     `connectedCallback` later without anybody here asking them to (studio-ui-guidelines.md §1.1,
+     "await the element"). */
   void mountSurface("settings-deploy", scope, container).then((surface) => {
     if (disposed) {
       surface.dispose();

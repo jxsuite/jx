@@ -3,8 +3,8 @@
  *
  * Two questions the parent realm could not previously answer about a cross-origin canvas:
  *
- * 1. _Has it settled?_ — answered by the frame itself (`{kind: "idle"}`), folded in PER HOST so P8's
- *    second pane does not turn `shot.ts`'s "Studio's only child frame" into a coin flip.
+ * 1. _Has it settled?_ — answered by the frame itself (`{kind: "idle"}`), folded in PER HOST so a
+ *    second pane (§18) does not turn `shot.ts`'s "Studio's only child frame" into a coin flip.
  * 2. _Where is this node on screen?_ — answered by the host composing its own transforms, which is
  *    what deletes the caller's `Math.abs(scale - 1) < 0.001` branch.
  */

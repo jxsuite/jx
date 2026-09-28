@@ -128,6 +128,8 @@ my-site/
 
 ### 2.2 Component Co-location
 
+> **Status: Partial.** The routing half ships: `_`-prefixed entries under `pages/` are skipped by route discovery (`packages/compiler/src/site/pages-discovery.ts`), and Studio's palette finds a co-located component (§10.3). The build does not compile one: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` and never reads a page's `{ "$ref" }` `$elements` entry, so a page naming `./_blog-card.json` ships an empty `<blog-card></blog-card>` with no module and no build error.
+
 Components may be co-located with their pages. Files prefixed with `_` in the `pages/` directory are excluded from routing (following Astro's convention):
 
 ```
@@ -141,6 +143,8 @@ pages/
 ---
 
 ## 3. Site Configuration
+
+> **Status: Partial.** `project.json` is the one required configuration file and its keys are read as §3.1 records. The example's `$head` is not in the shape the build reads: an entry's HTML attributes come only from `attributes` (`renderHeadEntry` in `packages/site/src/head-merger.ts`), so the top-level `name`, `content`, `rel` and `href` below are dropped, and the icon and font entries render as bare `<link>` tags.
 
 The `project.json` file at the project root defines site-wide settings. It is the only required configuration file.
 
@@ -209,6 +213,8 @@ The `project.json` file at the project root defines site-wide settings. It is th
 
 ### 3.1 Configuration Properties
 
+> **Status: Partial.** Every key is in the project schema (`packages/schema/defs/project-config.schema.ts`) except `content`, which the parser extension contributes (`extensions/parser/src/Content.class.json`), and all but `$defs` are read by the build or the page context (`packages/site/src/context.ts`, `packages/compiler/src/site/site-build.ts`). No build, runtime or context code reads project `$defs`, which only Studio's Data Shapes editor writes (`packages/studio/src/settings/defs-editor.ts`), and `defaults.charset` defaults to `"utf8"` (the schema source `packages/schema/defs/project-config.schema.ts`, `packages/compiler/src/site/site-loader.ts`, `compilePage` in `packages/compiler/src/site/site-build.ts`, `packages/site/src/head-merger.ts`) rather than `utf-8`.
+
 | Property           | Type     | Description                                                                                                                                           |
 | ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`             | `string` | Site name, used in default `<title>` and meta tags                                                                                                    |
@@ -248,6 +254,8 @@ Pages may override any inherited value. A page declaring its own `$head` entries
 
 ## 4. File-Based Routing
 
+> **Status: Partial.** File-based routing ships (`discoverPages` in `packages/compiler/src/site/pages-discovery.ts`, `fileToRoute` and `matchRoute` in `packages/site/src/routes.ts`). The standards note's SHOULD is unmet: no build step constructs a `URLPattern` from a route pattern, and `routes.ts` matches by its own segment comparison.
+
 Inspired by Astro and Next.js, every `.json` file in the `pages/` directory automatically becomes a route. No routing configuration is needed.
 
 > **Standards note:** All URL pattern syntax in this specification (`:param`, `*`, optional `?`, regexp groups) conforms to the [WHATWG URLPattern Standard](https://urlpattern.spec.whatwg.org/), which is included in the [WinterTC Minimum Common API](https://min-common-api.proposal.wintertc.org/). Compilers SHOULD validate patterns using `new URLPattern({ pathname: pattern })` at build time.
@@ -278,6 +286,8 @@ Bracket syntax in filenames creates parameterized routes:
 Dynamic route parameters are resolved at build time by querying content collections or providing explicit path sets.
 
 ### 4.3 Dynamic Route Resolution
+
+> **Status: Partial.** The three `$paths` shapes and the extension discriminator ship (`expandDynamicRoutes` in `packages/compiler/src/site/pages-discovery.ts`, `Content.resolvePaths` in `extensions/parser/src/content-loader.ts`). Pagination helpers are neither specified nor built: no `$paths` shape pages a collection into numbered routes, and `ContentCollection` takes a `limit` but no offset.
 
 A dynamic page must declare which paths it generates. This is done via a top-level `$paths` property:
 
@@ -326,6 +336,8 @@ The compiler iterates `$paths` at build time, injecting each set of parameters i
 
 ### 4.4 Route Priority
 
+> **Status: Partial.** Rules 1, 2 and 4 ship (`compareRoutes` in `packages/site/src/routes.ts`, the `_` exclusion in `packages/compiler/src/site/pages-discovery.ts`). Rule 3 holds only against a catch-all: two dynamic routes with no catch-all are ordered alphabetically, so `/:category/:id` sorts ahead of `/blog/:slug` and `matchRoute` answers `/blog/x` with it.
+
 When multiple routes could match a URL, priority follows Astro's rules:
 
 1. Static routes over dynamic routes (`/about` beats `/[slug]`)
@@ -362,6 +374,8 @@ Layouts are Jx documents that provide a shared page shell — the `<html>`, `<he
 
 ### 5.1 Layout Documents
 
+> **Status: Partial.** Slot distribution ships (`distributeSlots` in `packages/site/src/layout.ts`). The example's shape does not: a layout is body content wrapped by the page shell (`packages/compiler/src/targets/compile-static.ts`), so an `html` root nests inside `<body>`, head material comes from the layout's `$head` rather than `<head>` children in its tree, and `$page.lang` is never set (§5.5 names it `$page.locale`).
+
 A layout is a standard Jx file that uses HTML `<slot>` elements — the same mechanism already implemented for custom elements — to indicate where page content is injected:
 
 ```json
@@ -397,6 +411,8 @@ A layout is a standard Jx file that uses HTML `<slot>` elements — the same mec
 ```
 
 ### 5.2 Referencing Layouts from Pages
+
+> **Status: Partial.** `$layout`, its project-root resolution, the `defaults.layout` fallback and `$layout: false` ship (`resolveLayout` in `packages/site/src/layout.ts`, `packages/compiler/src/site/layout-resolver.ts`). The example's `$head` is not in the shape the build reads, as in §8.1: its `title` entry is discarded, because the title is the document's `title` property, and its top-level `name` and `content` are dropped.
 
 Pages declare their layout via `$layout`:
 
@@ -474,6 +490,8 @@ Children without a `slot` attribute go into the default (unnamed) slot. Fallback
 
 ### 5.4 Layout Nesting
 
+> **Status: Partial.** A layout's own `$layout` resolves recursively and the slots compose (`resolveLayout` in `packages/site/src/layout.ts`). An intermediate layout's `$head` does not survive as layout head: the inner resolution records it as the page's (`_pageHead`), so it is dropped when the page declares its own `$head` and is otherwise merged at page level, and only the outermost layout's `$head` is merged as the layout level (`compilePage` in `packages/compiler/src/site/site-build.ts`, `composePage` in `packages/site/src/compose.ts`).
+
 Layouts can reference other layouts, enabling composition:
 
 ```json
@@ -501,6 +519,8 @@ Layouts can reference other layouts, enabling composition:
 This allows `blog-post.json` layout to wrap within `base.json`, providing blog-specific chrome while inheriting the site shell.
 
 ### 5.5 Layout Props
+
+> **Status: Partial.** `injectContext` (`packages/site/src/context.ts`) supplies `$page.title`, `url`, `params`, `locale`, `dir` and `alternates`, and `$site.name`, `url`, `locales` and `defaultLocale`. `$page.description`, `$page.$head`, `$page.frontmatter` and `$site.$head` are never injected, the `$site.state` row describes a nesting that does not exist (§10.4), and `$site.locales` puts the default first only when it was missing from `locales` (`resolveI18n` in `packages/schema/src/locale.ts`, §13.6). `$page.title` never comes from a `$head` title, and in a built page wrapped in a layout it is the layout's own `title`, else the project `name`, never the page's: `compilePage` in `packages/compiler/src/site/site-build.ts` deletes the page-title carrier (`_pageTitle`) before calling `injectContext`, where the canvas composer (`composePage` in `packages/site/src/compose.ts`) calls it first, so the canvas and the build disagree.
 
 Layouts receive page metadata via the `$page` context object:
 
@@ -727,6 +747,8 @@ The value `"jane-doe"` is resolved at build time to the matching entry in the `a
 
 ### 6.5 Filesystem Correlation
 
+> **Status: Partial.** The key rules ship except the source of format classes: `format` resolves only through the extension registry built from project `extensions` (`registry.byName` in `extensions/parser/src/content-loader.ts`, `buildProjectExtensionRegistry` in `packages/compiler/src/site/format-host.ts`), never the `imports` map, so a class declared only in `imports` is refused as "not a registered format class". §6.2 already states the shipped rule.
+
 The filesystem structure directly mirrors the logical model:
 
 ```
@@ -813,15 +835,17 @@ Additionally, the **Browse** canvas mode provides a full-screen project file tab
 
 ### 7.2 Content Collection Browser
 
+> **Status: Partial.** The Library ships as a `GridSource` editor with all five layouts and windowed, LRU-capped previews (`packages/studio/src/browse/library-source.ts`, `library-layouts.ts`, `library-preview.ts`). Cards, Calendar and Board work over every project file rather than a collection's own fields, and the layout is one module-scoped value (`libraryView.layout` in `library-pane.ts`), neither chosen per collection nor saved with a view: `packages/studio/src/grid/grid-layout.ts` saves only columns, sort, grouping and filter per grid.
+
 The **Library** is the collection browser — an editor kind over a `GridSource`, so a collection is the same kind of thing as a data table and is windowed by the same primitive.
 
-| Layout       | Status          | Description                                                               |
-| ------------ | --------------- | ------------------------------------------------------------------------- |
-| **Table**    | **Implemented** | Name, Category, Type, Path. Filterable by category and search.            |
-| **Cards**    | **Implemented** | Hero image, title and summary, with previews mounted only while on screen |
-| **Calendar** | **Implemented** | Date-sorted, for date-bearing collections                                 |
-| **Board**    | **Implemented** | Grouped by a chosen field                                                 |
-| **Media**    | **Implemented** | Thumbnails, for the asset categories                                      |
+| Layout       | Status                                                                   | Description                                                               |
+| ------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| **Table**    | **Implemented**                                                          | Name, Category, Type, Path. Filterable by category and search.            |
+| **Cards**    | **Partial** — windowed previews ship; no entry field is read into a card | Hero image, title and summary, with previews mounted only while on screen |
+| **Calendar** | **Partial** — dated by a filename prefix or mtime, never a schema date   | Date-sorted, for date-bearing collections                                 |
+| **Board**    | **Partial** — grouped by the fixed Library category, not a chosen field  | Grouped by a chosen field                                                 |
+| **Media**    | **Implemented**                                                          | Thumbnails, for the asset categories                                      |
 
 **Views are windowed, and the window is the contract.** Rendering a live runtime instance per card does not survive a real project: the measured case is 300 pages in one category, where the whole list is 300 cards and 1,830 DOM nodes against a window's 40 and 270. Previews are mounted by an `IntersectionObserver` and held in an LRU whose cap must exceed one window's worth — a cap smaller than the window thrashes against itself and re-renders continuously.
 
@@ -840,7 +864,7 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 
 #### Frontmatter Form
 
-> **Status: Implemented.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form over the same widget mapping the inspector uses.
+> **Status: Partial.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-editor.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, and an `array` of `string` and an `object` are raw JSON text.
 
 **One editor, two storage shapes.** Where an entry's fields LIVE depends on its format and nothing else: a Markdown entry keeps them in frontmatter, a JSON entry _is_ the document. The editor reads and writes whichever the format declares — forking the editor per format is how a JSON entry came to render a blank form and discard every edit while reporting success.
 
@@ -877,6 +901,8 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 
 ### 7.6 Draft Workflow
 
+> **Status: Partial.** The Studio half ships: the badge, the tab pill, the Library column and filter, and the explicit including-drafts perspective (`packages/studio/src/content/draft-state.ts`, `packages/studio/src/panels/tab-strip.ts`, `packages/studio/src/grid/sources/content-source.ts`). Production builds do not exclude drafts: neither the compiler nor the parser and feed extensions filter `draft: true`, as `DRAFT_MEANING` in `draft-state.ts` says in Studio's own words.
+
 Entries with `"draft": true` (a conventional boolean field in the schema):
 
 - Shown with a "Draft" badge in the collection browser, **and on the pane tab of an open entry** — the failure this guards against is publishing something the author believed was private, and that belief is formed while editing, not while browsing
@@ -891,6 +917,8 @@ Entries with `"draft": true` (a conventional boolean field in the schema):
 Every page compiles with proper SEO metadata. The system is declarative — no imperative code required.
 
 ### 8.1 Page-Level `$head`
+
+> **Status: Partial.** Page-level `$head` ships (`mergeHead` in `packages/site/src/head-merger.ts`), but not in this example's shape: an entry's HTML attributes are read only from `attributes`, so the top-level `name`, `property`, `content`, `rel` and `href` below are dropped, and a `title` entry is discarded because the title comes from the document's `title` property. `docs/framework/site/seo.md` documents the shipped shape. On a page with no layout that property also stays on the root element, which ships as `<div title="Blog">`, a tooltip over the whole page: only `resolveLayout` (`packages/site/src/layout.ts`) moves a page's `title` off its root, and `title` is not in `RESERVED_KEYS` (`packages/runtime/src/runtime.ts`), so `buildAttrs` in `packages/compiler/src/shared.ts` and the runtime both write it as the element's `title`.
 
 Pages declare metadata via `$head`. The compiler resolves these into `<head>` elements:
 
@@ -931,6 +959,8 @@ Pages declare metadata via `$head`. The compiler resolves these into `<head>` el
 
 ### 8.2 Templated Metadata
 
+> **Status: Partial.** `$head` values resolve against state, `$site` and `$page` (`resolveHeadTemplates` in `packages/compiler/src/site/site-build.ts`). The example diverges as §8.1's does: its templated `title` entry is discarded, since a templated title is the document's `title` property, and its top-level `name`, `content`, `rel` and `href` are never rendered.
+
 Metadata values support template strings referencing state, `$site`, and `$page`:
 
 ```json
@@ -957,6 +987,8 @@ Metadata values support template strings referencing state, `$site`, and `$page`
 For content-driven pages, metadata comes directly from the content entry's frontmatter — no duplication.
 
 ### 8.3 Head Merge Order
+
+> **Status: Partial.** The three layers merge in this order under the stated deduplication, auto-injected entries yield to authored ones, and the `rel` check ships (`mergeHead` and `headEntryKey` in `packages/site/src/head-merger.ts`, `packages/compiler/src/site/link-relations.ts`). Two statements do not match: the layout level is the layout document's `$head`, not `<head>` children in its tree, and a `<title>` in `$head` at any level is discarded rather than overriding, because `mergeHead` always writes the title from the document's `title` property.
 
 The compiler assembles `<head>` content from three sources, in order:
 
@@ -1005,7 +1037,9 @@ Redirect sources are not pages and never appear in the sitemap.
 
 ### 8.5 Structured Data (JSON-LD)
 
-> **Status: Implemented.** A head entry's `textContent` may be an object; the compiler serializes it to JSON inside the tag, and template strings **inside** the object resolve against the same scope as everywhere else — a structured-data block that cannot reference the page it describes would not be much use. The interpreting runtime serializes it identically, so a dev preview and a built page agree.
+> **Status: Partial.** Object `textContent` serialization with templates resolved ships in the build and the interpreting runtime (`renderHeadEntry` in `packages/site/src/head-merger.ts`, `injectHead` in `packages/runtime/src/runtime.ts`). The example's shape does not: its `type` sits at the top level of the entry, where both read only `attributes`, so the block renders as a bare `<script>` that a browser runs as JavaScript instead of reading as JSON-LD. `packages/site/tests/head-merger.test.ts` pins the working form, `attributes: { "type": "application/ld+json" }`.
+>
+> A head entry's `textContent` may be an object; the compiler serializes it to JSON inside the tag, and template strings **inside** the object resolve against the same scope as everywhere else — a structured-data block that cannot reference the page it describes would not be much use. The interpreting runtime serializes it identically, so a dev preview and a built page agree.
 
 Pages may include JSON-LD for rich search results:
 
@@ -1034,7 +1068,9 @@ The compiler serializes the `textContent` object to a JSON string within the `<s
 
 ### 8.6 Studio SEO Panel
 
-> **Status: Implemented.** The previews live in a **modal**, `Search appearance`, rather than an inspector tab: they describe the document rather than a selection, and a rendered SERP row is a picture you study at width, not a field you fill in beside four others. They began as a disclosure inside the Document Header card and outgrew it — the card's job is the handful of values you type while writing.
+> **Status: Partial.** The `Search appearance` modal ships the merged-`$head` previews with provenance, the counters, the warnings and the grouped live fields (`packages/studio/src/panels/seo-modal.ts`, `packages/studio/src/panels/head-panel.ts`). The Schema.org editor does not exist anywhere in `packages/studio`, and `document.openSeo` deliberately declares no `aiTool` (`studio-ui-guidelines.md` §12.4), where this section says it has one.
+>
+> The previews live in a **modal**, `Search appearance`, rather than an inspector tab: they describe the document rather than a selection, and a rendered SERP row is a picture you study at width, not a field you fill in beside four others. They began as a disclosure inside the Document Header card and outgrew it — the card's job is the handful of values you type while writing.
 
 **The preview shows the MERGED `$head`** (§8.3), not the page's own entries — a page appends to the site's head rather than replacing it, so a preview of the page's half would misreport every title that inherits. Values the page did not author are marked as inherited, naming the donor, in the same provenance vocabulary the inspector uses for style and props.
 
@@ -1128,6 +1164,8 @@ Image optimization is configured in `project.json` under the `images` key. All p
 
 #### 9.2.2 Build-Time Behavior
 
+> **Status: Partial.** The pipeline ships (`processImage` in `packages/compiler/src/site/image-optimizer.ts`, `transformImgNode` in `packages/compiler/src/site/image-transform.ts`), and the one-format and `<picture>` shapes match. Six statements do not: the native width is added only below the top configured rung, the `<img>` `src` becomes the largest jpeg or png variant when one is emitted, a container-derived `sizes` outranks the config, `width` and `height` are injected only when `optimize` is on, variants are encoded into the image cache and copied to `dist/images/_optimized/` afterwards, and nothing limits concurrency to 4, since every variant's Sharp encode starts as its task is created and the later batches of 4 only await work already running. `compiler.md` §7.2 states the shipped behaviour.
+
 When `optimize: true`, the compiler processes every `<img>` node during page compilation:
 
 1. **Width filtering** — Only generates variants at widths ≤ the source image's natural width. The original width is always included as a breakpoint.
@@ -1141,6 +1179,8 @@ When `optimize: true`, the compiler processes every `<img>` node during page com
 Loading attributes are decided separately — see §9.2.7. Up to 4 variants are processed concurrently per image.
 
 #### 9.2.3 Which Images Are Processed
+
+> **Status: Partial.** The static, local, template-free and `data-no-optimize` rules ship (`shouldSkip` and `transformImgNode` in `packages/compiler/src/site/image-transform.ts`). The format rules do not: there is no raster allowlist, so any local file other than `.svg` or `.gif` goes to Sharp, and every `.gif` is skipped, not only animated ones (`SKIP_EXTENSIONS` in the same file).
 
 The optimizer processes `<img>` nodes with:
 
@@ -1178,6 +1218,8 @@ Individual `<img>` nodes can override global defaults:
 - `data-no-optimize` — skips optimization entirely for this image
 
 #### 9.2.5 Caching
+
+> **Status: Partial.** The key, persistence and error-free pruning match (`packages/compiler/src/site/image-cache.ts`). The location does not: `getImageCacheDir` uses `<npm cache>/jxsuite-images/<project directory name>/manifest.json` whenever `npm config get cache` answers, and `.cache/images` only as a fallback, so the `.gitignore` advice below has no effect on a normal machine; and invalidation checks the variant files in that cache directory, not in `dist/`.
 
 The optimizer caches processed images to avoid redundant re-encoding on subsequent builds:
 
@@ -1294,7 +1336,7 @@ Only statically referenced files are copied into the build. A `src` computed at 
 
 ### 9.4 Studio Media Browser
 
-> **Status: Partial.** Upload, browsing, metadata and the referenced-file warning ship. Usage is COMPUTED but not browsable — see the list at the end of this section, which contradicted this marker for as long as both existed. The full Studio-side contract is `studio.md` §9.3 — this section states only what it means for the media on disk.
+> **Status: Implemented.** Upload, browsing, metadata, the referenced-file warning and browsable usage (the Media view, `packages/studio/src/media/media-pane.ts`) all ship. The full Studio-side contract is `studio.md` §9.3 — this section states only what it means for the media on disk.
 
 **A preview resolves in the same space the canvas does.** Panel chrome — a media-picker thumbnail, the social card in a search-appearance preview — renders in the editor's own document, not the canvas, so a reference resolved for one and not the other breaks in exactly the places nobody photographs. The two take different things and must not be confused: a preview of what the AUTHOR WROTE resolves as §9.3 describes, while a preview of a FILE the browser is listing starts from the path and asks where that file publishes. `public/hero.jpg` is written `/hero.jpg` — a string that shares not one segment with it — so a preview built by prefixing a file path with a slash names a URL the site does not publish.
 
@@ -1356,6 +1398,8 @@ These cascade without explicit import:
 
 ### 10.3 Component Scoping
 
+> **Status: Partial.** Project scoping ships: no other project's components reach the palette, and project `imports` apply project-wide (`packages/site/src/context.ts`). Discovery is not limited to `components/`: the dev server (`/__studio/components` in `packages/server/src/studio-api.ts`), the desktop (`discoverComponents` in `packages/desktop/src/project-session.ts`) and the cloud host (`discoverComponents` in `packages/studio/src/platforms/cloud.ts`) find a component document anywhere in the project tree, which is what §2.2's co-located components need. The build compiles a narrower set than it discovers, so the second bullet does not hold for `jx build`: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` (a non-recursive listing) and never reads a page's or layout's `{ "$ref" }` `$elements` entries, so `../components/nested/deep-card.json` or `./_blog-card.json` named there ships as an empty custom-element tag with no module and no build error, and only a component's own `$elements` dependencies compile from elsewhere in the tree.
+
 Components are scoped to the site project. When a site context is active:
 
 - Only components in the project's `components/` directory are discoverable
@@ -1366,6 +1410,8 @@ Components are scoped to the site project. When a site context is active:
 This ensures that each site is a self-contained unit — moving between components, pages, and layouts within a project always sees the same component registry.
 
 ### 10.4 What Requires Explicit Access
+
+> **Status: Partial.** Data files through `$ref`, `ContentCollection` and `ContentEntry` declarations, and `$props`-only component inputs ship. Item 1 does not hold: `injectContext` (`packages/site/src/context.ts`) spreads project `state` flat onto `$site` (`$site.siteName`, not `$site.state.siteName`) and also merges it into the page's own `state` as bare keys, the page winning, which is what §3.2 describes; item 1 and §5.5's `$site.state` row describe a nesting that does not exist.
 
 These require deliberate reference:
 
@@ -1398,6 +1444,8 @@ Studio must fully enforce the site-based paradigm at edit time, not just build t
 Individual file `$media`, `$style`, and `$elements` merge on top of site-level definitions (file takes precedence on conflict), matching the cascade behavior at build time.
 
 ### 10.7 CSS Cascade
+
+> **Status: Partial.** The order ships (`packages/site/src/site-style.ts`, `packages/compiler/src/shared.ts`, and `injectComponentScripts` in `packages/compiler/src/site/site-build.ts`, which emits component CSS last in `<head>`). Item 6 does not hold as written: components render into light DOM by default, but a component may opt into a shadow root (`$shadow`, or `defaults.shadow` for a project; `packages/compiler/src/shadow.ts`, `spec.md` §16.6), and a shadow component's stylesheet is linked inside its declarative shadow root rather than joining this cascade.
 
 The global stylesheet is emitted in this order:
 
@@ -1601,7 +1649,7 @@ Static assets are emitted per component, with page styles inlined:
 
 ## 13. Internationalization
 
-> **Status: Partial.** §13.1–§13.5 and §13.7 ship: tags are validated and canonicalized, a route's prefix decides its locale, a `{locale}` collection source expands over the declared locales, each page carries the `lang` and `dir` that follow, and translations advertise one another in `<head>` and in the sitemap. §13.6 is the only part that is not whole, and it is bounded rather than unbuilt: a site with `build.adapter` set negotiates `Accept-Language`, and adapter-less static output has no request to negotiate against.
+> **Status: Implemented.** §13.1–§13.5 and §13.7 ship: tags are validated and canonicalized, a route's prefix decides its locale, a `{locale}` collection source expands over the declared locales, each page carries the `lang` and `dir` that follow, and translations advertise one another in `<head>` and in the sitemap. What is not whole belongs to §13.6, and its own marker says what.
 >
 > This marker previously said negotiation was absent and `{locale}` collections unread. Both had shipped — §13.6 and §13.3 each said so — so the parent contradicted two of its own subsections. A summary marker that restates what its children already record is a second source of truth, and this one drifted; it now names the boundary and defers the rest to the sections that own it.
 >
@@ -1784,7 +1832,7 @@ Both readings are derived from one grouping, so they cannot come to disagree abo
 
 ### 13.6 Locale Negotiation
 
-> **Status: Partial.** `locale-negotiation.ts` implements RFC 4647 Lookup and emits it into the generated worker, so a site with `build.adapter` set negotiates. Adapter-less static output cannot, permanently — see below.
+> **Status: Partial.** `locale-negotiation.ts` implements RFC 4647 Lookup and emits it into the generated worker (`packages/compiler/src/targets/compile-server.ts`); that adapter-less static output cannot negotiate is the output shape, not a gap (see below). Two things do not match this section: under `"cloudflare-pages"` a site with no server entries and no active mounts gets no worker (`skipWorker` in `packages/compiler/src/site/site-build.ts` ignores `i18n`), so it neither negotiates nor gets the prefix-always root warning; and `*` selects the first declared locale rather than `defaultLocale` whenever the default is declared later in `locales` (`resolveI18n` in `packages/schema/src/locale.ts` moves it to the front only when it is missing).
 
 **Which deployments can negotiate, and which cannot.** Negotiation needs a request, and adapter-less static output has no runtime that sees one: `dist/` is files, and the preview server is a pure file mapper. That is a property of the output shape, not missing work, and it is stated here rather than tracked as a gap so nobody sets out to close it. A site with `build.adapter` set gets a generated worker, the worker sees the request, and negotiation runs there.
 
@@ -1833,9 +1881,11 @@ A document formats through **blessed `Intl` helpers**, listed once in `packages/
 
 ## 14. Deployment
 
-> **Status: Partial.** The adapters, their worker output and the response-header file all ship. What does not is `vercel.json`, which is deliberate — there is no Vercel adapter, and the file belongs at the repository root rather than inside `build.outDir` (Appendix C).
+> **Status: Implemented.** The adapters, their worker output, the response-header file and `.nojekyll` all ship; what does not, a page's own server function under an adapter, is recorded in §14.1.1. `vercel.json` is declined rather than missing: there is no Vercel adapter, and the file belongs at the repository root rather than inside `build.outDir`.
 
 ### 14.1 Output Targets
+
+> **Status: Partial.** The four adapters and their worker output ship as §14.1.1 records. The table's `_redirects` entries do not match: the build writes `dist/_redirects` whenever `redirects` is non-empty, under every adapter and with none (`generateRedirects` in `packages/compiler/src/site/site-build.ts`), not only for the two Cloudflare adapters.
 
 The build output is standard static files deployable anywhere. When `build.adapter` is set, the compiler additionally generates platform-specific files:
 
@@ -1857,6 +1907,8 @@ Configured in `project.json`:
 ```
 
 #### 14.1.1 `build.adapter` Properties
+
+> **Status: Partial.** The keys, their defaults and adapter-gated worker generation ship (`packages/compiler/src/site/site-loader.ts`, `compileSiteServer` in `packages/compiler/src/targets/compile-server.ts`). Step 3's known gap is unbuilt: the step-5b collector in `packages/compiler/src/site/site-build.ts` walks `componentDefs` only, so once `adapter` is set a `timing: "server"` entry declared on a page is dropped with no warning. Step 5 also understates `_routes.json`: for a site declaring more than one locale its `include` list is `/` and `/_jx/*`, so the worker can negotiate the root (§13.6).
 
 | Property        | Type             | Default       | Description                                                                                                                                   |
 | --------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1882,6 +1934,8 @@ Worker generation is gated on `adapter` alone — not on the project having serv
 When `images.service` is `"cloudflare"` (§9.2.6), no additional adapter output is generated — image optimization is pure markup (`/cdn-cgi/image` transform URLs) served by Cloudflare's zone-level Image Transformations feature, which must be enabled in the dashboard (Images → Transformations).
 
 ### 14.2 Build Artifacts
+
+> **Status: Partial.** The artifacts in the tree ship (`buildSite` in `packages/compiler/src/site/site-build.ts`). Two statements do not match: `_redirects` is written under every adapter whenever `redirects` is non-empty rather than being platform-specific (§14.1), and pages do not link component stylesheets: light-DOM component CSS is inlined into one `<style>` block at the end of `<head>` (`injectComponentScripts`), and `/components/<tag>.css` is linked only from inside a shadow component's declarative shadow root (§10.7).
 
 ```
 dist/
@@ -2073,6 +2127,8 @@ Two scoping rules are easy to trip over. First, `@jxsuite/connector` also contri
 
 ### 15.2 Configuration Surface
 
+> **Status: Partial.** Schema composition, env-var-name-only configuration and the additive connector sync ship (`packages/compiler/src/site/db-push.ts`). `jx db push` never runs a section owner's `deploySchema` (extensions.md §11.1): only the studio push composes those steps (`pushDataSchema` in `packages/server/src/data-api.ts`), so the auth extension's Better Auth tables never arrive through the CLI.
+
 Extensions contribute their own `project.json` sections through schema composition (extensions.md §5), so `auth`, `connections`, and `data` appear in the generated project schema — and in Studio's project settings (extensions.md §9) — only when the extension is enabled. They sit alongside the sections in §3.1 and follow the same rule as the rest of the file: **committed config carries identifiers and env-var _names_ only**. `secretEnv: "BETTER_AUTH_SECRET"` and `urlEnv: "SUPABASE_DB_URL"` name a variable; the value lives in `.dev.vars` locally (git-ignored) and in the host's secret store in production. See extensions.md §13.
 
 Table schemas declared under `data` are synced to their connection by `jx db push` (§12.2), which is **additive-only** — it creates missing tables and columns and never drops or rewrites existing ones. Sections may contribute their own push steps (extensions.md §11.1); the auth extension's Better Auth system tables arrive that way.
@@ -2087,6 +2143,8 @@ Reads and form actions against `data` tables lower at build time (extensions.md 
 
 ### 15.4 Consequences for the Build
 
+> **Status: Partial.** The build error for an active mount with no adapter, worker emission gated on `build.adapter` alone and the `"cloudflare-pages"` skip ship (`buildSite` in `packages/compiler/src/site/site-build.ts`). A server tier of `timing: "server"` state alone does build with no adapter, but nothing serves its entries: the `_server.js` written beside a page's HTML imports each `$src` exactly as the page wrote it, a path `dist/` does not contain (`compileServer` in `packages/compiler/src/targets/compile-server.ts`, `compiler.md` §6.2), and a component's entries are collected only when an adapter is set, so without one they reach no handler at all.
+
 A project with an **active extension mount** — a non-empty `auth` or `data` section — **requires a server-capable adapter**. `build.adapter` must be `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, or `"bun"`; with no adapter (a purely static build) the build **fails** with an error naming the offending sections, because a static deployment cannot serve them.
 
 Nothing else forces that error. Server functions do not: a project whose only server tier is `timing: "server"` state builds fine with no adapter, its entries compiling to per-route `_server.js` files (§14.1). Neither does a `connections` section on its own, since `Connections` is not a mount (§15.1). And the converse of the rule does _not_ hold: whether a worker is emitted turns on `build.adapter`, not on the project using any of the three mechanisms. With an adapter set and nothing to serve, the build still writes a worker — except under `"cloudflare-pages"`, the one adapter that skips it when there are neither server entries nor active mounts (§14.1).
@@ -2099,7 +2157,7 @@ Locally, `jx dev` (server.md) stands in for the worker: it dispatches to the sam
 
 ## 16. Standards Alignment
 
-External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). Feed generation is not cited: no numbered section owes it yet, and it is tracked as a roadmap item in Appendix C.
+External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md).
 
 | Standard                                                                                  | Class         | Binds             | Evidence                                                                                                                                                                | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------------------------------------------------------------------------- | ------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2203,55 +2261,6 @@ This spec builds on existing Jx primitives wherever possible:
 | SEO metadata       | Standard element definitions (existing `tagName`, `name`, `content`)                    |
 | Redirects          | Compiler output (new, but no runtime concept)                                           |
 | File-based routing | Convention only (no new language feature)                                               |
-
-## Appendix C: Implementation Roadmap
-
-### Phase 1: Foundation
-
-- [x] `project.json` schema and loader
-- [x] File-based routing discovery (`pages/` scanner)
-- [x] Layout system (`$layout`, `<slot>` distribution at compile time)
-- [x] `$head` merge pipeline (site + layout + page)
-- [x] Multi-page build orchestration
-- [x] `$page` and `$site` context injection
-
-### Phase 2: Content
-
-- [x] Content collection loader (Markdown, JSON, CSV)
-- [x] `project.json` `content` schema validation
-- [x] `ContentCollection` and `ContentEntry` prototypes
-- [x] `$paths` dynamic route expansion
-- [x] Collection reference resolution (`$ref` between collections)
-- [x] Studio: Project file tree (left panel `Files` tab)
-- [x] Studio: Browse canvas mode (table view with category filters, search, media detection)
-- [x] Studio: Markdown WYSIWYG editing (content mode, inline rich text, slash commands)
-- [x] Studio: Markdown frontmatter round-trip (parse on load, serialize on save)
-
-### Phase 3: Studio Content Management
-
-- [ ] Studio: Frontmatter form editor (schema-driven sidebar for markdown content entries)
-- [ ] Studio: JSON data entry editor (form-based editing for JSON collection entries)
-- [ ] Studio: CSV table editor (an inline grid for CSV entries)
-- [ ] Studio: Content CRUD (create new entry, delete, rename/move)
-- [ ] Studio: Media browser (thumbnail grid, upload, file picker integration)
-- [ ] Studio: SEO panel (title/description preview, OG card preview, JSON-LD editor)
-- [ ] Studio: Redirect editor (table UI for managing project.json redirects)
-
-### Phase 4: Build Pipeline
-
-- [x] Image optimization pipeline (WebP/AVIF, responsive srcset, lazy loading, caching)
-- [x] Sitemap generation (`sitemap.xml` from route table; `<lastmod>`, `robots.txt` reference, `$sitemap: false` opt-out, `build.sitemap` toggle)
-- [ ] Incremental builds (dependency tracking, selective recompilation)
-- [x] Platform adapters — `build.adapter` for site-wide server bundling (Cloudflare implemented)
-- [x] Platform-specific file generation — `_headers` (§14.3) and `.nojekyll` (§14.4). `vercel.json` is **declined**: there is no Vercel adapter, and the file belongs at the repository root rather than inside `build.outDir`.
-
-### Phase 5: Advanced
-
-- [ ] Internationalization routing (locale prefix, default locale handling)
-- [ ] Content localization (per-locale content directories)
-- [ ] Pagination helpers
-- [x] Atom and JSON Feed generation — `@jxsuite/feed` (§6.7), via the `emit` and `head` capabilities (extensions.md §8.4, §8.6). RSS 2.0 is **declined**: no standards body, and every reader handles Atom.
-- [x] Search index generation — via the extension `emit` capability (extensions.md §8.4)
 
 ## Changelog
 

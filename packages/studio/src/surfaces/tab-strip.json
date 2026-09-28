@@ -101,7 +101,7 @@
       "lineHeight": "1"
     },
     "& [part=\"pill\"]": {
-      "$description": "`.entry-pill` — the draft pill (§7.6), in `jx-tab`'s status slot. It is ON THE CHIP and not only inside the entry editor because the mistake it prevents, publishing something you believed was private, is made while glancing at a row of tabs. \"Published\" is deliberately as visible as \"Draft\": a state you can only see one half of is a state you cannot check. The two Spectrum colours it used to name are `--jx-signal` against `--jx-bg`, which flips with the theme where a fixed yellow and a fixed black did not.",
+      "$description": "`.entry-pill` — the draft pill (site-architecture.md §7.6), in `jx-tab`'s status slot. It is ON THE CHIP and not only inside the entry editor because the mistake it prevents, publishing something you believed was private, is made while glancing at a row of tabs. \"Published\" is deliberately as visible as \"Draft\": a state you can only see one half of is a state you cannot check. The two Spectrum colours it used to name are `--jx-signal` against `--jx-bg`, which flips with the theme where a fixed yellow and a fixed black did not.",
       "padding": "0 5px",
       "borderRadius": "var(--radius)",
       "background": "var(--bg)",
@@ -334,7 +334,7 @@
                     "textContent": "${$map.item.pill}"
                   },
                   {
-                    "$description": "The pin, in the actions slot. `title` is the whole accessible name (§10): the glyph is hidden, so a matching `aria-label` would announce it twice. `tabindex` follows the tab's own selectedness, exactly as the close button's does — the strip is ONE stop in the tab order, and a control inside every chip that took the platform's default would make fifteen.",
+                    "$description": "The pin, in the actions slot. `title` is the whole accessible name (studio-ui-guidelines.md §10): the glyph is hidden, so a matching `aria-label` would announce it twice. `tabindex` follows the tab's own selectedness, exactly as the close button's does — the strip is ONE stop in the tab order, and a control inside every chip that took the platform's default would make fifteen.",
                     "tagName": "button",
                     "attributes": {
                       "slot": "actions",

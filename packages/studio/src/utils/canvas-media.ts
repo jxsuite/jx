@@ -5,7 +5,7 @@
 import { pureSchemeOf } from "@jxsuite/runtime";
 
 /**
- * True when a feature query participates in the forced-scheme contract (spec §9.5) — a pure
+ * True when a feature query participates in the forced-scheme contract (spec.md §9.5) — a pure
  * prefers-color-scheme query. These surface as the Auto/Light/Dark control, not generic toggles.
  *
  * @param {string} query

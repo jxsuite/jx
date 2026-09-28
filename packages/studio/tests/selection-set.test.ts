@@ -1,5 +1,5 @@
 /**
- * The selection SET — `tabs/selection.ts` (§6.5).
+ * The selection SET — `tabs/selection.ts` (§6.7).
  *
  * The whole point of this module is one invariant, so it is what these tests hammer: **a selection
  * of one behaves exactly as a selection did before it was a list.** Every helper here is asserted

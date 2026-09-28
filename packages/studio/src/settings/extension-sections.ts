@@ -89,13 +89,13 @@ const registeredKeys = new Set<string>();
 /**
  * The sync currently running, so concurrent callers join it instead of racing it.
  *
- * This is half of the deep-link fix (plan §12 P6.2). `refreshExtensionUi` (`format/format-host.ts`)
- * fires this function **fire-and-forget** on project activation and after every `project.json`
- * write, and the settings surface used to start a SECOND, interleaved run and await only its own.
- * The two runs share {@link registeredKeys} and both reach {@link unregisterSettingsSection}, so a
- * key one run had just registered could be seen as stale by the other and unregistered — after the
- * awaited promise had already resolved. Coalescing makes "the sections are ready" one fact about
- * the registry rather than one fact per caller.
+ * This is half of the deep-link fix (`settings.open { section, entry }`, §17.1).
+ * `refreshExtensionUi` (`format/format-host.ts`) fires this function **fire-and-forget** on project
+ * activation and after every `project.json` write, and the settings surface used to start a SECOND,
+ * interleaved run and await only its own. The two runs share {@link registeredKeys} and both reach
+ * {@link unregisterSettingsSection}, so a key one run had just registered could be seen as stale by
+ * the other and unregistered — after the awaited promise had already resolved. Coalescing makes
+ * "the sections are ready" one fact about the registry rather than one fact per caller.
  */
 let _inFlight: Promise<void> | null = null;
 

@@ -3,7 +3,8 @@
  * Idle.ts — "settled" is a predicate, and it can fail.
  *
  * One question — _has Studio finished reacting?_ — asked of the five subsystems that can still be
- * mid-flight, over two consecutive animation frames (spec studio.md §13.5, plan §13.4).
+ * mid-flight, over two consecutive animation frames (spec studio.md §13.5, and "Determinism" in
+ * `scripts/screenshots/README.md`).
  *
  * **The rejection is the point.** The thing this replaces is 115 `wait: {ms}` steps totalling 73
  * seconds, and a sleep cannot fail: a subsystem that was slow that day got answered with `+500 ms`
@@ -29,7 +30,7 @@
  *    all thirty-odd `git*`/fs/fetch methods pass through.
  * 4. `layers.overlayIdleBlockers()` — overlays still in transition. Only the SETTLING window counts: a
  *    resting toast is not a blocker, which is what lets `toastsAreHeld()` hold one open for a
- *    capture without `probeIdle()` waiting forever alongside it (plan §13.7's named exception).
+ *    capture without `probeIdle()` waiting forever alongside it (§13.5's toast exception).
  * 5. `activity-panel.activityIdleBlockers()` — operations still RUNNING in the Activity tab. Not a
  *    duplicate of `platform`: an activity spans a whole operation (an install, a deploy, a clone)
  *    across many PAL calls, so the gaps between them look quiet at the seam while the operation is
@@ -38,8 +39,8 @@
  *    selection range `selectableRange: 1` gives them. Nothing else covered Tabulator: a grid
  *    command resolves when the panel mounts, which is several frames before the table is drawn.
  *
- * The consumers are the `packages/studio:verify` skill, the screenshot runner and P4.2's Activity
- * tracker (this is a read-only projection of the same in-flight set that dock renders).
+ * The consumers are the `packages/studio:verify` skill, the screenshot runner and the Activity
+ * tracker of §16.4 (this is a read-only projection of the same in-flight set that dock renders).
  */
 
 import { rendersInFlight } from "../store";

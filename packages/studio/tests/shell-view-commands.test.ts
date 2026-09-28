@@ -1,10 +1,10 @@
 /**
  * The shell's `view.*` verbs — the setters that retire `view.toggleActivity`.
  *
- * Plan §13.3 clause 3 is what this file tests: a setter means the same thing twice in a row and
- * from any starting state, and an undeclared panel id is a REFUSAL whose message names the declared
- * set. The drift guard at the bottom is the other half — the `args` enum is only worth having if it
- * is the same list the rail and the Inspector actually render.
+ * §13.5's idempotence rule is what this file tests: a setter means the same thing twice in a row
+ * and from any starting state, and an undeclared panel id is a REFUSAL whose message names the
+ * declared set. The drift guard at the bottom is the other half — the `args` enum is only worth
+ * having if it is the same list the rail and the Inspector actually render.
  */
 import { resetWorkspaceWithTab } from "./harness";
 import { readFileSync } from "node:fs";
@@ -86,8 +86,8 @@ describe("the records themselves", () => {
       "view.setTheme",
     ]);
     // ⌘J is the one toggle this module declares, and it is here rather than in
-    // `commands/defaults.ts` because the dock it flips is on THIS record. §13.3 clause 3's bargain
-    // Is a setter beside it, which is `view.setBottomDock` two rows up.
+    // `commands/defaults.ts` because the dock it flips is on THIS record. The idempotence rule's
+    // Bargain (§13.5) is a setter beside it, which is `view.setBottomDock` two rows up.
     expect(ids.filter((id) => /\.toggle[A-Z]/.test(id))).toEqual(["view.toggleBottomDock"]);
   });
 
@@ -128,7 +128,7 @@ describe("view.setActivity", () => {
     expect(shell.leftTab).toBe("layers");
   });
 
-  test('refuses "problems", which is a Bottom dock tab and not a Navigator panel (§7.2)', () => {
+  test('refuses "problems", which is a Bottom dock tab and not a Navigator panel (§16.3)', () => {
     // Not a rename — a MOVE. `view.setBottomTab { tab: "problems" }` is the verb that shows it,
     // And this enum naming it too would be a second door onto a surface with one host.
     expect(() => registry.run("view.setActivity", { tab: "problems" })).toThrow(

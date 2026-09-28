@@ -8,11 +8,13 @@
  * Usage: bun scripts/perf/trace-studio.ts [--url <studio-url>] [--scen boot,palette] [--reps N]
  */
 
+import { mkdir } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
 import { mapSources } from "./sources.ts";
 
 import { analyze } from "./analysis";
+import type { Analysis } from "./analysis";
 
 /* Resolved from THIS file's own location rather than a fixed home-directory path, so the same
  * default works on any checkout — a contributor's machine, a fresh clone, or CI's container,
@@ -84,7 +86,7 @@ class Cdp {
       throw new Error("no page target");
     }
     const ws = new WebSocket(page.webSocketDebuggerUrl);
-    await new Promise((res, rej) => {
+    await new Promise<void>((res, rej) => {
       const onOpen = () => {
         res();
       };
@@ -182,7 +184,7 @@ async function launchChrome(userDataDir: string, port: number) {
   throw new Error(`Chrome did not come up${stderr ? `:\n${stderr.slice(-2000)}` : ""}`);
 }
 
-type CdpLike = InstanceType<typeof Cdp>;
+type CdpLike = Cdp;
 
 async function evalJs(cdp: CdpLike, expression: string, awaitPromise = false): Promise<any> {
   const r: any = await cdp.send("Runtime.evaluate", {
@@ -422,9 +424,9 @@ let BOOT_URL: string | null = null;
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
 const argv = Bun.argv.slice(2);
-function flag(name: string, fallback: string) {
+function flag(name: string, fallback: string): string {
   const i = argv.indexOf(`--${name}`);
-  return i !== -1 ? argv[i + 1] : fallback;
+  return i !== -1 ? (argv[i + 1] ?? fallback) : fallback;
 }
 
 async function main() {
@@ -444,7 +446,7 @@ async function main() {
         : new URL(flag("out", "./out"), `file://${new URL(".", import.meta.url).pathname}`)
             .pathname;
     if (flag("out", "") !== "") {
-      await Bun.mkdir(outDir, { recursive: true });
+      await mkdir(outDir, { recursive: true });
     }
     const targets = scenFilter ? scenFilter.split(",") : SCENARIOS.map((s) => s.name);
     const results: Analysis[] = [];
@@ -586,7 +588,7 @@ async function main() {
           [base.scriptingMs, busyNow],
           [base.styleRecalcMs, now.styleRecalc.time],
           [base.layoutMs, now.layout.time],
-        ]) {
+        ] as [number, number][]) {
           if (!oldValue) {
             cells.push(`n/a → ${freshValue}`);
             continue;

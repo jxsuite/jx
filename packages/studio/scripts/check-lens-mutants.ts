@@ -344,7 +344,7 @@ const MUTANTS: Mutant[] = [
     means:
       "one document in two panes means the first doc-effect to arrive eats the only mark, and " +
       "the second pane full-renders every surgically patched edit while `skippedFullRenders` " +
-      "reports a win — workstream 1's result inverted and reported as a success",
+      "reports a win — the render fan-out's result (§18.2) inverted and reported as a success",
     test: "tests/canvas-patcher.test.ts",
   },
   {

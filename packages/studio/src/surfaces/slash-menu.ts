@@ -6,10 +6,10 @@
  * which commands are on offer, what the filter matches, which row is active and what a pick does.
  *
  * **It is a listbox, and it is deliberately not `surfaces/menu.json`.** Every other Studio menu is
- * that surface, and the rule is that a second list of actions is a defect (§12.5) — but the two
- * differ on the one thing a menu cannot give up. `jx-menu` owns the keyboard: showing it moves the
- * caret onto its first row, which is the whole point of a roving-focus menu. This panel filters a
- * caret that is somewhere else — inside the canvas's `contenteditable`, and usually inside the
+ * that surface, and studio-ui-guidelines.md §12.5 makes a second list of actions a defect — but the
+ * two differ on the one thing a menu cannot give up. `jx-menu` owns the keyboard: showing it moves
+ * the caret onto its first row, which is the whole point of a roving-focus menu. This panel filters
+ * a caret that is somewhere else — inside the canvas's `contenteditable`, and usually inside the
  * canvas IFRAME — and every character typed after the `/` has to keep landing there, so the panel
  * that takes the keyboard is the panel that ends the interaction it exists to serve. What is left
  * once focus is off the table is a combobox popup: `role="listbox"`, an active row marked with

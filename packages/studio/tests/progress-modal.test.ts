@@ -2,7 +2,7 @@
  * The one blocking progress surface (`ui/progress-modal.ts` and
  * `src/surfaces/progress-modal.json`).
  *
- * What is worth pinning is what §7.3 changed: the modal is no longer the operation's only memory
+ * What is worth pinning is what §16.4 changed: the modal is no longer the operation's only memory
  * (every one of them leaves an Activity entry behind), it is no longer inescapable (`Run in the
  * background` and Escape both hand the app back while the work continues), and it no longer owns
  * the error view — a failure is a Problem, with the captured log as its detail.

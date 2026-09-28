@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * ⑥ The jump bar, as a Jx document over the kit — the mount seam, and nothing else.
+ * The jump bar, as a Jx document over the kit — the mount seam, and nothing else.
  *
  * `jump-bar.json` is the markup, the ARIA and the style; `panels/jump-bar.ts` is the flow — which
  * pane this bar is about, what its address is, which of its steps the registry can actually run,

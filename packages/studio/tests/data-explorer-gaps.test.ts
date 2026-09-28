@@ -2,10 +2,10 @@
  * Coverage for src/panels/data-explorer.ts — the type label, the per-tab expansion record and the
  * value tree.
  *
- * The panel's own row list is gone: plan §11.2 folds "definitions + live values into one row", so
- * the rows belong to `surfaces/panel-signals.json` and the cases that used to drive
- * `renderDataExplorerTemplate` drive that instead. What is left in this module is the machinery
- * those rows read, which is what this file exercises.
+ * The panel's own row list is gone: the Data panel shows each entry's definition and resolved value
+ * in one row (§5.6), so the rows belong to `surfaces/panel-signals.json` and the cases that used to
+ * drive `renderDataExplorerTemplate` drive that instead. What is left in this module is the
+ * machinery those rows read, which is what this file exercises.
  *
  * **Both halves are documents now**, so two things follow. Everything is addressed by `part` — a
  * signal row is `[part="entry"]` and a tree line is `[part="row"]`, which is why the two do not

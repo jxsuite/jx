@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioGridViews",
-  "$description": "The grid's View panel: the saved views, and the four facets one of them is made of — columns, sort, grouping, and the filter the toolbar box holds. ONE control rather than four, because the chrome budget caps what may stand in a toolbar (§12.2) and these four are only ever adjusted together. There is no Apply button: every edit writes the working layout and applies immediately, so the panel is never showing something the grid is not already doing.",
+  "$description": "The grid's View panel: the saved views, and the four facets one of them is made of — columns, sort, grouping, and the filter the toolbar box holds. ONE control rather than four, because the chrome budget caps what may stand in a toolbar (studio-ui-guidelines.md §12.2) and these four are only ever adjusted together. There is no Apply button: every edit writes the working layout and applies immediately, so the panel is never showing something the grid is not already doing.",
   "tagName": "jx-popover",
   "attributes": {
     "part": "views-panel"

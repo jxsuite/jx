@@ -1,5 +1,6 @@
 /**
- * The v1 assistant-session corpus: what today's loader makes of every persisted shape (J1.2).
+ * The v1 assistant-session corpus: what today's loader makes of every persisted shape, frozen
+ * before the harness refactor.
  *
  * Each file under `fixtures/ai-sessions/` is a localStorage snapshot (`storage`, keyed exactly as
  * `services/ai-session-store.ts` keys it) plus the project root it is read under. The test seeds

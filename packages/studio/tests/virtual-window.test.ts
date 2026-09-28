@@ -1,10 +1,10 @@
 /**
  * Tests for src/ui/virtual-window.ts — the windowing primitive.
  *
- * The whole acceptance criterion of P7.1 reduces to one property, asserted here directly: the
- * number of items a window yields is a function of the VIEWPORT, not of the collection. Everything
- * else in this file is the degenerate cases that would otherwise render an empty Library and look
- * like a broken one.
+ * The whole of site-architecture.md §7.2's "the window is the contract" reduces to one property,
+ * asserted here directly: the number of items a window yields is a function of the VIEWPORT, not of
+ * the collection. Everything else in this file is the degenerate cases that would otherwise render
+ * an empty Library and look like a broken one.
  */
 import { installResizeObserver, stubRect } from "./harness";
 import { describe, expect, test } from "bun:test";

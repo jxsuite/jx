@@ -1,6 +1,6 @@
 /**
  * Chord normalisation, platform-correct formatting, scope-stack resolution, and the conflict that
- * must fail loudly at registration (UX-REDESIGN-PLAN §5.3).
+ * must fail loudly at registration (specs/studio.md §13.3).
  *
  * `mac` is injected everywhere so the assertions hold on any CI runner.
  */

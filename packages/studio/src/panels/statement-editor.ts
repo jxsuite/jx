@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
-// oxlint-disable unicorn/no-thenable -- `then` is the JSON Schema conditional keyword (spec §20), not a promise
+// oxlint-disable unicorn/no-thenable -- `then` is the JSON Schema conditional keyword (spec.md §20), not a promise
 /**
- * Statement editor (spec §20) — the FLOW behind the `statements` surface.
+ * Statement editor (`spec.md` §20) — the FLOW behind the `statements` surface.
  *
  * A Function entry's `body: JxStatement[]` is edited here as structure rather than as text: bare
  * expression nodes (mutation or `call`), `if`/`then`/`else` branches, `$switch`/`cases` multiway
@@ -27,8 +27,8 @@
  *   paints them.
  * - **The add-statement control is a menu, not a picker.** It was an `sp-picker` that had to reset
  *   its own value to `""` inside its change handler so the placeholder came back. A document's
- *   binding skips an equal write, so that trick cannot work here — and it should not have to: §12.5
- *   asks for one list of actions, and the kit's menu is it.
+ *   binding skips an equal write, so that trick cannot work here — and it should not have to:
+ *   `studio-ui-guidelines.md` §12.5 asks for one list of actions, and the kit's menu is it.
  *
  * @docs studio/logic/statements
  */
@@ -91,7 +91,7 @@ type LanePath = (string | number)[];
 
 // ─── Statement Kind Detection ────────────────────────────────────────────────
 
-/** Discriminate a statement's kind, mirroring the runtime's detection order (spec §20.2). */
+/** Discriminate a statement's kind, mirroring the runtime's detection order (`spec.md` §20.2). */
 export function statementKind(stmt: unknown): "expression" | "if" | "switch" | "dispatch" {
   if (isJsonObject(stmt)) {
     if ("operator" in stmt) {
@@ -112,7 +112,7 @@ export function statementKind(stmt: unknown): "expression" | "if" | "switch" | "
 
 const ASSIGN_OPS = new Set(["=", "+=", "-=", "*=", "/="]);
 
-/** Card header label — ECMA/WHATWG naming (spec §20.2). */
+/** Card header label — ECMA/WHATWG naming (`spec.md` §20.2). */
 function kindLabel(stmt: unknown): string {
   switch (statementKind(stmt)) {
     case "if": {
@@ -137,7 +137,7 @@ function kindLabel(stmt: unknown): string {
   }
 }
 
-// ─── Add-statement Seeds (spec §20 shapes) ───────────────────────────────────
+// ─── Add-statement Seeds (spec.md §20 shapes) ────────────────────────────────
 
 const STATEMENT_SEEDS: Record<string, () => JxStatement> = {
   call: () => ({ operator: "call", target: { $ref: "" }, value: [] }),
@@ -150,7 +150,10 @@ const STATEMENT_SEEDS: Record<string, () => JxStatement> = {
   switch: () => ({ $switch: { $ref: "" }, cases: {} }),
 };
 
-/** The add-statement menu, in the order the rows read. One list, and this is it (§12.5). */
+/**
+ * The add-statement menu, in the order the rows read. One list, and this is it
+ * (`studio-ui-guidelines.md` §12.5).
+ */
 const STATEMENT_CHOICES: readonly StatementOption[] = [
   { label: "Set state", value: "set" },
   { label: "Call function", value: "call" },
@@ -753,7 +756,7 @@ function markDrop(row: HTMLElement, type?: string): void {
 const islandHosts = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
 
 /**
- * Draw a structured function body (spec §20) into `host`, or bring the one already there up to
+ * Draw a structured function body (`spec.md` §20) into `host`, or bring the one already there up to
  * date. `onChange` receives a fresh statement array on every edit; the input array is never
  * mutated.
  *

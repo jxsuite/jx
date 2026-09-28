@@ -31,7 +31,7 @@ async function execErr(
   return result.error;
 }
 
-describe("ai-tools — state tools (§14.1 regression)", () => {
+describe("ai-tools — state tools (regression)", () => {
   test("add_state writes under document.state, NOT the document root", async () => {
     const { tab, registry } = harness({ tagName: "x-comp", state: { existing: 1 }, children: [] });
 
@@ -632,7 +632,7 @@ describe("ai-tools — write reconciliation with open tabs", () => {
   });
 });
 
-// ─── §7.4: disk writes are recorded, including the ones that fail ────────────
+// ─── ai.md §3.2: disk writes are recorded, including the ones that fail ──────
 /* `create_page`, `create_component` and `write_file` go straight to disk, where there is no undo
    and never was. The ledger records that fact so the panel can say it to the person holding ⌘Z —
    until now the caveat was appended to the MODEL-facing tool summary only. */

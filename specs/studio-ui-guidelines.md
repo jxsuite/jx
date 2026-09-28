@@ -17,9 +17,11 @@ Jx Studio's chrome is built from **the Jx UI kit** (`@jxsuite/ui`, [`ui.md`](./u
 
 The chrome ships two themes, dark (the default the app boots in) and light, chosen in Preferences → Appearance. The kit declares every colour token as a `light-dark()` pair on `:root`, and the shell stamps `data-theme` on `<html>` to force one (`applyChromeTheme()`, `src/shell.ts`). **That stamp is now the only channel, and the removal of the second one is the point.** There were two: this attribute, and a `color` attribute on the `sp-theme` element the frame was wrapped in — so a theme could half-apply. `<sp-theme>` adopted the colour fragment registered under the name it was given and adopted none at all for a name it did not know, so `color="light"` was a valid attribute over an empty palette: every Spectrum colour went undefined, Studio's semantic layer fell through to its dark hex fallbacks, and Light shipped as a setting that moved the backdrop and nothing else. **A theme named in `CHROME_THEMES` must still have a rule of its own in the kit's theme block**, because the failure survived its mechanism: a `data-theme` value the kit declares no `color-scheme` for inherits `light dark` and lets the OS choose. `tests/chrome-theme.test.ts` counts what each declared theme actually gets and pins an undeclared name as the negative control.
 
-**This reverses a recorded decision.** The plan that preceded this one held that Studio "does not need a design system — it has a good one", and that adding a second is how the first one died. It was right about enforcement and wrong about ownership: a design system this application does not author cannot be edited on its own canvas, and the self-hosting principle (`studio.md` §2) was not true of a chrome whose components were someone else's classes. What that plan got right still binds — no string DSL for `when`, no floating docks by default, the horizontal tab strip stays, no recursive pane tree, `CANVAS_MODES` and the stylebook wire format do not change, no autosave — and the enforcement it built (`check-styles.ts`, one overlay contract, the region grammar) is what the migration is held to.
+**This reverses a recorded decision.** The shell redesign that preceded the kit held that Studio "does not need a design system — it has a good one", and that adding a second is how the first one died. It was right about enforcement and wrong about ownership: a design system this application does not author cannot be edited on its own canvas, and the self-hosting principle (`studio.md` §2) was not true of a chrome whose components were someone else's classes. What that redesign got right still binds — no string DSL for `when`, no floating docks by default, the horizontal tab strip stays, no recursive pane tree, `CANVAS_MODES` and the stylebook wire format do not change, no autosave — and the enforcement it built (`check-styles.ts`, one overlay contract, the region grammar) is what the migration is held to.
 
 ### 1.1 Theme Tokens
+
+> **Status: Partial.** The token table and its fallbacks ship and are gated (`guidelineTokenFindings()` in `packages/studio/scripts/check-styles.ts`). The pipeline prose below is stale: the generator is `scripts/build-styles.ts` behind `bun run styles:check` / `styles:sync` (there is no `build-tokens.ts` and no `tokens:*` script), the accent variants mix `in oklab` rather than `in srgb`, and the keyframes paragraph predates the move, since `shell.css` defines none, `inspector.css` keeps only an unreferenced `pulse`, and the live animations are in `src/surfaces/panel-signals.json` and `ai-chat.json`.
 
 Use CSS custom properties from `:root` — never hardcode color values.
 
@@ -77,6 +79,8 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 2.1 Font Stacks
 
+> **Status: Partial.** The chrome draws the kit's font tokens: `--jx-font-sans` is `"Inter Variable", "Inter", system-ui, …` and `--font-mono` leads with the bundled JetBrains Mono (`packages/ui/project.json`, `packages/studio/styles/tokens.json`), so the sans stack in the table is only `tokens.css`'s pre-paint fallback. No content mode and no Georgia canvas face exist: `CANVAS_MODES` is preview, design, edit, stylebook and git-diff.
+
 | Context            | Font Stack                                                             |
 | ------------------ | ---------------------------------------------------------------------- |
 | UI chrome          | `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` |
@@ -84,6 +88,8 @@ Use CSS custom properties from `:root` — never hardcode color values.
 | Canvas content     | Georgia, serif (content mode only)                                     |
 
 ### 2.2 Type Scale
+
+> **Status: Partial.** The scale is the kit's `--jx-text-xs`/`sm`/`md`/`lg` (10/11/12/14px, `ui.md` §4), and the 12px base, the 10px row labels and the 1.5 line height hold. `jx-field` labels and `jx-accordion-item` headers draw at `--jx-text-md` (12px), not the 11px this table assigns, because Studio stamps no `data-density="compact"`; the breadcrumbs draw at 10px, because the jump bar sets `--jx-text-xs` on its root and every crumb inherits it (`packages/studio/src/surfaces/jump-bar.json`); and no 1.7 content-mode line height exists.
 
 | Size     | Usage                                                               |
 | -------- | ------------------------------------------------------------------- |
@@ -96,6 +102,8 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 2.3 Label Conventions
 
+> **Status: Partial.** Title Case through `camelToLabel()` ships (`packages/studio/src/utils/studio-utils.ts`). The helpers do not keep abbreviations uppercase (`camelToLabel("url")` gives "Url"), and `$prototype` is labelled "Kind", not "Prototype" (`src/panels/signals-panel.ts`).
+
 - **Title Case** for all form labels: "Font Family", "Default", "Description" — not "fontFamily", "default", "desc"
 - Use `camelToLabel()` from `studio-utils.js` to convert prop names automatically
 - Abbreviations stay uppercase: "URL", "CSS", "ID"
@@ -106,6 +114,8 @@ Use CSS custom properties from `:root` — never hardcode color values.
 ## 3. Layout
 
 ### 3.1 Application Grid
+
+> **Status: Partial.** The dock defaults (240/280px, `DOCK_DEFAULTS`), the status bar's `role="status"` live region, and a collapsed dock zeroing its variable and hiding its region and handle with a `localStorage` round trip ship (`packages/studio/styles/shell-frame.json`, `src/shell.ts`, `src/surfaces/shell.json`). The diagram does not: the `#app` rows are toolbar, panes, a 220px Bottom dock and the status bar; the rail is 56px; the tab strip lives in each pane's cell; and there is no Assistant column or `--panel-w-chat`, because the Assistant is a tab of the Inspector dock.
 
 ```
 ┌──────────┬────────────┬────────────────────┬──────────────┬───────────────┐
@@ -129,6 +139,8 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 3.2 Panel Structure
 
+> **Status: Partial.** The docks do not share one anatomy; there are three. The Inspector dock is a header naming the tab and its target over a `jx-tabs` strip and a body (`packages/studio/src/surfaces/inspector-dock.json`). The Bottom dock has no header: a strip holding its `jx-tabs` and a close button sits over one tab panel (`src/surfaces/bottom-dock.json`). The Navigator dock has no tab strip: one body per panel, each under a header naming the panel and its containment level when the panel declares one, with the panel chosen from the activity rail (`src/surfaces/navigator-dock.json`).
+
 Both left and right panels follow the same anatomy:
 
 1. **Panel tabs** — `jx-tabs` at the top for switching views
@@ -140,6 +152,8 @@ Both left and right panels follow the same anatomy:
 ## 4. Form Patterns
 
 ### 4.1 Standard Form Row (Vertical Stacked)
+
+> **Status: Partial.** The row geometry ships, but surfaces key it on `part="row"` and `part="row-label"`, with `data-child="true"` for a nested row (`packages/studio/src/surfaces/style-panel.json`, `properties-panel.json`, `panel-page.json`). Nothing emits `style-row` or `style-row-label`, and the `.style-row` rules left in `styles/inspector.css` have no emitter.
 
 The canonical form layout. Labels sit above full-width inputs.
 
@@ -190,6 +204,8 @@ A row is a document's markup, not a template's — this is the shape the `style`
 
 ### 4.2 Set Dot (Clear Indicator)
 
+> **Status: Partial.** The chip's behaviour ships (`packages/studio/src/panels/provenance.ts`: set, inherited naming its donor, bound, mixed, and the section tally from `countProvenance`). Its markup does not match: the chip is `[part="chip"][data-state]` in a `[part="chip-slot"]` and the heading indicator is `[part="dots"] > [part="dot"]`; no surface emits `part="set-dot"`, and the `.set-dot` rules in `styles/inspector.css` are dead.
+
 When a property has an explicit value, show a small accent dot to the left of the label. Clicking it clears the value.
 
 ```json
@@ -232,6 +248,8 @@ Three rules follow, and they are what stop the chip becoming decoration:
 
 ### 4.3 Input Components
 
+> **Status: Partial.** Every kit row ships and is drawn by the surfaces, the colour field and the field-plus-menu hybrid included (`packages/studio/src/surfaces/style-panel.json`, `properties-panel.json`). The multi-line row does not: multi-line text is `jx-textfield multiline`, and no surface emits a `textarea` with `[part="field-input"]`.
+
 The catalogue is `ui.md` §5; this is which of it answers which question. Every row was a Spectrum element and is a kit one — the mapping is not a rename, because two of the old rows had no kit counterpart and were answered by composition instead.
 
 | Component                              | When to Use                                                                                      |
@@ -249,6 +267,8 @@ The catalogue is `ui.md` §5; this is which of it answers which question. Every 
 The hybrid row is the one worth reading twice. It was `jx-value-selector`, a `LitElement` over `sp-picker`/`sp-textfield` that snapped to an option or accepted free text, and it is not a kit element — it is a field and a menu, composed by the two surfaces that wanted it. §6.2 records why that was a deletion rather than a port.
 
 ### 4.4 Debounce Pattern
+
+> **Status: Partial.** `INPUT_DEBOUNCE` (400) and `CODE_DEBOUNCE` (500) are in `packages/studio/src/ui/timing.ts`, and `debouncedStyleCommit()` is in `store.ts`. Much text entry commits through a provisional preview instead, `LIVE_PREVIEW` at 350ms and then again on blur or Enter: the draft layer (`src/ui/field-input.ts`) in the properties panel, and the same semantics on their own `LIVE_PREVIEW` timers in `panels/head-panel.ts` and `panels/frontmatter-panel.ts`. `panels/seo-modal.ts` and `surfaces/settings-head.ts` keep a local 300ms `EDIT_DEBOUNCE_MS`, and the lit `@input` examples predate the document surfaces.
 
 All text input handlers must debounce before committing to state. Standard delay: **400ms** (500ms for code/expression textareas).
 
@@ -317,9 +337,13 @@ Use the kit's `jx-accordion` for collapsible sections in all panels (`ui.md` §5
 
 ### 5.2 Styling
 
+> **Status: Partial.** The part-keyed style block ships. Both facts beside it are stale: `jx-accordion` draws a 1px `--jx-border` rule between items (`packages/ui/components/jx-accordion.json`), and `jx-accordion-item`'s header text is `--jx-text-md`, which is why `packages/studio/src/surfaces/panel-signals.json` sets `border: none` and re-declares `--jx-text-md` to reach 11px.
+
 A section's look is the surface's own `style` block, keyed on `part` — the kit element carries no border of its own to remove, and its header text is `--jx-text-sm`. What this used to say instead is the shape of the difference: `.panel-class sp-accordion { border: none }` deleted a border the component drew, and `--mod-accordion-item-header-font-size` reached into it to re-size text, both from a stylesheet that had to know the component's internals to say anything at all.
 
 ### 5.3 State Tracking
+
+> **Status: Partial.** Neither pattern ships as written. Every section is driven by an explicit setter fed from the kit's toggle detail, `(key, open)`: `toggleSection` in `packages/studio/src/panels/style-panel.ts`, `setSectionOpen` in `panels/elements-panel.ts` (over `view.elementsCollapsed`), `toggleCategory` in `panels/signals-panel.ts`, and `setInspectorSection` behind `inspector.setSection`, which retired the flip-style toggle. The Inspector's state lives per tab in two maps, `session.ui.styleSections` for the Style tab and `session.ui.inspectorSections` for the Properties tab (`src/panels/properties-panel.ts`), not in the document.
 
 Accordion open/closed state uses one of two patterns:
 
@@ -377,6 +401,8 @@ A surface's local state does not earn a class. It belongs to the module that ren
 
 ## 7. Spacing System
 
+> **Status: Partial.** The premise is stale: the kit ships `--jx-space-1` to `--jx-space-7` (2/4/8/12/16/24/32px, `ui.md` §4), and surfaces spell most gaps and padding through it. The 6px horizontal gap is off that scale and written as a literal, and section padding in `packages/studio/src/surfaces/properties-panel.json` is `0 var(--jx-space-2) var(--jx-space-2)`, not `4px 8px`.
+
 No formal spacing scale — use these established values consistently:
 
 | Context          | Value     | Usage                                       |
@@ -394,9 +420,9 @@ No formal spacing scale — use these established values consistently:
 
 ## 8. Interactive Patterns
 
-> **Status: Partial.** Selection and the canvas caret are built. **Drag and drop has no non-dragging alternative**: the drag surface declares no roles, installs no keyboard path, and announces nothing, so every reordering and insertion it offers is unavailable without a pointer. The tree and layers panels are the counter-example — both carry full roving-tabindex keyboard navigation — which is why the gap is a gap rather than a house style. See §14.
-
 ### 8.1 Selection
+
+> **Status: Partial.** Selection as a list, the anchor and the primary, Shift-range and Ctrl/Cmd toggle, and one transaction per batch ship (`packages/studio/src/tabs/selection.ts`, `src/canvas/iframe-host.ts`). The highlight bullets do not match what the canvas draws: the overlay boxes are borders rather than outlines (`packages/studio/styles/canvas.css`, `src/canvas/iframe-overlay.ts`), the hover box is a 1px solid `--accent-50` border rather than a dashed one, and the dashed boxes are a multi-selection's co-selected members, which the bullets do not mention.
 
 A canvas click does two things at once: it places the text caret at the clicked character and selects that block. There is no separate gesture for "select" versus "edit".
 
@@ -414,6 +440,8 @@ A canvas click does two things at once: it places the text caret at the clicked 
 
 ### 8.2 Drag and Drop
 
+> **Status: Partial.** Pragmatic drag for the outline, the canvas (from the block action bar's handle only), the tab strip and the pane grid's right edge ships, with the OS file-drag rules below (`packages/studio/src/panels/dnd.ts`, `src/canvas/iframe-entry.ts`). Four drags have no single-pointer alternative: statement reorder in the logic editor, which has no other route at all (`src/panels/statement-editor.ts`, whose `[part="drag"]` handle in `src/surfaces/statements.json` is `aria-hidden`); a Files-tree move into a folder, reachable otherwise only by typing a path into Rename (`src/files/files.ts`); reordering a tab within its own strip, since `moveTab` (`src/workspace/workspace.ts`) has one caller, the drop handler in `src/panels/tab-drop.ts`, and no command moves a tab along its strip; and reordering a data grid's columns, which Tabulator's `movableColumns` offers by drag alone and `src/grid/grid-view.ts` saves only from `columnMoved`. The indicator bullets name `.dragging` and `.drop-target` classes where the elements style `data-dragging` and `data-drop`.
+
 Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering, canvas element manipulation, the tab strip (reorder, and a move between panes) and the pane grid's right-edge drop zone (creating a second pane).
 
 - Drag indicator: `.dragging` class (opacity 0.4)
@@ -423,7 +451,7 @@ Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering, canvas element ma
 
 #### Moving without dragging (WCAG 2.2 SC 2.5.7)
 
-> **Status: Implemented.**
+> **Status: Partial.** Cut and paste (`src/editor/context-menu.ts`, announced through `notify`), Move up and Move down (`src/panels/block-action-bar.ts`), Split Right and Open to the Side ship. Statement reorder, a Files-tree move, a tab's place in its own strip and a grid's column order are the exceptions named on §8.2.
 
 **Every move a drag performs is also reachable without one.** SC 2.5.7 asks that any function operated by a dragging movement have a single-pointer alternative, and the alternative here is the pair the editor already had: **cut** the node, select the destination, **paste**. Both are commands, so both have a chord, a context-menu item and a palette entry; both run through the same document mutation the drag does, and both report through `notify`, so a screen-reader user is told the move happened.
 
@@ -445,6 +473,8 @@ Files dragged in from the desktop are NOT pragmatic sources — they arrive as n
 - A drop inside the canvas is `preventDefault()`ed in the capture phase before the contenteditable root sees it, so the browser never inserts its own `blob:` image alongside the real mutation
 
 ### 8.3 The Canvas Caret
+
+> **Status: Partial.** The single `contenteditable` root, the caret landing at the click, `contenteditable="false"` component islands, `data-jx-active-block` and `beforeinput`-only structural interception ship (`packages/studio/src/canvas/iframe-editable-root.ts`, `src/editor/inline-edit.ts`). Escape does not dismiss the document caret: the editing root has no handler and `CARET_STACK` in `src/canvas/iframe-keys.ts` does not forward it. A prop-bound session cancels on Escape instead, as `studio.md` §8.2.6 specifies and the last bullet does not carve out.
 
 The canvas render container is a single `contenteditable`; individual blocks are not toggled in and out of it. A caret inside a block IS the edit — there is no session to enter, and no modal state.
 
@@ -558,6 +588,8 @@ A persistent modal is therefore a surface document, and the contract it once got
 
 ### 9.1 Immutable State
 
+> **Status: Partial.** Documents are mutated in place inside a transaction: `transactDoc` (`packages/studio/src/tabs/transact.ts`) runs the mutation against the live document, records forward and inverse ops and replaces only the root reference, and the `mutate*` helpers write nested keys directly. `store.ts` exports no `update()`, and there is no `updateStyle(S, …)`.
+
 All mutations produce a new state object. Never modify state in place.
 
 ```javascript
@@ -572,6 +604,8 @@ S.document.children[0].style.color = "red";
 
 ### 9.2 History
 
+> **Status: Partial.** The per-tab linear stack capped at 100, `project.json` as a tab, one entry per batch and the full rollback of a failed write ship (`packages/studio/src/tabs/transact.ts`, `tests/transact-history.test.ts`). Entries are not `{ document, selection }` snapshots: they carry forward and inverse ops with the selection before and after, plus a document checkpoint every 20th entry, and `undo(tab)` / `redo(tab)` live in `src/tabs/transact.ts`, not in `src/state.ts`.
+
 - Linear undo/redo stack, max 100 entries
 - Each entry snapshots `{ document, selection }`
 - `undo()` / `redo()` from `state.js`
@@ -582,7 +616,9 @@ A batch of related edits is **one** entry, and a failed write leaves no entry at
 
 ### 9.3 Render Orchestration
 
-> **Status: Implemented.** **Every surface is `src/surfaces/*.json` — the directory is the list, and this section deliberately does not repeat it.** It named each one inline while there were eight; there are 88, and a hand-kept second copy of a list the filesystem already holds is the same defect §12 forbids for actions. What is normative is the SHAPE below, not the membership. A surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. What lit still renders is named and bounded **by a gate rather than by this sentence**: `scripts/check-lit-conventions.ts`'s `LIT_TEMPLATE_AUTHORS` carries every module that may still write a template, each with the reason it cannot be a document, and the list only ratchets down — a module that starts drawing has to argue for an entry, and one that stops must leave. It named four when this was written: Tabulator's cell editors, the Activity panel's two seam containers, the frame's overlay layer hosts, and one rich confirm body §9.4 sanctions as an island. This paragraph used to enumerate them in prose and cite a map that did not hold the list, which is how the claim went stale without anything noticing.
+> **Status: Partial.** The surface shape below ships. What does not is the retirement of `store.ts`'s name-to-callback renderer registry, described under "There is no root render": seven renderers the bootstrap registers, and the callers that still repaint them by name after writing state no effect tracks.
+
+**Every surface is `src/surfaces/*.json` — the directory is the list, and this section deliberately does not repeat it.** It named each one inline while there were eight; there are 88, and a hand-kept second copy of a list the filesystem already holds is the same defect §12 forbids for actions. What is normative is the SHAPE below, not the membership. A surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. What lit still renders is named and bounded **by a gate rather than by this sentence**: `scripts/check-lit-conventions.ts`'s `LIT_TEMPLATE_AUTHORS` carries every module that may still write a template, each with the reason it cannot be a document, and the list only ratchets down — a module that starts drawing has to argue for an entry, and one that stops must leave. It named four when this was written: Tabulator's cell editors, the Activity panel's two seam containers, the frame's overlay layer hosts, and one rich confirm body §9.4 sanctions as an island. This paragraph used to enumerate them in prose and cite a map that did not hold the list, which is how the claim went stale without anything noticing.
 
 **Studio edits its own chrome, and the registry is what makes a save visible.** `packages/studio/project.json` and `packages/ui/project.json` are Jx projects, so a surface document and a kit component are files Studio opens like any other. `services/live-surfaces.ts` is the lane behind a save: keyed on the saved PATH joined to the open project's root — `packages/studio/src/surfaces/<name>.json` re-registers the surface and re-mounts every root of that name over the host scope it already had; `packages/ui/components/<tag>.json` redefines the element through the runtime (embedding.md §7) and re-mounts every root whose render instantiated it — and inert for any other path, which is what keeps every other project's saves, and the shipped app, away from it. The document that re-mounts is the one the tab just wrote, handed over by `files/file-ops.ts`'s save listener; nothing reads the chrome back from disk, and nothing watches the filesystem, so an edit made outside Studio still arrives on the next reload. A surface file no adapter mounts and a component whose `tagName` disagrees with its file are refused with a problem rather than applied under either spelling. A saved component reaches the canvas frames too: `canvas-render.ts`'s `redefineElementOnCanvases` posts the `redefineElement` frame message to every live frame with the FILE's URL under the project as its base — the frame draws a project's elements from the project's own files, so a sibling `$ref` in the definition must resolve to the project's copy — and then renders every pane, because a frame's instances keep the definition they rendered until something renders them again (embedding.md §7). The frame can hold the definition because it answers `jx-ui:` behaviour specifiers from the loaders `iframe-entry.ts` registers at boot (`@jxsuite/ui/loaders`, one chunk per module on first use; ui.md §10). Measured in Chrome with the button stylebook page live in a second pane: `jx-button saved and re-mounted in 7 places and on 2 canvases`, and every button in both frames drew the saved change.
 
@@ -604,7 +640,7 @@ Module-local state (Sets, variables) persists across renders and does not need t
 
 ### 9.4 Template Conventions
 
-> **Status:** Implemented
+> **Status: Implemented.**
 
 The template is the only writer of what it renders. Both halves of that have been broken in shipped code, so both are gated by `packages/studio/scripts/check-lit-conventions.ts`, which carries a ratcheting backlog per rule and fails both ways — a new occurrence fails, and an entry left behind after its site is fixed fails too.
 
@@ -647,6 +683,8 @@ The template is the only writer of what it renders. Both halves of that have bee
 
 ## 10. Conventions Checklist
 
+> **Status: Partial.** Most items hold, many behind a gate (`check-surface-purity.ts`, `check-styles.ts`, `check-lit-conventions.ts`). Five inherit a section's open item. "State mutations are immutable (produce new objects)" inherits §9.1's divergence: `transactDoc` and the `mutate*` helpers mutate in place and replace only the root reference. "Text inputs are debounced (400ms standard)" inherits §4.4's. The two command-rendering items, a surface's actions arriving as a projection that prints title, chord and `requires`, and a control rendered from its command record rather than a hand-maintained list, inherit §12.3's and §12.5's: the rail prints no chord, the tab-strip and Files-tree menus carry none, and the Source Control panel draws from its own `ACTIONS`. The empty-region item inherits §11's: some empty regions still print a noun phrase.
+
 When building new UI in Studio, verify:
 
 - [ ] A new surface is a Jx document mounted through `mountSurface()` (§9.3) — never a new lit template; no kit tag inside a lit template and no lit import in an adapter (`scripts/check-surface-purity.ts`)
@@ -682,7 +720,7 @@ When building new UI in Studio, verify:
 
 ## 11. Empty States and Copy
 
-**Status:** Implemented
+> **Status: Partial.** `EmptyStateSpec`, its two renderers and the shared verbs ship (`packages/studio/src/panels/empty-state.ts`, `src/surfaces/empty-state.ts`, `empty-state.json`). Two rules do not. Some empty regions say what is absent, against §11.1's first rule: the Bottom dock's fallback is "Nothing to show here yet." (`src/panels/bottom-dock.ts`), and the Files panel's `[part="empty"]` block is the noun phrase "No project loaded" (`src/surfaces/files-panel.json`). And §11.2's disabled action cannot carry its reason: `EmptyStateAction` has only `label`, `run` and `disabled`, and `empty-state.json` binds no hint on `[part="empty-action"]`.
 
 Every region of the shell that can be empty says its piece through **one** vocabulary — `EmptyStateSpec` in `src/panels/empty-state.ts`, which owns the copy rules below and nothing about how they look. A region with no object to show never paints a bare container, and it never re-decides the rules per panel.
 
@@ -719,11 +757,11 @@ The empty state is where a new author meets the vocabulary, so it uses the plain
 
 ## 12. Command and Menu Rendering Rules
 
-**Status:** Partial — the registry and the CI checks ship; the surfaces are being ported onto them.
-
 Every capability Studio has is a **command record** (`specs/studio.md` §13). This section governs how those records are _rendered_: where a record may appear, how many may appear at once, and what every appearance must print.
 
 ### 12.1 The level × placement matrix
+
+> **Status: Partial.** The matrix ships as `PLACEMENT_MATRIX` and `PANEL_PLACEMENT_MATRIX` (`packages/studio/src/commands/levels.ts`), checked by `scripts/check-command-levels.ts` and by `registerPanel()`. Five rows reach no renderer that reads them: the outline's right-click (`src/panels/layers-panel.ts`) draws `context/element` rather than `context/layer`; the pane context bar's preset menu (`src/panels/pane-context.ts`), the one renderer of `context/pane`, builds its rows by id for `pane.derive`, `pane.pin` and `pane.unsplit`, so `pane.splitRight` and `pane.compareWith` declare the placement and are never drawn there; and the status bar picks its items by command id (`src/surfaces/statusbar.ts`) rather than projecting its three placements, of which no record declares `statusbar/selection`.
 
 `level` states what a command acts on; a **placement** is a surface it declares itself into via `menus`. Each placement admits a fixed set of levels. This table is the normative copy; `packages/studio/src/commands/levels.ts` (`PLACEMENT_MATRIX`) mirrors it, and `scripts/check-command-levels.ts` validates every registered command's `menus` against it in CI.
 
@@ -762,6 +800,8 @@ The check validates placement only. Whether a panel _reads_ state above its leve
 
 ### 12.2 The chrome budget
 
+> **Status: Partial.** The caps ship in `packages/studio/src/commands/budget.ts`, checked by `scripts/check-chrome-budget.ts` and, for the assistant, by `tests/ai-command-tools.test.ts`. The label stripping this section forbids still ships: `src/surfaces/commandbar.json` hides every primary button's label under `@container toolbar (max-width: 1140px)`.
+
 Chrome is earned by frequency and capped by a build check (`scripts/check-chrome-budget.ts`, thresholds in `src/commands/budget.ts`):
 
 | Cap                                                                                   | Limit |
@@ -777,6 +817,8 @@ Raising a cap is a design decision and happens in `budget.ts`, in one place, del
 Stripping labels is **not** a way to stay under the cap. A container query that hides every button's text below a breakpoint converts a crowding problem into an anonymity problem: an unlabelled icon is a control the reader must hover to identify.
 
 ### 12.3 Every invoking surface prints the name and the chord
+
+> **Status: Partial.** The Command Bar, the palette, the element menu and the block bar print title, chord and `requires` through `formatBinding` (`packages/studio/src/surfaces/commandbar.ts`, `src/panels/quick-search.ts`, `src/surfaces/menu.ts`). Rail buttons print no chord although `panel.focus.*` binds one (`src/surfaces/rail.ts`); the tab-strip and Files-tree menus build their rows with no `chord`, and `src/files/files.ts` hard-codes `destructive: false`; the Bottom dock's close button carries its own label, prints no ⌘J, and calls the dock setter rather than `view.setBottomDock` (`src/surfaces/bottom-dock.json`, `src/panels/bottom-dock.ts`); and the Source Control panel's "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/git-panel.json`).
 
 Wherever a command is rendered — Command Bar button, palette row, context-menu item, block-action button, rail entry — the surface prints:
 
@@ -797,6 +839,8 @@ Consequences:
 - **A submenu row prints no chord.** The chord belongs to the command, and the parent already prints it; repeating it on every child would teach that each child has one of its own.
 
 ### 12.4 One surface, one availability rule
+
+> **Status: Partial.** The assistant projection and its undo witness, `coerceArgs` and `runReported` ship (`packages/studio/src/services/ai-command-tools.ts`, `src/commands/registry.ts`, `src/commands/run-reported.ts`), and the six family fixes recorded below hold. Thirteen modules still call `registry.run` bare, named in `NOT_YET_CONVERTED` in `tests/run-reported.test.ts`, and the `git.*` row's failure returns through the Source Control panel, which is §12.5's.
 
 **Every command in a family that acts on the same state declares the SAME precondition.** A family is defined by what its `run` WRITES, not by its id namespace: five zoom verbs over one pan-zoom surface, three publish verbs over one deploy provider, twenty-one element verbs over one document tree.
 
@@ -840,11 +884,11 @@ Corollaries:
 
 ### 12.5 A second list of actions is a defect
 
+> **Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements. `ACTIONS` in `packages/studio/src/panels/git-panel.ts` is a second list: its `createRepository` calls `createGithubRepository()` directly from the no-repository state, where `git.createGithubRepository`'s `enablement` refuses, so the repository is created on GitHub and adding the remote then fails (asserted as behaviour in `tests/git-panel-gaps.test.ts`).
+
 If a surface maintains its own array of `{ label, action }` records for capabilities that already exist, that array is the bug — not a shortcut around one. The symptom is always the same: two surfaces disagree about one capability. `Cmd+W` refusing to close the last tab while the tab strip's `×` closed it happily is the canonical example, and it is exactly what one record with one chord and one `run` makes impossible.
 
 ## 13. Notification Tiers
-
-**Status:** Partial — the three tiers and their surfaces ship; the Diff and Logic tabs of the Bottom dock are declared and empty.
 
 The normative contract is `specs/studio.md` §16. This section governs how those records are _rendered_ — what each tier looks like, and the rules a reviewer applies when someone proposes a fourth one.
 
@@ -874,6 +918,8 @@ The message carries its `source` when it has one: a listener has none of the vis
 
 ### 13.2 Rendering rules
 
+> **Status: Partial.** The toast stack, the rest times, the recovery button and the Problem rows ship (`packages/studio/src/services/notify.ts`, `src/panels/problems-panel.ts`). The inline-error rule does not hold for the kit field: a refusal drawn through `jx-textfield`'s `error` lands in its `[part="error"]` region, which is `role="status"` with `aria-live="polite"` (`packages/ui/components/jx-textfield.json`), and that is how the prompt dialog, Repeat… and the Locales settings refuse a value (`packages/studio/src/surfaces/dialog.json`, `convert-repeater.json`, `settings-locales.json`). Only hand-drawn messages carry `role="alert"`.
+
 - **Four toasts at most, newest at the bottom.** Beyond that the oldest retires early — a stack that grows without bound is a wall, and a wall is not read.
 - **Success and info rest for 4s, warnings and errors for 8s.** A reader who has to decide gets twice as long as a reader who is being told.
 - **One line of text, one glyph.** A toast is a sentence, not an illustration; anything longer belongs in `detail`, which is a Problem's second line.
@@ -882,6 +928,8 @@ The message carries its `source` when it has one: a listener has none of the vis
 - **An inline error renders after the control, with `role="alert"`, and takes precedence over a warning state on the same row.** Where a row can carry several, it counts them from two up.
 
 ### 13.3 The rules that keep this from becoming a fourth surface
+
+> **Status: Partial.** Rules 1, 2 and 4 hold (`packages/studio/src/services/notify.ts`, `src/services/announce.ts`, `src/ui/layers.ts`). Rule 3 does not for a failed `project.json` write from Settings: `commitProjectConfig` (`src/tabs/project-config.ts`) files an error Problem, which is announced assertively, and the section that asked for the write draws the same failure again in a live region, a `role="alert"` line in Locales, CSS Variables, Deploy, Extensions, Overview and Contexts, or Overview's field `error` region, so a screen reader hears it twice.
 
 1.  **The status bar never carries an outcome.** It is ambient state. This is the single rule that the 78-call-site predecessor broke, and every regression here starts by breaking it again.
 2.  **A modal is not a notification.** Blocking is reserved for an operation that cannot proceed while the author edits — in practice, dependency installation — and even then it offers to run in the background. Everything else reports and gets out of the way.

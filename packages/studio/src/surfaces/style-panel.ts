@@ -138,7 +138,7 @@ export interface StyleRowView extends Record<string, unknown> {
   chipState: string;
   chipText: string;
   chipTitle: string;
-  /** The Value Source chip (§6.3). Absent on a child, a custom pair and a nested rule. */
+  /** The Value Source chip (§6.6). Absent on a child, a custom pair and a nested rule. */
   hasSource: boolean;
   sourceState: string;
   sourceLabel: string;

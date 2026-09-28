@@ -1,5 +1,5 @@
 /**
- * The selection SET — one vocabulary for `session.selection`, now that it is `JxPath[]` (§6.5).
+ * The selection SET — one vocabulary for `session.selection`, now that it is `JxPath[]` (§6.7).
  *
  * ## The invariant this module exists to hold
  *

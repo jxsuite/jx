@@ -2,10 +2,10 @@
  * Tests for src/browse/library-commands.ts — the Library's verbs, run for real.
  *
  * `tests/project-gap-commands.test.ts` checks the RECORDS (ids, placement, refusals). This file
- * checks that running each one reaches the state it names, because the point of P7.1's registry
- * work is that the palette, a chord, `__jxAutomation` and the assistant all get the same behaviour
- * the toolbar button has — the Manage view's category filter and view switch were buttons and
- * nothing else, and the screenshot pipeline had to press them through an XPath on their labels.
+ * checks that running each one reaches the state it names, because the point of making them records
+ * is that the palette, a chord, `__jxAutomation` and the assistant all get the same behaviour the
+ * toolbar button has — the Manage view's category filter and view switch were buttons and nothing
+ * else, and the screenshot pipeline had to press them through an XPath on their labels.
  */
 import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -167,8 +167,9 @@ describe("the records", () => {
   test("every one is project-level, and none is offered to the assistant", () => {
     for (const command of libraryCommands()) {
       expect(command.level).toBe("project");
-      // §12.4's first deletion rule: each of these shapes a listing a person reads, and the model
-      // Has `list_files` / `search_files` for the same facts. A declaration would MAKE a tool.
+      // The first deletion rule of studio-ui-guidelines.md §12.4: each of these shapes a listing a
+      // Person reads, and the model has `list_files` / `search_files` for the same facts. A
+      // Declaration would MAKE a tool.
       expect([command.id, command.aiTool]).toEqual([command.id, undefined]);
       expect(command.category).toBe("Project");
     }

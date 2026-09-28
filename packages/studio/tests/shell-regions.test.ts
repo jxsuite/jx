@@ -236,8 +236,8 @@ describe("statusbar/selection", () => {
     await flush();
     expect(resolveRegion("statusbar/selection")).toBeNull();
 
-    // A BATCH: since region ⑥ took the ancestor trail, a single selection leaves this field empty
-    // (`statusbar.test.ts` states why), and the COUNT is what still renders it.
+    // A BATCH: since the jump bar took the ancestor trail, a single selection leaves this field
+    // Empty (`statusbar.test.ts` states why), and the COUNT is what still renders it.
     tab.session.selection = [
       ["children", 0],
       ["children", 1],

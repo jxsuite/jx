@@ -1,5 +1,5 @@
 /**
- * ⑥ The jump bar — one address, every step of it a command.
+ * The jump bar — one address, every step of it a command.
  *
  * The bar's contract is what it CANNOT do as much as what it can: it has no click handler that
  * names behaviour, it never renders a step it invented, it never leaves a hole in the chain, and it
@@ -628,9 +628,9 @@ describe("mountJumpBar", () => {
 
 describe("the bar is wired to the app, not to a stub", () => {
   test("every id the bar can name is a record the app actually registers", () => {
-    // P7 shipped eleven features reachable from nothing. A bar built entirely out of command ids is
-    // Only as real as the registry behind it, so this asserts against the APP's set — not the three
-    // Stubs the rest of this file uses.
+    // Eleven features once shipped reachable from nothing (tests/reachability.ts). A bar built
+    // Entirely out of command ids is only as real as the registry behind it, so this asserts
+    // Against the APP's set — not the three stubs the rest of this file uses.
     const ids = new Set(appCommandSet().map((command) => command.id));
     expect([...BAR_IDS].filter((id) => !ids.has(id))).toEqual([]);
   });
@@ -648,8 +648,9 @@ describe("the bar is wired to the app, not to a stub", () => {
   });
 
   test("the chevron opens the KIT menu, not a second list of its own", () => {
-    // §12.5: a second list of actions is a defect. The flow projects rows and hands them to
-    // `surfaces/menu.ts`; the panel, the caret, typeahead and Escape are that surface's.
+    // A second list of actions is a defect (studio-ui-guidelines.md §12.5). The flow projects rows
+    // And hands them to `surfaces/menu.ts`; the panel, the caret, typeahead and Escape are that
+    // Surface's.
     const source = readFileSync(
       join(resolve(import.meta.dir, "..", "src"), "panels", "jump-bar.ts"),
       "utf8",

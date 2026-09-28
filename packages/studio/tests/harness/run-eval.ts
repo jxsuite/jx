@@ -2,9 +2,8 @@
  * Run-eval.js — driver: run testing-plan prompts through the headless harness and emit
  * turnover-shaped rows.
  *
- * Each test runs N times (default 3, per testing-plan §3.2 determinism) on a _fresh_ harness, and
- * the **worst** run per axis is reported — borderline results don't get to cherry-pick a lucky
- * pass.
+ * Each test runs N times (default 3, for determinism) on a _fresh_ harness, and the **worst** run
+ * per axis is reported — borderline results don't get to cherry-pick a lucky pass.
  *
  * Usage: JX_AI_KEY=... bun run packages/studio/tests/harness/run-eval.js # all defined tests
  * JX_AI_KEY=... bun run packages/studio/tests/harness/run-eval.js L1.1 L1.3
@@ -109,7 +108,7 @@ const RUNS_PER_TEST = Number(process.env.JX_AI_RUNS || 3);
 /**
  * Test catalog — mirrors docs/ai-assistant-testing-plan.md. Start with Layer 1; add layers as the
  * harness earns trust. `check(finalDoc)` asserts the _outcome_ (drives Completeness, independent of
- * which tools were used); `mustReadFirst` flags the §5.1 read-before-mutate constraint.
+ * which tools were used); `mustReadFirst` flags the read-before-mutate constraint.
  */
 interface EvalTest {
   id: string;
@@ -351,7 +350,7 @@ interface WorstSummary {
   readFirstViolated?: boolean;
 }
 
-/** Reduce N runs to the worst score per axis (§3.2: treat the worst run as the score). */
+/** Reduce N runs to the worst score per axis (treat the worst run as the score). */
 function worstOf(runs: RunResult[]): WorstSummary {
   const scored = runs.filter((r) => !r.error);
   if (scored.length === 0) {

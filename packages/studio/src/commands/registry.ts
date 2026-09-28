@@ -6,7 +6,7 @@
  * default chord, and the surfaces it belongs in. Every surface — Command Bar, palette, rail,
  * context menus, the block action bar, the keymap, `__jxAutomation` and the assistant's tools —
  * becomes a RENDERING of these records. A surface may choose whether to show a command; it may
- * never decide what it is called, when it is available, or what it does (plan §2, principle 1).
+ * never decide what it is called, when it is available, or what it does (§13).
  *
  * Four things fail loudly at registration rather than degrading into a surface disagreement:
  *
@@ -23,7 +23,7 @@
  * `when` / `enablement` are `(ctx) => boolean` closures, modelled on the shipped
  * `services/gated-registry.ts` `ToolAvailability`, and `requires` is ONE string with three
  * consumers: the disabled control's tooltip, the palette row's grey subtitle and the agent's
- * refusal message. Plan §13 rejects a serialisable string DSL; do not add one.
+ * refusal message. §13.1 rejects a serialisable string DSL; do not add one.
  *
  * The registry takes its context by injection (`getContext`), so nothing here imports a state
  * module. That is what lets the CI checks import the command set in a bare Bun process and lets

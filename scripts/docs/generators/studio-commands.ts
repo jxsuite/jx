@@ -6,8 +6,9 @@
 // Both are projections of one source: `appCommandSet()`, the bare-Bun-importable
 // Command set the three CI checks already load. `src/commands/reference.ts` owns
 // The row shapes and the tables; this file owns the frontmatter, the prose and
-// The file identity. Plan §12 P3 lists these pages as generated and CI-diffed —
-// The last place the app's keyboard and its documentation could disagree.
+// The file identity. Generating both closes what was the last place the app's
+// Keyboard and its documentation could disagree; like every generated page they
+// Are build outputs, gitignored and never diffed (`pages.ts`).
 
 import { appCommandSet } from "../../../packages/studio/src/commands/app-commands.ts";
 import {

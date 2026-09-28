@@ -2,10 +2,10 @@
  * The OpenAI-compatible stream normalizer: an upstream chat-completions response in, the chat
  * route's frames out.
  *
- * This is `@jxsuite/server`'s normalizer, moved here verbatim (harness slice J1.17), so that every
+ * This is `@jxsuite/server`'s normalizer, moved here verbatim (specs/ai.md §2.4), so that every
  * backend serving the chat route can run the same one. Its frames are frozen by the server's
  * upstream fixtures (`packages/server/tests/fixtures/ai-upstream/*.server.json`); a change to what
- * this file yields is a behaviour change and belongs in a slice whose spec fragment names it.
+ * this file yields is a behaviour change and belongs in a change whose spec fragment names it.
  *
  * @module @jxsuite/ai/gateway
  */

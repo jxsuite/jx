@@ -161,7 +161,7 @@ export async function bootStudio(opts: {
     formatCommands: mock(() => []),
     isEditChromeTarget: mock(() => false),
     // The bootstrap composes the bar's structural selection verbs into the app-wide registry so
-    // The palette, the keyboard and `__jxAutomation` can reach them (plan §13.3).
+    // The palette, the keyboard and `__jxAutomation` can reach them (§13.5).
     registerSelectionCommands: mock(() => {}),
     releaseBlockActionBar: mock(() => {}),
     renderBlockActionBar: mock(() => {}),
