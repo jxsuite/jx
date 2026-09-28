@@ -112,9 +112,12 @@ describe("new-project wizard gaps", () => {
     const creds = npPart("ai-creds-form");
     expect(creds).toBeTruthy();
 
+    // Nothing typed, nothing to commit: the form draws no Save until the key is entered.
+    expect(creds!.querySelector('[part="save"]')).toBeNull();
     const keyInput = creds!.querySelector('[part="key"] [part="input"]') as HTMLInputElement;
     keyInput.value = "sk-fresh-key";
     keyInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush(2);
     click(creds!.querySelector('[part="save"]'));
     await flush(3);
 

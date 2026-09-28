@@ -15,6 +15,7 @@ const { listPanels, registerPanel } = await import("../src/panels/panel-registry
 const refreshGitStatus = mock(async () => {});
 // The rail is a rendering of the panel registry, so a mocked git-panel still has to contribute its
 // Record — otherwise the Source Control button (and its badge) simply is not there to assert on.
+// It carries the real record's short rail label, or this suite would never draw one.
 void mock.module("../src/panels/git-panel.js", () => ({
   refreshGitStatus,
   cleanupGitPanel: () => {},
@@ -24,6 +25,7 @@ void mock.module("../src/panels/git-panel.js", () => ({
     registerPanel({
       id: "git",
       title: "Source Control",
+      railLabel: "Source",
       level: "project",
       dock: "navigator",
       icon: "git-branch",
@@ -210,23 +212,31 @@ describe("renderActivityBar", () => {
     expect(bar().querySelectorAll('[role="separator"]')).toHaveLength(1);
   });
 
-  test("every rail button carries a visible text label, which is also its accessible name", async () => {
+  test("every rail button carries a visible label; a railLabel shortens it, and the title stays the name and tooltip", async () => {
     installPreferencesRegistry();
     await render();
     expect(labelsOf()).toEqual([
       "Files",
-      "Source Control",
+      "Source",
       "Outline",
       "Page",
       "Data",
       "Packages",
       "Settings",
     ]);
-    expect(controlOf(railButton("git"))?.getAttribute("aria-label")).toBe("Source Control");
-    // The label ellipses at 56px, so the full string survives as a tooltip too — the tip an
-    // Enabled kit button renders for its hint, never a title (ui.md §5.1).
-    expect(hintOf(railButton("git"))).toBe("Source Control");
-    expect(controlOf(railButton("git"))?.hasAttribute("title")).toBe(false);
+    /* "Source Control" is 71px against a 48px label box, so the kit ellipsed it to "Source …". The
+       record declares the short label instead, and the full title is still what a screen reader
+       announces (the visible word leads it, WCAG 2.5.3) and what the tooltip restores: the tip an
+       Enabled kit button renders for its hint, never a `title` attribute (ui.md §5.1). */
+    const git = railButton("git");
+    expect(git?.querySelector('[part="label"]')?.textContent?.trim()).toBe("Source");
+    expect(controlOf(git)?.getAttribute("aria-label")).toBe("Source Control");
+    expect(hintOf(git)).toBe("Source Control");
+    expect(controlOf(git)?.hasAttribute("title")).toBe(false);
+    // A record with no railLabel prints its title, which is also its name.
+    const files = railButton("files");
+    expect(files?.querySelector('[part="label"]')?.textContent?.trim()).toBe("Files");
+    expect(controlOf(files)?.getAttribute("aria-label")).toBe("Files");
   });
 
   test("marks the current left tab pressed when the dock is open", async () => {

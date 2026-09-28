@@ -396,9 +396,7 @@ export function createDevServerPlatform() {
      * @param {string} path
      */
     async readFileBytes(path: string) {
-      const res = await fetch(
-        `/__studio/file/bytes?path=${encodeURIComponent(serverPath(path))}`,
-      );
+      const res = await fetch(`/__studio/file/bytes?path=${encodeURIComponent(serverPath(path))}`);
       if (!res.ok) {
         throw new Error(`Failed to read file bytes: ${path}`);
       }

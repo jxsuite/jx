@@ -67,9 +67,21 @@ void mock.module("../src/services/announce.js", () => ({
   announce: (message: string) => announced.push(message),
 }));
 
-const { renderDiffToolbar, setDiffRepaint, setDiffToolbarHost, stepDiffAndReveal } =
-  await import("../src/canvas/diff-toolbar");
+/* …and the pane CHROME, because the zoom pod is not drawn over the Code half and the half is not
+   reactive. Injected from `studio.ts` for the same reason, so a spy here too. */
+let chromeRepaints = 0;
+
+const {
+  renderDiffToolbar,
+  setDiffChromeRepaint,
+  setDiffRepaint,
+  setDiffToolbarHost,
+  stepDiffAndReveal,
+} = await import("../src/canvas/diff-toolbar");
 setDiffRepaint((paneId: string) => repainted.push(paneId));
+setDiffChromeRepaint(() => {
+  chromeRepaints += 1;
+});
 const { diffStepOf, diffViewOf, resetDiffViews, setDiffChangeMap, setDiffView } =
   await import("../src/canvas/diff-view");
 const { flush } = await import("./harness");
@@ -133,6 +145,7 @@ beforeEach(() => {
   measureThrows = false;
   measureQueue = [];
   repainted.length = 0;
+  chromeRepaints = 0;
   surfaces.clear();
   for (const [paneId, host] of hosts) {
     setDiffToolbarHost(paneId, null);
@@ -216,6 +229,8 @@ describe("what the toolbar says", () => {
     // The documented "this stage's structure is stale" signal, without which the repaint sees
     // `modeChanged === false` and skips the setup the other branch needs.
     expect(surfaces.get("primary")?.prevCanvasMode).toBeNull();
+    // And the chrome, or the zoom pod would go on floating over a Monaco it cannot zoom.
+    expect(chromeRepaints).toBe(1);
   });
 
   test("re-selecting the view already shown rebuilds nothing", async () => {
@@ -224,6 +239,7 @@ describe("what the toolbar says", () => {
     radios(el)[0]!.click();
     await flush();
     expect(repainted).toEqual([]);
+    expect(chromeRepaints).toBe(0);
   });
 
   test("the view choice survives a redraw", async () => {
@@ -392,8 +408,11 @@ describe("the commands", () => {
     await setView.run(ctx("diff"), { pane: "secondary", view: "code" } as never);
     expect(diffViewOf("secondary")).toBe("code");
     expect(repainted).toEqual(["secondary"]);
+    expect(chromeRepaints).toBe(1);
     await setView.run(ctx("diff"), { pane: "secondary", view: "visual" } as never);
     expect(diffViewOf("secondary")).toBe("visual");
+    // The verb and the button are one repaint, so the pod follows either.
+    expect(chromeRepaints).toBe(2);
   });
 
   test("diff.setView refuses a view it does not offer", async () => {

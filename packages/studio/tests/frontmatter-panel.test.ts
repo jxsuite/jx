@@ -103,8 +103,8 @@ const { attachDocumentHeaderHost, hasDocumentHeader, mount, render, unmount } =
  * test, standing in for the stage.
  *
  * The module used to answer this itself. It no longer does, and it should not: the getter existed
- * for lit's order-independent detach report, and a document states its placements instead. What the
- * card is FOR is observable in the DOM, so that is what the assertions below read.
+ * for lit's order-independent detach report, and a document states its slot instead. What the card
+ * is FOR is observable in the DOM, so that is what the assertions below read.
  */
 let attached: HTMLElement | null = null;
 
@@ -152,9 +152,8 @@ function setShell(withPanelHost = true) {
     <div id="toolbar"></div>
     <div id="activity-bar"></div><div id="left-panel"></div>
     <div class="pane-stage" data-jx-region="pane.primary">
-      <div part="edit-canvas"><div part="edit-column">
-        <div part="doc-header" data-placement="in-column"></div>
-      </div></div>
+      <div part="doc-header"></div>
+      <div part="edit-canvas"><div part="edit-column"></div></div>
     </div>
     <div id="right-panel"></div>
     <div id="statusbar"></div>
@@ -317,7 +316,6 @@ describe("the stage owns the host", () => {
     const first = host();
     const second = document.createElement("div");
     second.setAttribute("part", "doc-header");
-    second.dataset.placement = "pinned";
     document.querySelector(".pane-stage")!.append(second);
     attach(second);
     await flush(8);
@@ -357,22 +355,17 @@ describe("the stage owns the host", () => {
   });
 
   /*
-   * `.doc-header-host.pinned .doc-header` reached from the stage's host INTO the card to take the
-   * box's border and radius off the Design placement, and a document's scoped style block cannot
-   * answer an ancestor. The placement arrives as an attribute the card keys on itself.
+   * The card has ONE place — docked above Edit's page — so it has one shape and nothing to key on.
+   * It used to take a `data-placement` off the host it was handed, and read it as the host was
+   * announced: before the runtime writes a node's attributes, so it always drew `in-column`, and the
+   * band look it was meant to switch to never drew. A card that projected a placement again would
+   * be that second answer coming back.
    */
-  test("the stage's placement reaches the card as an attribute it can style on", async () => {
+  test("the card carries no placement — it has one place, and one shape", async () => {
     setupContentTab({ title: "Hello" });
     await mountAndFlush();
-    expect(card()!.dataset.placement).toBe("in-column");
-
-    const pinned = document.createElement("div");
-    pinned.setAttribute("part", "doc-header");
-    pinned.dataset.placement = "pinned";
-    document.querySelector(".pane-stage")!.append(pinned);
-    attach(pinned);
-    await flush(8);
-    expect(card()!.dataset.placement).toBe("pinned");
+    expect(card()).toBeTruthy();
+    expect(card()!.dataset.placement).toBeUndefined();
   });
 });
 

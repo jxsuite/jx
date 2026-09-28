@@ -7,19 +7,24 @@
  * nothing at all unless `findContentTypeSchema` matched the document to a content collection — so
  * it never appeared on the default home page, the one document every new author opens first.
  *
- * Three gates are gone, and each was a lie about what the card is for:
+ * Two gates are gone, and each was a lie about what the card is for:
  *
  * - The **collection gate** (`if (!fieldSet?.collection)`) — a page's `title` is frontmatter whether
  *   or not a collection schema describes it;
- * - The **mode gate** (`getCanvasMode() === "edit"`) — the header is part of the document, not a view
- *   of it, so switching to Design must not delete it;
  * - The **document-mode gate** (`doc.mode === "content"`) — a JSON page carries `title` and `$head`
  *   directly on the root node, and it has a header for exactly the same reason.
  *
- * What it renders instead: **any** document with frontmatter or `$head`, in every named layout and
- * in both authoring views of the stage — Title, Route, the layout picker, the
- * schema-and-frontmatter field list, the door to Search appearance and a "Raw head tags"
- * disclosure. `hasDocumentHeader` is the whole predicate, and it is a fact about the DOCUMENT.
+ * What it renders instead: **any** document with frontmatter or `$head`, in every named layout —
+ * Title, Route, the layout picker, the schema-and-frontmatter field list, the door to Search
+ * appearance and a "Raw head tags" disclosure. `hasDocumentHeader` is this module's whole
+ * predicate, and it is a fact about the DOCUMENT.
+ *
+ * **The canvas mode is the STAGE's question, and this module still takes none.** The stage draws a
+ * host for the card in Edit only (`wantsDocHeader` in `canvas/canvas-render.ts`): Design gives its
+ * artboards the whole pane, and the Navigator's Page panel carries the same fields in every mode,
+ * so nothing is out of reach in either. The old mode gate lived HERE, as a `getCanvasMode()` check
+ * the card ran to decide whether to exist; the decision now has one owner, the frame that draws the
+ * page, and this module draws into whatever host it is handed.
  *
  * **One reserved-key policy, one `collectFmFields` call.** The two field sets this card merges used
  * to disagree: this module passed an empty reserved set and `head-panel.ts` passed `{title}`, so
@@ -29,7 +34,8 @@
  * **The card has no host of its own.** `#frontmatter-panel` — the grid row, the `hidden` div, the
  * `frontmatterPanelEl` ref and the 40vh cap that came with them — is deleted. The STAGE renders the
  * host now ({@link attachDocumentHeaderHost}, called from the stage document's `onNodeCreated` in
- * `canvas/canvas-render.ts`), so the card sits inside the artefact rather than in a band above it.
+ * `canvas/canvas-render.ts`), so the card is docked above the page, as wide as the pane, rather
+ * than in a band the shell drew above every stage.
  *
  * **The card is a Jx document now** (`src/surfaces/doc-header.json`), and this module is the flow
  * behind it: it decides which document a pane's card is drawn for, which rows that document has,
@@ -170,8 +176,8 @@ export function attachDocumentHeaderHost(paneId: string, el: HTMLElement | null)
 /* There is no `documentHeaderHost` getter any more, and its absence is the point.
    It existed for ONE caller: the stage's lit `ref`, which was told about a removal WITHOUT being
    told which node had gone, so it had to read the host back and ask whether it was still connected
-   before deciding the report was about the host it held. `surfaces/canvas-stage.json` states both
-   placements as a view, so a frame that draws no card simply announces none and `renderCanvasImpl`
+   before deciding the report was about the host it held. `surfaces/canvas-stage.json` states the
+   card's slot as a view, so a frame that draws no card simply announces none and `renderCanvasImpl`
    releases the slot in one place — there is nothing left to settle after the fact, and a getter
    whose only reader is gone is a fact about the module nobody is entitled to. */
 
@@ -360,12 +366,6 @@ function viewFor(tab: Tab, paneId: string, card: HeaderCard): DocHeaderView {
   return {
     collection: collection ? collection.name : "Document",
     hasRoute: route !== null,
-    /* The stage's two placements, read off the host it handed over. In Edit the card is a block of
-       the document's own column; in Design it is pinned above a pan/zoom surface at 1:1, and only
-       that one wants the band's edge rather than the card's. `surfaces/canvas-stage.json` says the
-       same thing from the STAGE's side, which a document's own scoped style block cannot answer —
-       and it says it on `data-placement` rather than on a class, because the stage emits none. */
-    placement: card.el.dataset["placement"] === "pinned" ? "pinned" : "in-column",
     rawEntries: raw,
     rawOpen: _rawOpen.has(tab.id),
     rawState: raw.length === 0 ? "empty" : "list",

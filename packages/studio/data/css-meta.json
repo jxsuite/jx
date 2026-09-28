@@ -50,11 +50,11 @@
       "$input": "button-group",
       "$buttonValues": ["flex", "grid", "block", "inline", "none"],
       "$icons": {
-        "flex": "display-flex",
-        "grid": "display-grid",
-        "block": "display-block",
-        "inline": "display-inline",
-        "none": "display-none"
+        "flex": "columns",
+        "grid": "grid-four",
+        "block": "rectangle",
+        "inline": "text-t",
+        "none": "eye-slash"
       },
       "enum": [
         "block",
@@ -175,8 +175,9 @@
       "$order": 71,
       "type": "string",
       "$input": "button-group",
+      "$buttonValues": ["nowrap", "wrap"],
       "$icons": {
-        "wrap": "wrap-text"
+        "wrap": "arrow-u-down-left"
       },
       "enum": ["nowrap", "wrap", "wrap-reverse"],
       "$show": [
@@ -200,12 +201,12 @@
         "space-evenly"
       ],
       "$icons": {
-        "flex-start": "justify-start",
-        "flex-end": "justify-end",
-        "center": "justify-center",
-        "space-between": "justify-between",
-        "space-around": "justify-around",
-        "space-evenly": "justify-evenly"
+        "flex-start": "align-left",
+        "flex-end": "align-right",
+        "center": "align-center-horizontal",
+        "space-between": "arrows-out-line-horizontal",
+        "space-around": "arrows-in-line-horizontal",
+        "space-evenly": "arrows-horizontal"
       },
       "enum": [
         "flex-start",
@@ -232,11 +233,11 @@
       "$input": "button-group",
       "$buttonValues": ["stretch", "flex-start", "flex-end", "center", "baseline"],
       "$icons": {
-        "stretch": "align-stretch-v",
-        "flex-start": "align-start-v",
-        "flex-end": "align-end-v",
-        "center": "align-center-v",
-        "baseline": "align-baseline"
+        "stretch": "arrows-out-line-vertical",
+        "flex-start": "align-top",
+        "flex-end": "align-bottom",
+        "center": "align-center-vertical",
+        "baseline": "text-a-underline"
       },
       "enum": ["stretch", "flex-start", "flex-end", "center", "baseline", "start", "end", "normal"],
       "$show": [
@@ -253,11 +254,11 @@
       "$input": "button-group",
       "$buttonValues": ["normal", "flex-start", "flex-end", "center", "space-between", "stretch"],
       "$icons": {
-        "flex-start": "justify-start",
-        "flex-end": "justify-end",
-        "center": "justify-center",
-        "space-between": "justify-between",
-        "stretch": "align-stretch-v"
+        "flex-start": "align-top",
+        "flex-end": "align-bottom",
+        "center": "align-center-vertical",
+        "space-between": "arrows-vertical",
+        "stretch": "arrows-out-line-vertical"
       },
       "enum": [
         "normal",
@@ -357,11 +358,11 @@
       "$input": "button-group",
       "$buttonValues": ["auto", "flex-start", "flex-end", "center", "baseline", "stretch"],
       "$icons": {
-        "stretch": "align-stretch-v",
-        "flex-start": "align-start-v",
-        "flex-end": "align-end-v",
-        "center": "align-center-v",
-        "baseline": "align-baseline"
+        "stretch": "arrows-out-line-vertical",
+        "flex-start": "align-top",
+        "flex-end": "align-bottom",
+        "center": "align-center-vertical",
+        "baseline": "text-a-underline"
       },
       "enum": ["auto", "flex-start", "flex-end", "center", "baseline", "stretch", "start", "end"],
       "$show": [

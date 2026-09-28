@@ -470,7 +470,7 @@ describe("ai-panel", () => {
     chatState.error = "429 rate limit";
     chatState.status = "error";
     await flush(3);
-    expect(q('[part="error"]')!.textContent).toContain("429 rate limit");
+    expect(q('[part="error-card"]')!.textContent).toContain("429 rate limit");
     expect(q('[part="error-advice"]')!.textContent).toContain("rate limit");
     chatState.error = null;
     chatState.status = "idle";
@@ -536,10 +536,16 @@ describe("ai-panel", () => {
     expect(d('[part="ai-creds-form"]')).not.toBeNull();
     // The chat behind the sheet never went anywhere — that is the whole point of the move.
     expect(q('[part="messages"]')).not.toBeNull();
-    // Cancel is offered because a key exists at this point in the scenario; it clears the drafts
-    // And leaves the sheet up.
+    // The form shows what is stored, so there is nothing to Cancel until the reader changes it.
+    expect(dialogButton("Cancel")).toBeUndefined();
+    const endpoint = d<HTMLInputElement>('[part="endpoint"] [part="input"]')!;
+    endpoint.value = "http://changed.test/v1";
+    endpoint.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush(2);
+    // Cancel puts the stored drafts back, takes itself away with the edit, and leaves the sheet up.
     pointer(dialogButton("Cancel")!, "click");
     await flush(3);
+    expect(dialogButton("Cancel")).toBeUndefined();
     expect(d('[part="ai-creds-form"]')).not.toBeNull();
     await closeSettings();
     expect(d('[part="ai-creds-form"]')).toBeNull();

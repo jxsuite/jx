@@ -96,6 +96,24 @@ describe("registerPanel", () => {
     unregisterPanel("fixture");
     expect(getPanel("fixture")).toBeUndefined();
   });
+
+  test("accepts a railLabel that leads the title, and keeps both names", () => {
+    registerPanel(record({ title: "Source Control", railLabel: "Source" }));
+    expect(getPanel("fixture")?.title).toBe("Source Control");
+    expect(getPanel("fixture")?.railLabel).toBe("Source");
+  });
+
+  test("rejects a railLabel the accessible name does not start with (WCAG 2.5.3)", () => {
+    /* The rail button's accessible name stays the title, so the words printed under the glyph must
+       be inside it and lead it. A trailing word, a different word and a blank all fail, at
+       registration, before a rail can draw a label that says something the name does not. */
+    for (const railLabel of ["Control", "Git", "  "]) {
+      expect(() => registerPanel(record({ title: "Source Control", railLabel }))).toThrow(
+        /Label in Name/,
+      );
+    }
+    expect(getPanel("fixture")).toBeUndefined();
+  });
 });
 
 // ─── the matrix ───────────────────────────────────────────────────────────────
@@ -228,6 +246,28 @@ describe("the Navigator's panel set", () => {
       // A glyph the kit ships: the rail draws it through jx-icon, whose manifest is the kit's.
       expect(ICON_NAMES).toContain(panel.icon);
       expect(panel.title.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("Source Control keeps its title and declares Source as its rail label", () => {
+    registerNavigatorPanels();
+    const git = getPanel("git");
+    // The header, the `Show …` command, the budget row and the button's name all read the title.
+    expect(git?.title).toBe("Source Control");
+    expect(git?.railLabel).toBe("Source");
+  });
+
+  test("every rail label fits under its glyph", () => {
+    /* A character count stands in for the 48px stacked label box at `--jx-text-xs`, because
+       happy-dom does no layout. "Packages" is eight characters and 46px, the widest that fits;
+       "Source Control" was fourteen and 71px, and the kit ellipsed it. A proxy, not a measurement:
+       eight very wide glyphs could still clip, so a new long title should declare a railLabel. */
+    registerNavigatorPanels();
+    for (const panel of railPanelSet()) {
+      expect({ id: panel.id, label: panel.railLabel ?? panel.title }).toEqual({
+        id: panel.id,
+        label: expect.stringMatching(/^.{1,8}$/u),
+      });
     }
   });
 

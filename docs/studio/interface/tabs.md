@@ -146,7 +146,7 @@ Under the jump bar, a labelled row states three things about the document in tha
 
 Opening a formula or a function body in the Bottom dock's **[Logic](/docs/studio/logic/formula-workspace)** tab changes nothing here. The bar keeps its three controls and the zoom pod, because the document they describe is still on the stage above the dock. The only way out of the editor is the **Close** in its own header. There is one exit and one address.
 
-**Zoom floats over the canvas**, bottom-right, rather than sitting in the bar: the zoom buttons, the percentage (click it for 100%), and a **fit** picker (**Fit page**, **Fit width**, **Actual size**, **No fit**), remembered per document, so coming back to a file frames it the way you left it. There is no zoom in **Preview**, which shows the page at its real size in a frame that scrolls itself.
+**Zoom floats over the canvas**, bottom-right, rather than sitting in the bar: the zoom buttons, the percentage (click it for 100%), and a **fit** picker (**Fit page**, **Fit width**, **Actual size**, **No fit**), remembered per document, so coming back to a file frames it the way you left it. There is no zoom in **Preview**, which shows the page at its real size in a frame that scrolls itself, or on the **Code** half of a **Diff** editor, which is a code editor with nothing on it to zoom.
 
 Editor-specific actions sit at the right of the bar: **Export**, in the **Code** editor.
 
