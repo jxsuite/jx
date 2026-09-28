@@ -268,7 +268,7 @@ describe("connect", () => {
     pointer(connectControl(container), "click");
     await flush(6);
 
-    expect(part(container, "error")?.textContent).toContain(
+    expect(part(container, "connect-failure")?.textContent).toContain(
       "still reports the connection as unusable",
     );
     // And the offer stays up, because reconnecting is still the only thing that could fix it.
@@ -283,20 +283,20 @@ describe("connect", () => {
 
     pointer(connectControl(container), "click");
     await flush(6);
-    expect(part(container, "error")?.textContent).toContain("didn't finish");
+    expect(part(container, "connect-failure")?.textContent).toContain("didn't finish");
 
     // A closed popup is not an error — the user already knows what they did.
     outcome = { status: "canceled" };
     pointer(connectControl(container), "click");
     await flush(6);
-    expect(part(container, "error")).toBeNull();
+    expect(part(container, "connect-failure")).toBeNull();
 
     // And a blocked popup navigated the whole page: apologising to a document on its way out is
     // The bug, not the fix.
     outcome = { status: "redirect" };
     pointer(connectControl(container), "click");
     await flush(6);
-    expect(part(container, "error")).toBeNull();
+    expect(part(container, "connect-failure")).toBeNull();
     expect(mc.canOffer()).toBe(true);
   });
 
@@ -314,7 +314,7 @@ describe("connect", () => {
     await flush(6);
 
     expect(pickerCalls).toHaveLength(1);
-    expect(part(container, "error")).toBeNull();
+    expect(part(container, "connect-failure")).toBeNull();
   });
 
   test("a dismissed picker leaves the connection named as unfinished, not as working", async () => {
@@ -330,7 +330,7 @@ describe("connect", () => {
     pointer(connectControl(container), "click");
     await flush(6);
 
-    expect(part(container, "error")?.textContent).toContain("no account is chosen yet");
+    expect(part(container, "connect-failure")?.textContent).toContain("no account is chosen yet");
     // Re-probed once, so the shared probe reports the state the backend now holds.
     expect(fetchCalls).toHaveLength(1);
   });
@@ -422,7 +422,7 @@ describe("connect", () => {
     pointer(connectControl(container), "click");
     await flush(6);
 
-    expect(part(container, "error")?.textContent).toContain("popup blocked");
+    expect(part(container, "connect-failure")?.textContent).toContain("popup blocked");
     expect(connectControl(container).hasAttribute("disabled")).toBe(false);
   });
 
@@ -554,7 +554,9 @@ describe("the recommendation, and its two moods", () => {
 
     expect(pickerCalls).toHaveLength(1);
     // Account advice, not "try reconnecting": reconnecting cannot choose an account.
-    expect(part(container, "error")?.textContent).toContain("still reports no account chosen");
+    expect(part(container, "connect-failure")?.textContent).toContain(
+      "still reports no account chosen",
+    );
   });
 
   test("a transient upstream error does NOT send the user round the OAuth flow", async () => {

@@ -141,7 +141,7 @@ function written(state: MockPlatformState): AnyConfig | null {
 
 /** The failed operation, said under the section title rather than beside a control. */
 function alertText(): string | undefined {
-  return container.querySelector('[part="error"][role="alert"]')?.textContent ?? undefined;
+  return container.querySelector('[part="section-error"][role="alert"]')?.textContent ?? undefined;
 }
 
 beforeEach(() => {

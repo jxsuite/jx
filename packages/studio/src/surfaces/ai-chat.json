@@ -97,12 +97,15 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"user-body\"]": {
+      "$description": "The transcript is content, not interface, and the panel offers no copy action, so each message body opts back in to selection against the root's `user-select: none`: this bubble, the model's `md`, the `streaming` text and the `import-log`. The header, the chips and the composer's buttons around them stay unselectable.",
       "whiteSpace": "pre-wrap",
-      "overflowWrap": "anywhere"
+      "overflowWrap": "anywhere",
+      "userSelect": "text"
     },
     "& [part=\"md\"]": {
-      "$description": "The island `panels/ai-chat/chat-markdown.ts` fills — the app's ONE injection sink, and the markup reaching it has been through `markdownToHtml` and the Trusted Types policy that asserts it did. The document renders the host node and nothing inside it (specs/studio-ui-guidelines.md §9.4).",
-      "overflowWrap": "anywhere"
+      "$description": "The island `panels/ai-chat/chat-markdown.ts` fills — the app's ONE injection sink, and the markup reaching it has been through `markdownToHtml` and the Trusted Types policy that asserts it did. The document renders the host node and nothing inside it (specs/studio-ui-guidelines.md §9.4). A reply is the text a reader most often copies out of this panel, code blocks included, so it is selectable.",
+      "overflowWrap": "anywhere",
+      "userSelect": "text"
     },
     "& [part=\"md\"] > *:first-child": {
       "marginTop": "0"
@@ -137,8 +140,10 @@
       "padding": "var(--jx-space-1) 6px"
     },
     "& [part=\"streaming\"]": {
+      "$description": "The reply while it arrives, selectable for the reason `[part=\"md\"]` is. The cursor is generated content, which no selection ever includes.",
       "whiteSpace": "pre-wrap",
       "overflowWrap": "anywhere",
+      "userSelect": "text",
       "::after": {
         "content": "\"▋\"",
         "color": "var(--accent)",
@@ -314,6 +319,8 @@
       "marginRight": "var(--jx-space-2)"
     },
     "& [part=\"import-log\"]": {
+      "$description": "A captured log, kept selectable against the root's `user-select: none`: its lines are what a reader pastes into a bug report, and nothing here offers to copy them.",
+      "userSelect": "text",
       "marginTop": "var(--jx-space-2)",
       "maxHeight": "40vh",
       "overflowY": "auto",
@@ -369,7 +376,8 @@
       "color": "var(--warning)",
       "fontStyle": "normal"
     },
-    "& [part=\"error\"]": {
+    "& [part=\"error-card\"]": {
+      "$description": "The failed turn's card. It is `error-card` rather than `error` because the model picker mounted into the composer is a `jx-select`, and every kit field draws a permanent, empty `[part=\"error\"]` of its own in this same light-DOM tree: under that name this rule, padding and wash drew an 18×12 red bar over the picker's top-left corner that took the click. Its children keep the `error-` prefix, which the kit does not use.",
       "borderLeft": "2px solid var(--danger)",
       "borderRadius": "var(--jx-radius-sm)",
       "background": "var(--hover-bg)",
@@ -552,7 +560,7 @@
       "& [part=\"tool-chip\"][data-outcome=\"failed\"]": {
         "borderLeftColor": "LinkText"
       },
-      "& [part=\"error\"]": {
+      "& [part=\"error-card\"]": {
         "borderLeftColor": "LinkText"
       }
     },
@@ -1511,7 +1519,7 @@
                     "shown": {
                       "tagName": "div",
                       "attributes": {
-                        "part": "error",
+                        "part": "error-card",
                         "role": "alert"
                       },
                       "children": [

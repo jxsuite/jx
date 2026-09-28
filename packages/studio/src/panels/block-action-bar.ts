@@ -49,6 +49,7 @@ import {
 } from "../store";
 import { activeTab } from "../workspace/workspace";
 import { activeCanvasSurface, stageContaining } from "../canvas/canvas-surface";
+import { panelOfSurface } from "../canvas/canvas-helpers";
 import { primarySelection, structuralBatch } from "../tabs/selection";
 import {
   mutateDuplicateNodes,
@@ -207,10 +208,13 @@ function repositionBlockActionBar(): void {
   });
 }
 
+/** The bar's own height plus its 4px stand-off: the room it needs ABOVE an anchor to stand there. */
+const BAR_CLEARANCE = 38;
+
 /**
- * The bar's position for `anchor` (flipping below the element near the top edge), or null when the
- * anchor's vertical extent has left the canvas area — the popover layer has no clipping, so a
- * clamped bar would float detached over the app toolbar / panel headers.
+ * The bar's position for `anchor` (flipping below the element when it cannot stand above it), or
+ * null when the anchor's vertical extent has left the canvas area — the popover layer has no
+ * clipping, so a clamped bar would float detached over the app toolbar / panel headers.
  *
  * @param {{ left: number; top: number; height: number }} anchor
  */
@@ -224,17 +228,39 @@ function barPosition(anchor: {
      stage — and the pane is the FOCUSED one, because that is where the caret is. This asked
      "the stage showing the active tab", which was the same answer only while a tab could be on
      screen in one place; with a document displayed in two panes it picked whichever came first in
-     the grid, and clipped the bar against a stage the author is not typing in. */
-  const stage = activeCanvasSurface().wrap;
-  if (stage) {
-    const wrap = rectOf(stage);
-    if (anchor.top + anchor.height < wrap.top || anchor.top > wrap.bottom) {
-      return null;
-    }
+     the grid, and clipped the bar against a stage the author is not typing in.
+     …and against the box that SCROLLS, where the stage has one. Edit docks the Document Header
+     card above its scroller, inside the same stage cell, so a node scrolled up under the band is
+     still inside the stage while nobody can see it — and the bar would float over the card,
+     pointing at a node the card is covering. Everywhere else there is no scroller and the stage is
+     the viewport, as it always was. */
+  const surface = activeCanvasSurface();
+  const viewport = panelOfSurface(surface)?.scrollContainer ?? surface.wrap;
+  const box = viewport ? rectOf(viewport) : null;
+  if (box && (anchor.top + anchor.height < box.top || anchor.top > box.bottom)) {
+    return null;
   }
+  /* ABOVE the anchor where the bar fits above it INSIDE that viewport, and BELOW it where it does
+     not. The flip used to be decided against a flat 80 in WINDOW coordinates, the app's own top
+     chrome, which is the same answer only while the viewport starts near the top of the window.
+     Edit's scroller starts under a band, so an anchor whose top had scrolled under the card while
+     its bottom was still on screen put the bar ON the card — over the fields it covers, taking
+     their clicks. Flipped is better than hidden: the element is visible, so its bar should be, and
+     past the clip above the anchor's bottom edge is inside the viewport, so the flipped bar is too.
+     The fallback is that same 80px of chrome, for a stage no pass has measured yet. */
+  const ceiling = box ? box.top : 80 - BAR_CLEARANCE;
+  const above = anchor.top - BAR_CLEARANCE;
+  if (above >= ceiling) {
+    return { left: anchor.left, top: above };
+  }
+  /* Below it, and kept INSIDE the viewport: an element taller than what is left of the scroller has
+     its bottom edge off screen, and the bar would follow it there — over the status bar, or over
+     whatever the pane below is showing. Clamped, it stands on that element's last visible strip,
+     still pointing at it and still off the card. */
+  const below = anchor.top + anchor.height + 4;
   return {
     left: anchor.left,
-    top: anchor.top < 80 ? anchor.top + anchor.height + 4 : anchor.top - 38,
+    top: box ? Math.max(box.top, Math.min(below, box.bottom - BAR_CLEARANCE)) : below,
   };
 }
 

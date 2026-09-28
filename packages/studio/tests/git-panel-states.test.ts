@@ -15,6 +15,7 @@
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { flush } from "./harness";
+import gitPanelDoc from "../src/surfaces/git-panel.json";
 import type { StudioPlatform } from "../src/types";
 
 let mockPlatform: Partial<StudioPlatform>;
@@ -213,6 +214,107 @@ describe("the sync bar", () => {
     shell.git.lastUpdated = Date.parse("2024-05-01T14:04:00Z");
     const stamped = await draw();
     expect(stamped.querySelector('[part="sync-time"]')?.textContent).toContain("Last updated");
+  });
+});
+
+/** The `part` of each element child of `node`, in order: the items a flex row actually lays out. */
+function itemParts(node: Element | null | undefined): (string | null)[] {
+  return Array.from(node?.children ?? [], (child) => child.getAttribute("part"));
+}
+
+describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidelines §4.6)", () => {
+  /* Each row has exactly two flex items: a head that never splits (Refresh and the status, or the
+     branch icon and the name) and the control that answers it. That is what makes a wrap move a
+     whole control onto its own line instead of stranding an icon above its text. happy-dom lays
+     nothing out, so the shape is asserted here and the widths are left to the browser. */
+  test("with a remote, the verbs are the bar's second item, outside the head", async () => {
+    seedRepo();
+    const panel = await draw();
+    const bar = panel.querySelector('[part="sync-bar"][data-remote="yes"]');
+    expect(itemParts(bar)).toEqual(["sync-head", "sync-actions"]);
+    expect(itemParts(bar?.querySelector('[part="sync-head"]'))).toEqual(["refresh", "sync-text"]);
+  });
+
+  test("with no remote, Create GitHub repository is the bar's second item", async () => {
+    seedRepo({ remotes: [] });
+    const panel = await draw();
+    const bar = panel.querySelector('[part="sync-bar"][data-remote="none"]');
+    expect(itemParts(bar)).toEqual(["sync-head", "create-repository"]);
+    expect(itemParts(bar?.querySelector('[part="sync-head"]'))).toEqual(["refresh", "sync-text"]);
+  });
+
+  test("the branch icon and name are one item and the picker is the other", async () => {
+    seedRepo();
+    const panel = await draw();
+    const row = panel.querySelector('[part="branch-row"]');
+    expect(itemParts(row)).toEqual(["branch-head", "branch-picker"]);
+    expect(itemParts(row?.querySelector('[part="branch-head"]'))).toEqual([
+      "branch-icon",
+      "branch-text",
+    ]);
+  });
+
+  /* Read from the DOCUMENT, as tab-strip.test.ts does for its chip: what can be checked without a
+     layout engine is that the declarations which produce the wrap are the ones written. */
+  const { style } = gitPanelDoc as unknown as {
+    style: Record<string, Record<string, string>>;
+  };
+  const rule = (selector: string) => style[selector] ?? {};
+
+  test("both rows wrap, at a basis rather than a breakpoint", () => {
+    expect(rule('& [part="sync-bar"]').flexWrap).toBe("wrap");
+    expect(rule('& [part="branch-row"]').flexWrap).toBe("wrap");
+    // §4.6: the threshold is a flex-basis, so no width query decides where either row breaks.
+    expect(Object.keys(style).filter((key) => key.startsWith("@") && /width/.test(key))).toEqual(
+      [],
+    );
+  });
+
+  test("the heads take their text's width and shrink below it; the verbs never shrink", () => {
+    for (const part of ["sync-head", "sync-text", "branch-text"]) {
+      expect(rule(`& [part="${part}"]`).flex).toBe("1 1 auto");
+    }
+    expect(rule('& [part="sync-head"]').minWidth).toBe("0");
+    expect(rule('& [part="sync-text"]').minWidth).toBe("0");
+    expect(rule('& [part="branch-head"]')).toMatchObject({ flex: "999 1 auto", minWidth: "0" });
+    expect(rule('& [part="sync-actions"]').flex).toBe("none");
+  });
+
+  test("the picker fills a line of its own instead of being capped beside the name", () => {
+    const picker = rule('& [part="branch-picker"]');
+    expect(picker).toMatchObject({ flex: "1 1 auto", minWidth: "0" });
+    expect(picker.maxWidth).toBeUndefined();
+  });
+
+  test("nothing in the panel sets a floor wider than the Navigator's", () => {
+    // The sub-tabs ellipsize rather than scroll the panel sideways at the 160px floor.
+    expect(rule('& [part="tab"]').minWidth).toBe("0");
+    /* Every labelled button wraps its words rather than hold a nowrap width. The list is derived
+       from the document, so a labelled button added later without joining the rule fails here. */
+    const labelled: string[] = [];
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          visit(item);
+        }
+      } else if (node && typeof node === "object") {
+        const element = node as { tagName?: unknown; attributes?: { part?: string } };
+        if (element.tagName === "jx-button" && element.attributes?.part) {
+          labelled.push(element.attributes.part);
+        }
+        for (const [key, child] of Object.entries(node)) {
+          if (key !== "style") {
+            visit(child);
+          }
+        }
+      }
+    };
+    visit(gitPanelDoc);
+    expect(labelled.length).toBeGreaterThan(0);
+    const wrapping = Object.entries(style).find(([, block]) => block.whiteSpace === "normal");
+    expect(wrapping?.[0].split(", ").toSorted()).toEqual(
+      [...new Set(labelled)].map((part) => `& [part="${part}"] > [part="control"]`).toSorted(),
+    );
   });
 });
 

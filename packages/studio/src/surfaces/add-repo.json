@@ -113,10 +113,10 @@
       "color": "var(--danger)"
     },
     "& [part=\"access\"]": {
-      "$description": "The listing is bounded by what the Jx Suite GitHub App was granted, so the dialog always offers a way out of that boundary rather than only saying the list is short.",
+      "$description": "The listing is bounded by what the Jx Suite GitHub App was granted, so the dialog always offers a way out of that boundary rather than only saying the list is short. `center`, not `baseline`: the `Refresh` beside the note is a small kit button, and a small kit control is layout-contained so its outset hit area adds nothing to a scrolling ancestor's overflow, which leaves it with no baseline to export; a baseline row would synthesise one from its bottom edge and drop the note and the links onto it. surface-baseline-rows.test.ts holds the rule for every surface.",
       "display": "flex",
       "flexWrap": "wrap",
-      "alignItems": "baseline",
+      "alignItems": "center",
       "gap": "var(--jx-space-2)",
       "paddingTop": "var(--jx-space-3)",
       "borderTop": "1px solid var(--border)",

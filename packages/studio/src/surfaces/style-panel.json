@@ -1070,7 +1070,11 @@
                                                 },
                                                 "children": [
                                                   {
+                                                    "$description": "The abbreviation, for a value with no glyph, and HIDDEN rather than empty on a button that has one. The kit's `[part=\"label\"]` is `display: contents`, so an empty span is still a flex item in the control, and the control's 4px gap sits between the glyph and nothing: every icon button in the tab drew 26px wide with its glyph pushed 2px off centre, instead of 22px and centred. Hidden, it takes no box, and the button's name and tooltip are the value either way.",
                                                     "tagName": "span",
+                                                    "attributes": {
+                                                      "hidden": "${$map.item.text ? null : ''}"
+                                                    },
                                                     "textContent": "${$map.item.text}"
                                                   }
                                                 ]

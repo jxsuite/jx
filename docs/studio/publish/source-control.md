@@ -7,6 +7,7 @@ spec:
 code:
   - packages/studio/src/panels/git-panel.ts
   - packages/studio/src/surfaces/git-panel.ts
+  - packages/studio/src/surfaces/git-panel.json
   - packages/studio/src/packages/pull-package-sync.ts
   - packages/studio/src/panels/git-diff-open.ts
   - packages/studio/src/canvas/diff-marks.ts
@@ -17,7 +18,7 @@ code:
 
 # Source control
 
-Source Control is Studio's built-in git client, a Navigator panel that records your work as commits and keeps your copy of the project in sync with its repository. Open it by clicking **Source Control** in the **Project** group of the Navigator rail, or with :kbd[⌘3]; a badge on the button counts the files that have changed. It is a project-level panel: its header reads **SOURCE CONTROL · project**, and the badge stands whether or not a document is open.
+Source Control is Studio's built-in git client, a Navigator panel that records your work as commits and keeps your copy of the project in sync with its repository. Open it by clicking **Source** in the **Project** group of the Navigator rail (its tooltip gives the full name, Source Control), or with :kbd[⌘3]; a badge on the button counts the files that have changed. It is a project-level panel: its header reads **SOURCE CONTROL · project**, and the badge stands whether or not a document is open.
 
 ![The Source Control panel with sync status, branch selector, commit box, and changed files](../../images/git-panel.png)
 
@@ -44,7 +45,7 @@ The Diff editor compares your working copy against your last commit. It shows th
 
 **Visual** draws the page twice, side by side: the committed version on the left and your version on the right. Added blocks are marked in green, removed blocks in red, and edited ones are marked on both sides so you can read the before and the after together. Each mark also carries a symbol and its own edge style, so the change is legible without relying on colour.
 
-**Code** shows the file's text instead, with changed lines highlighted the way any code editor shows them. A page can be read either way. A file with no visual form, such as a stylesheet or a script, opens straight into Code and the switch reads as a label.
+**Code** shows the file's text instead, with changed lines highlighted the way any code editor shows them. A page can be read either way. A file with no visual form, such as a stylesheet or a script, opens straight into Code and the switch reads as a label. Code scrolls like any code editor and has no zoom pod, because there is nothing on it to zoom.
 
 :::doc-note
 The two views answer different questions and neither replaces the other. Visual tells you what moved on the page. Code tells you exactly which characters changed. Some changes are visible in one and not the other: reordering a key, or editing something inside a component, can leave the page looking identical while the text plainly differs.
@@ -73,13 +74,15 @@ The bar at the top of the panel shows where you stand against the repository, wi
 - **Pull**: bring teammates' commits into your copy.
 - **Push**: send your local commits up.
 
+The three buttons sit on their own line under the status whenever the panel cannot hold both on one, which at the Navigator's usual width is most of the time. The status keeps its line that way, instead of breaking a word at a time to make room.
+
 Studio also pulls automatically when you open a project that has a remote, so a session starts from the current state. If a pull can't merge cleanly, Studio reports the error and changes nothing. There is one exception: conflicts caused purely by Studio's own automated package updates are resolved for you (Studio discards its own machine-generated edits, pulls, and re-applies them; if _you_ edited those files it asks before discarding anything).
 
 A project with no remote yet shows **Local only (no remote)** here, with a **Create GitHub repository** shortcut.
 
 ## Branches
 
-The **Active branch** row shows which branch you're on. Use its picker to switch to another branch, or choose **+ New branch…**. Studio opens a **New Branch** dialog; type a name and click **Create**. Branches let you try a redesign on the side and only merge it when it's ready.
+The **Active branch** row shows which branch you're on. Use its picker to switch to another branch, or choose **+ New branch…**. Studio opens a **New Branch** dialog; type a name and click **Create**. Branches let you try a redesign on the side and only merge it when it's ready. In a narrow Navigator, or with a long branch name, the picker moves below the name and spans the panel, so the name keeps the whole line.
 
 ## History
 

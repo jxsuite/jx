@@ -94,6 +94,14 @@ describe("size=sm controls accept the pointer over the kit's control height (SC 
         text.includes("position: relative"),
       );
       expect(positioned, `${tag}: the sm control is not position: relative`).toBe(true);
+      /* And the control keeps that reach to itself: an absolutely positioned box counts toward the
+         SCROLLABLE overflow of the nearest ancestor whose `overflow` is not `visible`, painted or
+         not, so an uncontained outset on a button touching a scroller's edge draws a 2px phantom
+         scrollbar. jx-button shipped the containment and jx-action-button did not, which is how
+         Preferences · Keyboard grew one; pinned here for all three so the next gap fails by name. */
+      expect(control, `${tag}: the sm hit area is not layout-contained`).toContain(
+        "contain: layout",
+      );
     });
 
     test(`${tag}'s sm hit area is at least ${FLOOR}px at every density`, () => {
@@ -197,6 +205,11 @@ describe("the sub-control targets inside a field accept the pointer over the con
       expect(borderWidth(box), `${tag} ${part}: the calc inset is exact only over no border`).toBe(
         0,
       );
+      /* The outset reaches past the field's edge at `sm`, so the button contains its layout for
+         the reason the sm controls above do: a scrolling host would count the reach as overflow. */
+      expect(box, `${tag} ${part}: the hit area is not layout-contained`).toContain(
+        "contain: layout",
+      );
       const hit = rule(tag, `S [part="${part}"]::before`);
       expect(hit).toContain('content: ""');
       expect(hit).toContain("position: absolute");
@@ -231,6 +244,28 @@ describe("the sub-control targets inside a field accept the pointer over the con
       }
     });
   }
+
+  test("jx-tab's close button, the model for the technique, carries the same containment", () => {
+    /* The × is the original: a borderless 16px box whose `::before` is inset -4px, which is why its
+       inset was exact and the bordered controls above owe a pixel more. It is also the one that
+       shipped WITHOUT `contain: layout`, while §4.3 said every outset hit area had it — a scrolling
+       tab strip counted 4px of overflow it could not see. Nothing here pays the containment's
+       price: the tab is a centred flex row, so no baseline is asked of the ×. */
+    const box = rule("jx-tab", 'S [part="close"]');
+    expect(box).toContain("width: 16px");
+    expect(box).toContain("height: 16px");
+    expect(box).toContain("position: relative");
+    expect(borderWidth(box), "jx-tab close: the -4px inset is exact only over no border").toBe(0);
+    expect(box, "jx-tab close: the hit area is not layout-contained").toContain("contain: layout");
+    const hit = rule("jx-tab", 'S [part="close"]::before');
+    expect(hit).toContain('content: ""');
+    expect(hit).toContain("position: absolute");
+    expect(hit).toContain("inset-block: -4px");
+    expect(hit).toContain("inset-inline: -4px");
+    // 16px drawn plus 4px each side over a borderless box is the floor exactly, at every density.
+    expect(16 + 2 * 4).toBe(FLOOR);
+    expect(rule("jx-tab", "S")).toContain("align-items: center");
+  });
 
   test("the targets the technique does not reach are the ones §11 still names", () => {
     /* Every native input or select is a replaced element and renders no pseudo-element, so an `sm`

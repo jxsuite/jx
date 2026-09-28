@@ -21,8 +21,8 @@
       "fontSize": "var(--jx-text-md)",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"error\"]": {
-      "$description": "The last operation that failed, said under the section title. Not a second announcement: `updateSiteConfig` already files a Problem for a rejected write and `activity.fail` files one for a rejected install. §13.1 makes INLINE the tier for \"the value is on screen, and nothing else is the right place\" — the Problem is about the file, and this line is about the switch the reader is looking at.",
+    "& [part=\"section-error\"]": {
+      "$description": "The last operation that failed, said under the section title. Not a second announcement: `updateSiteConfig` already files a Problem for a rejected write and `activity.fail` files one for a rejected install. §13.1 makes INLINE the tier for \"the value is on screen, and nothing else is the right place\" — the Problem is about the file, and this line is about the switch the reader is looking at. It is `section-error` rather than `error`, the name every settings section uses, because every kit field draws a permanent `[part=\"error\"]` of its own and the kit is light DOM: a rule on that name here would reach any field the section ever holds.",
       "margin": "6px 0 0",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
@@ -152,7 +152,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "error-slot",
+        "part": "section-error-slot",
         "role": "none"
       },
       "style": {
@@ -165,7 +165,7 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "error",
+            "part": "section-error",
             "role": "alert"
           },
           "textContent": "${state.error}"

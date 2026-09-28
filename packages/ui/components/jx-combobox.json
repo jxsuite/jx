@@ -377,13 +377,19 @@
       "color": "var(--jx-danger)"
     },
     "& [part=\"error\"]:empty": {
-      "$description": "`top`/`left`/`width`/`height` are pinned rather than left to resolve: with every inset auto, an absolutely positioned flex-item child falls back to its STATIC position and a shrink-to-fit size, and both are the browser's own reconstruction of where an element with no content would have been, not a value this document asked for. A shrink-to-fit width over empty content is 0 in every engine this was checked against, but the mechanism is a hypothetical, and pinning a literal 0×0 at the field's own top-left corner costs no layout and no paint by construction rather than by an inference nothing here controls. `jx-textfield.json`'s own error region carries the same fix, for the same reason.",
+      "$description": "While the region is empty it draws nothing and takes no click, whatever an ancestor's rule gives it. The kit is light DOM, so a consumer's descendant rule on `[part=\"error\"]` lands on this paragraph too, and under `box-sizing: border-box` a 0×0 box floors at padding plus border, which is how a surface's banner rule drew a small painted box over a field's top-left corner that swallowed the click. So the box model is reset, and `clip-path: inset(50%)` with `pointer-events: none` removes the paint and hit area of anything the reset does not name. It is never `display: none` or `visibility: hidden`, because a live region absent from the accessibility tree does not announce its first text (ui.md §5.1). `jx-textfield.json`'s error region carries the same rule, and its description has the full mechanism.",
       "position": "absolute",
       "top": "0",
       "left": "0",
       "width": "0",
       "height": "0",
-      "overflow": "hidden"
+      "overflow": "hidden",
+      "margin": "0",
+      "padding": "0",
+      "border": "0",
+      "background": "none",
+      "clipPath": "inset(50%)",
+      "pointerEvents": "none"
     },
     "& > [part=\"help-slot\"]": {
       "display": "contents"
