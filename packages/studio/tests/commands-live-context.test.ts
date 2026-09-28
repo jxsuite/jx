@@ -465,9 +465,7 @@ describe("collab, ai and capabilities", () => {
     // For an optional member, and the state under test is the member being ABSENT.
     const textOnly = { ...platform } as Partial<StudioPlatform>;
     delete textOnly.readFileBytes;
-    const ctx = createLiveContext(
-      sources({ platform: () => textOnly as StudioPlatform }),
-    )();
+    const ctx = createLiveContext(sources({ platform: () => textOnly as StudioPlatform }))();
     expect(ctx.capability.readFileBytes).toBe(false);
     expect(typeof textOnly.readFile).toBe("function");
   });

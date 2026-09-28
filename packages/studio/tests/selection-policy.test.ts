@@ -38,8 +38,13 @@ const PROPERTIES = new Set([
 ]);
 
 /**
- * The whole list. Each entry is a part whose text the reader has to be able to copy and that offers
- * no other way to copy it.
+ * The whole list. Each entry is a part that is CONTENT rather than interface: text whose reason for
+ * being on screen is that someone reads it out or carries it somewhere else.
+ *
+ * A surface's own Copy button does not disqualify one. `boot-failure` has both, and the two are not
+ * the same affordance: the button takes the whole report, and selection takes the one stack line
+ * being quoted in a thread. What the list is against is the opposite case, a part that is furniture
+ * (a heading, a label, a button) where a stray drag selects the interface and looks like a defect.
  */
 const ALLOWED: readonly OptIn[] = [
   /* The literal request: the message itself in a message dialog, and its island form. The island
@@ -61,6 +66,12 @@ const ALLOWED: readonly OptIn[] = [
   // The captured logs a reader pastes into a bug report.
   ["src/surfaces/panel-activity.json", '& [part="log"]', "text"],
   ["src/surfaces/panel-problems.json", '& [part="detail"]', "text"],
+  /* The boot refusal's two diagnostic blocks: the launcher's verbatim error, which may be a stack,
+     and the version and platform facts a support thread asks for. This surface is what Studio draws
+     INSTEAD of the frame, so it is the one screen where nothing else can be reached to read them
+     from. */
+  ["src/surfaces/boot-failure.json", '& [part="detail"]', "text"],
+  ["src/surfaces/boot-failure.json", '& [part="facts"]', "text"],
   /* About's values and package list: this dialog's body IS its message, and it is the one place a
      bug report's version, commit and resolved `@jxsuite/*` numbers can be read from. */
   ["src/surfaces/about.json", '& [part="meta-value"]', "text"],
