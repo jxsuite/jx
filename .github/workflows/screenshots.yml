@@ -1,4 +1,4 @@
-# Lane 2 of the screenshot gate (UX-REDESIGN-PLAN §13.5).
+# Lane 2 of the screenshot gate (scripts/screenshots/README.md, "The gate").
 #
 # Lane 1 (`scripts/check-shot-contract.ts`, in the `checks` job) is semantically blind: a command
 # that still exists and now means something different sails through it green. Nightly-only would
@@ -192,8 +192,8 @@ jobs:
       # git runs as, and git's `dubious ownership` guard then refuses every command in this file.
       # It fails QUIETLY where it matters: `git archive HEAD docs/images` writes nothing to the
       # pipe, `tar` reports "This does not look like a tar archive", and the lane goes red on a
-      # plumbing error dressed as a capture failure. It had been red that way since P6 — six runs —
-      # which is the whole reason this lane distinguishes a broken pipeline from changed pictures.
+      # plumbing error dressed as a capture failure. It had been red that way for six runs, which
+      # is the whole reason this lane distinguishes a broken pipeline from changed pictures.
       # Set before the checkout so the action's own post-step is covered too.
       - name: Trust the container workspace
         shell: bash
@@ -224,8 +224,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # The picture must be of the working tree's bundle. The runner asserts bundle freshness (S0)
-      # And will refuse a stale dist rather than photograph one.
+      # The picture must be of the working tree's bundle. The runner asserts bundle freshness and
+      # Will refuse a stale dist rather than photograph one.
       - run: bun run build
 
       - name: Snapshot the committed images and lock
@@ -278,7 +278,7 @@ jobs:
           # Changes for no visible reason, this line is what says the browser moved.
           "$bin" --version
 
-      # NO `--force`. It is the re-baseline flag — UX-REDESIGN-PLAN §13.4 spends it on "one
+      # NO `--force`. It is the re-baseline flag — the shot contract's Determinism rules spend it on "one
       # reviewable commit" when the FIXTURES change — and it works by skipping `writeIfChanged`,
       # the pixel comparison that exists so committed screenshots do not churn. Passing it here
       # overwrote all 63 PNGs unconditionally on every run, and Chromium does not re-encode a PNG

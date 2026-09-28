@@ -6,8 +6,8 @@
  * `commands/defaults.ts`. Two properties make that work, and both are asserted here: the set is
  * internally consistent (no duplicate ids, no misplacements, no toggles, no chord conflicts), and
  * the module loads in a BARE Bun process. The second is the fragile one — a `document` read added
- * at module scope anywhere in the import graph would break Lane 1 in CI with a stack trace nobody
- * would connect to this file, so the subprocess test below fails here instead.
+ * at module scope anywhere in the import graph would break `check-shot-contract` in CI with a stack
+ * trace nobody would connect to this file, so the subprocess test below fails here instead.
  */
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
@@ -47,7 +47,7 @@ describe("the set", () => {
       // Accounts · Keyboard). Application configuration, as distinct from `settings.*`, which
       // Configures a project.
       "app",
-      // `assistant.*` — the six §11.1 records (Focus Composer, New Chat, Chat History, Attach
+      // `assistant.*` — the six ai.md §3.0 records (Focus Composer, New Chat, Chat History, Attach
       // Selection, Retry, Stop). The `Assistant` category has existed in `commands/levels.ts` since
       // The taxonomy landed and held ZERO records: every one of these was a button in the chat view
       // And nothing else, so none was in the palette, bindable, or reachable by name.
@@ -55,17 +55,17 @@ describe("the set", () => {
       "canvas",
       "collab",
       "collection",
-      // `content.*` — the content-entry verbs (P7.3/P7.4): create one seeded from its collection's
-      // Schema, open one as a form, mark one a draft, and choose whether drafts are listed. The
-      // Draft pair are `set*` because a toggle against unstated state can publish something the
-      // Author believed was private.
+      // `content.*` — the content-entry verbs (site-architecture.md §7.4, §7.6): create one seeded
+      // From its collection's schema, open one as a form, mark one a draft, and choose whether
+      // Drafts are listed. The draft pair are `set*` because a toggle against unstated state can
+      // Publish something the author believed was private.
       "content",
       "data",
       "diff",
       "document",
       "edit",
       "file",
-      // The inline-format family — the app's first `caret`-scoped chords, and the case §5.1 uses
+      // The inline-format family — the app's first `caret`-scoped chords, and the case §13.2 uses
       // To justify `level` and `keyScope` being two fields.
       "format",
       "formula",
@@ -81,7 +81,7 @@ describe("the set", () => {
       // `canvas/canvas-render.ts`, beside `selection.set`: both name what the pane points at.
       "insert",
       "inspector",
-      // `library.*` — the Library editor kind (P7.1). It replaced `project.browse`, which was one
+      // `library.*` — the Library editor kind (§9.1.2). It replaced `project.browse`, which was one
       // Verb over a modal; the Library's category, layout, filter, rescan and new-entry states are
       // Each a record, so the palette and the assistant can reach what only its own buttons could.
       "library",
@@ -142,13 +142,14 @@ describe("the set", () => {
   });
 
   test("every toggle that survives is a CHORD, and has an idempotent counterpart", () => {
-    // §13.3 clause 3 governs the SCRIPTING surface, and `isScriptable()` already refuses these
-    // Three. They stay as records because ⌘B is a gesture a human makes while looking at the dock —
-    // What the rule forbids is a caller that cannot see the state naming a delta against it. So the
-    // Obligation is a setter beside each one, and this asserts the pairing rather than the absence.
+    // §13.5's idempotence rule governs the SCRIPTING surface, and `isScriptable()` already refuses
+    // These three. They stay as records because ⌘B is a gesture a human makes while looking at the
+    // Dock — what the rule forbids is a caller that cannot see the state naming a delta against it.
+    // So the obligation is a setter beside each one, and this asserts the pairing rather than the
+    // Absence.
     const toggles = COMMANDS.filter((c) => /\.toggle[A-Z]/.test(c.id)).map((c) => c.id);
     // `view.toggleBottomDock` sits last because it is `shell.ts`'s record now, composed after
-    // `commands/defaults.ts`'s: P4.2 put the Bottom dock on the shell record, so its verbs are
+    // `commands/defaults.ts`'s: the Bottom dock (§16.3) is on the shell record, so its verbs are
     // Declared beside the state they write, like the other two docks' setters.
     expect(toggles).toEqual([
       "view.toggleNavigator",
@@ -163,7 +164,7 @@ describe("the set", () => {
     // Setter a script uses because a script cannot see that state. `pane.toggleZoom` was the
     // Fourth such pair and is gone with the state it wrote — nothing that draws ever read it.
     expect(ids.has("document.setPinned")).toBe(true);
-    // P4.2 discharged the handoff: the bottom dock is on the `shell` record, `DOCK_IDS` is
+    // The Bottom dock (§16.3) discharged the handoff: it is on the `shell` record, `DOCK_IDS` is
     // Left/right/bottom, and ⌘J's setter landed with it.
     expect(ids.has("view.setBottomDock")).toBe(true);
     expect(ids.has("view.setBottomTab")).toBe(true);

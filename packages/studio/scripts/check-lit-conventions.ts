@@ -227,10 +227,10 @@ export function selfQueries(file: string, source: string): Finding[] {
 /**
  * The modules that may still WRITE a lit template, each with the reason it is not a document.
  *
- * §9.3 says lit is "named and bounded" now. It was prose: nothing carried the names, so the
- * sentence could go stale without a gate noticing, and an adversarial pass found exactly that. This
- * is the list, and it only ratchets DOWN — a module that stops drawing must leave it, and a module
- * that starts drawing has to argue for an entry.
+ * The UI guidelines say lit is "named and bounded" now (studio-ui-guidelines.md §9.3). It was
+ * prose: nothing carried the names, so the sentence could go stale without a gate noticing, and an
+ * adversarial pass found exactly that. This is the list, and it only ratchets DOWN — a module that
+ * stops drawing must leave it, and a module that starts drawing has to argue for an entry.
  *
  * An `import { nothing }` is NOT drawing: a panel record whose `render` returns the sentinel and
  * whose `afterRender` mounts a document is the seam, not a survival. Only `html`-tagged templates
@@ -243,10 +243,10 @@ export const LIT_TEMPLATE_AUTHORS: Record<string, string> = {
   "panels/activity-panel.ts":
     "two empty containers for two mounted documents — the panel seam itself, drawn once",
   "format/convert-file.ts":
-    "a rich confirm BODY, which §9.4 sanctions as an island: `showConfirmDialog`'s `message` takes " +
-    'a template and the dialog document renders it into `[part="island"]`. It reaches lit through ' +
-    'a DYNAMIC `await import("lit-html")`, which is why every static inventory of this migration ' +
-    "was one module short until this rule existed",
+    "a rich confirm BODY, which studio-ui-guidelines.md §9.4 sanctions as an island: " +
+    "`showConfirmDialog`'s `message` takes a template and the dialog document renders it into " +
+    '`[part="island"]`. It reaches lit through a DYNAMIC `await import("lit-html")`, which ' +
+    "is why every static inventory of this migration was one module short until this rule existed",
   "shell/tree.ts":
     "the four #layer-* hosts. Their rules are a LINKED stylesheet because the frame must be laid " +
     "out by the first paint, which is why surfaces/shell.json carries no style key",
@@ -312,7 +312,7 @@ function isExcluded(file: string): boolean {
 export const LIVE_BINDING_DEBT: Record<string, number> = {
   /* Empty, and that is the ratchet arriving at zero rather than a list waiting to be filled. The
      last entry was the colour row's `<sp-picker>` of tokens, held open because `specs/ui.md` §5.6
-     was Pending; §5.6 landed, the row is a `jx-color-field` in the Style tab's own document, and
+     was Pending; it landed, the row is a `jx-color-field` in the Style tab's own document, and
      `ui/color-selector.ts` no longer renders anything. A new entry needs the reason a binding
      cannot be `live()`, as every retired one carried. */
 };

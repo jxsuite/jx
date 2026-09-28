@@ -5,9 +5,10 @@
  * These replace `settings-modal.test.ts`, `settings-registry.test.ts` and
  * `settings-modal-import-failure.test.ts`. What is asserted is deliberately the same list — nav
  * order, contributed sections landing at their declared order, section switching, a failing
- * contribution import — because P6.2 changed the HOST, not the IA. What is new is the pair of
- * regressions the modal could not have had: the deep link surviving a section being refreshed, and
- * `settings.open` reaching the `project.json` tab rather than a layer.
+ * contribution import — because making settings a document (§17.1) changed the HOST, not the IA.
+ * What is new is the pair of regressions the modal could not have had: the deep link surviving a
+ * section being refreshed, and `settings.open` reaching the `project.json` tab rather than a
+ * layer.
  */
 import { flush, installMockPlatform, pointer, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -295,7 +296,7 @@ describe("the settings document", () => {
     expect(labels.some((l) => l?.includes("Author"))).toBe(true);
   });
 
-  test("the CSS Variables section survives P6.2 and renders the project's vars", async () => {
+  test("the CSS Variables section survives the move to a document and renders the project's vars", async () => {
     await mount();
     pointer(navButton("CSS Variables"), "click");
     await flush();
@@ -743,7 +744,8 @@ describe("styles.open", () => {
   });
 
   test("two verbs over one document declare ONE availability rule", () => {
-    // §12.4: the family is defined by what `run` WRITES, and both write this tab's editor.
+    // A family is defined by what `run` WRITES (studio-ui-guidelines.md §12.4), and both write
+    // This tab's editor.
     const styles = stylesCommand();
     const open = openCommand();
     expect(styles.requires).toBe(open.requires);

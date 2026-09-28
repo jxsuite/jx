@@ -204,8 +204,8 @@ export function i18nCommands(): AnyCommand[] {
          with its `requires` sentence. The palette's availability is the person's contract; an
          argument-only gate needs a shape the registry does not have. Same on `createTranslation`. */
       when: (ctx) => ctx.project.isMultilingual && ctx.document.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a surface for a person, and the
-         model has `open_document` for the file it names. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: this opens a surface
+         for a person, and the model has `open_document` for the file it names. */
       run: async (_ctx, args) => {
         const source = addressedDocument("i18n.openTranslation", args);
         const locale = stringArg("i18n.openTranslation", args, "locale");
@@ -261,10 +261,11 @@ export function i18nCommands(): AnyCommand[] {
       /* The document history cannot hold this: the change is a file that did not exist, and
          `undo: "project"` would claim `project.json` moved, which it did not. */
       undo: "none",
-      /* No `aiTool`, by §12.4's second deletion rule: `createFileIn` awaits the New File prompt
-         for the name, which the loop does not count as interactive, and a cancel resolves `null`
-         with nothing thrown — a report would describe a file that was never made. An optional
-         `name` argument that skips the prompt is the way back in, and is a UX call (issue 273). */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: `createFileIn` awaits
+         the New File prompt for the name, which the loop does not count as interactive, and a
+         cancel resolves `null` with nothing thrown — a report would describe a file that was never
+         made. An optional `name` argument that skips the prompt is the way back in, and is a UX
+         call (issue 273). */
       run: async (_ctx, args) => {
         const source = addressedDocument("i18n.createTranslation", args);
         const locale = stringArg("i18n.createTranslation", args, "locale");
@@ -319,7 +320,8 @@ export function i18nCommands(): AnyCommand[] {
       group: "2_view",
       requires: "a project that declares more than one language",
       when: (ctx) => ctx.project.isMultilingual,
-      /* No `aiTool`, by §12.4's first deletion rule: the panel is a surface for a person. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: the panel is a surface
+         for a person. */
       /* The panel is off the rail — it spends no rail slot and shifts no ⌘1-8 chord — so this
          command and the generated `panel.focus.i18n` are its only two doors, and both open the
          same one. The TITLES must differ even though the behaviour does not: the palette is a flat

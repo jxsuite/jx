@@ -2,15 +2,15 @@
 /**
  * The Content tab — everything about WHAT this element is and says.
  *
- * Plan §6.5 re-split the inspector by task. Content is the element itself (tag, id, class, text),
- * its HTML attributes, its link target, its custom attributes, its component props and its media.
- * Three things left, and each left for a place that already had a better claim on it:
+ * The Inspector is split by task (§6). Content is the element itself (tag, id, class, text), its
+ * HTML attributes, its link target, its custom attributes, its component props and its media. Three
+ * things left, and each left for a place that already had a better claim on it:
  *
  * - **Repeater · Switch · Observed Attributes · CSS Properties · CSS Parts → the Logic tab.** Wiring
  *   a `$switch` and wiring a click handler are the same task (`panels/events-panel.ts`).
  * - **The Page section → the Document Header card.** `panels/head-panel.ts` owns the one layout
  *   picker; this panel drew a second one that could disagree with it.
- * - **Media breakpoint DEFINITIONS → Project Settings › Contexts** (P4). Nothing remains here: the
+ * - **Media breakpoint DEFINITIONS → Project Settings › Contexts** (§17.1). Nothing remains here: the
  *   only reason adding a breakpoint used to cost you your element selection.
  *
  * **This module decides; `surfaces/properties-panel.json` draws.** Every question with an answer —
@@ -27,7 +27,7 @@
  * untouched, and there is nothing to guard against. What survives is the DRAFT layer
  * (`ui/field-input.ts`), which is a different promise — it is what keeps a half-typed value from
  * being replaced by the last committed one, and what keys that half-typed value to the NODE rather
- * than to the field's name (§11.4).
+ * than to the field's name (§6.1).
  *
  * **Two leaves are drawn elsewhere**, and each is its own surface with readers outside this tab:
  * the media picker and the expression editor. The document draws an empty `[part="control-host"]`
@@ -220,11 +220,12 @@ function bindingDonor(value: unknown): string {
 /**
  * The state entry a bound value reads, when the chip can name one — a `$ref` or a `${…}` template.
  *
- * §6.2's table says a bound chip "click opens the source", and on the Content tab it did not: both
+ * §6.7's table says clicking a bound chip opens its source, and on the Content tab it did not: both
  * bound branches returned a `donor` and a `title` and no `onClick`, so the chip was drawn as a
- * handler-less span. The Style tab's chip has jumped to the Data panel since P5; the same promise
- * on the other tab was a label. Same regex as `style-panel.ts`'s `templateSignalOf`, because both
- * spellings of a template (`${x}` and `${state.x}`) name the same entry.
+ * handler-less span. The Style tab's chip has jumped to the Data panel since the shell redesign's
+ * inspector phase; the same promise on the other tab was a label. Same regex as `style-panel.ts`'s
+ * `templateSignalOf`, because both spellings of a template (`${x}` and `${state.x}`) name the same
+ * entry.
  */
 function boundSignalOf(value: unknown): string | null {
   if (isRef(value)) {
@@ -285,7 +286,7 @@ export function isComponentDefinitionOpen(node: JxMutableNode): boolean {
 }
 
 /**
- * Which of §6.2's four states a component-prop row is in.
+ * Which of §6.7's four states a component-prop row is in.
  *
  * Bound beats set (a `$ref` IS a value, but "bound to `title`" is the more useful sentence); set
  * beats inherited; a prop with no declared default and no value is plain Default and draws
@@ -322,7 +323,7 @@ function componentPropProvenance(
   return { state: "default" };
 }
 
-/** Which of §6.2's states an HTML-attribute row is in. Attributes have no third cascade layer. */
+/** Which of §6.7's states an HTML-attribute row is in. Attributes have no third cascade layer. */
 function attributeProvenance(
   attr: string,
   value: unknown,
@@ -453,9 +454,9 @@ export function invalidatePageRouteCache() {
  * refuse a section the user is looking at; no validation at all would accept the label the old
  * `inspector.toggleSection` step passed ("Element", not `__element`) and silently do nothing.
  *
- * `__media` left with the breakpoint definitions, which are Project Settings › Contexts now (P4).
- * `__observed`, `__cssprops` and `__cssparts` are drawn by the Logic tab; the key space is the
- * INSPECTOR's, not one tab's, so `inspector.setSection` keeps addressing all of them.
+ * `__media` left with the breakpoint definitions, which are Project Settings › Contexts now
+ * (§17.1). `__observed`, `__cssprops` and `__cssparts` are drawn by the Logic tab; the key space is
+ * the INSPECTOR's, not one tab's, so `inspector.setSection` keeps addressing all of them.
  */
 export const INSPECTOR_SECTION_KEYS = [
   "__element",
@@ -881,7 +882,7 @@ function commitKvPair(key: string): void {
   write(name, value);
 }
 
-/** The rung picker: every source this position permits, one action away (§6.3). */
+/** The rung picker: every source this position permits, one action away (§6.6). */
 function openSourceMenu(key: string, anchor: HTMLElement): void {
   const ladder = plans.get(key)?.ladder;
   if (!ladder) {
@@ -1143,7 +1144,7 @@ function projectPanel(): ContentPanelView {
   }
 
   // A repeating list has no content of its own — it has a source and a template, and both are
-  // Wiring. Content says where the answer lives rather than drawing an empty accordion (§6.5).
+  // Wiring. Content says where the answer lives rather than drawing an empty accordion (§6).
   if (node.$prototype === "Array") {
     return emptyView(
       "A repeating list has no content of its own.",
@@ -1286,7 +1287,7 @@ function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
 }
 
 /**
- * One accordion section, with §6.2's collapsed-header tally.
+ * One accordion section, with §6.7's collapsed-header tally.
  *
  * The dot is an INDICATOR and not a control: it used to inherit `.set-dot`'s pointer cursor and its
  * danger hover, which together say "click me to clear this", and nothing happened because it never
@@ -1464,7 +1465,7 @@ function elementRows(
 // ─── Component settings ──────────────────────────────────────────────────────
 
 /**
- * Component props, each row carrying §6.2's provenance chip — the SECOND cascade.
+ * Component props, each row carrying §6.7's provenance chip — the SECOND cascade.
  *
  * A component instance's value for a prop either overrides the component's declared default or does
  * not exist, and until the chip landed the two were the same blank field. The chip states which,
@@ -1646,7 +1647,7 @@ function attributeRow(
   const hasVal = value !== undefined && value !== "";
   const key = `attr|${attr}`;
   const label = attrLabel(entry, attr);
-  // One write per selected element, inside ONE transaction (§6.5). `targets` is `[path]` for a
+  // One write per selected element, inside ONE transaction (§6.7). `targets` is `[path]` for a
   // Single selection, so this is the same single mutation it has always been.
   const commitAttr = (v?: JsonValue) =>
     transactDoc(activeTab.value!, (t) => {
@@ -1887,7 +1888,7 @@ function customRows(path: JxPath, customAttrs: [string, unknown][]): ContentRowV
   return rows;
 }
 
-// ─── Usage (§9.6) ────────────────────────────────────────────────────────────
+// ─── Usage (§9.1.1) ──────────────────────────────────────────────────────────
 
 /**
  * The component instance's usage line — "Used on 7 pages →", expanding to the files.

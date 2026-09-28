@@ -212,7 +212,7 @@ describe("the stores", () => {
 });
 
 describe("notify() directly", () => {
-  test("takes the severity as its first argument, as §7.1 spells it", () => {
+  test("takes the severity as its first argument, as §16.1 spells it", () => {
     const record = notify("warn", "Careful", { source: "Preview" });
     expect(record.severity).toBe("warn");
     expect(record.source).toBe("Preview");

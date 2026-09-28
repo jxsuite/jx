@@ -179,7 +179,10 @@ export async function survey(root: string, versions: Map<string, string>): Promi
           }
           const want = checkRange(rel, name, range, versions.get(name)!, problems);
           if (want) {
-            bag[name] = want;
+            // `bag` cannot be undefined here: `range` came from `bag?.[name]` and just passed a
+            // `typeof range === "string"` check, which optional chaining only produces when the
+            // Object it read from is defined.
+            bag![name] = want;
             changed = true;
           }
         }

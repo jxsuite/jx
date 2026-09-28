@@ -11,8 +11,8 @@
  * The transport now rejects those calls, and this is the other half: a person needs to be told
  * which of "it is broken" and "it is coming back" they are in. One keyed problem so a flapping
  * connection cannot stack up a column of identical rows, dismissed on recovery so a fixed thing
- * does not stay on the Problems list (§16.1's third tier, and §16.6's rule that a record is retired
- * by whoever owns its life).
+ * does not stay on the Problems list (§16.1's second and third rules: a record is retired when what
+ * it names is fixed, and a repeat is not a new row).
  *
  * A platform without `subscribeConnection` — the dev server, electrobun — installs nothing. There
  * is no connection to lose there, and a notice about one would be a lie.

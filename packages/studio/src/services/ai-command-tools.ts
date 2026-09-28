@@ -359,7 +359,7 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
   }
 
   /**
-   * Run one projected record as the agent — the whole of §3 of the design.
+   * Run one projected record as the agent — the whole of `ai.md` §3.6.
    *
    * @param {string} name
    * @param {object} received

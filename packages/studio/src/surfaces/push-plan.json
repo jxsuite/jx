@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPushPlan",
-  "$description": "What pushing the schema would do, or what it did. The dry run is the whole point of the surface: a push rewrites a live database's shape, so the plan is read before the apply, and the confirm dialog around this document is the one that gates it. The ISLAND of `ui/layers.ts`'s confirm dialog rather than a dialog of its own (§12.5).",
+  "$description": "What pushing the schema would do, or what it did. The dry run is the whole point of the surface: a push rewrites a live database's shape, so the plan is read before the apply, and the confirm dialog around this document is the one that gates it. The ISLAND of `ui/layers.ts`'s confirm dialog rather than a dialog of its own (studio-ui-guidelines.md §12.5).",
   "tagName": "div",
   "attributes": {
     "part": "plan"

@@ -1,6 +1,6 @@
 /**
- * The direct client's SSE normalizer, frozen against the proxy's upstream fixtures (harness slice
- * J1.2), and the list of places where the two normalizers disagree.
+ * The direct client's SSE normalizer, frozen against the proxy's upstream fixtures (the v1 freeze
+ * taken before the harness refactor), and the list of places where the two normalizers disagree.
  *
  * There are two OpenAI-compatible normalizers today: the proxy's (`packages/server/src/ai-api.ts`,
  * behind POST /__studio/ai/chat) and `createOpenAIStreamingClient` here. This suite feeds the SAME
@@ -44,8 +44,8 @@ const NAMES = readdirSync(FIXTURES)
  * with every member path that differs (member order ignored). A fixture absent from this table
  * produces identical frames on both sides.
  *
- * Across this corpus, today's divergence is two differences, both on error frames. J1.18 ("One
- * normaliser") removes both, by moving the client onto the proxy's frames: the clean message,
+ * Across this corpus, today's divergence is two differences, both on error frames. One
+ * normaliser (specs/ai.md §2.4) removes both, by moving the client onto the proxy's frames: the clean message,
  * `code` and `problem`. The table is complete for what a fixture can express, which is an upstream
  * RESPONSE. It cannot express a request that never gets one — `fetch` rejecting before any body —
  * and the two sides differ there too (the proxy attaches a `problem` to its network-error frame);

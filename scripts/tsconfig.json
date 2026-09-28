@@ -1,0 +1,49 @@
+{
+  /* Everything under this directory, recursively, is EXCLUDED from the root tsconfig's `include`
+     (see ../tsconfig.json), so a file here otherwise has NO program at all: not "bun-types minus
+     node", literally no config applied. That's why `node:fs`/`node:path`, `Bun`, `process`, and
+     `ImportMeta.dir`/`.main` all fail to resolve in the editor, and why the `.ts`-suffixed relative
+     imports used everywhere in this repo error without `allowImportingTsExtensions`. This config is
+     what VS Code and `tsc -p` pick up for files under here instead. See .oxlintrc.typecheck.json's
+     override for files under scripts (glob-matched on the same recursive pattern) for the other
+     place this gap is named — that override stays even with this file present, because it exempts
+     scripts from the type-aware LINT pass, which is unrelated to whether they typecheck.
+
+     Deliberately NOT folded into the root tsconfig: doing so would pull all of this directory into
+     `bun run typecheck` (a CI-gated command) and into oxlint's strict no-unsafe-* pass, which is
+     exactly what that override currently protects against pending a cleanup pass over the directory.
+     This config is for editor diagnostics and ad hoc `tsc -p scripts` runs, not wired into CI. */
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "exactOptionalPropertyTypes": true,
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "target": "ESNext",
+    "types": ["bun-types"]
+  },
+  "include": [
+    "**/*.ts",
+    "../types.d.ts",
+    // `check-chrome-budget.ts` and `check-command-levels.ts` import straight from
+    // `packages/studio/src/commands/*`, which pulls a slice of studio's source graph into THIS
+    // program by transitive import — including `grid-view.ts`, whose `tabulator-tables` import
+    // only resolves via the ambient shim below. An ambient `.d.ts` only takes effect when it is
+    // part of the program as a ROOT, not merely by living next to a file that is (the same gap the
+    // root tsconfig's own comment documents for the electrobun vendor submodule), so it is named
+    // here explicitly rather than left for whichever script happens to reach that corner of studio.
+    "../packages/studio/src/grid/tabulator-tables.d.ts"
+  ]
+}

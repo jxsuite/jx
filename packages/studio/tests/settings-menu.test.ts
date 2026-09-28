@@ -271,8 +271,8 @@ describe("rendering", () => {
   test("with no project open the two project rows are DISABLED, not absent", async () => {
     /* The welcome screen. They used to be hidden — `forPlacement` filters by `when` — which left
        the gear holding a single row and saying nothing about the two things most people open it
-       looking for. §12.3: a control that cannot act renders disabled with its reason. The divider
-       stays, because the level boundary is still there. */
+       looking for. studio-ui-guidelines.md §12.3: a control that cannot act renders disabled with
+       its reason. The divider stays, because the level boundary is still there. */
     installRegistry({ project: false });
     await open();
     expect(rootIds()).toEqual(["app.preferences", "settings.open", "styles.open"]);
@@ -297,8 +297,9 @@ describe("rendering", () => {
   });
 
   test("a record refused by `enablement` renders disabled, with its reason, and offers no sections", async () => {
-    // §12.3: a control that cannot act explains itself rather than vanishing. And a row that cannot
-    // Run offers no submenu, because every one of its rows would run that same refusal.
+    // The rule of studio-ui-guidelines.md §12.3: a control that cannot act explains itself rather
+    // Than vanishing. And a row that cannot run offers no submenu, because every one of its rows
+    // Would run that same refusal.
     installRegistry({ refusePreferences: true });
     await open();
     const row = rowFor("app.preferences");

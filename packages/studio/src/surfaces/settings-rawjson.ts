@@ -77,7 +77,7 @@ export function mountRawJsonSurface(
   let disposed = false;
   /* Nothing is called on the element, so the mount is all this has to wait for: the DOCUMENT is
      what this surface renders, and `jx-button` settles its own template one `connectedCallback`
-     later without anybody here asking it to (§1.1, "await the element"). */
+     later without anybody here asking it to (studio-ui-guidelines.md §1.1, "await the element"). */
   void mountSurface("settings-rawjson", scope, container).then((surface) => {
     if (disposed) {
       surface.dispose();

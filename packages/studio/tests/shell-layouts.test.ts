@@ -1,5 +1,5 @@
 /**
- * Named layouts (§3.2 ①b) — the wiring that `shell.layout` did not have.
+ * Named layouts — the wiring that `shell.layout` did not have.
  *
  * The field shipped with a declared default, a reader in the chrome and **no writer at all**: the
  * same shape `layoutSelection` was in when clicking a page header did nothing. These tests are the
@@ -430,9 +430,9 @@ describe("the layout verbs", () => {
 describe("what the built-in presets actually arrange", () => {
   test("Write collapses the Inspector — that IS the preset", () => {
     /*
-     * §3.1's arithmetic: 1600 − 56 rail − 240 navigator ≈ 1284px of page, 80%, against Design's
-     * 974. It shipped with `right: { collapsed: false, size: 280 }` — Design's number — which made
-     * Write a Design with a different panel selected.
+     * The arithmetic of §3.1's columns: 1600 − 56 rail − 240 navigator ≈ 1284px of page, 80%,
+     * against Design's 974. It shipped with `right: { collapsed: false, size: 280 }` — Design's
+     * number — which made Write a Design with a different panel selected.
      */
     const write = layoutById("write")!;
     expect(write.docks.right.collapsed).toBe(true);

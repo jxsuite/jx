@@ -1,5 +1,5 @@
 /**
- * ⑪ The Bottom dock (`panels/bottom-dock.ts`).
+ * The Bottom dock (`panels/bottom-dock.ts`, §16.3).
  *
  * What is worth pinning: that the strip is a rendering of the panel REGISTRY (three tabs, under a
  * cap of four, none of them permanently hidden — Logic hides only while nothing is open in it),
@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 describe("the tab set", () => {
-  test("is the three ids §3.2 ⑪ names, in strip order", () => {
+  test("is the three ids §16.3 names, in strip order", () => {
     expect(bottomPanelSet().map((panel) => panel.id)).toEqual([...BOTTOM_TAB_IDS]);
     expect(bottomPanelSet().map((panel) => panel.title)).toEqual(["Problems", "Logic", "Activity"]);
   });
@@ -84,8 +84,8 @@ describe("the tab set", () => {
     registerBottomPanels();
     registerBottomPanels();
     expect(bottomPanelSet()).toHaveLength(3);
-    // One record, ONE host (§7.2). Problems included: it keeps a rail button and a badge, but the
-    // Rail groups by level rather than by dock, so nothing is registered twice to earn them.
+    // One record, ONE host (§16.3). Problems included: it has no rail button and no badge — its
+    // Count is in the status bar — so nothing is registered twice.
     expect(bottomPanelSet().every((panel) => panel.dock === "bottom")).toBe(true);
     expect(bottomPanelSet()[0]?.id).toBe("problems");
   });
@@ -100,7 +100,7 @@ describe("the tab set", () => {
   test("Diff is not a tab of this dock, and not a tab id at all", () => {
     // It was reserved here for four phases behind `when: () => false`, on the strength of a comment
     // That argued against its own reservation: `diff` is an EDITOR KIND and a pane hosts it at pane
-    // Size. P8 shipped the pane. A reserved id whose capability lives somewhere better is just an
+    // Size. §18 shipped the pane. A reserved id whose capability lives somewhere better is just an
     // Enum member that can only ever select a hidden tab, so `view.setBottomTab` must refuse it.
     expect(bottomPanelSet().find((panel) => panel.id === "diff")).toBeUndefined();
     expect(BOTTOM_TAB_IDS).toEqual(["problems", "logic", "activity"]);
@@ -125,7 +125,7 @@ describe("the tab set", () => {
   });
 });
 
-// ─── ⑪ · Logic (plan §12 P8.5) ────────────────────────────────────────────────
+// ─── Logic (§16.3) ───────────────────────────────────────────────────────────
 
 /** A tab whose `total` state entry is an `$expression`, with the formula workspace open over it. */
 function openFormulaTab(): void {

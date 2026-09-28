@@ -17,7 +17,8 @@
  * outside Studio reaches the shell on the next reload, as it always did, because a watcher is a
  * second writer racing the tab. And it does not diff: a saved document is re-registered whole and
  * every root re-mounted, because a surface's host scope is reused (`SurfaceMount.remount`) and only
- * the surface-local state resets, which is the contract §9.3 gives the registry.
+ * the surface-local state resets, which is the contract `studio-ui-guidelines.md` §9.3 gives the
+ * registry.
  *
  * A kit redefinition reaches the canvas frames too, with the FILE's URL under the project as its
  * base: the frame draws a project's elements from the project's own files, so a sibling `$ref` in

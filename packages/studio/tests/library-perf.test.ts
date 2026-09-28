@@ -1,5 +1,6 @@
 /**
- * The P7.1 acceptance case, as a test: a 300-page project opening the Library's "All" category.
+ * The measured case of site-architecture.md §7.2, as a test: a 300-page project opening the
+ * Library's "All" category.
  *
  * The Manage view this replaces rendered one card per file with NO cap, and each page/layout/
  * component/content card mounted a real `@jxsuite/runtime` render of that document into an

@@ -66,8 +66,8 @@ export interface OpenPopoverSurfaceOptions {
   /** The platform closed it — clicked outside, Escape, or a second press on the invoker. */
   onDismissed?: () => void;
   /**
-   * A node the document made exists. The one seam an island reaches its host through (§9.4), passed
-   * straight to the runtime.
+   * A node the document made exists. The one seam an island reaches its host through
+   * (studio-ui-guidelines.md §9.4), passed straight to the runtime.
    */
   onNodeCreated?: JxMountOptions["onNodeCreated"];
 }

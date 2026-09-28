@@ -573,7 +573,7 @@ export function syncEditableRoot(container: HTMLElement, mode: CanvasMode): void
    * infer it from.
    *
    * Scoped deliberately: this describes the editing REGION. Per-block landmarks and a
-   * keyboard-reachable block action bar are still missing (see specs/studio.md §4.5).
+   * keyboard-reachable block action bar are still missing (see specs/studio.md §4.4).
    */
   container.setAttribute("role", "textbox");
   container.setAttribute("aria-multiline", "true");
@@ -693,7 +693,7 @@ export function syncStylebookCss(doc: Document, mode: CanvasMode): void {
  * Apply the project's site style as a real stylesheet (replace-in-place): custom properties on
  * `:root`, plain properties on `body`, conditional blocks dual-emitted per the forced-scheme
  * contract. A stylesheet — not inline root properties — so `:root[data-color-scheme]` override
- * selectors can win (spec §9.5), and so removed tokens can't linger on reused iframes.
+ * selectors can win (spec.md §9.5), and so removed tokens can't linger on reused iframes.
  */
 export function applySiteStyle(
   siteStyle: Record<string, unknown> | null | undefined,
@@ -719,7 +719,7 @@ export function applySiteStyle(
 
 /**
  * Force or clear the color-scheme preview on the iframe's root element (the platform's
- * data-color-scheme contract, spec §9.5). Survives re-renders and patches — renders only replace
+ * data-color-scheme contract, spec.md §9.5). Survives re-renders and patches — renders only replace
  * the container's children, never the root element.
  */
 export function applyPreviewColorScheme(doc: Document, scheme: "light" | "dark" | null): void {

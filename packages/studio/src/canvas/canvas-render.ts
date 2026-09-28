@@ -1021,7 +1021,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
   // Re-rendering the previous mode's panels in place.
   const canvasMode = canvasModeOfPane(surface.paneId);
 
-  /* The Document Header card (§3.2 ⑧) is drawn by the STAGE, and only by Edit's. It is docked
+  /* The Document Header card is drawn by the STAGE, and only by Edit's. It is docked
      above the page's scroller, a band across the pane at 1:1: its width is the PANE's rather than
      the breakpoint's, and the page scrolls under it rather than taking it along. It used to go
      INSIDE Edit's column, where it was exactly as wide as whatever breakpoint or dragged width the
@@ -1031,7 +1031,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
      `hasDocumentHeader` is the other predicate, and it is a fact about the DOCUMENT. It used to
      carry two more clauses, suppressing the card while a function body or a formula was open on
      the grounds that those sub-editors took the whole stage. They open in the dock's Logic tab now
-     (P8) and the page is still on screen behind it, so those clauses only DETACHED the visible
+     (§16.3) and the page is still on screen behind it, so those clauses only DETACHED the visible
      card: it stopped re-rendering and quietly showed frontmatter from before the edit. */
   /* …and NOT in a lens. The Document Header is an editing surface — Title, Route, SEO, the raw
      frontmatter — over a document this pane does not own, and two cards editing one document's
@@ -1077,9 +1077,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
   /* There are no `editingFunction` / `editingFormula` branches here, and that is the point.
      Both used to RETURN from this function, which is what made the logic editors a takeover: the
-     stage kept whatever DOM it was last painted with and stopped tracking the document. P8 moved
-     both into the dock's Logic tab, `panels/bottom-dock.ts` reveals it from its own effect, and
-     `panels/editors.ts`'s `syncFunctionEditor` owns the Monaco instance from the panel's
+     stage kept whatever DOM it was last painted with and stopped tracking the document. Both open
+     in the dock's Logic tab now (§16.3), `panels/bottom-dock.ts` reveals it from its own effect,
+     and `panels/editors.ts`'s `syncFunctionEditor` owns the Monaco instance from the panel's
      `afterRender` — including disposing it. Nothing about the canvas render depends on a logic
      target any more, so the page underneath the dock keeps rendering while you edit a formula. */
 
@@ -1236,7 +1236,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
     detachGridPanel(surface.paneId);
 
     // The Library holds an IntersectionObserver and an LRU of live runtime subtrees; leaving the
-    // Mode without releasing them is exactly the unbounded retention P7.1 exists to remove.
+    // Mode without releasing them is exactly the unbounded retention its LRU cap exists to remove.
     detachLibraryPane(surface.paneId);
 
     // Same for the entry form, whose effect scope subscribes to the document's frontmatter
@@ -1357,7 +1357,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
-  /* Settings mode: the Project Settings document (plan §9.3). Same non-iframe-editor pattern as
+  /* Settings mode: the Project Settings document (§17.1). Same non-iframe-editor pattern as
      grid and stylebook — the panel owns its own reactivity from here — and the reason the seven
      settings screenshots now crop `pane.primary` instead of `overlay.dialog:settings` without one
      manifest step changing. */
@@ -1626,8 +1626,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
      * that computes the SAME width it last committed skips the write — and the imperative value
      * stays. That is not hypothetical: drag a page down to 330px, open a different document in the
      * pane, and the new one is 330px wide too, because both passes computed the base width and lit
-     * wrote neither. One writer, applied after the render, is the fix (§9.4 of the UI guidelines);
-     * `applyEditZoom` below already has exactly this shape for exactly this reason.
+     * wrote neither. One writer, applied after the render, is the fix
+     * (studio-ui-guidelines.md §9.4); `applyEditZoom` below already has exactly this shape for
+     * exactly this reason.
      */
     const entry = canvasPanelEntry(null, null, true);
     // A component-definition doc (root tag is a custom element) is a fragment, not a page: it should
@@ -2121,10 +2122,11 @@ export function selectionCommands(): AnyCommand[] {
       requires: "an open document",
       when: (ctx) => ctx.document.open,
       /*
-       * No `aiTool`, by §12.4's fourth deletion rule (redundant with a tool the model has): the
-       * assistant's bridge runs THIS record by id as the selector step of every selection-level
-       * tool — `delete_node(paths)` is `selection.setPaths` then `selection.delete` — so a second
-       * selection tool beside `select_node` would be prompt cost with no second job.
+       * No `aiTool`, by studio-ui-guidelines.md §12.4's fourth deletion rule (redundant with a
+       * tool the model has): the assistant's bridge runs THIS record by id as the selector step of
+       * every selection-level tool — `delete_node(paths)` is `selection.setPaths` then
+       * `selection.delete` — so a second selection tool beside `select_node` would be prompt cost
+       * with no second job.
        */
       /**
        * The idempotent SET for the whole selection, beside `selection.set`'s single path.

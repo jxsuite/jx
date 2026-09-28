@@ -81,9 +81,10 @@ describe("the seed registry", () => {
   });
 
   test("seedIds() is the same list, without an app to build it against", () => {
-    // Lane 1 runs in a bare Bun process and has to answer "is `seed.projectList` real?". Reading
-    // The definitions themselves is why it can: the hand-kept shim table never listed `seed.git`
-    // Or `seed.projectList`, and a manifest naming either failed against a stale map.
+    /* `check-shot-contract` runs in a bare Bun process and has to answer "is `seed.projectList`
+       real?". Reading the definitions themselves is why it can: the hand-kept shim table never
+       listed `seed.git` or `seed.projectList`, and a manifest naming either failed against a stale
+       map. */
     expect(seedIds()).toEqual(
       createAutomationApi(makeDeps())
         .probe.seeds()
@@ -259,9 +260,9 @@ describe("the screenshot manifest", () => {
   /**
    * Every step of every LIVE shot.
    *
-   * Quarantined shots are read past, exactly as Lane 1 and the runner do: a quarantined shot is one
-   * the repo admits is broken, and `repeat-dialog` names `selection.repeat` on purpose — the record
-   * P5 has to land. Checking it here would only mean the fix has to be made twice.
+   * Quarantined shots are read past, exactly as `check-shot-contract` and the runner do: a
+   * quarantined shot is one the repo admits is broken, so checking it here would only mean the fix
+   * has to be made twice.
    */
   async function steps(): Promise<Step[]> {
     const manifest = (await Bun.file(manifestPath).json()) as {
@@ -313,8 +314,9 @@ describe("the screenshot manifest", () => {
 
   test("the gap countdown holds only ids no registry declares, and may only shrink", async () => {
     // The idiom is the checker's own `TOGGLE_DEBT`: a named debt with a number that goes one way.
-    // S2 took it from 39 to 8 — the seeds moved to `seedIds()`, the `toggle*` entries are refused
-    // By `TOGGLE_ID` before this map is read, and every id whose record landed left.
+    // The shot contract's conversion took it from 39 to 8 — the seeds moved to `seedIds()`, the
+    // `toggle*` entries are refused by `TOGGLE_ID` before this map is read, and every id whose
+    // Record landed left.
     expect(Object.keys(AUTOMATION_COMMANDS).length).toBeLessThanOrEqual(8);
     // An entry that the registry HAS declared is a countdown that failed to count down.
     const declared = new Set(defaultCommandSet().map((command) => command.id));

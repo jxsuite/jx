@@ -480,8 +480,8 @@ export interface SeoField extends ResolvedHeadField {
  * Character budgets, in the only role a number is allowed here: a counter's reference line.
  *
  * There is deliberately no score. A single figure out of a hundred aggregates unrelated facts into
- * a verdict, and the verdict is what gets optimised (plan §14). A count beside a limit says the
- * same thing without pretending to rank it.
+ * a verdict, and the verdict is what gets optimised (§16.6). A count beside a limit says the same
+ * thing without pretending to rank it.
  */
 export const SEO_LIMITS: Readonly<Record<string, number>> = {
   description: 160,
@@ -589,7 +589,7 @@ function hasTitleEntry(layers: HeadLayers): boolean {
  *
  * Every one of them states a consequence rather than a grade, and every one is checkable against
  * `head-merger.ts`. "Missing" is decided on the MERGED value, so a page that inherits a description
- * from the site is never told it has none — the defect §9.2 names by name.
+ * from the site is never told it has none — the defect site-architecture.md §8.6 names by name.
  *
  * @param {SeoPreview} preview — `warnings` is ignored; this computes it.
  * @param {HeadLayers} layers
@@ -875,8 +875,8 @@ export function buildHeadDoc(doc: JxMutableNode, fm: Record<string, unknown>): J
  * mutation it makes — Title, Clear title, the Layout picker — as does Search appearance, which is
  * where the head fields went and which takes its tab the same way. The card is drawn per pane, so
  * on a markdown page the card in one pane retitled the document in the other. The comment beside
- * the card's JSON branch has claimed since P8 that this was fixed; the fix reached the JSON branch
- * only, and this is the half that was left.
+ * the card's JSON branch has claimed since the pane grid landed that this was fixed; the fix
+ * reached the JSON branch only, and this is the half that was left.
  *
  * @param {Tab | null} tab The document to commit into.
  * @param {() => void} rerender
@@ -1174,8 +1174,8 @@ function customEntries(head: JxHeadEntry[]): PageTagRow[] {
  * Everything the panel says about one document, and the commit table behind it.
  *
  * `activeTab.value` is read HERE and nowhere below it: the Navigator's Page panel is an app-level
- * surface that shows the focused document by definition (§3.2), and spelling that out once at the
- * top is what lets every helper under it take a tab instead of asking for one.
+ * surface that shows the focused document by definition, and spelling that out once at the top is
+ * what lets every helper under it take a tab instead of asking for one.
  */
 function view(ctx: PagePanelContext): PagePanelView {
   _commits.clear();
@@ -1454,9 +1454,8 @@ export function renderHeadTemplate(_against: PagePanelContext): typeof nothing {
  * Contribute the Page panel.
  *
  * `level: "document"` — title, description, social card and custom `$head` entries are the open
- * document's. The id is `page` now: "head" named an HTML element, and §3.2's DOCUMENT group calls
- * the surface Page. P3.10 moves these fields into the in-stage Document Header card; until then the
- * record is what keeps the surface addressable under one name.
+ * document's. The id is `page` now: "head" named an HTML element, and §5.1's Document group calls
+ * the surface Page. The record is what keeps the surface addressable under one name.
  */
 export function registerPagePanel(): void {
   registerPanel({

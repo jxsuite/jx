@@ -1,8 +1,8 @@
 /**
- * Mixed values across a multi-selection, in all three inspector tabs (§6.5, P5 item 2).
+ * Mixed values across a multi-selection, in all three inspector tabs (§6.7).
  *
- * Mixed is a fifth state of the SAME provenance chip workstreams A and C built, not a fifth widget.
- * Two things are asserted everywhere:
+ * Mixed is a fifth state of the SAME provenance chip (§6.7), not a fifth widget. Two things are
+ * asserted everywhere:
  *
  * 1. **A selection of one renders no Mixed state anywhere.** There is no second value to disagree
  *    with, so every row keeps the exact chip it had before the selection became a list.
@@ -143,7 +143,7 @@ const contentChip = (c: HTMLElement, prop: string) =>
  * Its Mixed state is `[part="dot"]` carrying `data-state`, not `.provenance-chip--mixed`: the state
  * is a fact about the row's value and a document says such things with data. And there is ONE
  * control that clears a binding now, where there used to be a chip and a trash button doing the
- * same thing beside each other (§12.5).
+ * same thing beside each other (studio-ui-guidelines.md §12.5).
  */
 let logicHost: HTMLElement | null = null;
 async function renderLogic(): Promise<HTMLElement> {
@@ -236,12 +236,12 @@ describe("Style tab", () => {
 // ─── Style: shorthands ───────────────────────────────────────────────────────
 
 /**
- * Shorthands were the one Style row that never learned either half of §6.5.
+ * Shorthands were the one Style row that never learned either half of §6.7.
  *
  * `padding`, `margin` and `border` are `$shorthand: true`, and "you can set padding on six cards in
- * one decision" is the literal sentence the plan makes — with padding as its example. The row wrote
- * to the primary element only, for the header field AND for every longhand child, and drew a plain
- * "Clear padding" dot over a property `mixedStyleProps` had already computed as mixed.
+ * one decision" was the redesign's own promise — with padding as its example. The row wrote to the
+ * primary element only, for the header field AND for every longhand child, and drew a plain "Clear
+ * padding" dot over a property `mixedStyleProps` had already computed as mixed.
  */
 function twoSections(styles: [JxMutableNode["style"], JxMutableNode["style"]]): JxMutableNode {
   return {

@@ -16,8 +16,8 @@
  *
  * A message that is a lit template (three callers still pass one) is rendered by the caller into
  * the document's `[part="island"]` through {@link DialogSurfaceOptions.island}, which is the island
- * rule of studio-ui-guidelines §9.4: the decision stays with the host, the markup around it is the
- * document's.
+ * rule of `studio-ui-guidelines.md` §9.4: the decision stays with the host, the markup around it is
+ * the document's.
  *
  * @docs studio/interface
  */

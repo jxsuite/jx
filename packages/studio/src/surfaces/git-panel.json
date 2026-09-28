@@ -15,7 +15,7 @@
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
     "& [part=\"empty\"]": {
-      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (§11): one sentence saying what the region is for, then the action that fills it.",
+      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (studio-ui-guidelines.md §11): one sentence saying what the region is for, then the action that fills it.",
       "display": "flex",
       "flex": "1",
       "flexDirection": "column",
@@ -37,7 +37,7 @@
       "gap": "var(--jx-space-2)"
     },
     "& [part=\"sync-bar\"]": {
-      "$description": "A wrapping row (studio-ui-guidelines §4.6), and it has exactly two items: `sync-head` (Refresh and the status, which never split) and what answers the status (the Fetch/Pull/Push group, or Create GitHub repository with no remote). It was a single line whose only shrinkable item was the status text, so a narrow Navigator never moved a button: it broke \"3 behind / Last updated 09:04 AM\" into a column one word wide (25px at the 160px floor) and painted \"(no\" under Create GitHub repository at the default 240px. Now the second item drops to a line of its own when the two no longer fit, and where that happens is decided by the status text's own width (a count, a locale's clock), never by a breakpoint. The row gap is the smaller step so a wrapped bar reads as one block.",
+      "$description": "A wrapping row (studio-ui-guidelines.md §4.6), and it has exactly two items: `sync-head` (Refresh and the status, which never split) and what answers the status (the Fetch/Pull/Push group, or Create GitHub repository with no remote). It was a single line whose only shrinkable item was the status text, so a narrow Navigator never moved a button: it broke \"3 behind / Last updated 09:04 AM\" into a column one word wide (25px at the 160px floor) and painted \"(no\" under Create GitHub repository at the default 240px. Now the second item drops to a line of its own when the two no longer fit, and where that happens is decided by the status text's own width (a count, a locale's clock), never by a breakpoint. The row gap is the smaller step so a wrapped bar reads as one block.",
       "display": "flex",
       "flexWrap": "wrap",
       "alignItems": "center",
@@ -81,7 +81,7 @@
       "marginLeft": "auto"
     },
     "& [part=\"branch-row\"]": {
-      "$description": "A wrapping row (studio-ui-guidelines §4.6) of two items, `branch-head` and the picker. It was a single line with the picker capped at 40% of it, so a long branch name was cut twice (\"chor…\" beside \"cho…\") and a narrow Navigator word-stacked \"Active / branch\". Now the picker drops below the name when the two no longer fit, at a width the name decides.",
+      "$description": "A wrapping row (studio-ui-guidelines.md §4.6) of two items, `branch-head` and the picker. It was a single line with the picker capped at 40% of it, so a long branch name was cut twice (\"chor…\" beside \"cho…\") and a narrow Navigator word-stacked \"Active / branch\". Now the picker drops below the name when the two no longer fit, at a width the name decides.",
       "display": "flex",
       "flexWrap": "wrap",
       "alignItems": "center",
@@ -123,7 +123,7 @@
       "whiteSpace": "nowrap"
     },
     "& [part=\"branch-picker\"]": {
-      "$description": "Sized by the branch it shows while it shares the name's line, and the full width of the row once it wraps below it, which is where a long branch name finally reads whole. `min-width: 0` is the kit's own default, restated because §4.6 asks it of every flex child: when even a line of its own is narrower than the name, the picker shrinks and the kit's preview ellipsizes.",
+      "$description": "Sized by the branch it shows while it shares the name's line, and the full width of the row once it wraps below it, which is where a long branch name finally reads whole. `min-width: 0` is the kit's own default, restated because studio-ui-guidelines.md §4.6 asks it of every flex child: when even a line of its own is narrower than the name, the picker shrinks and the kit's preview ellipsizes.",
       "flex": "1 1 auto",
       "minWidth": "0"
     },

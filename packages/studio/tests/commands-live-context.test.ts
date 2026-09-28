@@ -177,7 +177,8 @@ describe("document and editor", () => {
     expect(ctx.pane.derived).toBe(false);
   });
 
-  /* The projection said "panes land in P3" through P3 and P8 alike, so it could never answer 2. */
+  /* The projection kept a placeholder saying panes had yet to land, long after they had, so it
+     could never answer 2. */
   test("a split grid is two panes, and the projection says so", () => {
     resetWorkspaceWithTab({ children: [], tagName: "div" } as unknown as JxMutableNode);
     openTab({ document: { tagName: "div" }, documentPath: "b.json", id: "b" });

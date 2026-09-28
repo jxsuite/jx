@@ -168,7 +168,7 @@ describe("theme", () => {
     const ours = declarationsIn(themeCSS());
     const theirs = declarationsIn(buildSiteStyleCSS(themeTokens, {}, (value: string) => value));
     for (const [prop, value] of ours) {
-      // A scheme block is emitted twice by the site builder (§9.5), so compare membership.
+      // A scheme block is emitted twice by the site builder (spec.md §9.5), so compare membership.
       expect(
         theirs.some(([p, v]) => p === prop && v === value),
         `${prop}: ${value}`,

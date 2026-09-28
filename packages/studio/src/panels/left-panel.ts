@@ -6,8 +6,8 @@
  * no-document copy table and the two post-render special cases are gone: this file resolves ONE
  * record from the panel registry, hands the document its name and its level, renders its `render`
  * into the content island, and calls its `afterRender`. Everything a panel is — its name, its
- * level, its empty state, its drag registrations — is declared beside the state it writes (plan §2
- * principle 1).
+ * level, its empty state, its drag registrations — is declared beside the state it writes (one
+ * definition site per action, studio.md §13).
  *
  * **The box is `surfaces/navigator-dock.json` now, and the body is still lit.** A `PanelRecord`'s
  * `render` returns a lit template, so the panel body cannot be a document; the dock draws the
@@ -108,7 +108,7 @@ export function mount(deps: NavigatorPanelDeps) {
         void tab.doc.document;
         void tab.doc.mode;
         // The whole SET, joined — a bare property read would not re-trigger when the selection
-        // Changes WITHIN the array, and §6.5's helpers always replace it but nothing enforces that.
+        // Changes WITHIN the array, and §6.7's helpers always replace it but nothing enforces that.
         void tab.session.selection.map((path) => path.join("/")).join("|");
       }
       render();

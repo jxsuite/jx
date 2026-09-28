@@ -41,6 +41,16 @@ _`@jxsuite/server` Specification v0.1.8_
 
 Numbered headings (`## 5`, `### 5.1`, `#### 19.4a`) are anchors: docs pages reference them from `spec:` frontmatter. **Edit sections in place — never renumber or remove a numbered heading**, or `bun run docs:check` fails. Per-section state is a blockquote directly under the heading: `> **Status: Partial.** …`.
 
+### What counts as an open item
+
+A section's **leading** marker (the first blockquote under its heading) is its status on the implementation-status page and in the standards tiers. It is not the only thing the parser reads. A section is **open** when anything credited to it says Partial or Pending:
+
+- its leading marker, or a later `> **Status: X.**` blockquote in the same section (an unnumbered heading ends the numbered section at its depth, and a deeper one stays inside it);
+- a second status on a marker line (`> **Status: Implemented** for X. **Partial** for Y.`);
+- a table cell that opens with a bold status word (`| **Pending** — stub returns null |`), except in a Standards Alignment or Adoption Backlog table, where `**Pending**` is a conformance class.
+
+A marker above the first numbered heading is a **whole-spec** claim. Fenced code is an example and says nothing. `> **Status:** X`, with the colon inside the bold, is rejected: it was never read as a marker, so three sections carrying it looked unmarked. So is a marker after the first numbered heading that sits under no numbered section. A spec whose header is `Implemented` may have no open item at all; a `Future` remainder is deferred, not unbuilt, and is allowed.
+
 ## Releasing a spec
 
 Every substantive edit is a release. Do not hand-edit the version, the date, or the changelog — record the release, in one of two forms:
@@ -84,13 +94,13 @@ They are deliberately bullets rather than headings so changelog versions never c
 
 ## Gates
 
-| Command                   | Enforces                                                                                                                                   |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| bun run docs:status       | Header fields, status vocabulary, footer/header version agreement, changelog ordering and consistency                                      |
-| bun run docs:spec-release | A spec whose body changed also released it, in place or as a fragment under `specs/changes/` (keeps versions meaningful)                   |
-| bun run docs:standards    | The `## N. Standards Alignment` tables: vocabulary, canonical citations, resolvable bindings, committed evidence, and the tracked gap list |
-| bun run docs:check        | Docs spec: anchors resolve to real numbered headings                                                                                       |
-| bun run docs:verify       | `docs:check` over a freshly generated page set, plus the screenshot image lock                                                             |
+| Command                   | Enforces                                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bun run docs:status       | Header fields, status vocabulary and marker forms, footer/header version agreement, changelog ordering, and no open item under an Implemented header |
+| bun run docs:spec-release | A spec whose body changed also released it, in place or as a fragment under `specs/changes/` (keeps versions meaningful)                             |
+| bun run docs:standards    | The `## N. Standards Alignment` tables: vocabulary, canonical citations, resolvable bindings, committed evidence, and the tracked gap list           |
+| bun run docs:check        | Docs spec: anchors resolve to real numbered headings                                                                                                 |
+| bun run docs:verify       | `docs:check` over a freshly generated page set, plus the screenshot image lock                                                                       |
 
 A spec's "body" is everything except the release metadata — the `**Version:**` and `**Updated:**` lines, the `## Changelog` section, and the footer version. Header `**Status:**` and the per-section `> **Status: …**` markers _are_ body: changing what is built is a change worth releasing.
 

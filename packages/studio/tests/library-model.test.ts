@@ -308,8 +308,9 @@ describe("the locale a file sits under", () => {
   /*
    * `fr` is not a locale this project has, so `pages/fr/` is not a locale directory — it is an
    * ordinary path segment, and the build serves everything under it as the default locale, warning
-   * once about the directory that looks like a language and is not (§13.2). The facet says the same
-   * thing the build does rather than inventing a language nothing declares.
+   * once about the directory that looks like a language and is not (site-architecture.md §13.2).
+   * The facet says the same thing the build does rather than inventing a language nothing
+   * declares.
    */
   test("a directory the project does not declare is not a locale", async () => {
     multilingual(["en", "de"]);

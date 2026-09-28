@@ -2,8 +2,8 @@
 /**
  * Canvas surfaces — one stage per pane, asked about the pane it belongs to.
  *
- * A pane is the unit of split, focus and zoom (§4.1), so it is also the unit of RENDER. The panels
- * a pass mounted, the host element they mounted into, the mode that pass was drawn in and the full
+ * A pane is the unit of split, focus and zoom (§18), so it is also the unit of RENDER. The panels a
+ * pass mounted, the host element they mounted into, the mode that pass was drawn in and the full
  * render a failed patch escalates to are all facts about ONE pane; they were app-level singletons
  * only because the shell had a single stage.
  *

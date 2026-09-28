@@ -10,9 +10,9 @@
  * **The platform owns dismissal.** The root is a `jx-popover`, so Escape, light dismissal, the top
  * layer and focus back to the invoker are its contract rather than three document listeners and a
  * `z-index` chosen from the layer the anchor happened to be in. That is not only tidier: an overlay
- * drawn into a layer div paints UNDERNEATH a modal `<dialog>` and is inert besides (`specs/ui.md`
- * §7), which is the whole reason `panels/seo-modal.ts` had to fork its own Browse onto the kit
- * menu, and a top-layer popover has no such problem.
+ * drawn into a layer div paints UNDERNEATH a modal `<dialog>` and is inert besides (ui.md §6),
+ * which is the whole reason `panels/seo-modal.ts` had to fork its own Browse onto the kit menu, and
+ * a top-layer popover has no such problem.
  *
  * **The filter takes the caret, and the adapter is what puts it there.** A `jx-popover` moves focus
  * into itself but has no opinion about which control; the panel is a search box over a list, so the

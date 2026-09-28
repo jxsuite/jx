@@ -1,6 +1,6 @@
 /**
  * Formula catalog — the metadata registry behind the formula palette, chip labels, and Monaco
- * completions (spec §19). Merges three sources into one uniform entry shape:
+ * completions (spec.md §19). Merges three sources into one uniform entry shape:
  *
  * 1. Blessed operators (hand-authored metadata for every member of `BLESSED_OPERATORS`),
  * 2. Blessed pure globals (derived programmatically from `BLESSED_GLOBALS`),
@@ -314,7 +314,7 @@ export function operatorEntries(): FormulaCatalogEntry[] {
   return out;
 }
 
-// ─── Pure standard-library methods (derived, spec §19.4d) ───────────────────
+// ─── Pure standard-library methods (derived, spec.md §19.4d) ────────────────
 
 /** Prototype owner per pure method — drives grouping and the derived description. */
 const PURE_METHOD_PROTO: Record<string, string> = {
@@ -367,7 +367,7 @@ export const ZERO_ARG_METHODS = new Set([
   "trimStart",
 ]);
 
-/** The derived catalog entry for one pure method operator (spec §19.4d). */
+/** The derived catalog entry for one pure method operator (spec.md §19.4d). */
 function pureMethodEntry(op: string): FormulaCatalogEntry {
   const proto = PURE_METHOD_PROTO[op] ?? "Standard library";
   return {
@@ -387,7 +387,7 @@ function pureMethodEntry(op: string): FormulaCatalogEntry {
 // ─── Blessed globals (derived) ──────────────────────────────────────────────
 
 /**
- * Synthetic blessed helpers wrap constructor-shaped standard-library APIs (spec §19.4c); their
+ * Synthetic blessed helpers wrap constructor-shaped standard-library APIs (spec.md §19.4c); their
  * catalog descriptions name the wrapped API rather than claiming a literal global exists.
  */
 const HELPER_DESCRIPTIONS: Record<string, string> = {

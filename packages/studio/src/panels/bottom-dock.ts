@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
 /**
- * ⑪ The Bottom dock — where long operations and lists of things-to-fix live (plan §3.2 ⑪).
+ * The Bottom dock — where long operations and lists of things-to-fix live (§16.3).
  *
  * Studio had no bottom dock and at least five surfaces wanted one, so each of them took over the
  * canvas: Code mode, the git diff, the formula workspace and the Monaco function editor all replace
- * the stage, and the progress modal covers the whole app. The canvas is the one region §3 says must
- * never disappear, so this is where those surfaces go instead.
+ * the stage, and the progress modal covers the whole app. The canvas is the one region §16.3 says
+ * must never disappear, so this is where those surfaces go instead.
  *
  * **Under the pane grid, not under the window.** The dock occupies the pane's grid column only, so
  * opening it never narrows the Navigator or the Inspector — which is the difference between a dock
@@ -13,16 +13,17 @@
  *
  * **Three tabs, under a cap of four.** `scripts/check-chrome-budget.ts` caps a dock at four, and
  * this spends three: **Problems · Logic · Activity**, with Deploy folded into Activity because a
- * deploy is a long operation with a log. Diff was the fourth until P8 gave it a pane to open into
- * instead — see {@link registerBottomPanels}. `shell.ts` declares the ids ({@link BOTTOM_TAB_IDS})
- * so a bare Bun process can read `view.setBottomTab`'s enum; this module turns them into records.
+ * deploy is a long operation with a log. Diff was the fourth until a second pane gave it somewhere
+ * to open into instead — see {@link registerBottomPanels}. `shell.ts` declares the ids
+ * ({@link BOTTOM_TAB_IDS}) so a bare Bun process can read `view.setBottomTab`'s enum; this module
+ * turns them into records.
  *
  * **The tabs are panel records, so they inherit everything.** `dock: "bottom"` was already admitted
  * by `registerPanel()` and by the level × placement matrix, and `ui/regions.ts` has parsed
- * `dock.bottom` since P3 — it simply resolved to nothing, because there was no host. This is the
- * host. Every tab gets `dock.bottom/panel:<id>` for free and its title comes from the record.
+ * `dock.bottom` from the start — it simply resolved to nothing, because there was no host. This is
+ * the host. Every tab gets `dock.bottom/panel:<id>` for free and its title comes from the record.
  *
- * **Logic is built, and it is why this dock exists.** P8.5 moves the formula workspace and the
+ * **Logic is built, and it is why this dock exists.** §16.3 moves the formula workspace and the
  * Monaco function editor out of their canvas takeovers and into this tab, so the page whose values
  * they compute stays on screen beside them. Its record is defined beside the surface
  * (`panels/formula-workspace.ts`) and registered from here, like Problems and Activity. Because a
@@ -30,11 +31,10 @@
  * for a Logic target appearing and opens the dock on it — once per target, so closing the dock over
  * an open formula keeps it closed until you open another.
  *
- * **Problems is one of them.** §7.2's table places it here ("Problems | Bottom dock ⑪, badge on the
- * rail") and this dock is its only host. It keeps a rail button and a badge — the rail groups by
- * LEVEL, not by dock — and that button reveals it HERE, which is what `panels/activity-bar.ts`
- * branches on. Its record is defined beside the notification store it renders
- * (`panels/problems-panel.ts`) and registered from here, like every other tab of this dock.
+ * **Problems is one of them.** §16.3 places it here, and this dock is its only host. It has no rail
+ * button: its count sits in the status bar, and clicking the count runs `view.setBottomTab`. Its
+ * record is defined beside the notification store it renders (`panels/problems-panel.ts`) and
+ * registered from here, like every other tab of this dock.
  */
 
 import { render as litRender, nothing } from "lit-html";
@@ -72,10 +72,10 @@ export const BOTTOM_DOCK_SELECTOR = "#bottom-dock";
  *
  * Problems first, because it is the tab the dock opens itself for.
  *
- * **Diff is not among them, and its reserved id is gone.** It was held here through P4–P7 with a
+ * **Diff is not among them, and its reserved id is gone.** It was held here for four phases with a
  * `when: () => false`, and the comment that held it said why it should not be here: `git-diff` is
  * the `diff` EDITOR KIND (`commands/context.ts`), a pane hosts it at pane size, and folding it into
- * a 240px dock would be a downgrade. What it owed was a pane to open into — and P8 shipped that
+ * a 240px dock would be a downgrade. What it owed was a pane to open into — and §18 shipped that
  * (`pane.splitRight`, `canOpenInSecondPane`), so Source Control opens a changed file as a Diff
  * editor in the side pane. A reservation whose capability shipped elsewhere is not a reservation;
  * it is an id in `view.setBottomTab`'s enum that can only ever select a hidden tab. The dock spends
@@ -94,7 +94,7 @@ export function registerBottomPanels(): void {
  * The dock's tabs, in strip order.
  *
  * Ordered by {@link BOTTOM_TAB_IDS} rather than by registration order, because the strip's order is
- * a design decision (§3.2 ⑪ names it) and `shell.ts` is where a bare Bun process can read it. An id
+ * a design decision (§16.3 names it) and `shell.ts` is where a bare Bun process can read it. An id
  * with no record is skipped rather than throwing: the list is also the `args` enum, and a command
  * enum naming a surface that has not registered yet must be inert, not fatal.
  */
@@ -147,7 +147,7 @@ function bottomContext(): NavigatorPanelContext {
   };
 }
 
-/** One tab's label — the record's title, with its badge appended as §3.1 draws it ("Problems 2"). */
+/** One tab's label — the record's title, with its badge appended ("Problems 2"). */
 export function bottomTabLabel(panel: PanelRecord, ctx: CommandContext): string {
   const badge = panel.badge?.(ctx) ?? null;
   return badge === null || badge === 0 || badge === "" ? panel.title : `${panel.title} ${badge}`;
@@ -219,10 +219,10 @@ function logicKey(): string | null {
  * Paint the dock, and stamp the region iff it is on screen.
  *
  * The stamp is conditional on purpose. `REGION_FOR_FOCUS.dock` has pointed at `dock.bottom` since
- * P3, so F6 and `regions.resolve()` will find whatever carries it — and a COLLAPSED dock is a
- * `display: none` box that focus must not land in and a shot must not crop. A closed dock therefore
- * resolves to nothing, and `view.setBottomDock { open: true }` is what makes it addressable, which
- * is exactly what an idempotent setter is for.
+ * before the dock existed, so F6 and `regions.resolve()` will find whatever carries it — and a
+ * COLLAPSED dock is a `display: none` box that focus must not land in and a shot must not crop. A
+ * closed dock therefore resolves to nothing, and `view.setBottomDock { open: true }` is what makes
+ * it addressable, which is exactly what an idempotent setter is for.
  */
 export function renderBottomDock(): void {
   if (!_host) {

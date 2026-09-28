@@ -1,5 +1,5 @@
 /**
- * `$elements`, decided in one place (plan §11.2).
+ * `$elements`, decided in one place (§9.1.3).
  *
  * Three surfaces wrote this array — the Packages panel's cherry-pick checkboxes, its "Add
  * component…" picker, and the automatic push when a component is dropped on the canvas — each with

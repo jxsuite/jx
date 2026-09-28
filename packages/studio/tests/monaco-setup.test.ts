@@ -74,12 +74,13 @@ describe("monaco-setup — JSON diagnostics registration", () => {
     expect(project.schema).toBeTruthy();
   });
 
-  /* The committed entry documents are bound by a RELATIVE in-document `$schema` (extensions.md
-     §5.2), which the language service resolves against the model's own directory — every studio
-     model is mounted at file:///<project-relative-path>, so project.json's "./project.schema.json"
-     lands on the project root. An in-document `$schema` also OVERRIDES fileMatch, so without these
-     ids registered the resolution has nothing to hit, `enableSchemaRequest` being off turns that
-     into "No schema request service available", and the file validates against an empty schema. */
+  /* The committed entry documents are bound by a RELATIVE in-document `$schema`
+     (extensions.md §5.2), which the language service resolves against the model's own directory —
+     every studio model is mounted at file:///<project-relative-path>, so project.json's
+     "./project.schema.json" lands on the project root. An in-document `$schema` also OVERRIDES
+     fileMatch, so without these ids registered the resolution has nothing to hit,
+     `enableSchemaRequest` being off turns that into "No schema request service available", and the
+     file validates against an empty schema. */
   test("registers the same schemas under the entry-document file:// ids", () => {
     const [documentByPattern, projectByPattern, projectById, documentById] =
       diagnosticsArg().schemas;

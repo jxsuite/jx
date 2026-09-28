@@ -65,8 +65,10 @@ describe("judging what was found", () => {
   });
 
   test("names each way it can fail", () => {
-    expect(evaluate({ ...ok, pinned: undefined }).problem).toBe("no-pin");
-    expect(evaluate({ ...ok, vendored: undefined }).problem).toBe("not-initialised");
+    expect(evaluate({ vendored: "2.0.1", missing: [], hasStub: true }).problem).toBe("no-pin");
+    expect(evaluate({ pinned: "2.0.1", missing: [], hasStub: true }).problem).toBe(
+      "not-initialised",
+    );
     expect(evaluate({ ...ok, vendored: "2.0.2" }).problem).toBe("version-mismatch");
     expect(evaluate({ ...ok, missing: [`${SDK_SRC}/browser/index.ts`] }).problem).toBe(
       "missing-sources",
@@ -86,7 +88,7 @@ describe("judging what was found", () => {
 
   test("every failure tells the reader what to run", () => {
     for (const facts of [
-      { ...ok, vendored: undefined },
+      { pinned: "2.0.1", missing: [], hasStub: true },
       { ...ok, vendored: "2.0.2" },
       { ...ok, missing: ["x"] },
       { ...ok, hasStub: false },
@@ -110,7 +112,7 @@ describe("what the sparse checkout keeps", () => {
   /* `sdks/main` reaches sideways into ../../config, ../../../shared and ../../../preload, so
      narrowing the list further does not shrink the checkout — it breaks resolution. */
   test("keeps all five directories the SDK's entry points reach across", () => {
-    for (const dir of ["browser", "config", "preload", "shared", "sdks/main"]) {
+    for (const dir of ["browser", "config", "preload", "shared", "sdks/main"] as const) {
       expect(SPARSE_PATTERNS).toContain(`/package/src/${dir}/`);
     }
   });

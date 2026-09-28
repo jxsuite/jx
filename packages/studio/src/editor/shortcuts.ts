@@ -218,11 +218,11 @@ function selectFirstChild(): void {
 /**
  * Walk out of the selection by one rung.
  *
- * This is the Escape ladder (plan §5.3), and it is one rung short of complete: the block action bar
- * is not on the registry yet, so "Escape returns to the bar's selection" has nowhere to read focus
- * from. What ships is the rest of it — a nested selection selects its parent, the document element
- * clears — which replaces an Escape that always cleared regardless of depth and so threw away the
- * whole path to get out of one node.
+ * This is the Escape ladder (leave the block action bar, select the parent, clear), and it is one
+ * rung short of complete: the block action bar is not on the registry yet, so "Escape returns to
+ * the bar's selection" has nowhere to read focus from. What ships is the rest of it — a nested
+ * selection selects its parent, the document element clears — which replaces an Escape that always
+ * cleared regardless of depth and so threw away the whole path to get out of one node.
  */
 function selectParent(): void {
   const tab = activeTab.value;
@@ -255,7 +255,7 @@ function insertSiblingParagraph(): void {
 }
 
 /**
- * Duplicate the whole selection in ONE transaction, so a batch is one undo step (§6.5).
+ * Duplicate the whole selection in ONE transaction, so a batch is one undo step (§6.7).
  *
  * With one path selected this is `mutateDuplicateNode` on that path and nothing else — the batch
  * form calls the single form, it does not reimplement it.
@@ -354,12 +354,12 @@ function zoomBy(ctx: CommandContext, factor: number, redraw: () => void): void {
 // ─── Shell verbs ──────────────────────────────────────────────────────────────
 
 /**
- * The Command Bar's dock toggles, mapped onto the two docks that exist.
+ * The Command Bar's dock toggles, mapped onto the two side docks.
  *
- * `"bottom"` is the plan's Problems/Terminal dock (§3.1) and has no shell row yet, so it is absent
- * here and {@link toggleShellDock} routes ⌘J to the Assistant instead — which is no longer a dock at
- * all but the Inspector's fourth tab, and is still the third thing that chord could mean. When the
- * bottom dock lands it gets a row here and that branch goes away.
+ * `"bottom"` is absent: the Bottom dock (§16.3) is toggled by `shell.ts`'s own
+ * `view.toggleBottomDock` (⌘J), and no default record passes `"bottom"` to `toggleDock`. The
+ * `bottom` branch of {@link toggleShellDock}, which selects the Assistant (the Inspector's fourth
+ * tab), predates that dock.
  */
 const DOCK_FOR_COMMAND: Readonly<Record<Exclude<CommandDockId, "bottom">, DockId>> = {
   inspector: "right",
@@ -403,9 +403,9 @@ let zenRestore: Partial<Record<DockId, boolean>> | null = null;
 /**
  * Collapse every dock; the same chord puts them back exactly as they were.
  *
- * "Reversible by the same key" (plan §5.3) is the whole requirement, and it is why the previous
- * state is snapshotted rather than assumed: an author who had the assistant closed does not want
- * leaving Zen to open it.
+ * Being reversible by the same key is the whole requirement, and it is why the previous state is
+ * snapshotted rather than assumed: an author who had the assistant closed does not want leaving Zen
+ * to open it.
  */
 function toggleZen(): void {
   if (zenRestore) {
@@ -427,7 +427,7 @@ function toggleZen(): void {
 // ─── Region focus (F6) ────────────────────────────────────────────────────────
 
 /**
- * The F6 ring, in reading order: rail → navigator → pane → inspector → dock → status (plan §5.3).
+ * The F6 ring, in reading order: rail → navigator → pane → inspector → dock → status.
  *
  * `shell.focusRegion` has enumerated these six values since the shell record landed and nothing
  * could act on it, because there was no map from the enum to the DOM. `ui/regions.ts` is that map;
@@ -445,9 +445,9 @@ export const REGION_CYCLE: readonly FocusRegion[] = [
 /**
  * The next region in the ring that is actually on screen, or `null` when none is.
  *
- * Absent regions are SKIPPED rather than focused-and-lost: the bottom dock does not exist until P4
- * and a collapsed Navigator has no host, so a ring that did not skip would strand the caret every
- * second press. Pure, and injectable, so the walk is testable without a shell.
+ * Absent regions are SKIPPED rather than focused-and-lost: a closed Bottom dock has no region
+ * (§16.3) and a collapsed Navigator has no host, so a ring that did not skip would strand the caret
+ * every second press. Pure, and injectable, so the walk is testable without a shell.
  */
 export function nextRegion(
   current: FocusRegion,
@@ -518,7 +518,7 @@ function cycleRegion(direction: 1 | -1): void {
 // ─── Panel and inspector focus (⌘1–8, ⌘⇧1–4) ─────────────────────────────────
 
 /**
- * Toggle-FOCUS, not toggle-visible (plan §5.3).
+ * Toggle-FOCUS, not toggle-visible.
  *
  * ⌘1 from the canvas reveals Files and puts the caret in it; ⌘1 again — with Files already focused
  * — collapses the dock and hands the caret back to the pane. The distinction matters because the

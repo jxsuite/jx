@@ -3,7 +3,7 @@
 ## Platform Abstraction, Project Loading, and Component Scoping
 
 **Version:** 0.4.14-draft\
-**Status:** Pending\
+**Status:** Partial\
 **Updated:** 2026-09-12\
 **License:** MIT
 
@@ -76,12 +76,14 @@ The PAL is a plain JavaScript object conforming to a `StudioPlatform` interface.
 
 ### 3.1 Interface
 
+> **Status: Partial.** The interface, its families and the path, byte, patch, `documentBaseUrl` and `assetSpace` rules ship (`packages/studio/src/types.ts`, `packages/desktop/src/settings-store.ts`). A settings patch composes only within one launcher process: the lock in `packages/desktop/src/user-store.ts` is a per-process promise chain around the read and the write, so two chromium windows, each its own process (§9.4), patching `settings.json` at the same moment can still lose one update.
+
 The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — roughly 70 members today. This spec deliberately does not duplicate it; the summary below names the member families and the model that governs them. The transport-level view of the same contract is the `STUDIO_ROUTES` table in `@jxsuite/protocol` (§5.1).
 
 | Family                   | Representative members                                                                                                                                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Session / project**    | `id`, `projectRoot`, `activate`, `openProject`, `openProjectPicker?`, `probeRootProject`, `createDestination`, `createProject`, `pickDirectory?`, `listStarters?`, `importSite?`, `listProjects?`, recent-projects persistence |
-| **Filesystem**           | `listDirectory`, `readFile`, `readFileBytes?`, `writeFile`, `uploadFile`, `deleteFile`, `renameFile`, `findReferences?`, `createDirectory`, `locateFile`, `searchFiles`, `subscribeFileEvents?`                                 |
+| **Filesystem**           | `listDirectory`, `readFile`, `readFileBytes?`, `writeFile`, `uploadFile`, `deleteFile`, `renameFile`, `findReferences?`, `createDirectory`, `locateFile`, `searchFiles`, `subscribeFileEvents?`                                |
 | **Documents / formats**  | `discoverComponents`, `listFormats?`, `listExtensions?`, `listExtensionCatalog?`, `fetchProjectSchemas?`, `formatAction?`, `fetchPluginSchema`                                                                                 |
 | **Packages**             | `listPackages`, `addPackage`, `removePackage`, `installDependencies?`, `packageVersions?`, `setPackageVersions?`                                                                                                               |
 | **Git**                  | `gitStatus`, `gitCommit`, `gitPush`, `gitPull`, `gitDiff`, `gitCheckout`, `gitClone?`, `createPullRequest?`, …                                                                                                                 |
@@ -124,6 +126,8 @@ reason `uploadFile` accepts base64: their params and results are JSON, and a JPE
 The wire shapes the interface exchanges (`DirEntry`, `ComponentMeta`, `GitStatusResult`, `DataRowsQuery`, `StarterInfo`, …) live in `@jxsuite/protocol` and are re-exported from `packages/studio/src/types.ts`, so every backend serializes the same JSON the dev server does. Project configuration is the `ProjectConfig` type from `@jxsuite/schema/types` (the parsed `project.json`). `openProject()` resolves to `{ config, handle }`, where the handle is `{ root, name, projectConfig }` — `root` is a filesystem path locally and a project ID on cloud.
 
 ### 3.3 Registration
+
+> **Status: Partial.** Registration and all three rules below ship: `registerPlatform` in `packages/studio/src/platform.ts`, the launcher signal in `packages/desktop/src/boot.ts`, the build's refusal in `packages/desktop/scripts/init-bundle.ts` and `verify-bundle.ts`, and `resolveDefaultPlatform` with `PlatformUnavailableError` in `packages/studio/src/platforms/default-platform.ts`. Nothing boots a packaged window in CI on any OS to observe the desktop adapter register: the `bundle-desktop-*.yml` lanes are release-only and stop at a static check of the bundle's content.
 
 Registration lives in `packages/studio/src/platform.ts` and stores the adapter on `globalThis.__jxPlatform` — a global rather than a module-level variable, so a separate init bundle (e.g. the desktop `init.js`) can register the platform **before** the studio bundle loads, without needing to share module instances with it:
 
@@ -203,7 +207,7 @@ Refusal is a **return value**, not an exception — `{ ok: false }` — because 
 
 ### 3.6 Signing In
 
-> **Status: Implemented.**
+> **Status: Partial.** The loopback redirect, PKCE, the callback's exemption and the owner-only credential store ship (`packages/server/src/oauth-loopback.ts`, `packages/desktop/src/github-signin.ts`, `packages/desktop/src/credential-store.ts`). The webview is handed the GitHub token: the `githubSignIn` request answers `{ token }` (`packages/desktop/src/rpc-schema.ts`), Studio holds it in memory for the session (`packages/studio/src/github/github-auth.ts`), and Create GitHub Repository sends it from the webview to the GitHub REST API (`packages/studio/src/github/github-publish.ts`).
 
 The desktop signs in to a provider with the **loopback redirect** of [RFC 8252](https://www.rfc-editor.org/rfc/rfc8252) §7.3, protected by [PKCE](https://www.rfc-editor.org/rfc/rfc7636). The browser Studio keeps GitHub's device flow, and must: it has no loopback server to redirect to, and GitHub's device endpoints send no CORS headers, so the page cannot reach them either.
 
@@ -414,7 +418,7 @@ A live preview under the fields shows the resolved destination (`/home/you/Sites
 **What the import emits is a Jx project, not a transcription of the source.** Seven consequences are normative, and each was a defect before it was a rule:
 
 - **The emitted `project.json` validates against the project's own generated schema.** That document closes its composition with `unevaluatedProperties: false` (extensions.md §5.2), so a key the core fragment does not declare is not a harmless extra — it fails the file, and Studio's Contexts editor validates the whole configuration before saving, which made the base width of an imported site uneditable. A description belongs in `$head`, where `@jxsuite/create` writes it and a browser reads it.
-- **The source site's classes do not reach disk.** Every visual fact the pipeline emits comes from computed style, and the only CSS it writes is the `@font-face` rules it recovered; the original stylesheets are never emitted. A `class` attribute that survives therefore names rules that do not exist, in every page, layout and component a reader then edits around — and a class that happens to differ between two instances of one block would otherwise become a component prop nobody chose. The strip runs last, after componentization and after any AI naming pass, both of which legitimately read those names to choose a better one. This is not a claim that Jx is classless: `className` remains a first-class element property (`specs/spec.md` §8.1) and the compiler still emits generated classes for nested style rules (§9.2).
+- **The source site's classes do not reach disk.** Every visual fact the pipeline emits comes from computed style, and the only CSS it writes is the `@font-face` rules it recovered; the original stylesheets are never emitted. A `class` attribute that survives therefore names rules that do not exist, in every page, layout and component a reader then edits around — and a class that happens to differ between two instances of one block would otherwise become a component prop nobody chose. The strip runs last, after componentization and after any AI naming pass, both of which legitimately read those names to choose a better one. This is not a claim that Jx is classless: `className` remains a first-class element property (`specs/spec.md` §8.1) and the compiler still emits generated classes for nested style rules (`specs/spec.md` §9.2).
 - **One file per responsive image family reaches disk.** A CMS publishes one photograph as a ladder of derivatives — WordPress alone writes `-300x200`, `-768x512`, `-1536x1025` and `-scaled` beside the upload — and every rung appears in the `srcset` of every `<img>` that uses it. Enqueuing each candidate independently made a clone of a 451-image site download 2,446 files, and carried a `srcset` the compiler did not build and cannot reason about into the emitted markup, where an `<img src>` pointing at a derivative is a permanent quality CEILING rather than merely a wasted byte. The importer keeps the largest member the page actually referenced, aliases every dropped rung onto it so no reference is left unresolved, and deletes the now-redundant `srcset` and `sizes`. The winner is always a URL that was seen: synthesising the undecorated name would 404 on the many families a CMS serves only in scaled form, and a failed download leaves the REMOTE url in the markup, so the clone would serve that image from the site it cloned.
 - **An interaction the pipeline can read becomes native markup; one it cannot is left alone.** A site drives its widgets with a client framework, the capture strips scripts, and what survives is directives nothing will execute over content frozen in whatever state it was captured in — an accordion whose rows can never open again, with its text still on disk and unreachable. Two readings are available and neither names a framework. The first is the ATTRIBUTE VALUES themselves, read as an algebra — a state declaration, a toggle over one key, a predicate against the same key — which recognises an accordion whatever the directives are called; where that algebra closes over the repeated rows, an exclusive accordion becomes `<details>` sharing a `name`, reproducing the source's single-scalar state exactly with no runtime and nothing left to wire wrong. The second is the ACCESSIBILITY CONTRACT a site already ships, `aria-expanded` and `aria-controls` and `aria-haspopup` and the id links beside them, which pairs a control with the panel it opens and which every framework spells identically. What that pair becomes is decided by the FLOW, not by the vocabulary: a concealed panel still in the flow is content that belongs where it sits and is simply not shown yet, so it becomes `<details>` with the control's label as its `<summary>`; a concealed panel lifted OUT of the flow is drawn on top of the page, so it becomes a popover, its invoker gains `popovertarget`, and the closed state moves out of the base rule into `:popover-open` — a distinction that is not stylistic, because the UA sheet closes a popover from UA origin and any author `display` left in the base rule beats it, laying the panel out whether open or not. Concealment alone never qualifies a panel: a responsive alternate and a closed accordion row are hidden too, and mistaking either for an overlay staples it permanently over the page. Every original node is MOVED rather than rebuilt, and the rewrite is abandoned whole if a single text run or image would go missing — a stale widget is a far smaller defect than deleted content. An element whose semantics live in its tag is never promoted to a component root, because a component template root takes the component's own tag name and would hand back an inert custom element. An invoker is likewise only ever a `<button>` or an `<input>`, the two interfaces HTML gives the popover-target attributes to: an anchor that is really a button becomes one, and an anchor that genuinely navigates is left unconverted, because a dead link is a worse defect than a menu that did not modernise.
 - **A measured size is not an authored one, and only authored sizes are emitted.** `getComputedStyle` returns used values, so `width` is the pixels an element happens to occupy rather than the `100%` or `auto` that produced them. Written down unconditionally that PINS the layout: a full-width section captured at 1440px never fills anything else again, which is what a reader sees the moment a canvas is wider than the width the import was taken at. The test is structural rather than numerical, because a numerical one cannot work: a container with `max-width: 1390px` measures 1390 at every width in its own media band, so any second sample agrees with it. A block-level box in normal flow fills its containing block BY DEFINITION, so its measured `width` states a fact the layout already implies and the constraint that narrowed it (`max-width`, `flex-basis`, a grid track) is captured separately and survives; the measurement is therefore dropped and the fluidity comes back. A replaced element, an out-of-flow box and a shrink-to-fit inline box are each sized by something the layout does NOT imply, so theirs are kept. `height` is judged once more against content: a box with content is as tall as its content and pinning it breaks as soon as text reflows, while an EMPTY box's height is its whole purpose and nothing else in the document would reproduce it.
@@ -464,6 +468,8 @@ A few illustrative rows (see the table for the rest):
 
 ### 5.3 Code Services
 
+> **Status: Partial.** The dev server runs all three (`handleCodeApi` in `packages/server/src/code-api.ts`), and the null-stub contract below holds on every platform. Neither desktop launcher runs any: `codeService` in `packages/desktop/src/project-session.ts` resolves `null` for both, so the Bun process §7.1 draws with code services has none, and the function editor (`packages/studio/src/panels/editors.ts`) formats, lints and minifies nothing on the desktop.
+
 | Operation   | `@jxsuite/server` endpoint   | PAL method                       |
 | ----------- | ---------------------------- | -------------------------------- |
 | Format code | `POST /__studio/code/format` | `codeService("format", payload)` |
@@ -498,6 +504,8 @@ The Components sidebar adapts its contents based on context: what is currently o
 
 ### 6.1 Single File Mode (No Project)
 
+> **Status: Pending.** There is no project-less Components list: with no project, the dev server's `discoverComponents` answers `[]` (`packages/studio/src/platforms/devserver.ts`) and the desktop session's throws, and nothing derives a Components list from the open document. The canvas does match the document's `tagName`s against the registry (`collectTags` in `packages/studio/src/canvas/canvas-live-render.ts`), but only to register elements for rendering. It waits on §4.3, which has no entry point either.
+
 When editing a standalone component with no project loaded:
 
 - **Shown:** Components declared in the file's `$defs`, plus components referenced via `$ref` or custom element `tagName` that resolve to other `.json` files
@@ -511,12 +519,16 @@ The component list is derived by walking the document tree and extracting:
 
 ### 6.2 Site Project Mode (Root Level)
 
+> **Status: Partial.** The whole-project list ships: every component `discoverComponents` finds in the tree, loaded by `loadComponentRegistry` (`packages/studio/src/files/components.ts`) into the Insert palette's one Components section (`componentViews` in `packages/studio/src/panels/elements-panel.ts`). There is no scope label and no Active/Global split: the project's own components show as one flat list at every level, and only the npm cards vary, by what the open document's `$elements` enable (`enabledNpmTags` in the same file; only the dev server discovers npm components).
+
 When a project is loaded and the user is at the project level (e.g. in the file tree, or no specific document is open):
 
 - **Shown:** All components discovered across the entire site (`components/`, co-located `_prefixed` files, any `.json` with a custom-element `tagName`)
 - **Scope label:** "All Components" or the site name
 
 ### 6.3 Site Project Mode (Document Level)
+
+> **Status: Pending.** There are no Active and Global sections: the Insert palette draws one Components section (`componentViews` in `packages/studio/src/panels/elements-panel.ts`), and nothing splits the project's components by whether the current document references them.
 
 When a project is loaded and the user opens a specific page, layout, or component:
 
@@ -528,6 +540,8 @@ When a project is loaded and the user opens a specific page, layout, or componen
 This two-tier separation lets the user quickly find components already in use ("Active") while still having access to the full project library ("Global") for drag-and-drop insertion.
 
 ### 6.4 Resolution Logic
+
+> **Status: Pending.** No `extractReferences` and no active/global partition exist. `packages/studio/src/files/components.ts` holds only the project-wide registry that `loadComponentRegistry` fills from `platform.discoverComponents`.
 
 ```
 openDocument(doc, projectState):
@@ -547,6 +561,8 @@ openDocument(doc, projectState):
 ```
 
 ### 6.5 Updating on Navigation
+
+> **Status: Pending.** There is no Active set to update, and the trigger named here is gone: Studio holds one document per tab and opens a sub-component in a tab of its own (`packages/studio/src/panels/jump-bar.ts` records the removed `session.documentStack`), so there is no `pushDocument()` or `popDocument()` in the state model.
 
 When the user navigates into a sub-component (via `pushDocument()` in the state model), the "Active" set updates to reflect the new document's references. The "Global" set adjusts accordingly. When the user navigates back (`popDocument()`), the previous scope is restored.
 
@@ -685,6 +701,8 @@ The Electrobun launcher runs one process-wide loopback HTTP server beside the pe
 The chromium launcher has no shared server. Its AI and import routes live on the project server under the same token as the rest of it (`server.md` §4.2).
 
 ### 7.4 App Structure
+
+> **Status: Partial.** The prose below ships: distribution names in `packages/desktop/release-assets.json`, `build.copy` in `packages/desktop/electrobun.config.ts`, and the `postBuild` check in `packages/desktop/scripts/verify-bundle.ts`. The tree does not match the package: the entry is `packages/desktop/src/index.ts`, the PAL handlers are `project-session.ts` (re-exported by `handlers.ts`) beside `window-manager.ts`, the webview init is `src/init.ts` bundled by `scripts/pre-build.ts` and staged to `views/studio/dist/init.js`, and no code-services module exists (§5.3).
 
 ```
 jx-studio-app/
@@ -885,6 +903,8 @@ The entry point performs, in order:
 
 ### 9.3 Nix Package
 
+> **Status: Partial.** The package, its desktop entry, the cache and the release gate ship (`packages/desktop/package.nix`, `packages/desktop/jx-studio.desktop`, `.github/workflows/nix.yml`), but three statements below are stale. The build phase runs `scripts/pre-build-rpc.ts`, not `pre-build.ts`; `src` is `lib.cleanSourceWith` over `lib.cleanSource` with `vendor` filtered out, not a plain `lib.cleanSource ../..`; and `nix.yml` has no pull-request trigger: `test.yml` calls it only on `release-please--` branches, and the path list survives only on its push-to-`main` cache trigger.
+
 The flake's `packages.default` produces a fully sandboxed NixOS package:
 
 - **Build dependencies** are fetched via [bun2nix](https://github.com/nix-community/bun2nix), which generates a `bun.nix` lockfile mapping all packages to fixed-output derivations — no network access needed during build
@@ -959,7 +979,7 @@ Everything else the ElectroBun launcher implements, this one implements: `previe
 
 ## 10. SaaS / Cloud Mode
 
-> **Status: Partial.** The adapter shipped and is deployed; §10.2's storage model is not what it was built on. This section said **Future** for as long as the cloud editor had been live, which is the failure mode a status marker exists to prevent — so what follows separates what runs from what is still a sketch.
+> **Status: Implemented.** The adapter shipped and is deployed (§10.1), and collaboration shipped as a CRDT (§10.3). The open part is §10.2's storage table, which sketches a database the git-backed backend was never built on.
 
 ### 10.1 Cloud Platform Adapter
 
@@ -975,7 +995,7 @@ Because a cloud project _is_ a repository, the adapter sets `createDestination: 
 
 ### 10.2 Storage Backend
 
-> **Status: Partial.** The mapping below is one possible one and not the one that shipped — the deployed backend is **git-backed**, a cloud project IS a repository, which is why the adapter sets `createDestination: "repo"` and carries the whole git family. What IS settled, and what this section now states, is the part a backend must DECLARE rather than the part it may choose.
+> **Status: Partial.** The mapping below is one possible one and not the one that shipped: the deployed backend is **git-backed**, a cloud project IS a repository, which is why `packages/studio/src/platforms/cloud.ts` sets `createDestination: "repo"` and carries the whole git family. What a backend MUST declare ships: `documentBaseUrl` and `assetSpace` in `cloud.ts`, `uploadFile` answering `UploadResult`, `assetCapabilities` read by `packages/studio/src/files/media-upload.ts`, and lossless `readFileBytes`.
 
 The cloud backend stores projects in a database with an abstraction equivalent to the filesystem:
 
@@ -1020,59 +1040,7 @@ The member is still additive in the way this section intended: Studio checks for
 
 ## 11. Implementation Roadmap
 
-### Phase 1: PAL Extraction ✅
-
-Extract the platform abstraction from Studio's current inline `fetch()` calls:
-
-- [x] Define `StudioPlatform` interface in `packages/studio/src/platform.js`
-- [x] Implement `DevServerPlatform` wrapping current `fetch("/__studio/*")` calls
-- [x] Replace all direct `fetch("/__studio/*")` in `studio.js` with `getPlatform().*` calls
-- [x] Implement `showDirectoryPicker()` flow in `DevServerPlatform.openProject()`
-- [ ] Update component sidebar to implement Active/Global scoping (§6)
-- [x] Add `GET /__studio/sites` endpoint for dev server project matching
-
-### Phase 2: Desktop App Skeleton ✅
-
-Package Studio as an ElectroBun app:
-
-- [x] Scaffold ElectroBun project with Studio as the main view
-- [x] Implement `DesktopPlatform` adapter (RPC bridge to Bun process)
-- [x] Implement Bun-side file handlers (read, write, list, delete, rename, discover)
-- [x] Wire `Utils.openFileDialog()` for `openProject()` with `project.json` filter
-- [ ] Port code services (format, lint, minify) to run in Bun process directly (currently stubbed)
-- [x] Verify full editing flow: open project, browse files, edit component, save
-- [ ] Boot a packaged window in CI on each OS and assert the desktop adapter registered (the `bundle-desktop-*.yml` lanes are release-only, and nothing observes `init.js` registering; §3.3)
-
-### Phase 2b: NixOS Chromium App-Mode ✅
-
-Package Studio as a NixOS-native app using Chromium `--app` mode:
-
-- [x] Implement `chromium/index.ts` launcher (project server + Chromium `--app`)
-- [x] Wayland support via `--ozone-platform=wayland` auto-detection
-- [x] Sandboxed `nix build` via bun2nix (no `__noChroot`, no network at build time)
-- [x] `makeWrapper` producing `jx-studio` binary with bundled Chromium and Bun
-- [x] Auto-refresh `bun.nix` via postinstall hook
-- [x] Its own PAL adapter over `createProjectServer`, not the dev-server adapter (§9.1)
-- [x] Multi-window through the cross-process window registry (§9.4)
-- [x] Live sidebar sync and `View: Open in Browser`, over the server-to-client push channel (§9.1)
-- [x] About-screen build info via `appInfo`, with no update status it cannot verify (§9.5)
-
-### Phase 3: Feature Parity
-
-Ensure desktop app matches dev-mode capabilities:
-
-- [x] Live preview at real routes with hot reload, on an origin per project (specs/server.md §3.4)
-- [ ] `$prototype`/`$src` resolution via Bun process imports
-- [ ] `timing: "server"` function execution
-- [x] Build / SSG pipeline accessible from Studio, as its own `Build Site` command (specs/studio.md §10.2)
-- [ ] Drag-and-drop component insertion from sidebar
-
-### Phase 4: Cloud Adapter ✅
-
-- [x] Define cloud API specification (REST endpoints mirroring PAL) — `@jxsuite/protocol`'s route table, one contract for every adapter rather than a cloud-specific one
-- [x] Implement `CloudPlatform` adapter — `packages/studio/src/platforms/cloud.ts`
-- [x] Project authentication and authorization — GitHub OAuth, cookie-bound sessions per `owner/repo@branch`
-- [x] Real-time collaboration via WebSocket change feed — a CRDT rather than a change feed; see §10.3
+> **Status: Removed.** This was a phased checklist, and it is retired: its three open rows are tracked on the sections that specify them (the packaged-window boot check on §3.3, desktop code services on §5.3, and Active/Global component scoping on §6.2 to §6.5), and every other row has shipped.
 
 ## 12. Standards Alignment
 

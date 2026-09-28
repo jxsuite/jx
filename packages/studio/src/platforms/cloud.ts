@@ -734,7 +734,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
      *
      * Degrades to `{}` rather than throwing: a backend too old to serve the route, or a project
      * whose extensions the session cannot compose, keeps the bundled core schemas. That fallback
-     * under-suggests extension extras but never reports false errors (§5.3).
+     * under-suggests extension extras but never reports false errors (extensions.md §5.3).
      */
     async fetchProjectSchemas(): Promise<ProjectSchemasResponse> {
       try {

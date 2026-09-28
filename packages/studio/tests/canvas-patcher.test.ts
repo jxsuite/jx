@@ -354,7 +354,7 @@ describe("consumed-document handshake", () => {
   });
 });
 
-// ─── Per-pane gating (P8): every question is asked of the pane showing the tab ───────
+// ─── Per-pane gating (§18.2): every question is asked of the pane showing the tab ────
 
 describe("the gate is per pane, not per app", () => {
   /**
