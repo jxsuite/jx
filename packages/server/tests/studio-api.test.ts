@@ -657,12 +657,20 @@ describe("file — read", () => {
 describe("file — bytes", () => {
   const JPEG_HEAD = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
+  /* Removed here rather than in an afterAll, for the reason "stable order" gives below:
+     `_studio_fixtures` holds COMMITTED fixtures, and the process-exit sweep does not run under
+     `bun test`, so a file written into it and left behind is untracked output inside a tracked
+     directory — which the next `git add -A` commits as though it were a fixture. */
   test("answers the raw bytes, undecoded", async () => {
     writeFileSync(join(FIXTURES, "pic.jpg"), JPEG_HEAD);
     const url = new URL(`http://localhost/__studio/file/bytes?path=${FIXTURES}/pic.jpg`);
     const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    /* Drained BEFORE the file goes: the response body is a lazy stream over the file on disk, so
+       removing it first makes `arrayBuffer()` throw ENOENT rather than return the bytes. */
+    const bytes = [...new Uint8Array(await res.arrayBuffer())];
+    rmSync(join(FIXTURES, "pic.jpg"), { force: true });
     expect(res.status).toBe(200);
-    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([...JPEG_HEAD]);
+    expect(bytes).toEqual([...JPEG_HEAD]);
   });
 
   /* An editor is about to overwrite this file. `file`'s own `max-age=5` would mean an edit applied
@@ -671,6 +679,7 @@ describe("file — bytes", () => {
     writeFileSync(join(FIXTURES, "pic2.jpg"), JPEG_HEAD);
     const url = new URL(`http://localhost/__studio/file/bytes?path=${FIXTURES}/pic2.jpg`);
     const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    rmSync(join(FIXTURES, "pic2.jpg"), { force: true });
     expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 
