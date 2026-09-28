@@ -198,7 +198,7 @@ describe("FocusRegion map", () => {
 describe("derived ids", () => {
   test("a panel id becomes a region id — that is what survives a rename", () => {
     expect(navigatorPanelRegion("git")).toBe("navigator/panel:git");
-    // P3 renames the Head panel to Page; the region follows with no edit here.
+    // The Head panel was renamed Page; the region follows with no edit here.
     expect(navigatorPanelRegion("page")).toBe("navigator/panel:page");
   });
 

@@ -35,11 +35,11 @@ export interface ClosedTabRecord {
 const CLOSED_TAB_LIMIT = 20;
 
 /**
- * One editor pane — the unit of split, focus and zoom (§4.1).
+ * One editor pane — the unit of split, focus and zoom (§18.1).
  *
  * A tab BELONGS to a pane, and the pane is what splits; the tab strip is per-pane for the same
- * reason. This is the minimal model P3 asks for: an ordered list and an active id, with no rules
- * for derived panes and no follow behaviour (those are P8).
+ * reason. The model is deliberately minimal, an ordered list and an active id; derived panes and
+ * their follow behaviour (§18.4) sit beside it in `derived` rather than in either.
  */
 export interface Pane {
   id: string;
@@ -357,10 +357,10 @@ export function focusOtherPane() {
  * `session.ui.canvasMode`), one picked the replacement kind, and two narrowed what the controls
  * offered so no dropdown could contain an entry the app would refuse.
  *
- * The cap existed because a second LIVE canvas host was unaffordable, and it is gone because
- * workstream 1 made it affordable — see {@link MAX_PANES}. Its LAST act was a bug: `capToPaneKind`
- * flipped a splitting Design tab to `source` before focus moved, so `⌘\` on a page you were
- * designing silently became "open this as Code somewhere else".
+ * The cap existed because a second LIVE canvas host was unaffordable, and it is gone because render
+ * fan-out (§18.2) made it affordable — see {@link MAX_PANES}. Its LAST act was a bug:
+ * `capToPaneKind` flipped a splitting Design tab to `source` before focus moved, so `⌘\` on a page
+ * you were designing silently became "open this as Code somewhere else".
  *
  * What replaces them is `tabs/tab.ts`'s `editorKindsOf` — the kinds a DOCUMENT declares — which is
  * the only narrowing left and the only one that was ever about the document rather than about what
@@ -371,7 +371,7 @@ export function focusOtherPane() {
  * Split the grid and move a tab into the new pane, which becomes focused.
  *
  * Moves rather than duplicates: one tab is one document with one undo history and one collab
- * session, and two strips claiming the same id is the duplicate-`repeat`-key bug §4.3 describes.
+ * session, and two strips claiming the same id is the duplicate-`repeat`-key bug §14.1 describes.
  *
  * The subject is `tabId` when given, else the focused pane's active tab. The drag resolver names
  * the tab it is carrying — the gesture points at a chip, not at whatever the keyboard is in — and
@@ -607,11 +607,11 @@ export function paneIsEmpty(pane: Pane): boolean {
   return pane.tabOrder.length === 0 && pane.derived === null;
 }
 
-/* No `togglePaneZoom`. Zoom is a view of a GRID, and there is no grid: §18.3 hands the one stage
-   between panes, so the focused pane already fills the shell and the other one is not on screen to
-   be zoomed away from. The state existed, both commands wrote it, and nothing that draws ever read
-   it — a control whose only observable effect is on itself. It comes back with the second live
-   host, and not one release earlier. */
+/* No `togglePaneZoom`. It was removed when the shell still handed one stage between panes: the
+   focused pane already filled the shell, so the state existed, both commands wrote it, and nothing
+   that draws ever read it — a control whose only observable effect is on itself. There is a grid of
+   live panes now (§18.3), so a zoom is buildable, but no section of studio.md asks for one; it
+   comes back with the section that does, and not one release earlier. */
 
 /**
  * Remove a tab id from whichever pane holds it, without touching the tab itself.
@@ -820,12 +820,12 @@ function setActiveTab(tabId: string, opts: { cycling?: boolean; focus?: boolean 
  * keys. Callers that mean "show me this file" should use `files/files.ts`'s `openFileInTab`, which
  * activates the existing tab instead.
  *
- * `preview: true` opens a DISPOSABLE tab (§4.3): single-clicking through the tree or the palette is
- * browsing, and browsing must not litter, so the next preview open in the same pane takes its slot.
- * It is opt-in rather than the default because only the CALLER knows whether the author was
- * browsing or committing — an author who typed a new file name has committed, and silently
- * discarding that tab on their next click is the one failure a preview tab must never have.
- * {@link promoteTab} records a commitment made after the fact.
+ * `preview: true` opens a DISPOSABLE tab (docs/studio/interface/tabs.md): single-clicking through
+ * the tree or the palette is browsing, and browsing must not litter, so the next preview open in
+ * the same pane takes its slot. It is opt-in rather than the default because only the CALLER knows
+ * whether the author was browsing or committing — an author who typed a new file name has
+ * committed, and silently discarding that tab on their next click is the one failure a preview tab
+ * must never have. {@link promoteTab} records a commitment made after the fact.
  *
  * `paneId` says WHERE, and `focus` says whether the keyboard goes with it. Both default to today's
  * answer — the focused pane, and yes — because "open this document" has always meant "in front of
@@ -1383,12 +1383,12 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
           "Use it when the user should SEE the page, or for iterative visual refinement after " +
           "creating a page or component.",
         name: "open_document",
-        /* The person's own read: `activeTab` is what the tab strip highlights, and `editor.kind`
-           is the fact the document-tree tier is gated on. Both are named so the model learns in one
+        /* The person's own read: `activeTab` is what the tab strip highlights, and `editor.kind` is
+           the fact the document-tree tier is gated on. Both are named so the model learns in one
            round whether the tree tools reach the file it opened — a `.csv` lands in the Grid, a
            `.png` in the Media viewer, and neither is an element tree. The `.value` read is module
-           state, which a projected `report` may close over (§12.4); `after` alone cannot say WHICH
-           document is active. */
+           state, which a projected `report` may close over (studio-ui-guidelines.md §12.4); `after`
+           alone cannot say WHICH document is active. */
         report: ({ after, args }) => {
           const path = stringArg("document.open", args, "path");
           const active = activeTab.value?.documentPath ?? null;
@@ -1402,11 +1402,12 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
           return `"${path}" is the active document, ${where}.`;
         },
       },
-      /* Refuses by THROWING (§12.4's first review rule). `openFileInTab` reports a file it cannot
-         open as a Problem and returns normally — the right answer for a click in the Files tree,
-         where the toast is in front of the person — so the record has to look for the tab itself.
-         The hand tool this replaced read `getTab()` after the open and called whatever it found a
-         success, so a missing file left the PREVIOUS document active and reported "Switched to". */
+      /* Refuses by THROWING (studio-ui-guidelines.md §12.4's first review rule). `openFileInTab`
+         reports a file it cannot open as a Problem and returns normally — the right answer for a
+         click in the Files tree, where the toast is in front of the person — so the record has to
+         look for the tab itself. The hand tool this replaced read `getTab()` after the open and
+         called whatever it found a success, so a missing file left the PREVIOUS document active and
+         reported "Switched to". */
       run: async (_ctx, args) => {
         const path = stringArg("document.open", args, "path");
         await deps.openFile(path);
@@ -1435,8 +1436,9 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
       group: "1_file",
       when: (ctx) => ctx.project.open,
       requires: "an open project",
-      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
-         looking at. No `undo`: opening a tab is not a state the undo stack owns. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome — it arranges
+         what the person is looking at. No `undo`: opening a tab is not a state the undo stack
+         owns. */
       undo: "none",
       /* The non-drag equivalent of dragging a file row onto the other pane's strip (SC 2.5.7): the
          same `receivingPane` the drag resolver uses, so a file tree row and this command can never
@@ -1550,12 +1552,12 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
  * The pane commands.
  *
  * They live beside the pane model for the same reason the tab commands do, and they are the whole
- * user-facing surface of §4.1's Pane transport: split, focus, unsplit, zoom.
+ * user-facing surface of the pane transport (§18.1): split, focus, unsplit, zoom.
  *
  * `⌘0` and `⌘⌥0` are a PAIR, and they are both bound. `⌘0` was `canvas.zoomReset`, which held it
- * for the one verb of the zoom cluster that also has a button in the floating zoom pod (§3.2 ⑩) —
- * so the chord was the second way to reach a control that is already on screen, while focusing a
- * pane had no way at all. The zoom keeps its pod button and gives up the key.
+ * for the one verb of the zoom cluster that also has a button in the floating zoom pod — so the
+ * chord was the second way to reach a control that is already on screen, while focusing a pane had
+ * no way at all. The zoom keeps its pod button and gives up the key.
  *
  * @param {TabCommandDeps} deps
  * @returns {AnyCommand[]}
@@ -1604,13 +1606,13 @@ export function paneCommands(deps: TabCommandDeps): AnyCommand[] {
       /* This is NOT `pane.derive`, and the distinction is the whole reason both exist. `derive`
          shows a projection OF THIS PANE — its Code, its diff, the same page at another breakpoint —
          and follows it. `compareWith` puts THAT DOCUMENT beside this one and then leaves it alone.
-         Collapsing them would give "open a second document in the other pane" two definition
-         sites, which is how the two names in §4.1 came to disagree in the first place. */
+         Collapsing them would give "open a second document in the other pane" two definition sites,
+         which is how the shell redesign's two names for it came to disagree in the first place. */
       enablement: () => workspace.activeTabId !== null,
       requires: "an open document",
       undo: "none",
-      /* No `aiTool`, by §12.4's first deletion rule: chrome — it arranges what the person is
-         looking at. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome — it arranges
+         what the person is looking at. */
       run: async (_ctx, args) => {
         const path = stringArg("pane.compareWith", args, "path");
         const here = activePane();

@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioJumpBar",
-  "$description": "⑥ The jump bar: one pane's address, outermost step first, every step a command the adapter has already resolved against the registry. A step is a button when its command can run and a readout when it cannot — an address with a hole in it is a lie about containment, so a step never disappears. A step with more than one place to go carries the chevron that opens its siblings; one alternative is not a choice and draws no control. Nothing here decides what the bar says, which step is where you are, or what a chevron opens.",
+  "$description": "The jump bar: one pane's address, outermost step first, every step a command the adapter has already resolved against the registry. A step is a button when its command can run and a readout when it cannot — an address with a hole in it is a lie about containment, so a step never disappears. A step with more than one place to go carries the chevron that opens its siblings; one alternative is not a choice and draws no control. Nothing here decides what the bar says, which step is where you are, or what a chevron opens.",
   "tagName": "nav",
   "attributes": {
     "part": "bar",

@@ -115,7 +115,8 @@ void mock.module("../src/files/file-ops.js", () => ({
      partial mock has to cover what that path imports — see the iframe-host note above. */
   confirmFileDelete: () => Promise.resolve(false),
   renamePromptMessage: () => Promise.resolve(""),
-  /* And one the TAB STRIP reads: its close offers to save first (§8.7's three-way dialog). */
+  /* And one the TAB STRIP reads: its close offers to save first (the three-way dialog of
+     studio-ui-guidelines.md §8.7). */
   saveFile: () => Promise.resolve(true),
 }));
 
@@ -215,10 +216,10 @@ describe("the records themselves", () => {
       // The registry for the reason `requestEditZoom` bypasses `canvas.setEditZoom` — a repaint
       // Per pointermove would rebuild the iframe and break the handle's own pointer capture.
       "canvas.setEditWidth",
-      // The rendering context's three axes (§4.2 control ③). The Context popover wrote
+      // The rendering context's three axes (§6.2). The Context popover wrote
       // `session.ui` through `updateUi` directly, so none of the three was a command — not in the
       // Palette, not scriptable, not bindable. Setters, not cycles: a chord carries no argument, so
-      // The `⌘⌥↑`/`⌘⌥⇧S` cycles §5.3 declares need `next`/`prev` records of their own.
+      // The `⌘⌥↑`/`⌘⌥⇧S` cycles §6.2 names need `next`/`prev` records of their own.
       "canvas.setBreakpoint",
       "canvas.setColorScheme",
       // The language axis. Its id keeps the `i18n.` namespace and its definition site is here,
@@ -234,7 +235,7 @@ describe("the records themselves", () => {
       // The dialog twin, for the same reasons.
       "canvas.setDialogOpen",
       // The route params and component test props live in a popover now, and a transient surface
-      // Opens by command rather than by clicking (§13.2) — otherwise the shot that types a test
+      // Opens by command rather than by clicking — otherwise the shot that types a test
       // Value would need a CSS selector to reach it.
       "canvas.setResolvingOpen",
       // The values themselves are verbs too. They wrote `session.ui` inline while every control in

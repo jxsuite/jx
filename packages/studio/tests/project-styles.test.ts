@@ -62,7 +62,7 @@ describe("the name and the wire value", () => {
 
   test("the wire value is still a CANVAS_MODES member — renaming it is a protocol change", () => {
     /* `"stylebook"` is half of a ParentToIframe union: the studio bundle and dist/iframe-entry.js
-       must agree on it, so it survives every rename of the surface above it (plan §9.4). */
+       must agree on it, so it survives every rename of the surface above it (§7.1). */
     expect(CANVAS_MODES).toContain(PROJECT_STYLES_VIEW);
   });
 });

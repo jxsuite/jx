@@ -5,8 +5,9 @@
  * between this and the Manage view it replaces. That view's category filter, its search box and its
  * grid/table switch existed ONLY as buttons inside a modal, so `scripts/screenshots/automation.ts`
  * carried a hand-maintained `BROWSE_CATEGORY_LABELS` table and pressed the buttons through an XPath
- * matched on their rendered text — plan §13's exact complaint. `library.setCategory` is the same
- * action the button runs, and the button is now a rendering of the record.
+ * matched on their rendered text, exactly what the shot contract's R1 forbids
+ * (`scripts/screenshots/README.md`). `library.setCategory` is the same action the button runs, and
+ * the button is now a rendering of the record.
  *
  * Every setter is idempotent and names the STATE it reaches, never a delta: there is no
  * `library.toggleLayout`, because a toggle against unstated state is what silently inverted
@@ -51,7 +52,7 @@ export function libraryCommands(): AnyCommand[] {
     {
       category: "Project",
       id: "library.open",
-      // ⌘⇧E — §9.1's "File: Browse Library (⌘⇧E)". The Library is the content surface for a site
+      // ⌘⇧E, as studio.md §9.1.2 names it. The Library is the content surface for a site
       // With a collection, and it was reachable only by palette search and one overflow menu item.
       keybinding: "mod+shift+e",
       level: "project",
@@ -59,9 +60,9 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by §12.4's first deletion rule: chrome. None of the Library family is
-         projected — every one of these verbs shapes a listing a person reads, and the model has
-         `list_files` / `search_files` for the same facts. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome. None of the
+         Library family is projected — every one of these verbs shapes a listing a person reads,
+         and the model has `list_files` / `search_files` for the same facts. */
       run: () => {
         openLibraryTab();
       },
@@ -81,7 +82,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`: a listing filter for a person (§12.4, rule 1). */
+      /* No `aiTool`: a listing filter for a person (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
         const key = enumArg("library.setCategory", args, "category", LIBRARY_CATEGORY_KEYS);
         setLibraryCategory(key);
@@ -104,7 +105,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`: a listing filter for a person (§12.4, rule 1). */
+      /* No `aiTool`: a listing filter for a person (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
         const layout = enumArg<LibraryLayout>("library.setLayout", args, "layout", LIBRARY_LAYOUTS);
         setLibraryLayout(layout);
@@ -126,7 +127,8 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`: a listing filter for a person; the model has `search_files` (§12.4, rule 1). */
+      /* No `aiTool`: a listing filter for a person; the model has `search_files`
+         (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
         setLibrarySearch(optionalStringArg("library.setSearch", args, "query") ?? "");
       },
@@ -154,7 +156,7 @@ export function libraryCommands(): AnyCommand[] {
       // A monolingual project has no facet to set: the Library draws no picker, and offering the
       // Verb would name a value space with one member in it.
       when: (ctx) => ctx.project.open && ctx.project.isMultilingual,
-      /* No `aiTool`: a listing filter for a person (§12.4, rule 1). */
+      /* No `aiTool`: a listing filter for a person (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
         const choice = enumArg("library.setLocale", args, "locale", localeChoices());
         setLibraryLocale(choice === "all" ? "" : choice);
@@ -169,7 +171,7 @@ export function libraryCommands(): AnyCommand[] {
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`: chrome (§12.4, rule 1). */
+      /* No `aiTool`: chrome (studio-ui-guidelines.md §12.4, rule 1). */
       run: () => refreshLibrary(),
       title: "Library: Rescan Files",
     },
@@ -193,8 +195,8 @@ export function libraryCommands(): AnyCommand[] {
       requires: "an open project",
       when: (ctx) => ctx.project.open,
       undo: "project",
-      /* No `aiTool`, by §12.4's second deletion rule: it waits on the New File prompt;
-         `create_page` / `create_component` cover the job. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: it waits on the New
+         File prompt; `create_page` / `create_component` cover the job. */
       run: async (_ctx, args) => {
         const declared = libraryNewEntries().map((entry) => entry.key);
         const key = enumArg("library.newEntry", args, "type", declared);

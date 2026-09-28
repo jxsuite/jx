@@ -21,8 +21,8 @@
  * `role`, no `aria-*` and no key names — those were written out here and written out again in
  * `files-panel.ts`, one contract in two copies with nothing keeping them in agreement.
  *
- * **Three things reach the host through `onNodeCreated`** (guidelines §9.4), because each is a fact
- * about a node that only exists once it has been created:
+ * **Three things reach the host through `onNodeCreated`** (studio-ui-guidelines.md §9.4), because
+ * each is a fact about a node that only exists once it has been created:
  *
  * - The tree element, which is what the virtual window is measured against and what the scroll watch
  *   binds to. Nothing about the window can be computed before it.
@@ -285,7 +285,8 @@ export function mountOutlineSurface(
   let disposed = false;
   /* Nothing is called on an element here, so the mount is all there is to wait for: the two islands
      announce themselves through `onNodeCreated` as they are created, which is one
-     `connectedCallback` EARLIER than awaiting the element would be (guidelines §1.1). */
+     `connectedCallback` EARLIER than awaiting the element would be
+     (studio-ui-guidelines.md §1.1). */
   const ready = mountSurface("panel-outline", scope, container, {
     onNodeCreated: (element, _path, def) => {
       /* A text node carries no `part`, so narrowing and asking are the same question — asked once,

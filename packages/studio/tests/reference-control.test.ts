@@ -4,8 +4,9 @@
  * `referenceTarget`).
  *
  * The control is registered ONCE and every form gets it, so these assertions are about the whole
- * §9.2 promise: a `$ref` to a collection is a picker in the entry editor, in a settings form and in
- * an array-of-objects row, without any of those three knowing the control exists.
+ * promise (site-architecture.md §7.4's entry picker): a `$ref` to a collection is a picker in the
+ * entry editor, in a settings form and in an array-of-objects row, without any of those three
+ * knowing the control exists.
  *
  * **It is a Jx document now**, mounted into the empty `[part="control-host"]` the form's own
  * document announces, so four things about this file are deliberate rather than incidental:

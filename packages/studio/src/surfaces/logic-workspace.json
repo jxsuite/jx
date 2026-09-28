@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioLogicWorkspace",
-  "$description": "⑪ · Logic — the Bottom dock tab where a formula and a function body are edited BESIDE the page they compute. One tab, two surfaces, one header: `panels/formula-workspace.ts` decides which of them is open (a `$expression` or a Monaco body), what it is called and what its verbs are, and this draws both. The chip pipeline is a projection of `ui/formula-chips.ts`'s model — the expression tree read left to right — and a chip click reports its key back; nothing here unrolls a tree, reads a document or evaluates anything. Three ISLANDS, each an empty host this document draws and the flow fills (studio-ui-guidelines.md §9.4): `[part=\"code-host\"]` takes Monaco, `[part=\"editor-host\"]` takes the expression editor, which is a lit surface of its own and another conversion's to move, and one `[part=\"tree-host\"]` per data-rail entry takes the value tree, which is a mounted document of its own (`surfaces/panel-data.json`). The rail's trees had been empty since that tree became a document, because the lit takeover rendered a host nothing ever filled; announcing them is what fills them.",
+  "$description": "Logic — the Bottom dock tab where a formula and a function body are edited BESIDE the page they compute. One tab, two surfaces, one header: `panels/formula-workspace.ts` decides which of them is open (a `$expression` or a Monaco body), what it is called and what its verbs are, and this draws both. The chip pipeline is a projection of `ui/formula-chips.ts`'s model — the expression tree read left to right — and a chip click reports its key back; nothing here unrolls a tree, reads a document or evaluates anything. Three ISLANDS, each an empty host this document draws and the flow fills (studio-ui-guidelines.md §9.4): `[part=\"code-host\"]` takes Monaco, `[part=\"editor-host\"]` takes the expression editor, which is a lit surface of its own and another conversion's to move, and one `[part=\"tree-host\"]` per data-rail entry takes the value tree, which is a mounted document of its own (`surfaces/panel-data.json`). The rail's trees had been empty since that tree became a document, because the lit takeover rendered a host nothing ever filled; announcing them is what fills them.",
   "tagName": "div",
   "attributes": {
     "part": "workspace"
@@ -94,7 +94,7 @@
       "textOverflow": "ellipsis"
     },
     "& [part=\"badge\"]": {
-      "$description": "The live value (spec §19.9). A resolved formula is arbitrary text — an object, a URL, a paragraph — so it ellipsizes inside the chip it annotates and never sets the chip's width.",
+      "$description": "The live value (spec.md §19.9). A resolved formula is arbitrary text — an object, a URL, a paragraph — so it ellipsizes inside the chip it annotates and never sets the chip's width.",
       "flex": "0 1 auto",
       "minWidth": "0",
       "maxWidth": "120px",

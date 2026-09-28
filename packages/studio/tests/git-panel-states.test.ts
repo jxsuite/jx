@@ -222,7 +222,7 @@ function itemParts(node: Element | null | undefined): (string | null)[] {
   return Array.from(node?.children ?? [], (child) => child.getAttribute("part"));
 }
 
-describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidelines §4.6)", () => {
+describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidelines.md §4.6)", () => {
   /* Each row has exactly two flex items: a head that never splits (Refresh and the status, or the
      branch icon and the name) and the control that answers it. That is what makes a wrap move a
      whole control onto its own line instead of stranding an icon above its text. happy-dom lays
@@ -264,7 +264,7 @@ describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidel
   test("both rows wrap, at a basis rather than a breakpoint", () => {
     expect(rule('& [part="sync-bar"]').flexWrap).toBe("wrap");
     expect(rule('& [part="branch-row"]').flexWrap).toBe("wrap");
-    // §4.6: the threshold is a flex-basis, so no width query decides where either row breaks.
+    // The threshold is a flex-basis, so no width query decides where either row breaks (studio-ui-guidelines.md §4.6).
     expect(Object.keys(style).filter((key) => key.startsWith("@") && /width/.test(key))).toEqual(
       [],
     );

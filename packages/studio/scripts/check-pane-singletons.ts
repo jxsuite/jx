@@ -1,7 +1,7 @@
 /**
  * Guard the pane grid against the singletons it exists to remove.
  *
- * A pane is the unit of split, focus, zoom and RENDER (§4.1), so everything a stage owns — its
+ * A pane is the unit of split, focus, zoom and RENDER (§18), so everything a stage owns — its
  * pan/zoom wrap, its centering observer, its pan offsets, its source-view Monaco, its render
  * generation — is a field of one pane's `CanvasSurface`, and everything drawn INTO a stage — the
  * grid engine, the Library, the entry form, the Project Settings editor, the Document Header card —
@@ -22,10 +22,10 @@
  * SCALE never did. It was injected into `canvas/canvas-utils.ts` through `initCanvasUtils`, spelled
  * `activeTab.value?.session.ui.zoom` in the bootstrap — so a module whose every geometry function
  * took an explicit `CanvasSurface` still read and wrote ONE pane's zoom, and this checker was
- * silent about it through the whole of P8. Four visible failures came out of that silence: the
- * unfocused pane drew at the focused tab's scale, the side pane's `+` zoomed the primary's
- * document, the unfocused zoom pod reported the focused pane's fit, and a pane entering Design
- * re-fitted the other one.
+ * silent about it through the whole of the shell redesign's panes phase. Four visible failures came
+ * out of that silence: the unfocused pane drew at the focused tab's scale, the side pane's `+`
+ * zoomed the primary's document, the unfocused zoom pod reported the focused pane's fit, and a pane
+ * entering Design re-fitted the other one.
  *
  * So the rule that is checked is the one that was meant all along — **per-stage state is reached
  * through a surface** — and its mechanical form is: in the modules that compute stage geometry, the

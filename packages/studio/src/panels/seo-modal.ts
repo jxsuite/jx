@@ -11,7 +11,7 @@
  * So it opens as a modal, from two places — the Document Header card and the Navigator's Page
  * panel. Two doors because the two are different moments: one while writing the page, one while
  * working on its head material. Both run `document.openSeo`, so there is a third door in the
- * palette and no surface owns the capability (§2 principle 1).
+ * palette and no surface owns the capability (one definition site per action, §13).
  *
  * **The card keeps the fields; the modal keeps the picture.** Title still lives on the card,
  * because it is the one head value you type while writing. Everything the modal holds is either a
@@ -72,7 +72,7 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
  * Two rendered previews, a resolved-field list and a warning list, over the MERGED head — and no
  * score. A number out of a hundred aggregates unrelated facts into a verdict, and a verdict is
  * what gets optimised; a count beside a limit and a named consequence say the same thing without
- * ranking anything (plan §9.2, §14).
+ * ranking anything (§16.6).
  *
  * The previews are pictures of what the build emits, so a value the page did not author is marked
  * as inherited with the donor NAMED — the third cascade to use `panels/provenance.ts`'s vocabulary
@@ -87,7 +87,7 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
  * The two chips that can go somewhere do: a value from the site's own `$head` opens Project
  * Settings › Site head, and one from the site `name` opens Overview. The layout and build donors
  * get no handler, because the card has no verb for "open that layout" and a control that looks
- * pressable and does nothing is the defect §6.2 exists to remove — the document draws those two as
+ * pressable and does nothing is the defect §6.7 exists to remove — the document draws those two as
  * a `<span>` and the two below as a `<button>`, on exactly this answer.
  *
  * @param {SeoField} field
@@ -550,7 +550,8 @@ export function seoCommands(): AnyCommand[] {
       group: "2_document",
       requires: "an open document",
       when: (ctx) => ctx.document.open,
-      /* No `aiTool`, by §12.4's first deletion rule: this opens a modal for a person. */
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a modal for a
+         person. */
       run: () => {
         const tab = activeTab.value;
         if (!tab) {

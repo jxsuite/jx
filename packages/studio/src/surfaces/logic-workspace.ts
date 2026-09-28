@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * ⑪ · Logic — the Bottom dock tab, as a mounted document.
+ * Logic — the Bottom dock tab, as a mounted document.
  *
  * This is the adapter. `panels/formula-workspace.ts` is the flow — it reads which of the two
  * surfaces is open, resolves the expression at that document position, keeps the chip selection,
@@ -63,7 +63,7 @@ export interface LogicScopeEntryView {
 export interface LogicWorkspaceView {
   /** `empty` (nothing open in the tab) or `ready`. */
   state: string;
-  /** What the tab is for, said when nothing is open in it (§11.1). */
+  /** What the tab is for, said when nothing is open in it (studio-ui-guidelines.md §11.1). */
   emptyMessage: string;
   /** Which body the ready state draws: `formula`, `code`, or `missing`. */
   surface: string;

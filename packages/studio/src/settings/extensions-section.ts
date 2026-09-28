@@ -126,9 +126,9 @@ function blockedReason(row: ExtensionRow): string {
  * The per-row Remove, as the document reads it.
  *
  * Refused while the extension is still enabled, and DISABLED with the reason rather than hidden
- * (guidelines §10): removing the package while `project.json` still names it manufactures exactly
- * the broken state this section exists to eliminate. It is absent only when there is nothing to
- * remove — a package the project never installed, or one the backend bundles.
+ * (`studio-ui-guidelines.md` §10): removing the package while `project.json` still names it
+ * manufactures exactly the broken state this section exists to eliminate. It is absent only when
+ * there is nothing to remove — a package the project never installed, or one the backend bundles.
  */
 function removeFor(
   row: ExtensionRow,

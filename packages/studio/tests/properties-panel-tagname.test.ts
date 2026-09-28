@@ -83,7 +83,7 @@ const rungLabel = (c: HTMLElement) =>
  * Pick a rung on the Tag row's Value Source picker — `elementTag` offers exactly these two.
  *
  * The rungs are a kit menu in the popover layer now, not an `sp-overlay` inside the row: the ladder
- * is one answer shared with every other bindable position (studio-ui-guidelines.md §6.3).
+ * is one answer shared with every other bindable position (studio.md §6.6).
  */
 async function chooseValueSource(c: HTMLElement, mode: "literal" | "expression"): Promise<void> {
   pointer(tagRow(c).querySelector('[part="source"] [part="control"]')!, "click");

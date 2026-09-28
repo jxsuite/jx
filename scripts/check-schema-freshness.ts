@@ -209,7 +209,7 @@ export function driftEntry(
 ): DriftEntry {
   const empty: PointerDelta = { added: [], removed: [], changed: [] };
   const entry: DriftEntry = {
-    committed,
+    ...(committed !== undefined ? { committed } : {}),
     delta: empty,
     generated,
     kind: classifySchema(path),
@@ -553,7 +553,10 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const report = renderReport(entries, { changedInputs: inputs, fixed: fix });
+  const report = renderReport(entries, {
+    ...(inputs !== undefined ? { changedInputs: inputs } : {}),
+    fixed: fix,
+  });
   if (wantsReport) {
     await Bun.write(reportAt, report);
   }

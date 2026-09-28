@@ -12,9 +12,9 @@
  *
  * **Each setter writes what the control now holds, first.** Nothing here refuses a value today, but
  * a binding only writes when the scope CHANGES: an adapter that decided a value without announcing
- * the raw one first would leave the field showing text the scope does not have, silently (§9.3, "a
- * controlled input is authoritative only while the scope value moves"). The echo is one line per
- * setter and it is what makes a later refusal possible at all.
+ * the raw one first would leave the field showing text the scope does not have, silently
+ * (studio-ui-guidelines.md §9.3, "a controlled input is authoritative only while the scope value
+ * moves"). The echo is one line per setter and it is what makes a later refusal possible at all.
  *
  * @docs studio/interface
  */

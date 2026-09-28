@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioLogicPanel",
-  "$description": "The Inspector's **Logic** tab — everything about how the selected element BEHAVES, as a Jx document over the kit. Plan §6.5 re-split the inspector by task rather than by data type: wiring a `$switch`, wiring a repeater to a collection and wiring a click handler are one job, and they were three, split across two tabs because a `$switch` is stored as a property and a click handler as a property-shaped function. So there are four sections here — Repeating list, Condition, Events, and a custom element's outward contract (Observed Attributes · CSS Properties · CSS Parts) — and each of them is a projection. The adapter (`panels/events-panel.ts`) keeps every decision: what the selection is, which rungs a position permits, what a handler currently holds, which elements of a multi-selection disagree about a key, and what a commit writes. Nothing here reads the document, asks the schema a question or knows what a Value Source is. Two islands, both through `onNodeCreated` (studio-ui-guidelines.md §9.4): `[part=\"control-host\"]` receives the expression editor, which is a lit surface of its own, and `[part=\"statements-host\"]` receives the `statements` surface, which is a mounted document of its own. Every bindable row carries `data-prop`, which is what `inspector/field:<prop>` addresses.",
+  "$description": "The Inspector's **Logic** tab — everything about how the selected element BEHAVES, as a Jx document over the kit. The Inspector is split by task rather than by data type (§6): wiring a `$switch`, wiring a repeater to a collection and wiring a click handler are one job, and they were three, split across two tabs because a `$switch` is stored as a property and a click handler as a property-shaped function. So there are four sections here — Repeating list, Condition, Events, and a custom element's outward contract (Observed Attributes · CSS Properties · CSS Parts) — and each of them is a projection. The adapter (`panels/events-panel.ts`) keeps every decision: what the selection is, which rungs a position permits, what a handler currently holds, which elements of a multi-selection disagree about a key, and what a commit writes. Nothing here reads the document, asks the schema a question or knows what a Value Source is. Two islands, both through `onNodeCreated` (studio-ui-guidelines.md §9.4): `[part=\"control-host\"]` receives the expression editor, which is a lit surface of its own, and `[part=\"statements-host\"]` receives the `statements` surface, which is a mounted document of its own. Every bindable row carries `data-prop`, which is what `inspector/field:<prop>` addresses.",
   "tagName": "div",
   "attributes": {
     "part": "logic"
@@ -14,7 +14,7 @@
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
     "& [part=\"empty\"]": {
-      "$description": "The one empty-state pattern (§11.2), drawn here because a document cannot render a lit helper. It is a copy rather than a move — every panel still lit renders through that helper — and it goes when the last of them converts.",
+      "$description": "The one empty-state pattern (studio-ui-guidelines.md §11.2), drawn here because a document cannot render a lit helper. It is a copy rather than a move — every panel still lit renders through that helper — and it goes when the last of them converts.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "center",
@@ -272,7 +272,7 @@
           },
           "children": [
             {
-              "$description": "Repeating list. Filter and Sort are always drawn: they used to hide behind `+ Add filter`, which seeded `{ $ref: \"#/state/\" }` — a binding to the empty pointer, which is not a signal — so the row opened already bound to nothing and the only way to type a literal was to cycle the mode ring twice (§11.4). A repeater has exactly three inputs, and an empty row states that better than a button does.",
+              "$description": "Repeating list. Filter and Sort are always drawn: they used to hide behind `+ Add filter`, which seeded `{ $ref: \"#/state/\" }` — a binding to the empty pointer, which is not a signal — so the row opened already bound to nothing and the only way to type a literal was to cycle the mode ring twice (§6.6). A repeater has exactly three inputs, and an empty row states that better than a button does.",
               "tagName": "div",
               "attributes": {
                 "part": "repeater-slot",
@@ -330,7 +330,7 @@
                             "$ref": "$map/item/key"
                           },
                           "map": {
-                            "$description": "A bindable value as a first-class field row. Every position it serves is a single-line expression — a collection, a filter, a sort key, a `$switch` — so it draws one widget rather than dispatching over a widget type: the textarea and checkbox arms the lit version carried had no caller in either tab. The set dot clears the position outright and is disabled where the position is mandatory; the source chip opens the rung picker rather than cycling, so any rung the position permits is one action away (§6.3).",
+                            "$description": "A bindable value as a first-class field row. Every position it serves is a single-line expression — a collection, a filter, a sort key, a `$switch` — so it draws one widget rather than dispatching over a widget type: the textarea and checkbox arms the lit version carried had no caller in either tab. The set dot clears the position outright and is disabled where the position is mandatory; the source chip opens the rung picker rather than cycling, so any rung the position permits is one action away (§6.6).",
                             "tagName": "jx-field",
                             "attributes": {
                               "part": "field",
@@ -634,7 +634,7 @@
                             "$ref": "$map/item/key"
                           },
                           "map": {
-                            "$description": "A bindable value as a first-class field row. Every position it serves is a single-line expression — a collection, a filter, a sort key, a `$switch` — so it draws one widget rather than dispatching over a widget type: the textarea and checkbox arms the lit version carried had no caller in either tab. The set dot clears the position outright and is disabled where the position is mandatory; the source chip opens the rung picker rather than cycling, so any rung the position permits is one action away (§6.3).",
+                            "$description": "A bindable value as a first-class field row. Every position it serves is a single-line expression — a collection, a filter, a sort key, a `$switch` — so it draws one widget rather than dispatching over a widget type: the textarea and checkbox arms the lit version carried had no caller in either tab. The set dot clears the position outright and is disabled where the position is mandatory; the source chip opens the rung picker rather than cycling, so any rung the position permits is one action away (§6.6).",
                             "tagName": "jx-field",
                             "attributes": {
                               "part": "field",
@@ -1145,7 +1145,7 @@
                             "$ref": "$map/item/key"
                           },
                           "map": {
-                            "$description": "One `on*` key. The Mixed contract (§6.5) splits in two and this row shows both halves: which events exist, how each is produced, and its removal are properties of the BATCH — binding one handler to six buttons is a single decision, so those three controls write to every selected element in one transaction — while what a handler CONTAINS is the PRIMARY's, because six elements do not share one body and broadcasting a keystroke into six of them would destroy five. The dot says `mixed` when the selected elements disagree; the body below it stays the primary's.",
+                            "$description": "One `on*` key. The Mixed contract (§6.7) splits in two and this row shows both halves: which events exist, how each is produced, and its removal are properties of the BATCH — binding one handler to six buttons is a single decision, so those three controls write to every selected element in one transaction — while what a handler CONTAINS is the PRIMARY's, because six elements do not share one body and broadcasting a keystroke into six of them would destroy five. The dot says `mixed` when the selected elements disagree; the body below it stays the primary's.",
                             "tagName": "div",
                             "attributes": {
                               "part": "binding",
@@ -1159,7 +1159,7 @@
                                 },
                                 "children": [
                                   {
-                                    "$description": "The event NAME, and it is free-form rather than a list of ten. The menu offers what this element already binds plus the ten worth suggesting, and its last row asks for any other name through the one prompt dialog Studio has — so `ondragover`, `onpointerdown` and every custom event a component emits are bindable, which is exactly what §6.5 asks for and what the closed picker refused.",
+                                    "$description": "The event NAME, and it is free-form rather than a list of ten. The menu offers what this element already binds plus the ten worth suggesting, and its last row asks for any other name through the one prompt dialog Studio has — so `ondragover`, `onpointerdown` and every custom event a component emits are bindable, which is exactly what §6.1 asks for and what the closed picker refused.",
                                     "tagName": "jx-action-button",
                                     "attributes": {
                                       "part": "event-name"

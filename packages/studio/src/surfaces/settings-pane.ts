@@ -8,8 +8,9 @@
  * **One island, and the sections are why.** A settings section is handed a container and renders
  * into it — some of them still with lit, some by mounting a document of their own — so the body
  * cannot be part of this document's subtree. It draws an empty `[part="body"]`, announces it
- * through `onNodeCreated` as it is created, and the flow renders into it (studio-ui-guidelines.md
- * §9.4). Nothing here queries for it by a selector this package also renders.
+ * through `onNodeCreated` as it is created, and the flow renders into it: the island seam of
+ * studio-ui-guidelines.md §9.4. Nothing here queries for it by a selector this package also
+ * renders.
  *
  * @docs studio/projects/settings
  */

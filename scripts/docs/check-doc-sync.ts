@@ -23,7 +23,7 @@ const ROOT = resolve(import.meta.dir, "../..");
 const DOCS_DIR = join(ROOT, "docs");
 
 /**
- * Docs slug → the screenshot shots that illustrate it (UX-REDESIGN-PLAN §13.5).
+ * Docs slug → the screenshot shots that illustrate it (scripts/screenshots/README.md).
  *
  * Both halves of this join already existed and never met: shots carry `docs:`, and this file maps a
  * diff to pages. Without the join the report says "you changed the components page's code" and

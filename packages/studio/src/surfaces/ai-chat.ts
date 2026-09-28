@@ -48,7 +48,8 @@ const LOG_STICK_THRESHOLD = 24;
  *
  * The flow asks the registry; the document draws what it is told. A command the registry does not
  * hold, or whose `when` is false, never becomes one of these — which is what keeps the panel a
- * rendering of the registry rather than a second place its capabilities are decided (§12.5).
+ * rendering of the registry rather than a second place its capabilities are decided
+ * (`studio-ui-guidelines.md` §12.5).
  */
 export interface ChatCommandView extends Record<string, unknown> {
   /** The reconcile key. The command id, because a button is drawn once per bar. */
@@ -458,7 +459,8 @@ export function mountAiChatSurface(
   host.replaceChildren();
   /* Nothing is called on an element here, so the mount is all there is to wait for: the islands
      announce themselves through `onNodeCreated` as they are created, which is one
-     `connectedCallback` EARLIER than awaiting the element would be (§1.1, "await the element"). */
+     `connectedCallback` EARLIER than awaiting the element would be
+     (`studio-ui-guidelines.md` §1.1, "await the element"). */
   void mountSurface("ai-chat", scope, host, {
     onNodeCreated: (element, _path, def, state) => {
       const part = partOf(def);

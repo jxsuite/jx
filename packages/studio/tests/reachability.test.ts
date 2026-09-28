@@ -1,12 +1,13 @@
 /**
  * Nothing in `packages/studio/src` may be unreachable from the app's entry points.
  *
- * P7 shipped ELEVEN features that were built, unit-tested, and reachable from nothing — four
- * command factories neither composed nor registered, two composed but never registered, and four
- * functions (`applyDraftFilter`, `loadMediaUsages`, `peekMediaUsages`, `mediaUsageHeadline`) with
- * no caller at all. Every gate was green, because a unit test imports the module under test
- * directly and so cannot tell whether anything else does. `tests/app-commands-composition.test.ts`
- * closed the command-factory half of that by pattern; this closes the rest by construction.
+ * The shell redesign's content phase shipped ELEVEN features that were built, unit-tested, and
+ * reachable from nothing — four command factories neither composed nor registered, two composed but
+ * never registered, and four functions (`applyDraftFilter`, `loadMediaUsages`, `peekMediaUsages`,
+ * `mediaUsageHeadline`) with no caller at all. Every gate was green, because a unit test imports
+ * the module under test directly and so cannot tell whether anything else does.
+ * `tests/app-commands-composition.test.ts` closed the command-factory half of that by pattern; this
+ * closes the rest by construction.
  *
  * Three of that original four are now wired: the media viewer (`media/media-pane.ts`) is the
  * surface `peekMediaUsages` and `mediaUsageHeadline` were written for, and it reads `loadMediaMeta`
@@ -170,11 +171,11 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "A REAL DIVERGENCE, and a product call. `edit.copyStyles`/`edit.pasteStyles` are registered " +
       "and live with their own inline bodies, which address `deps.target()` — the ONE " +
       "right-clicked node. These two address `session.selection` — all of it, in one transaction. " +
-      'UX-REDESIGN-PLAN §6.5 says the batch is the intent ("structural commands iterating inside ' +
-      'one transaction, so a batch is one undo step"), which makes the LIVE command the wrong one ' +
+      'studio.md §6.7 and studio-ui-guidelines.md §8.1 say the batch is the intent ("a structural ' +
+      'command over a selection is one transaction", so the batch is one undo step), which makes the LIVE command the wrong one ' +
       "and this the right one. Wiring it changes what a paste does to a multi-selection, so " +
       "somebody has to choose it rather than a refactor sliding it in",
-    pasteStyles: "see `copyStyles` — the same divergence, and the half that carries the §6.5 batch",
+    pasteStyles: "see `copyStyles` — the same divergence, and the half that carries the batch",
   },
   "editor/slash-menu.ts": {
     isSlashMenuOpen:
@@ -252,7 +253,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "panels/quick-search.ts": {
     isQuickSearchOpen:
       "\"the fact the Command Bar's ⌘K affordance reflects\" — and it does not: the pill's ⌘K " +
-      "segment renders identically whether the palette is up or not. A small, real gap in ①a",
+      "segment renders identically whether the palette is up or not. A small, real gap in the Command Center pill",
   },
   "panels/right-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/signals-panel.ts": {
@@ -283,7 +284,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
     observedDeployment:
       "the READ half of the deployment memory: `noteDeployment` writes and nothing reads back, so " +
       "the checklist recomputes its `unknown` branch instead of remembering the deployment it " +
-      "already observed. Nine of this file's eleven entries were the P7 shape and are wired; " +
+      "already observed. Nine of this file's eleven entries were that original shape and are wired; " +
       "these two are the remainder, and what a remembered deployment entitles the checklist to " +
       "skip is a Publish decision",
   },
@@ -445,8 +446,8 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "watch is a keymap decision",
     focusOtherPane:
       "focuses the pane that is not focused. The side pane is reached by clicking it or through " +
-      "`view.focusPane { id }`, and a bare toggle would be exactly the delta-shaped verb §13.3 " +
-      "clause 3 forbids — so this may be wrong to wire at all",
+      "`view.focusPane { id }`, and a bare toggle would be exactly the delta-shaped verb " +
+      "studio.md §13.5's idempotence rule forbids — so this may be wrong to wire at all",
   },
 };
 
@@ -489,7 +490,10 @@ describe("reachability", () => {
           "with its tests. If a repo script reaches it through a dynamic import, add it to " +
           "DYNAMIC_ENTRY with the script that does.",
       );
-    expect(news, "built, tested, and reachable from nothing — the P7 failure, again").toEqual([]);
+    expect(
+      news,
+      "built, tested, and reachable from nothing — the failure this file exists to catch, again",
+    ).toEqual([]);
   });
 
   test("no module under src/ is unimported", () => {

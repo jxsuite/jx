@@ -117,7 +117,7 @@ export interface SchemaFormFieldView {
   mono: boolean;
   /** Draw the text control as a text area. */
   multiline: boolean;
-  /** Why this value is refused (§7.1's inline tier). Empty draws nothing. */
+  /** Why this value is refused (§16.1's inline tier). Empty draws nothing. */
   error: string;
   /** Whether there is a refusal to announce. A document branches on a flag, never on a length. */
   hasError: boolean;

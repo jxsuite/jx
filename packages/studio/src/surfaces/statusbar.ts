@@ -1,24 +1,24 @@
 /// <reference lib="dom" />
 /**
- * ⑫ The status bar — ambient state, in scope order, and nothing else.
+ * The status bar — ambient state, in scope order, and nothing else.
  *
  * What this replaces: a bar built by `innerHTML` string concatenation with a three-character
  * escaper, carrying whatever the last of 78 `statusMessage()` calls had said, for three seconds.
  * Transient messages have left entirely for the toast host (`ui/layers.ts`) and the Problems list
  * (`services/notify.ts`); what remains here is state that is TRUE for as long as it is shown.
  *
- * **Three fixed fields, in the shell's own left-to-right level order** (plan §3.2 ⑫), so the bar
- * restates the containment model on every glance:
+ * **Three fixed fields, in the shell's own left-to-right level order** (§16.2), so the bar restates
+ * the containment model on every glance:
  *
  * ```text
  * PROJECT                        ‖ DOCUMENT                       ‖ SELECTION
  * name · branch ↑n↓n · problems  ‖ path · view · save state       ‖ count · style rule
  * ```
  *
- * The SELECTION field held an ancestor breadcrumb until region ⑥ landed. The trail is an ADDRESS,
- * not ambient state, and it now lives once — in the jump bar (`panels/jump-bar.ts`), which merged
- * it with the pane context bar's document-stack chain. What is left here is the count and the
- * Stylebook's rule, neither of which is a path.
+ * The SELECTION field held an ancestor breadcrumb until the jump bar landed. The trail is an
+ * ADDRESS, not ambient state, and it now lives once — in the jump bar (`panels/jump-bar.ts`), which
+ * merged it with the pane context bar's document-stack chain. What is left here is the count and
+ * the Stylebook's rule, neither of which is a path.
  *
  * `statusbar/project`, `statusbar/document` and `statusbar/selection` are three placements the
  * level × placement matrix already declares, each admitting exactly one level — so the bar's
@@ -31,12 +31,12 @@
  *
  * **Every interactive item is a command.** There are no click handlers in this file: an item names
  * a command id, and renders as a button only when the registry has that command and its `when`
- * holds. That is what lets an item that has no command yet — the peers count, whose `Collaborate:`
- * family lands with P4.8 — sit in the template today and start rendering the day it is registered,
- * with no edit here. The three readouts that are NOT buttons are marked: the view name (its control
- * is the pane context bar ⑦; a second mode picker in 24px would be the chrome duplication §2
- * principle 9 exists to prevent), the save wording once a document IS saved, and the stylebook
- * selector.
+ * holds. That is what let an item with no command yet — the peers count, before the `Collaborate:`
+ * family was registered — sit in the template and start rendering the day its command arrived, with
+ * no edit here. The three readouts that are NOT buttons are marked: the view name (its control is
+ * the pane context bar; a second mode picker in 24px would be the chrome duplication
+ * studio-ui-guidelines.md §12.2's budget exists to prevent), the save wording once a document IS
+ * saved, and the stylebook selector.
  *
  * The bar is the `statusbar` surface (`surfaces/statusbar.json`): this module is the projection —
  * three fields of items, each item a button with a command or a readout without — and the surface
@@ -186,7 +186,7 @@ function projectField(
   return { id, items: live, region };
 }
 
-// ─── ⑫a PROJECT ──────────────────────────────────────────────────────────────
+// ─── PROJECT ─────────────────────────────────────────────────────────────────
 
 /** `↑2↓1`, or "" when the branch is level with its upstream. */
 export function aheadBehindLabel(ahead: number, behind: number): string {
@@ -203,15 +203,15 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
     project
       ? { command: "project.openRecent", label: project.name }
       : { command: "project.open", label: "No project" },
-    /* WHICH branch, when there is one — and deliberately no "not tracked" twin, though plan §12 P1
-       workstream 9's "repo state becomes a persistent status-bar field" reads like a request for
-       one. An untracked project already states itself in this field, one item along:
+    /* WHICH branch, when there is one — and deliberately no "not tracked" twin, though the shell
+       redesign's "repo state becomes a persistent status-bar field" reads like a request for one.
+       An untracked project already states itself in this field, one item along:
        `deployStatusItem()`'s first link is `repo`, whose label is "Track this project with git" and
        whose command is `git.init`. A second item beside it would carry no fact the first does not
        — "Not tracked" and "Track this project with git" answer the same question with the same verb
-       — and adjacent duplicate chrome is what §2 principle 9 forbids. `tests/statusbar.test.ts`
-       pins the pairing from both ends, so deleting the checklist's repo step fails there rather
-       than quietly taking the state off the bar. */
+       — and adjacent duplicate chrome is what the chrome budget (studio-ui-guidelines.md §12.2)
+       forbids. `tests/statusbar.test.ts` pins the pairing from both ends, so deleting the
+       checklist's repo step fails there rather than quietly taking the state off the bar. */
     status?.isRepo === true && status.branch
       ? {
           command: "panel.focus.git",
@@ -248,7 +248,7 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
   ]);
 }
 
-// ─── ⑫b DOCUMENT ─────────────────────────────────────────────────────────────
+// ─── DOCUMENT ────────────────────────────────────────────────────────────────
 
 /**
  * What the pane is showing, in the words the pane context bar uses.
@@ -307,13 +307,13 @@ function documentField(registry: CommandRegistry | null): ProjectedField | null 
   ]);
 }
 
-// ─── ⑫c SELECTION ────────────────────────────────────────────────────────────
+// ─── SELECTION ───────────────────────────────────────────────────────────────
 
 /**
  * What is selected — the COUNT, and nothing that is an address.
  *
  * This field used to carry a clickable ancestor trail, one `selection.set` per crumb. That trail
- * has moved whole to the jump bar (⑥, `panels/jump-bar.ts`), which is region ⑥'s entire reason to
+ * has moved whole to the jump bar (`panels/jump-bar.ts`), which is the jump bar's entire reason to
  * exist: Studio had two half-breadcrumbs — that one, and the pane context bar's document-stack
  * chain — and neither ever rendered the whole address. Leaving a copy here would have made three.
  *

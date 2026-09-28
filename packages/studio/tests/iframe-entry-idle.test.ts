@@ -1,5 +1,5 @@
 /**
- * The canvas frame's own quiescence report (`{kind: "idle"}`), plan §13.4 condition 5.
+ * The canvas frame's own quiescence report (`{kind: "idle"}`), folded into `probe.idle()` (§13.5).
  *
  * The parent realm cannot see inside a cross-origin frame, so before this the only way to ask "has
  * the canvas settled?" was `wait: {ms}`. Three things the frame knows and nobody else does are

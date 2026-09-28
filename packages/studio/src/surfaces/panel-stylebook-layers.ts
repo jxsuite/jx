@@ -108,8 +108,8 @@ function project(scope: StylebookLayersScope, values: StylebookLayersValues): vo
  *
  * Nothing is called on the elements, so the mount is all this has to wait for: the DOCUMENT is what
  * this surface renders, and the kit elements inside it settle their own templates one
- * `connectedCallback` later without anybody here asking them to (guidelines §1.1, "await the
- * element").
+ * `connectedCallback` later without anybody here asking them to (studio-ui-guidelines.md §1.1,
+ * "await the element").
  */
 export function mountStylebookLayersSurface(
   container: HTMLElement,

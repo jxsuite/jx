@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 /**
- * The Target Line — the Style tab's compound edit target, as one sentence (plan §6.1).
+ * The Target Line — the Style tab's compound edit target, as one sentence (§6.2).
  *
  * ```text
- * ⌖  h1 · @md · :hover · dark variant                    [ all <h1> in this document ]
+ * ⌖  h1 · Base · dark variant · :hover                   [ all <h1> in this document ]
  * ```
  *
  * `style-panel.ts` has always computed this tuple exactly: it is the per-field key
@@ -18,10 +18,10 @@
  * 1. **Every segment is a control.** A sentence you cannot act on is a caption, and the panel already
  *    had one of those.
  * 2. **The Style tab does not own the breakpoint or the scheme.** Those axes are SELECTED on the pane
- *    context bar (region ⑦) and DEFINED in Project Settings › Contexts — §2 principle 5. The
- *    breakpoint and scheme segments therefore state the resolved value and route to the definition
- *    site; they do not offer a third list to pick from. The selector segment is the one axis this
- *    tab owns, so it is the one segment with a menu.
+ *    context bar and DEFINED in Project Settings › Contexts (§6.2). The breakpoint and scheme
+ *    segments therefore state the resolved value and route to the definition site; they do not
+ *    offer a third list to pick from. The selector segment is the one axis this tab owns, so it is
+ *    the one segment with a menu.
  * 3. **The scope chip is what makes Stylebook safe.** Entering Stylebook silently discards the element
  *    selection and converts every subsequent edit from "this element" to "every element of this
  *    tag" — with one line of text, after the fact, as the only signal. The chip states the blast
@@ -35,8 +35,9 @@
  * panel renders an EMPTY host for it and hands this module the model; the document owns the markup,
  * the ARIA and every value in the style, and this module owns the decisions — what each word says,
  * what pressing one does, and what the selector menu offers. That menu is the KIT's
- * (`surfaces/menu.ts`), because a list of choices is what that surface already is (§12.5), which is
- * also how the roving caret, typeahead and Escape arrive here without a line of keyboard code.
+ * (`surfaces/menu.ts`), because a list of choices is what that surface already is
+ * (studio-ui-guidelines.md §12.5), which is also how the roving caret, typeahead and Escape arrive
+ * here without a line of keyboard code.
  *
  * @docs studio/design/states-and-selectors
  */
@@ -78,7 +79,7 @@ export interface TargetSelector {
   /** Which options the element already declares — marked in the menu. */
   declared: Set<string>;
   onSelect: (selector: string | null) => void;
-  /** Opens the Add Nested Selector dialog (`showPromptDialog`, ui-guidelines §8.7). */
+  /** Opens the Add Nested Selector dialog (`showPromptDialog`, studio-ui-guidelines.md §8.7). */
   onAddCustom: () => void;
 }
 
@@ -277,7 +278,8 @@ const ADD_SELECTOR_VALUE = "__add_custom__";
  *
  * The one command in this file, and it addresses a CONTROL rather than a state — which is why it
  * refuses out loud instead of doing nothing: a manifest that hands a CSS selector to a synthetic
- * mouse would silently photograph the wrong panel (§13).
+ * mouse would silently photograph the wrong panel (the shot contract,
+ * `scripts/screenshots/README.md`).
  *
  * @throws {RangeError} When the Style tab is not rendered.
  */

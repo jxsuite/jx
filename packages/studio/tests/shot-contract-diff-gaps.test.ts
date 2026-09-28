@@ -78,7 +78,7 @@ describe("a union `type` in an args schema", () => {
   });
 });
 
-describe("a quarantined shot (§13.5)", () => {
+describe("a quarantined shot (scripts/screenshots/README.md)", () => {
   test("is counted and named, and every id under it is read past", () => {
     const facts = readManifest({
       shots: [
@@ -248,7 +248,7 @@ describe("the ratchet tail", () => {
     log?.mockRestore();
   });
 
-  /** Every counter §13.3 still budgets above zero, in CONTRACT_BUDGET's canonical order. */
+  /** Every counter the shot-contract check still budgets above zero, in CONTRACT_BUDGET's order. */
   const budgeted = (Object.keys(CONTRACT_BUDGET) as (keyof ContractCounts)[]).filter(
     (key) => CONTRACT_BUDGET[key] > 0,
   );

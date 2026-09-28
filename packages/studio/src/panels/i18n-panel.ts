@@ -96,7 +96,8 @@ export interface ParityRow {
 }
 
 /**
- * The directories a translation can live in — the two layouts §13 defines, and nothing else.
+ * The directories a translation can live in — the two layouts site-architecture.md §13 defines, and
+ * nothing else.
  *
  * Not `projectState.projectDirs`: `layouts/` and `components/` are shared by every locale and
  * `public/` is not addressable per language, so scanning them would fill the grid with rows whose
@@ -239,9 +240,10 @@ export function parityRows(
   const byKey = new Map<string, Map<string, LibraryFile>>();
   /*
    * A document's own `$translationKey` overrides the one its path implies, exactly as it does in
-   * the build (§13.5) — which is what makes a localized slug one row instead of two half-empty
-   * ones. Prefixed with the directory the derivation would have produced, so the two spellings meet:
-   * a declared key is route-shaped (`about`) and this grid is file-shaped (`pages/about.json`).
+   * the build (site-architecture.md §13.5) — which is what makes a localized slug one row instead
+   * of two half-empty ones. Prefixed with the directory the derivation would have produced, so the
+   * two spellings meet: a declared key is route-shaped (`about`) and this grid is file-shaped
+   * (`pages/about.json`).
    */
   /* Every key the paths alone produce, so a declared one can be matched against a real file rather
      than against a spelling. */

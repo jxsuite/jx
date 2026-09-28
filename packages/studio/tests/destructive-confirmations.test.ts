@@ -168,12 +168,12 @@ describe("rename prompt", () => {
  * A project whose blog collection lives in `posts/` — a `source` that differs from the mount
  * prefix.
  *
- * This is the layout §9.3 exists for: the collection is published at `/content/blog`, so an asset
- * the author stores beside their entries is addressed `./images/hero.png` from inside the
- * collection and `/content/blog/images/hero.png` from anywhere else. One file, two authored
- * spellings, and a delete has to know about both — which is now the engine's job, so the fake below
- * answers the way the real one does: everything that resolves to the file, under the file's own
- * path.
+ * This is the layout site-architecture.md §9.3 exists for: the collection is published at
+ * `/content/blog`, so an asset the author stores beside their entries is addressed
+ * `./images/hero.png` from inside the collection and `/content/blog/images/hero.png` from anywhere
+ * else. One file, two authored spellings, and a delete has to know about both — which is now the
+ * engine's job, so the fake below answers the way the real one does: everything that resolves to
+ * the file, under the file's own path.
  */
 const BLOG_IN_POSTS = { content: { blog: { source: "./posts/" } } };
 

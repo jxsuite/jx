@@ -1,6 +1,6 @@
 {
   "name": "stream-error-partial-kept",
-  "description": "A stream error in the order Studio's loop made the calls before harness slice J1.4: finishStream first, then setError. setError only removes a message that is still streaming, and finishStream has already let go of it, so the partial assistant turn (here, a tool call whose arguments were cut off) stays in the transcript and goes out on the next send. The loop now calls setError alone, which removes the partial, but a session saved by an earlier build still carries this shape.",
+  "description": "A stream error in the order Studio's loop made the calls before the turn became accountable (specs/ai.md §3.2): finishStream first, then setError. setError only removes a message that is still streaming, and finishStream has already let go of it, so the partial assistant turn (here, a tool call whose arguments were cut off) stays in the transcript and goes out on the next send. The loop now calls setError alone, which removes the partial, but a session saved by an earlier build still carries this shape.",
   "shapes": ["stream-error-partial-kept"],
   "script": [
     ["sendMessage", "Add a hero section"],

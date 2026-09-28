@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The formula palette (spec §19.9): a search over the formula catalog, mounted into the popover
+ * The formula palette (spec.md §19.9): a search over the formula catalog, mounted into the popover
  * layer as a Jx document.
  *
  * `formula-palette.json` is the markup, the ARIA and the style; this is the decisions — which

@@ -3,18 +3,19 @@
  * Create a GitHub repository for a local project, add it as `origin`, and push.
  *
  * **This is not publishing, and it used to say it was.** Two unrelated operations shared the verb
- * (plan §9.5): this one creates a git repository, and `publish/publish-panel.ts` connects a hosting
- * provider that then builds the site. A user who wanted the second and found the first got a GitHub
- * repository and no site, and a user who wanted the first read "Publish to GitHub" and reasonably
- * expected a URL. The function, the dialog headline, the activity title and the notification source
- * now all say _Create GitHub Repository_; `Publish:` belongs to `publish/publish-commands.ts`.
+ * (`docs/studio/publish.md`): this one creates a git repository, and `publish/publish-panel.ts`
+ * connects a hosting provider that then builds the site. A user who wanted the second and found the
+ * first got a GitHub repository and no site, and a user who wanted the first read "Publish to
+ * GitHub" and reasonably expected a URL. The function, the dialog headline, the activity title and
+ * the notification source now all say _Create GitHub Repository_; `Publish:` belongs to
+ * `publish/publish-commands.ts`.
  *
  * **It is an Activity, not three toasts.** Three `notify.info` lines sharing one key replaced each
  * other in a corner while a multi-second, three-request, partially-committing operation ran with no
  * log and no cancel — and its middle step (`gitAddRemote`) had no error path at all, so a remote
  * that already existed failed the push with a message about pushing. `beginActivity` gives it the
  * ordered steps, the captured log, and `fail()`, which raises the Problem the failure needs and
- * carries the log as its detail (§7.3). The caller therefore never also notifies.
+ * carries the log as its detail (§16.4). The caller therefore never also notifies.
  *
  * **The dialog is a document.** `surfaces/github-publish.json` collects the name, the description
  * and the visibility; this module keeps the token, the requests and the activity. What it used to

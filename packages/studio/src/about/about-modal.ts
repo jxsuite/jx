@@ -125,9 +125,10 @@ export function aboutCommands(): Command[] {
  * Register the About verb on the app registry.
  *
  * `appCommandSet()` is the projection CI counts and `docs/studio/interface/commands.md` is
- * generated from — it is NOT what the running app registers. P4 composed `help.about` into that set
- * only, and deleted the rail's About button in the same change, so About became unreachable in the
- * app while every check reported it present. The two roots have to agree.
+ * generated from — it is NOT what the running app registers. The shell redesign's feedback phase
+ * composed `help.about` into that set only, and deleted the rail's About button in the same change,
+ * so About became unreachable in the app while every check reported it present. The two roots have
+ * to agree.
  *
  * @param {CommandRegistry} registry
  * @returns {void}

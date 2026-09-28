@@ -476,7 +476,7 @@ describe("style clipboard", () => {
     expect((doc().children as JxMutableNode[])[1]!.style).toEqual({ fontWeight: "bold" });
   });
 
-  test("pasteStyles reaches EVERY selected element, in ONE undo step (§6.5)", () => {
+  test("pasteStyles reaches EVERY selected element, in ONE undo step (§6.7)", () => {
     const tab = activeTab.value!;
     const before = tab.history.index;
     workspace.styleClipboard = { fontWeight: "bold" };

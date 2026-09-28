@@ -695,9 +695,9 @@ describe("attach lifecycle races", () => {
   });
 
   test("a capability that REJECTS reports a failure, not solo editing", async () => {
-    /* §7.4: this used to land on "detached" — the same value a document nobody shared carries —
-       so a dead relay and a solo file were one indistinguishable state. Editing still continues
-       locally; what changed is that the app now says which of the two happened. */
+    /* This used to land on "detached" — the same value a document nobody shared carries — so a
+       dead relay and a solo file were one indistinguishable state (collab.md §4). Editing still
+       continues locally; what changed is that the app now says which of the two happened. */
     installMockPlatform({ collab: () => Promise.reject(new Error("boom")) });
     const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
     await settleCollab();

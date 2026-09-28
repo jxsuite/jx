@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Contexts — the ONE place a project's rendering contexts are defined (plan §4.2, §2 principle 5).
+ * Contexts — the ONE place a project's rendering contexts are defined (§6.2, §17.1).
  *
  * A rendering context is anything the document can be resolved _under_: a size breakpoint, a colour
  * scheme, a feature query. All three are the same thing on disk — one entry in `project.json`'s
@@ -15,9 +15,9 @@
  *    '(prefers-color-scheme: dark)'` to `$media` **without ever using the word breakpoint**, so the
  *    one control that created a colour scheme was filed under variables.
  *
- * All four are gone. §2 principle 5 is why: **definition and selection are different levels.** The
- * pane context bar's Rendering-context control _selects_ among these; its popover's footer is
- * "Manage contexts…", which opens this section. Nothing here selects, and nothing there defines.
+ * All four are gone. §6.2 is why: **definition and selection are different levels.** The pane
+ * context bar's Rendering-context control _selects_ among these; its popover's footer is "Manage
+ * contexts…", which opens this section. Nothing here selects, and nothing there defines.
  *
  * **This section writes the project, not the document.** Per-document `$media` overlays still merge
  * at render time (`site-context.ts`'s `getEffectiveMedia`) and the on-disk format is unchanged —
@@ -27,8 +27,8 @@
  * Failures are surfaced, not swallowed: every write runs through {@link persistMedia}, which
  * schema-validates the candidate `project.json` with `jx-validate` first (the human editing this
  * file used to get **no validation at all** — that was wired to the AI's `write_project_config`
- * alone), parks any rejection under the control that caused it, and re-projects. §7.1's third tier:
- * a bad value belongs at its control, not in a toast that expires.
+ * alone), parks any rejection under the control that caused it, and re-projects. §16.1's third
+ * tier: a bad value belongs at its control, not in a toast that expires.
  *
  * **The markup is `surfaces/settings-contexts.json`.** This module is the section's decisions —
  * what a context is, what refuses one, and what reaches disk — and the surface adapter beside that
@@ -120,8 +120,8 @@ export function splitContexts(media?: Record<string, string> | undefined): {
  * The `$media` key a typed name becomes: `Wide screen` → `--wide-screen`.
  *
  * Typing the leading dashes is allowed but never required — the dashes are a storage detail of the
- * CSS custom-property namespace `$media` shares, and §8.4 says a definition surface may not make
- * the user spell one.
+ * CSS custom-property namespace `$media` shares, and a definition surface may not make the user
+ * spell one (the plain-word rule, `studio-ui-guidelines.md` §11.3).
  *
  * @param {string} name
  * @returns {string}

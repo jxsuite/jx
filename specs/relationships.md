@@ -36,6 +36,8 @@ The core schema publishes the shape as `$defs.RelationshipRef` (`@jxsuite/schema
 
 ## 2. Semantics matrix
 
+> **Status: Partial.** content → content ships as `resolveContentTypeRefs` (`extensions/parser/src/content-loader.ts`) inside `Content.projectData`, and the connector's `/_jx/data` mount stores `<field>_id` text columns and expands `?include=` for junction to-manys and for to-one refs into uuid-id tables (`expandIncludes` in `extensions/connector/src/worker.ts`, by a second `SELECT … WHERE id IN` rather than a join). Not built: a to-one `?include=` onto an `integer`-id table resolves to `null`, because the text column's `"1"` misses the numeric key the target rows come back with; `TableQuery` and `TableEntry` resolved under node (`queryTable` and `getEntry` in `extensions/connector/src/table-node.ts`) ignore `include` altogether; `expandIncludes` skips content refs, so table → content `?include=` resolves nothing; `buildCreateTable` and the additive `ADD COLUMN` path (`extensions/connector/src/ddl.ts`) emit no foreign-key constraint on any dialect; and `refTargetName` reads only `#/content/` pointers, so a `#/data/...` ref in a content schema is ignored without a warning.
+
 Resolution behavior depends on the domains on each side. "content" means a file-based section loaded at build/dev time (parser); "table" means a connection-backed section served at request time (connector).
 
 | From → To         | Storage                                                             | Resolution                                                                                                                                                                                                                                 |
@@ -60,6 +62,8 @@ A to-many reference between tables is materialized by the connector's DDL sync a
 
 ## 4. Validation
 
+> **Status: Partial.** The connector enforces the value shape on every `/_jx/data` write (`validateRow` in `extensions/connector/src/validate.ts`, called from `insertRow` and `updateRow` in `extensions/connector/src/worker.ts`), and the parser checks content existence at load time (`resolveContentTypeRefs`), but it reports a dangling id as a warning naming the entry, field and target and leaves the id in place, which is what site-architecture.md §6.4 specifies rather than the validation error the second bullet names. Not built: the parser's `validateEntries` never judges a reference field's value, so a non-string to-one value or a non-string to-many element passes silently, and those writes check the shape only, never that the referenced row or content entry exists.
+
 - Reference fields must hold a string (to-one) or an array of strings (to-many); anything else fails entry validation.
 - **Intra-section and content-to-content existence** is checked at load time by the parser (it holds all loaded sections): a dangling id is a validation error naming the field and target.
 - **Table-side existence** (a row referencing a content entry or another row) is checked by the connector at write time.
@@ -68,6 +72,8 @@ A to-many reference between tables is materialized by the connector's DDL sync a
 ---
 
 ## 5. Studio picker
+
+> **Status: Partial.** `reference` is one of `FIELD_TYPES` (`packages/studio/src/settings/schema-field-ui.ts`), and a to-one `#/content/<type>` field gets an entry picker in the schema form (`referenceTarget` in `packages/studio/src/ui/schema-form.ts`) and in the grid (`kindForProp` in `packages/studio/src/grid/schema-columns.ts`, `referenceTargetType` in `packages/studio/src/grid/cell-popovers.ts`), both fed by `listCollectionEntryIds` rather than a `#/$context/<sectionKey>` enumeration. Not built: the target pickers (`targetsFor` in `packages/studio/src/ui/form-controls.ts`, and `packages/studio/src/settings/defs-editor.ts`) list content types only, ungrouped, and always write `#/content/<name>`; there is no single/multiple toggle, so an array-of-refs field reads as a plain `array`; and no value editor handles a to-many field or a data-table target.
 
 The studio's field editor (`schema-field-ui`) exposes a `reference` field type:
 

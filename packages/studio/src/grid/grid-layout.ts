@@ -5,7 +5,7 @@
  * the grid shipped; a saved view is the same record with three more facets and a name, written to
  * the same key. The alternative — a second `jx-grid-views:` store beside this one — is how a grid
  * ends up with a column order that a view cannot capture and a view that a resize does not update,
- * which is the class of bug plan §12 P7.2 asks this item to avoid by construction.
+ * which is the class of bug saved views (site-architecture.md §7.2) must avoid by construction.
  *
  * **The working layout is the truth; a view is a copy of it.** Every control writes the working
  * layout (`saveGridLayout`), so a grid remembers how you left it whether or not you ever name a

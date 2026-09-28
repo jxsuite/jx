@@ -23,8 +23,8 @@
  * light dismissal and Escape, so both the markup and the flag go.
  *
  * The third is the empty states. A document cannot call a lit helper, so the three this panel used
- * to render are drawn in the document — under the same §11 copy rules, and, for the two that offer
- * buttons, with the buttons still real. This was the last caller that passed
+ * to render are drawn in the document — under the same studio-ui-guidelines.md §11 copy rules, and,
+ * for the two that offer buttons, with the buttons still real. This was the last caller that passed
  * `EmptyStateAction.icon`, a `TemplateResult` of `sp-icon-*`, and the field went with it.
  *
  * @docs studio/publish/source-control
@@ -412,9 +412,9 @@ let _deps: GitPanelDeps = {};
  *
  * A `<select>` always holds one of its options, and picking "New branch…" must put the control back
  * on the current branch when the dialog is dismissed. A document's binding only writes when the
- * SCOPE MOVES (guidelines §9.3), so writing the current branch over a scope that already said it
- * would be a no-op and the control would keep saying "New branch…". Announcing what the reader
- * actually chose first is what makes putting it back a change.
+ * SCOPE MOVES (studio-ui-guidelines.md §9.3), so writing the current branch over a scope that
+ * already said it would be a no-op and the control would keep saying "New branch…". Announcing what
+ * the reader actually chose first is what makes putting it back a change.
  */
 let _branchOverride: string | null = null;
 
@@ -700,8 +700,9 @@ async function discardFile(path: string): Promise<void> {
  * The split button's second half.
  *
  * The kit menu, not a `<div>` of this panel's own: `openMenu()` owns the popover, the roving focus,
- * the light dismissal and Escape, and it is the answer this shell already settled on (§8.4). One
- * row, because there is one thing "Commit and sync" can do differently.
+ * the light dismissal and Escape, and it is the answer this shell already settled on
+ * (studio-ui-guidelines.md §8.4). One row, because there is one thing "Commit and sync" can do
+ * differently.
  */
 function openCommitMenu(anchor: HTMLElement): void {
   /* Lazily imported for the reason `panels/problems-panel.ts` and `panels/empty-state.ts` already
@@ -978,9 +979,10 @@ export function sourceControlCommands(): AnyCommand[] {
       // `when` already asked about the project; an `enablement` that re-asks is the same rule
       // Written twice, and the two places drift.
       enablement: (ctx) => !ctx.project.isRepo,
-      /* No `aiTool`, by §12.4's third deletion rule: outside the tree, irreversible, and the model
-         has no read to judge by. The git family is reconsidered together when `git.commit` becomes
-         a record — without it the agent could not ship its own edits anyway. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's third deletion rule: outside the tree,
+         irreversible, and the model has no read to judge by. The git family is reconsidered
+         together when `git.commit` becomes a record — without it the agent could not ship its own
+         edits anyway. */
       run: async () => {
         await initRepository();
       },
@@ -1003,8 +1005,8 @@ export function sourceControlCommands(): AnyCommand[] {
       requires: "a project tracked by git",
       when: (ctx) => ctx.project.open,
       enablement: (ctx) => ctx.project.isRepo,
-      /* No `aiTool`, by §12.4's third deletion rule: it creates a repository on the person's
-         account. Same family as `git.init`. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's third deletion rule: it creates a
+         repository on the person's account. Same family as `git.init`. */
       run: async () => {
         await createGithubRepository({ projectName: projectState?.name || "my-project" });
       },
@@ -1019,7 +1021,8 @@ export function sourceControlCommands(): AnyCommand[] {
       requires: "a project tracked by git",
       when: (ctx) => ctx.project.open,
       enablement: (ctx) => ctx.project.isRepo,
-      /* No `aiTool`, by §12.4's third deletion rule. Same family as `git.init`. */
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's third deletion rule. Same family as
+         `git.init`. */
       run: async () => {
         await pushCurrentBranch();
       },

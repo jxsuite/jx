@@ -7,15 +7,15 @@
  * `app.preferences` (the application, ⌘,) and `settings.open` (this project, ⌘⇧,) — plus a third
  * editor over the same project document, `styles.open`. A slot can hold one of those and must lie
  * about the rest by omission. A menu can hold all three and say what each one is, because it prints
- * every row's own name, chord and gate beside it (§12.3). That is the whole argument for the matrix
- * row `settings/menu` admitting two levels, and for the divider this file draws where the level
- * changes.
+ * every row's own name, chord and gate beside it (`studio-ui-guidelines.md` §12.3). That is the
+ * whole argument for the matrix row `settings/menu` admitting two levels, and for the divider this
+ * file draws where the level changes.
  *
  * **Nothing here is a list of actions.** The rows are `registry.forPlacement("settings/menu")`, so
  * a record joins the menu by declaring the placement and leaves by not declaring it. The submenus
  * are the enumeration of each parent command's own `section` ARGUMENT, read from that argument's
  * own definition site — which is state the command already validates, not a second vocabulary
- * (§12.5).
+ * (`studio-ui-guidelines.md` §12.5).
  *
  * **A parent row runs its own command AND owns a submenu.** The APG menu pattern does not describe
  * that and Spectrum's stock submenu forbade it outright; the kit's `jx-menu-item` makes it the rule
@@ -67,11 +67,11 @@ let _rerender: (() => void) | null = null;
 /**
  * A command's `section` argument, enumerated from that argument's OWN definition site.
  *
- * NOT the second list of actions §12.5 forbids: it holds no titles, no handlers and no ordering of
- * its own. Each entry points at the array the command's validation already reads —
- * `app.preferences` refuses anything `isPreferencesSection` rejects, `settings.open` refuses
- * anything absent from `settingsSectionKeys()` — so a submenu row can never name a value its own
- * command would refuse.
+ * NOT the second list of actions `studio-ui-guidelines.md` §12.5 forbids: it holds no titles, no
+ * handlers and no ordering of its own. Each entry points at the array the command's validation
+ * already reads — `app.preferences` refuses anything `isPreferencesSection` rejects,
+ * `settings.open` refuses anything absent from `settingsSectionKeys()` — so a submenu row can never
+ * name a value its own command would refuse.
  */
 const SECTION_SOURCES: Readonly<Record<string, () => readonly MenuSection[]>> = {
   "app.preferences": () =>

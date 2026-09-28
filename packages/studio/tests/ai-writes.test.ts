@@ -1,5 +1,5 @@
 /**
- * Tests for src/services/ai-writes.ts — the per-turn record of what the assistant changed (§7.4).
+ * Tests for src/services/ai-writes.ts — ai.md §3.2's per-turn record of what the assistant changed.
  *
  * The two facts under test are the two the panel could not previously state: WHICH files a turn
  * changed, and which of those changes undo can reach. The second is the load-bearing one — document

@@ -66,8 +66,8 @@ describe("the record", () => {
     expect(record.requires).toBe("an open project");
     expect(record.when!(makeContext())).toBe(false);
     expect(record.when!(ctx)).toBe(true);
-    // §12.4's first deletion rule: chrome carries no `aiTool`. And opening a tab is not a state
-    // The undo stack owns.
+    /* Chrome carries no `aiTool`: the first deletion rule of studio-ui-guidelines.md §12.4. And
+       opening a tab is not a state the undo stack owns. */
     expect(record.aiTool).toBeUndefined();
     expect(record.undo).toBe("none");
   });

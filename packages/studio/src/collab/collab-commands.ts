@@ -1,14 +1,15 @@
 /**
- * The `Collaborate:` command family — the entry point and the exit co-editing has never had (§7.4).
+ * The `Collaborate:` command family — the entry point and the exit co-editing has never had
+ * (collab.md §4).
  *
  * Collaboration in Studio has been a thing that HAPPENS to a document: a session attaches because
  * the platform said the file was shared, presence chips appear in the toolbar, and there is no verb
  * anywhere in the app for starting it, inviting anybody, following someone, or stopping. The
- * palette had no `Collaborate:` rows at all, and `CATEGORIES` has carried the name since P2 with
- * nothing filed under it.
+ * palette had no `Collaborate:` rows at all, and `CATEGORIES` has carried the name since the
+ * command registry landed with nothing filed under it.
  *
- * Five records, each registered here — in the module that owns the machinery, per P2's rule — and
- * composed by `commands/app-commands.ts`. Every one is idempotent or refuses with a `requires`
+ * Five records, each registered here — in the module that owns the machinery, as §13.1 requires —
+ * and composed by `commands/app-commands.ts`. Every one is idempotent or refuses with a `requires`
  * sentence, and none of them is a `toggle*` without a `set*` beside it: `collab.setEnabled` is the
  * setter, `collab.stop` is the same setter's `false` and exists because "stop sharing" is what a
  * person actually looks for in a palette.
@@ -216,7 +217,8 @@ export function collabCommands(): AnyCommand[] {
         }
         const state = collabState(active);
         /* This is the honesty command: every one of these states used to be either invisible or
-           spelled "detached", and the freeze in particular looked exactly like a bug (§7.4). */
+           spelled "detached", and the freeze in particular looked exactly like a bug
+           (collab.md §4). */
         const lines = [
           `Status: ${state.status}${state.attachError ? ` — ${state.attachError}` : ""}`,
           `People here: ${state.peers.length === 0 ? "just you" : state.peers.map((p) => p.state.user.login).join(", ")}`,
