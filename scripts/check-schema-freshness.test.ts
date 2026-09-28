@@ -32,6 +32,7 @@ import type { DriftEntry, SchemaKind } from "./check-schema-freshness.ts";
 const WORKFLOW = ".github/workflows/schemas.yml";
 
 interface Job {
+  if?: string;
   permissions?: Record<string, string>;
   steps: { name?: string; id?: string; if?: string; run?: string; uses?: string; with?: unknown }[];
   "timeout-minutes"?: number;

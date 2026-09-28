@@ -79,11 +79,12 @@ export function buildStatusReport(
     return {
       file: spec.file,
       stem,
-      header: spec.headerStatus,
+      ...(spec.headerStatus !== undefined ? { header: spec.headerStatus } : {}),
       audited: registry.audits.has(stem) && !unaudited.includes(spec.file),
-      items: openItems(spec).map((item) =>
-        Object.assign(item, { claimedBy: owner.get(keyOf(spec.file, item.anchor)) }),
-      ),
+      items: openItems(spec).map((item) => {
+        const claimedBy = owner.get(keyOf(spec.file, item.anchor));
+        return Object.assign(item, claimedBy !== undefined ? { claimedBy } : {});
+      }),
       plans: registry.plans.filter((p) => p.home === stem).map((p) => p.id),
     };
   });

@@ -151,7 +151,11 @@ export function evaluate(facts: {
   hasStub: boolean;
 }): Status {
   const { pinned, vendored, missing, hasStub } = facts;
-  const base = { pinned, vendored, missing } as const;
+  const base = {
+    ...(pinned !== undefined ? { pinned } : {}),
+    ...(vendored !== undefined ? { vendored } : {}),
+    missing,
+  };
   if (!pinned) {
     return { ...base, ok: false, problem: "no-pin" };
   }
@@ -230,9 +234,11 @@ export function inspect(cwd = process.cwd()): Status {
   const at = (path: string) => join(cwd, path);
   const desktop = readJson(at(DESKTOP_MANIFEST));
   const vendor = readJson(at(VENDOR_MANIFEST));
+  const pinned = pinnedVersion(desktop);
+  const vendored = vendoredVersion(vendor);
   return evaluate({
-    pinned: pinnedVersion(desktop),
-    vendored: vendoredVersion(vendor),
+    ...(pinned !== undefined ? { pinned } : {}),
+    ...(vendored !== undefined ? { vendored } : {}),
     missing: SDK_ENTRY_POINTS.filter((file) => !existsSync(at(file))),
     hasStub: existsSync(at(STUB_PATH)),
   });
