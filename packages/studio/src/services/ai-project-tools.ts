@@ -16,7 +16,7 @@
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { CreateProjectDestination } from "../types";
-import type { ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
+import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { workspace } from "../workspace/workspace";
@@ -26,6 +26,7 @@ import { adoptCreatedProject } from "./project-adoption";
 import { translateValidationError } from "./ai-tools";
 import { validateDoc, validateProjectConfig } from "./jx-validate";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
+import { invalidPathResult, normalizeRelPath } from "./project-path";
 
 /** Directories the file tools never descend into or report. */
 const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".git", ".jx-cache"]);
@@ -37,34 +38,6 @@ const READ_CAP_BYTES = 48 * 1024;
 const WRITE_CAP_BYTES = 256 * 1024;
 
 const NOT_UNDOABLE = "(saved to disk; not undoable with Cmd+Z)";
-
-/**
- * Normalize a project-relative path, or return null when it escapes the project (absolute paths,
- * `..` segments, drive letters). The server re-checks; this keeps the error actionable.
- */
-export function normalizeRelPath(path: unknown): string | null {
-  if (typeof path !== "string" || !path.trim()) {
-    return null;
-  }
-  let p = path.trim().replaceAll("\\", "/");
-  while (p.startsWith("./")) {
-    p = p.slice(2);
-  }
-  if (p.startsWith("/") || p.startsWith("~") || /^[A-Za-z]:/.test(p)) {
-    return null;
-  }
-  if (p.split("/").includes("..")) {
-    return null;
-  }
-  return p;
-}
-
-function pathError(path: unknown): ToolResult {
-  return {
-    success: false,
-    error: `Invalid path ${JSON.stringify(path)} — use a path relative to the project root (no leading "/", no "..").`,
-  };
-}
 
 /**
  * Whether a project-relative path conventionally holds a Jx document. Kept in step with
@@ -169,7 +142,7 @@ export function registerProjectTools(
         const { dir } = args as { dir?: string };
         const start = dir === undefined || dir === "" ? "." : normalizeRelPath(dir);
         if (start === null) {
-          return pathError(dir);
+          return invalidPathResult(dir);
         }
         const platform = getPlatform();
         const entries: { path: string; type: string; size?: number }[] = [];
@@ -233,7 +206,7 @@ export function registerProjectTools(
       async execute(args) {
         const relPath = normalizeRelPath((args as { path: string }).path);
         if (relPath === null) {
-          return pathError((args as { path: string }).path);
+          return invalidPathResult((args as { path: string }).path);
         }
         try {
           const content = await getPlatform().readFile(relPath);
@@ -285,7 +258,7 @@ export function registerProjectTools(
         const { path, content } = args as { path: string; content: string };
         const relPath = normalizeRelPath(path);
         if (relPath === null) {
-          return pathError(path);
+          return invalidPathResult(path);
         }
         if (content.length > WRITE_CAP_BYTES) {
           return {

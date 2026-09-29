@@ -122,6 +122,7 @@
     "events": [
       "beginTurn(\"turn:2\")",
       "endTurn(\"msg#1\") filed 0",
+      "resetAiWrites()",
       "beginTurn(\"turn:2\")",
       "endTurn(\"msg#3\") filed 0"
     ],

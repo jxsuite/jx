@@ -32,6 +32,7 @@ import { registerImportTools } from "./ai-import-tools";
 import { createGatedToolRegistry } from "./gated-registry";
 import type { ToolAvailability } from "./gated-registry";
 import { adoptProject } from "./project-adoption";
+import { resetAiWrites } from "./ai-writes";
 import { abortImportRun, resetImportRuns } from "./import-run";
 import { runAgentLoop } from "./tool-executor";
 import { AI_TOOL_TIERS, buildSystemPrompt, toolActive } from "./ai-system-prompt";
@@ -398,6 +399,10 @@ export function createDocumentAssistant() {
     stop();
     resetAsk();
     resetImportRuns();
+    /* The record of what each turn changed is drawn under that turn's message; with the messages
+       gone there is nothing to draw it under, and a Restore offered from it would undo whatever
+       document is active now (ai.md §3.2). A stopped turn still unwinding files under no message. */
+    resetAiWrites();
     sessionFacts = createSessionFacts();
     chatState.clearChat();
     sessionId = null;

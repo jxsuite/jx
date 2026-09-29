@@ -32,7 +32,7 @@ void mock.module("electrobun/view", () => ({
 }));
 
 const hydrateGithubToken = mock((_stored: boolean) => {});
-void mock.module("@jxsuite/studio/github-auth", () => ({ hydrateGithubToken }));
+void mock.module("@jxsuite/studio/github-auth-status", () => ({ hydrateGithubToken }));
 
 const g = globalThis as unknown as { __jxLauncher?: LauncherSignal; __jxPlatform?: unknown };
 
