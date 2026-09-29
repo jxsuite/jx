@@ -4,7 +4,7 @@
    import (desktop 5.0.0-5.1.3) that it exists to record. Anywhere later, that throw leaves no trace
    and Studio falls back to the dev-server adapter. See boot.ts. */
 import { bootLauncher } from "./boot";
-import { hydrateGithubToken } from "@jxsuite/studio/github-auth";
+import { hydrateGithubToken } from "@jxsuite/studio/github-auth-status";
 import { createDesktopPlatform } from "./platform";
 
 await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "electrobun" });
