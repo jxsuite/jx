@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0](https://github.com/jxsuite/jx/compare/ui-v0.3.0...ui-v0.4.0) (2026-09-29)
+
+
+### Features
+
+* **studio:** batch modulepreload links, cache scroller/track resolution ([d756ae3](https://github.com/jxsuite/jx/commit/d756ae3a53987316215082161222ea5444390d50))
+
+
+### Bug Fixes
+
+* **studio:** resolve three canvas/chrome stacking-order defects ([7032b9e](https://github.com/jxsuite/jx/commit/7032b9e8f17b2792d33fca0f3cd5caa9de239d8f))
+* **studio:** resolve three canvas/chrome stacking-order defects ([0e0f4fc](https://github.com/jxsuite/jx/commit/0e0f4fcb05765fb068f1edbea59e32a2760c2c4a))
+* **studio:** Source Control, Document Header, button groups, and eight more chrome fixes ([30cc7ee](https://github.com/jxsuite/jx/commit/30cc7ee2a89a691e47e851b34adaf8a9ad9a2d0d))
+* **ui:** a compact action group draws one segmented line, and outset hit areas cannot clip ([bee3bc2](https://github.com/jxsuite/jx/commit/bee3bc28af6b78b795c673963e15f39d1e860057))
+* **ui:** pin the empty error region's size instead of inferring it ([543822f](https://github.com/jxsuite/jx/commit/543822f927fc60237cdf8ca8614b94ef79a753cf))
+* **ui:** segmented compact action groups, inert empty error region, contained hit areas ([306b097](https://github.com/jxsuite/jx/commit/306b097cbb481716b89d925b8c9b7d6d2b749e13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.2
+    * @jxsuite/schema bumped to 2.3.0
+
 ## [0.3.0](https://github.com/jxsuite/jx/compare/ui-v0.2.0...ui-v0.3.0) (2026-09-22)
 
 
