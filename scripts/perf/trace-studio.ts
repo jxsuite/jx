@@ -42,6 +42,37 @@ const CATEGORIES = [
   "disabled-by-default-v8.cpu_profiler",
 ];
 
+/**
+ * Below this baseline (ms), a percentage comparison is noise rather than a signal.
+ *
+ * `--compare`'s rule is `pct > 20 && freshValue - oldValue > 25`, which assumes both sides of the
+ * comparison are large enough for a percentage to mean anything. A sub-1ms baseline breaks that
+ * assumption: `grid-edit`'s tracked `scriptingMs` was 0.7, so a perfectly ordinary rep that spent a
+ * few tens of milliseconds on real scripting — GC timing, a slower CI neighbor, one extra reflow —
+ * read as a four-figure percentage and tripped the 25ms absolute floor at the same time, because
+ * almost ANY real value clears both bars when the baseline is this close to zero. `wallMs` never
+ * hits this (a scenario's wall clock is always at least tens of milliseconds), but `scriptingMs` /
+ * `styleRecalcMs` / `layoutMs` on a light scenario legitimately can, so the floor applies to
+ * whichever side of the pair is being judged, not just to `wallMs`.
+ */
+const MIN_BASELINE_MS = 5;
+
+/**
+ * One metric's baseline-vs-fresh comparison: the printed cell, and whether it counts as a
+ * regression. Exported so a test can hand it values without launching Chrome.
+ */
+export function compareMetric(
+  oldValue: number,
+  freshValue: number,
+): { cell: string; regressed: boolean } {
+  if (!oldValue) {
+    return { cell: `n/a → ${freshValue}`, regressed: false };
+  }
+  const pct = Math.round(((freshValue - oldValue) / oldValue) * 100);
+  const regressed = oldValue >= MIN_BASELINE_MS && pct > 20 && freshValue - oldValue > 25;
+  return { cell: `${oldValue} → ${freshValue} (${pct > 0 ? "+" : ""}${pct}%)`, regressed };
+}
+
 class Cdp {
   private nextId = 1;
   private ws: WebSocket;
@@ -589,15 +620,11 @@ async function main() {
           [base.styleRecalcMs, now.styleRecalc.time],
           [base.layoutMs, now.layout.time],
         ] as [number, number][]) {
-          if (!oldValue) {
-            cells.push(`n/a → ${freshValue}`);
-            continue;
-          }
-          const pct = Math.round(((freshValue - oldValue) / oldValue) * 100);
-          if (pct > 20 && freshValue - oldValue > 25) {
+          const { cell, regressed } = compareMetric(oldValue, freshValue);
+          if (regressed) {
             regression = true;
           }
-          cells.push(`${oldValue} → ${freshValue} (${pct > 0 ? "+" : ""}${pct}%)`);
+          cells.push(cell);
         }
         console.log(`${now.scenario} | ${cells.join(" | ")}`);
       }
@@ -611,6 +638,6 @@ async function main() {
   }
 }
 
-if (Bun.main === Bun.argv[1]) {
+if (import.meta.main) {
   await main();
 }
