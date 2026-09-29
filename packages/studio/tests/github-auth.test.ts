@@ -377,6 +377,24 @@ describe("the desktop loopback flow", () => {
     expect(counters.signOuts).toBe(1);
   });
 
+  test("a launcher that fails to forget the token is swallowed, not an unhandled rejection", async () => {
+    let asked = false;
+    installNative({
+      signOut: () => {
+        asked = true;
+        return Promise.reject(new Error("keychain locked"));
+      },
+    });
+    hydrateGithubToken(true);
+
+    // A revoke the accounts pane calls synchronously: nothing there could act on the refusal.
+    expect(() => clearGithubToken()).not.toThrow();
+    expect(githubTokenStored()).toBe(false);
+    // An unhandled rejection here would fail the run after the rejection settles.
+    await Bun.sleep(1);
+    expect(asked).toBe(true);
+  });
+
   test("a browser build says its token lives in the browser", () => {
     expect(githubTokenLocation()).toBe("browser");
   });
