@@ -12,6 +12,8 @@ code:
   - packages/studio/src/services/ai-session-store.ts
   - packages/studio/src/services/tool-outcomes.ts
   - packages/studio/src/services/import-client.ts
+  - packages/studio/src/services/ai-writes.ts
+  - packages/studio/src/services/project-path.ts
 ---
 
 # The AI assistant
@@ -60,6 +62,8 @@ The assistant's reply streams in live. When it acts on your project, each action
 
 Under the chips, a reply that changed anything carries a one-line summary: "Changed 3 files", plus a count of any that were **written to disk, where undo cannot reach them**. Expand it for the list of paths. When every change in a reply went through the editor, the summary also offers **Restore to here**, which rolls that whole reply back in one step. The summary sits under the last part of the reply you can see, so a reply you stopped, or one whose last step said nothing, still shows what it changed.
 
+A summary belongs to its chat and its project. **New chat** clears it along with the conversation, and so does opening another project in this window: the changes themselves stay, but the summaries under the earlier replies go, and **Restore to here** with them. Carried across, it would undo whatever page is open now rather than the one that reply edited.
+
 Document edits land on the canvas as they happen, so for canvas work you can literally watch the page change. If something goes wrong mid-request (a lost connection, a provider error), the chat shows the error with advice on how to recover, and a **Retry** button that sends your last message again. The half-finished part of the reply is removed rather than kept, so a half-written action is never sent back to the provider. Anything the assistant finished before the error stays, each chip with its outcome.
 
 A long request that reaches the assistant's per-message limit on tool calls is not an error: it finishes with a note saying it ran out of rounds and listing what it did apply, and everything it changed stays changed. Send another message to continue. The note lists only actions that changed something without a problem, and creating or importing a project counts. If none of the assistant's actions did, because it spent its whole limit looking around (listing files, reading them, asking you questions) or every change it made came back with an error to fix, that is shown as an error instead. Any change that did land stays on the canvas.
@@ -102,7 +106,7 @@ What the assistant may change, and how you take it back, follows two rules:
 
 **Edits to a page open on the canvas** are applied to the open editor, not to disk. The page's tab is marked unsaved, exactly as if you had made the edits yourself. Review them on the canvas, then save the tab to keep them or close without saving to discard. They also enter the page's normal undo history as **one undo step per request**: press :kbd[⌘Z] (macOS) or :kbd[Ctrl+Z] (Windows/Linux) once to roll back everything the assistant did to that page in its last reply. If one request edited several pages, each page carries its own single step.
 
-**File-level changes** (new pages, new components, whole-file rewrites) are saved straight to disk and are **not undoable** from Studio's history. Two guards keep this safe: Jx documents are validated (and test-rendered) before writing, and the assistant refuses to overwrite a file you have open with unsaved changes. When it writes a file you _do_ have open (with no unsaved edits), the tab refreshes to show the new contents.
+**File-level changes** (new pages, new components, whole-file rewrites) are saved straight to disk and are **not undoable** from Studio's history. Three guards keep this safe. The assistant writes only inside the open project: a path outside it (one starting with `/`, a drive letter or `~`, or one that climbs out with `..`) is refused before anything is written. Jx documents are validated (and test-rendered) before writing. And the assistant refuses to overwrite a file you have open with unsaved changes. When it writes a file you _do_ have open (with no unsaved edits), the tab refreshes to show the new contents.
 
 :::doc-tip
 For disk-level changes, source control is the review tool: the **[Source Control](/docs/studio/publish/source-control)** panel shows every file the assistant touched as a pending change you can diff or discard before committing.

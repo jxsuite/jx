@@ -18,6 +18,8 @@
  *
  * The tools record; the loop bounds the turn; the panel renders. Nothing here knows about lit, and
  * nothing here imports the loop, so a tool can be honest without either.
+ *
+ * @docs studio/ai/chat
  */
 
 import type { Message } from "@jxsuite/ai/chat-state";
@@ -124,7 +126,10 @@ export function summarizeWrites(writes: AiWrite[]): string {
   return parts.join(" · ");
 }
 
-/** Drop every ledger. For tests and for the "new chat" / "close project" paths. */
+/**
+ * Drop every ledger: New Chat (the messages they are drawn under are gone), leaving a project
+ * (their paths name the project left behind; `setWorkspaceProject`), and tests.
+ */
 export function resetAiWrites(): void {
   turns.splice(0);
 }
