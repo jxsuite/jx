@@ -68,7 +68,7 @@ describe("project-adoption — adoptCreatedProject", () => {
 
     expect(order).toEqual(["initRepo", "adopt"]);
     expect(initRepo).toHaveBeenCalledWith("/abs/site");
-    expect(outcome).toEqual({ adopted: true, error: null });
+    expect(outcome).toEqual({ adopted: true, error: null, openedElsewhere: false });
   });
 
   test("a resolved adopter that did not land reports adopted: false", async () => {
@@ -80,7 +80,7 @@ describe("project-adoption — adoptCreatedProject", () => {
     const outcome = await adoptCreatedProject("/abs/site", { adopt, getTab: () => null, initRepo });
 
     expect(adopt).toHaveBeenCalled();
-    expect(outcome).toEqual({ adopted: false, error: null });
+    expect(outcome).toEqual({ adopted: false, error: null, openedElsewhere: false });
   });
 
   test("a throwing adopter is reported, not propagated", async () => {
@@ -158,5 +158,53 @@ describe("project-adoption — adoptCreatedProject", () => {
     expect(state.calls.filter(([name]) => name === "activate" || name === "gitInit")).toHaveLength(
       2,
     );
+  });
+
+  test("restores this window's backend to the shown project before handing off to a new window", async () => {
+    /* `createProject` (which `initRepo` runs through) re-roots THIS window's backend to the new
+       root as a side effect of scaffolding — even though a different project ("/abs/old-project")
+       is already showing here and `adopt` is about to open the new one in a window of its own. */
+    const setWindowProject = mock(async (_root: string) => ({ config: null, deduped: false }));
+    installMockPlatform({
+      openProjectInNewWindow: mock(async () => ({ focused: false })),
+      setWindowProject,
+    });
+    workspace.projectRoot = "/abs/old-project";
+    const { adopt, initRepo, order } = seams();
+
+    const outcome = await adoptCreatedProject("/abs/new-project", {
+      adopt,
+      getTab: () => null,
+      initRepo,
+    });
+
+    // Restored BEFORE handing off: a dedupe check for /abs/new-project must not find this window
+    // Still claiming it, or the new window never opens.
+    expect(order).toEqual(["initRepo", "adopt"]);
+    expect(setWindowProject).toHaveBeenCalledWith("/abs/old-project");
+    expect(adopt).toHaveBeenCalledWith("/abs/new-project");
+    expect(outcome).toEqual({ adopted: false, error: null, openedElsewhere: true });
+    // This window's own displayed project is exactly what it was before create ran.
+    expect(workspace.projectRoot).toBe("/abs/old-project");
+  });
+
+  test("does not restore on a platform with no multi-window support", async () => {
+    // No `openProjectInNewWindow` — a single-window platform (dev server, cloud) keeps today's
+    // Replace-in-place behavior, and there is nothing to restore this window away from.
+    const setWindowProject = mock(async (_root: string) => ({ config: null, deduped: false }));
+    installMockPlatform({ setWindowProject });
+    workspace.projectRoot = "/abs/old-project";
+    const { adopt, initRepo } = seams((root) => {
+      workspace.projectRoot = root;
+    });
+
+    const outcome = await adoptCreatedProject("/abs/new-project", {
+      adopt,
+      getTab: () => null,
+      initRepo,
+    });
+
+    expect(setWindowProject).not.toHaveBeenCalled();
+    expect(outcome).toEqual({ adopted: true, error: null, openedElsewhere: false });
   });
 });

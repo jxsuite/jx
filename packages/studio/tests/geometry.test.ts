@@ -2,6 +2,7 @@ import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { toPosixPath } from "../scripts/lib/posix-path";
 import { elementAtPoint, elementsAtPoint, rectOf, rectOfRange } from "../src/utils/geometry";
 
 describe("geometry funnel helpers", () => {
@@ -52,7 +53,7 @@ describe("geometry funnel invariant (regression guard)", () => {
     const forbidden = /\.(getBoundingClientRect|elementFromPoint|elementsFromPoint)\(/;
     const offenders: string[] = [];
     for (const rel of new Bun.Glob("**/*.ts").scanSync({ cwd: srcDir, dot: false })) {
-      const posix = rel.replaceAll("\\", "/");
+      const posix = toPosixPath(rel);
       if (posix === "utils/geometry.ts") {
         continue; // The funnel itself is the one allowed home for these DOM reads.
       }
@@ -91,7 +92,7 @@ describe("geometry funnel invariant (regression guard)", () => {
     ]);
     const offenders: string[] = [];
     for (const rel of new Bun.Glob("canvas/**/*.ts").scanSync({ cwd: srcDir, dot: false })) {
-      const posix = rel.replaceAll("\\", "/");
+      const posix = toPosixPath(rel);
       if (iframeBundled.has(posix)) {
         continue;
       }

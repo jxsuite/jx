@@ -58,6 +58,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { toPosixPath } from "./lib/posix-path";
 
 // Files exempt from the every-source-file-is-tested rule: pure type
 // Declarations, erased at runtime, which never produce coverage rows.
@@ -116,7 +117,7 @@ function recordPath(line: string, pkgDir: string): string | undefined {
   // Normalize to forward slashes so comparisons hold on Windows, where both
   // `relative()` and Bun.Glob yield backslash-separated paths but the ALLOWLIST
   // (and SF: entries from a POSIX-built lcov) use forward slashes.
-  return rel.replaceAll("\\", "/");
+  return toPosixPath(rel);
 }
 
 /** Workspace-relative paths of every file lcov has a record for. */
@@ -175,7 +176,7 @@ export function sourceFiles(pkgDir: string): string[] {
   const glob = new Bun.Glob(hasSrc ? "src/**/*.ts" : "*.ts");
   const files: string[] = [];
   for (const rawFile of glob.scanSync({ cwd: pkgDir })) {
-    const file = rawFile.replaceAll("\\", "/");
+    const file = toPosixPath(rawFile);
     if (file.endsWith(".d.ts") || ALLOWLIST.has(file)) {
       continue;
     }
@@ -198,7 +199,7 @@ export function testsNaming(pkgDir: string, sourceFile: string): string[] {
   const needle = sourceFile.replace(/\.ts$/, "");
   const found: string[] = [];
   for (const rawFile of new Bun.Glob("**/*.test.ts").scanSync({ cwd: pkgDir })) {
-    const file = rawFile.replaceAll("\\", "/");
+    const file = toPosixPath(rawFile);
     if (file.includes("node_modules/")) {
       continue;
     }

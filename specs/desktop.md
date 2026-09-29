@@ -400,8 +400,52 @@ platform.createProject({ …, destination })
         └─── Cloud: POST /api/v1/projects { owner, repo, private, … } → the repo is
              created under the chosen account, never a server-side default
         ▼
-Returns { root, config } and the modal opens it
+Returns { root, config }, and the wizard adopts it itself (§4.5a) — no caller of
+openNewProjectModal() is left responsible for opening what it created
 ```
+
+### 4.5a Where the Created Project Opens
+
+> **Status: Implemented.**
+
+Unlike Open (§4.2a), New Project never asks. There is nothing to pick between — the window that
+already had a project keeps it, and the one just created gets a window of its own whenever
+`openProjectInNewWindow` is available; without it (single-window platforms) the new project replaces
+what this window was showing, exactly as Open does with one window.
+
+**Desktop's `createProject` re-roots the calling window's own backend as a side effect of
+scaffolding** — git init (§4.5's "every created project is a git repository") has no explicit-root
+form of its own, so it runs through whatever this window's backend is currently bound to, and that
+has to be the new root for git init to apply to the right directory. This is fine when the window is
+about to show the new project too, but wrong the moment a DIFFERENT project was already showing here:
+the new-window flow above dedupes by asking the backend which window already has a root open, and
+thanks to the reroot that now reads as THIS window, even though its own UI still names the project it
+had before create ran.
+
+`services/project-adoption.ts`'s `adoptCreatedProject` is what closes that gap, and every path that
+creates a project — the wizard and both AI bootstrap tools — runs through it:
+
+```
+initRepo(root)                    — git init, through this window's (just re-rooted) backend
+        │
+        ▼
+A different project was already showing here, and openProjectInNewWindow exists?
+        │
+        ├─── No  → adopt(root) binds THIS window to root, exactly as Open's This Window does
+        │
+        └─── Yes → platform.setWindowProject(shownRoot) FIRST, restoring this window's backend
+             to the project its UI still names — otherwise the dedupe above either hands
+             root back to this same window or opens a second window while leaving this one
+             silently bound to root
+                    │
+                    ▼
+             adopt(root) → openRecentProject's own New Window branch: opens root in a window
+             of its own, and this window's project, tabs and backend binding are untouched
+```
+
+The outcome is reported the same way §4.2a's is: `adopted` is `workspace.projectRoot === root`, and
+`openedElsewhere` distinguishes "opened, just not here" from a genuine failure — a caller that only
+checked `adopted` would otherwise report the ordinary new-window case as one.
 
 A live preview under the fields shows the resolved destination (`/home/you/Sites/my-site`, or `acme/my-site`) before anything is written.
 

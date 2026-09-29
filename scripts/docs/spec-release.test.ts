@@ -18,9 +18,20 @@ import {
   renderFragment,
 } from "./lib/spec-release.ts";
 
-/** A git command in `root`, with dates pinned so the test is deterministic. */
+/**
+ * A git command in `root`, with dates pinned so the test is deterministic.
+ *
+ * `-c core.autocrlf=false -c core.eol=lf` pin line endings too, regardless of the machine's global
+ * git config. Without them this repo is a bare `git init` with no `.gitattributes` of its own (the
+ * real repo's `eol=lf` does not apply inside a throwaway temp repo) — so on Windows, wherever the
+ * developer's global `core.autocrlf=true` (a common default), the branch/merge dance below rewrites
+ * every fragment to CRLF on checkout, and `parseFragment`'s frontmatter regex, which matches a
+ * literal `\n`, never matches `---\r\n`. The fixture repo needs its OWN line-ending policy, the
+ * same way the real repo states one in `.gitattributes`, rather than inheriting whatever the host
+ * happens to have.
+ */
 function git(root: string, args: string[], date = "2026-09-14T12:00:00Z"): string {
-  return execFileSync("git", args, {
+  return execFileSync("git", ["-c", "core.autocrlf=false", "-c", "core.eol=lf", ...args], {
     cwd: root,
     encoding: "utf8",
     env: {
