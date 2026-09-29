@@ -113,6 +113,8 @@ Two trailing spaces are also a hard break in Markdown, and the formatter rewrite
 
 **A pipe inside a table cell has to be escaped.** Write `\|`, or the renderer reads it as the start of the next cell: the row grows a column, the surplus cells are dropped, and the text after the pipe takes the place of the one that vanished. Nothing about the page looks wrong until you read the column that lost its contents. `bun run docs:markdown` refuses any row whose cell count differs from its header, so a hand edit and a generator that forgets to escape are both caught. The formatter cannot fix one for you, because a row with too many cells does not say which of them was meant.
 
+**Every container fence goes on its own line.** Nesting two containers means two opening lines and two closing lines, never `::::div{…} :::div{…}` or `::: ::::`. A fence that shares its line is not a fence: the renderer prints the colons as a paragraph and drops the container along with its styles, and the build still succeeds. `bun run docs:markdown` refuses any line that opens with a fence and carries a second one.
+
 ## Callouts
 
 Three container directives render as styled asides:
