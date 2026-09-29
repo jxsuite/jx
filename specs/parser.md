@@ -2,9 +2,9 @@
 
 ## Content Formats and the Reference Format-Extension Classes
 
-**Version:** 0.2.10-draft\
+**Version:** 0.2.11-draft\
 **Status:** Partial\
-**Updated:** 2026-08-27\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -235,6 +235,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.11-draft** (2026-09-29) — Census against the code: the §3 marker narrowed to heading slugs that strip combining marks, §7 marked Partial because a collection's $elements only switch directive parsing on and restrict no names, §9.1 marked Partial for the silent skip of a localized content type with an unsafe name, and §9.3 corrected to Partial for uncoerced JSON and remote dates and the markdown-only mtime.
 - **0.2.10-draft** (2026-08-27) — roundtrip serialization is lossless where expressible, not total.
 - **0.2.9-draft** (2026-08-16) — §3 heading slugs normalize to NFC before casing (UAX #15) and word counts segment rather than split on whitespace (UAX #29). Closes gap:heading-slug-normalization and gap:word-segmentation.
 - **0.2.8-draft** (2026-08-16) — §3 the markdown variant and YAML media type are what hosts serve, not only what the class declares; gap:markdown-variant and gap:yaml-media-type closed.
@@ -256,4 +257,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/parser` Specification v0.2.10-draft_
+_`@jxsuite/parser` Specification v0.2.11-draft_

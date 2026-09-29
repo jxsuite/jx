@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.4.4-draft\
+**Version:** 0.4.5-draft\
 **Status:** Partial\
-**Updated:** 2026-09-13\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -777,6 +777,7 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.4.5-draft** (2026-09-29) — Census against the code: §2, §2.2, §4.1, §4.3, §4.4, §5.2, §5.3, §5.4, §5.6, §6.1, §6.2, §6.3, §7.1, §7.2, §7.2.1, §7.3, §7.5, §7.7 and §11 marked Partial, §3's marker restated now that the opt-in CSP ships and widened to self-contained compiler-timed classes, the stale §6.3 and §7.7 markers corrected, and the §10 Pending Features ledger retired onto its feature sections except the three rows no other section yet tracks as open. §8.2 now leads with Partial, since the style handle keys rules on the author's first class rather than a generated one.
 - **0.4.4-draft** (2026-09-13) — §8.1: a component instance nested inside another component's definition is expanded — props, host style, stamping — recursively, with a cycle diagnostic and a depth cap; a template host style resolves for every instance, props or not.
 - **0.4.3-draft** (2026-09-01) — CSS extraction delegates its nesting to buildStyleRules, the one definition the runtime and the site builder also use; 4.5's example shows the emitted rule form.
 - **0.4.2-draft** (2026-08-31) — CSS extraction emits the popover states and the declaration-body at-rules; attrHelperSource inlines the boolean-attribute rule for the generated-module targets.
@@ -820,4 +821,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.4.4-draft_
+_`@jxsuite/compiler` Specification v0.4.5-draft_

@@ -2,9 +2,9 @@
 
 ## JSON Schema 2020-12 Meta-Schema Generator
 
-**Version:** 0.4.9-draft\
+**Version:** 0.4.11-draft\
 **Status:** Partial\
-**Updated:** 2026-09-02\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -241,6 +241,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.11-draft** (2026-09-29) — Census against the code: §3.2, §3.4 and §3.5 re-marked Partial from Implemented because the project key list, padded language tags, the compiler's redirect table, exponent-form integers and the readers that bypass the parse boundary (Studio, jx validate) lag the text, and §3.1 and §4 marked Partial where the component schema and its generator diverge from it.
+- **0.4.10-draft** (2026-09-29) — §2 exports doc-ops and json-layout; an op that cannot apply has no inverse, and a move into its own subtree is refused.
 - **0.4.9-draft** (2026-09-02) — ArrayNamespace gains key, a $map/item pointer.
 - **0.4.8-draft** (2026-08-16) — §3.5 documents, configs and class definitions cross the parse boundary in NFC (UAX #31 §R4).
 - **0.4.7-draft** (2026-08-16) — §3.2 language-tag keys carry a BCP 47 pattern, so author-time and build-time agree; gap:bcp47-locale-validation closed.
@@ -270,4 +272,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/schema` Specification v0.4.9-draft_
+_`@jxsuite/schema` Specification v0.4.11-draft_

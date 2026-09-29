@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.4.14-draft\
+**Version:** 0.5.4-draft\
 **Status:** Partial\
-**Updated:** 2026-09-12\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -1100,6 +1100,13 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.5.4-draft** (2026-09-29) — Project creation adopts what it creates itself — opening a new window when a different project is already showing, leaving it untouched.
+- **0.5.3-draft** (2026-09-29) — Census against the code: §3.1, §3.3, §5.3, §6.1 to §6.5, §7.4 and §9.3 marked with what ships, §3.6 re-marked Partial because the webview is handed the GitHub token, §10 re-marked Implemented over its open §10.2, the header corrected to Partial, and the implementation roadmap retired onto its feature sections.
+- **0.5.2-draft** (2026-09-29) — The nested style rules the generated class carries are spec.md §9.2, not this spec's §9.2.
+- **0.5.1-draft** (2026-09-29) — §3.1 the PAL gains readFileBytes, an optional raw-bytes read, because readFile decodes UTF-8 and turns an image into replacement characters, and on the desktop the loopback asset URL taints a canvas while CORS is banned outright.
+- **0.5.0-draft** (2026-09-29) — §3.3 a launcher announces itself on __jxLauncher from its boot module's first import, the build refuses an init bundle that resolved electrobun from node_modules (the 5.0.0 to 5.1.3 defect), and a document that declared a boot module never falls back to the dev-server adapter; §3.4 Studio shows a boot-failure state naming the recorded error; §4.5 and §8.2.1 pickDirectory resolves null only for a cancel and Browse shows any rejection under Location.
+- **0.4.16-draft** (2026-09-29) — §7.3a the shared services server gates its AI route with the per-process token the import route already required, refuses non-loopback Hosts, and advertises the bound literal 127.0.0.1.
+- **0.4.15-draft** (2026-09-29) — §10.1 names the cloud adapter's importSite and the /events WebSocket it uses, rather than an omission and SSE.
 - **0.4.14-draft** (2026-09-12) — §7.1 webview box names @jxsuite/ui in place of Lit + Spectrum.
 - **0.4.13-draft** (2026-09-02) — Only authored sizes are emitted: a block-level box in normal flow drops the width and height a browser measured, so an imported layout stays fluid instead of pinned to the capture viewport.
 - **0.4.12-draft** (2026-09-02) — A control that declares which panel it expands becomes a native disclosure, with the flow deciding whether a pair is a details element or a popover.
@@ -1158,4 +1165,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.4.14-draft_
+_Jx Studio Desktop Architecture Specification v0.5.4-draft_

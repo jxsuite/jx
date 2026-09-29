@@ -2,9 +2,9 @@
 
 ## References Between Named Entries Across Extension Sections
 
-**Version:** 0.1.4-draft\
+**Version:** 0.1.5-draft\
 **Status:** Partial\
-**Updated:** 2026-08-15\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 Companion to [extensions.md](./extensions.md) §5/§9. Defines the standard field types for relationships between data — content entries, dynamic table rows, and any future `referenceable` section — so a comment can belong to a product, an author to a post, an order line to a product row.
@@ -92,6 +92,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.5-draft** (2026-09-29) — Census against the code: §2, §4 and §5 gained Partial markers for to-one includes onto integer-id tables, includes on the node path, table-to-content includes, foreign-key constraints, the content-to-table warning, reference value and write-time existence checks, and the Studio pickers' content-only, to-one scope.
 - **0.1.4-draft** (2026-08-15) — Add §6 Standards Alignment: JSON Schema 2020-12 for cardinality, and the JSON Pointer shape the reference form borrows.
 - **0.1.3-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
 - **0.1.2-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
@@ -100,4 +101,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Relationships Specification v0.1.4-draft_
+_Jx Relationships Specification v0.1.5-draft_

@@ -1,8 +1,8 @@
 # Imports
 
-**Version:** 0.1.10-draft\
+**Version:** 0.1.11-draft\
 **Status:** Partial\
-**Updated:** 2026-08-27\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -213,6 +213,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.11-draft** (2026-09-29) — Census against the code: §1.1, §1.2, §1.4, §2, §4.2, §4.3, §5, §5.1 and §6 gain Partial markers for the studio canvas's unrebased project imports and elements and its narrower component discovery, the retired imports-based format discovery, Custom Elements Manifest discovery that only the dev server performs, the package route payloads, the Packages and Insert panels, and unenforced collection elements. §1.3 gains a Partial marker and §1.4 is corrected, because the build compiles only the top level of components/ and never reads a page's $ref elements.
 - **0.1.10-draft** (2026-08-27) — Components a project defines are discovered from the tree rather than only declared.
 - **0.1.9-draft** (2026-08-15) — Name where the emitted import map now points (§1).
 - **0.1.8-draft** (2026-08-15) — Number the sections so they are addressable, and add §7 Standards Alignment.

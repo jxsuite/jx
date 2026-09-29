@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.15-draft\
+**Version:** 0.1.27-draft\
 **Status:** Partial\
-**Updated:** 2026-09-18\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -199,6 +199,18 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.27-draft** (2026-09-29) — Record how long the write ledger lasts (New Chat and leaving a project drop it) and require the file tools, `create_page` and `create_component` included, to refuse a path outside the project before writing.
+- **0.1.26-draft** (2026-09-29) — Census against the code: §2 marked Partial because Studio shows nothing for a failed model listing that carries no message, §3 marked Partial because its overview places the tool schemas and edit path in the ai package, §4 marked Partial because the link-local host guard misses most of fe80::/10 and the IPv4-mapped metadata address, and §2.2 now leads with Partial for the native Anthropic provider it already admits.
+- **0.1.25-draft** (2026-09-29) — §3.7 carries its status marker in the canonical form, so the section reads as Implemented to every page derived from the specs.
+- **0.1.24-draft** (2026-09-29) — §3.7 a tool call carries its context: its own signal, unlinked once the call settles; its id; the turn's write ledger; the conversation's session facts; and progress. Wrapping registries forward it, and a definition declares interactive.
+- **0.1.23-draft** (2026-09-29) — §3.2 partial success means a change was applied (the call succeeded and the write ledger grew by an ok write during it, not merely a summary; creating or importing a project is recorded as a disk write), and a turn that drew nothing ends on an error row saying so.
+- **0.1.22-draft** (2026-09-29) — §3.0 ai.streaming is true for the whole turn, tools included, and one window runs one turn (a send during one starts nothing; a waiting question's answer outranks Stop, and a hand-off waits for a stopped turn to end rather than being refused); §3.4 the idle status belongs to the token stream, not the turn.
+- **0.1.21-draft** (2026-09-29) — §2 Stop is armed before the send path's first await (the chat URL is resolved inside the first request); §3.5 a Stop later in a turn leaves a finished import's outcome as it was.
+- **0.1.20-draft** (2026-09-29) — §3.2 a chip shows the result the loop recorded as its call finishes, a stream error removes only its round's partial message, and a turn's changes are filed under the last message it drew, or under nothing once another chat has replaced its transcript; §2 a Stop during a round's last call opens no further round; §3.1 arguments that are not a JSON object are a parse failure naming their type.
+- **0.1.19-draft** (2026-09-29) — §2.4 one gateway implementation: @jxsuite/ai/gateway serves the chat and models routes for every backend (the server's normalizer moved verbatim, a fixed order of admission checks, problem refusals, SSE framing), and key provenance and the base-URL guard stay the host's policy; §1 names ./gateway Worker-safe.
+- **0.1.18-draft** (2026-09-29) — §3.4 the chat is saved as a question is put; a restored question that was answered shows its answer and every restored chip its outcome, backfilled from the tool message; only an open question renders inert.
+- **0.1.17-draft** (2026-09-29) — §1 depends on @jxsuite/protocol and through it on @jxsuite/schema; the streaming-client and tools leaves are Worker-safe and gated.
+- **0.1.16-draft** (2026-09-29) — §2 the usage frame carries the provider's own token count before done, and a round runs the tool calls its stream carried whatever the finish reason, except a cancelled round, which runs none.
 - **0.1.15-draft** (2026-09-18) — Document that model-listing is best-effort per BYOK endpoint and upstream failures must be surfaced distinctly from auth failures.
 - **0.1.14-draft** (2026-09-14) — §3.6 open_document is the projection of document.open, the bridge holds an undo: project record to a project.json witness as it holds a document record to the document root, and a tool with an empty required enum is withheld from the round.
 - **0.1.13-draft** (2026-09-13) — §3.6 Command tools: the two kinds of tool, strict: false and why, the empty-`wrote` no-op and the throwing-report answer, and the composite registry.
@@ -218,4 +230,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.15-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.27-draft — a stub, subject to expansion._

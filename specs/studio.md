@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.12.4-draft\
+**Version:** 0.13.10-draft\
 **Status:** Partial\
-**Updated:** 2026-09-22\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -1907,6 +1907,18 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.13.10-draft** (2026-09-29) — Citations of the deleted Studio redesign plan now name the section that holds each rule: Contexts is §17.1, idempotence is §13.5, the shot contract is scripts/screenshots/README.md, and the Bottom dock is §16.3; cross-spec citations name their spec.
+- **0.13.9-draft** (2026-09-29) — §11.2 carries its status marker in the canonical form, so the section reads as Implemented to every page derived from the specs.
+- **0.13.8-draft** (2026-09-29) — §9.1.1 cites the findReferences PAL member in desktop.md §3.1 alone, no longer a deleted plan document.
+- **0.13.7-draft** (2026-09-29) — Census against the code: twenty sections newly marked Partial where the code diverges or is unbuilt, §6.8, §13, §15 and §20.2 made specific, §6.5's three stale cells corrected, §20 closed onto §20.2, and the §12 feature-status ledger retired onto the sections that specify each feature. §4.1, §6.4 and §8.1 gain Partial markers for the canvas that injects no page context, the desktop app that runs no code services, and the format registry built from extensions rather than imports, and §3.6 names the missing page context.
+- **0.13.6-draft** (2026-09-29) — §6.2 names the button-group input and its glyph source; §13.5 names css-meta $icons as a manifest key held by the metadata test.
+- **0.13.5-draft** (2026-09-29) — §5.1: a panel record may declare a short railLabel for its rail button; Source Control's is Source, and its title stays the header, the accessible name and the tooltip.
+- **0.13.4-draft** (2026-09-29) — §21.3: the code half of a comparison draws no zoom pod.
+- **0.13.3-draft** (2026-09-29) — §5.5: the sync bar and the Active branch row are wrapping rows; the remote verbs and the branch picker take a line of their own whenever the status cannot share one, which at the Navigator's default width they already do, and the layout list names the rows and sub-tabs the panel actually draws.
+- **0.13.2-draft** (2026-09-29) — §4.2: the Document Header card is Edit-only and docks above the page's scroller at the pane's width; Design and lenses draw none.
+- **0.13.1-draft** (2026-09-29) — §15: a credentials form offers Save and Cancel only while its drafts differ from what is stored, and an untouched draft follows the store.
+- **0.13.0-draft** (2026-09-29) — §3.4 pickDirectory resolves null only for a cancel and a rejection is shown under Location on every platform; §11.2 a non-empty boot writes the jx-boot marker, which turns the dev-server default off so an unregistered launcher boots into the failure state.
+- **0.12.5-draft** (2026-09-29) — §9.4 the layout-preserving JSON serializer lives in @jxsuite/schema/json-layout, so any host writes a document the way Studio does.
 - **0.12.4-draft** (2026-09-22) — The Assistant tab binds its surface document on first show; the panel machinery mounts at boot — pending prompts queued before the bind project when the body first appears.
 - **0.12.3-draft** (2026-09-18) — Tabs move between panes by drag, by ⌘\ or by Open to the Side; drill-in and Open to the Side focus the pane they open into.
 - **0.12.2-draft** (2026-09-14) — §13.1 open_document and set_canvas_mode are projections of document.open and canvas.setMode, and a record whose required argument's derived enum is empty is withheld from the round.
@@ -2046,4 +2058,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.12.4-draft_
+_`@jxsuite/studio` Specification v0.13.10-draft_
