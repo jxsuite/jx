@@ -24,6 +24,7 @@ import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { toPosixPath } from "../scripts/lib/posix-path";
 import { runActiveReported, runReported } from "../src/commands/run-reported";
 import { createCommandRegistry } from "../src/commands/registry";
 import { argsSchema, stringProperty } from "../src/commands/command-args";
@@ -240,7 +241,8 @@ function withoutComments(source: string): string {
 describe("no surface runs a command bare", () => {
   const srcDir = join(import.meta.dir, "..", "src");
   const bare = new Set<string>();
-  for (const rel of new Bun.Glob("**/*.ts").scanSync({ cwd: srcDir, dot: false })) {
+  for (const rawRel of new Bun.Glob("**/*.ts").scanSync({ cwd: srcDir, dot: false })) {
+    const rel = toPosixPath(rawRel);
     const source = readFileSync(join(srcDir, rel), "utf8");
     if (BARE_RUN.test(withoutComments(source))) {
       bare.add(rel);

@@ -23,6 +23,17 @@ import type { DocumentOptions } from "./document";
 /** The installed package root, resolved off this module rather than off a caller's cwd. */
 export const STUDIO_PACKAGE_DIR = resolve(import.meta.dir, "..", "..");
 
+/**
+ * Normalize a `Glob.scan` result to forward slashes. Private and un-exported, like
+ * `project-session.ts`'s own `toPosix()`: this is the one module under `src/` that touches
+ * filesystem paths at all, and its published `files` entry (`package.json`) covers `src/` but not
+ * the repo's dev-tooling `scripts/lib/posix-path.ts`, so a cross-boundary import here would 404 for
+ * anyone who installed this package rather than checked out the monorepo.
+ */
+function toPosix(p: string): string {
+  return p.replaceAll("\\", "/");
+}
+
 export interface StageOptions {
   /** Package root to read from — an installed copy, or a `--link` checkout. */
   readonly from?: string | undefined;
@@ -108,13 +119,13 @@ export async function stageStudioAssets(
     const dest = destOf(destDir, a.path, layout);
     if (a.dir) {
       await mkdir(dest, { recursive: true });
-      for (const rel of new Glob("**/*").scanSync(src)) {
-        const posix = rel.replaceAll("\\", "/");
+      for (const rawRel of new Glob("**/*").scanSync(src)) {
+        const posix = toPosix(rawRel);
         if (skipMap(posix)) {
           continue;
         }
-        const file = join(src, rel);
-        const to = join(dest, rel);
+        const file = join(src, posix);
+        const to = join(dest, posix);
         await mkdir(dirname(to), { recursive: true });
         await cp(file, to);
         written.push(`${a.path}/${posix}`);

@@ -20,6 +20,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Glob } from "bun";
+import { toPosixPath } from "../scripts/lib/posix-path";
 
 const SRC = join(import.meta.dir, "..", "src");
 
@@ -39,7 +40,7 @@ const ALLOWED: Record<string, string> = {
 };
 
 function sourceFiles(): string[] {
-  return [...new Glob("**/*.ts").scanSync(SRC)].map((f) => f.replaceAll("\\", "/")).toSorted();
+  return [...new Glob("**/*.ts").scanSync(SRC)].map((f) => toPosixPath(f)).toSorted();
 }
 
 /** `import.meta.url` outside a comment — the thing that actually resolves at runtime. */

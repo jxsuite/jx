@@ -69,7 +69,7 @@ The preview line shows the repository that will be created, e.g. `acme/my-site`.
 
 ## Create it
 
-Click **Create Project** (or **Create & Start Agent** on the Agent tab). Studio writes the project folder, **initializes a git repository in it**, and opens it. **Back** returns to the source step without losing what you've typed.
+Click **Create Project** (or **Create & Start Agent** on the Agent tab). Studio writes the project folder, **initializes a git repository in it**, and opens it: in this window, or, on the desktop app, in a **new window** if this one already has a project open, leaving that one exactly as it was. **Back** returns to the source step without losing what you've typed.
 
 If the **Project Name** is missing, the error appears directly under that field. A missing or non-absolute **Location** (or, on the cloud, a missing **Owner**) is reported under the destination fields. If creation itself fails, the message appears just above the footer buttons, so it stays visible however far the form is scrolled.
 

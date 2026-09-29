@@ -10,6 +10,7 @@
  */
 
 import { initProjectRepo } from "../files/files";
+import { getPlatform, hasPlatform } from "../platform";
 import { beginBatch, endBatch, isBatching } from "../tabs/transact";
 import { workspace } from "../workspace/workspace";
 import type { Tab } from "../tabs/tab";
@@ -41,6 +42,12 @@ export interface AdoptOutcome {
   adopted: boolean;
   /** Why adoption failed, when it threw. Null when it did not (including when it silently did not). */
   error: string | null;
+  /**
+   * `adopted` is false BY DESIGN: a different project was already showing here, so the open flow
+   * below put the new one in a window of its own instead of replacing what this one is showing. Not
+   * a failure — a caller that only checks `adopted` would otherwise report a success as one.
+   */
+  openedElsewhere: boolean;
 }
 
 /** The seams {@link adoptCreatedProject} runs through, so each caller keeps the one it already had. */
@@ -84,6 +91,32 @@ export async function adoptCreatedProject(
   // Never fails the create: a project that was written stays written (initProjectRepo notifies).
   await initRepo(root);
 
+  /* `initRepo` ran git init through THIS window's backend — `platform.createProject` re-roots it to
+     `root` as a side effect of scaffolding, because git init has no explicit-root variant of its
+     own. That is fine when this window is about to show `root` too, but wrong when a DIFFERENT
+     project was already showing here: `adopt` below (`openRecentProject`) would open `root` in a
+     new window on exactly that condition, and that new-window flow dedupes by asking the backend
+     which window already has `root` open — which, thanks to the reroot above, now reads as THIS
+     one. Left alone, that either hands `root` back to this same window (skipping the new window
+     entirely) or opens a second window while leaving this one's backend silently pointed at `root`
+     even though its own UI still names the project it had before. Putting this window's backend
+     back where its UI says it is — before `adopt` runs — is what keeps both promises: the window
+     that already had a project keeps that project, backend included, and `root` gets a window of
+     its own. */
+  const platform = hasPlatform() ? getPlatform() : null;
+  const shownRoot = workspace.projectRoot;
+  const openedElsewhere = Boolean(
+    platform && shownRoot && shownRoot !== root && platform.openProjectInNewWindow,
+  );
+  if (openedElsewhere && shownRoot && platform?.setWindowProject) {
+    try {
+      await platform.setWindowProject(shownRoot);
+    } catch {
+      /* Best-effort restore — `adopt` below still runs, and a failed restore here is no worse than
+         the mismatch this guards against. */
+    }
+  }
+
   const wasBatching = isBatching();
   if (wasBatching) {
     endBatch();
@@ -98,5 +131,5 @@ export async function adoptCreatedProject(
     beginBatch(getTab());
   }
 
-  return { adopted: workspace.projectRoot === root, error: adoptionError };
+  return { adopted: workspace.projectRoot === root, error: adoptionError, openedElsewhere };
 }

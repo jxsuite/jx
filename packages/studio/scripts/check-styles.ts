@@ -68,6 +68,7 @@
 
 import { Glob } from "bun";
 import { join } from "node:path";
+import { toPosixPath } from "./lib/posix-path";
 
 const ROOT = join(import.meta.dir, "..");
 
@@ -1500,17 +1501,6 @@ function isVendorClass(name: string): boolean {
 }
 
 /** Run both rules over a studio package directory. */
-/**
- * Every repo-relative path this module reports or looks up, forward-slashed.
- *
- * `Glob.scan` yields the platform separator, so on Windows the walks below produced
- * `src\panels\x.ts` while every budget and allow-list in this file is written with `/` — each file
- * read as unlisted and each budget entry as stale, so the gate was noise there while staying
- * correct on CI's Linux.
- */
-function scanned(rel: string): string {
-  return rel.replaceAll("\\", "/");
-}
 
 export async function collect(root: string): Promise<StyleCheckResult> {
   const hexErrors: Finding[] = [];
@@ -1570,7 +1560,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
    * inline block did — definition source for the orphan rule, and subject of the hex/px rules.
    */
   for await (const raw of new Glob("styles/*.css").scan(root)) {
-    const rel = scanned(raw);
+    const rel = toPosixPath(raw);
     const source = await read(rel);
     const { errors, warnings } = scanHex(rel, source);
     hexErrors.push(...errors);
@@ -1585,7 +1575,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
   }
 
   for await (const raw of new Glob("src/**/*.css").scan(root)) {
-    const rel = scanned(raw);
+    const rel = toPosixPath(raw);
     const source = await read(rel);
     scanRings(rel, source);
     scanStacking(source);
@@ -1599,7 +1589,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
   const bareCatches = new Map<string, number>();
 
   for await (const raw of new Glob("src/**/*.ts").scan(root)) {
-    const rel = scanned(raw);
+    const rel = toPosixPath(raw);
     const source = await read(rel);
     const { errors, warnings } = scanHex(rel, source);
     hexErrors.push(...errors);
@@ -1640,7 +1630,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
    * class — which is why this walk only ever adds to `emitted`.
    */
   for await (const raw of new Glob("src/surfaces/**/*.json").scan(root)) {
-    const rel = scanned(raw);
+    const rel = toPosixPath(raw);
     const source = await read(rel);
     const { errors, warnings } = scanJsonStyle(rel, source);
     hexErrors.push(...errors);
