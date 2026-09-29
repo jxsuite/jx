@@ -17,6 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { toPosixPath } from "../scripts/lib/posix-path";
 import { documents as kitDocuments } from "@jxsuite/ui/documents";
 
 type Json = Record<string, unknown>;
@@ -282,7 +283,8 @@ describe("the selection policy", () => {
        the chrome's `none`, and one that ever does is a reviewed exception written here by name. */
     const offenders: string[] = [];
     const glob = new Bun.Glob("src/**/*.ts");
-    for (const path of glob.scanSync({ cwd: ROOT })) {
+    for (const rawPath of glob.scanSync({ cwd: ROOT })) {
+      const path = toPosixPath(rawPath);
       if (paintsSelectionInline(readFileSync(join(ROOT, path), "utf8"))) {
         offenders.push(path);
       }

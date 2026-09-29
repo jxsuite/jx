@@ -33,6 +33,7 @@
 import { Glob } from "bun";
 import { readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
+import { toPosixPath } from "./lib/posix-path";
 import { PUBLISHED_EXTRAS, STUDIO_ASSETS, STUDIO_STYLESHEETS } from "../src/hosting/layout";
 
 const PKG_DIR = resolve(import.meta.dir, "..");
@@ -166,8 +167,9 @@ export function nodeImports(sources: Record<string, string>): Problem[] {
 
 function readSources(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const rel of new Glob("**/*.ts").scanSync(dir)) {
-    out[rel.replaceAll("\\", "/")] = readFileSync(join(dir, rel), "utf8");
+  for (const rawRel of new Glob("**/*.ts").scanSync(dir)) {
+    const rel = toPosixPath(rawRel);
+    out[rel] = readFileSync(join(dir, rel), "utf8");
   }
   return out;
 }
@@ -178,9 +180,7 @@ export function analyze(root = PKG_DIR): Problem[] {
     unknown
   >;
   const sources = readSources(join(root, "src"));
-  const sheets = [...new Glob("styles/*.css").scanSync(root)]
-    .map((f) => f.replaceAll("\\", "/"))
-    .toSorted();
+  const sheets = [...new Glob("styles/*.css").scanSync(root)].map((f) => toPosixPath(f)).toSorted();
   return [
     ...stylesheetDrift(sheets),
     ...publishGaps((pkg.files ?? []) as string[], escapingImports(sources)),

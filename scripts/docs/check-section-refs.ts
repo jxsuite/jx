@@ -20,7 +20,8 @@
  * Usage: bun scripts/docs/check-section-refs.ts
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
 import { NUMBERED_HEADING } from "./lib/spec-status.ts";
@@ -142,19 +143,20 @@ export function checkSectionRefs(input: SectionRefsInput): SectionRefViolation[]
   return out;
 }
 
-function walk(dir: string, rel: string, out: string[]): void {
-  for (const name of readdirSync(dir)) {
-    const abs = join(dir, name);
-    const path = `${rel}/${name}`;
-    if (SKIP.some((re) => re.test(`${path}/`) || re.test(path))) {
-      continue;
-    }
-    if (statSync(abs).isDirectory()) {
-      walk(abs, path, out);
-    } else if (EXTENSIONS.has(extname(name))) {
-      out.push(path);
-    }
-  }
+/**
+ * Every TRACKED file under `workspace`, forward-slash and repo-relative.
+ *
+ * `git ls-files` rather than a `readdirSync` walk: this gate used to read the directory as it
+ * happened to sit on disk, which means a leftover local build artifact `.gitignore` excludes but
+ * nobody deleted — `dist-metafile/studio.js` from an earlier `bun run build:metafile`, say — was
+ * read and judged like source, and a bundled comment quoting an old `§` number failed a citation
+ * check nothing committed could explain. Tracked files are what "the committed tree" (this file's
+ * own test describes it that way) actually means, and they are what CI ever sees.
+ */
+function trackedFiles(root: string, workspace: string): string[] {
+  return execFileSync("git", ["ls-files", "--", workspace], { cwd: root, encoding: "utf8" })
+    .split("\n")
+    .filter(Boolean);
 }
 
 /** The gate's input for the repository at `root`. */
@@ -167,7 +169,12 @@ export function loadSectionRefsInput(root = ROOT): SectionRefsInput {
   }
   const paths: string[] = [];
   for (const workspace of Object.keys(HOME_SPECS)) {
-    walk(join(root, workspace), workspace, paths);
+    for (const path of trackedFiles(root, workspace)) {
+      if (SKIP.some((re) => re.test(path)) || !EXTENSIONS.has(extname(path))) {
+        continue;
+      }
+      paths.push(path);
+    }
   }
   const read = (path: string) => readFileSync(join(root, path), "utf8");
   const files = paths.map((path) => ({ path, text: read(path) }));

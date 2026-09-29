@@ -54,6 +54,7 @@ import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { KIT_TAGS } from "@jxsuite/ui";
 import { join } from "node:path";
 import { Glob } from "bun";
+import { toPosixPath } from "./lib/posix-path";
 
 const STUDIO = fileURLToPath(new URL("..", import.meta.url));
 
@@ -66,7 +67,8 @@ const STUDIO = fileURLToPath(new URL("..", import.meta.url));
  */
 export function kitTagsUsed(root: string): Map<string, string[]> {
   const used = new Map<string, string[]>();
-  for (const rel of new Glob("surfaces/**/*.json").scanSync(root)) {
+  for (const rawRel of new Glob("surfaces/**/*.json").scanSync(root)) {
+    const rel = toPosixPath(rawRel);
     const text = readFileSync(join(root, rel), "utf8");
     for (const m of text.matchAll(/"tagName":\s*"(jx-[a-z0-9-]+)"/g)) {
       const at = used.get(m[1]!);
@@ -102,7 +104,8 @@ export function manifestNames(): Set<string> {
  */
 export function iconKeysDeclared(root: string): Map<string, string> {
   const declared = new Map<string, string>();
-  for (const rel of new Glob("**/*.ts").scanSync(root)) {
+  for (const rawRel of new Glob("**/*.ts").scanSync(root)) {
+    const rel = toPosixPath(rawRel);
     const text = readFileSync(join(root, rel), "utf8");
     for (const call of text.matchAll(/registerPanel\(\{/g)) {
       const open = call.index! + call[0].length - 1;
