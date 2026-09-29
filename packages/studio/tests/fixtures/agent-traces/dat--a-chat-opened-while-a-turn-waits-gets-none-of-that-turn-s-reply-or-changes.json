@@ -159,6 +159,7 @@
     "events": [
       "beginTurn(\"turn:2\")",
       "endTurn(\"msg#2\") filed 0",
+      "resetAiWrites()",
       "beginTurn(\"turn:2\")",
       "recordWrite({\"disk\":false,\"ok\":true,\"path\":\"/project/index.json\",\"tool\":\"Inserted node at [\\\"children\\\",1].\"})",
       "endTurn(\"\") filed 1"
